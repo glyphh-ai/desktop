@@ -92,13 +92,10 @@ function relocateActions(collapsed: boolean): void {
   // Move the anchor + kebab WRAPS (button AND their popup menu) — moving only the
   // button orphaned the menu, which is why the anchor popup did nothing when docked.
   const target = collapsed ? bar : head;
-  // Last item is code-view-more-wrap, NOT the kebab: the Code agent's kebab is
-  // hidden by design (its session actions live in the "More" menu), so relocating
-  // the kebab showed no three-dots at all when docked. Move the working one.
-  for (const id of [
-    "code-transcript-btn", "code-anchor-wrap", "code-session-history",
-    "code-session-new", "code-view-more-wrap",
-  ]) {
+  // Move the anchor WRAP (button + its menu) so the popup works wherever the row
+  // lives. The three-dots (code-view-more) is NOT touched — it stays at the far
+  // right where it has always been.
+  for (const id of ["code-transcript-btn", "code-anchor-wrap", "code-session-history", "code-session-new"]) {
     const node = byId(id);
     if (node) target.appendChild(node);
   }

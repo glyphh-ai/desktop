@@ -239,16 +239,33 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
     const sheet: Worksheet = wb.sheets[tab]!;
     const ROWS_PER = 50;
 
-    const save = async (): Promise<boolean> => {
-      recalcWorkbook(wb);
+    // ── LOCAL-FIRST writes: edits mutate + recalc IN MEMORY and repaint only
+    // the rows; the server save rides a debounce in the background. A full
+    // panel refresh on every keystroke is what made editing jerky.
+    let saveTimer = 0;
+    let saving = false;
+    let dirty = false;
+    const saveNow = async (): Promise<void> => {
+      if (saving) { dirty = true; return; }
+      saving = true;
+      dirty = false;
       const w = await api().gsheetWrite?.(file, slot.title || entry.title, wb);
+      saving = false;
       if (!w?.ok) {
         void host.confirm({ title: "Couldn't save the workbook", body: w?.error || "Unknown error.", confirmLabel: "OK" });
         wbCache.delete(file);
-        return false;
+        return;
       }
       wbCache.set(file, { title: slot.title || entry.title, workbook: wb });
-      return true;
+      if (dirty) void saveNow();   // edits landed mid-save — one trailing save
+    };
+    const scheduleSave = (): void => {
+      window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => void saveNow(), 700);
+    };
+    const flushSave = (): void => {
+      window.clearTimeout(saveTimer);
+      void saveNow();
     };
 
     body.innerHTML = `
@@ -268,6 +285,7 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       </div>`;
 
     body.querySelector(".gsheet-back")?.addEventListener("click", () => {
+      flushSave();
       slot.file = undefined; slot.title = undefined;
       refresh();
     });
@@ -280,20 +298,17 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       else if (e.key === "Escape") { titleInput.value = slot.title || entry.title; titleInput.blur(); }
     });
     titleInput.addEventListener("blur", () => {
-      void (async () => {
-        const next = titleInput.value.trim();
-        if (!next || next === (slot.title || entry.title)) { titleInput.value = slot.title || entry.title; return; }
-        slot.title = next;
-        if (await save()) refresh();
-      })();
+      const next = titleInput.value.trim();
+      if (!next || next === (slot.title || entry.title)) { titleInput.value = slot.title || entry.title; return; }
+      slot.title = next;
+      flushSave();
     });
 
     body.querySelector(".gsheet-addrow")?.addEventListener("click", () => {
-      void (async () => {
-        sheet.rows.push(sheet.columns.map(() => null));
-        slot.rowPage = Math.floor((sheet.rows.length - 1) / ROWS_PER);
-        if (await save()) refresh();
-      })();
+      sheet.rows.push(sheet.columns.map(() => null));
+      slot.rowPage = Math.floor((sheet.rows.length - 1) / ROWS_PER);
+      paintRows();
+      scheduleSave();
     });
 
     body.querySelector(".gsheet-csv")?.addEventListener("click", () => {
@@ -316,11 +331,11 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       const t = document.createElement("button");
       t.className = "gsheet-tab" + (i === tab ? " active" : "");
       t.textContent = ws.name;
-      t.addEventListener("click", () => { slot.tab = i; slot.rowPage = 0; refresh(); });
+      t.addEventListener("click", () => { flushSave(); slot.tab = i; slot.rowPage = 0; refresh(); });
       tabs.appendChild(t);
     });
 
-    // Header.
+    // Header (sort repaints rows in place — no panel refresh, no focus loss).
     const thead = body.querySelector<HTMLElement>("thead")!;
     const headRow = document.createElement("tr");
     const corner = document.createElement("th");
@@ -333,76 +348,116 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       th.innerHTML = `<span class="gsheet-col-name"></span>${c.aiPrompt ? `<span class="gsheet-ai">✦</span>` : ""}`;
       (th.querySelector(".gsheet-col-name") as HTMLElement).textContent = c.name;
       th.addEventListener("click", () => {
-        void (async () => {
-          const val = (row: SheetCell[]): string | number => {
-            const v = cellValue(row[i] ?? null);
-            return typeof v === "number" ? v : String(v ?? "").toLowerCase();
-          };
-          const asc = [...sheet.rows].sort((x, y) => {
-            const vx = val(x), vy = val(y);
-            return typeof vx === "number" && typeof vy === "number" ? vx - vy : String(vx).localeCompare(String(vy));
-          });
-          const wasAsc = JSON.stringify(asc) === JSON.stringify(sheet.rows);
-          sheet.rows = wasAsc ? asc.reverse() : asc;
-          if (await save()) refresh();
-        })();
+        const val = (row: SheetCell[]): string | number => {
+          const v = cellValue(row[i] ?? null);
+          return typeof v === "number" ? v : String(v ?? "").toLowerCase();
+        };
+        const asc = [...sheet.rows].sort((x, y) => {
+          const vx = val(x), vy = val(y);
+          return typeof vx === "number" && typeof vy === "number" ? vx - vy : String(vx).localeCompare(String(vy));
+        });
+        const wasAsc = JSON.stringify(asc) === JSON.stringify(sheet.rows);
+        sheet.rows = wasAsc ? asc.reverse() : asc;
+        paintRows();
+        scheduleSave();
       });
       headRow.appendChild(th);
     });
     thead.appendChild(headRow);
 
-    // Rows (paginated).
     const tbody = body.querySelector<HTMLElement>("tbody")!;
-    const paged = officePage(sheet.rows.map((r, i) => ({ r, i })), slot.rowPage ?? 0, ROWS_PER);
-    slot.rowPage = paged.page;
-    for (const { r, i } of paged.items) {
-      const tr = document.createElement("tr");
-      const num = document.createElement("td");
-      num.className = "gsheet-rownum";
-      num.textContent = String(i + 1);
-      tr.appendChild(num);
-      sheet.columns.forEach((c, ci) => {
-        const td = document.createElement("td");
-        const cell = r[ci] ?? null;
-        td.textContent = fmtCell(cell, c.type);
-        if (isFormulaCell(cell)) { td.classList.add("gsheet-formula"); td.title = cell.f; }
-        if (typeof cellValue(cell) === "number") td.classList.add("gsheet-num");
-        td.addEventListener("click", () => {
-          // The ONE sanctioned hand edit: this cell, value or formula.
-          if (td.querySelector("input")) return;
-          const input = document.createElement("input");
-          input.className = "gsheet-cell-input";
-          input.value = isFormulaCell(cell) ? cell.f : String(cellValue(cell) ?? "");
-          input.spellcheck = false;
-          td.textContent = "";
-          td.appendChild(input);
-          input.focus(); input.select();
-          const commit = (write: boolean): void => {
-            const raw = input.value.trim();
-            if (!write) { refresh(); return; }
-            let next: SheetCell;
-            if (raw === "") next = null;
-            else if (raw.startsWith("=")) next = { f: raw };
-            else if (raw !== "" && Number.isFinite(Number(raw.replace(/[$,]/g, "")))) next = Number(raw.replace(/[$,]/g, ""));
-            else next = raw;
-            while (r.length <= ci) r.push(null);
-            r[ci] = next;
-            void (async () => { if (await save()) refresh(); })();
-          };
-          input.addEventListener("keydown", (e) => {
-            e.stopPropagation();
-            if (e.key === "Enter") { e.preventDefault(); commit(true); }
-            else if (e.key === "Escape") commit(false);
-          });
-          input.addEventListener("blur", () => commit(true));
-        });
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    }
     const foot = body.querySelector<HTMLElement>(".gsheet-foot")!;
-    const pager = officePager(sheet.rows.length, paged.page, ROWS_PER, (pg) => { slot.rowPage = pg; refresh(); });
-    if (pager) foot.appendChild(pager);
+
+    const paintCellTd = (td: HTMLElement, cell: SheetCell, type?: string): void => {
+      td.textContent = fmtCell(cell, type);
+      td.classList.toggle("gsheet-formula", isFormulaCell(cell));
+      td.classList.toggle("gsheet-num", typeof cellValue(cell) === "number");
+      if (isFormulaCell(cell)) td.title = cell.f; else td.removeAttribute("title");
+    };
+
+    /** Open the inline editor on (row, col); Enter moves down, Tab right. */
+    const openEditor = (ri: number, ci: number): void => {
+      const td = tbody.querySelector<HTMLElement>(`td[data-r="${ri}"][data-c="${ci}"]`);
+      if (!td || td.querySelector("input")) return;
+      const row = sheet.rows[ri]!;
+      const cell = row[ci] ?? null;
+      const input = document.createElement("input");
+      input.className = "gsheet-cell-input";
+      input.value = isFormulaCell(cell) ? cell.f : String(cellValue(cell) ?? "");
+      input.spellcheck = false;
+      td.textContent = "";
+      td.appendChild(input);
+      input.focus(); input.select();
+      let done = false;
+      const commit = (write: boolean, then?: "down" | "right" | "left"): void => {
+        if (done) return;
+        done = true;
+        if (!write) {
+          paintCellTd(td, row[ci] ?? null, sheet.columns[ci]?.type);
+          return;
+        }
+        const raw = input.value.trim();
+        let next: SheetCell;
+        if (raw === "") next = null;
+        else if (raw.startsWith("=")) next = { f: raw };
+        else if (Number.isFinite(Number(raw.replace(/[$,]/g, "")))) next = Number(raw.replace(/[$,]/g, ""));
+        else next = raw;
+        while (row.length <= ci) row.push(null);
+        row[ci] = next;
+        // Local recalc, then repaint ONLY this cell + every formula cell.
+        recalcWorkbook(wb);
+        paintCellTd(td, row[ci] ?? null, sheet.columns[ci]?.type);
+        tbody.querySelectorAll<HTMLElement>("td[data-r]").forEach((el) => {
+          const r = Number(el.dataset.r), c = Number(el.dataset.c);
+          const cc = sheet.rows[r]?.[c] ?? null;
+          if (isFormulaCell(cc)) paintCellTd(el, cc, sheet.columns[c]?.type);
+        });
+        scheduleSave();
+        if (then === "down" && ri + 1 < sheet.rows.length) openEditor(ri + 1, ci);
+        else if (then === "right" && ci + 1 < sheet.columns.length) openEditor(ri, ci + 1);
+        else if (then === "left" && ci > 0) openEditor(ri, ci - 1);
+      };
+      input.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); commit(true, "down"); }
+        else if (e.key === "Tab") { e.preventDefault(); commit(true, e.shiftKey ? "left" : "right"); }
+        else if (e.key === "Escape") commit(false);
+      });
+      // Blur (clicking elsewhere) commits IN PLACE — no re-render, so a click
+      // on another cell lands on a stable target and opens its own editor.
+      input.addEventListener("blur", () => commit(true));
+    };
+
+    function paintRows(): void {
+      tbody.textContent = "";
+      foot.textContent = "";
+      const paged = officePage(sheet.rows.map((r, i) => ({ r, i })), slot.rowPage ?? 0, ROWS_PER);
+      slot.rowPage = paged.page;
+      for (const { r, i } of paged.items) {
+        const tr = document.createElement("tr");
+        const num = document.createElement("td");
+        num.className = "gsheet-rownum";
+        num.textContent = String(i + 1);
+        tr.appendChild(num);
+        sheet.columns.forEach((c, ci) => {
+          const td = document.createElement("td");
+          td.dataset.r = String(i);
+          td.dataset.c = String(ci);
+          paintCellTd(td, r[ci] ?? null, c.type);
+          td.addEventListener("mousedown", (ev) => {
+            // mousedown (not click): the previous editor's blur-commit runs
+            // without a repaint, so THIS cell is still there to receive it.
+            ev.preventDefault();
+            openEditor(i, ci);
+          });
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      }
+      const pager = officePager(sheet.rows.length, paged.page, ROWS_PER, (pg) => { slot.rowPage = pg; paintRows(); });
+      if (pager) foot.appendChild(pager);
+    }
+    paintRows();
   }
 
   return { renderIntoSlot, invalidate: (file) => { wbCache.delete(file); } };
