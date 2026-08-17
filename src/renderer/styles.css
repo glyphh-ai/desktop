@@ -16662,6 +16662,9 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
   cursor: pointer;
   color: var(--text-3);
 }
+/* display:flex above outranks the UA [hidden] rule — without this the bar's
+   caret floats over every NON-center anchor mode too. */
+.code-status-line[hidden] { display: none; }
 .code-status-line:hover { color: var(--text); }
 .code-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .code-status-line .code-peek-caret { flex-shrink: 0; opacity: 0.7; }
