@@ -307,6 +307,46 @@ export function buildContract(client, deps) {
       try { await client.officeSheets.delete(file); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    designList: async () => {
+      try {
+        const designs = (await client.designs.list()).map((m) => ({
+          file: m.file, title: m.title, size: m.sizeBytes, mtime: Date.parse(m.updatedAt) || 0,
+        }));
+        return { ok: true, designs };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err), designs: [] }; }
+    },
+    designRead: async (file) => {
+      try { const d = await client.designs.get(file); return { ok: true, title: d.title, document: d.document }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    designWrite: async (file, document) => {
+      try { const m = await client.designs.put(file, document); return { ok: true, file: m.file, title: m.title }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    designDelete: async (file) => {
+      try { await client.designs.delete(file); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    designAssetUpload: async (file, input) => {
+      try { return { ok: true, asset: await client.designs.uploadAsset(file, input) }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    designAssetUrl: async (file, assetId) => {
+      try {
+        const d = await client.designs.get(file);
+        const entry = (d.document.assets ?? []).find((x) => x.id === assetId);
+        if (!entry) throw new Error("asset not found");
+        const bytes = await client.designs.assetBytes(file, assetId);
+        let bin = "";
+        const arr = new Uint8Array(bytes);
+        for (let i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+        return { ok: true, url: `data:${entry.contentType};base64,${btoa(bin)}` };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    designAssetDelete: async (file, assetId) => {
+      try { await client.designs.deleteAsset(file, assetId); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     gdriveList: async (q) => {
       try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }

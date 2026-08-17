@@ -27,7 +27,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
@@ -57,6 +57,8 @@ async function statorCall(path: "recall" | "write", body: Record<string, unknown
 
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
+import { designFileName, extractSiteDesign, imagePalette } from "./design";
+import type { DesignSystem } from "@glyphh/sdk";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
@@ -1035,6 +1037,108 @@ const TOOLS: ToolDef[] = [
       }
       openGSheetPanel(file, s.title);
       return `opened ${file} in the Sheets panel`;
+    },
+  },
+  // ── Glyphh DESIGN: org design systems — the brand kit (colors, fonts, type,
+  //    styles, assets) Apps consume first and Slides second. Extraction tools
+  //    return EVIDENCE (deterministic counts) for the model to judge; the
+  //    document itself is authored with create_design/update_design. ──
+  {
+    name: "list_designs",
+    doc: "list_designs() — the org's design systems (brand kits): file, title. Check this BEFORE building an app or deck — when the org has a system, using it is the default.",
+    action: () => ({ kind: "read", title: "List design systems" }),
+    run: async () => {
+      const designs = await getClient().designs.list();
+      if (!designs.length) return "(no design systems yet — create_design builds one)";
+      return cap(JSON.stringify(designs.map(({ file, title }) => ({ file, title })), null, 1));
+    },
+  },
+  {
+    name: "read_design",
+    doc: "read_design(name, raw?) — a design system's readable summary (colors, fonts, type, styles, tone, assets, provenance). raw:true returns the exact document JSON for update_design surgery.",
+    action: (a) => ({ kind: "read", title: `Read design "${String(a.name ?? "")}"${a.raw ? " (raw)" : ""}` }),
+    run: async (a) => {
+      const file = designFileName(a.name);
+      if (a.raw) {
+        const d = await getClient().designs.get(file);
+        return cap(JSON.stringify(d.document, null, 1), READ_CAP);
+      }
+      const t = await getClient().designs.text(file);
+      return cap(`${t.title} (${t.file})\n\n${t.text}`, READ_CAP);
+    },
+  },
+  {
+    name: "design_css",
+    doc: "design_css(name) — the system as a :root { --design-* } CSS block: colors, fonts, type scale, radius, shadow, gradient. Paste it into an app's stylesheet and map the app's own variables onto --design-primary, --design-font-display, etc.",
+    action: (a) => ({ kind: "read", title: `Design CSS for "${String(a.name ?? "")}"` }),
+    run: async (a) => cap(await getClient().designs.css(designFileName(a.name)), READ_CAP),
+  },
+  {
+    name: "create_design",
+    doc: 'create_design(name, document) — create or overwrite an org design system. document: {version: 1, name, colors: {primary, background, text (required, hex), accent?, surface?, muted?, palette?: [{name, hex, role?}]}, fonts: {display: {family, fallback?, weights?, source?: "system"|"google"|"custom"}, body: {…}, mono?: {…}}, type?: {baseSize, scale, headingWeight, letterSpacing}, styles?: {radius, borderWidth, shadow: "none"|"soft"|"medium"|"bold", density, gradient: {from, to, angle}}, brand?: {tagline, tone: […]}, sources?: [{type: "image"|"site"|"prompt", ref, note?, extractedAt}]}. Record where every choice CAME from in sources.',
+    action: (a) => ({ kind: "edit", title: `Create design "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const doc = a.document as DesignSystem | undefined;
+      if (!doc || typeof doc !== "object") return "ERROR: pass document — the design-system object (see the doc string)";
+      const meta = await getClient().designs.put(designFileName(a.name), doc);
+      return `created ${meta.file} ("${meta.title}") — it's in the org's Design panel on every surface; open_design("${meta.file}") opens the studio, design_css("${meta.file}") gives the consumable contract`;
+    },
+  },
+  {
+    name: "update_design",
+    doc: "update_design(name, patch) — merge a partial document into a system: top-level sections (colors, fonts, type, styles, brand) merge field-by-field; palette/sources/tone REPLACE when present. Read raw first when unsure.",
+    action: (a) => ({ kind: "edit", title: `Update design "${String(a.name ?? "")}"`, detail: Object.keys((a.patch as object) ?? {}).join(", ") }),
+    run: async (a) => {
+      const patch = a.patch as Record<string, unknown> | undefined;
+      if (!patch || typeof patch !== "object") return "ERROR: pass patch — the partial document to merge";
+      const file = designFileName(a.name);
+      const current = await getClient().designs.get(file);
+      const doc = current.document as unknown as Record<string, unknown>;
+      for (const [key, value] of Object.entries(patch)) {
+        const existing = doc[key];
+        doc[key] = value && typeof value === "object" && !Array.isArray(value) && existing && typeof existing === "object" && !Array.isArray(existing)
+          ? { ...existing, ...value }
+          : value;
+      }
+      const meta = await getClient().designs.put(file, doc as unknown as DesignSystem);
+      return `updated ${meta.file} ("${meta.title}")`;
+    },
+  },
+  {
+    name: "delete_design",
+    doc: "delete_design(name) — permanently delete a design system (document + assets) from the org library",
+    action: (a) => ({ kind: "dangerous", title: `Delete design "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      await getClient().designs.delete(designFileName(a.name));
+      return `deleted ${String(a.name)}`;
+    },
+  },
+  {
+    name: "extract_site_design",
+    doc: "extract_site_design(url) — fetch a page (+ its first stylesheets) and COUNT the colors, font families, radii, and Google Fonts it actually uses. Returns evidence ranked by frequency (neutrals flagged) — pick the true brand colors from it, then create_design.",
+    action: (a) => ({ kind: "read", title: `Extract design from ${String(a.url ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await extractSiteDesign(String(a.url ?? "")), null, 1), READ_CAP),
+  },
+  {
+    name: "read_image_palette",
+    doc: "read_image_palette(path) — the dominant colors of a local image (logo beats screenshot), quantized deterministically: [{hex, share%}]. Cross-check your own read of the image against it.",
+    action: (a) => ({ kind: "read", title: `Palette of ${String(a.path ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await imagePalette(String(a.path ?? "")), null, 1)),
+  },
+  {
+    name: "open_design",
+    doc: "open_design(name?) — open the Design panel beside this conversation; with a system name it opens straight into that studio",
+    action: (a) => ({ kind: "command", title: a.name ? `Open design "${String(a.name)}"` : "Open the Design panel" }),
+    run: async (a) => {
+      if (!a.name) { openDesignPanel(); return "opened the Design panel"; }
+      const file = designFileName(a.name);
+      const d = await getClient().designs.get(file).catch(() => null);
+      if (!d) {
+        const designs = await getClient().designs.list();
+        return `ERROR: no design "${file}" — available: ${designs.map((x) => x.file).join(", ") || "(none)"}`;
+      }
+      openDesignPanel(file, d.title);
+      return `opened ${file} in the Design panel`;
     },
   },
   {

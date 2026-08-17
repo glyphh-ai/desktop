@@ -66,6 +66,7 @@ type WbCmd =
   | { action: "gpoint"; file?: string; title?: string }
   | { action: "gdoc"; file?: string; title?: string }
   | { action: "gsheet"; file?: string; title?: string }
+  | { action: "gdesign"; file?: string; title?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -245,6 +246,11 @@ export function openGDocPanel(file?: string, title?: string): void {
 /** Open the Sheets panel — with a file, straight into that workbook. */
 export function openGSheetPanel(file?: string, title?: string): void {
   sendWbCmd(file ? { action: "gsheet", file, title } : { action: "tool", tool: "gsheet" });
+}
+
+/** Open the Design panel — with a file, straight into that system's studio. */
+export function openDesignPanel(file?: string, title?: string): void {
+  sendWbCmd(file ? { action: "gdesign", file, title } : { action: "tool", tool: "gdesign" });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview
