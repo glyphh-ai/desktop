@@ -45,6 +45,9 @@ export interface GDriveHost {
 const driveApi = () => (window as unknown as { glyphh?: {
   gdriveList?: (q?: string) => Promise<{ ok: boolean; folders: DriveFolder[]; files: DriveEntry[]; error?: string }>;
   gdriveMkdir?: (name: string, parentId?: string | null) => Promise<{ ok: boolean; error?: string }>;
+  gpointNew?: (name: string, title?: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
+  gdocWrite?: (file: string, markdown: string, folderId?: string | null) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
+  gsheetWrite?: (file: string, title: string, workbook: unknown) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
   gdriveMove?: (kind: "slides" | "docs" | "sheets", file: string, folderId: string | null) => Promise<{ ok: boolean; error?: string }>;
   gsheetDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdriveFolderRename?: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
@@ -107,7 +110,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
           </button>
           <input class="office-search" type="text" placeholder="Search Drive…" spellcheck="false" autocomplete="off" />
-          <button class="action-btn primary office-new">＋ Folder</button>
           <button class="ws-icon-btn office-refresh" title="Refresh">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
           </button>
@@ -140,36 +142,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
     search.addEventListener("input", () => {
       window.clearTimeout(debounce);
       debounce = window.setTimeout(() => { query = search.value.trim(); slot.page = 0; void paint(); }, 220);
-    });
-
-    // ＋ Folder — inline name editor at the top of the rail (opens it if shut).
-    body.querySelector(".office-new")?.addEventListener("click", () => {
-      slot.railOpen = true;
-      const rail = body.querySelector<HTMLElement>(".gdrive-rail")!;
-      rail.classList.remove("hidden");
-      if (rail.querySelector(".gdrive-newfolder-input")) return;
-      const input = document.createElement("input");
-      input.className = "gdrive-newfolder-input";
-      input.placeholder = "Folder name…";
-      input.spellcheck = false;
-      rail.prepend(input);
-      input.focus();
-      const done = (commit: boolean): void => {
-        const name = input.value.trim();
-        input.remove();
-        if (!commit || !name) { void paint(); return; }
-        void (async () => {
-          const res = await api.gdriveMkdir?.(name, slot.folderId ?? null);
-          if (res && !res.ok) { void host.confirm({ title: "Couldn't create the folder", body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
-          void paint();
-        })();
-      };
-      input.addEventListener("keydown", (e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") done(true);
-        else if (e.key === "Escape") done(false);
-      });
-      input.addEventListener("blur", () => done(true));
     });
 
     const GRID_PER = 18;
@@ -207,12 +179,85 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         }
       };
       addChildren(null);
+      // Create INTO a folder: the rail's ＋ is a dropdown — folder or any
+      // Office file, born filed where you clicked.
+      const newFolderInto = (parentId: string | null): void => {
+        if (rail.querySelector(".gdrive-newfolder-input")) return;
+        const input = document.createElement("input");
+        input.className = "gdrive-newfolder-input";
+        input.placeholder = "Folder name…";
+        input.spellcheck = false;
+        rail.prepend(input);
+        input.focus();
+        const done = (commit: boolean): void => {
+          const name = input.value.trim();
+          input.remove();
+          if (!commit || !name) { void paint(); return; }
+          void (async () => {
+            const res = await api.gdriveMkdir?.(name, parentId);
+            if (res && !res.ok) { void host.confirm({ title: "Couldn't create the folder", body: res.error || "Unknown error.", confirmLabel: "OK" }); return; }
+            void paint();
+          })();
+        };
+        input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") done(true);
+          else if (e.key === "Escape") done(false);
+        });
+        input.addEventListener("blur", () => done(true));
+      };
+      const freshName = (taken: Set<string>, stem: string, ext: string): string => {
+        let name = stem, n = 2;
+        while (taken.has(`${name}${ext}`)) name = `${stem}-${n++}`;
+        return name;
+      };
+      const createInto = (kind: "docs" | "sheets" | "slides", folderId: string | null): void => {
+        void (async () => {
+          if (kind === "docs") {
+            const taken = new Set(files.filter((f) => f.kind === "docs").map((f) => f.file));
+            const stem = freshName(taken, "untitled", ".md");
+            const w = await api.gdocWrite?.(stem, "# Untitled\n\nStart here.", folderId);
+            if (!w?.ok || !w.file) { void host.confirm({ title: "Couldn't create the document", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
+            (window as unknown as { __wbOpenGDoc?: (f?: string, t?: string) => void }).__wbOpenGDoc?.(w.file, w.title);
+          } else if (kind === "sheets") {
+            const taken = new Set(files.filter((f) => f.kind === "sheets").map((f) => f.file));
+            const stem = freshName(taken, "untitled", ".json");
+            const blank = { sheets: [{ name: "Sheet1", columns: [{ name: "Column 1" }, { name: "Column 2" }, { name: "Column 3" }], rows: Array.from({ length: 8 }, () => [null, null, null]) }] };
+            const w = await api.gsheetWrite?.(stem, "Untitled", blank);
+            if (!w?.ok || !w.file) { void host.confirm({ title: "Couldn't create the workbook", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
+            if (folderId) await api.gdriveMove?.("sheets", w.file, folderId);
+            (window as unknown as { __wbOpenGSheet?: (f?: string, t?: string) => void }).__wbOpenGSheet?.(w.file, w.title);
+          } else {
+            const taken = new Set(files.filter((f) => f.kind === "slides").map((f) => f.file));
+            const stem = freshName(taken, "untitled", ".html");
+            const w = await api.gpointNew?.(stem, "Untitled");
+            if (!w?.ok || !w.file) { void host.confirm({ title: "Couldn't create the deck", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
+            if (folderId) await api.gdriveMove?.("slides", w.file, folderId);
+            (window as unknown as { __wbOpenGPoint?: (f?: string, t?: string) => void }).__wbOpenGPoint?.(w.file, w.title);
+          }
+          void paint();
+        })();
+      };
+      const plusMenu = (x: number, y: number, folderId: string | null): void => {
+        popMenu(x, y, [
+          { label: "New folder", fn: () => newFolderInto(folderId) },
+          { label: "New Doc", fn: () => createInto("docs", folderId) },
+          { label: "New Sheet", fn: () => createInto("sheets", folderId) },
+          { label: "New Slides", fn: () => createInto("slides", folderId) },
+        ]);
+      };
+
       const railRow = (id: string | null, name: string, depth: number): HTMLElement => {
         const row = document.createElement("button");
         row.className = "gdrive-railrow" + (here === id && !query && slot.viewMode !== "list" ? " active" : "");
         row.style.paddingLeft = `${10 + depth * 14}px`;
-        row.innerHTML = `<span class="gdrive-railrow-ic">${host.icons.folder}</span><span class="gdrive-railrow-name"></span>`;
+        row.innerHTML = `<span class="gdrive-railrow-ic">${host.icons.folder}</span><span class="gdrive-railrow-name"></span><span class="gdrive-railrow-plus" title="New in ${name.replace(/"/g, "&quot;")}…">＋</span>`;
         (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = name;
+        row.querySelector(".gdrive-railrow-plus")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+          plusMenu(r.left, r.bottom + 4, id);
+        });
         row.addEventListener("click", () => {
           slot.folderId = id;
           slot.viewMode = "browse";

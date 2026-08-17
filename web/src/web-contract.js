@@ -270,12 +270,16 @@ export function buildContract(client, deps) {
       try { const d = await client.officeDocs.get(file); return { ok: true, markdown: d.markdown, title: d.title }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
-    gdocWrite: async (file, markdown) => {
-      try { const m = await client.officeDocs.put(file, markdown); return { ok: true, file: m.file, title: m.title }; }
+    gdocWrite: async (file, markdown, folderId) => {
+      try { const m = await client.officeDocs.put(file, markdown, folderId); return { ok: true, file: m.file, title: m.title }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
     gdocDelete: async (file) => {
       try { await client.officeDocs.delete(file); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    gdocSuggest: async (file, input) => {
+      try { return { ok: true, suggestion: await client.officeDocs.suggest(file, input) }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
     gdocSuggestions: async (file, status) => {

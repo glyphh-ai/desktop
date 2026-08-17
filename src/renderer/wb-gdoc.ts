@@ -42,6 +42,7 @@ const gdocApi = () => (window as unknown as { glyphh?: {
   gdocWrite?: (file: string, markdown: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
   gdocDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdocSuggestions?: (file: string, status?: string) => Promise<{ ok: boolean; suggestions: GDocSuggestion[]; error?: string }>;
+  gdocSuggest?: (file: string, input: unknown) => Promise<{ ok: boolean; suggestion?: unknown; error?: string }>;
   gdocResolve?: (id: string, approve: boolean) => Promise<{ ok: boolean; error?: string }>;
   gdocTemplates?: () => Promise<{ ok: boolean; templates: GDocTemplate[]; error?: string }>;
   officeExportPdf?: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => Promise<{ ok: boolean; error?: string }>;
@@ -363,7 +364,52 @@ export function initGDocs(host: GDocHost): GDocPanel {
       edit.className = "ws-icon-btn gdoc-block-edit";
       edit.title = "Edit this section";
       edit.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`;
+      const comment = document.createElement("button");
+      comment.className = "ws-icon-btn gdoc-block-comment";
+      comment.title = "Comment on this section";
+      comment.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
       block.appendChild(edit);
+      block.appendChild(comment);
+      comment.addEventListener("click", () => {
+        // A comment is a suggestion that changes NOTHING — the note IS the
+        // payload; it lands in the same review strip as agent edits.
+        if (block.querySelector(".gdoc-comment-box")) return;
+        const box = document.createElement("div");
+        box.className = "gdoc-comment-box";
+        box.innerHTML = `
+          <input class="gdoc-comment-input" type="text" placeholder="Add a comment on this section…" spellcheck="true" />
+          <button class="action-btn primary gdoc-comment-send">Comment</button>
+          <button class="action-btn gdoc-comment-cancel">Cancel</button>`;
+        block.appendChild(box);
+        const input = box.querySelector<HTMLInputElement>(".gdoc-comment-input")!;
+        input.focus();
+        const closeBox = (): void => box.remove();
+        const send = (): void => {
+          const note = input.value.trim();
+          if (!note) { closeBox(); return; }
+          const cur = mdCache.get(file) ?? md;
+          const spans = splitSections(cur);
+          const span = spans[i];
+          const sectionMd = span ? cur.slice(span.start, span.end) : "";
+          void (async () => {
+            await gdocApi().gdocSuggest?.(file, {
+              section: sec.heading ?? "",
+              beforeMd: sectionMd,
+              afterMd: sectionMd,
+              note,
+              authorKind: "user",
+            });
+            closeBox();
+            refresh();
+          })();
+        };
+        box.querySelector(".gdoc-comment-send")?.addEventListener("click", send);
+        box.querySelector(".gdoc-comment-cancel")?.addEventListener("click", closeBox);
+        input.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") send();
+          if (ev.key === "Escape") closeBox();
+        });
+      });
       edit.addEventListener("click", () => {
         // Swap the block for a section editor — the ONE sanctioned hand-edit.
         const cur = mdCache.get(file) ?? md;

@@ -40,9 +40,9 @@ export function registerOfficeDocsIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
-  ipcMain.handle("gdoc-write", async (_e, name: unknown, markdown: unknown) => {
+  ipcMain.handle("gdoc-write", async (_e, name: unknown, markdown: unknown, folderId?: unknown) => {
     try {
-      const meta = await getClient().officeDocs.put(gdocFileName(name), String(markdown ?? ""));
+      const meta = await getClient().officeDocs.put(gdocFileName(name), String(markdown ?? ""), folderId === undefined ? undefined : (folderId as string | null));
       return { ok: true, file: meta.file, title: meta.title };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -54,6 +54,15 @@ export function registerOfficeDocsIpc(): void {
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
+    }
+  });
+  ipcMain.handle("gdoc-suggest", async (_e, name: unknown, input: unknown) => {
+    try {
+      const i = input as { section?: string; beforeMd?: string; afterMd: string; note?: string; authorKind?: "agent" | "user" };
+      const row = await getClient().officeDocs.suggest(gdocFileName(name), i);
+      return { ok: true, suggestion: row };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
   ipcMain.handle("gdoc-suggestions", async (_e, name: unknown, status: unknown) => {

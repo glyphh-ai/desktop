@@ -947,9 +947,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Glyphh Office · Docs (the Docs panel's org library).
   gdocList: () => ipcRenderer.invoke("gdoc-list") as Promise<{ ok: boolean; docs: Array<{ file: string; title: string; size: number; folderId: string | null; mtime: number }>; error?: string }>,
   gdocRead: (file: string) => ipcRenderer.invoke("gdoc-read", file) as Promise<{ ok: boolean; markdown?: string; title?: string; error?: string }>,
-  gdocWrite: (file: string, markdown: string) => ipcRenderer.invoke("gdoc-write", file, markdown) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gdocWrite: (file: string, markdown: string, folderId?: string | null) => ipcRenderer.invoke("gdoc-write", file, markdown, folderId) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
   gdocDelete: (file: string) => ipcRenderer.invoke("gdoc-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gdocSuggestions: (file: string, status?: string) => ipcRenderer.invoke("gdoc-suggestions", file, status) as Promise<{ ok: boolean; suggestions: Array<{ id: string; file: string; section: string; beforeMd: string; afterMd: string; note: string; authorKind: string; status: string; createdAt: string }>; error?: string }>,
+  gdocSuggest: (file: string, input: unknown) => ipcRenderer.invoke("gdoc-suggest", file, input) as Promise<{ ok: boolean; suggestion?: unknown; error?: string }>,
   gdocResolve: (id: string, approve: boolean) => ipcRenderer.invoke("gdoc-resolve", id, approve) as Promise<{ ok: boolean; suggestion?: { id: string; status: string }; error?: string }>,
   // Glyphh Office · Sheets (the Sheets panel's org workbook library).
   gsheetList: () => ipcRenderer.invoke("gsheet-list") as Promise<{ ok: boolean; sheets: Array<{ file: string; title: string; sheets: number; totalRows: number; size: number; folderId: string | null; mtime: number }>; error?: string }>,

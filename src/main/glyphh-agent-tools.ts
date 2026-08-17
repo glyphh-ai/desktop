@@ -702,23 +702,17 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_slides",
-    doc: 'create_slides(name, title, slides_html) — create or overwrite a Glyphh Slides deck. Author ONLY the slide content: slides_html is a sequence of <section class="slide">…</section> blocks (first one also class "on"; ids s1…sN recommended; inline all styles/fonts, no network). Elements with class "frag" reveal as build steps — same data-step value reveals together. The tool wraps your sections in the STANDARD deck shell (1920×1080 stage with CSS scaling, keyboard/click nav, progress bar) — never write your own harness. Advanced: pass html (a complete document) instead to import an existing deck verbatim.',
+    doc: 'create_slides(name, title, slides_html) — create or overwrite a Glyphh Slides deck. Author ONLY the slide content: slides_html is a sequence of <section class="slide">…</section> blocks. THE STRUCTURE IS LOCKED: the tool owns the shell (1920×1080 stage, scaling, nav, progress), rewrites section tags (ids, on/hidden flags), scopes your <style> blocks to their own slide, strips scripts, and turns position:fixed into absolute — style INSIDE your slides freely, never the stage/body/other slides. Elements with class "frag" reveal as build steps — same data-step value reveals together.',
     action: (a) => ({
       kind: "edit",
       title: `Create deck "${String(a.name ?? "")}"`,
       detail: `${String(a.slides_html ?? a.html ?? "").length} chars`,
     }),
     run: async (a) => {
-      const full = String(a.html ?? "");
       const sections = String(a.slides_html ?? "");
-      let doc: string;
-      if (full) {
-        doc = full;
-      } else {
-        if (!sections) return "ERROR: pass slides_html (the <section class=\"slide\"> blocks) — the tool supplies the shell";
-        if (/<html[\s>]/i.test(sections)) return "ERROR: slides_html must be slide SECTIONS only — for a complete document use the html argument";
-        doc = buildDeckDocument(String(a.title ?? a.name ?? "Deck"), sections);
-      }
+      if (!sections) return "ERROR: pass slides_html (the <section class=\"slide\"> blocks) — the tool supplies the shell";
+      if (/<html[\s>]/i.test(sections)) return "ERROR: slides_html must be slide SECTIONS only — the shell is the tool's, not yours";
+      const doc = buildDeckDocument(String(a.title ?? a.name ?? "Deck"), sections);
       if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) {
         return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
       }
@@ -812,6 +806,8 @@ const TOOLS: ToolDef[] = [
     doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Start from a template via list_doc_templates when one fits, filling the {{placeholders}} from what the user told you.",
     action: (a) => ({ kind: "edit", title: `Create document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
     run: async (a) => {
+      const mdErr = rejectDocHtml(String(a.markdown ?? ""));
+      if (mdErr) return mdErr;
       const md = String(a.markdown ?? "");
       if (!md.trim()) return "ERROR: markdown is required";
       const meta = await getClient().officeDocs.put(docsFileName(a.name), md);
@@ -823,6 +819,8 @@ const TOOLS: ToolDef[] = [
     doc: "update_docs(name, markdown) — overwrite a document you are actively drafting. For a document the user considers DONE, use suggest_docs instead so they review the change.",
     action: (a) => ({ kind: "edit", title: `Update document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
     run: async (a) => {
+      const mdErr = rejectDocHtml(String(a.markdown ?? ""));
+      if (mdErr) return mdErr;
       const md = String(a.markdown ?? "");
       if (!md.trim()) return "ERROR: markdown is required";
       const meta = await getClient().officeDocs.put(docsFileName(a.name), md);
@@ -834,6 +832,8 @@ const TOOLS: ToolDef[] = [
     doc: 'suggest_docs(name, after, before?, section?, note?) — propose a REVIEWED edit: replace the exact `before` text with `after` (omit before to append). The user sees a review card in the Docs panel and approves or rejects; approval applies it. Always include a short note saying why.',
     action: (a) => ({ kind: "edit", title: `Suggest edit to "${String(a.name ?? "")}"`, detail: String(a.note ?? "").slice(0, 200) }),
     run: async (a) => {
+      const mdErr = rejectDocHtml(String(a.after ?? ""));
+      if (mdErr) return mdErr;
       const sug = await getClient().officeDocs.suggest(docsFileName(a.name), {
         afterMd: String(a.after ?? ""),
         beforeMd: String(a.before ?? ""),
@@ -1750,6 +1750,13 @@ async function runRolePacket(
     messages = messages.concat([{ role: "user", content: results }]);
   }
   return `ERROR: the ${role} packet stopped after ${ROLE_RUN_ROUNDS} tool rounds without finishing — split the task into smaller packets`;
+}
+
+/** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.
+ *  One narrow allowance: <br>. Everything else bounces with the reason. */
+function rejectDocHtml(md: string): string | null {
+  const m = /<\s*(script|style|iframe|div|section|link|object|embed|html|body|img|span|table)\b/i.exec(md);
+  return m ? `ERROR: documents are markdown ONLY — found <${m[1]}>. Use markdown headings/lists/tables; the app owns the paper.` : null;
 }
 
 /** Layouts became WORKSPACES (2026-08-13): recorded skills and old prompts may

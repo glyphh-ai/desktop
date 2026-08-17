@@ -177,6 +177,92 @@ async function migrateLocalDecks(): Promise<void> {
   if (uploaded) console.log(`[gpoints] migrated ${uploaded} local deck(s) to the org library`);
 }
 
+// ── The STRUCTURE LOCK ───────────────────────────────────────────────────────
+// The shell owns the harness (stage, scaling, nav, section chrome); the agent
+// owns only what's INSIDE a section. Every save renormalizes every section:
+//   - section tag rebuilt: class exactly "slide" (+"on" on the first visible),
+//     sequential ids s1…sN, data-gp-hidden preserved — nothing else survives
+//   - <script>/<link>/<meta>/<iframe> inside sections are stripped
+//   - <style> blocks are SCOPED to their section (#sN …), so a deck can style
+//     itself but can never restyle the stage, the body, or another slide
+//   - position:fixed becomes absolute — fixed escapes the scaled stage and is
+//     exactly why a rogue deck's thumbnails misrender in the rail
+// Decks that predate the lock heal on their next save.
+
+/** Prefix every selector in a CSS blob with `#sN ` (recursing into @media;
+ *  @keyframes/@font-face copied verbatim; @import dropped). */
+function scopeCss(css: string, scope: string): string {
+  let out = "";
+  let i = 0;
+  const readBlock = (from: number): { body: string; end: number } => {
+    let depth = 0;
+    for (let j = from; j < css.length; j++) {
+      if (css[j] === "{") depth++;
+      else if (css[j] === "}") {
+        depth--;
+        if (depth === 0) return { body: css.slice(from + 1, j), end: j + 1 };
+      }
+    }
+    return { body: css.slice(from + 1), end: css.length };
+  };
+  while (i < css.length) {
+    const brace = css.indexOf("{", i);
+    if (brace === -1) break;
+    const selector = css.slice(i, brace).trim();
+    if (selector.startsWith("@import")) { i = css.indexOf(";", i) + 1 || css.length; continue; }
+    if (selector.startsWith("@keyframes") || selector.startsWith("@font-face")) {
+      const { end } = readBlock(brace);
+      out += css.slice(i, end) + "\n";
+      i = end;
+      continue;
+    }
+    if (selector.startsWith("@")) { // @media/@supports — scope the rules inside
+      const { body, end } = readBlock(brace);
+      out += `${selector} { ${scopeCss(body, scope)} }\n`;
+      i = end;
+      continue;
+    }
+    const { body, end } = readBlock(brace);
+    const scoped = selector.split(",").map((sel) => `${scope} ${sel.trim()}`).join(", ");
+    out += `${scoped} { ${body} }\n`;
+    i = end;
+  }
+  return out;
+}
+
+/** One section's inner content, made structurally inert. */
+function lockSectionContent(inner: string, id: string): string {
+  let out = inner
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<(link|meta)\b[^>]*>/gi, "")
+    .replace(/<iframe[\s\S]*?(<\/iframe>|\/>)/gi, "")
+    .replace(/position\s*:\s*fixed/gi, "position: absolute");
+  out = out.replace(/<style([^>]*)>([\s\S]*?)<\/style>/gi, (_m, attrs: string, css: string) =>
+    `<style${attrs}>${scopeCss(css, `#${id}`)}</style>`);
+  return out;
+}
+
+/** Renormalize EVERY section of a deck document to the locked shape. */
+export function lockDeckSections(html: string): string {
+  const spans = slideSpans(html);
+  if (!spans.length) return html;
+  let out = "";
+  let cursor = 0;
+  let firstVisibleSeen = false;
+  spans.forEach((span, idx) => {
+    out += html.slice(cursor, span.start);
+    const id = `s${idx + 1}`;
+    const on = !span.hidden && !firstVisibleSeen;
+    if (on) firstVisibleSeen = true;
+    const open = `<section class="slide${on ? " on" : ""}" id="${id}"${span.hidden ? ' data-gp-hidden="1"' : ""}>`;
+    const inner = html.slice(span.openEnd, span.end - "</section>".length);
+    out += open + lockSectionContent(inner, id) + "</section>";
+    cursor = span.end;
+  });
+  out += html.slice(cursor);
+  return out;
+}
+
 // ── Per-slide surgery (string level — a DOM round-trip could mangle a
 // hand-authored deck). A slide's span runs from its <section class="slide">
 // open tag to the first </section> after it (the format never nests
@@ -249,7 +335,8 @@ export async function readGPoint(name: unknown): Promise<string> {
 }
 
 export async function writeGPoint(name: unknown, html: string): Promise<{ file: string; path: string; slides: number }> {
-  const meta = await getClient().officeSlides.put(gpointFileName(name), html);
+  // Every save passes the STRUCTURE LOCK — agent or import, no exceptions.
+  const meta = await getClient().officeSlides.put(gpointFileName(name), lockDeckSections(html));
   return { file: meta.file, path: `the org's Slides library (${meta.file})`, slides: meta.slides };
 }
 

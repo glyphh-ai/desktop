@@ -378,13 +378,20 @@ export function initDesign(host: DesignHost): DesignPanel {
           <span class="gdz-savestate" title="All changes save automatically"></span>
         </div>
         <div class="gdz-split">
-          <div class="gdz-stage"><div class="gdz-shot"></div></div>
+          <div class="gdz-stage gdz-canvas">
+            <div class="gdz-world">
+              <div class="gdz-art" data-art="shot" style="left:0;top:0;width:560px"><div class="gdz-art-grip">Hero shot</div><div class="gdz-shot"></div></div>
+              <div class="gdz-art" data-art="type" style="left:620px;top:0;width:360px"><div class="gdz-art-grip">Type specimen</div><div class="gdz-spec-sheet"></div></div>
+              <div class="gdz-art" data-art="palette" style="left:620px;top:330px;width:360px"><div class="gdz-art-grip">Palette</div><div class="gdz-pal-sheet"></div></div>
+              <div class="gdz-art" data-art="ui" style="left:0;top:460px;width:560px"><div class="gdz-art-grip">UI kit</div><div class="gdz-ui-sheet"></div></div>
+            </div>
+            <div class="gdz-canvas-hint">drag canvas pans · wheel zooms · drag a card's title to move it</div>
+          </div>
           <div class="gdz-rail"></div>
         </div>
       </div>`;
     body.querySelector(".gdz-back")?.addEventListener("click", () => { delete slot.file; delete slot.title; refresh(); });
 
-    const shot = body.querySelector<HTMLElement>(".gdz-shot")!;
     const rail = body.querySelector<HTMLElement>(".gdz-rail")!;
     const saveState = body.querySelector<HTMLElement>(".gdz-savestate")!;
     const nameInput = body.querySelector<HTMLInputElement>(".gdz-name")!;
@@ -404,7 +411,7 @@ export function initDesign(host: DesignHost): DesignPanel {
       if (dirtyWhileSaving) { dirtyWhileSaving = false; void save(); }
     };
     const touched = (): void => {
-      paintShot(shot, doc);
+      paintAll(body, doc);
       saveState.textContent = "…";
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => { void save(); }, 700);
@@ -415,8 +422,166 @@ export function initDesign(host: DesignHost): DesignPanel {
       touched();
     });
 
-    paintShot(shot, doc);
+    paintAll(body, doc);
+    wireCanvas(body.querySelector<HTMLElement>(".gdz-canvas")!, body.querySelector<HTMLElement>(".gdz-world")!);
     buildRail(rail, doc, file, touched);
+  }
+
+  // ── the canvas + its artifacts ─────────────────────────────────────────────
+
+  function paintAll(body: HTMLElement, doc: DesignDoc): void {
+    const shot = body.querySelector<HTMLElement>(".gdz-shot");
+    if (shot) paintShot(shot, doc);
+    const spec = body.querySelector<HTMLElement>(".gdz-spec-sheet");
+    if (spec) paintTypeSheet(spec, doc);
+    const pal = body.querySelector<HTMLElement>(".gdz-pal-sheet");
+    if (pal) paintPaletteSheet(pal, doc);
+    const ui = body.querySelector<HTMLElement>(".gdz-ui-sheet");
+    if (ui) paintUiSheet(ui, doc);
+  }
+
+  function paintTypeSheet(el: HTMLElement, d: DesignDoc): void {
+    const c = d.colors;
+    const w = d.type?.headingWeight ?? 700;
+    const scale = d.type?.scale ?? 1.25;
+    const base = d.type?.baseSize ?? 16;
+    el.style.background = c.surface ?? c.background;
+    el.style.color = c.text;
+    el.innerHTML = "";
+    const sizes = [3, 2, 1, 0].map((n) => Math.round(base * Math.pow(scale, n)));
+    sizes.forEach((px, i) => {
+      const row = document.createElement("div");
+      row.className = "gdz-spec-row";
+      row.style.fontFamily = stack(i < 3 ? d.fonts.display : d.fonts.body, "sans-serif");
+      row.style.fontWeight = i < 3 ? String(w) : "400";
+      row.style.fontSize = `${px}px`;
+      row.textContent = i < 3 ? "The quick brown fox" : "Body — the quick brown fox jumps over the lazy dog, 0123456789.";
+      const tag = document.createElement("span");
+      tag.className = "gdz-spec-tag";
+      tag.style.color = c.muted ?? c.text;
+      tag.textContent = `${px}px`;
+      row.prepend(tag);
+      el.appendChild(row);
+    });
+    if (d.fonts.mono) {
+      const mono = document.createElement("div");
+      mono.className = "gdz-spec-row";
+      mono.style.fontFamily = stack(d.fonts.mono, "monospace");
+      mono.style.fontSize = `${Math.max(11, base - 3)}px`;
+      mono.style.color = c.muted ?? c.text;
+      mono.textContent = "mono · const brand = { ready: true };";
+      el.appendChild(mono);
+    }
+  }
+
+  function paintPaletteSheet(el: HTMLElement, d: DesignDoc): void {
+    const c = d.colors;
+    el.style.background = c.surface ?? c.background;
+    el.innerHTML = "";
+    const entries: DColor[] = [
+      { name: "Primary", hex: c.primary, role: "actions" },
+      ...(c.accent ? [{ name: "Accent", hex: c.accent, role: "highlights" }] : []),
+      { name: "Background", hex: c.background },
+      ...(c.surface ? [{ name: "Surface", hex: c.surface }] : []),
+      { name: "Text", hex: c.text },
+      ...(c.muted ? [{ name: "Muted", hex: c.muted }] : []),
+      ...(c.palette ?? []),
+    ];
+    for (const sw of entries.slice(0, 12)) {
+      const row = document.createElement("div");
+      row.className = "gdz-pal-swatch";
+      row.innerHTML = `<i></i><b></b><em></em><u></u>`;
+      (row.querySelector("i") as HTMLElement).style.background = sw.hex;
+      (row.querySelector("b") as HTMLElement).textContent = sw.name;
+      (row.querySelector("b") as HTMLElement).style.color = c.text;
+      (row.querySelector("em") as HTMLElement).textContent = sw.hex;
+      (row.querySelector("em") as HTMLElement).style.color = c.muted ?? c.text;
+      (row.querySelector("u") as HTMLElement).textContent = sw.role ?? "";
+      (row.querySelector("u") as HTMLElement).style.color = c.muted ?? c.text;
+      el.appendChild(row);
+    }
+  }
+
+  function paintUiSheet(el: HTMLElement, d: DesignDoc): void {
+    const c = d.colors;
+    const st = d.styles ?? {};
+    const radius = st.radius ?? 12;
+    el.style.background = c.background;
+    el.style.color = c.text;
+    el.style.fontFamily = stack(d.fonts.body, "sans-serif");
+    el.innerHTML = `
+      <div class="gdz-ui-row">
+        <button type="button" class="gdz-ui-primary">Primary</button>
+        <button type="button" class="gdz-ui-secondary">Secondary</button>
+        <button type="button" class="gdz-ui-ghost">Ghost</button>
+        <span class="gdz-ui-chip">chip</span>
+      </div>
+      <div class="gdz-ui-row">
+        <input type="text" class="gdz-ui-input" value="An input" readonly />
+        <span class="gdz-ui-toggle"><i></i></span>
+      </div>
+      <div class="gdz-ui-card">
+        <b>Card title</b>
+        <span>Surface, border, radius and shadow — all the system's.</span>
+      </div>`;
+    const r = `${radius}px`;
+    const shadow = SHADOWS[st.shadow ?? "soft"] ?? "none";
+    const q = <T extends HTMLElement>(sel: string): T => el.querySelector(sel) as T;
+    const primary = q<HTMLElement>(".gdz-ui-primary");
+    primary.style.cssText = `background:${c.primary};color:${c.background};border:none;border-radius:${r};padding:7px 16px;font-weight:600;font-family:inherit`;
+    q<HTMLElement>(".gdz-ui-secondary").style.cssText = `background:${c.accent ?? c.primary}22;color:${c.text};border:1px solid ${c.accent ?? c.primary};border-radius:${r};padding:7px 16px;font-family:inherit`;
+    q<HTMLElement>(".gdz-ui-ghost").style.cssText = `background:none;color:${c.text};border:1px solid ${c.muted ?? c.text}55;border-radius:${r};padding:7px 16px;font-family:inherit`;
+    q<HTMLElement>(".gdz-ui-chip").style.cssText = `background:${c.surface ?? c.background};color:${c.muted ?? c.text};border:1px solid ${c.muted ?? c.text}44;border-radius:100px;padding:4px 12px;font-size:12px`;
+    q<HTMLElement>(".gdz-ui-input").style.cssText = `background:${c.surface ?? c.background};color:${c.text};border:1px solid ${c.muted ?? c.text}55;border-radius:${r};padding:7px 12px;flex:1;font-family:inherit`;
+    q<HTMLElement>(".gdz-ui-toggle").style.cssText = `background:${c.primary};border-radius:100px;width:38px;height:22px;display:inline-flex;align-items:center;justify-content:flex-end;padding:2px`;
+    (q<HTMLElement>(".gdz-ui-toggle").querySelector("i") as HTMLElement).style.cssText = `width:18px;height:18px;border-radius:50%;background:${c.background};display:block`;
+    q<HTMLElement>(".gdz-ui-card").style.cssText = `background:${c.surface ?? c.background};border:1px solid ${c.muted ?? c.text}33;border-radius:${r}px;box-shadow:${shadow};padding:14px 16px;display:flex;flex-direction:column;gap:5px`;
+    q<HTMLElement>(".gdz-ui-card").style.borderRadius = r;
+  }
+
+  /** Canvas physics: wheel zooms toward the cursor, dragging empty canvas
+   *  pans, dragging a card's grip moves that card in world space. */
+  function wireCanvas(stage: HTMLElement, world: HTMLElement): void {
+    let scale = 0.9, tx = 40, ty = 30;
+    const apply = (): void => { world.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
+    apply();
+    stage.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+      const next = Math.min(2.5, Math.max(0.25, scale * (ev.deltaY > 0 ? 0.92 : 1 / 0.92)));
+      tx = px - ((px - tx) / scale) * next;
+      ty = py - ((py - ty) / scale) * next;
+      scale = next;
+      apply();
+    }, { passive: false });
+    let drag: { x: number; y: number; art?: HTMLElement; ax?: number; ay?: number } | null = null;
+    stage.addEventListener("mousedown", (ev) => {
+      const grip = (ev.target as HTMLElement).closest<HTMLElement>(".gdz-art-grip");
+      const art = grip?.closest<HTMLElement>(".gdz-art") ?? undefined;
+      // Controls inside artifacts (color inputs etc.) keep their clicks.
+      if (!art && (ev.target as HTMLElement).closest("input, button, select, textarea")) return;
+      drag = art
+        ? { x: ev.clientX, y: ev.clientY, art, ax: parseFloat(art.style.left) || 0, ay: parseFloat(art.style.top) || 0 }
+        : { x: ev.clientX, y: ev.clientY };
+      ev.preventDefault();
+    });
+    const onMove = (ev: MouseEvent): void => {
+      if (!drag) return;
+      const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      if (drag.art) {
+        drag.art.style.left = `${(drag.ax ?? 0) + dx / scale}px`;
+        drag.art.style.top = `${(drag.ay ?? 0) + dy / scale}px`;
+      } else {
+        tx += dx; ty += dy;
+        drag.x = ev.clientX; drag.y = ev.clientY;
+        apply();
+      }
+      if (drag.art) return;
+    };
+    const onUp = (): void => { drag = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   // ── the control rail ───────────────────────────────────────────────────────
@@ -728,18 +893,56 @@ export function initDesign(host: DesignHost): DesignPanel {
     assets.appendChild(assetGrid);
     paintAssets();
 
-    // — Sources (provenance, read-only) —
-    if (doc.sources?.length) {
-      const sources = section(rail, "Sources", false);
-      for (const s of doc.sources) {
+    // — Sources (provenance) — fully editable: the user records where the
+    //   system came from and steers future extractions from right here.
+    const sources = section(rail, "Sources", false);
+    doc.sources ??= [];
+    const srcWrap = document.createElement("div");
+    srcWrap.className = "gdz-sources";
+    sources.appendChild(srcWrap);
+    const paintSources = (): void => {
+      srcWrap.textContent = "";
+      for (const [i, src] of (doc.sources ?? []).entries()) {
         const row = document.createElement("div");
-        row.className = "gdz-source";
-        row.innerHTML = `<span class="gdz-source-type"></span><span class="gdz-source-ref"></span>`;
-        (row.querySelector(".gdz-source-type") as HTMLElement).textContent = s.type;
-        (row.querySelector(".gdz-source-ref") as HTMLElement).textContent = s.note ? `${s.ref} — ${s.note}` : s.ref;
-        sources.appendChild(row);
+        row.className = "gdz-source-row";
+        row.innerHTML = `
+          <select class="gdz-select gdz-source-kind">
+            <option value="prompt">prompt</option>
+            <option value="site">site</option>
+            <option value="image">image</option>
+          </select>
+          <input type="text" class="gdz-source-ref-in" spellcheck="false" placeholder="url, file, or the words used…" />
+          <input type="text" class="gdz-source-note-in" spellcheck="false" placeholder="note" />
+          <button class="ws-icon-btn gdz-source-x" title="Remove">✕</button>`;
+        const kind = row.querySelector<HTMLSelectElement>(".gdz-source-kind")!;
+        const refIn = row.querySelector<HTMLInputElement>(".gdz-source-ref-in")!;
+        const noteIn = row.querySelector<HTMLInputElement>(".gdz-source-note-in")!;
+        kind.value = src.type;
+        refIn.value = src.ref;
+        noteIn.value = src.note ?? "";
+        kind.addEventListener("change", () => { src.type = kind.value; touched(); });
+        refIn.addEventListener("change", () => { src.ref = refIn.value.trim(); touched(); });
+        noteIn.addEventListener("change", () => {
+          const v = noteIn.value.trim();
+          if (v) src.note = v; else delete src.note;
+          touched();
+        });
+        row.querySelector(".gdz-source-x")?.addEventListener("click", () => {
+          doc.sources?.splice(i, 1);
+          touched(); paintSources();
+        });
+        srcWrap.appendChild(row);
       }
-    }
+      const add = document.createElement("button");
+      add.className = "action-btn gdz-source-add";
+      add.textContent = "＋ Add source";
+      add.addEventListener("click", () => {
+        doc.sources = [...(doc.sources ?? []), { type: "prompt", ref: "", extractedAt: new Date().toISOString() }];
+        touched(); paintSources();
+      });
+      srcWrap.appendChild(add);
+    };
+    paintSources();
   }
 
   // (shared with the other office panels' pattern — a scoped popover)
