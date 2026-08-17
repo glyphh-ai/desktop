@@ -37,7 +37,9 @@ interface AdminModel {
   model: string;
   display_name: string;
   alias: string | null;
-  input_credits_per_mtok: number | null;  // MICRO-credits per MTok on the wire
+  modality: string;   // chat | image | video | speech | transcription
+  rate_unit: string;  // mtok | image | second | mchar | minute
+  input_credits_per_mtok: number | null;  // MICRO-credits per unit on the wire
   output_credits_per_mtok: number | null;
   context_window: number | null;
   max_output_tokens: number | null;
@@ -47,6 +49,8 @@ interface AdminModelPatch {
   display_name?: string;
   alias?: string | null;
   active?: boolean;
+  modality?: string;
+  rate_unit?: string;
   input_credits_per_mtok?: number | null;
   output_credits_per_mtok?: number | null;
   context_window?: number | null;
@@ -87,7 +91,7 @@ interface SdkAdmin {
   models?: () => Promise<{ models: AdminModel[] }>;
   updateModel?: (provider: string, model: string, patch: AdminModelPatch) => Promise<{ model: AdminModel }>;
   createProvider?: (input: { slug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; baseUrl?: string | null }) => Promise<unknown>;
-  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
+  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; modality?: string; rateUnit?: string; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
@@ -495,6 +499,15 @@ async function addProviderKeyFromForm(): Promise<void> {
   await refreshProviderKeys();
 }
 
+/** The two credit-rate inputs are per-unit; the unit depends on the model's modality.
+ *  Relabel them so a super-admin pricing an image model sees "per image", not "per token". */
+const RATE_UNIT_TEXT: Record<string, string> = { mtok: "1M tokens", image: "image", second: "second", mchar: "1M chars", minute: "minute" };
+function relabelModelRates(unit: string): void {
+  const t = RATE_UNIT_TEXT[unit] ?? "unit";
+  const inl = $("pa-model-in-label"); if (inl) inl.textContent = `Input credits / ${t}`;
+  const outl = $("pa-model-out-label"); if (outl) outl.textContent = `Output credits / ${t}`;
+}
+
 function openModelEditor(m: AdminModel): void {
   editingModel = m;
   setErr("pa-model-form-error", "");
@@ -503,6 +516,9 @@ function openModelEditor(m: AdminModel): void {
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
   set("pa-model-name", m.display_name);
   set("pa-model-alias", m.alias || "");
+  const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = m.modality || "chat";
+  const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = m.rate_unit || "mtok";
+  relabelModelRates(m.rate_unit || "mtok");
   set("pa-model-in", m.input_credits_per_mtok == null ? "" : String(microToCredits(m.input_credits_per_mtok)));
   set("pa-model-out", m.output_credits_per_mtok == null ? "" : String(microToCredits(m.output_credits_per_mtok)));
   set("pa-model-ctx", m.context_window == null ? "" : String(m.context_window));
@@ -527,6 +543,8 @@ async function saveModel(): Promise<void> {
     display_name: name,
     alias: alias || null,
     active: !!$<HTMLInputElement>("pa-model-active")?.checked,
+    modality: inputVal("pa-model-modality") || "chat",
+    rate_unit: inputVal("pa-model-rate-unit") || "mtok",
     input_credits_per_mtok: inCr == null ? null : inCr * MICRO,
     output_credits_per_mtok: outCr == null ? null : outCr * MICRO,
     // context_window/max_output_tokens must be POSITIVE ints on the wire —
@@ -550,6 +568,8 @@ function wireCatalogCreate(): void {
   const toggle = (id: string, on: boolean) => $(id)?.classList.toggle("hidden", !on);
   $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); showProviderEditor(false); });
   $("pa-mc-cancel")?.addEventListener("click", () => toggle("pa-model-create", false));
+  // Relabel the editor's rate inputs when the modality's unit changes.
+  $("pa-model-rate-unit")?.addEventListener("change", () => relabelModelRates(inputVal("pa-model-rate-unit")));
   // + Provider = CREATE mode: reset whatever an edit left in the shared form.
   $("pa-provider-add-btn")?.addEventListener("click", () => {
     editingProviderSlug = null;
@@ -604,6 +624,8 @@ function wireCatalogCreate(): void {
         providerSlug: inputVal("pa-mc-provider").trim().toLowerCase(),
         name: inputVal("pa-mc-name").trim(),
         kind: (inputVal("pa-mc-kind") || "proxied") as "proxied" | "open_weight",
+        modality: inputVal("pa-mc-modality") || "chat",
+        rateUnit: inputVal("pa-mc-rate-unit") || "mtok",
         ...(inputVal("pa-mc-alias").trim() ? { alias: inputVal("pa-mc-alias").trim() } : {}),
         ...(num("pa-mc-ctx") ? { contextWindow: num("pa-mc-ctx") } : {}),
         inputCreditsPerMTok: num("pa-mc-in"),

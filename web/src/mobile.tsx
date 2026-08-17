@@ -297,8 +297,8 @@ function useLongPress(cb?: () => void, ms = 440) {
    A loop declares role slots (Planner/Builder/…); each role carries its allowed
    model `choices` and the currently-resolved `modelId`. ────────────────────── */
 interface LoopItem { id: string; slug: string; name: string; description?: string; builtIn?: boolean; }
-interface ModelChoice { id: string; name: string; providerSlug?: string; }
-interface RoleItem { name: string; label?: string; description?: string; modelId: string | null; choices: ModelChoice[]; }
+interface ModelChoice { id: string; name: string; providerSlug?: string; modality?: string; }
+interface RoleItem { name: string; label?: string; description?: string; modality?: string; modelId: string | null; choices: ModelChoice[]; }
 const MODEL_TOP_N = 5;
 /** Agent permission modes = the SDK's HarnessPermission set (the value sent per run). */
 const PERMS: { id: string; name: string; desc: string }[] = [

@@ -1318,7 +1318,29 @@
                       </select>
                       <div class="settings-inline">
                         <span>
-                          <label class="settings-label">Input cr/MTok</label>
+                          <label class="settings-label">Modality</label>
+                          <select id="pa-mc-modality" class="settings-input settings-input-md">
+                            <option value="chat">Chat</option>
+                            <option value="image">Image</option>
+                            <option value="video">Video</option>
+                            <option value="speech">Speech (TTS)</option>
+                            <option value="transcription">Transcription (STT)</option>
+                          </select>
+                        </span>
+                        <span>
+                          <label class="settings-label">Rate unit</label>
+                          <select id="pa-mc-rate-unit" class="settings-input settings-input-md">
+                            <option value="mtok">per 1M tokens</option>
+                            <option value="image">per image</option>
+                            <option value="second">per second</option>
+                            <option value="mchar">per 1M chars</option>
+                            <option value="minute">per minute</option>
+                          </select>
+                        </span>
+                      </div>
+                      <div class="settings-inline">
+                        <span>
+                          <label class="settings-label">Input cr/unit</label>
                           <input id="pa-mc-in" class="settings-input settings-input-md" inputmode="numeric" placeholder="300" />
                         </span>
                         <span>
@@ -1399,9 +1421,31 @@
                     <input id="pa-model-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
                     <label class="settings-label" for="pa-model-alias">Alias <span class="mdl-hint">(short @-mention; blank = none)</span></label>
                     <input id="pa-model-alias" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
-                    <label class="settings-label" for="pa-model-in">Input credits / MTok <span class="mdl-hint">(blank = not per-token priced)</span></label>
+                    <div class="settings-inline">
+                      <span>
+                        <label class="settings-label" for="pa-model-modality">Modality</label>
+                        <select id="pa-model-modality" class="settings-input settings-input-md">
+                          <option value="chat">Chat</option>
+                          <option value="image">Image</option>
+                          <option value="video">Video</option>
+                          <option value="speech">Speech (TTS)</option>
+                          <option value="transcription">Transcription (STT)</option>
+                        </select>
+                      </span>
+                      <span>
+                        <label class="settings-label" for="pa-model-rate-unit">Rate unit</label>
+                        <select id="pa-model-rate-unit" class="settings-input settings-input-md">
+                          <option value="mtok">per 1M tokens</option>
+                          <option value="image">per image</option>
+                          <option value="second">per second</option>
+                          <option value="mchar">per 1M chars</option>
+                          <option value="minute">per minute</option>
+                        </select>
+                      </span>
+                    </div>
+                    <label class="settings-label" for="pa-model-in"><span id="pa-model-in-label">Input credits / 1M tokens</span> <span class="mdl-hint">(blank = unpriced)</span></label>
                     <input id="pa-model-in" type="number" min="0" class="settings-input" placeholder="—" />
-                    <label class="settings-label" for="pa-model-out">Output credits / MTok <span class="mdl-hint">(blank = not per-token priced)</span></label>
+                    <label class="settings-label" for="pa-model-out"><span id="pa-model-out-label">Output credits / 1M tokens</span> <span class="mdl-hint">(blank = unpriced)</span></label>
                     <input id="pa-model-out" type="number" min="0" class="settings-input" placeholder="—" />
                     <label class="settings-label" for="pa-model-ctx">Context window <span class="mdl-hint">(tokens; what the gateway fits requests to)</span></label>
                     <input id="pa-model-ctx" type="number" min="0" class="settings-input" placeholder="—" />

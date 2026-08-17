@@ -249,12 +249,14 @@ interface LoopRoleView {
   name: string;
   label: string;
   description: string;
+  modality?: string;
   modelId: string | null;
   source: "selection" | "loop" | "platform" | "fallback" | "none";
   choices: Array<{
     id: string;
     name: string;
     providerSlug: string;
+    modality?: string;
     contextWindow: number | null;
     maxOutputTokens: number | null;
     inputCreditsPerMTok: number;
