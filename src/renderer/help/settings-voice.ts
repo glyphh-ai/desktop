@@ -23,6 +23,8 @@ interface VoiceBridge {
   voiceSettingsGet?: () => Promise<VoiceSettingsView>;
   voiceSettingsSet?: (patch: Partial<VoiceSettingsView>) => Promise<VoiceSettingsView>;
 }
+import { refreshMicChip } from "./voice-mic.js";
+
 const bridge = (): VoiceBridge => (window as unknown as { glyphh: VoiceBridge }).glyphh;
 const $ = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
@@ -71,8 +73,11 @@ async function refreshVoices(outputModelId: string, selectedVoice: string): Prom
 }
 
 async function save(patch: Partial<VoiceSettingsView>): Promise<void> {
-  try { await bridge().voiceSettingsSet?.(patch); setErr(""); }
-  catch (e) { setErr((e as Error).message); }
+  try {
+    await bridge().voiceSettingsSet?.(patch);
+    void refreshMicChip(); // show/hide the composer mic chip as the setting changes
+    setErr("");
+  } catch (e) { setErr((e as Error).message); }
 }
 
 function wire(): void {

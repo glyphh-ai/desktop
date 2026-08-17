@@ -596,6 +596,8 @@ export function buildContract(client, deps) {
     catalogVoices: lib((provider) => client.catalog.voices(provider)),
     voiceSettingsGet: lib(() => client.profile.voiceSettings()),
     voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
+    voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),
+    voiceSynthesize: lib((text, model, voiceId) => client.voice.synthesize(text, model, voiceId)),
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
     // fabricated them (resolved undefined) and the Models page threw on `r.ok`.
     // Same SDK calls the desktop's main process makes.

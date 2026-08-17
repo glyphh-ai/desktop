@@ -17,6 +17,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
+import { initVoiceMic } from "./voice-mic.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { initAnchor, initAnchorEvents, isCollapsed, anchorMode, applyAnchor } from "./code-anchor.js";
@@ -4940,6 +4941,7 @@ export function initCode(): void {
     go();
   });
   el("code-send")?.addEventListener("click", send);
+  initVoiceMic();
   // Session head (SessionHeader port): ‹/name → the space's list view; the
   // kebab → Rename / Pin / Delete.
   // BACK = out to the MAIN landing (there was no way back to it from inside

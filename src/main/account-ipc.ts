@@ -48,6 +48,10 @@ export function registerAccountIpc(): void {
   ipcMain.handle("catalog-voices", (_e, provider: string) => getClient().catalog.voices(provider));
   ipcMain.handle("voice-settings-get", () => getClient().profile.voiceSettings());
   ipcMain.handle("voice-settings-set", (_e, patch: unknown) => getClient().profile.setVoiceSettings(patch as never));
+  ipcMain.handle("voice-transcribe", (_e, audio: ArrayBuffer, mime: string, model: string, ms: number) =>
+    getClient().voice.transcribe(new Uint8Array(audio), model, mime, ms));
+  ipcMain.handle("voice-synthesize", (_e, text: string, model: string, voiceId: string | null) =>
+    getClient().voice.synthesize(text, model, voiceId).then((buf) => Buffer.from(buf)));
   ipcMain.handle("billing-autotopup-get", () => getClient().billing.autotopup());
 
   // ── Billing (writes + Stripe hand-offs) ─────────────────────────────────

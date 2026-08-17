@@ -223,6 +223,13 @@
                     <div id="code-plus-wrap" class="code-chipwrap">
                       <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">+</button>
                     </div>
+                    <!-- Voice input: hidden unless Settings › Voice enables it. Click to
+                         record, click to stop → transcribed into the composer. -->
+                    <div id="code-mic-wrap" class="code-chipwrap hidden">
+                      <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Hold a thought — click to talk, click to stop">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                      </button>
+                    </div>
                     <!-- Collapsed (centre-anchored) mode only: the left rail is
                          out of reach, so Apps + Workspaces open as DROP-UP
                          popovers from these chips. Hidden in every other mode. -->
