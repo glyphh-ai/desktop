@@ -3,7 +3,7 @@
   "private": true,
   "productName": "Glyphh Desktop",
   "version": "1.1.0-beta.1",
-  "description": "Glyphh Desktop — Your AI workspace.",
+  "description": "Glyphh Desktop \u2014 Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "WILLIAM_TRAINING_CAPTURE=1 npm run build && ELECTRON_RUN_AS_NODE= electron .",
@@ -30,7 +30,8 @@
     "package:mac": "electron-builder --mac",
     "package:win": "electron-builder --win",
     "test:harness": "npm run build && electron test/harness/run-harness.mjs",
-    "test:harness:fast": "electron test/harness/run-harness.mjs"
+    "test:harness:fast": "electron test/harness/run-harness.mjs",
+    "test": "vitest run"
   },
   "repository": {
     "type": "git",

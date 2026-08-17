@@ -4169,7 +4169,7 @@ function paintAppsGrid(host: RailGridHost): void {
   slides.title = "Slides — Glyphh Office";
   const slIcon = document.createElement("div");
   slIcon.className = "tile-icon";
-  slIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>`;
+  slIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="3" width="20" height="13" rx="2" style="stroke:#a78bfa"/><polygon points="10 6.5 15 9.5 10 12.5" style="stroke:#8c3bf2;fill:#8c3bf2"/><line x1="12" y1="16" x2="12" y2="20" style="stroke:#a78bfa"/><line x1="8" y1="20" x2="16" y2="20" style="stroke:#a78bfa"/></svg>`;
   const slName = document.createElement("div");
   slName.className = "tile-name";
   slName.textContent = "Slides";
@@ -4187,7 +4187,7 @@ function paintAppsGrid(host: RailGridHost): void {
   gdocs.title = "Docs — Glyphh Office";
   const gdIcon = document.createElement("div");
   gdIcon.className = "tile-icon";
-  gdIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>`;
+  gdIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" style="stroke:#60a5fa"/><polyline points="14 2 14 8 20 8" style="stroke:#60a5fa"/><line x1="8" y1="13" x2="16" y2="13" style="stroke:#3b82f6"/><line x1="8" y1="17" x2="13" y2="17" style="stroke:#3b82f6"/></svg>`;
   const gdName = document.createElement("div");
   gdName.className = "tile-name";
   gdName.textContent = "Docs";
@@ -4205,7 +4205,7 @@ function paintAppsGrid(host: RailGridHost): void {
   gdrive.title = "Drive — Glyphh Office";
   const gvIcon = document.createElement("div");
   gvIcon.className = "tile-icon";
-  gvIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M2 12h20"/><line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/></svg>`;
+  gvIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" style="stroke:#2dd4bf"/><path d="M2 12h20" style="stroke:#2dd4bf"/><line x1="6" y1="16" x2="6.01" y2="16" style="stroke:#14b8a6"/><line x1="10" y1="16" x2="10.01" y2="16" style="stroke:#34d399"/></svg>`;
   const gvName = document.createElement("div");
   gvName.className = "tile-name";
   gvName.textContent = "Drive";
@@ -4221,7 +4221,7 @@ function paintAppsGrid(host: RailGridHost): void {
   gsheets.title = "Sheets — Glyphh Office";
   const gsIcon = document.createElement("div");
   gsIcon.className = "tile-icon";
-  gsIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>`;
+  gsIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="3" y="3" width="18" height="18" rx="2" style="stroke:#34d399"/><line x1="3" y1="9" x2="21" y2="9" style="stroke:#10b981"/><line x1="3" y1="15" x2="21" y2="15" style="stroke:#10b981"/><line x1="9" y1="9" x2="9" y2="21" style="stroke:#10b981"/><line x1="15" y1="9" x2="15" y2="21" style="stroke:#10b981"/></svg>`;
   const gsName = document.createElement("div");
   gsName.className = "tile-name";
   gsName.textContent = "Sheets";

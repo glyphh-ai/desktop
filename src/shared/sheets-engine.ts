@@ -16,7 +16,14 @@ export interface SheetColumn {
   type?: "text" | "number" | "date" | "currency";
   aiPrompt?: string;
 }
-export interface Worksheet { name: string; columns: SheetColumn[]; rows: SheetCell[][] }
+export interface Worksheet {
+  name: string;
+  columns: SheetColumn[];
+  rows: SheetCell[][];
+  /** Layout (optional, panel-maintained): px widths per column, px heights per row. */
+  colWidths?: Array<number | null>;
+  rowHeights?: Array<number | null>;
+}
 export interface Workbook { sheets: Worksheet[] }
 
 export const isFormulaCell = (c: SheetCell): c is { f: string; v?: string | number | null } =>
@@ -55,30 +62,67 @@ const num = (v: string | number | null): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-type Tok = { t: "num"; v: number } | { t: "ref"; v: string } | { t: "fn"; v: string } | { t: "op"; v: string };
+type V = number | string;
+
+type Tok =
+  | { t: "num"; v: number }
+  | { t: "str"; v: string }
+  | { t: "ref"; v: string }
+  | { t: "fn"; v: string }
+  | { t: "op"; v: string };
 
 function tokenize(src: string): Tok[] {
   const toks: Tok[] = [];
-  const re = /\s*(?:([0-9]*\.?[0-9]+)|([A-Za-z]+[0-9]+)|([A-Za-z]+)(?=\()|([+\-*/():]))/gy;
-  let m: RegExpExecArray | null;
-  let last = 0;
-  while ((m = re.exec(src))) {
-    last = re.lastIndex;
-    if (m[1] !== undefined) toks.push({ t: "num", v: Number(m[1]) });
-    else if (m[2] !== undefined) toks.push({ t: "ref", v: m[2].toUpperCase() });
-    else if (m[3] !== undefined) toks.push({ t: "fn", v: m[3].toUpperCase() });
-    else if (m[4] !== undefined) toks.push({ t: "op", v: m[4] });
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const ch = src[i]!;
+    if (/\s/.test(ch)) { i++; continue; }
+    if (ch === '"') {
+      let out = "";
+      i++;
+      while (i < n) {
+        if (src[i] === '"' && src[i + 1] === '"') { out += '"'; i += 2; continue; }
+        if (src[i] === '"') { i++; break; }
+        out += src[i]; i++;
+      }
+      toks.push({ t: "str", v: out });
+      continue;
+    }
+    const num = /^[0-9]*\.?[0-9]+/.exec(src.slice(i));
+    if (num && num[0]) { toks.push({ t: "num", v: Number(num[0]) }); i += num[0].length; continue; }
+    const ref = /^[A-Za-z]+[0-9]+/.exec(src.slice(i));
+    if (ref && !/^[A-Za-z]+[0-9]+[A-Za-z0-9]/.test(src.slice(i))) {
+      toks.push({ t: "ref", v: ref[0].toUpperCase() }); i += ref[0].length; continue;
+    }
+    const fn = /^[A-Za-z]+(?=\()/.exec(src.slice(i));
+    if (fn) { toks.push({ t: "fn", v: fn[0].toUpperCase() }); i += fn[0].length; continue; }
+    const two = src.slice(i, i + 2);
+    if (two === "<>" || two === "<=" || two === ">=") { toks.push({ t: "op", v: two }); i += 2; continue; }
+    if ("+-*/():,=<>".includes(ch)) { toks.push({ t: "op", v: ch }); i++; continue; }
+    throw new Error(`can't read "${src.slice(i, i + 12)}"`);
   }
-  if (last < src.trim().length && src.slice(last).trim()) throw new Error(`can't read "${src.slice(last).trim().slice(0, 12)}"`);
   return toks;
 }
 
-const AGGS = new Set(["SUM", "AVG", "AVERAGE", "COUNT", "MIN", "MAX"]);
+const toNum = (v: V | null): number => {
+  if (v === null || v === "") return 0;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[$,]/g, ""));
+  if (!Number.isFinite(n)) throw new Error(`"${String(v).slice(0, 20)}" isn't a number`);
+  return n;
+};
+const toStr = (v: V | null): string => (v === null ? "" : typeof v === "number" ? String(v) : v);
+const truthy = (v: V): boolean => (typeof v === "number" ? v !== 0 : v !== "");
 
-/** Evaluate "=…" against a sheet. Throws with a human message on bad input. */
-export function evalFormula(sheet: Worksheet, formula: string): number {
-  const src = formula.replace(/^=/, "");
-  const toks = tokenize(src);
+/**
+ * Evaluate "=…" against a sheet → number | string. The v2 grammar:
+ * comparisons (= <> < > <= >=, → 1/0), arithmetic, parens, "string" literals
+ * ("" escapes a quote), A1 refs, and functions with comma args (ranges allowed
+ * inside aggregate args): SUM AVG/AVERAGE COUNT MIN MAX ROUND ABS CONCAT
+ * UPPER LOWER TRIM LEN LEFT RIGHT MID IF. Throws with a human message.
+ */
+export function evalFormula(sheet: Worksheet, formula: string): V {
+  const toks = tokenize(formula.replace(/^=/, ""));
   let i = 0;
   const peek = (): Tok | undefined => toks[i];
   const take = (): Tok => {
@@ -86,81 +130,144 @@ export function evalFormula(sheet: Worksheet, formula: string): number {
     if (!t) throw new Error("unexpected end of formula");
     return t;
   };
-  const refValue = (ref: string): number => {
+  const expectOp = (v: string): void => {
+    const t = take();
+    if (t.t !== "op" || t.v !== v) throw new Error(`expected "${v}"`);
+  };
+  const refValue = (ref: string): V | null => {
     const rc = parseA1(ref);
     if (!rc) throw new Error(`bad ref ${ref}`);
-    const cell = sheet.rows[rc.row]?.[rc.col];
-    const n = num(cellValue(cell ?? null));
-    return n ?? 0;
+    return cellValue(sheet.rows[rc.row]?.[rc.col] ?? null);
   };
-  const rangeValues = (a: string, b: string): number[] => {
+  const rangeValues = (a: string, b: string): Array<V | null> => {
     const ra = parseA1(a), rb = parseA1(b);
     if (!ra || !rb) throw new Error(`bad range ${a}:${b}`);
-    const vals: number[] = [];
+    const out: Array<V | null> = [];
     for (let r = Math.min(ra.row, rb.row); r <= Math.max(ra.row, rb.row); r++) {
       for (let c = Math.min(ra.col, rb.col); c <= Math.max(ra.col, rb.col); c++) {
-        const n = num(cellValue(sheet.rows[r]?.[c] ?? null));
-        if (n !== null) vals.push(n);
+        out.push(cellValue(sheet.rows[r]?.[c] ?? null));
       }
     }
-    return vals;
+    return out;
   };
-  const primary = (): number => {
+
+  /** One function argument: a range (A1:B3) or a scalar expression. */
+  const arg = (): Array<V | null> => {
+    const t = peek();
+    if (t?.t === "ref" && toks[i + 1]?.t === "op" && toks[i + 1]!.v === ":") {
+      const a = take() as { v: string };
+      take();   // ':'
+      const b = take();
+      if (b.t !== "ref") throw new Error("a range needs refs on both sides");
+      return rangeValues(a.v, b.v);
+    }
+    return [expr()];
+  };
+  const args = (): Array<V | null> => {
+    expectOp("(");
+    const out: Array<V | null> = [];
+    if (peek()?.t === "op" && peek()!.v === ")") { take(); return out; }
+    out.push(...arg());
+    while (peek()?.t === "op" && peek()!.v === ",") { take(); out.push(...arg()); }
+    expectOp(")");
+    return out;
+  };
+  const nums = (vals: Array<V | null>): number[] =>
+    vals.filter((v): v is V => v !== null && v !== "").map((v) => toNum(v)).filter((n) => Number.isFinite(n));
+
+  const callFn = (name: string): V => {
+    switch (name) {
+      case "SUM": return nums(args()).reduce((x, y) => x + y, 0);
+      case "AVG": case "AVERAGE": { const v = nums(args()); return v.length ? v.reduce((x, y) => x + y, 0) / v.length : 0; }
+      case "COUNT": return nums(args()).length;
+      case "MIN": { const v = nums(args()); return v.length ? Math.min(...v) : 0; }
+      case "MAX": { const v = nums(args()); return v.length ? Math.max(...v) : 0; }
+      case "ROUND": { const a = args(); const x = toNum(a[0] ?? 0); const d = a.length > 1 ? toNum(a[1] ?? 0) : 0; const m = 10 ** d; return Math.round(x * m) / m; }
+      case "ABS": { const a = args(); return Math.abs(toNum(a[0] ?? 0)); }
+      case "CONCAT": case "CONCATENATE": return args().map((v) => toStr(v)).join("");
+      case "UPPER": { const a = args(); return toStr(a[0] ?? "").toUpperCase(); }
+      case "LOWER": { const a = args(); return toStr(a[0] ?? "").toLowerCase(); }
+      case "TRIM": { const a = args(); return toStr(a[0] ?? "").trim(); }
+      case "LEN": { const a = args(); return toStr(a[0] ?? "").length; }
+      case "LEFT": { const a = args(); return toStr(a[0] ?? "").slice(0, a.length > 1 ? toNum(a[1] ?? 1) : 1); }
+      case "RIGHT": { const a = args(); const s2 = toStr(a[0] ?? ""); const k = a.length > 1 ? toNum(a[1] ?? 1) : 1; return k <= 0 ? "" : s2.slice(-k); }
+      case "MID": { const a = args(); return toStr(a[0] ?? "").slice(Math.max(0, toNum(a[1] ?? 1) - 1), Math.max(0, toNum(a[1] ?? 1) - 1) + toNum(a[2] ?? 0)); }
+      case "IF": {
+        expectOp("(");
+        const cond = expr();
+        expectOp(",");
+        const yes = expr();
+        let no: V = "";
+        if (peek()?.t === "op" && peek()!.v === ",") { take(); no = expr(); }
+        expectOp(")");
+        return truthy(cond) ? yes : no;
+      }
+      default: throw new Error(`unknown function ${name}`);
+    }
+  };
+
+  const primary = (): V => {
     const t = take();
     if (t.t === "num") return t.v;
-    if (t.t === "ref") return refValue(t.v);
+    if (t.t === "str") return t.v;
+    if (t.t === "ref") { const v = refValue(t.v); return v === null ? 0 : v; }
+    if (t.t === "fn") return callFn(t.v);
     if (t.t === "op" && t.v === "(") {
       const v = expr();
-      const close = take();
-      if (close.t !== "op" || close.v !== ")") throw new Error("missing )");
+      expectOp(")");
       return v;
     }
-    if (t.t === "op" && t.v === "-") return -primary();
-    if (t.t === "fn") {
-      if (!AGGS.has(t.v)) throw new Error(`unknown function ${t.v}`);
-      const open = take();
-      if (open.t !== "op" || open.v !== "(") throw new Error(`${t.v} needs (range)`);
-      const a = take();
-      const colon = take();
-      const b = take();
-      const close = take();
-      if (a.t !== "ref" || colon.t !== "op" || colon.v !== ":" || b.t !== "ref" || close.t !== "op" || close.v !== ")") {
-        throw new Error(`${t.v} takes a range like B2:B9`);
-      }
-      const vals = rangeValues(a.v, b.v);
-      switch (t.v) {
-        case "SUM": return vals.reduce((x, y) => x + y, 0);
-        case "AVG": case "AVERAGE": return vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : 0;
-        case "COUNT": return vals.length;
-        case "MIN": return vals.length ? Math.min(...vals) : 0;
-        case "MAX": return vals.length ? Math.max(...vals) : 0;
-      }
-    }
-    const bad = t as { t: string; v?: unknown };
-    throw new Error(`unexpected ${String(bad.v ?? bad.t)}`);
+    if (t.t === "op" && t.v === "-") return -toNum(primary());
+    if (t.t === "op" && t.v === "+") return toNum(primary());
+    throw new Error(`unexpected ${t.v}`);
   };
-  const term = (): number => {
+  const mul = (): V => {
     let v = primary();
     while (peek()?.t === "op" && (peek()!.v === "*" || peek()!.v === "/")) {
       const op = take().v;
-      const rhs = primary();
-      v = op === "*" ? v * rhs : (rhs === 0 ? NaN : v / rhs);
+      const rhs = toNum(primary());
+      const lhs = toNum(v);
+      if (op === "/" && rhs === 0) throw new Error("division by zero");
+      v = op === "*" ? lhs * rhs : lhs / rhs;
     }
     return v;
   };
-  const expr = (): number => {
-    let v = term();
+  const add = (): V => {
+    let v = mul();
     while (peek()?.t === "op" && (peek()!.v === "+" || peek()!.v === "-")) {
       const op = take().v;
-      const rhs = term();
-      v = op === "+" ? v + rhs : v - rhs;
+      const rhs = mul();
+      v = op === "+" ? toNum(v) + toNum(rhs) : toNum(v) - toNum(rhs);
     }
     return v;
   };
+  const expr = (): V => {
+    const lhs = add();
+    const t = peek();
+    if (t?.t === "op" && ["=", "<>", "<", ">", "<=", ">="].includes(t.v)) {
+      const op = take().v;
+      const rhs = add();
+      const bothNum = typeof lhs === "number" && typeof rhs === "number";
+      const cmp = bothNum ? (lhs as number) - (rhs as number) : toStr(lhs).localeCompare(toStr(rhs));
+      const pass = op === "=" ? cmp === 0 : op === "<>" ? cmp !== 0 : op === "<" ? cmp < 0 : op === ">" ? cmp > 0 : op === "<=" ? cmp <= 0 : cmp >= 0;
+      return pass ? 1 : 0;
+    }
+    return lhs;
+  };
+
   const out = expr();
   if (i < toks.length) throw new Error("trailing input");
-  if (!Number.isFinite(out)) throw new Error("division by zero");
+  if (typeof out === "number" && !Number.isFinite(out)) throw new Error("not a finite number");
   return out;
+}
+
+/** Shift A1 row refs in a formula by dRow (fill-down's relative references).
+ *  String literals are preserved untouched. */
+export function shiftFormulaRows(formula: string, dRow: number): string {
+  return formula.split(/("(?:[^"]|"")*")/).map((part, idx) => {
+    if (idx % 2 === 1) return part;   // inside a string literal
+    return part.replace(/([A-Za-z]+)([0-9]+)/g, (_m, col: string, row: string) => `${col}${Math.max(1, parseInt(row, 10) + dRow)}`);
+  }).join("");
 }
 
 /** Recompute every formula cell's materialized value, in place, row-major. */
@@ -171,7 +278,8 @@ export function recalcWorkbook(wb: Workbook): Workbook {
         const cell = row[c];
         if (!isFormulaCell(cell)) continue;
         try {
-          cell.v = Math.round(evalFormula(sheet, cell.f) * 1e10) / 1e10;
+          const v = evalFormula(sheet, cell.f);
+          cell.v = typeof v === "number" ? Math.round(v * 1e10) / 1e10 : v;
         } catch (err) {
           cell.v = `#ERR: ${err instanceof Error ? err.message : String(err)}`;
         }

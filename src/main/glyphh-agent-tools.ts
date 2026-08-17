@@ -910,7 +910,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_sheets",
-    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=SUM(B1:B4)"} for a formula (arithmetic, A1 refs, SUM/AVG/COUNT/MIN/MAX over ranges; put totals LAST). The engine computes values on save. AI columns: set ai_prompt on the column, then materialize with fill_column.',
+    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=…"} for a formula. The engine: arithmetic, parens, A1 refs, "string" literals, comparisons (= <> < > <= >=), and SUM AVG COUNT MIN MAX (ranges like B2:B9 or mixed args), ROUND ABS CONCAT UPPER LOWER TRIM LEN LEFT RIGHT MID IF(cond, then, else). Values compute on save; refs read stored values row-major — put totals LAST. AI columns: set ai_prompt, materialize with fill_column.',
     action: (a) => ({ kind: "edit", title: `Create workbook "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const cols = (Array.isArray(a.columns) ? a.columns : []).map((c): SheetColumn =>

@@ -17155,3 +17155,48 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gsheet-table thead th:hover .gsheet-sort { opacity: 0.9; }
 .gsheet-sort.active { color: var(--accent); opacity: 1; }
 .gsheet-table thead th .gsheet-cell-input { min-width: 80px; }
+
+/* Sheets v2: Fx bar, coordinate letters, selection, grips, stats footer. */
+.gsheet-fx { display: flex; align-items: center; gap: 8px; flex: none; padding: 4px 10px; border-bottom: 1px solid var(--border); }
+.gsheet-fx-addr {
+  min-width: 44px; text-align: center; font-family: var(--font-mono); font-size: 11px;
+  color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px;
+}
+.gsheet-fx-label { font-size: 11px; font-style: italic; color: var(--accent); font-weight: 700; }
+.gsheet-fx-input {
+  flex: 1; min-width: 0; background: none; color: var(--text);
+  border: 1px solid transparent; border-radius: 6px; padding: 3px 8px;
+  font-family: var(--font-mono); font-size: 12px; outline: none;
+}
+.gsheet-fx-input:hover { border-color: var(--border); }
+.gsheet-fx-input:focus { border-color: var(--accent); }
+.gsheet-letters th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--surface); color: var(--text-3);
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500; text-align: center;
+  padding: 2px 4px; border: 1px solid var(--border); cursor: pointer; user-select: none;
+  position: sticky;
+}
+.gsheet-letters th:hover { color: var(--accent); }
+.gsheet-letter { position: relative; }
+.gsheet-colgrip {
+  position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 4;
+}
+.gsheet-colgrip:hover { background: var(--accent); opacity: 0.5; }
+.gsheet-table thead .gsheet-letters th { top: 0; }
+.gsheet-table thead tr + tr th { top: 21px; }
+.gsheet-rownum { position: relative; cursor: pointer; }
+.gsheet-rownum:hover { color: var(--accent); }
+.gsheet-rowgrip {
+  position: absolute; left: 0; bottom: -3px; width: 100%; height: 6px;
+  cursor: row-resize; z-index: 2;
+}
+.gsheet-rowgrip:hover { background: var(--accent); opacity: 0.5; }
+.gsheet-table td.sel { background: rgba(140, 59, 242, 0.14); }
+.gsheet-table td.sel-anchor { outline: 2px solid var(--accent); outline-offset: -2px; background: rgba(140, 59, 242, 0.05); }
+.gsheet-scroll:focus { outline: none; }
+.gsheet-foot { display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+.gsheet-stats { flex: 1; font-size: 11px; color: var(--text-2); font-family: var(--font-mono); padding: 6px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gsheet-foot-pager .office-pager { padding: 4px 0; }

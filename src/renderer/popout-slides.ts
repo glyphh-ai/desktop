@@ -28,7 +28,7 @@ const slot: GPointSlotState = {
 const panel = initGPoint({
   confirm: (o) => yoConfirm({ title: o.title, message: o.body ?? "", confirmText: o.confirmLabel, danger: o.danger }),
   slotById: (id) => (id === slot.id ? slot : undefined),
-  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><polygon points="10 6.5 15 9.5 10 12.5"/><line x1="12" y1="16" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>`,
+  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2" style="stroke:#a78bfa"/><polygon points="10 6.5 15 9.5 10 12.5" style="stroke:#8c3bf2;fill:#8c3bf2"/><line x1="12" y1="16" x2="12" y2="20" style="stroke:#a78bfa"/><line x1="8" y1="20" x2="16" y2="20" style="stroke:#a78bfa"/></svg>`,
 });
 
 void panel.renderIntoSlot(root as HTMLElement, slot, root as HTMLElement);
