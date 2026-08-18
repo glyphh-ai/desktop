@@ -3754,6 +3754,10 @@ async function init(): Promise<void> {
       // The layout REPLACES the echo arrangement — cards sit at the layout's
       // own grid (colWidths/rowHeights/spans), pins carried through.
       openingLayout = true;
+      // HIS RULE needs the answer BEFORE the teardown empties openList: was
+      // a layout live when this switch started? (A switch FROM a layout
+      // clears the whole surface, the visible agent included, below.)
+      const wasInLayout = activeLayoutId != null || echoLayoutName != null || openList.some((x) => x.layoutId != null);
       try {
         // the OUTGOING layout remembers what its panels were doing (last
         // page, open files, browser tabs) — capture before the teardown
@@ -3786,8 +3790,25 @@ async function init(): Promise<void> {
         // the dock so resetEcho can put it back. A layout with NO agent cell hands
         // the dock straight back (e.g. switching layouts).
         const layoutHasAgent = cells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
+        // HIS RULE: switching FROM a live layout clears the WHOLE surface,
+        // the visible agent included. A rails-seated agent's coding slot
+        // closes either way — with an agent cell the incoming layout
+        // re-seats the singleton itself (openAgentCard's codingHosted check
+        // must not see the old seat and leave the agent stranded beside the
+        // grid); without one the agent stays parked home, hidden.
+        if (wasInLayout && codingHosted()) closeAllOfView("coding");
         if (layoutHasAgent) {
           if (anchorMode() !== "rail") { anchorBeforeLayout = anchorMode(); applyAnchor("rail"); }
+        } else if (wasInLayout) {
+          // Full clear, agent included: a DOCKED agent dismisses — "none"
+          // hides the direct-child singleton (the dock CSS — never an
+          // orphan) and persists nothing (the saved pref re-docks at next
+          // boot) — instead of being handed back beside the incoming layout.
+          // The borrow note drops too, so this layout's own reset doesn't
+          // resurrect the dock. (The echo slot's rail is still up, so the
+          // "none" degrade guard doesn't fire.)
+          anchorBeforeLayout = null;
+          if (anchorMode() !== "rail" && anchorMode() !== "none") applyAnchor("none");
         } else if (anchorBeforeLayout) {
           applyAnchor(anchorBeforeLayout);
           anchorBeforeLayout = null;
@@ -4231,16 +4252,36 @@ async function init(): Promise<void> {
         // fanning out its own cells, and a pin never retargets itself)
         const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
-        // B3: an app open WIPES only when a LAYOUT owns the stage — a layout
-        // owns the whole grid, so a new app replaces it rather than jamming
-        // into one of its cells (the reset saves its memory so "last" can
-        // resume). Otherwise apps ACCUMULATE into the next flow slot — beside
-        // the agent (which keeps the left column) or the open apps. This is
-        // THE rule for every open path: the wall tile click lands here
-        // directly, and ctl.openApp / openAppCard / the agent's open_app all
-        // route through this same function. NEVER during a layout fan-out
-        // (openingLayout guards the cells this same function builds).
-        if (!openingLayout && openList.some((x) => x !== e && x.layoutId != null)) resetEcho();
+        // B3, HARDENED (his rule): a LAYOUT is live and there is NO pinned
+        // slot → the app open clears the ENTIRE surface — the layout's cards
+        // (memory saved by the reset, so "last" resumes), the wall itself,
+        // AND the agent, rails-seated OR docked — and the app opens ALONE as
+        // a workspace panel via the canonical non-echo app slot (placeSlot →
+        // renderAppIntoSlot), never as a card on a wall the user just left.
+        // ORDER is hostAgentInNextSlot's leak-safe order: resetEcho closes
+        // cards properly (an Echo-hosted agent survives via the forced park)
+        // and persists the now-empty wall; closeEchoSurface drops the echo
+        // slot; the coding slot closes (renderRails parks the singleton
+        // home, where the rail default hides it); THEN the app slot lands —
+        // applyAnchor("none") must run AFTER it, since with no rail up it
+        // degrades to "rail". Without a layout, apps ACCUMULATE into the
+        // next flow slot exactly as before. This is THE rule for every open
+        // path: the wall tile click lands here directly, and ctl.openApp /
+        // openAppCard / the agent's open_app all route through this same
+        // function. NEVER during a layout fan-out (openingLayout guards the
+        // cells this same function builds).
+        const layoutLive = activeLayoutId != null || echoLayoutName != null || openList.some((x) => x !== e && x.layoutId != null);
+        if (!openingLayout && layoutLive) {
+          resetEcho();
+          closeEchoSurface();
+          if (codingHosted()) closeAllOfView("coding");
+          placeSlot({ id: nextSlotId++, view: "app", slug: (t.slug || t.name).toLowerCase(), name: t.name, url: t.url || "", glyphh: t.glyphh, urlBarHidden: urlBarHiddenDefault() });
+          // A DOCKED agent dismisses cleanly: "none" hides the direct-child
+          // singleton (the dock CSS — never an orphan) and persists nothing,
+          // so the saved anchor pref re-docks it at next boot.
+          if (anchorMode() !== "rail" && anchorMode() !== "none") applyAnchor("none");
+          return;
+        }
         const card = openShell(e);
         if (!card) return;
         mountAppIntoCard(e, card);
