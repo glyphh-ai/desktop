@@ -422,6 +422,8 @@ export function buildContract(client, deps) {
       try { await client.music.deleteSong(id); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    // Look generation composes several metered jobs — desktop-main owns it.
+    musicArtistGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
     musicSongRegenerate: async (id, input) => {
       try { const r = await client.music.regenerateSong(id, input ?? {}); return { ok: true, song: r.song, job: r.job }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }

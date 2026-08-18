@@ -38,6 +38,7 @@ const api = () => (window as unknown as { glyphh?: {
   musicSongSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; song?: Song; error?: string }>;
   musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   musicSongRegenerate?: (id: string, input?: unknown) => Promise<{ ok: boolean; song?: Song; job?: { id: string }; error?: string }>;
+  musicArtistGenlook?: (id: string, description?: string, replaceLook?: number) => Promise<{ ok: boolean; artist?: Artist; credits?: number; error?: string }>;
   mediaUploadBytes?: (input: unknown) => Promise<{ ok: boolean; id?: string; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: Array<{ id: string; kind: string; title: string; mime: string; status: string }>; error?: string }>;
@@ -632,6 +633,7 @@ export function initMusic(host: MusicHost): MusicViews {
 
   async function renderArtists(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
     stopPlayback();
+    if (state.artistId !== undefined) { await renderArtistPage(pane, state, refresh); return; }
     const res = await api().musicArtists?.();
     const artists = res?.ok ? res.artists : [];
     pane.innerHTML = `
@@ -643,126 +645,10 @@ export function initMusic(host: MusicHost): MusicViews {
         <div class="gmus-artists"></div>
         <div class="gdoc-empty ${artists.length ? "hidden" : ""}">No artists yet — a singer is a NAME, a LOOK and a VOICE.</div>
       </div>`;
+    pane.querySelector(".gmus-new")?.addEventListener("click", () => { state.artistId = null; refresh(); });
     const list = pane.querySelector<HTMLElement>(".gmus-artists")!;
-
-    const editor = (artist: Artist | null): void => {
-      const card = document.createElement("div");
-      card.className = "gmus-artist-editor";
-      card.innerHTML = `
-        <input class="gmus-a-name" placeholder="Artist name" spellcheck="false" />
-        <input class="gmus-a-style" placeholder="style — 'gravel-voiced blues shouter'" spellcheck="false" />
-        <div class="gmus-a-row">
-          <button class="action-btn gmus-a-rec">● Record voice</button>
-          <span class="gmus-a-voice-state"></span>
-          <input class="gmus-a-voiceid" placeholder="…or a provider voice id" spellcheck="false" />
-        </div>
-        <div class="gmus-a-row">
-          <button class="action-btn gmus-a-avatar">Pick a look…</button>
-          <span class="gmus-a-avatar-state"></span>
-        </div>
-        <div class="gmus-a-row">
-          <button class="action-btn primary gmus-a-save">Save</button>
-          <button class="action-btn gmus-a-cancel">Cancel</button>
-        </div>`;
-      const nameIn = card.querySelector<HTMLInputElement>(".gmus-a-name")!;
-      const styleIn = card.querySelector<HTMLInputElement>(".gmus-a-style")!;
-      const voiceIdIn = card.querySelector<HTMLInputElement>(".gmus-a-voiceid")!;
-      const voiceState = card.querySelector<HTMLElement>(".gmus-a-voice-state")!;
-      const avatarState = card.querySelector<HTMLElement>(".gmus-a-avatar-state")!;
-      let voiceAssetId = artist?.voiceAssetId ?? null;
-      let avatarAssetId = artist?.avatarAssetId ?? null;
-      if (artist) {
-        nameIn.value = artist.name;
-        styleIn.value = artist.style;
-        voiceIdIn.value = artist.voiceId ?? "";
-        if (voiceAssetId) voiceState.textContent = "voice sample ✓";
-        if (avatarAssetId) avatarState.textContent = "look ✓";
-      }
-
-      // Mic recording — the raw sample lands as a `voice` asset with a consent
-      // note; the P2 clone flow turns it into a synthesizable voice.
-      let recorder: MediaRecorder | null = null;
-      card.querySelector(".gmus-a-rec")?.addEventListener("click", () => {
-        void (async () => {
-          if (recorder) {
-            recorder.stop();
-            return;
-          }
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const chunks: Blob[] = [];
-            recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-            recorder.addEventListener("dataavailable", (ev) => chunks.push(ev.data));
-            recorder.addEventListener("stop", () => {
-              stream.getTracks().forEach((t) => t.stop());
-              recorder = null;
-              (card.querySelector(".gmus-a-rec") as HTMLElement).textContent = "● Record voice";
-              void (async () => {
-                voiceState.textContent = "uploading…";
-                const bytes = await new Blob(chunks).arrayBuffer();
-                const up = await api().mediaUploadBytes?.({
-                  title: `${nameIn.value.trim() || "artist"} voice sample`,
-                  kind: "voice", mime: "audio/webm", bytes,
-                  meta: { consent: "recorded in the Artists editor by the account owner", recordedAt: new Date().toISOString() },
-                });
-                if (up?.ok && up.id) { voiceAssetId = up.id; voiceState.textContent = "voice sample ✓"; }
-                else voiceState.textContent = `⚠ ${up?.error ?? "upload failed"}`;
-              })();
-            });
-            recorder.start();
-            (card.querySelector(".gmus-a-rec") as HTMLElement).textContent = "■ Stop";
-            voiceState.textContent = "recording — say a verse, then Stop";
-          } catch {
-            voiceState.textContent = "⚠ microphone unavailable";
-          }
-        })();
-      });
-
-      card.querySelector(".gmus-a-avatar")?.addEventListener("click", () => {
-        void (async () => {
-          const imgs = await api().mediaList?.("image");
-          const pool = (imgs?.ok ? imgs.assets : []).filter((x) => x.status === "ready").slice(0, 30);
-          if (!pool.length) { avatarState.textContent = "no images in the library yet — generate one"; return; }
-          const picker = document.createElement("div");
-          picker.className = "ws-popover gdesign-menu gdz-img-picker";
-          for (const x of pool) {
-            const b = document.createElement("button");
-            b.className = "ws-popover-item";
-            b.textContent = x.title.slice(0, 44);
-            b.addEventListener("click", () => { picker.remove(); avatarAssetId = x.id; avatarState.textContent = `look ✓ (${x.title.slice(0, 20)})`; });
-            picker.appendChild(b);
-          }
-          document.body.appendChild(picker);
-          const r = (card.querySelector(".gmus-a-avatar") as HTMLElement).getBoundingClientRect();
-          picker.style.top = `${r.bottom + 4}px`;
-          picker.style.left = `${r.left}px`;
-          const onDoc = (ev: MouseEvent): void => {
-            if (!picker.contains(ev.target as Node)) { picker.remove(); document.removeEventListener("mousedown", onDoc, true); }
-          };
-          document.addEventListener("mousedown", onDoc, true);
-        })();
-      });
-
-      card.querySelector(".gmus-a-cancel")?.addEventListener("click", () => refresh());
-      card.querySelector(".gmus-a-save")?.addEventListener("click", () => {
-        void (async () => {
-          const name = nameIn.value.trim();
-          if (!name) return;
-          await api().musicArtistSave?.(artist?.id ?? null, {
-            name, style: styleIn.value.trim(),
-            voiceAssetId, avatarAssetId,
-            voiceId: voiceIdIn.value.trim() || null,
-          });
-          refresh();
-        })();
-      });
-      list.prepend(card);
-      nameIn.focus();
-    };
-
-    pane.querySelector(".gmus-new")?.addEventListener("click", () => editor(null));
     for (const a of artists) {
-      const row = document.createElement("div");
+      const row = document.createElement("button");
       row.className = "gmus-artist-card";
       row.innerHTML = `
         <div class="gmus-artist-face">♪</div>
@@ -771,12 +657,13 @@ export function initMusic(host: MusicHost): MusicViews {
           <span class="gmus-artist-style"></span>
           <span class="gmus-artist-badges"></span>
         </div>
-        <button class="action-btn gmus-a-edit">Edit</button>
-        <button class="ws-icon-btn gmem-del" title="Delete">✕</button>`;
+        <span class="ws-icon-btn gmem-del gmus-artist-del" title="Delete">✕</span>`;
       (row.querySelector(".gmus-artist-name") as HTMLElement).textContent = a.name;
       (row.querySelector(".gmus-artist-style") as HTMLElement).textContent = a.style || "—";
+      const looks = (a.meta?.looks as Array<{ front: string; back: string }> | undefined) ?? [];
       (row.querySelector(".gmus-artist-badges") as HTMLElement).textContent =
-        [a.voiceAssetId ? "voice sample" : a.voiceId ? "synth voice" : "no voice", a.avatarAssetId ? "look" : "no look"].join(" · ");
+        [looks.length ? `${looks.length} look${looks.length === 1 ? "" : "s"}` : "no looks",
+         a.voiceAssetId ? "voice sample" : a.voiceId ? "synth voice" : "no voice"].join(" · ");
       if (a.avatarAssetId) {
         const face = row.querySelector<HTMLElement>(".gmus-artist-face")!;
         void api().mediaUrl?.(a.avatarAssetId).then((r) => {
@@ -786,33 +673,12 @@ export function initMusic(host: MusicHost): MusicViews {
           }
         });
       }
-      const looks = (a.meta?.looks as Array<{ front: string; back: string }> | undefined) ?? [];
-      if (looks.length) {
-        const strip = document.createElement("div");
-        strip.className = "gmus-looks";
-        looks.forEach((lk, i) => {
-          const cell = document.createElement("button");
-          cell.className = "gmus-look" + ((a.meta?.activeLook ?? 0) === i ? " on" : "");
-          cell.title = `Look ${i + 1} — click to make active`;
-          cell.innerHTML = `<span class="gmus-look-f"></span><span class="gmus-look-b"></span>`;
-          for (const [cls, id] of [[".gmus-look-f", lk.front], [".gmus-look-b", lk.back]] as const) {
-            const el2 = cell.querySelector<HTMLElement>(cls)!;
-            void api().mediaUrl?.(id).then((r) => {
-              if (r?.ok && r.url && el2.isConnected) el2.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
-            });
-          }
-          cell.addEventListener("click", () => {
-            void (async () => {
-              await api().musicArtistSave?.(a.id, { avatarAssetId: lk.front, meta: { ...a.meta, activeLook: i } });
-              refresh();
-            })();
-          });
-          strip.appendChild(cell);
-        });
-        row.querySelector(".gmus-artist-main")?.appendChild(strip);
-      }
-      row.querySelector(".gmus-a-edit")?.addEventListener("click", () => editor(a));
-      row.querySelector(".gmem-del")?.addEventListener("click", () => {
+      row.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".gmus-artist-del")) return;
+        state.artistId = a.id;
+        refresh();
+      });
+      row.querySelector(".gmus-artist-del")?.addEventListener("click", () => {
         void (async () => {
           const yes = await host.confirm({ title: `Delete "${a.name}"?`, confirmLabel: "Delete", danger: true });
           if (!yes) return;
@@ -822,10 +688,203 @@ export function initMusic(host: MusicHost): MusicViews {
       });
       list.appendChild(row);
     }
-    void state;
   }
 
-  // ── Music Video — the assembler (renders when the pipeline phase lands) ────
+  /** THE ARTIST PAGE — ‹ Artists on top; identity on the left, the LOOKS
+   *  gallery on the right (front+back large, click to fill the panel,
+   *  per-look ⟳ regenerate, ＋ New look). New artists use the same page. */
+  async function renderArtistPage(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
+    const isNew = state.artistId === null;
+    const res = isNew ? null : await api().musicArtists?.();
+    const artist = isNew ? null : (res?.ok ? res.artists : []).find((x) => x.id === state.artistId);
+    if (!isNew && !artist) { delete state.artistId; refresh(); return; }
+
+    pane.innerHTML = `
+      <div class="gmus-page">
+        <div class="gdz-topbar">
+          <button class="action-btn gmus-back">‹ Artists</button>
+          <span class="gmus-savestate"></span>
+        </div>
+        <div class="gmus-split">
+          <div class="gmus-left">
+            <label class="gmus-label">Name</label>
+            <input class="gmus-title gmus-a-name" spellcheck="false" placeholder="Artist name" />
+            <label class="gmus-label">Style</label>
+            <input class="gmus-a-style gmus-a-style-in" spellcheck="false" placeholder="'gravel-voiced blues shouter'" />
+            <label class="gmus-label">Voice</label>
+            <div class="gmus-a-row">
+              <button class="action-btn gmus-a-rec">● Record voice</button>
+              <span class="gmus-a-voice-state"></span>
+            </div>
+            <input class="gmus-a-voiceid" placeholder="…or a provider voice id" spellcheck="false" />
+            ${isNew ? '<button class="action-btn primary gmus-a-create">Create artist</button>' : ""}
+          </div>
+          <div class="gmus-right">
+            <div class="gmus-looks-head">
+              <span class="gmus-label">Looks</span>
+              <button class="action-btn primary gmus-look-new" ${isNew ? "disabled title='Create the artist first'" : ""}>＋ New look</button>
+            </div>
+            <div class="gmus-looks-gallery"></div>
+            <div class="gmus-look-hint">${isNew ? "Save the artist, then generate looks — photoreal front + back, two credits' worth of images each." : "click an image to fill the panel · ⟳ regenerates that look · the highlighted look fronts the artist"}</div>
+          </div>
+        </div>
+        <div class="gmus-lightbox hidden"><img alt="" /></div>
+      </div>`;
+    pane.querySelector(".gmus-back")?.addEventListener("click", () => { delete state.artistId; refresh(); });
+
+    const saveState = pane.querySelector<HTMLElement>(".gmus-savestate")!;
+    const nameIn = pane.querySelector<HTMLInputElement>(".gmus-a-name")!;
+    const styleIn = pane.querySelector<HTMLInputElement>(".gmus-a-style-in")!;
+    const voiceIdIn = pane.querySelector<HTMLInputElement>(".gmus-a-voiceid")!;
+    const voiceState = pane.querySelector<HTMLElement>(".gmus-a-voice-state")!;
+    let voiceAssetId = artist?.voiceAssetId ?? null;
+    if (artist) {
+      nameIn.value = artist.name;
+      styleIn.value = artist.style;
+      voiceIdIn.value = artist.voiceId ?? "";
+      if (voiceAssetId) voiceState.textContent = "voice sample ✓";
+    }
+
+    // Edit mode autosaves; new mode saves on Create.
+    const persist = async (): Promise<void> => {
+      if (isNew || !artist) return;
+      saveState.textContent = "…";
+      const r = await api().musicArtistSave?.(artist.id, {
+        name: nameIn.value.trim() || artist.name,
+        style: styleIn.value.trim(),
+        voiceAssetId,
+        voiceId: voiceIdIn.value.trim() || null,
+      });
+      saveState.textContent = r?.ok ? "Saved" : `⚠ ${r?.error ?? "save failed"}`;
+    };
+    nameIn.addEventListener("change", () => void persist());
+    styleIn.addEventListener("change", () => void persist());
+    voiceIdIn.addEventListener("change", () => void persist());
+    pane.querySelector(".gmus-a-create")?.addEventListener("click", () => {
+      void (async () => {
+        const name = nameIn.value.trim();
+        if (!name) { nameIn.focus(); return; }
+        const r = await api().musicArtistSave?.(null, {
+          name, style: styleIn.value.trim(),
+          voiceAssetId, voiceId: voiceIdIn.value.trim() || null,
+        });
+        if (r?.ok && r.artist) { state.artistId = r.artist.id; refresh(); }
+        else saveState.textContent = `⚠ ${r?.error ?? "create failed"}`;
+      })();
+    });
+
+    // Mic recording — the raw sample lands as a `voice` asset with consent.
+    let recorder: MediaRecorder | null = null;
+    pane.querySelector(".gmus-a-rec")?.addEventListener("click", () => {
+      void (async () => {
+        if (recorder) { recorder.stop(); return; }
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const chunks: Blob[] = [];
+          recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+          recorder.addEventListener("dataavailable", (ev) => chunks.push(ev.data));
+          recorder.addEventListener("stop", () => {
+            stream.getTracks().forEach((t) => t.stop());
+            recorder = null;
+            (pane.querySelector(".gmus-a-rec") as HTMLElement).textContent = "● Record voice";
+            void (async () => {
+              voiceState.textContent = "uploading…";
+              const bytes = await new Blob(chunks).arrayBuffer();
+              const up = await api().mediaUploadBytes?.({
+                title: `${nameIn.value.trim() || "artist"} voice sample`,
+                kind: "voice", mime: "audio/webm", bytes,
+                meta: { consent: "recorded in the Artists editor by the account owner", recordedAt: new Date().toISOString() },
+              });
+              if (up?.ok && up.id) {
+                voiceAssetId = up.id;
+                voiceState.textContent = "voice sample ✓";
+                void persist();
+              } else voiceState.textContent = `⚠ ${up?.error ?? "upload failed"}`;
+            })();
+          });
+          recorder.start();
+          (pane.querySelector(".gmus-a-rec") as HTMLElement).textContent = "■ Stop";
+          voiceState.textContent = "recording — say a verse, then Stop";
+        } catch {
+          voiceState.textContent = "⚠ microphone unavailable";
+        }
+      })();
+    });
+
+    // ── the looks gallery + full-panel lightbox ──────────────────────────────
+    const gallery = pane.querySelector<HTMLElement>(".gmus-looks-gallery")!;
+    const lightbox = pane.querySelector<HTMLElement>(".gmus-lightbox")!;
+    lightbox.addEventListener("click", () => lightbox.classList.add("hidden"));
+    const openFull = (url: string): void => {
+      (lightbox.querySelector("img") as HTMLImageElement).src = url;
+      lightbox.classList.remove("hidden");
+    };
+    const paintLooks = (a2: Artist | null): void => {
+      gallery.textContent = "";
+      const looks = (a2?.meta?.looks as Array<{ front: string; back: string }> | undefined) ?? [];
+      const active = (a2?.meta?.activeLook as number | undefined) ?? 0;
+      if (!looks.length) {
+        gallery.innerHTML = `<div class="gdoc-empty">${isNew ? "" : "No looks yet — ＋ New look generates a photoreal front + back."}</div>`;
+        return;
+      }
+      looks.forEach((lk, i) => {
+        const card = document.createElement("div");
+        card.className = "gmus-lookcard" + (i === active ? " on" : "");
+        card.innerHTML = `
+          <div class="gmus-lookcard-head">
+            <button class="gmus-look-use">${i === active ? "Active look" : "Use this look"}</button>
+            <button class="ws-icon-btn gmus-look-regen" title="Regenerate this look (costs credits)">⟳</button>
+          </div>
+          <div class="gmus-lookcard-imgs">
+            <div class="gmus-lookimg" data-side="front"><span>front</span></div>
+            <div class="gmus-lookimg" data-side="back"><span>back</span></div>
+          </div>`;
+        for (const [side, id2] of [["front", lk.front], ["back", lk.back]] as const) {
+          const el = card.querySelector<HTMLElement>(`.gmus-lookimg[data-side="${side}"]`)!;
+          void api().mediaUrl?.(id2).then((r) => {
+            if (!r?.ok || !r.url || !el.isConnected) return;
+            el.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+            el.addEventListener("click", () => openFull(r.url!));
+          });
+        }
+        card.querySelector(".gmus-look-use")?.addEventListener("click", () => {
+          void (async () => {
+            if (!a2) return;
+            const r = await api().musicArtistSave?.(a2.id, { avatarAssetId: lk.front, meta: { ...a2.meta, activeLook: i } });
+            if (r?.ok && r.artist) paintLooks(r.artist);
+          })();
+        });
+        card.querySelector(".gmus-look-regen")?.addEventListener("click", (ev) => {
+          void (async () => {
+            if (!a2) return;
+            (ev.currentTarget as HTMLElement).classList.add("busy");
+            saveState.textContent = "generating look…";
+            const r = await api().musicArtistGenlook?.(a2.id, styleIn.value.trim(), i + 1);
+            saveState.textContent = r?.ok ? `look ${i + 1} regenerated — ${(r.credits ?? 0).toFixed(2)} credits` : `⚠ ${r?.error ?? "generation failed"}`;
+            if (r?.ok && r.artist) paintLooks(r.artist);
+          })();
+        });
+        gallery.appendChild(card);
+      });
+    };
+    paintLooks(artist ?? null);
+    pane.querySelector(".gmus-look-new")?.addEventListener("click", () => {
+      void (async () => {
+        if (!artist) return;
+        const btn = pane.querySelector<HTMLButtonElement>(".gmus-look-new")!;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="gmus-spin"></span>Generating…`;
+        saveState.textContent = "generating look…";
+        const r = await api().musicArtistGenlook?.(artist.id, styleIn.value.trim());
+        btn.disabled = false;
+        btn.textContent = "＋ New look";
+        saveState.textContent = r?.ok ? `new look — ${(r.credits ?? 0).toFixed(2)} credits` : `⚠ ${r?.error ?? "generation failed"}`;
+        if (r?.ok && r.artist) paintLooks(r.artist);
+      })();
+    });
+  }
+
+  // ── Music Video  // ── Music Video — the assembler (renders when the pipeline phase lands) ────
 
   async function renderMusicVideo(pane: HTMLElement, refresh: () => void): Promise<void> {
     stopPlayback();

@@ -411,6 +411,87 @@ async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
   }
 }
 
+/**
+ * The COMPACT "out of credits" dialog — the 402 hand-off. Buy ad-hoc credits
+ * (the SAME Stripe checkout as Settings › Billing) and flip auto-top-up on,
+ * without leaving the agent. Redirects to Stripe for the purchase (no card
+ * details in-app), exactly like the Billing page.
+ */
+export async function openBuyCreditsModal(): Promise<void> {
+  if (document.querySelector(".buy-credits-overlay")) return;   // never stack two
+  const api = accountApi();
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay buy-credits-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-box buy-credits-box">
+      <div class="confirm-head"><h3>Add credits</h3></div>
+      <div class="confirm-body">
+        <p class="bc-balance">Balance: <strong id="bc-balance">—</strong> credits · one-time purchases never expire.</p>
+        <div class="billing-topup-grid bc-grid" id="bc-grid"></div>
+        <label class="settings-toggle" style="margin-top:18px;">
+          <input type="checkbox" id="bc-autotopup" />
+          <span class="toggle-switch"></span>
+          Auto-top-up when I run low (keeps generations from stopping)
+        </label>
+        <div class="settings-error hidden" id="bc-error" style="margin-top:10px;"></div>
+      </div>
+      <div class="confirm-foot">
+        <button class="action-btn" id="bc-manage" type="button">Manage billing</button>
+        <button class="action-btn primary" id="bc-close" type="button">Close</button>
+      </div>
+    </div>`;
+  const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  const setErr = (m: string): void => { const el = overlay.querySelector<HTMLElement>("#bc-error"); if (el) { el.textContent = m; el.classList.toggle("hidden", !m); } };
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+
+  // Live balance.
+  void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(toCredits(c.balance)); }).catch(() => { /* leave the dash */ });
+
+  // One-time top-up cards → the SAME Stripe checkout the Billing page uses.
+  const grid = overlay.querySelector<HTMLElement>("#bc-grid")!;
+  for (const usd of TOPUP_PRESETS) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "billing-topup-card";
+    card.innerHTML =
+      `<span class="billing-topup-credits">${fmtInt(creditsForUsd(usd))}</span>` +
+      `<span class="billing-topup-unit">credits</span>` +
+      `<span class="billing-topup-price">$${usd}</span>`;
+    card.addEventListener("click", async () => {
+      if (busy) return;
+      busy = `bc-${usd}`; card.disabled = true; setErr("");
+      try {
+        const res = await api.topup(Math.round(creditsForUsd(usd) * MICRO));
+        if (!res.ok) { setErr(res.error || "Could not start checkout."); return; }
+        if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) { setErr("The checkout link came back malformed."); return; }
+        close();   // Stripe opens; credits land via webhook and refresh on Billing.
+      } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+      finally { busy = ""; card.disabled = false; }
+    });
+    grid.appendChild(card);
+  }
+
+  // Auto-top-up: reflect the current state, save immediately on toggle.
+  const at = overlay.querySelector<HTMLInputElement>("#bc-autotopup")!;
+  void api.autotopup().then((a) => { if (a) at.checked = !!a.enabled; }).catch(() => { /* default off */ });
+  at.addEventListener("change", async () => {
+    setErr("");
+    const res = await api.setAutotopup({
+      enabled: at.checked,
+      thresholdCredits: Math.round((autoTopup.thresholdCredits || 100) * MICRO),
+      topupCredits: Math.round(creditsForUsd(autoTopup.packUsd || 24) * MICRO),
+    }).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    if (!res.ok) { setErr(res.error || "Could not save auto-top-up."); at.checked = !at.checked; }
+    else autoTopup.enabled = at.checked;
+  });
+
+  overlay.querySelector("#bc-close")!.addEventListener("click", close);
+  overlay.querySelector("#bc-manage")!.addEventListener("click", () => { close(); openUrlInWorkbench("Billing", ""); });
+}
+
 /** No subscription yet → a hosted Stripe Checkout, exactly the top-up shape. */
 async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void> {
   if (busy) return;

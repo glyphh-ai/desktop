@@ -1868,9 +1868,12 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
   const cta = card.querySelector<HTMLButtonElement>(".decline-card-cta");
   if (cta) {
     cta.textContent = c.cta;
-    // Open in the in-app workbench browser (same mechanics as Manage Account),
-    // NOT the system browser.
-    cta.addEventListener("click", () => openUrlInWorkbench(d.kind === "credits" ? "Billing" : "Account", d.url));
+    cta.addEventListener("click", () => {
+      // Credits → the in-app buy-credits dialog (ad-hoc top-up + auto-top-up,
+      // redirects to Stripe). Everything else → the in-app account browser.
+      if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openBuyCreditsModal());
+      else openUrlInWorkbench("Account", d.url);
+    });
   }
   card.querySelector<HTMLButtonElement>(".decline-card-alt")?.addEventListener("click", () => el("code-model-chip")?.click());
   return card;
@@ -3495,10 +3498,21 @@ const STOP_LINES = [
 
 /** Land a run's outcome in ITS chat (the user may be looking at another
  *  session) and reset only that run's state — other sessions keep working. */
+/** The 402 "out of credits" often comes back as raw tool/turn error TEXT (media
+ *  generation, etc.), not the styled decline card. When we see it on the visible
+ *  session, pop the buy-credits dialog so the user can top up on the spot. */
+function maybeCreditsPrompt(chatId: string, text: string): void {
+  if (chatId !== currentId || !text) return;
+  if (/\b402\b/.test(text) && /out of credits|add credits|upgrade your plan/i.test(text)) {
+    void import("./settings-billing.js").then((m) => m.openBuyCreditsModal()).catch(() => { /* billing module unavailable */ });
+  }
+}
+
 function finishRun(chatId: string, text: string, stopped = false): void {
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
+  maybeCreditsPrompt(chatId, text);
   if (chat && stopped) {
     chat.messages.push({
       role: "assistant",

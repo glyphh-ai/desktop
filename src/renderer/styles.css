@@ -7421,6 +7421,9 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   gap: 10px;
   margin-top: 12px;
 }
+/* The compact 402 "Add credits" dialog — reuses the topup-card grid + toggle. */
+.buy-credits-box { max-width: 480px; }
+.buy-credits-box .bc-balance { margin: 0 0 4px; color: var(--text-2); font-size: 13px; }
 .billing-topup-card {
   display: flex;
   flex-direction: column;
@@ -17892,3 +17895,52 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 @keyframes gmus-spin { to { transform: rotate(360deg); } }
 .gmus-length { width: 104px; flex: none; }
+
+/* — the artist page: looks gallery + full-panel lightbox — */
+.gmus-artist-card { text-align: left; font: inherit; cursor: pointer; color: var(--text); width: 100%; }
+.gmus-artist-card:hover { border-color: var(--accent); }
+.gmus-artist-card .gmus-artist-del { opacity: 0; margin-left: auto; }
+.gmus-artist-card:hover .gmus-artist-del { opacity: 1; }
+.gmus-looks-head { display: flex; align-items: center; justify-content: space-between; }
+.gmus-looks-gallery {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
+  align-content: start;
+}
+.gmus-lookcard {
+  border: 1.5px solid var(--border); border-radius: 13px; overflow: hidden;
+  background: var(--surface);
+}
+.gmus-lookcard.on { border-color: var(--accent); }
+.gmus-lookcard-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px;
+}
+.gmus-look-use {
+  background: none; border: none; cursor: pointer; font: inherit;
+  font-size: 11.5px; font-weight: 650; color: var(--text-3); padding: 2px 0;
+}
+.gmus-lookcard.on .gmus-look-use { color: var(--accent); cursor: default; }
+.gmus-look-use:hover { color: var(--text); }
+.gmus-look-regen.busy { animation: gmus-spin 1s linear infinite; }
+.gmus-lookcard-imgs { display: flex; gap: 2px; }
+.gmus-lookimg {
+  flex: 1; aspect-ratio: 2/3; cursor: zoom-in; position: relative;
+  background: var(--bg) center / cover no-repeat;
+}
+.gmus-lookimg span {
+  position: absolute; left: 6px; bottom: 5px;
+  font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85); background: rgba(0, 0, 0, 0.45);
+  padding: 1px 6px; border-radius: 4px;
+}
+.gmus-look-hint { flex: none; font-size: 10.5px; color: var(--text-3); }
+.gmus-lightbox {
+  position: absolute; inset: 0; z-index: 30;
+  background: rgba(0, 0, 0, 0.86);
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.gmus-lightbox.hidden { display: none; }
+.gmus-lightbox img { max-width: 94%; max-height: 94%; border-radius: 10px; }
+.gmus-page { position: relative; }

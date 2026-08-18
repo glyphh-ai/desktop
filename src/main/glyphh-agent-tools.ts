@@ -59,6 +59,7 @@ import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
 import { designFileName, extractSiteDesign, imagePalette } from "./design";
 import { uploadMediaFile, mediaFileUrl } from "./media-panel";
+import { genImageAsset, genLook } from "./music-panel";
 import type { DesignSystem } from "@glyphh/sdk";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -2085,25 +2086,6 @@ async function generateMedia(
   if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged)`;
   const open = started.outputKind === "image" ? "open_image" : started.outputKind === "video" ? "open_video" : "open_sounds";
   return `generated ${job.assetId} with ${job.model} — ${job.creditsCharged.toFixed(2)} credits charged. ${open}("${job.assetId}") shows it in the panel.`;
-}
-
-/** One metered IMAGE job, structured — the band builder's brush. */
-async function genImageAsset(prompt: string, title: string): Promise<{ id: string; credits: number }> {
-  const models = await getClient().models.available();
-  const model = models.find((m) => String((m as { modality?: string }).modality ?? "") === "image");
-  if (!model) throw new Error("this org has no enabled image model");
-  const started = await getClient().media.generate({ model: model.id, prompt, title, options: { size: "1024x1536" } });
-  const job = await getClient().media.waitForJob(started.job.id);
-  if (job.status === "failed" || !job.assetId) throw new Error(job.error ?? "image generation failed");
-  return { id: job.assetId, credits: job.creditsCharged };
-}
-
-/** A member look: FRONT + BACK of the same person, photoreal, stage-ready. */
-async function genLook(name: string, description: string, bandType: string): Promise<{ front: string; back: string; credits: number }> {
-  const base = `Photorealistic full-body studio photograph of ${description || name}, member of a ${bandType || "rock"} band, stage outfit, neutral dark backdrop, cinematic lighting, lifelike skin texture, 85mm`;
-  const front = await genImageAsset(`${base}. FRONT view, facing the camera.`, `${name} — look (front)`);
-  const back = await genImageAsset(`${base}. BACK view — the SAME person and outfit seen from behind.`, `${name} — look (back)`);
-  return { front: front.id, back: back.id, credits: front.credits + back.credits };
 }
 
 /** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.
