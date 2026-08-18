@@ -165,6 +165,38 @@ loop end-to-end (P0+P1 proves the whole spine); voice/avatar unlock the
 HeyGen core; video rides on both; render last because everything before it
 already delivers value.
 
+## The Music Studio (Sounds grows up) — spec addendum 2026-08-17
+
+The Sounds app becomes a MUSIC STUDIO with four views:
+
+- **Library** — the existing sounds grid (music/sfx/speech).
+- **Artists** — singer/band-member profiles: a NAME, a LOOK (avatar from the
+  media library — generate_image or upload), and a VOICE (cloned from the
+  user's own recording via the P2 consent flow, or picked/synthesized from
+  scratch), plus a style line ("gravel-voiced blues shouter").
+- **Songs** — the documents. A song = title + LYRICS + the generation PROMPT
+  (editable — it's how you steer) + band slots: artists (one or more) +
+  INSTRUMENTS (drums/guitar/bass/banjo/…, each with its own sound tweak line)
+  + the current audio asset + LINEAGE (regenerate creates a child, the
+  original stays). "Type of band" is an input; prompting a song style is the
+  fast path.
+- **Music Video** — assemble the final product: a song + imagery/video pulled
+  from the library; renders through the P4 ffmpeg pipeline.
+
+THE SONG PAGE (Apps → General shape, left/right):
+- Left: Title, then LYRICS — tall (a real song fits), glowing purple
+  underline treatment; below them the PROMPT that made the song, editable.
+- Right: the sound editor — waveform (bars per selected interval, zoom,
+  scroll), drag-select, CUT/COPY/PASTE at the playhead, undo, play/pause with
+  a moving playhead. Client-side Web Audio; Save as New encodes WAV and lands
+  a NEW asset + song version; REGENERATE re-runs the music model with the
+  edited prompt+lyrics+band and creates a child song.
+- Iteration is agent-first: the song tools let the agent evolve lyrics,
+  prompt, band and regenerate from the conversation.
+
+Data: migration 0013 — `music_artists` + `music_projects` (lineage via
+parent_id). Regeneration rides the SAME metered /api/media/generate path.
+
 ## Standing rules for this build
 
 - Branch `image-video` in every touched repo; merge to main per-phase only
