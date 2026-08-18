@@ -15620,6 +15620,22 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 }
 
 .app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
+/* Panel tiles (Slides/Docs/Design/Band/…) carry their OWN filled marks — no
+   frame, just the mark, bigger. The gray box stays only for app favicons,
+   which are arbitrary images that need one. */
+.app-rail-tile .tile-icon:has(> svg) {
+  background: none;
+  border-radius: 0;
+  overflow: visible;
+}
+.app-rail-tile .tile-icon:has(> svg) > svg {
+  width: 28px !important;
+  height: 28px !important;
+}
+.code-mini-tray .app-rail-tile .tile-icon:has(> svg) > svg {
+  width: 24px !important;
+  height: 24px !important;
+}
 
 .app-rail-tile .tile-initial {
   display: flex;
