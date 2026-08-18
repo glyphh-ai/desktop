@@ -33,6 +33,8 @@ export interface MusicState {
   artistId?: string | null;
   instrumentId?: string | null;
   videoId?: string | null;
+  /** Per-list page cursors — survive re-renders. */
+  pages?: Record<string, number>;
 }
 
 const api = () => (window as unknown as { glyphh?: {
@@ -104,6 +106,8 @@ const INSTRUMENT_CATALOG = [
   "piano", "keys", "organ", "synth", "horns", "trumpet", "sax", "harmonica",
   "tambourine", "turntables", "beatbox", "choir",
 ];
+
+import { officePager, officePage } from "./wb-office-ui.js";
 
 interface DualItem { id: string; label: string; thumbAssetId?: string | null }
 
@@ -287,6 +291,57 @@ export function initMusic(host: MusicHost): MusicViews {
     cancelAnimationFrame(raf);
   };
 
+  /** Every Band list rides this: toolbar (count · SEARCH · ＋New), the PAGER
+   *  at the top, then the rows — filtered live, 20 a page, cursor kept. */
+  const LIST_PER = 20;
+  function listShell<T>(pane: HTMLElement, state: MusicState, cfg: {
+    key: string;
+    noun: string;
+    newLabel: string;
+    onNew: () => void;
+    searchPh: string;
+    emptyText: string;
+    items: T[];
+    match: (item: T, q: string) => boolean;
+    row: (item: T) => HTMLElement;
+    rowsClass?: string;
+  }): void {
+    pane.innerHTML = `
+      <div class="gmus-list">
+        <div class="office-toolbar">
+          <span class="gmus-count"></span>
+          <input class="office-search" type="text" placeholder="${cfg.searchPh}" spellcheck="false" autocomplete="off" />
+          <button class="action-btn primary gmus-new">${cfg.newLabel}</button>
+        </div>
+        <div class="gmus-pager-top"></div>
+        <div class="${cfg.rowsClass ?? "gmus-songs"}"></div>
+        <div class="gdoc-empty hidden">${cfg.emptyText}</div>
+      </div>`;
+    pane.querySelector(".gmus-new")?.addEventListener("click", cfg.onNew);
+    const count = pane.querySelector<HTMLElement>(".gmus-count")!;
+    const pagerTop = pane.querySelector<HTMLElement>(".gmus-pager-top")!;
+    const rows = pane.querySelector<HTMLElement>(`.${cfg.rowsClass ?? "gmus-songs"}`)!;
+    const empty = pane.querySelector<HTMLElement>(".gdoc-empty")!;
+    const search = pane.querySelector<HTMLInputElement>(".office-search")!;
+    state.pages ??= {};
+    const paint = (q: string): void => {
+      rows.textContent = "";
+      pagerTop.textContent = "";
+      const ql = q.toLowerCase();
+      const matches = cfg.items.filter((it) => !ql || cfg.match(it, ql));
+      count.textContent = `${matches.length} ${cfg.noun}${matches.length === 1 ? "" : "s"}`;
+      empty.classList.toggle("hidden", matches.length > 0 || cfg.items.length > 0);
+      if (!cfg.items.length) empty.classList.remove("hidden");
+      const paged = officePage(matches, ql ? 0 : (state.pages![cfg.key] ?? 0), LIST_PER);
+      if (!ql) state.pages![cfg.key] = paged.page;
+      const pager = officePager(matches.length, paged.page, LIST_PER, (pg) => { state.pages![cfg.key] = pg; paint(q); });
+      if (pager) pagerTop.appendChild(pager);
+      for (const it of paged.items) rows.appendChild(cfg.row(it));
+    };
+    paint("");
+    search.addEventListener("input", () => paint(search.value.trim()));
+  }
+
   // ── Songs list + the song page ─────────────────────────────────────────────
 
   async function renderSongs(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
@@ -294,30 +349,25 @@ export function initMusic(host: MusicHost): MusicViews {
     if (state.songId) { await renderSongPage(pane, state, refresh); return; }
     const res = await api().musicSongs?.();
     const songs = res?.ok ? res.songs : [];
-    pane.innerHTML = `
-      <div class="gmus-list">
-        <div class="office-toolbar">
-          <span class="gmus-count">${songs.length} song${songs.length === 1 ? "" : "s"}</span>
-          <button class="action-btn primary gmus-new">＋ New Song</button>
-        </div>
-        <div class="gmus-songs"></div>
-        <div class="gdoc-empty ${songs.length ? "hidden" : ""}">No songs yet — ＋ New Song assembles a band, or ask Glyphh to write one.</div>
-      </div>`;
-    pane.querySelector(".gmus-new")?.addEventListener("click", () => {
-      void (async () => {
-        const r = await api().musicSongSave?.(null, { title: "Untitled" });
-        if (!r?.ok || !r.song) {
-          void host.confirm({ title: "Couldn't create the song", body: r?.error ?? (api().musicSongSave ? "Unknown error." : "Bridge not loaded — quit and relaunch the app."), confirmLabel: "OK" });
-          return;
-        }
-        state.songId = r.song.id;
-        refresh();
-      })();
-    });
-    const list = pane.querySelector<HTMLElement>(".gmus-songs")!;
     const children = new Map<string, number>();
     for (const s of songs) if (s.parentId) children.set(s.parentId, (children.get(s.parentId) ?? 0) + 1);
-    for (const s of songs) {
+    listShell(pane, state, {
+      key: "songs", noun: "song", newLabel: "＋ New Song", searchPh: "Search songs…",
+      emptyText: "No songs yet — ＋ New Song assembles a band, or ask Glyphh to write one.",
+      items: songs,
+      match: (s, q) => s.title.toLowerCase().includes(q) || s.bandType.toLowerCase().includes(q) || s.lyrics.toLowerCase().includes(q),
+      onNew: () => {
+        void (async () => {
+          const r = await api().musicSongSave?.(null, { title: "Untitled" });
+          if (!r?.ok || !r.song) {
+            void host.confirm({ title: "Couldn't create the song", body: r?.error ?? (api().musicSongSave ? "Unknown error." : "Bridge not loaded — quit and relaunch the app."), confirmLabel: "OK" });
+            return;
+          }
+          state.songId = r.song.id;
+          refresh();
+        })();
+      },
+      row: (s) => {
       const card = document.createElement("button");
       card.className = "gmus-song-card";
       card.innerHTML = `
@@ -346,8 +396,9 @@ export function initMusic(host: MusicHost): MusicViews {
           refresh();
         })();
       });
-      list.appendChild(card);
-    }
+        return card;
+      },
+    });
   }
 
   async function renderSongPage(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
@@ -842,18 +893,13 @@ export function initMusic(host: MusicHost): MusicViews {
     if (state.artistId !== undefined) { await renderArtistPage(pane, state, refresh); return; }
     const res = await api().musicArtists?.();
     const artists = res?.ok ? res.artists : [];
-    pane.innerHTML = `
-      <div class="gmus-list">
-        <div class="office-toolbar">
-          <span class="gmus-count">${artists.length} artist${artists.length === 1 ? "" : "s"}</span>
-          <button class="action-btn primary gmus-new">＋ New Artist</button>
-        </div>
-        <div class="gmus-artists"></div>
-        <div class="gdoc-empty ${artists.length ? "hidden" : ""}">No artists yet — a singer is a NAME, a LOOK and a VOICE.</div>
-      </div>`;
-    pane.querySelector(".gmus-new")?.addEventListener("click", () => { state.artistId = null; refresh(); });
-    const list = pane.querySelector<HTMLElement>(".gmus-artists")!;
-    for (const a of artists) {
+    listShell(pane, state, {
+      key: "artists", noun: "artist", newLabel: "＋ New Artist", searchPh: "Search artists…",
+      emptyText: "No artists yet — a singer is a NAME, a LOOK and a VOICE.",
+      items: artists, rowsClass: "gmus-artists",
+      match: (a, q) => a.name.toLowerCase().includes(q) || a.style.toLowerCase().includes(q),
+      onNew: () => { state.artistId = null; refresh(); },
+      row: (a) => {
       const row = document.createElement("button");
       row.className = "gmus-artist-card";
       row.innerHTML = `
@@ -892,8 +938,9 @@ export function initMusic(host: MusicHost): MusicViews {
           refresh();
         })();
       });
-      list.appendChild(row);
-    }
+        return row;
+      },
+    });
   }
 
   /** THE ARTIST PAGE — ‹ Artists on top; identity on the left, the LOOKS
@@ -1104,18 +1151,13 @@ export function initMusic(host: MusicHost): MusicViews {
     if (state.instrumentId !== undefined) { await renderInstrumentPage(pane, state, refresh); return; }
     const res = await api().musicInstruments?.();
     const instruments = res?.ok ? res.instruments : [];
-    pane.innerHTML = `
-      <div class="gmus-list">
-        <div class="office-toolbar">
-          <span class="gmus-count">${instruments.length} instrument${instruments.length === 1 ? "" : "s"}</span>
-          <button class="action-btn primary gmus-new">＋ New Instrument</button>
-        </div>
-        <div class="gmus-artists"></div>
-        <div class="gdoc-empty ${instruments.length ? "hidden" : ""}">No instruments yet — an instrument is a NAME, a SOUND line and a LOOK.</div>
-      </div>`;
-    pane.querySelector(".gmus-new")?.addEventListener("click", () => { state.instrumentId = null; refresh(); });
-    const list = pane.querySelector<HTMLElement>(".gmus-artists")!;
-    for (const inst of instruments) {
+    listShell(pane, state, {
+      key: "instruments", noun: "instrument", newLabel: "＋ New Instrument", searchPh: "Search instruments…",
+      emptyText: "No instruments yet — an instrument is a NAME, a SOUND line and a LOOK.",
+      items: instruments, rowsClass: "gmus-artists",
+      match: (i, q) => i.name.toLowerCase().includes(q) || i.description.toLowerCase().includes(q),
+      onNew: () => { state.instrumentId = null; refresh(); },
+      row: (inst) => {
       const looks = (inst.meta?.looks as Array<{ assetId: string }> | undefined) ?? [];
       const active = (inst.meta?.activeLook as number | undefined) ?? 0;
       const row = document.createElement("button");
@@ -1151,8 +1193,9 @@ export function initMusic(host: MusicHost): MusicViews {
           refresh();
         })();
       });
-      list.appendChild(row);
-    }
+        return row;
+      },
+    });
   }
 
   /** THE INSTRUMENT PAGE — ‹ Instruments on top; the INPUT on the left (name
@@ -1290,32 +1333,27 @@ export function initMusic(host: MusicHost): MusicViews {
     if (state.videoId !== undefined) { await renderVideoPage(pane, state, refresh); return; }
     const res = await api().mediaProjects?.();
     const projects = res?.ok ? res.projects : [];
-    pane.innerHTML = `
-      <div class="gmus-list">
-        <div class="office-toolbar">
-          <span class="gmus-count">${projects.length} video${projects.length === 1 ? "" : "s"}</span>
-          <button class="action-btn primary gmus-new">＋ New Video</button>
-        </div>
-        <div class="gmus-songs"></div>
-        <div class="gdoc-empty ${projects.length ? "hidden" : ""}">No music videos yet — ＋ New Video starts one.</div>
-      </div>`;
-    pane.querySelector(".gmus-new")?.addEventListener("click", () => {
-      void (async () => {
-        if (!api().mediaProjectSave) {
-          void host.confirm({ title: "Restart needed", body: "The video-project bridge isn't loaded — quit and relaunch the app (a renderer reload isn't enough after a main-process update).", confirmLabel: "OK" });
-          return;
-        }
-        const r = await api().mediaProjectSave?.(null, { title: "Untitled", scenes: { visuals: [] } });
-        if (!r?.ok || !r.project) {
-          void host.confirm({ title: "Couldn't create the video", body: r?.error ?? "Unknown error.", confirmLabel: "OK" });
-          return;
-        }
-        state.videoId = r.project.id;
-        refresh();
-      })();
-    });
-    const list = pane.querySelector<HTMLElement>(".gmus-songs")!;
-    for (const pr of projects) {
+    listShell(pane, state, {
+      key: "videos", noun: "video", newLabel: "＋ New Video", searchPh: "Search videos…",
+      emptyText: "No music videos yet — ＋ New Video starts one.",
+      items: projects,
+      match: (pr, q) => pr.title.toLowerCase().includes(q),
+      onNew: () => {
+        void (async () => {
+          if (!api().mediaProjectSave) {
+            void host.confirm({ title: "Restart needed", body: "The video-project bridge isn't loaded — quit and relaunch the app (a renderer reload isn't enough after a main-process update).", confirmLabel: "OK" });
+            return;
+          }
+          const r = await api().mediaProjectSave?.(null, { title: "Untitled", scenes: { visuals: [] } });
+          if (!r?.ok || !r.project) {
+            void host.confirm({ title: "Couldn't create the video", body: r?.error ?? "Unknown error.", confirmLabel: "OK" });
+            return;
+          }
+          state.videoId = r.project.id;
+          refresh();
+        })();
+      },
+      row: (pr) => {
       const card = document.createElement("button");
       card.className = "gmus-song-card";
       card.innerHTML = `
@@ -1340,8 +1378,9 @@ export function initMusic(host: MusicHost): MusicViews {
           refresh();
         })();
       });
-      list.appendChild(card);
-    }
+        return card;
+      },
+    });
   }
 
   /** THE VIDEO PAGE — left: title + prompt + the DUAL-COLUMN visual picker

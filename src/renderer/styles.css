@@ -18051,3 +18051,4 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmv-col.gmv-avail { grid-template-columns: none; display: flex; flex-direction: column; gap: 5px; }
 .gmv-prompt-tall { min-height: 160px; }
 .gmus-lookimg-solo { aspect-ratio: 4/3; }
+.gmus-pager-top .office-pager { padding: 0; }
