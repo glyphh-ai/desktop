@@ -18052,3 +18052,29 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmv-prompt-tall { min-height: 160px; }
 .gmus-lookimg-solo { aspect-ratio: 4/3; }
 .gmus-pager-top .office-pager { padding: 0; }
+
+/* — design rail resize grip + thumbnail imagery picker — */
+.gdz-rail-grip {
+  flex: none; width: 5px; cursor: col-resize;
+  background: transparent;
+}
+.gdz-rail-grip:hover { background: var(--accent); opacity: 0.5; }
+.gdz-img-picker-grid { width: 340px; padding: 8px; }
+.gdz-img-picker-search { width: 100%; margin-bottom: 8px; }
+.gdz-img-picker-thumbs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px;
+  max-height: 300px; overflow-y: auto;
+}
+.gdz-img-picker-thumb {
+  position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+  border: 1.5px solid var(--border-2); background: var(--bg) center / cover no-repeat;
+  cursor: pointer; padding: 0;
+}
+.gdz-img-picker-thumb:hover { border-color: var(--accent); }
+.gdz-img-picker-tag { position: absolute; right: 4px; top: 3px; font-size: 10px; color: #fff; text-shadow: 0 1px 3px #000; }
+.gdz-img-picker-name {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  font-size: 9px; color: #fff; background: rgba(0,0,0,0.55);
+  padding: 2px 5px; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

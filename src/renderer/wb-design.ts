@@ -30,6 +30,7 @@ interface DesignDoc {
   styles?: { radius?: number; borderWidth?: number; shadow?: string; density?: string; gradient?: { from: string; to: string; angle?: number } };
   assets?: DAsset[];
   imagery?: DImagery[];
+  canvas?: { rail?: number; view?: { x: number; y: number; scale: number }; items?: Record<string, { x: number; y: number; w?: number }> };
   sources?: DSource[];
 }
 
@@ -391,12 +392,35 @@ export function initDesign(host: DesignHost): DesignPanel {
             </div>
             <div class="gdz-canvas-hint">drag canvas pans · wheel zooms · drag a card's title to move it</div>
           </div>
+          <div class="gdz-rail-grip" title="Drag to resize"></div>
           <div class="gdz-rail"></div>
         </div>
       </div>`;
     body.querySelector(".gdz-back")?.addEventListener("click", () => { delete slot.file; delete slot.title; refresh(); });
 
     const rail = body.querySelector<HTMLElement>(".gdz-rail")!;
+    // The rail is DRAGGABLE: grab the grip, resize; the width persists.
+    if (doc.canvas?.rail) rail.style.width = `${doc.canvas.rail}px`;
+    const grip = body.querySelector<HTMLElement>(".gdz-rail-grip");
+    if (grip) {
+      let railDrag: { x: number; w: number } | null = null;
+      grip.addEventListener("mousedown", (ev) => {
+        railDrag = { x: ev.clientX, w: rail.getBoundingClientRect().width };
+        ev.preventDefault();
+      });
+      window.addEventListener("mousemove", (ev) => {
+        if (!railDrag) return;
+        const w = Math.min(560, Math.max(220, railDrag.w - (ev.clientX - railDrag.x)));
+        rail.style.width = `${w}px`;
+      });
+      window.addEventListener("mouseup", () => {
+        if (!railDrag) return;
+        railDrag = null;
+        doc.canvas ??= {};
+        doc.canvas.rail = Math.round(rail.getBoundingClientRect().width);
+        touched();
+      });
+    }
     const saveState = body.querySelector<HTMLElement>(".gdz-savestate")!;
     const nameInput = body.querySelector<HTMLInputElement>(".gdz-name")!;
     nameInput.value = doc.name;
@@ -427,7 +451,7 @@ export function initDesign(host: DesignHost): DesignPanel {
     });
 
     paintAll(body, doc);
-    wireCanvas(body.querySelector<HTMLElement>(".gdz-canvas")!, body.querySelector<HTMLElement>(".gdz-world")!);
+    wireCanvas(body.querySelector<HTMLElement>(".gdz-canvas")!, body.querySelector<HTMLElement>(".gdz-world")!, doc, touched);
     buildRail(rail, doc, file, touched);
     body.addEventListener("gdz-imagery-changed", () => touched());
   }
@@ -547,11 +571,38 @@ export function initDesign(host: DesignHost): DesignPanel {
   }
 
   /** Canvas physics: wheel zooms toward the cursor, dragging empty canvas
-   *  pans, dragging a card's grip moves that card in world space. */
-  function wireCanvas(stage: HTMLElement, world: HTMLElement): void {
-    let scale = 0.9, tx = 40, ty = 30;
+   *  pans, dragging a card's grip moves that card in world space. The VIEW
+   *  and every card's coords persist onto the document (debounced). */
+  function wireCanvas(stage: HTMLElement, world: HTMLElement, doc: DesignDoc, touched: () => void): void {
+    doc.canvas ??= {};
+    const v = doc.canvas.view;
+    let scale = v?.scale ?? 0.9, tx = v?.x ?? 40, ty = v?.y ?? 30;
     const apply = (): void => { world.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`; };
     apply();
+    // Saved coords land on their cards (built-ins + imagery share the keying).
+    const applySaved = (): void => {
+      for (const el of world.querySelectorAll<HTMLElement>(".gdz-art")) {
+        const key = el.dataset.assetId ? `img:${el.dataset.assetId}` : (el.dataset.art ?? "");
+        const pos = doc.canvas?.items?.[key];
+        if (pos) {
+          el.style.left = `${pos.x}px`;
+          el.style.top = `${pos.y}px`;
+          if (pos.w) el.style.width = `${pos.w}px`;
+        }
+      }
+    };
+    applySaved();
+    new MutationObserver(applySaved).observe(world, { childList: true });
+
+    let viewTimer: ReturnType<typeof setTimeout> | null = null;
+    const persistView = (): void => {
+      if (viewTimer) clearTimeout(viewTimer);
+      viewTimer = setTimeout(() => {
+        doc.canvas ??= {};
+        doc.canvas.view = { x: Math.round(tx), y: Math.round(ty), scale: Math.round(scale * 100) / 100 };
+        touched();
+      }, 500);
+    };
     stage.addEventListener("wheel", (ev) => {
       ev.preventDefault();
       const rect = stage.getBoundingClientRect();
@@ -561,12 +612,12 @@ export function initDesign(host: DesignHost): DesignPanel {
       ty = py - ((py - ty) / scale) * next;
       scale = next;
       apply();
+      persistView();
     }, { passive: false });
     let drag: { x: number; y: number; art?: HTMLElement; ax?: number; ay?: number } | null = null;
     stage.addEventListener("mousedown", (ev) => {
       const grip = (ev.target as HTMLElement).closest<HTMLElement>(".gdz-art-grip");
       const art = grip?.closest<HTMLElement>(".gdz-art") ?? undefined;
-      // Controls inside artifacts (color inputs etc.) keep their clicks.
       if (!art && (ev.target as HTMLElement).closest("input, button, select, textarea")) return;
       drag = art
         ? { x: ev.clientX, y: ev.clientY, art, ax: parseFloat(art.style.left) || 0, ay: parseFloat(art.style.top) || 0 }
@@ -584,9 +635,27 @@ export function initDesign(host: DesignHost): DesignPanel {
         drag.x = ev.clientX; drag.y = ev.clientY;
         apply();
       }
-      if (drag.art) return;
     };
-    const onUp = (): void => { drag = null; };
+    const onUp = (): void => {
+      if (drag?.art) {
+        // The card came to rest — its coords join the document.
+        const el = drag.art;
+        const key = el.dataset.assetId ? `img:${el.dataset.assetId}` : (el.dataset.art ?? "");
+        if (key) {
+          doc.canvas ??= {};
+          doc.canvas.items ??= {};
+          doc.canvas.items[key] = {
+            x: Math.round(parseFloat(el.style.left) || 0),
+            y: Math.round(parseFloat(el.style.top) || 0),
+            ...(el.style.width ? { w: Math.round(parseFloat(el.style.width)) } : {}),
+          };
+          touched();
+        }
+      } else if (drag) {
+        persistView();
+      }
+      drag = null;
+    };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
@@ -982,29 +1051,49 @@ export function initDesign(host: DesignHost): DesignPanel {
           const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
           const pool = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])]
             .filter((x) => x.status === "ready")
-            .filter((x) => !(doc.imagery ?? []).some((m) => m.assetId === x.id))
-            .slice(0, 40);
+            .filter((x) => !(doc.imagery ?? []).some((m2) => m2.assetId === x.id));
           if (!pool.length) {
             void host.confirm({ title: "Nothing to add", body: "The media library has no ready images or video yet — generate or upload some first.", confirmLabel: "OK" });
             return;
           }
+          // A searchable THUMBNAIL grid — the same library the Images page shows.
           const picker = document.createElement("div");
-          picker.className = "ws-popover gdesign-menu gdz-img-picker";
-          for (const x of pool) {
-            const b = document.createElement("button");
-            b.className = "ws-popover-item";
-            b.textContent = `${x.kind === "video" ? "▶ " : "◻ "}${x.title.slice(0, 44)}`;
-            b.addEventListener("click", () => {
-              picker.remove();
-              doc.imagery = [...(doc.imagery ?? []), { assetId: x.id, kind: x.kind === "video" ? "video" : "image", title: x.title }];
-              touched(); paintImageryRail();
-            });
-            picker.appendChild(b);
-          }
+          picker.className = "ws-popover gdesign-menu gdz-img-picker gdz-img-picker-grid";
+          picker.innerHTML = `
+            <input class="office-search gdz-img-picker-search" type="text" placeholder="Search the library…" spellcheck="false" autocomplete="off" />
+            <div class="gdz-img-picker-thumbs"></div>`;
+          const searchIn = picker.querySelector<HTMLInputElement>(".gdz-img-picker-search")!;
+          const thumbs = picker.querySelector<HTMLElement>(".gdz-img-picker-thumbs")!;
+          const paint = (q: string): void => {
+            thumbs.textContent = "";
+            const ql = q.toLowerCase();
+            for (const x of pool.filter((y) => !ql || y.title.toLowerCase().includes(ql)).slice(0, 60)) {
+              const cell = document.createElement("button");
+              cell.className = "gdz-img-picker-thumb";
+              cell.title = x.title;
+              cell.innerHTML = `<span class="gdz-img-picker-tag">${x.kind === "video" ? "▶" : ""}</span><span class="gdz-img-picker-name"></span>`;
+              (cell.querySelector(".gdz-img-picker-name") as HTMLElement).textContent = x.title.slice(0, 22);
+              if (x.mime.startsWith("image/")) {
+                void api().mediaUrl?.(x.id).then((r) => {
+                  if (r?.ok && r.url && cell.isConnected) cell.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+                });
+              }
+              cell.addEventListener("click", () => {
+                picker.remove();
+                // Adopt it — the canvas card appears immediately (paintAll).
+                doc.imagery = [...(doc.imagery ?? []), { assetId: x.id, kind: x.kind === "video" ? "video" : "image", title: x.title }];
+                touched(); paintImageryRail();
+              });
+              thumbs.appendChild(cell);
+            }
+          };
+          paint("");
+          searchIn.addEventListener("input", () => paint(searchIn.value.trim()));
           document.body.appendChild(picker);
           const r = add.getBoundingClientRect();
           picker.style.top = `${Math.min(r.bottom + 4, window.innerHeight - picker.offsetHeight - 8)}px`;
           picker.style.left = `${Math.min(r.left, window.innerWidth - picker.offsetWidth - 8)}px`;
+          searchIn.focus();
           const onDoc = (ev: MouseEvent): void => {
             if (!picker.contains(ev.target as Node)) { picker.remove(); document.removeEventListener("mousedown", onDoc, true); }
           };
