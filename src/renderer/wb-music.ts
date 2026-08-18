@@ -1463,7 +1463,7 @@ export function initMusic(host: MusicHost): MusicViews {
 
     // ── Generate / Regenerate — the songs pattern exactly ────────────────────
     const regenBtn = pane.querySelector<HTMLButtonElement>(".gmus-regen")!;
-    regenBtn.textContent = song.audioAssetId ? "Regenerate" : "Generate";
+    regenBtn.textContent = project.renderAssetId ? "Regenerate" : "Generate";
     regenBtn.addEventListener("click", () => {
       void (async () => {
         if (!promptIn.value.trim()) { void host.confirm({ title: "Give it a prompt first", confirmLabel: "OK" }); return; }
