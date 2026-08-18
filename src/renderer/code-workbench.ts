@@ -4187,6 +4187,21 @@ async function init(): Promise<void> {
       const agent = document.querySelector<HTMLElement>(".code-agent");
       return !!agent && agent.offsetParent !== null && !agent.closest(".echo-card-body");
     };
+    /** THE OPEN RULE (his rule, both tiles + ctl.openApp's front door): the
+     *  agent is NOT visible outside the wall → the command center closes and
+     *  the agent opens INTO THE NEXT WORKSPACE SLOT — the same rails coding
+     *  seat every other host uses (placeSlot → renderCodingIntoSlot adopts
+     *  the singleton), never a fresh Echo card. ORDER IS LOAD-BEARING: the
+     *  wall closes FIRST, in the return rule's leak-safe order (resetEcho
+     *  closes cards properly — an Echo-hosted agent survives via the forced
+     *  park — and persists the empty wall; closeEchoSurface then drops the
+     *  echo slot). placeSlot while Echo still owned the workspace was the
+     *  historic agent-dump bug. codingHosted() guards the double-place. */
+    const hostAgentInNextSlot = (): void => {
+      resetEcho();
+      closeEchoSurface();
+      if (!codingHosted()) placeSlot(makeSlot("coding"));
+    };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
       // HOME — the fixed first tile. The wall activates tiles DIRECTLY (this
@@ -4194,21 +4209,20 @@ async function init(): Promise<void> {
       // left the tile inert.
       if (t.slug === "glyphh-home") {
         if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
-        // THE OPEN RULE: new session (like the Glyphh icon) always removes an
-        // active layout — no pin exception. Reset first so the agent surface
-        // is reclaimed out of the layout's card, then start the session.
-        if (activeLayoutId != null || openList.some((x) => x.layoutId != null)) {
-          resetEcho();
-          void openAgentCard();
-        }
+        // Not visible → seat the agent in the next slot, THEN start the fresh
+        // session: newSessionInPlace's hosted check (and newChat's
+        // ensureCodeSection) must SEE the seated agent — the same
+        // adoption-before-ensureAgentSession order openAgentCard keeps.
+        hostAgentInNextSlot();
         (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
         return;
       }
       if (t.kind === "agent") {
         if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
-        // the wall's Glyphh tile IS the universal chat icon too
-        if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
-        void openAgentCard();
+        // Not visible → the same seat, resuming the session that's up (the
+        // repaint openAgentCard's codingHosted branch ran).
+        hostAgentInNextSlot();
+        ensureAgentSession();
         return;
       }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
@@ -4339,6 +4353,9 @@ async function init(): Promise<void> {
           // THE RETURN RULE (see agentVisibleOutsideWall): the agent is
           // already up outside the wall — the click means "back to my agent".
           if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
+          // Not visible → the SAME matrix as the wall's own tile: seat the
+          // agent in the next workspace slot first, then the fresh session.
+          hostAgentInNextSlot();
           (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
           return;
         }
