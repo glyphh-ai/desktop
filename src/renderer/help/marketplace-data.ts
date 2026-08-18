@@ -633,6 +633,32 @@ export function escMkt(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** A caught marketplace error → user-facing text. Transport-level failures
+ *  (fetch/socket refusals — the surface simply isn't reachable) get a helpful
+ *  line instead of raw stack noise; real server errors keep their text. */
+export function mktErrorText(err: unknown): string {
+  const raw = ((err instanceof Error ? err.message : String(err ?? "")) || "").trim();
+  if (!raw) return "Request failed.";
+  if (/fetch failed|failed to fetch|networkerror|load failed|econnrefused|econnreset|enotfound|etimedout|socket hang up|network request failed/i.test(raw)) {
+    return "The marketplace service isn't reachable — restart the local server?";
+  }
+  return raw;
+}
+
+/** The marketplace's inline notice banner — icon + message on a quiet surface
+ *  (never a raw red text row). `kind` picks the icon color: "error" for
+ *  failures, "info" for muted service states. */
+export function mktNoticeHtml(message: string, kind: "error" | "info" = "error"): string {
+  const icon = kind === "error"
+    ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+    : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+  return `
+    <div class="mkt-notice ${kind}" role="${kind === "error" ? "alert" : "status"}">
+      <span class="mkt-notice-icon">${icon}</span>
+      <span class="mkt-notice-text">${escMkt(message)}</span>
+    </div>`;
+}
+
 // Canonical domain per connection slug — feeds appIconInner's favicon fallback
 // so a real brand icon still shows if the Pipedream catalog icon isn't cached.
 const CONN_DOMAIN: Record<string, string> = {

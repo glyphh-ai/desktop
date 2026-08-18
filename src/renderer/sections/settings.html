@@ -211,31 +211,33 @@
               <div class="settings-panel" data-sub="developer">
                 <h2>Developer</h2>
                 <p class="section-desc">Publish to the Glyphh Marketplace — your developer identity, the developer agreement, your program standing, and how you get paid.</p>
-                <div id="dev-program-error" class="settings-error hidden"></div>
+                <!-- Filled by settings-developer.ts with the shared marketplace
+                     notice banner (mktNoticeHtml) — never raw red text. -->
+                <div id="dev-program-error" class="hidden"></div>
 
                 <h3 class="settings-subheading" style="margin-top:0;">Program status</h3>
-                <div class="acct-section">
-                  <div style="display:flex;align-items:center;gap:10px;">
+                <div class="acct-section dev-section">
+                  <div class="dev-status-row">
                     <span id="dev-status-chip" class="mkt-review-chip">—</span>
                     <span id="dev-status-explain" class="settings-hint" style="margin:0;flex:1;"></span>
                   </div>
                 </div>
 
                 <h3 class="settings-subheading">Signup — your developer profile</h3>
-                <div class="acct-section">
+                <div class="acct-section dev-section">
                   <p class="settings-hint" style="margin:0 0 12px;">One profile per organization OR per person — apps you publish carry whichever profile your org uses.</p>
                   <div id="dev-profiles-host"><div class="crud-empty">Loading…</div></div>
                 </div>
 
                 <h3 class="settings-subheading">Legal &amp; consent</h3>
-                <div class="acct-section">
+                <div class="acct-section dev-section">
                   <p class="settings-hint" style="margin:0 0 10px;">Publishing means agreeing to the developer agreement: sandbox rules, no data exfiltration beyond declared capabilities, payout terms, support falls to you.</p>
                   <a id="dev-agreement-link" href="https://glyphh.ai/developer-agreement">Read the developer agreement ↗</a>
                   <div id="dev-legal-body" style="margin-top:12px;"></div>
                 </div>
 
                 <h3 class="settings-subheading">Payout</h3>
-                <div class="acct-section">
+                <div class="acct-section dev-section">
                   <p class="settings-hint" style="margin:0 0 10px;">Earned marketplace revenue pays out monthly via Stripe Connect. Purchased or granted credits are never redeemable for cash — only earned revenue is payable, through this program.</p>
                   <div id="dev-payout-body"></div>
                 </div>

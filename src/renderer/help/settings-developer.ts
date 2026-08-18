@@ -20,7 +20,7 @@
  */
 
 import {
-  mkt, mktProgram, escMkt, mktDate, mktCreditsFromMicro,
+  mkt, mktProgram, escMkt, mktDate, mktCreditsFromMicro, mktErrorText, mktNoticeHtml,
   type MktProgramState, type MktEarningsPage, type MktPayout,
 } from "./marketplace-data.js";
 import { renderDeveloperProfiles, openMktDeveloper } from "./marketplace-dev.js";
@@ -28,19 +28,18 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 
 const AGREEMENT_URL = "https://glyphh.ai/developer-agreement";
 
-const errText = (err: unknown): string =>
-  (err instanceof Error ? err.message : String(err)) || "Request failed";
-
 function openExternalUrl(url: string): void {
   const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
   if (isWeb) window.open(url, "_blank", "noopener");
   else void window.glyphh.openExternal(url);
 }
 
+/** The panel's one error surface — the shared marketplace notice banner
+ *  (icon + message on a quiet surface), never a raw red text row. */
 function showError(msg: string): void {
   const el = document.getElementById("dev-program-error");
   if (!el) return;
-  el.textContent = msg;
+  el.innerHTML = mktNoticeHtml(msg);
   el.classList.remove("hidden");
 }
 
@@ -84,7 +83,7 @@ export async function loadDeveloperPanel(): Promise<void> {
     const me = await mkt.devMe();
     handle = me.org?.handle ?? me.personal?.handle ?? null;
     if (handle) state = await mktProgram.state(handle);
-  } catch (err) { failed = true; showError(errText(err)); }
+  } catch (err) { failed = true; showError(mktErrorText(err)); }
   if (epoch !== loadEpoch) return;
 
   renderStatus(state, failed, handle);
@@ -239,7 +238,7 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
   try { [earnings, payouts] = await Promise.all([mktProgram.earnings(handle), mktProgram.payouts(handle)]); }
   catch (err) {
     if (epoch !== loadEpoch) return;
-    body.innerHTML = `<div class="crud-form-error">${escMkt(errText(err))}</div>`;
+    body.innerHTML = mktNoticeHtml(mktErrorText(err));
     return;
   }
   if (epoch !== loadEpoch) return;

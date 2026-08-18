@@ -4,10 +4,11 @@
  *   • The public developer PROFILE (#mkt-dev) — avatar, bio, links, direct
  *     stars beside the across-their-apps rollup, their apps, their reviews,
  *     and the write-a-developer-review form (install-gated server-side).
- *   • The developer CONSOLE (#mkt-console) — create/edit the org or personal
- *     profile (avatar upload), the org's own listings with the credits
- *     pricing editor (monthly price + discount window), and each app's
- *     releases with submit-for-review + review-status chips.
+ *   • The developer CONSOLE (#mkt-console) — the org/personal profile as
+ *     TABS over one autosaving pane (avatar upload, implicit creation), the
+ *     org's own listings with the credits pricing editor (monthly price +
+ *     discount window), and each app's releases with submit-for-review +
+ *     review-status chips.
  *
  * The PROFILE section (cards + create form + wiring) is exported as
  * renderDeveloperProfiles — Settings → Developer (the M7 program signup area)
@@ -16,9 +17,9 @@
 
 import { confirmAction, promptAction } from "./shared.js";
 import {
-  mkt, escMkt, mktStarRow, mktDate, mktDiscountActive,
-  type MktDetail, type MktDeveloper, type MktRelease, type MktReview,
-  type MktOrgApp, type MktReleaseReviewStatus,
+  mkt, escMkt, mktStarRow, mktDate, mktDiscountActive, mktErrorText, mktNoticeHtml,
+  type MktDetail, type MktDeveloper, type MktDeveloperPatch, type MktRelease,
+  type MktReview, type MktOrgApp, type MktReleaseReviewStatus,
 } from "./marketplace-data.js";
 import {
   showMktView, openMktDetail, mktCachedDetails, mktBrowseRows,
@@ -235,45 +236,81 @@ function releaseChip(r: MktRelease): string {
   return `<span class="mkt-review-chip ${r.reviewStatus}">${RELEASE_CHIP[r.reviewStatus] || r.reviewStatus}</span>`;
 }
 
-/** A profile card in the console: the existing profile's edit form, or the
- *  invitation to create one for that scope. */
-function profileCardHtml(scope: "personal" | "org", dev: MktDeveloper | null): string {
-  const p = scope === "personal" ? "mc-p" : "mc-o";
-  if (!dev) {
-    return `
-      <div class="mkt-console-card" data-scope="${scope}">
-        <h4>${scope === "org" ? "Organization profile" : "Personal profile"}</h4>
-        <p class="settings-hint">No ${scope === "org" ? "org" : "personal"} developer profile yet.</p>
-        <button class="action-btn primary mc-create-btn" type="button" data-scope="${scope}">Create profile</button>
-      </div>`;
-  }
+// ── Developer profile section (shared: console + Settings → Developer) ────
+//
+// Organization / Personal are TABS over one pane — the active tab IS the
+// scope (no scope dropdown anywhere). No Save/Create buttons either: an
+// existing profile autosaves debounced like the Settings panels (the
+// .set-save-state chip beside the tabs reports it), and a missing profile
+// creates itself once its handle + display name are set — committed on blur,
+// never mid-keystroke, because the handle is permanent.
+
+type MktScope = "org" | "personal";
+
+/** The active tab survives re-renders (autosave → onChange → repaint). */
+let mcScope: MktScope = "org";
+let mcScopePinned = false;
+
+const HANDLE_RE = /^[a-z0-9][a-z0-9-]*$/;
+
+/** One field in the house form grammar: short label, hint as a muted line
+ *  under the input (never shouting inside the label), placeholders for
+ *  by-example guidance. */
+function mcFieldHtml(f: string, label: string, value: string, placeholder: string, opts: { hint?: string; wide?: boolean; textarea?: boolean } = {}): string {
+  const control = opts.textarea
+    ? `<textarea id="mc-${f}" class="settings-input mc-field" data-f="${f}" rows="3" placeholder="${escMkt(placeholder)}" spellcheck="true">${escMkt(value)}</textarea>`
+    : `<input id="mc-${f}" class="settings-input mc-field" data-f="${f}" value="${escMkt(value)}" placeholder="${escMkt(placeholder)}" spellcheck="false" autocomplete="off" />`;
   return `
-    <div class="mkt-console-card" data-scope="${scope}">
-      <h4>${scope === "org" ? "Organization profile" : "Personal profile"}
-        <span class="mkt-dev-handle">@${escMkt(dev.handle)}</span>
-        ${dev.ratingCount ? `<span class="mkt-rating" style="margin-left:auto;"><b>${dev.ratingAvg.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${dev.ratingCount})</span></span>` : ""}
-      </h4>
-      <div class="mkt-console-avatar-row">
-        <div class="mkt-dev-avatar" id="${p}-avatar">${dev.avatarUrl ? `<img src="${escMkt(dev.avatarUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>`}</div>
-        <div style="display:flex;flex-direction:column;gap:6px;">
-          <button class="action-btn mc-avatar-pick" type="button" data-handle="${escMkt(dev.handle)}" data-p="${p}">Change avatar…</button>
-          <input type="file" id="${p}-avatar-file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" />
-          <span class="proxy-field-hint">PNG/JPEG/GIF/WebP, ≤ 512 KB.</span>
-        </div>
+    <div class="acct-field${opts.wide ? " acct-field-wide" : ""}">
+      <label class="settings-label" for="mc-${f}">${label}</label>
+      ${control}
+      ${opts.hint ? `<span class="mc-field-hint">${opts.hint}</span>` : ""}
+    </div>`;
+}
+
+/** The active tab's pane when its profile EXISTS — identity row + autosaving
+ *  fields. */
+function profileEditorHtml(dev: MktDeveloper): string {
+  return `
+    <div class="mc-id-row">
+      <div class="mkt-dev-avatar mc-avatar">${dev.avatarUrl ? `<img src="${escMkt(dev.avatarUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>`}</div>
+      <div class="mc-id-main">
+        <b class="mc-id-name">${escMkt(dev.displayName)}</b>
+        <span class="mkt-dev-handle">@${escMkt(dev.handle)}${dev.ratingCount ? ` · ${dev.ratingAvg.toFixed(1)}★ (${dev.ratingCount})` : ""}</span>
       </div>
-      <label class="settings-label">Display name</label>
-      <input id="${p}-name" class="settings-input" value="${escMkt(dev.displayName)}" spellcheck="false" />
-      <label class="settings-label">Bio</label>
-      <textarea id="${p}-bio" class="settings-input" rows="3" spellcheck="true">${escMkt(dev.bio || "")}</textarea>
-      <label class="settings-label">Website</label>
-      <input id="${p}-website" class="settings-input" value="${escMkt(dev.website || "")}" placeholder="https://…" spellcheck="false" />
-      <label class="settings-label">Support email <span style="color:var(--text-2);font-weight:400;">— "Support by you" on every listing</span></label>
-      <input id="${p}-support" class="settings-input" value="${escMkt(dev.supportEmail || "")}" placeholder="help@…" spellcheck="false" />
-      <div class="settings-actions" style="margin-top:10px;display:flex;gap:8px;align-items:center;">
-        <span id="${p}-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-        <button class="action-btn mc-view-btn" type="button" data-handle="${escMkt(dev.handle)}">View public page</button>
-        <button class="action-btn primary mc-save-btn" type="button" data-handle="${escMkt(dev.handle)}" data-p="${p}">Save</button>
-      </div>
+      <button class="action-btn mc-avatar-pick" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change avatar…</button>
+      <input type="file" class="mc-avatar-file hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
+      <button class="action-btn mc-view-btn" type="button">View public page</button>
+    </div>
+    <div class="acct-row">
+      ${mcFieldHtml("displayName", "Display name", dev.displayName, "Acme Tools")}
+      ${mcFieldHtml("website", "Website", dev.website || "", "https://… (optional)")}
+    </div>
+    <div class="acct-row">
+      ${mcFieldHtml("bio", "Bio", dev.bio || "", "What you build (optional)", { wide: true, textarea: true })}
+    </div>
+    <div class="acct-row">
+      ${mcFieldHtml("supportEmail", "Support email", dev.supportEmail || "", "help@…", { hint: "Shown as “Support by you” on every listing." })}
+    </div>`;
+}
+
+/** The active tab's pane when its profile DOESN'T exist yet — the same form,
+ *  plus the permanent handle; it creates itself once handle + name are set. */
+function profileCreateHtml(scope: MktScope): string {
+  return `
+    <p class="mc-create-lead">${scope === "org"
+      ? "No organization profile yet — the whole org publishes under it."
+      : "No personal profile yet — publish under your own name."} Fill in a handle and display name and the profile creates itself.</p>
+    <div class="acct-row">
+      ${mcFieldHtml("handle", "Handle", "", "acme-tools", { hint: "Kebab-case, globally unique — this becomes your @handle and is permanent." })}
+      ${mcFieldHtml("displayName", "Display name", "", "Acme Tools")}
+    </div>
+    <div class="acct-row">
+      ${mcFieldHtml("bio", "Bio", "", "What you build (optional)", { wide: true, textarea: true })}
+    </div>
+    <div class="acct-row">
+      ${mcFieldHtml("website", "Website", "", "https://… (optional)")}
+      ${mcFieldHtml("supportEmail", "Support email", "", "help@…", { hint: "Shown as “Support by you” on every listing." })}
     </div>`;
 }
 
@@ -350,7 +387,7 @@ export async function loadMktConsole(): Promise<void> {
     <button class="mkt-back">‹ Back to marketplace</button>
     <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><span class="cur">Developer console</span></nav>
     <h1 class="mkt-console-title">Developer console</h1>
-    <p class="section-desc">Your marketplace identity, your listings, their pricing in credits, and the release review pipeline.</p>
+    <p class="mkt-console-sub">Your marketplace identity, your listings, their pricing in credits, and the release review pipeline.</p>
 
     <section class="mkt-dt-section">
       <h3>Developer profiles</h3>
@@ -362,7 +399,7 @@ export async function loadMktConsole(): Promise<void> {
       <h3>Your listings</h3>
       ${apps.length
         ? `<div class="mkt-console-apps">${apps.map((a) => consoleAppHtml(a, details.get(a.slug) ?? null)).join("")}</div>`
-        : `<p class="settings-hint">No published apps yet — build a Glyphh app and list it from Apps → the app → Marketplace tab.</p>`}
+        : `<div class="mkt-empty-card">No published apps yet — build a Glyphh app and list it from Apps → the app → Marketplace tab.</div>`}
     </section>`;
 
   const profilesHost = el.querySelector<HTMLElement>(".mc-profiles-host");
@@ -375,37 +412,9 @@ export async function loadMktConsole(): Promise<void> {
   wireConsole(el);
 }
 
-/** The create-profile form, mounted under the cards when "Create" is hit. */
-function createFormHtml(scope: "personal" | "org"): string {
-  return `
-    <div class="mkt-console-card" id="mc-create-card">
-      <h4>Create your ${scope === "org" ? "organization" : "personal"} developer profile</h4>
-      <label class="settings-label">Scope</label>
-      <select id="mc-new-scope" class="settings-input">
-        <option value="org"${scope === "org" ? " selected" : ""}>Organization — the whole org publishes under it</option>
-        <option value="personal"${scope === "personal" ? " selected" : ""}>Personal — just you</option>
-      </select>
-      <label class="settings-label">Handle <span style="color:var(--text-2);font-weight:400;">— kebab-case, globally unique, permanent</span></label>
-      <input id="mc-new-handle" class="settings-input" placeholder="acme-tools" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
-      <label class="settings-label">Display name</label>
-      <input id="mc-new-name" class="settings-input" placeholder="Acme Tools" spellcheck="false" />
-      <label class="settings-label">Bio <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-      <textarea id="mc-new-bio" class="settings-input" rows="3" spellcheck="true"></textarea>
-      <label class="settings-label">Website <span style="color:var(--text-2);font-weight:400;">(optional)</span></label>
-      <input id="mc-new-website" class="settings-input" placeholder="https://…" spellcheck="false" />
-      <label class="settings-label">Support email <span style="color:var(--text-2);font-weight:400;">— support falls to the developer</span></label>
-      <input id="mc-new-support" class="settings-input" placeholder="help@…" spellcheck="false" />
-      <div id="mc-new-error" class="crud-form-error hidden" style="margin-top:8px;"></div>
-      <div class="settings-actions" style="margin-top:10px;display:flex;gap:8px;">
-        <button id="mc-new-cancel" class="action-btn" type="button">Cancel</button>
-        <button id="mc-new-save" class="action-btn primary" type="button">Create profile</button>
-      </div>
-    </div>`;
-}
-
 /**
- * The developer-profile SECTION — the org + personal cards, the create form,
- * and all their wiring — rendered into `host`. Shared by the marketplace
+ * The developer-profile SECTION — Organization/Personal tabs over one pane
+ * (editor or create state) — rendered into `host`. Shared by the marketplace
  * console and Settings → Developer (M7 signup). `onChange` fires after a
  * successful create or avatar upload so the CALLER re-renders itself;
  * `onView` opens a public profile page (the console's marketplace view —
@@ -418,85 +427,146 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   let me: { personal: MktDeveloper | null; org: MktDeveloper | null } = { personal: null, org: null };
   let meError = "";
   try { me = await mkt.devMe(); }
-  catch (err) { meError = err instanceof Error ? err.message : String(err); }
+  catch (err) { meError = mktErrorText(err); }
+  // First paint lands on a tab that has a profile (org wins ties).
+  if (!mcScopePinned) mcScope = me.org || !me.personal ? "org" : "personal";
 
-  host.innerHTML = `
-    ${meError ? `<div class="crud-form-error">${escMkt(meError)}</div>` : ""}
-    <div class="mkt-console-profiles">
-      ${profileCardHtml("org", me.org)}
-      ${profileCardHtml("personal", me.personal)}
-    </div>
-    <div class="mc-create-host"></div>`;
+  let saveTimer = 0;
+  let statusTimer = 0;
+  let busy = false; // one write at a time — creation must never double-fire
 
-  // Create profile (org OR personal — the choice is explicit at creation).
-  host.querySelectorAll<HTMLButtonElement>(".mc-create-btn").forEach((b) => {
-    b.addEventListener("click", () => {
-      const formHost = host.querySelector<HTMLElement>(".mc-create-host");
-      if (!formHost) return;
-      formHost.innerHTML = createFormHtml(b.dataset.scope === "personal" ? "personal" : "org");
-      formHost.querySelector("#mc-new-cancel")?.addEventListener("click", () => { formHost.innerHTML = ""; });
-      formHost.querySelector("#mc-new-save")?.addEventListener("click", async () => {
-        const val = (id: string) => (formHost.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() || "";
-        const errEl = formHost.querySelector<HTMLElement>("#mc-new-error");
-        errEl?.classList.add("hidden");
-        const handle = val("mc-new-handle");
-        const displayName = val("mc-new-name");
-        if (!/^[a-z0-9][a-z0-9-]*$/.test(handle) || !displayName) {
-          if (errEl) { errEl.textContent = "A kebab-case handle and a display name are required."; errEl.classList.remove("hidden"); }
-          return;
-        }
-        const res = await mkt.devCreate({
-          scope: val("mc-new-scope") === "personal" ? "personal" : "org",
-          handle,
-          displayName,
-          ...(val("mc-new-bio") ? { bio: val("mc-new-bio") } : {}),
-          ...(val("mc-new-website") ? { website: val("mc-new-website") } : {}),
-          ...(val("mc-new-support") ? { supportEmail: val("mc-new-support") } : {}),
+  /** The one place a write reports itself (no Save button anywhere). */
+  const setStatus = (msg: string, kind: "success" | "error" | "" = ""): void => {
+    const el = host.querySelector<HTMLElement>(".mc-save-state");
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `set-save-state mc-save-state${kind ? ` ${kind}` : ""}`;
+    window.clearTimeout(statusTimer);
+    if (kind === "success") statusTimer = window.setTimeout(() => { el.textContent = ""; }, 2500);
+  };
+
+  const val = (f: string): string =>
+    host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`.mc-field[data-f="${f}"]`)?.value.trim() ?? "";
+
+  /** Autosave an existing profile — only the fields that actually changed. */
+  const saveExisting = async (dev: MktDeveloper): Promise<void> => {
+    if (busy) return;
+    const displayName = val("displayName");
+    // An empty name is an unfinished edit, not a save — say so and wait.
+    if (!displayName) { setStatus("Needs a display name", "error"); return; }
+    const patch: MktDeveloperPatch = {};
+    if (displayName !== dev.displayName) patch.displayName = displayName;
+    for (const f of ["bio", "website", "supportEmail"] as const) {
+      const v = val(f);
+      if (v !== (dev[f] || "")) patch[f] = v || null;
+    }
+    if (!Object.keys(patch).length) { setStatus(""); return; }
+    busy = true;
+    setStatus("Saving…");
+    const res = await mkt.devUpdate(dev.handle, patch);
+    busy = false;
+    if (!res.ok) { setStatus("Not saved", "error"); note(host, res.error); return; }
+    // Reconcile the snapshot the next dirty-check measures against; the inputs
+    // deliberately aren't rewritten (a keystroke mid-flight would be yanked).
+    Object.assign(dev, res.data ?? patch);
+    const nameEl = host.querySelector<HTMLElement>(".mc-id-name");
+    if (nameEl) nameEl.textContent = dev.displayName;
+    setStatus("Saved", "success");
+  };
+
+  /** Implicit creation — fires on blur (change), never mid-keystroke, once
+   *  the permanent handle and the display name are both present and valid. */
+  const create = async (): Promise<void> => {
+    if (busy) return;
+    const handle = val("handle");
+    const displayName = val("displayName");
+    if (!handle && !displayName) { setStatus(""); return; } // untouched form
+    if (!handle) { setStatus("Needs a handle", "error"); return; }
+    if (!HANDLE_RE.test(handle)) { setStatus("Handle must be kebab-case (a–z, 0–9, dashes)", "error"); return; }
+    if (!displayName) { setStatus("Needs a display name", "error"); return; }
+    busy = true;
+    setStatus("Creating…");
+    const res = await mkt.devCreate({
+      scope: mcScope,
+      handle,
+      displayName,
+      ...(val("bio") ? { bio: val("bio") } : {}),
+      ...(val("website") ? { website: val("website") } : {}),
+      ...(val("supportEmail") ? { supportEmail: val("supportEmail") } : {}),
+    });
+    busy = false;
+    if (!res.ok) { setStatus("Not created", "error"); note(host, res.error); return; }
+    setStatus("Created", "success");
+    opts.onChange(); // the caller re-renders; the pinned tab shows the editor
+  };
+
+  const wire = (dev: MktDeveloper | null): void => {
+    host.querySelectorAll<HTMLButtonElement>(".mkt-scope").forEach((b) => {
+      b.addEventListener("click", () => {
+        const scope: MktScope = b.dataset.scope === "personal" ? "personal" : "org";
+        if (scope === mcScope) return;
+        window.clearTimeout(saveTimer);
+        mcScope = scope;
+        mcScopePinned = true;
+        paint();
+      });
+    });
+
+    const commit = (): void => {
+      window.clearTimeout(saveTimer);
+      void (dev ? saveExisting(dev) : create());
+    };
+    host.querySelectorAll<HTMLElement>(".mc-field").forEach((f) => {
+      // Existing profiles debounce while typing, like every Settings panel.
+      // The create form commits on blur ONLY — the handle is permanent, so it
+      // must never be claimed off a half-typed value.
+      if (dev) {
+        f.addEventListener("input", () => {
+          window.clearTimeout(saveTimer);
+          saveTimer = window.setTimeout(commit, 700);
         });
-        if (res.ok) opts.onChange();
-        else if (errEl) { errEl.textContent = res.error; errEl.classList.remove("hidden"); }
-      });
-      formHost.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      f.addEventListener("change", commit);
     });
-  });
 
-  // Edit an existing profile.
-  host.querySelectorAll<HTMLButtonElement>(".mc-save-btn").forEach((b) => {
-    b.addEventListener("click", async () => {
-      const p = b.dataset.p!;
-      const val = (id: string) => (host.querySelector(`#${p}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
-      const status = host.querySelector<HTMLElement>(`#${p}-status`);
-      if (status) status.textContent = "Saving…";
-      const res = await mkt.devUpdate(b.dataset.handle!, {
-        displayName: val("name") || undefined,
-        bio: val("bio") || null,
-        website: val("website") || null,
-        supportEmail: val("support") || null,
-      });
-      if (status) status.textContent = res.ok ? "Saved ✓" : "";
-      if (!res.ok) note(host, res.error);
-    });
-  });
-  host.querySelectorAll<HTMLButtonElement>(".mc-view-btn").forEach((b) => {
-    b.addEventListener("click", () => opts.onView(b.dataset.handle!));
-  });
+    if (!dev) return;
+    host.querySelector(".mc-view-btn")?.addEventListener("click", () => opts.onView(dev.handle));
 
-  // Avatar upload (file input → bytes → the write path; sniffed server-side).
-  host.querySelectorAll<HTMLButtonElement>(".mc-avatar-pick").forEach((b) => {
-    const file = host.querySelector<HTMLInputElement>(`#${b.dataset.p}-avatar-file`);
-    if (!file) return;
-    b.addEventListener("click", () => file.click());
+    // Avatar upload (file input → bytes → the write path; sniffed server-side).
+    const pick = host.querySelector<HTMLButtonElement>(".mc-avatar-pick");
+    const file = host.querySelector<HTMLInputElement>(".mc-avatar-file");
+    if (!pick || !file) return;
+    pick.addEventListener("click", () => file.click());
     file.addEventListener("change", async () => {
       const f = file.files?.[0];
       file.value = "";
       if (!f) return;
       if (f.size > 512 * 1024) { note(host, "That image is over 512 KB — pick a smaller one."); return; }
       const bytes = new Uint8Array(await f.arrayBuffer());
-      const res = await mkt.devAvatar(b.dataset.handle!, bytes);
+      const res = await mkt.devAvatar(dev.handle, bytes);
       if (res.ok) opts.onChange();
       else note(host, res.error);
     });
-  });
+  };
+
+  const paint = (): void => {
+    const dev = mcScope === "org" ? me.org : me.personal;
+    host.innerHTML = `
+      ${meError ? mktNoticeHtml(meError) : ""}
+      <div class="mc-tabbar">
+        <div class="mkt-scope-tabs">
+          <button class="mkt-scope${mcScope === "org" ? " active" : ""}" type="button" data-scope="org">Organization</button>
+          <button class="mkt-scope${mcScope === "personal" ? " active" : ""}" type="button" data-scope="personal">Personal</button>
+        </div>
+        <span class="set-save-state mc-save-state"></span>
+      </div>
+      <div class="mkt-console-card mc-profile-pane">
+        ${dev ? profileEditorHtml(dev) : profileCreateHtml(mcScope)}
+      </div>`;
+    wire(dev);
+  };
+
+  paint();
 }
 
 function wireConsole(el: HTMLElement): void {
