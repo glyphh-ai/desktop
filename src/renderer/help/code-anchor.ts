@@ -18,9 +18,9 @@
  *
  * THREE INVARIANTS, each of which cost a real bug to learn:
  *
- *  1. LEFT/RIGHT flip with CSS `order`, never by moving DOM. `parkAgent()` in
- *     code-workbench.ts re-asserts the agent's DOM position before every rails
- *     rebuild, so a DOM-move approach fights the workbench on every render.
+ *  1. LEFT/RIGHT flip with CSS `order`, never by moving DOM. In a dock the
+ *     agent is a `.code-root` child (its flex home; `__wbParkAgent` puts it
+ *     there); the overlay reconciler leaves a docked agent alone.
  *  2. Collapsed mode RELOCATES the session buttons by MOVING the nodes.
  *     `#code-session-new` / `#code-session-history` are wired with
  *     addEventListener on the node itself (help/code.ts), so appendChild keeps
@@ -127,11 +127,14 @@ export function applyAnchor(next: AnchorMode = domMode()): void {
   if (mode === "none" && !document.querySelector("#code-wb-rails .ws-right-rail")) mode = "rail";
   el.dataset.anchor = mode;
   document.body.dataset.glyphhAnchor = mode;
-  // A DOCK mode needs the agent as `.code-root`'s DIRECT child (out of any Echo card,
-  // `agent-hosted` cleared) or none of the dock CSS above matches — the agent stays
-  // wherever it was hosted and NOTHING moves. Ask the workbench to re-home it.
+  // A DOCK mode needs the agent as `.code-root`'s DIRECT child (its flex home)
+  // or none of the dock CSS above matches. Ask the workbench to re-home it there
+  // and drop any Echo agent card. `rail` (and `none`) instead let the overlay
+  // reconciler decide: follow a coding-seat placeholder, or park home hidden.
   if (mode === "left" || mode === "right" || mode === "center") {
     (window as unknown as { __wbParkAgent?: () => void }).__wbParkAgent?.();
+  } else {
+    (window as unknown as { __wbSyncAgent?: () => void }).__wbSyncAgent?.();
   }
   applyFraction();
   const collapsed = mode === "center";

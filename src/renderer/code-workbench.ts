@@ -871,11 +871,11 @@ async function init(): Promise<void> {
       }
     }
     // Keep the agent VISIBLE when a panel opens. A DOCKED agent (anchor left/right)
-    // lives on `.code-root` and stays put — leave it alone. But a GRID-hosted agent
-    // with no coding seat would be orphaned: renderRails parks the singleton
-    // `.code-agent` and, with no coding slot to re-home it, it vanishes (the bug —
-    // opening a panel wiped the agent). Give it a seat FIRST (leftmost) so the new
-    // panel lands to its right and the agent stays on screen.
+    // lives on `.code-root` and stays put — leave it alone. A rail-hosted agent is
+    // the overlay following its coding-seat placeholder; opening a panel without
+    // its own seat would leave no placeholder for the overlay to follow (the agent
+    // would park home, hidden). Give it a seat FIRST (leftmost) so the new panel
+    // lands to its right and the agent stays on screen.
     for (const rail of rails) {
       // Never auto-stack under the agent seat: a rail holding it keeps its
       // column, so the first new item opens BESIDE the agent — one slot to its
@@ -1290,47 +1290,12 @@ async function init(): Promise<void> {
     saveLayout();
   }
 
-  /** Return the live agent DOM to its home column (before the workbench
-   *  aside). Called before any rails rebuild and when the coding tile closes. */
-  function parkAgent(force = false): void {
-    const agent = document.querySelector<HTMLElement>(".code-agent");
-    const aside = document.getElementById("code-workbench");
-    // LEAVE AN ECHO-HOSTED AGENT ALONE. renderRails wipes only `#code-wb-rails`;
-    // an agent living in an Echo card (`.echo-card-body`, a DIFFERENT container)
-    // survives that wipe untouched, so parking it here just STEALS it from its
-    // card and orphans it — which read as the agent vanishing / getting "docked"
-    // when a panel opened. Only park a RAIL-hosted agent (whose slot really is
-    // about to be rebuilt); renderCodingIntoSlot re-homes that one after.
-    //
-    // `force` is for callers whose Echo card is GOING AWAY (closeCard's
-    // teardown, clearCardContent, the dock reclaim): there the guard is fatal
-    // — refusing to park lets the card's DOM removal destroy the singleton,
-    // after which the agent can never be opened again.
-    const inEchoCard = !!agent?.closest(".echo-card-body");
-    if (agent && aside && (force || !inEchoCard) && agent.parentElement !== aside.parentElement) {
-      aside.parentElement!.insertBefore(agent, aside);
-      document.querySelector(".code-root")?.classList.remove("agent-hosted");
-    }
-  }
-
-  /** Move any live singleton still inside a dying — possibly already DETACHED
-   *  — Echo card back home by DIRECT reference. parkAgent/adoptComposer find
-   *  their targets via document.querySelector, which cannot see into a
-   *  detached subtree: when a rails rebuild wiped `#code-wb-rails` (Echo cards
-   *  live inside it) before closeCard's deferred teardown ran, the deferred
-   *  park found nothing, card.remove() destroyed the one `.code-agent`, and
-   *  the agent was gone for the session ("The agent is unavailable."). This
-   *  is the last line of defense before a card's DOM goes away. */
-  function rescueStraySingletons(card: HTMLElement): void {
-    const agent = card.querySelector<HTMLElement>(".code-agent");
-    const aside = document.getElementById("code-workbench");
-    if (agent && aside?.parentElement) {
-      aside.parentElement.insertBefore(agent, aside);
-      document.querySelector(".code-root")?.classList.remove("agent-hosted");
-    }
-    // A stray composer (adopted into a Home card that is going away) returns
-    // to the agent's tail — its one true home; appendChild keeps the "composer
-    // is the agent's LAST child" contract parkThread depends on.
+  /** A stray composer (adopted onto the Home landing whose card is going away)
+   *  returns to the agent's tail — its one true home; appendChild keeps the
+   *  "composer is the agent's LAST child" contract parkThread depends on. The
+   *  agent node itself is never in a card now (it lives in the overlay), so
+   *  only the composer can strand. */
+  function rescueStrayComposer(card: HTMLElement): void {
     const comp = card.querySelector<HTMLElement>(".code-composer");
     if (comp) {
       const home = document.querySelector<HTMLElement>(".code-agent");
@@ -1340,9 +1305,9 @@ async function init(): Promise<void> {
   }
 
   /** Return the live #code-thread to its home in .code-agent (before any
-   *  rails rebuild, and when the transcript panel closes). Same contract as
-   *  parkAgent — adopt on render, park before wipe. insertBefore the composer,
-   *  NEVER appendChild: the composer must stay the agent's last child. */
+   *  rails rebuild, and when the transcript panel closes). Adopt on render,
+   *  park before wipe. insertBefore the composer, NEVER appendChild: the
+   *  composer must stay the agent's last child. */
   function parkThread(): void {
     const thread = document.getElementById("code-thread");
     const agent = document.querySelector<HTMLElement>(".code-agent");
@@ -1375,8 +1340,8 @@ async function init(): Promise<void> {
   }
 
   /** Return every hosted SECTION's singleton DOM to the hidden #page-body pen
-   *  (before any rails rebuild, and when a section panel closes). The same
-   *  contract as parkAgent — adopt on render, park before wipe. */
+   *  (before any rails rebuild, and when a section panel closes). Adopt on
+   *  render, park before wipe. */
   function parkSections(): void {
     // The dashboard may hold the agent's footer — it must never ride a
     // section into the hidden pen.
@@ -1432,10 +1397,9 @@ async function init(): Promise<void> {
       }
       // DOCKED anchor (center/left/right): the agent must live as `.code-root`'s
       // DIRECT CHILD — the ONLY DOM position the dock CSS (`.code-root[data-anchor]
-      // > .code-agent`) can style. Hosting it in an Echo card leaves `data-anchor`
-      // pointing at an element that isn't there, which is why the dock never did
-      // anything. Re-home it (renderRails → parkAgent clears `agent-hosted` and moves
-      // the singleton back), then apply the dock. NEVER open the Echo wall when docked.
+      // > .code-agent`) can style. applyAnchor's __wbParkAgent re-homes it there
+      // (out of any Echo card) and the overlay reconciler hides its holder. NEVER
+      // open the Echo wall when docked.
       if (section === "code" && anchorMode() !== "rail") {
         renderRails();
         applyAnchor();
@@ -1469,7 +1433,6 @@ async function init(): Promise<void> {
   function renderRails(): void {
     const container = document.getElementById("code-wb-rails");
     if (!container) return;
-    parkAgent();
     parkThread();
     parkSections();
     // Custom slot heights (drag-set or layout-set) live as inline flex on the
@@ -1554,6 +1517,9 @@ async function init(): Promise<void> {
     applyResponsiveWidths();
     // If a slot was maximized before the re-render, keep it so.
     paintFullscreenClasses();
+    // Re-arm the agent overlay: a rebuild may have added a coding-seat
+    // placeholder (follow it) or removed one (park the agent home).
+    scheduleAgentSync();
   }
 
   /** Vertical drop zone between rails (or at the far ends). Dropping a slot
@@ -2001,10 +1967,11 @@ async function init(): Promise<void> {
     });
   };
 
-  // ── Glyphh seat (view "coding") — the SAME agent, reparented into a tile ──
-  // The slot hosts the live .code-agent element (thread, composer, everything
-  // — one runtime, shared sessions). The header gains the session controls:
-  // title on the left, history dropdown + new-session on the right.
+  // ── Glyphh seat (view "coding") — the SAME agent, overlaid on a placeholder ──
+  // The slot holds only a .ws-agent-placeholder; the live .code-agent (thread,
+  // composer, everything — one runtime, shared sessions) sits in the fixed
+  // overlay layer and follows it. The agent's own head carries the session
+  // controls: title on the left, history dropdown + new-session on the right.
   /**
    * Echo, phase 1 — EVERYTHING, on one three.js wall.
    *
@@ -3420,19 +3387,15 @@ async function init(): Promise<void> {
       // why closing on web left the session as the tab's resume target.
       // keepSession: the agent was DOCKED (parked out to .code-root) — the card
       // is an empty husk, the session lives on in the dock. Never forget it.
-      if (!opts?.keepSession && (e.tile.kind === "agent" || card.querySelector(".code-agent"))) {
+      if (!opts?.keepSession && (e.tile.kind === "agent" || card.querySelector(".ws-agent-placeholder"))) {
         (window as unknown as { __glyphhForgetSession?: () => void }).__glyphhForgetSession?.();
       }
-      // SINGLETONS ARE RESCUED NOW, not at the deferred zoom-back teardown.
-      // Callers that close a card and then synchronously rebuild the rails
-      // (hostAgentInNextSlot's resetEcho → closeEchoSurface → placeSlot) wipe
-      // `#code-wb-rails` — and the Echo cards live INSIDE it — long before the
-      // 380ms teardown fires. Once the card is detached, the deferred
-      // parkAgent(true) (a document query) can't find the agent, card.remove()
-      // destroys the singleton, and the agent is unrecoverable. Park the agent
-      // and reclaim the composer while the card is still attached; the
-      // zoom-back animates an empty card body, which is fine.
-      if (card.querySelector(".code-agent")) parkAgent(true);
+      // The agent is NEVER inside a card now (it lives in the overlay layer and
+      // only FOLLOWS a placeholder), so closing an agent card just drops the
+      // placeholder — the reconciler parks the agent home on the next frame.
+      // Only a stray composer (adopted onto a Home landing that is going away)
+      // must be reclaimed while the card is still attached.
+      if (card.querySelector(".ws-agent-placeholder")) scheduleAgentSync();
       if (card.querySelector(".code-composer")) (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
       e.card = undefined;
       e.open = false;
@@ -3466,9 +3429,9 @@ async function init(): Promise<void> {
         ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
-        // the card's DOM goes away (same contract as parkSections). The agent
-        // + composer were already parked synchronously above; the finally's
-        // rescueStraySingletons backstops anything that re-entered since.
+        // the card's DOM goes away (same contract as parkSections). The
+        // composer was already reclaimed synchronously above; the finally's
+        // rescueStrayComposer backstops anything that re-entered since.
         try {
           const pen = document.getElementById("page-body");
           card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
@@ -3486,10 +3449,10 @@ async function init(): Promise<void> {
             }
           }
         } finally {
-          // NEVER destroy the singletons with the card — whatever path got us
-          // here (including a rails wipe that already detached this card, where
-          // document queries go blind), move them home by direct reference.
-          rescueStraySingletons(card);
+          // NEVER destroy the composer with the card — if a Home landing card
+          // is going away with the footer still adopted into it, move it home
+          // by direct reference (document queries go blind on a detached card).
+          rescueStrayComposer(card);
           card.remove();   // NEVER leave a zombie card
         }
       }, 380);
@@ -3732,13 +3695,14 @@ async function init(): Promise<void> {
       const card = openShell(entry);
       if (!card) return null;
       card.classList.add("echo-agent-card");
-      const agent = document.querySelector<HTMLElement>(".code-agent");
-      // A DOCKED agent (global anchor) is PERMANENT — never steal it out of the dock
-      // into an Echo card (that sets `agent-hosted`, which hides the dock). Only the
-      // in-workspace `rail` anchor lets the agent be hosted as a card/seat.
-      if (agent && anchorMode() === "rail") {
-        card.querySelector<HTMLElement>(".echo-card-body")!.appendChild(agent);
-        document.querySelector(".code-root")?.classList.add("agent-hosted");
+      // A DOCKED agent (global anchor) is PERMANENT — never host it as a card
+      // (the dock is its home). Only the in-workspace `rail` anchor hosts the
+      // agent as a card/seat: the body holds a PLACEHOLDER the overlay follows,
+      // never the agent node itself.
+      if (anchorMode() === "rail") {
+        card.querySelector<HTMLElement>(".echo-card-body")!.innerHTML =
+          `<div class="ws-agent-placeholder" data-agent-host="echo"></div>`;
+        scheduleAgentSync();
       }
       // The agent NEVER lands on an empty state: use the session that's up,
       // else the most recent one, else start a fresh session. (Adoption runs
@@ -4151,7 +4115,8 @@ async function init(): Promise<void> {
     /** Tear a card's content down (agent/sections park, PTYs die, RPA
      *  unhooks) WITHOUT closing the card — the pin retarget reuses it. */
     const clearCardContent = (e: TileEntry, card: HTMLElement): void => {
-      if (card.querySelector(".code-agent")) parkAgent(true);
+      // An agent placeholder just drops — the overlay parks the agent home.
+      if (card.querySelector(".ws-agent-placeholder")) scheduleAgentSync();
       const pen = document.getElementById("page-body");
       card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
         sec.classList.remove("active", "wb-hosted");
@@ -4240,42 +4205,36 @@ async function init(): Promise<void> {
      *  agent is ALREADY VISIBLE OUTSIDE the wall means "get me back to my
      *  agent" — close the command center, nothing else (no wall reset churn
      *  the user can see, no second agent card, no new session). The
-     *  visible-agent notion is the rail-session-click one (69383cd2): the
-     *  live `.code-agent` with a real offsetParent — a rails coding slot or
-     *  the docked anchor. An agent hosted INSIDE an Echo card (parkAgent's
-     *  own `.echo-card-body` boundary) does NOT count: that click keeps the
+     *  visible-agent notion is the rail-session-click one (69383cd2): a rails
+     *  coding seat is up (the overlay is following it) or the anchor is docked.
+     *  An agent hosted as an Echo CARD does NOT count: that click keeps the
      *  open rule below. Callers run resetEcho() before closeEchoSurface()
      *  because a bare surface close skips closeCard — an active layout would
      *  stay in the persisted wall pref (resurrecting at next boot) and its
      *  cards would die without parking; the reset closes them properly,
      *  saves the layout's memory, and persists the now-empty wall. */
     const agentVisibleOutsideWall = (): boolean => {
-      const agent = document.querySelector<HTMLElement>(".code-agent");
-      return !!agent && agent.offsetParent !== null && !agent.closest(".echo-card-body");
+      if (anchorMode() !== "rail") return true;   // docked — always on screen
+      // A rails coding seat (the overlay follows it). An Echo agent CARD is not
+      // a coding rail slot, so it correctly does NOT count.
+      return codingHosted();
     };
     /** THE OPEN RULE (his rule, both tiles + ctl.openApp's front door): the
      *  agent is NOT visible outside the wall → the command center closes and
      *  the agent opens INTO THE NEXT WORKSPACE SLOT — the same rails coding
-     *  seat every other host uses (placeSlot → renderCodingIntoSlot adopts
-     *  the singleton), never a fresh Echo card. ORDER IS LOAD-BEARING: the
-     *  wall closes FIRST, in the return rule's leak-safe order (resetEcho
-     *  closes cards properly — an Echo-hosted agent survives via the forced
-     *  park — and persists the empty wall; closeEchoSurface then drops the
-     *  echo slot). placeSlot while Echo still owned the workspace was the
-     *  historic agent-dump bug. codingHosted() guards the double-place. */
+     *  seat every other host uses (placeSlot → renderCodingIntoSlot writes the
+     *  placeholder the overlay follows), never a fresh Echo card. ORDER IS
+     *  LOAD-BEARING: the wall closes FIRST, in the return rule's leak-safe order
+     *  (resetEcho closes cards properly and persists the empty wall;
+     *  closeEchoSurface then drops the echo slot). placeSlot while Echo still
+     *  owned the workspace was the historic agent-dump bug. codingHosted()
+     *  guards the double-place. */
     const hostAgentInNextSlot = (): void => {
       // The HOME landing may hold the live composer — reclaim it BEFORE the
-      // seat renders (the same adoption-first ordering openAgentCard keeps),
-      // so the coding slot never adopts an agent with no input.
+      // seat renders, so the coding slot's agent never shows with no input.
       (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
       resetEcho();
       closeEchoSurface();
-      // SELF-HEAL, never a dead end: a coding slot whose adoption failed (the
-      // seat exists in the rails model but no `.code-agent` actually sits in a
-      // rail) must not count as hosted — close it and seat again fresh, or the
-      // model-only codingHosted() guard wedges every further click into a
-      // no-op against a panel that says "unavailable".
-      if (codingHosted() && !document.querySelector(".ws-rail-slot .code-agent")) closeAllOfView("coding");
       if (!codingHosted()) placeSlot(makeSlot("coding"));
     };
     /** THE GLYPHH CLICK (his rule, verbatim): the glyphh icon does EXACTLY
@@ -4982,35 +4941,16 @@ async function init(): Promise<void> {
   }
 
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
-    // The singleton may be mid-flight for a few frames — a closing Echo card's
-    // deferred teardown (closeCard's 380ms zoom-back) can still hold it, and
-    // its backstop parks it home when the timer fires. NEVER paint a dead
-    // "unavailable" panel for that race: show a pending state, retry the
-    // adoption, and only give up with a message that names the way out (the
-    // next Glyphh click closes a seat with no agent and seats fresh —
-    // hostAgentInNextSlot's self-heal).
-    const adopt = (tries: number): void => {
-      if (!body.isConnected) return;   // the rails re-rendered — a fresh render owns the seat
-      const agent = document.querySelector<HTMLElement>(".code-agent");
-      if (!agent) {
-        if (tries === 0) {
-          body.classList.add("ws-agent-pending");
-          body.innerHTML = `<div class="ws-empty">Preparing the agent…</div>`;
-        }
-        if (tries < 60) { window.setTimeout(() => adopt(tries + 1), 50); return; }
-        body.innerHTML = `<div class="ws-empty">The agent is unavailable — click the Glyphh tile to retry.</div>`;
-        return;
-      }
-      body.classList.remove("ws-agent-pending");
-      body.innerHTML = "";
-      // The coding panel has NO header row — the agent's own head carries the
-      // session title + history/+ controls (help/code.ts wires them).
-      wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
-      body.classList.add("ws-coding-body");
-      body.appendChild(agent);
-      document.querySelector(".code-root")?.classList.add("agent-hosted");
-    };
-    adopt(0);
+    // The coding seat holds only a PLACEHOLDER rect — the live `.code-agent`
+    // sits in the fixed `#code-agent-layer` and follows this element each frame
+    // (the same mechanism app slots use). No adopt/retry, no "unavailable"
+    // race: the agent is always mounted, this just tells the overlay where to
+    // land. The coding panel has NO header row — the agent's own head carries
+    // the session title + history/+ controls (help/code.ts wires them).
+    wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
+    body.classList.add("ws-coding-body");
+    body.innerHTML = `<div class="ws-agent-placeholder" data-agent-host="coding"></div>`;
+    scheduleAgentSync();
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
@@ -5049,6 +4989,87 @@ async function init(): Promise<void> {
     document.body.appendChild(appLayer);
     return appLayer;
   }
+
+  // ── The agent overlay — the ONE .code-agent, mounted once, never re-homed ──
+  // The rail coding seat and the echo agent card each render only a
+  // `.ws-agent-placeholder`; the live `.code-agent` sits in a stable
+  // fixed-position holder inside `#code-agent-layer` and follows whichever
+  // placeholder is showing, each frame (the same mechanism app views use). It
+  // is NEVER re-parented between hosts, so the composer/thread never re-mount —
+  // mid-run typing, staged notes and scroll position survive by construction.
+  //
+  // The ONE exception is a DOCK: left/right/center/none keep the agent as a
+  // `.code-root` child (its in-flow "home"), because the dock is a real flex
+  // layout the dock CSS styles at that position. So the agent has exactly TWO
+  // homes — the overlay holder (rail-hosted) and `.code-root` (docked/hidden) —
+  // and this reconciler moves it between just those two, driven by one question:
+  // is a coding-seat / echo-card placeholder visible while the anchor is `rail`?
+  let agentLayer: HTMLDivElement | null = null;
+  let agentHolder: HTMLDivElement | null = null;
+  let agentSyncRaf = 0;
+
+  function ensureAgentLayer(): HTMLDivElement {
+    if (agentLayer && agentLayer.isConnected) return agentLayer;
+    agentLayer = document.createElement("div");
+    agentLayer.id = "code-agent-layer";
+    agentHolder = document.createElement("div");
+    agentHolder.className = "ws-agent-holder";
+    agentHolder.style.display = "none";
+    agentLayer.appendChild(agentHolder);
+    document.body.appendChild(agentLayer);
+    return agentLayer;
+  }
+
+  /** The agent's in-flow HOME: a direct child of `.code-root`, immediately
+   *  before the workbench aside. Dock modes and the hidden `rail`-default state
+   *  both live here (CSS decides which shows). MOVE, never clone. */
+  function parkAgentHome(): void {
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    const aside = document.getElementById("code-workbench");
+    if (agent && aside?.parentElement && agent.parentElement !== aside.parentElement) {
+      aside.parentElement.insertBefore(agent, aside);
+    }
+  }
+
+  /** The single visible agent placeholder (a rail coding seat or the echo agent
+   *  card). At most one shows at a time; the seat wins if somehow both exist. */
+  function activeAgentPlaceholder(): HTMLElement | null {
+    const seat = document.querySelector<HTMLElement>(".ws-rail-slot .ws-agent-placeholder");
+    const cand = seat ?? document.querySelector<HTMLElement>(".ws-agent-placeholder");
+    if (!cand) return null;
+    const rect = cand.getBoundingClientRect();
+    if (rect.width > 24 && rect.height > 24 && cand.offsetParent !== null) return cand;
+    return null;
+  }
+
+  /** Reconcile the agent overlay against the current placeholder each frame —
+   *  the same rAF loop, guard var and auto-stop as `syncAppViews`. While the
+   *  anchor is a dock (or nothing hosts the agent) the loop parks the agent home
+   *  and stops; a fresh placeholder re-arms it via `scheduleAgentSync`. */
+  function syncAgentView(): void {
+    ensureAgentLayer();
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    const docked = anchorMode() !== "rail";
+    const ph = docked ? null : activeAgentPlaceholder();
+    if (agent && ph && agentHolder) {
+      if (agent.parentElement !== agentHolder) agentHolder.appendChild(agent);
+      const rect = ph.getBoundingClientRect();
+      agentHolder.style.display = "";
+      agentHolder.style.left = `${Math.round(rect.left)}px`;
+      agentHolder.style.top = `${Math.round(rect.top)}px`;
+      agentHolder.style.width = `${Math.round(rect.width)}px`;
+      agentHolder.style.height = `${Math.round(rect.height)}px`;
+      agentSyncRaf = requestAnimationFrame(syncAgentView);
+    } else {
+      if (agentHolder) agentHolder.style.display = "none";
+      parkAgentHome();   // dock CSS shows it; the rail default hides it
+      agentSyncRaf = 0;
+    }
+  }
+  function scheduleAgentSync(): void {
+    if (!agentSyncRaf) agentSyncRaf = requestAnimationFrame(syncAgentView);
+  }
+  (window as unknown as { __wbSyncAgent?: () => void }).__wbSyncAgent = scheduleAgentSync;
 
   function appSlots(): AppSlot[] {
     return rails.flatMap((r) => r.slots).filter((s): s is AppSlot => s.view === "app");
@@ -8200,17 +8221,17 @@ async function init(): Promise<void> {
   // The agent dock changes how much width the rails get, but the workbench owns
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
-  // Re-home the agent OUT of any Echo card back to `.code-root`'s direct child (clearing
-  // `agent-hosted`) — the ONLY DOM spot the dock CSS (`.code-root[data-anchor] > .code-agent`)
-  // can style. applyAnchor() calls this whenever the anchor is a dock mode, so PICKING the
-  // dock from the menu finally moves the agent. Lightweight (no render) to avoid recursion.
+  // Re-home the agent to `.code-root`'s direct child — the ONLY DOM spot the
+  // dock CSS (`.code-root[data-anchor] > .code-agent`) can style. applyAnchor()
+  // calls this whenever the anchor is a dock mode, so PICKING the dock lands the
+  // agent in its flex home; the overlay reconciler sees a non-`rail` anchor and
+  // parks it there (and hides the overlay holder). Lightweight (no render).
   (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => {
-    // FORCE: this is the dock RECLAIMING the agent — pulling it out of an
-    // Echo card is the entire point, so the echo-hosted guard must not apply.
-    parkAgent(true);
-    // Docked → the Echo card the agent lived in is now an empty husk. Close it
+    parkAgentHome();
+    // Docked → any Echo agent card is now a placeholder husk. Close it
     // (session stays alive) so a docked agent isn't shadowed by a blank panel.
     echoCtl?.detachAgent();
+    scheduleAgentSync();
   };
   // The collapsed bar's transcript button — TOGGLES the transcript panel:
   // open it if absent, close it (parking the thread home) if present.

@@ -1222,7 +1222,10 @@ const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? 
  *  guarantees a coding slot without clearing). Empty workspace → the full
  *  Glyphh-mark move: agent full screen ("agent"). */
 function ensureCodeSection(): void {
-  if (document.querySelector(".code-root.agent-hosted")) return;
+  // Already visible → nothing to do: a coding-seat placeholder is up (the agent
+  // overlay follows it) or the agent is docked (not a `rail` anchor).
+  if (anchorMode() !== "rail") return;
+  if (document.querySelector(".ws-rail-slot .ws-agent-placeholder, .echo-agent-card .ws-agent-placeholder")) return;
   const hasPanels = !!document.querySelector("#code-wb-rails .ws-rail-slot");
   gotoSection(hasPanels ? "code" : "agent");
 }
@@ -4830,10 +4833,10 @@ export function initCode(): void {
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    // A PENDING seat (.ws-agent-pending — renderCodingIntoSlot is mid-retry
-    // adopting the singleton) counts as hosted: bouncing to gotoSection("agent")
-    // here would raise Echo again on top of the seat that is about to fill.
-    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent, .ws-rail-slot .ws-agent-pending");
+    // A coding-seat or echo-card placeholder means the agent overlay is already
+    // on screen: bouncing to gotoSection("agent") here would raise Echo again on
+    // top of the seat.
+    const hosted = !!document.querySelector(".echo-card .ws-agent-placeholder, .ws-rail-slot .ws-agent-placeholder");
     if (hosted) return;
     // A DOCKED agent (global anchor) stays exactly where it is on a new session —
     // never full-screened. Just re-assert the dock so the empty thread renders in place.

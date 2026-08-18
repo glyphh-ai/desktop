@@ -137,6 +137,9 @@ function stub(overrides) {
 
 window.yo = stub(YO_OVERRIDES);
 window.wb = stub(WB_OVERRIDES);
+// The renderer bridge renamed yo -> glyphh; the stub proxy resolves unknown
+// methods to null-resolving fns, so the same override table serves both names.
+window.glyphh = stub(YO_OVERRIDES);
 
 window.addEventListener("error", (e) => { window.__lastErr = String(e.message); });
 window.addEventListener("unhandledrejection", (e) => { window.__lastErr = "rejection: " + String(e.reason && e.reason.message || e.reason); });

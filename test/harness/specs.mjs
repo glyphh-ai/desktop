@@ -460,4 +460,83 @@ export const SPECS = [
         JSON.stringify({ chipsWork, subWork, nameWork, chipsChat, subChat, noApp }));
     `,
   },
+
+  // ── Group: command-center glyphh click — the agent MUST come up usable ────
+  // Chris's repro: open app → command center → glyphh → the seat rendered
+  // BLANK (the .code-agent singleton was moved between hosts and stranded).
+  // ARCHITECTURE NOW: the ONE .code-agent lives in the fixed #code-agent-layer
+  // and FOLLOWS whichever .ws-agent-placeholder is showing (rail seat or echo
+  // card) — it is never re-parented between hosts. So the spec asserts the new
+  // contract: a visible placeholder exists, the agent (with its live #code-thread
+  // + #code-input) sits in the overlay holder, the holder OVERLAYS the
+  // placeholder rect, and the composer is actually visible.
+  {
+    name: "command center glyphh click seats a COMPLETE agent (thread + composer visible)",
+    fresh: true,
+    body: `
+      killTransitions();
+      await until(() => $("#code-cc-btn"));
+      click($("#code-cc-btn"));
+      await until(() => $(".echo-stage canvas"), 8000);
+      await sleep(2000);   // wall build
+      const search = await until(() => $(".echo-search"));
+      typeInto(search, "glyphh");
+      pressEnter(search);
+      // The agent overlay comes up FOLLOWING a placeholder (rail seat or echo card).
+      await until(() => $('#code-agent-layer .ws-agent-holder .code-agent')
+        && $('.ws-agent-placeholder') && $('.ws-agent-placeholder').offsetParent !== null, 8000);
+      await sleep(300);   // one sync frame settles the holder onto the placeholder rect
+      const holder = $('#code-agent-layer .ws-agent-holder');
+      const agent = $('#code-agent-layer .ws-agent-holder .code-agent');
+      const ph = $('.ws-agent-placeholder');
+      const thread = $("#code-thread");
+      const ta = $("#code-input");
+      const threadInAgent = !!thread && agent.contains(thread);
+      const composerInAgent = !!ta && agent.contains(ta);
+      const composerVisible = !!ta && ta.offsetParent !== null;
+      // The overlay holder tracks the placeholder's rect (within a few px).
+      const hr = holder.getBoundingClientRect(), pr = ph.getBoundingClientRect();
+      const overlays = holder.style.display !== "none"
+        && Math.abs(hr.left - pr.left) < 4 && Math.abs(hr.top - pr.top) < 4
+        && Math.abs(hr.width - pr.width) < 4 && Math.abs(hr.height - pr.height) < 4;
+      return ok(threadInAgent && composerInAgent && composerVisible && overlays,
+        JSON.stringify({ threadInAgent, composerInAgent, composerVisible, overlays,
+          holderRect: [hr.left|0, hr.top|0, hr.width|0, hr.height|0],
+          phRect: [pr.left|0, pr.top|0, pr.width|0, pr.height|0] }));
+    `,
+  },
+
+  {
+    name: "DIAG glyphh activation state dump",
+    fresh: true,
+    body: `
+      killTransitions();
+      await until(() => $("#code-cc-btn"));
+      click($("#code-cc-btn"));
+      await until(() => $(".echo-stage canvas"), 8000);
+      await sleep(2000);
+      const search = await until(() => $(".echo-search"));
+      typeInto(search, "glyphh");
+      pressEnter(search);
+      await sleep(3000);
+      const where = (el) => {
+        if (!el) return "MISSING";
+        const chain = [];
+        for (let p = el.parentElement; p && chain.length < 7; p = p.parentElement)
+          chain.push(p.id ? "#" + p.id : (p.className && p.className.toString().split(" ")[0]) || p.tagName);
+        return chain.join(" < ");
+      };
+      const holder = $("#code-agent-layer .ws-agent-holder");
+      return { pass: false, detail: JSON.stringify({
+        slots: $$(".ws-rail-slot").map((s) => s.dataset.view || s.className.toString().slice(0, 40)),
+        placeholders: $$(".ws-agent-placeholder").map((p) => p.dataset.agentHost || "?"),
+        agentAt: where($(".code-agent")),
+        composerAt: where($("#code-input")),
+        holderShown: holder ? holder.style.display !== "none" : "NO-HOLDER",
+        echoCanvas: !!$(".echo-stage canvas"),
+        echoCards: $$(".echo-card").length,
+        lastErr: window.__lastErr || null,
+      }) };
+    `,
+  },
 ];
