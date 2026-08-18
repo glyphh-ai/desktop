@@ -66,6 +66,44 @@ async function assetUrl(id: string): Promise<string | null> {
   return res.url;
 }
 
+/** First-frame capture for video cards: seek ~10% in, draw to canvas, cache
+ *  the JPEG. A cross-origin (presigned) source can taint the canvas — that
+ *  path bails to the plain duration badge rather than throwing. */
+const frameCache = new Map<string, string | null>();
+async function videoThumb(id: string): Promise<string | null> {
+  if (frameCache.has(id)) return frameCache.get(id) ?? null;
+  const url = await assetUrl(id);
+  if (!url) { frameCache.set(id, null); return null; }
+  const out = await new Promise<string | null>((resolve) => {
+    const v = document.createElement("video");
+    v.muted = true;
+    v.crossOrigin = "anonymous";
+    v.preload = "metadata";
+    const timer = setTimeout(() => bail(), 8000);
+    const cleanup = (): void => { clearTimeout(timer); v.removeAttribute("src"); v.load(); };
+    const bail = (): void => { cleanup(); resolve(null); };
+    v.addEventListener("error", bail, { once: true });
+    v.addEventListener("loadedmetadata", () => {
+      try { v.currentTime = Math.min(1.5, (v.duration || 2) * 0.1); } catch { bail(); }
+    }, { once: true });
+    v.addEventListener("seeked", () => {
+      try {
+        const c = document.createElement("canvas");
+        const w = 320;
+        c.width = w;
+        c.height = Math.max(2, Math.round(w * ((v.videoHeight || 9) / (v.videoWidth || 16))));
+        c.getContext("2d")!.drawImage(v, 0, 0, c.width, c.height);
+        const data = c.toDataURL("image/jpeg", 0.72);
+        cleanup();
+        resolve(data);
+      } catch { bail(); }
+    }, { once: true });
+    v.src = url;
+  });
+  frameCache.set(id, out);
+  return out;
+}
+
 const fmtDur = (ms: number | null): string => {
   if (!ms) return "";
   const s = Math.round(ms / 1000);
@@ -208,6 +246,11 @@ export function initMedia(host: MediaHost): MediaPanel {
           dur.className = "gmedia-thumb-dur";
           dur.textContent = fmtDur(m.durationMs) || "▶";
           thumb.appendChild(dur);
+          void videoThumb(m.id).then((frame) => {
+            if (!frame || !thumb.isConnected) return;
+            thumb.querySelector(".gmedia-thumb-ph")?.remove();
+            thumb.style.backgroundImage = `url("${frame}")`;
+          });
         }
         card.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".office-card-kebab")) return;
@@ -318,6 +361,6 @@ export function initMedia(host: MediaHost): MediaPanel {
 
   return {
     renderIntoSlot,
-    invalidate: () => urlCache.clear(),
+    invalidate: () => { urlCache.clear(); frameCache.clear(); },
   };
 }
