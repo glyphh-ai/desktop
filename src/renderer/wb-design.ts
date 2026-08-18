@@ -692,12 +692,24 @@ export function initDesign(host: DesignHost): DesignPanel {
         <div class="gdz-img-frame"></div>
         <span class="gdz-art-resize" title="Resize"></span>`;
       (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${m.title}${m.role ? ` · ${m.role}` : ""}`;
-      card.querySelector(".gdz-img-x")?.addEventListener("click", (ev) => {
-        ev.stopPropagation();
+      const removeFromDesign = (): void => {
         doc.imagery = (doc.imagery ?? []).filter((x) => x.assetId !== m.assetId);
         if (!doc.imagery.length) delete doc.imagery;
+        // The saved canvas position goes with it — a re-adopted asset starts fresh.
+        delete doc.canvas?.items?.[`img:${m.assetId}`];
         card.dispatchEvent(new CustomEvent("gdz-imagery-changed", { bubbles: true }));
         card.remove();
+      };
+      card.querySelector(".gdz-img-x")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        removeFromDesign();
+      });
+      card.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        popMenu(ev.clientX, ev.clientY, [
+          { label: "Remove from design", danger: true, fn: removeFromDesign },
+        ]);
       });
       const frame = card.querySelector<HTMLElement>(".gdz-img-frame")!;
       void api().mediaUrl?.(m.assetId).then((r) => {
@@ -738,6 +750,24 @@ export function initDesign(host: DesignHost): DesignPanel {
         <div class="gdz-img-frame"></div>
         <span class="gdz-art-resize" title="Resize"></span>`;
       (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${a.title} · upload`;
+      card.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        popMenu(ev.clientX, ev.clientY, [
+          { label: "Remove from design", danger: true, fn: () => {
+            void (async () => {
+              const yes = await host.confirm({ title: `Remove "${a.title}"?`, body: "Deletes the upload from the system and the canvas.", confirmLabel: "Remove", danger: true });
+              if (!yes) return;
+              await api().designAssetDelete?.(file, a.id);
+              doc.assets = (doc.assets ?? []).filter((x) => x.id !== a.id);
+              if (!doc.assets.length) delete doc.assets;
+              delete doc.canvas?.items?.[`asset:${a.id}`];
+              card.dispatchEvent(new CustomEvent("gdz-imagery-changed", { bubbles: true }));
+              card.remove();
+            })();
+          } },
+        ]);
+      });
       const frame = card.querySelector<HTMLElement>(".gdz-img-frame")!;
       void api().designAssetUrl?.(file, a.id).then((r) => {
         if (!r?.ok || !r.url || !frame.isConnected) { frame.textContent = "unavailable"; return; }
