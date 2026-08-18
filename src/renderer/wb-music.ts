@@ -121,11 +121,29 @@ export function initMusic(host: MusicHost): MusicViews {
       card.innerHTML = `
         <span class="gmus-song-title"></span>
         <span class="gmus-song-meta"></span>
-        <span class="gmus-song-badges">${s.audioAssetId ? "♫" : "·"}${s.parentId ? " ↳" : ""}${children.get(s.id) ? ` ${children.get(s.id)}v` : ""}</span>`;
+        <span class="gmus-song-badges">${s.audioAssetId ? "♫" : "·"}${s.parentId ? " ↳" : ""}${children.get(s.id) ? ` ${children.get(s.id)}v` : ""}</span>
+        <span class="ws-icon-btn gmem-del gmus-song-del" title="Delete song">✕</span>`;
       (card.querySelector(".gmus-song-title") as HTMLElement).textContent = s.title;
       (card.querySelector(".gmus-song-meta") as HTMLElement).textContent =
         [s.bandType, s.model ? s.model.split("::")[1] : ""].filter(Boolean).join(" · ") || "no band yet";
-      card.addEventListener("click", () => { state.songId = s.id; refresh(); });
+      card.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".gmus-song-del")) return;
+        state.songId = s.id;
+        refresh();
+      });
+      card.querySelector(".gmus-song-del")?.addEventListener("click", () => {
+        void (async () => {
+          const versions = children.get(s.id) ?? 0;
+          const yes = await host.confirm({
+            title: `Delete "${s.title}"?`,
+            body: `The song document goes for good${versions ? ` — its ${versions} child version${versions === 1 ? "" : "s"} stay but lose the link` : ""}. The audio stays in the Sounds library.`,
+            confirmLabel: "Delete", danger: true,
+          });
+          if (!yes) return;
+          await api().musicSongDelete?.(s.id);
+          refresh();
+        })();
+      });
       list.appendChild(card);
     }
   }

@@ -17878,3 +17878,5 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   border: 1px solid var(--border-2);
 }
 .gmus-i-look.busy { animation: pulse-dot 1.2s ease infinite; }
+.gmus-song-card .gmus-song-del { opacity: 0; flex: none; }
+.gmus-song-card:hover .gmus-song-del { opacity: 1; }
