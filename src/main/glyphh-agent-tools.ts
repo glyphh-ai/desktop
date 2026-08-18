@@ -34,6 +34,7 @@ import { randomUUID } from "node:crypto";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
 import { renderDeck, renderSection, validateDeck, validateSlideSpec, layoutCatalog, themeCatalog, type SlideSpec, type RenderOptions } from "@glyphh/sdk/slides";
 import { gdocFileName as docsFileName } from "./office-docs";
+import { docThemeCss, docStyleFromDesign, writeDocStyle, DOC_THEMES } from "../shared/doc-styles";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
@@ -901,7 +902,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_docs",
-    doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Start from a template via list_doc_templates when one fits, filling the {{placeholders}} from what the user told you.",
+    doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Rich blocks are supported: fenced callouts `:::note …\\n:::` (also tip/warning/info), two-up `:::columns …\\n+++\\n…\\n:::`, plus tables/lists/quotes/code. Style the paper with set_doc_style (theme or org design system); build structure with insert_doc_block. Start from list_doc_templates when one fits.",
     action: (a) => ({ kind: "edit", title: `Create document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
     run: async (a) => {
       const mdErr = rejectDocHtml(String(a.markdown ?? ""));
@@ -965,6 +966,52 @@ const TOOLS: ToolDef[] = [
       }
       openGDocPanel(file, doc.title);
       return `opened ${file} in the Docs panel`;
+    },
+  },
+  {
+    name: "set_doc_style",
+    doc: `set_doc_style(name, theme?, design?) — style a document's paper. theme is one of ${Object.keys(DOC_THEMES).join(", ")} (fonts + accent). Or pass a design-system name to match the org brand (and its decks) exactly — list_designs / read_design. Applies instantly in the Docs panel.`,
+    action: (a) => ({ kind: "edit", title: `Style document "${String(a.name ?? "")}"`, detail: String(a.design ?? a.theme ?? "") }),
+    run: async (a) => {
+      const doc = await getClient().officeDocs.get(docsFileName(a.name)).catch(() => null);
+      if (!doc) return `ERROR: no document "${docsFileName(a.name)}"`;
+      let vars = "";
+      const design = a.design == null ? "" : String(a.design).trim();
+      if (design) {
+        const css = await getClient().designs.css(designFileName(design)).catch(() => "");
+        vars = docStyleFromDesign(css);
+        if (!vars) return `ERROR: couldn't read design "${design}"`;
+      } else {
+        vars = docThemeCss(a.theme ? String(a.theme) : undefined);
+      }
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), writeDocStyle(doc.markdown, vars));
+      return `styled ${meta.file} (${design ? `design ${design}` : `theme ${a.theme ?? "classic"}`})`;
+    },
+  },
+  {
+    name: "insert_doc_block",
+    doc: 'insert_doc_block(name, block, after_section?) — append a STRUCTURED block to a document (or after the named heading). block is one of: {type:"heading", level?, text}, {type:"paragraph", text}, {type:"bullets", items:[…]}, {type:"numbered", items:[…]}, {type:"table", headers:[…], rows:[[…]]}, {type:"callout", style?:"note|tip|warning|info", title?, text}, {type:"columns", left, right}, {type:"quote", text}, {type:"code", language?, code}, {type:"divider"}. Renders to markdown — the app owns the paper.',
+    action: (a) => ({ kind: "edit", title: `Add a block to "${String(a.name ?? "")}"`, detail: String((a.block as { type?: unknown })?.type ?? "") }),
+    run: async (a) => {
+      const doc = await getClient().officeDocs.get(docsFileName(a.name)).catch(() => null);
+      if (!doc) return `ERROR: no document "${docsFileName(a.name)}"`;
+      const md = renderDocBlock(a.block);
+      if (md.startsWith("ERROR")) return md;
+      let full = doc.markdown;
+      const after = a.after_section == null ? "" : String(a.after_section).trim();
+      if (after) {
+        // insert just before the NEXT heading after the named section (or append)
+        const re = new RegExp(`(^#{1,3}\\s+${after.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}[^\\n]*\\n)`, "im");
+        const m = re.exec(full);
+        if (m) {
+          const from = m.index + m[0].length;
+          const next = full.slice(from).search(/\n#{1,3}\s/);
+          const at = next < 0 ? full.length : from + next;
+          full = `${full.slice(0, at)}\n\n${md}\n${full.slice(at)}`;
+        } else full = `${full.trimEnd()}\n\n${md}\n`;
+      } else full = `${full.trimEnd()}\n\n${md}\n`;
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), full);
+      return `added a ${String((a.block as { type?: unknown })?.type ?? "block")} to ${meta.file}`;
     },
   },
   {
@@ -2448,6 +2495,35 @@ async function generateMedia(
 
 /** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.
  *  One narrow allowance: <br>. Everything else bounces with the reason. */
+/** Render a structured doc block spec to markdown (the Docs write vocabulary). */
+function renderDocBlock(raw: unknown): string {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const type = String(b.type ?? "").toLowerCase();
+  const s = (v: unknown): string => String(v ?? "").trim();
+  const items = (v: unknown): string[] => (Array.isArray(v) ? v.map(s).filter(Boolean) : []);
+  switch (type) {
+    case "heading": return `${"#".repeat(Math.min(3, Math.max(1, Number(b.level ?? 2))))} ${s(b.text)}`;
+    case "paragraph": return s(b.text);
+    case "bullets": return items(b.items).map((x) => `- ${x}`).join("\n") || "ERROR: bullets needs items[]";
+    case "numbered": return items(b.items).map((x, i) => `${i + 1}. ${x}`).join("\n") || "ERROR: numbered needs items[]";
+    case "quote": return s(b.text).split("\n").map((l) => `> ${l}`).join("\n");
+    case "divider": return "---";
+    case "code": return `\`\`\`${s(b.language)}\n${s(b.code)}\n\`\`\``;
+    case "callout": { const st = ["note", "tip", "warning", "info"].includes(s(b.style)) ? s(b.style) : "note"; return `:::${st}${b.title ? ` ${s(b.title)}` : ""}\n${s(b.text)}\n:::`; }
+    case "columns": return `:::columns\n${s(b.left)}\n+++\n${s(b.right)}\n:::`;
+    case "table": {
+      const headers = items(b.headers);
+      const rows = Array.isArray(b.rows) ? b.rows : [];
+      if (!headers.length) return "ERROR: table needs headers[]";
+      const head = `| ${headers.join(" | ")} |`;
+      const sep = `| ${headers.map(() => "---").join(" | ")} |`;
+      const body = rows.map((r) => `| ${(Array.isArray(r) ? r : []).map(s).join(" | ")} |`).join("\n");
+      return `${head}\n${sep}\n${body}`;
+    }
+    default: return `ERROR: unknown block type "${type}" — heading|paragraph|bullets|numbered|table|callout|columns|quote|code|divider`;
+  }
+}
+
 function rejectDocHtml(md: string): string | null {
   const m = /<\s*(script|style|iframe|div|section|link|object|embed|html|body|img|span|table)\b/i.exec(md);
   return m ? `ERROR: documents are markdown ONLY — found <${m[1]}>. Use markdown headings/lists/tables; the app owns the paper.` : null;

@@ -13,6 +13,7 @@
  */
 
 import { formatMarkdown } from "./format-markdown.js";
+import { parseDocStyle } from "../shared/doc-styles.js";
 import { officePager, officePage, mountDocThumb, invalidateDocThumb } from "./wb-office-ui.js";
 
 export interface GDocMeta { file: string; title: string; size: number; folderId: string | null; mtime: number }
@@ -355,6 +356,11 @@ export function initGDocs(host: GDocHost): GDocPanel {
     // TOC + paper, section by section.
     const toc = body.querySelector<HTMLElement>(".gdoc-toc")!;
     const paper = body.querySelector<HTMLElement>(".gdoc-paper")!;
+    // Apply the document's style directive (theme / design-system) to the paper.
+    for (const decl of parseDocStyle(md).split(";")) {
+      const [k, v] = decl.split(/:(.+)/);
+      if (k && v && k.trim().startsWith("--doc-")) paper.style.setProperty(k.trim(), v.trim());
+    }
     sections.forEach((sec, i) => {
       const block = document.createElement("div");
       block.className = "gdoc-block";
