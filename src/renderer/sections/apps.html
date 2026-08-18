@@ -1,12 +1,72 @@
         <div class="help-section" data-section="apps">
-          <div class="apps-page-tabs">
-            <button class="apps-page-tab active" data-page="library">My apps</button>
-            <button class="apps-page-tab" data-page="marketplace">Marketplace</button>
-          </div>
-
+          <!-- The My apps | Marketplace tab strip is gone — the Marketplace is
+               its own left-rail section now (sections/marketplace.html). The
+               #apps-library-page wrapper stays: the flex pass-through CSS and
+               the detail-open :has() rules key on it. -->
           <div id="apps-library-page" class="apps-page">
           <h2 class="apps-page-heading">Apps</h2>
           <p class="section-desc">Web apps and native tools your agent opens as panels beside you.</p>
+
+          <!-- Work panels — the built-in panels (Office / Design / Memory /
+               Media) that used to live in the agent's view dropdown. They're
+               apps of type "work panel": fixed fixtures with no editor, no
+               kebab, no delete — clicking a card opens the panel beside the
+               agent (help/apps.ts wires the launch via the __wbOpen* bridges). -->
+          <div id="apps-workpanels">
+            <h3 class="apps-workpanels-heading">Work panels</h3>
+            <div class="app-grid">
+              <div class="app-card workpanel-card" data-workpanel="gpoint" title="Glyphh Slides — agent-built presentations">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#8c3bf2;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg></div>
+                <div class="app-card-name">Slides</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gdoc" title="Glyphh Docs — agent-written documents">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg></div>
+                <div class="app-card-name">Docs</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gsheet" title="Glyphh Sheets — agent-built workbooks">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg></div>
+                <div class="app-card-name">Sheets</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gdrive" title="Glyphh Drive — every Office file, in folders">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg></div>
+                <div class="app-card-name">Drive</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gdesign" title="Glyphh Design — the org's design systems">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg></div>
+                <div class="app-card-name">Design</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gmemory" title="Glyphh Memory — your stored facts and the semantic space">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4;stroke:none"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e;stroke:none"/></svg></div>
+                <div class="app-card-name">Memory</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gimage" title="Glyphh Image — generated + uploaded images">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg></div>
+                <div class="app-card-name">Image</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gvideo" title="Glyphh Video — clips, recordings, renders">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg></div>
+                <div class="app-card-name">Video</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gsound" title="Glyphh Sounds — music, sound effects, speech">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg></div>
+                <div class="app-card-name">Sounds</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+              <div class="app-card workpanel-card" data-workpanel="gband" title="Glyphh Band — songs, artists, music video">
+                <div class="app-card-icon"><svg viewBox="0 0 24 24"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635;stroke:none"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff;stroke:none"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg></div>
+                <div class="app-card-name">Band</div>
+                <div class="app-card-id">Work panel</div>
+              </div>
+            </div>
+          </div>
 
           <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
           <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
@@ -109,6 +169,12 @@
             <div id="app-detail-head" class="edit-head" style="margin-top:12px;"></div>
 
             <div class="app-detail-tabs">
+              <!-- M7 consumer view: an app INSTALLED from the marketplace (not
+                   published by this org) is developer-hosted on Glyphh's
+                   pipeline — always on, nothing to deploy or configure. Its
+                   tabs are exactly About / Connections / Support; every
+                   builder tab below stays the owner's. -->
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-about">About</button>
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
@@ -122,6 +188,7 @@
                    the builder's alone (tab-owner-only). -->
               <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
               <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="hosting">Public hosting</button>
             </div>
@@ -343,6 +410,26 @@
                   </div>
                 </div>
 
+                <!-- About left (marketplace-installed): the store's listing
+                     summary. The app is developer-hosted on Glyphh's pipeline
+                     (M7) — no deploy, no on/off; a suspended/hosting-lapsed
+                     app says so here instead of offering the open action. -->
+                <div class="app-tab-left" data-tab="mkt-about">
+                  <div id="mkt-inst-unavailable" class="app-req-conns-warn hidden">
+                    <strong>Temporarily unavailable</strong> — the developer's hosting is paused.
+                    Your data is retained; the app comes back when the developer renews.
+                  </div>
+                  <div id="mkt-inst-about"><div class="inline-empty">Loading…</div></div>
+                </div>
+
+                <!-- Support left (marketplace-installed): the developer's card
+                     and support channel — support is the developer's
+                     obligation, never Glyphh's — plus release notes and the
+                     report-app door into the platform triage queue. -->
+                <div class="app-tab-left" data-tab="mkt-support">
+                  <div id="mkt-inst-support"><div class="inline-empty">Loading…</div></div>
+                </div>
+
                 <!-- Connections left: the connections this app requires, connected
                      status, and (expandable) the tools it depends on. -->
                 <div class="app-tab-left" data-tab="connections">
@@ -471,6 +558,13 @@
                   <label class="settings-label">On the marketplace</label>
                   <div id="listing-listed-state" class="deploy-status">Not listed</div>
                   <p class="proxy-field-hint">Listing makes the app installable by other organizations, and open to reviews. Needs a tagline, a category, and an icon.</p>
+                  <!-- M7 developer-program gate: pre-gate (known not-enrolled)
+                       AND the server's actual refusal both render here, with
+                       the jump to Settings → Developer. -->
+                  <div id="listing-program-gate" class="hidden" style="margin:10px 0 0;padding:10px 12px;border:1px solid var(--border-2);border-radius:8px;">
+                    <p id="listing-program-gate-msg" class="settings-hint" style="margin:0 0 10px;"></p>
+                    <button id="listing-program-gate-btn" class="action-btn primary" type="button">Set up the developer program</button>
+                  </div>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;">
                     <button id="listing-list-btn" class="action-btn primary" type="button">List on marketplace</button>
                     <button id="listing-unlist-btn" class="action-btn danger hidden" type="button">Unlist</button>
@@ -551,6 +645,32 @@
                   </div>
                 </div>
 
+                <!-- About right (marketplace-installed): the developer's
+                     pricing story — what installing costs, what the developer
+                     may charge in-app, version, and the rating link back to
+                     the marketplace listing. -->
+                <div class="app-tab-right" data-tab="mkt-about">
+                  <div style="padding:12px 16px;max-width:560px;" id="mkt-inst-pricing"></div>
+                </div>
+
+                <!-- Support right (marketplace-installed): who answers for
+                     this app — the ground rules, stated plainly. -->
+                <div class="app-tab-right" data-tab="mkt-support">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Who supports this app</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Marketplace apps are built and operated by their <strong>developers</strong>, running on
+                      Glyphh's hosting. Questions, bugs, and billing for anything bought inside the app go to
+                      the developer through the support channel on the left — support is their obligation.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Something that looks malicious — data exfiltration, impersonation, abuse — is a different
+                      matter: <strong>report the app</strong> and it lands directly in Glyphh's platform triage
+                      queue. Every report is taken seriously.
+                    </p>
+                  </div>
+                </div>
+
                 <!-- Connections right: explainer. -->
                 <div class="app-tab-right" data-tab="connections">
                   <div style="padding:12px 16px;max-width:560px;">
@@ -623,104 +743,5 @@
             </div>
           </div>
           </div><!-- /apps-library-page -->
-
-          <!-- ══ MARKETPLACE PAGE ══ -->
-          <div id="apps-marketplace-page" class="apps-page hidden">
-            <!-- Storefront (grid of listings) — hidden while a detail page is open -->
-            <div id="mkt-store">
-            <div class="mkt-banner">
-              <div class="mkt-banner-inner">
-                <h2 class="mkt-banner-title">App marketplace</h2>
-                <p class="mkt-banner-sub">Install apps that give your AI new powers — published by developers or built inside your organization.</p>
-                <div class="mkt-search-wrap">
-                  <svg class="mkt-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-                  <input id="mkt-search" class="mkt-search" type="text" placeholder="Search apps, developers, categories…" spellcheck="false" autocomplete="off" />
-                  <button id="mkt-refresh" class="mkt-refresh" title="Refresh marketplace" aria-label="Refresh marketplace">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-                  </button>
-                </div>
-              </div>
-
-              <!-- The DELIVERABLE, same idea as the web hero: not a screenshot of
-                   Glyphh, but a plausible app someone built with it, floating on the
-                   brand ramp. Receipts: forward a receipt, it files itself. -->
-              <div class="mkt-hero-art" aria-hidden="true">
-                <div class="mha-app">
-                  <div class="mha-bar">
-                    <span class="mha-dot"></span><span class="mha-dot"></span><span class="mha-dot"></span>
-                    <span class="mha-name">Receipts</span>
-                    <span class="mha-chip">live</span>
-                  </div>
-                  <div class="mha-body">
-                    <div class="mha-kpi">
-                      <span class="mha-kpi-label">This month</span>
-                      <span class="mha-kpi-value">$4,208<span class="mha-kpi-cents">.55</span></span>
-                    </div>
-                    <div class="mha-chart">
-                      <i style="height:38%"></i><i style="height:62%"></i><i style="height:44%"></i>
-                      <i style="height:81%"></i><i style="height:57%"></i><i class="on" style="height:96%"></i>
-                      <i style="height:48%"></i>
-                    </div>
-                    <div class="mha-rows">
-                      <div class="mha-row"><span class="mha-av">FL</span><span class="mha-vendor">Flight — SFO</span><span class="mha-tag">Travel</span><span class="mha-amt">$612.40</span></div>
-                      <div class="mha-row"><span class="mha-av">FS</span><span class="mha-vendor">Figma seats</span><span class="mha-tag">Software</span><span class="mha-amt">$180.00</span></div>
-                      <div class="mha-row"><span class="mha-av">CB</span><span class="mha-vendor">Coffee — offsite</span><span class="mha-tag">Meals</span><span class="mha-amt">$38.15</span></div>
-                    </div>
-                  </div>
-                  <div class="mha-foot">
-                    <span class="mha-foot-dot"></span>Built in Glyphh
-                    <span class="mha-foot-sep">·</span>214 installs
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="mkt-scopebar">
-              <div class="mkt-scope-tabs">
-                <button class="mkt-scope active" data-scope="public">Public</button>
-                <button class="mkt-scope" data-scope="private">Your organization</button>
-              </div>
-              <select id="mkt-sort" class="mkt-sort settings-input">
-                <option value="popular">Most popular</option>
-                <option value="rating">Top rated</option>
-                <option value="newest">Newest</option>
-              </select>
-            </div>
-
-            <div id="mkt-categories" class="mkt-categories"></div>
-
-            <!-- Sponsored strip -->
-            <div id="mkt-featured" class="mkt-strip hidden">
-              <div class="mkt-strip-head"><h4>Sponsored</h4><span class="mkt-strip-tag">Ad</span></div>
-              <div id="mkt-featured-list" class="mkt-featured-grid"></div>
-            </div>
-
-            <!-- Popular strip -->
-            <div id="mkt-popular" class="mkt-strip hidden">
-              <div class="mkt-strip-head"><h4>Popular apps</h4></div>
-              <div id="mkt-popular-list" class="mkt-row"></div>
-            </div>
-
-            <!-- Main grid -->
-            <div class="mkt-strip">
-              <div class="mkt-strip-head"><h4 id="mkt-all-title">All apps</h4><span id="mkt-count" class="mkt-count"></span></div>
-              <div id="mkt-list" class="mkt-grid"></div>
-              <div id="mkt-pager" class="cc-pager"></div>
-            </div>
-            </div><!-- /mkt-store -->
-
-            <!-- App detail page (Shopify-style listing) — filled by renderMktDetail() -->
-            <div id="mkt-detail" class="mkt-detail hidden"></div>
-
-            <!-- Coming-soon placeholder — shown instead of the storefront while
-                 the marketplace is gated (MARKETPLACE_COMING_SOON in apps.ts). -->
-            <div id="mkt-coming-soon" class="mkt-coming-soon hidden">
-              <div class="mkt-cs-inner">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 9v3a3 3 0 0 0 6 0V9"/></svg>
-                <h2>Marketplace — coming soon</h2>
-                <p>A storefront of apps that give your agent new powers — published by developers or built inside your organization. We're putting the finishing touches on it.</p>
-              </div>
-            </div>
-          </div>
 
         </div>

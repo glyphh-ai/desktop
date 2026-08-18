@@ -352,7 +352,8 @@ function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, 
 
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
-  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Workspaces",
+  dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
+  layouts: "Workspaces",
   skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
   settings: "Settings", docs: "Docs",
 };
@@ -1826,6 +1827,11 @@ async function init(): Promise<void> {
   function renderGDriveIntoSlot(body: HTMLElement, slot: GDriveSlot, wrap: HTMLElement): Promise<void> {
     return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
   }
+  // The Apps page's Drive work-panel card lands here — reuse the open Drive
+  // panel or place one (Drive has no file payload; the panel lists everything).
+  (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => {
+    openToolWithPayload("gdrive", () => {});
+  };
 
   // ── Sheets — workbooks (wb-sheets.ts) ─────────────────────────────────────
   let gsheetPanel: GSheetPanel | null = null;

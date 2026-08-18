@@ -3,12 +3,18 @@
  */
 
 import {
-  paginate, renderPaginationBar, confirmAction, clearInvalid,
+  paginate, renderPaginationBar, confirmAction, promptAction, clearInvalid,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
-import { openAppInWorkbench } from "./code.js";
+import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
+import {
+  escMkt, mktConnChip, connLabel, mktConnIconApps,
+  mkt, mktProgram, mktIsProgramRefusal, mktStarRow, mktDate, mktDiscountActive,
+  type MktDetail, type MktProgramState,
+} from "./marketplace-data.js";
+import { openMktDetail } from "./marketplace.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 declare const Chart: any;
@@ -412,110 +418,36 @@ function renderAppsList() {
   }
 }
 
-// ── Marketplace (Shopify-style storefront) ───────────────
-// Public catalog + org-private apps: search, categories, sponsored + popular
-// strips, paginated grid. Backed by marketplace.ts (placeholder catalog until
-// the yo-server routes land).
-type MktApp = Awaited<ReturnType<typeof window.glyphh.marketplaceList>>["items"][number];
-
-const marketplaceLibraryPage = document.getElementById("apps-library-page")!;
-const marketplacePage = document.getElementById("apps-marketplace-page")!;
-const mktStoreEl = document.getElementById("mkt-store")!;
-const mktDetailEl = document.getElementById("mkt-detail")!;
-const mktSearchInput = document.getElementById("mkt-search") as HTMLInputElement;
-const mktSortSelect = document.getElementById("mkt-sort") as HTMLSelectElement;
-const mktCategoriesEl = document.getElementById("mkt-categories")!;
-const mktFeaturedWrap = document.getElementById("mkt-featured")!;
-const mktFeaturedList = document.getElementById("mkt-featured-list")!;
-const mktPopularWrap = document.getElementById("mkt-popular")!;
-const mktPopularList = document.getElementById("mkt-popular-list")!;
-const mktListEl = document.getElementById("mkt-list")!;
-const mktPagerEl = document.getElementById("mkt-pager")!;
-const mktCountEl = document.getElementById("mkt-count")!;
-const mktAllTitle = document.getElementById("mkt-all-title")!;
-
-let mktScope: "public" | "private" = "public";
-let mktCategory = "";
-let mktQuery = "";
-let mktSort: "popular" | "rating" | "newest" = "popular";
-let mktPage = 1;
-let mktSearchTimer: ReturnType<typeof setTimeout> | null = null;
-
-function escMkt(s: string): string {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-// Canonical domain per connection slug — feeds appIconInner's favicon fallback
-// so a real brand icon still shows if the Pipedream catalog icon isn't cached.
-const CONN_DOMAIN: Record<string, string> = {
-  slack: "slack.com", slack_v2: "slack.com", gmail: "mail.google.com", notion: "notion.so", github: "github.com",
-  linear: "linear.app", google_sheets: "sheets.google.com", hubspot: "hubspot.com",
-  stripe: "stripe.com", figma: "figma.com", google_calendar: "calendar.google.com",
-  snowflake: "snowflake.com", google_drive: "drive.google.com", google_slides: "slides.google.com",
-  okta: "okta.com", zendesk: "zendesk.com",
+// ── Work panels (built-in) ───────────────────────────────
+// The ten built-in panels — Office (Slides/Docs/Sheets/Drive), Design,
+// Memory, and Media (Image/Video/Sounds/Band) — live on the Apps page as
+// fixed "work panel" cards (sections/apps.html #apps-workpanels). They are
+// not org apps: no editor, no delete, and the agent/IPC layers refuse their
+// slugs outright. A click opens the panel through its workbench bridge.
+const WORKPANEL_OPENERS: Record<string, () => void> = {
+  gpoint: () => openWorkPanelInWorkbench("__wbOpenGPoint"),
+  gdoc: () => openWorkPanelInWorkbench("__wbOpenGDoc"),
+  gsheet: () => openWorkPanelInWorkbench("__wbOpenGSheet"),
+  gdrive: () => openWorkPanelInWorkbench("__wbOpenGDrive"),
+  gdesign: () => openWorkPanelInWorkbench("__wbOpenDesign"),
+  gmemory: () => openWorkPanelInWorkbench("__wbOpenMemory"),
+  gimage: () => openWorkPanelInWorkbench("__wbOpenMedia", "gimage"),
+  gvideo: () => openWorkPanelInWorkbench("__wbOpenMedia", "gvideo"),
+  gsound: () => openWorkPanelInWorkbench("__wbOpenMedia", "gsound"),
+  gband: () => openWorkPanelInWorkbench("__wbOpenMedia", "gband"),
 };
 
-/** A single required-connection icon — identical to the Layouts row
- *  (appIconInner, icon only, name on hover), just sized smaller. Resolution
- *  order matches the rest of the app: Pipedream catalog icon → favicon → initial. */
-function mktConnChip(conn: { name: string; slug: string }): string {
-  const domain = CONN_DOMAIN[conn.slug];
-  const app = { url: domain ? `https://${domain}` : undefined, connection: { accountId: "mkt", pipedreamSlug: conn.slug } };
-  return `<span class="mkt-conn" title="${escMkt(conn.name)}">${appIconInner(app, conn.name, "mkt-conn-initial")}</span>`;
-}
-
-/** Row of required-connection icons (icons only, like the Layouts card). */
-/** A YouTube or Vimeo demo as an embedded iframe. Only these two hosts (the
- *  server restricts the link to them), so the embed URL is derived safely. */
-function mktVideoEmbed(url: string | null | undefined): string {
-  if (!url) return "";
-  let embed = "";
-  try {
-    const u = new URL(url);
-    const host = u.hostname.replace(/^www\./, "");
-    if (host === "youtu.be") embed = `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
-    else if (host.endsWith("youtube.com")) { const v = u.searchParams.get("v"); if (v) embed = `https://www.youtube.com/embed/${v}`; }
-    else if (host.endsWith("vimeo.com")) { const id = u.pathname.split("/").filter(Boolean).pop(); if (id) embed = `https://player.vimeo.com/video/${id}`; }
-  } catch { /* not a URL — no embed */ }
-  if (!embed) return "";
-  return `<section class="mkt-dt-section"><h3>Demo</h3>
-    <div class="mkt-video"><iframe src="${escMkt(embed)}" allow="fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe></div></section>`;
-}
-
-/** Required connections with connected status — what the app needs to work. */
-function mktRequiredConns(conns: Array<{ slug: string; actAs: string; connected: boolean }> | undefined): string {
-  if (!conns || !conns.length) return "";
-  const rows = conns.map((c) => `
-    <div class="mkt-req-conn">
-      ${mktConnChip({ name: connLabel(c.slug), slug: c.slug })}
-      <span class="mkt-req-conn-name">${escMkt(connLabel(c.slug))}</span>
-      <span class="app-conn-status ${c.connected ? "ok" : "missing"}">${c.connected ? "Connected" : "Not connected"}</span>
-    </div>`).join("");
-  return `<section class="mkt-dt-section">
-    <h3>Requires</h3>
-    <p class="settings-hint" style="margin:0 0 8px;">This app calls these connected accounts through Glyphh's governed connectors.</p>
-    <div class="mkt-req-conns">${rows}</div></section>`;
-}
-
-function mktConnRow(conns: Array<{ name: string; slug: string }>): string {
-  if (!conns || conns.length === 0) return "";
-  return `<div class="mkt-conns">${conns.map(mktConnChip).join("")}</div>`;
-}
-
-/** Pseudo-apps (connection-only) to hand to primeConnectedIcons so it fetches
- *  the Pipedream catalog icon for every required-connection slug on screen. */
-function mktConnIconApps(conns: Array<{ slug: string }>): Array<{ connection: { accountId: string; pipedreamSlug: string } }> {
-  const slugs = new Set(conns.map((c) => c.slug));
-  return [...slugs].map((slug) => ({ connection: { accountId: "mkt", pipedreamSlug: slug } }));
-}
-
-// Pretty display name for a connector slug ("slack_v2" → "Slack").
-const CONN_LABEL: Record<string, string> = {
-  slack_v2: "Slack", gmail: "Gmail", google_calendar: "Google Calendar",
-  google_sheets: "Google Sheets", google_drive: "Google Drive",
-};
-function connLabel(slug: string): string {
-  return CONN_LABEL[slug] || slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+/** Wire the static work-panel cards (once, at boot). Opening leaves settings
+ *  the same way "Open app" does — close the modal, then land in the workbench. */
+function initWorkPanels(): void {
+  document.querySelectorAll<HTMLElement>("#apps-workpanels .app-card[data-workpanel]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const open = WORKPANEL_OPENERS[card.dataset.workpanel || ""];
+      if (!open) return;
+      closeSettingsModal();
+      open();
+    });
+  });
 }
 
 /** "Required connections" block on the app editor — one row per connector the
@@ -552,374 +484,165 @@ async function renderRequiredConnections(app: PanelApp): Promise<void> {
   primeConnectedIcons(mktConnIconApps(required.map((slug) => ({ slug }))), render);
 }
 
-function mktCard(app: MktApp, variant: "grid" | "row" | "featured"): HTMLElement {
-  const card = document.createElement("div");
-  card.className = `mkt-card mkt-card-${variant}`;
-  const price = app.priceCredits > 0 ? `${app.priceCredits} credits/mo` : "Free plan available";
-  const icon = app.iconUrl ? `<img src="${escMkt(app.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((app.name || "?").charAt(0).toUpperCase())}</span>`;
-  card.innerHTML = `
-    <div class="mkt-card-top">
-      <div class="mkt-card-icon">${icon}</div>
-      <div class="mkt-card-head">
-        <div class="mkt-card-name">${escMkt(app.name)}</div>
-        <div class="mkt-card-metaline">
-          ${app.featured ? `<span class="mkt-ad">Ad</span>` : ""}
-          <span class="mkt-rating"><b>${app.rating.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${app.ratingCount.toLocaleString()})</span></span>
-          <span class="mkt-dot">•</span>
-          <span class="mkt-price">${escMkt(price)}</span>
-        </div>
+// ── Marketplace-installed consumer view (M7) ─────────────────────────────
+//
+// An app installed FROM the marketplace is an approved release its DEVELOPER
+// runs on Glyphh's hosting pipeline — always on, nothing for the installer to
+// deploy, configure, or switch off. The installer's detail view is the
+// STORE's view: About (listing summary + the developer's pricing story),
+// Connections (the grants it needs), Support (the developer's, never ours).
+// Keyed off `owned === false`: builtin work panels never reach this editor,
+// and an org's own builds read as owned. It opens INSIDE the user's
+// authenticated session (M7 one-seam: no identity handoff, no per-app signup).
+
+let currentMktDetail: MktDetail | null = null;
+let mktDetailEpoch = 0;
+
+/** Fetch the store detail for the OPEN marketplace-installed app, then
+ *  re-render the consumer tabs and the open-action gate. */
+async function loadMktInstalledDetail(app: PanelApp): Promise<void> {
+  const epoch = ++mktDetailEpoch;
+  let detail: MktDetail | null = null;
+  try { detail = (await mkt.detail(app.slug)).detail; }
+  catch { detail = null; /* the tabs render an honest fallback */ }
+  if (epoch !== mktDetailEpoch || currentApp?.slug !== app.slug) return;
+  currentMktDetail = detail;
+  syncMktAvailability();
+  renderMktAboutTab();
+  renderMktSupportTab();
+}
+
+/** True when the server says the app can't open right now. Suspended is also
+ *  how a hosting lapse presents (lapse = unrouted, data retained — never
+ *  uninstalled), so one flag gates the open action. */
+function mktUnavailable(): boolean { return currentMktDetail?.suspended === true; }
+
+/** Gate the header's open action on the app's availability. */
+function syncMktAvailability(): void {
+  const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
+  if (!openBtn || currentApp?.owned !== false) return;
+  const off = mktUnavailable();
+  openBtn.disabled = off;
+  openBtn.textContent = off ? "Temporarily unavailable" : "Open app";
+  openBtn.title = off ? "The developer's hosting is paused." : "Open this app as a panel";
+}
+
+/** About — the listing summary on the left, the developer's pricing story +
+ *  version + rating link on the right. */
+function renderMktAboutTab(): void {
+  const app = currentApp;
+  const aboutEl = document.getElementById("mkt-inst-about");
+  const priceEl = document.getElementById("mkt-inst-pricing");
+  if (!app || app.owned !== false || !aboutEl || !priceEl) return;
+  const d = currentMktDetail;
+  document.getElementById("mkt-inst-unavailable")?.classList.toggle("hidden", !mktUnavailable());
+
+  // Left: the store copy, not an editor. The PanelApp's own listing snapshot
+  // is the fallback when the store detail can't load.
+  const l = d?.listing ?? app.listing ?? null;
+  if (!l) {
+    aboutEl.innerHTML = `<div class="inline-empty">Couldn't load this app's listing right now.</div>`;
+  } else {
+    const title = l.title || app.name;
+    aboutEl.innerHTML = `
+      <h3 class="settings-subheading" style="margin:0 0 4px;">${escMkt(title)}</h3>
+      ${l.tagline ? `<p class="settings-hint" style="margin:0 0 12px;">${escMkt(l.tagline)}</p>` : ""}
+      ${l.body ? `<div class="mkt-md">${formatMarkdown(l.body)}</div>` : `<p class="settings-hint">The developer hasn't written a description yet.</p>`}`;
+  }
+
+  // Right: pricing story (the developer's, in their economics: install price
+  // here, in-app charges theirs), version, rating link into the store page.
+  const p = d?.pricing;
+  const story = !p
+    ? `<p class="settings-hint">Pricing unavailable right now.</p>`
+    : p.effectiveMonthlyCredits > 0
+      ? `<div class="mkt-plan">
+          <div class="mkt-plan-price">${mktDiscountActive(p) ? `<s>${p.monthlyCredits}</s> ${p.effectiveMonthlyCredits}` : p.monthlyCredits}<small> credits/mo</small></div>
+          <div class="mkt-plan-blurb">Billed monthly in Glyphh credits.${mktDiscountActive(p) && p.discountEndsAt ? ` ${p.discountPercent}% off until ${escMkt(mktDate(p.discountEndsAt))}.` : ""}</div>
+        </div>`
+      : `<div class="mkt-plan">
+          <div class="mkt-plan-price">Free</div>
+          <div class="mkt-plan-blurb">Free to install. The developer may charge for services inside the app — any in-app purchase is between you and the developer.</div>
+        </div>`;
+  const rating = d
+    ? (d.listing.ratingCount
+      ? `${mktStarRow(d.listing.ratingAvg)} <b>${d.listing.ratingAvg.toFixed(1)}</b> <a href="#" id="mkt-inst-rating-link">${d.listing.ratingCount.toLocaleString()} review${d.listing.ratingCount === 1 ? "" : "s"}</a>`
+      : `<a href="#" id="mkt-inst-rating-link">No reviews yet — write the first</a>`)
+    : "";
+  priceEl.innerHTML = `
+    <h3 class="settings-subheading" style="margin:0 0 8px;">Pricing</h3>
+    ${story}
+    <div class="mkt-side-row" style="margin-top:14px;"><span>Version</span><b>${escMkt(d?.version || app.latestVersion || "—")}</b></div>
+    ${rating ? `<div class="mkt-side-row"><span>Rating</span><span>${rating}</span></div>` : ""}
+    <p class="proxy-field-hint" style="margin-top:14px;">Always on — the developer runs this app on Glyphh's hosting. There's nothing to deploy or switch off.</p>`;
+  document.getElementById("mkt-inst-rating-link")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    gotoSection("marketplace");
+    void openMktDetail(app.slug);
+  });
+}
+
+/** Support — the developer's card + channel, release notes, and the
+ *  report-app door into the platform triage queue. */
+function renderMktSupportTab(): void {
+  const app = currentApp;
+  const el = document.getElementById("mkt-inst-support");
+  if (!app || app.owned !== false || !el) return;
+  const d = currentMktDetail;
+  const dev = d?.developer;
+  const supportEmail = d?.listing.supportEmail || dev?.supportEmail || null;
+  const website = d?.listing.website || null;
+
+  const devCard = dev ? `
+    <div class="mkt-dev-row" style="margin:6px 0 10px;">
+      <div class="mkt-dev-avatar">${dev.avatarUrl ? `<img src="${escMkt(dev.avatarUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>`}</div>
+      <div class="mkt-dev-id">
+        <b>${escMkt(dev.displayName)}</b>
+        <span class="mkt-dev-handle">@${escMkt(dev.handle)}</span>
       </div>
     </div>
-    <div class="mkt-card-tagline">${escMkt(app.tagline)}</div>
-    ${mktConnRow(app.connections)}`;
-  // The whole card is a link into the detail page — no per-card Install button.
-  card.setAttribute("role", "link");
-  card.tabIndex = 0;
-  card.addEventListener("click", () => void openMktDetail(app.id));
-  card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openMktDetail(app.id); } });
-  return card;
-}
+    ${dev.ratingCount ? `<div style="font-size:12px;">${mktStarRow(dev.ratingAvg)} <b>${dev.ratingAvg.toFixed(1)}</b> <span class="mkt-rating-count">(${dev.ratingCount} developer review${dev.ratingCount === 1 ? "" : "s"})</span></div>` : ""}`
+    : `<p class="settings-hint" style="margin:2px 0 0;">${d ? "This developer hasn't published a profile." : "Couldn't load the developer card right now."}</p>`;
 
-function flashMktNote(msg: string): void {
-  let note = document.getElementById("mkt-note");
-  if (!note) {
-    note = document.createElement("div");
-    note.id = "mkt-note";
-    note.className = "mkt-note";
-    marketplacePage.prepend(note);
-  }
-  note.textContent = msg;
-  note.classList.remove("hidden");
-  setTimeout(() => note?.classList.add("hidden"), 4000);
-}
+  const support = supportEmail
+    ? `<a class="mkt-support-link" href="mailto:${escMkt(supportEmail)}">${escMkt(supportEmail)}</a>`
+    : website
+      ? `<a class="mkt-support-link mkt-inst-ext" data-url="${escMkt(website)}" href="#">${escMkt(website.replace(/^https?:\/\//, ""))}</a>`
+      : `<p class="settings-hint" style="margin:2px 0 0;">The developer hasn't published a support channel yet.</p>`;
 
-function renderMktCategories(cats: Array<{ id: string; label: string; count: number }>): void {
-  mktCategoriesEl.innerHTML = "";
-  const chip = (id: string, label: string, count?: number) => {
-    const b = document.createElement("button");
-    b.className = "mkt-cat" + (mktCategory === id ? " active" : "");
-    b.textContent = count != null ? `${label} ${count}` : label;
-    b.addEventListener("click", () => { mktCategory = mktCategory === id ? "" : id; mktPage = 1; void loadMarketplace(); });
-    return b;
-  };
-  mktCategoriesEl.appendChild(chip("", "All"));
-  for (const c of cats) mktCategoriesEl.appendChild(chip(c.id, c.label, c.count));
-}
+  // Release notes — the installed bundle's own record when it carries one.
+  const rel = (app.launchConfig as { release?: { version?: string; notes?: string | null } } | null)?.release;
+  const notes = rel?.notes
+    ? `<div class="release-notes-preview" style="white-space:pre-wrap;">${escMkt(rel.notes)}</div>`
+    : `<p class="settings-hint" style="margin:2px 0 0;">No release notes for this version.</p>`;
 
-type MktRes = Awaited<ReturnType<typeof window.glyphh.marketplaceList>>;
-let lastMktRes: MktRes | null = null;
+  el.innerHTML = `
+    <label class="settings-label">Developer</label>
+    ${devCard}
+    <label class="settings-label" style="margin-top:16px;">Support</label>
+    <p class="settings-hint" style="margin:2px 0 6px;">Support for this app comes from its developer, not Glyphh.</p>
+    ${support}
+    <label class="settings-label" style="margin-top:16px;">Release notes${rel?.version ? ` — v${escMkt(rel.version)}` : ""}</label>
+    ${notes}
+    <div class="app-detail-section-sep"></div>
+    <label class="settings-label">Something wrong?</label>
+    <p class="proxy-field-hint" style="margin:2px 0 10px;">Reports of malicious apps are taken seriously — every one lands in the platform triage queue.</p>
+    <button id="mkt-inst-report-btn" class="action-btn" type="button">Report this app</button>`;
 
-async function loadMarketplace(): Promise<void> {
-  mktListEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
-  try {
-    lastMktRes = (await window.glyphh.marketplaceList?.({ scope: mktScope, category: mktCategory || undefined, q: mktQuery || undefined, sort: mktSort, page: mktPage })) ?? null;
-  } catch {
-    lastMktRes = null;
-  }
-  if (!lastMktRes) {
-    mktListEl.innerHTML = `<div class="crud-empty">Marketplace unavailable right now.</div>`;
-    return;
-  }
-  renderMktStorefront(lastMktRes);
-  // Fetch the real Pipedream catalog icons for every required connection on
-  // screen, then re-render so chips swap from initials to the icons the Apps
-  // and Layouts pages use. primeConnectedIcons only re-fires for uncached
-  // slugs, so this can't loop.
-  const conns = [...lastMktRes.featured, ...lastMktRes.popular, ...lastMktRes.items].flatMap((a) => a.connections);
-  void primeConnectedIcons(mktConnIconApps(conns), () => { if (lastMktRes) renderMktStorefront(lastMktRes); });
-}
-
-function renderMktStorefront(res: MktRes): void {
-  renderMktCategories(res.categories);
-
-  // Strips only on the default view (no search / category / non-first page).
-  const stripsVisible = !mktQuery && !mktCategory && mktPage === 1;
-  mktFeaturedWrap.classList.toggle("hidden", !stripsVisible || res.featured.length === 0);
-  mktPopularWrap.classList.toggle("hidden", !stripsVisible || res.popular.length === 0);
-  if (stripsVisible) {
-    mktFeaturedList.innerHTML = "";
-    for (const a of res.featured) mktFeaturedList.appendChild(mktCard(a, "featured"));
-    mktPopularList.innerHTML = "";
-    for (const a of res.popular) mktPopularList.appendChild(mktCard(a, "row"));
-  }
-
-  mktAllTitle.textContent = mktCategory ? (res.categories.find((c) => c.id === mktCategory)?.label || "Apps")
-    : mktQuery ? `Results for “${mktQuery}”` : "All apps";
-  mktCountEl.textContent = res.total ? `${res.total} app${res.total === 1 ? "" : "s"}` : "";
-
-  mktListEl.innerHTML = "";
-  if (res.items.length === 0) {
-    mktListEl.innerHTML = mktScope === "private"
-      ? `<div class="crud-empty">Your organization hasn't published any apps yet. Publish from your CI, then release them to members.</div>`
-      : `<div class="crud-empty">No apps match your search.</div>`;
-  } else {
-    for (const a of res.items) mktListEl.appendChild(mktCard(a, "grid"));
-  }
-
-  // Pagination.
-  mktPagerEl.innerHTML = "";
-  const totalPages = Math.max(1, Math.ceil(res.total / res.pageSize));
-  if (totalPages > 1) {
-    const mk = (label: string, to: number, disabled: boolean) => {
-      const b = document.createElement("button");
-      b.className = "pagination-btn"; b.textContent = label; b.disabled = disabled;
-      b.addEventListener("click", () => { mktPage = to; void loadMarketplace(); marketplacePage.scrollTop = 0; });
-      return b;
-    };
-    mktPagerEl.appendChild(mk("‹ Prev", mktPage - 1, mktPage <= 1));
-    const info = document.createElement("span");
-    info.className = "pagination-info";
-    info.textContent = `${mktPage} / ${totalPages}`;
-    mktPagerEl.appendChild(info);
-    mktPagerEl.appendChild(mk("Next ›", mktPage + 1, mktPage >= totalPages));
-  }
-}
-
-// ── App detail page (Shopify-style listing) ──────────────
-type MktDetail = NonNullable<Awaited<ReturnType<typeof window.glyphh.marketplaceDetail>>>;
-
-const MKT_CATEGORY_LABELS: Record<string, string> = {
-  productivity: "Productivity", communication: "Communication", developer: "Developer tools",
-  ai: "AI & automation", marketing: "Marketing & sales", finance: "Finance",
-  design: "Design", data: "Data & analytics",
-};
-const mktCheckIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>`;
-const mktDotIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>`;
-
-/** 5-glyph star row for a rating (rounded). */
-function mktStarRow(rating: number): string {
-  const full = Math.max(0, Math.min(5, Math.round(rating)));
-  return `<span class="mkt-stars">${"★".repeat(full)}${"☆".repeat(5 - full)}</span>`;
-}
-
-/** Hide the detail page and return to the storefront grid. */
-function closeMktDetail(): void {
-  mktDetailEl.classList.add("hidden");
-  mktDetailEl.innerHTML = "";
-  mktStoreEl.classList.remove("hidden");
-  marketplacePage.scrollTop = 0;
-}
-
-/** Load + show the detail page for one app id. */
-async function openMktDetail(id: string): Promise<void> {
-  mktStoreEl.classList.add("hidden");
-  mktDetailEl.classList.remove("hidden");
-  mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Loading…</div>`;
-  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
-  marketplacePage.scrollTop = 0;
-
-  let detail: MktDetail | null = null;
-  try { detail = (await window.glyphh.marketplaceDetail?.(id)) ?? null; }
-  catch { detail = null; }
-  if (!detail) {
-    mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
-    mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
-    return;
-  }
-  renderMktDetail(detail);
-}
-
-function renderMktDetail(d: MktDetail): void {
-  const catLabel = MKT_CATEGORY_LABELS[d.category] || "Apps";
-  const priceLabel = d.priceCredits > 0 ? `From ${d.priceCredits} credits/mo` : "Free plan available";
-  const ctaNote = d.priceCredits > 0 ? "Free trial available" : "Free to install";
-  const total = d.ratingCount || d.ratingBreakdown.reduce((a, b) => a + b.count, 0) || 1;
-
-  const highlights = d.highlights.map((h) => `<li>${mktCheckIcon}<span>${escMkt(h)}</span></li>`).join("");
-  // The description is markdown — render it, don't escape it into raw syntax.
-  const descHtml = d.description ? formatMarkdown(d.description) : "";
-  // A demo video (YouTube/Vimeo) embeds above the gallery when present.
-  const videoHtml = mktVideoEmbed(d.videoUrl);
-  // Required connections with the caller's connected status.
-  const reqConnHtml = mktRequiredConns(d.requiredConnections);
-
-  const plans = d.plans.map((p) => `
-    <div class="mkt-plan">
-      <div class="mkt-plan-name">${escMkt(p.name)}</div>
-      <div class="mkt-plan-price">${p.priceCredits > 0 ? `${p.priceCredits}<small> credits/mo</small>` : "Free"}</div>
-      ${p.blurb ? `<div class="mkt-plan-blurb">${escMkt(p.blurb)}</div>` : ""}
-      <ul class="mkt-plan-features">${p.features.map((f) => `<li>${mktCheckIcon}<span>${escMkt(f)}</span></li>`).join("")}</ul>
-    </div>`).join("");
-
-  const bars = d.ratingBreakdown.map((b) => {
-    const pct = Math.round((b.count / total) * 100);
-    return `<div class="mkt-bar-row"><span>${b.stars} star</span><div class="mkt-bar-track"><div class="mkt-bar-fill" style="width:${pct}%"></div></div><span class="pct">${pct}%</span></div>`;
-  }).join("");
-
-  const reviews = d.reviews.map((r) => `
-    <div class="mkt-review">
-      <div class="mkt-review-head">${mktStarRow(r.rating)}<span class="mkt-review-date">${escMkt(r.date)}</span></div>
-      <p class="mkt-review-body">${escMkt(r.body)}</p>
-      <div class="mkt-review-who"><b>${escMkt(r.author)}</b>${r.location ? ` · ${escMkt(r.location)}` : ""}${r.usage ? ` · ${escMkt(r.usage)}` : ""}</div>
-    </div>`).join("");
-
-  const works = d.worksWith.map((w) => `<li><span class="dot"></span>${escMkt(w)}</li>`).join("");
-  const dataAccess = d.dataAccess.map((a) => `<li>${mktDotIcon}<span>${escMkt(a)}</span></li>`).join("");
-
-  const installBtn = d.installed
-    ? `<button class="action-btn mkt-dt-install" disabled>Installed</button>`
-    : `<button class="action-btn primary mkt-dt-install">Install</button>`;
-
-  const icon = d.iconUrl ? `<img src="${escMkt(d.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((d.name || "?").charAt(0).toUpperCase())}</span>`;
-
-  mktDetailEl.innerHTML = `
-    <button class="mkt-back">‹ Back to marketplace</button>
-    <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><a class="mkt-crumb-cat" href="#">${escMkt(catLabel)}</a><span class="sep">›</span><span class="cur">${escMkt(d.name)}</span></nav>
-
-    <header class="mkt-dt-hero">
-      <div class="mkt-dt-icon">${icon}</div>
-      <div class="mkt-dt-headmain">
-        <h1 class="mkt-dt-name">${escMkt(d.name)}</h1>
-        <p class="mkt-dt-tagline">${escMkt(d.tagline)}</p>
-        <div class="mkt-dt-metarow">
-          <span class="mkt-dt-dev">by <b>${escMkt(d.developer.name)}</b></span>
-          ${mktConnRow(d.connections)}
-        </div>
-        <div class="mkt-dt-statrow">${mktStarRow(d.rating)}<b>${d.rating.toFixed(1)}</b><span>(${d.ratingCount.toLocaleString()} reviews)</span><span class="mkt-dot">•</span><span>${escMkt(priceLabel)}</span></div>
-      </div>
-      <div class="mkt-dt-cta">
-        ${installBtn}
-        <div class="mkt-dt-price-note">${escMkt(ctaNote)}</div>
-      </div>
-    </header>
-
-    <div class="mkt-dt-body">
-      <div class="mkt-dt-main">
-        <section class="mkt-dt-section mkt-gallery">
-          <div class="mkt-gallery-main"><img id="mkt-shot-main" src="${escMkt(d.screenshots[0]?.url || "")}" alt="" /></div>
-          <div class="mkt-gallery-caption" id="mkt-shot-caption">${escMkt(d.screenshots[0]?.caption || "")}</div>
-          <div class="mkt-gallery-thumbs">
-            ${d.screenshots.map((s, i) => `<button class="mkt-thumb${i === 0 ? " active" : ""}" data-i="${i}"><img src="${escMkt(s.url)}" alt="" /></button>`).join("")}
-          </div>
-        </section>
-
-        <section class="mkt-dt-section">
-          <h3>Highlights</h3>
-          <ul class="mkt-highlights">${highlights}</ul>
-        </section>
-
-        ${videoHtml}
-        <section class="mkt-dt-section mkt-dt-desc">
-          <h3>About ${escMkt(d.name)}</h3>
-          <div class="mkt-md">${descHtml}</div>
-        </section>
-        ${reqConnHtml}
-
-        <section class="mkt-dt-section">
-          <h3>Pricing</h3>
-          <div class="mkt-plans">${plans}</div>
-          <div class="mkt-plans-note">All charges are billed in Glyphh compute credits. ${d.priceCredits > 0 ? "Free trial available." : ""}</div>
-        </section>
-
-        <section class="mkt-dt-section">
-          <h3>Reviews</h3>
-          <div class="mkt-reviews-summary">
-            <div class="mkt-reviews-score">
-              <div class="big">${d.rating.toFixed(1)}</div>
-              ${mktStarRow(d.rating)}
-              <div class="cnt">${d.ratingCount.toLocaleString()} reviews</div>
-            </div>
-            <div class="mkt-reviews-bars">${bars}</div>
-          </div>
-          <div class="mkt-review-list">${reviews}</div>
-        </section>
-
-        ${d.similar.length ? `<section class="mkt-dt-section"><h3>More apps like this</h3><div class="mkt-grid" id="mkt-similar"></div></section>` : ""}
-      </div>
-
-      <aside class="mkt-dt-side">
-        <div class="mkt-side-card">
-          <h4>Works with</h4>
-          <ul class="mkt-works">${works}</ul>
-        </div>
-        <div class="mkt-side-card">
-          <h4>Resources</h4>
-          <div class="mkt-side-row"><span>Developer</span><b>${escMkt(d.developer.name)}</b></div>
-          ${d.website ? `<div class="mkt-side-row"><span>Website</span><a class="mkt-ext" data-url="${escMkt(d.website)}" href="#">${escMkt(d.website.replace(/^https?:\/\//, ""))}</a></div>` : ""}
-          <div class="mkt-side-row"><span>Launched</span><b>${escMkt(d.launchedAt)}</b></div>
-          ${d.updatedAt ? `<div class="mkt-side-row"><span>Changelog</span><b>${escMkt(d.updatedAt)}</b></div>` : ""}
-          <div class="mkt-side-row"><span>Category</span><b>${escMkt(catLabel)}</b></div>
-          <div class="mkt-side-row"><span>Languages</span><b>${escMkt(d.languages.join(", "))}</b></div>
-          ${d.version ? `<div class="mkt-side-row"><span>Version</span><b>${escMkt(d.version)}</b></div>` : ""}
-        </div>
-        <div class="mkt-side-card">
-          <h4>Data access</h4>
-          <ul class="mkt-dataaccess">${dataAccess}</ul>
-        </div>
-      </aside>
-    </div>`;
-
-  // Wire interactions.
-  mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
-  mktDetailEl.querySelector(".mkt-crumb-cat")?.addEventListener("click", (e) => {
-    e.preventDefault();
-    mktCategory = d.category; mktQuery = ""; mktPage = 1;
-    if (mktSearchInput) mktSearchInput.value = "";
-    closeMktDetail(); void loadMarketplace();
-  });
-  mktDetailEl.querySelector(".mkt-ext")?.addEventListener("click", (e) => {
+  el.querySelector<HTMLElement>(".mkt-inst-ext")?.addEventListener("click", (e) => {
     e.preventDefault();
     const url = (e.currentTarget as HTMLElement).dataset.url;
-    if (url) void window.glyphh.execCommand(`dip ${url}`);
+    if (!url) return;
+    if (IS_WEB) window.open(url, "_blank", "noopener");
+    else void window.glyphh.execCommand(`dip ${url}`);
   });
-
-  const mainImg = mktDetailEl.querySelector("#mkt-shot-main") as HTMLImageElement | null;
-  const cap = mktDetailEl.querySelector("#mkt-shot-caption") as HTMLElement | null;
-  for (const t of Array.from(mktDetailEl.querySelectorAll<HTMLButtonElement>(".mkt-thumb"))) {
-    t.addEventListener("click", () => {
-      const i = Number(t.dataset.i);
-      const s = d.screenshots[i];
-      if (!s || !mainImg) return;
-      mainImg.src = s.url;
-      if (cap) cap.textContent = s.caption;
-      mktDetailEl.querySelectorAll(".mkt-thumb").forEach((x) => x.classList.toggle("active", x === t));
-    });
-  }
-
-  const installEl = mktDetailEl.querySelector(".mkt-dt-install") as HTMLButtonElement | null;
-  if (installEl && !d.installed) {
-    installEl.addEventListener("click", async () => {
-      installEl.disabled = true; installEl.textContent = "Installing…";
-      const res = await window.glyphh.marketplaceInstall?.(d.id);
-      if (res?.ok) { installEl.textContent = "Installed"; }
-      else { installEl.disabled = false; installEl.textContent = "Install"; flashMktNote(res?.error || "Install failed"); }
-    });
-  }
-
-  const similarWrap = mktDetailEl.querySelector("#mkt-similar");
-  if (similarWrap) for (const a of d.similar) similarWrap.appendChild(mktCard(a, "grid"));
-
-  // Real connection icons for the hero chips + similar cards, then re-render
-  // (only if this detail is still on screen).
-  const conns = [...d.connections, ...d.similar.flatMap((s) => s.connections)];
-  void primeConnectedIcons(mktConnIconApps(conns), () => {
-    if (!mktDetailEl.classList.contains("hidden")) renderMktDetail(d);
+  document.getElementById("mkt-inst-report-btn")?.addEventListener("click", async () => {
+    const reason = await promptAction("Report this app — what's wrong?", "", "It exfiltrates data / it's malicious / it impersonates…", "Report");
+    if (!reason?.trim()) return;
+    const res = await mkt.reportApp(app.slug, reason.trim());
+    const btn = document.getElementById("mkt-inst-report-btn");
+    if (btn) btn.textContent = res.ok ? "Reported ✓" : (res.error || "Report failed");
   });
-}
-
-/** The marketplace storefront is gated behind a coming-soon page for now. Flip
- *  to false to bring the live storefront + the app-editor Marketplace tab back. */
-const MARKETPLACE_COMING_SOON = true;
-
-/** Switch between the "My apps" library and the Marketplace storefront. */
-function switchAppsPage(page: "library" | "marketplace"): void {
-  document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
-  marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
-  marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  if (page !== "marketplace") return;
-  const soon = document.getElementById("mkt-coming-soon");
-  const store = document.getElementById("mkt-store");
-  if (MARKETPLACE_COMING_SOON) {
-    // Show the placeholder; keep the storefront + any open detail out of the way.
-    store?.classList.add("hidden");
-    closeMktDetail();
-    soon?.classList.remove("hidden");
-    return;
-  }
-  soon?.classList.add("hidden");
-  store?.classList.remove("hidden");
-  closeMktDetail();
-  void loadMarketplace();
 }
 
 // ── Tab switching ────────────────────────────────────────
@@ -940,6 +663,10 @@ function switchAppTab(tab: string) {
   if (tab === "releases") void loadReleasesTab();
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
+  // Consumer view (marketplace-installed): render from the cached store
+  // detail; loadMktInstalledDetail re-renders both when the fetch lands.
+  if (tab === "mkt-about") renderMktAboutTab();
+  if (tab === "mkt-support") renderMktSupportTab();
   // Deploy + "own your code" share the Public hosting tab: both answer "who runs
   // this for the public", which is a different question from how it is distributed
   // inside Glyphh (Releases + Marketplace).
@@ -1024,6 +751,60 @@ function loadMarketplaceTab(): void {
     : `<span class="deploy-dot"></span>Not listed`;
   listBtn.classList.toggle("hidden", listed);
   unlistBtn.classList.toggle("hidden", !listed);
+  // M7: no enrollment, no listing — pre-gate the List button when the
+  // program state is knowable.
+  void renderListingProgramGate();
+}
+
+// ── M7 publish gate — no enrollment, no listing ──────────────────
+//
+// The server refuses listing without completed developer-program enrollment
+// (profile + agreement consent + payout config, Settings → Developer). Two
+// doors to the same truth: when the program state is KNOWN not-enrolled the
+// gate renders BEFORE any submission attempt; when it can't be known (the
+// program surface is still coming online) the List button stays live and the
+// server's actual refusal is rendered with the same gate + jump.
+
+/** Show the gate box with a reason; the button beside it jumps to
+ *  Settings → Developer (wired once in initMarketplaceTab). */
+function showListingProgramGate(msg: string): void {
+  const gate = document.getElementById("listing-program-gate");
+  const msgEl = document.getElementById("listing-program-gate-msg");
+  if (!gate || !msgEl) return;
+  msgEl.textContent = msg;
+  gate.classList.remove("hidden");
+}
+
+/** The pre-gate: fetch the program state and, when it is KNOWN not-eligible,
+ *  disable List and say why before the server ever has to refuse. The program
+ *  is HANDLE-scoped, so resolve the caller's profile first (org over personal
+ *  — the publisher gate reads the org profile for org apps). */
+async function renderListingProgramGate(): Promise<void> {
+  const gate = document.getElementById("listing-program-gate");
+  const listBtn = document.getElementById("listing-list-btn") as HTMLButtonElement | null;
+  if (!gate || !listBtn) return;
+  gate.classList.add("hidden");
+  listBtn.disabled = false;
+  const slug = currentApp?.slug;
+  let state: MktProgramState | null = null;
+  let noProfile = false;
+  try {
+    const me = await mkt.devMe();
+    const handle = me.org?.handle ?? me.personal?.handle ?? null;
+    if (handle) state = await mktProgram.state(handle);
+    else noProfile = true; // KNOWN ineligible: no profile, no program
+  } catch { /* unknown → no pre-gate; the server still rules */ }
+  // Stale answer (the user opened another app meanwhile) or unknown state
+  // (a fetch failed, or the SDK bundle predates the program surface).
+  if (!slug || currentApp?.slug !== slug) return;
+  if (!state && !noProfile) return;
+  if (state?.status === "enrolled" && state.agreement.current) return;
+  listBtn.disabled = true;
+  showListingProgramGate(state?.status === "suspended"
+    ? "Your developer program membership is suspended — listing is paused while the suspension stands."
+    : state?.status === "enrolled"
+      ? "The developer agreement has been updated — re-accept it in Settings → Developer before listing."
+      : "Listing on the marketplace requires the developer program: a developer profile, the developer agreement, and payout details.");
 }
 
 /** The stored key back out of a served media URL — the remove call takes the key,
@@ -1114,7 +895,15 @@ async function setListed(listed: boolean): Promise<void> {
   }
   listingStatus(listed ? "Listing…" : "Unlisting…");
   const res = await window.glyphh.appListingList?.(currentApp.slug, listed);
-  if (!res?.ok) { listingStatus(""); listingError(res?.error || "Couldn't change the listing."); return; }
+  if (!res?.ok) {
+    listingStatus("");
+    const err = res?.error || "Couldn't change the listing.";
+    // A developer-program refusal gets the server's actual reason plus the
+    // door to fix it (Settings → Developer); anything else is a plain error.
+    if (listed && mktIsProgramRefusal(err)) showListingProgramGate(err);
+    else listingError(err);
+    return;
+  }
   listingStatus(listed ? "Listed ✓" : "Unlisted ✓");
   await refreshCurrentApp();
   loadMarketplaceTab();
@@ -1130,6 +919,9 @@ function initMarketplaceTab(): void {
   });
   document.getElementById("listing-list-btn")?.addEventListener("click", () => { void setListed(true); });
   document.getElementById("listing-unlist-btn")?.addEventListener("click", () => { void setListed(false); });
+  document.getElementById("listing-program-gate-btn")?.addEventListener("click", () => {
+    gotoSection("settings", "developer");
+  });
 }
 
 // ── Releases tab — the app's version history ─────────────────────
@@ -1913,13 +1705,22 @@ async function openPanelAppDetail(app: PanelApp) {
   // installed it; Marketplace + Public hosting are the builder's alone.
   const isBuilt = app.appArchetype === "glyphh-app";
   const owned = app.owned !== false;   // undefined (self/legacy) reads as owned
-  document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => el.classList.toggle("hidden", !isBuilt));
+  // M7 consumer view: installed FROM the marketplace, not published here. The
+  // developer hosts it, so the installer sees the store's tabs — exactly
+  // About / Connections / Support — and none of the builder affordances.
+  const mktInstalled = !owned;
+  currentMktDetail = null;
+  document.querySelectorAll<HTMLElement>(".tab-mkt-installed").forEach((el) => el.classList.toggle("hidden", !mktInstalled));
+  document.querySelector(".app-detail-tab[data-tab='dashboard']")?.classList.toggle("hidden", mktInstalled);
+  document.querySelector(".app-detail-tab[data-tab='config']")?.classList.toggle("hidden", mktInstalled);
+  document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => {
+    // The consumer view keeps Connections (the grants the app needs) and
+    // drops Releases (the publisher's history, not the installer's).
+    const show = mktInstalled ? el.dataset.tab === "connections" : isBuilt;
+    el.classList.toggle("hidden", !show);
+  });
   document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
-    // The Marketplace tab stays hidden while the storefront is coming-soon —
-    // there is nothing to list an app into yet. Flip MARKETPLACE_COMING_SOON to
-    // bring it back with the rest of the owner-only tabs.
-    const marketplaceGated = MARKETPLACE_COMING_SOON && el.getAttribute("data-tab") === "marketplace";
-    el.classList.toggle("hidden", marketplaceGated || !(isBuilt && owned));
+    el.classList.toggle("hidden", !(isBuilt && owned));
   });
   // The type control is retired: every NEW app is a web panel, and a built
   // app's type comes from its bundle either way.
@@ -1948,8 +1749,11 @@ async function openPanelAppDetail(app: PanelApp) {
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
 
-  // MCP + Guardrails tabs — installed apps that declare tools.
-  syncMcpTabs(app);
+  // MCP + Guardrails tabs — installed apps that declare tools. The consumer
+  // view doesn't carry them (its tabs are exactly About/Connections/Support);
+  // the app's tools still reach the org's agents through the install.
+  if (mktInstalled) document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
+  else syncMcpTabs(app);
 
   // Shared edit header: icon + name + slug (the header title span is now blank).
   appDetailHeading.textContent = "";
@@ -1960,11 +1764,20 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
-  // Deployed apps can't be deleted until taken down — gate the button on that.
-  void gateAppDelete(app.slug);
-
-  // Required connections (installed Glyphh apps) — status + missing warning.
-  void renderRequiredConnections(app);
+  // The open action resets per app — a prior suspended marketplace app must
+  // not leave the button dead for the next one opened.
+  const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
+  if (openBtn) { openBtn.disabled = false; openBtn.textContent = "Open app"; openBtn.title = "Open this app as a panel"; }
+  if (mktInstalled) {
+    // Consumer view: hydrate the store detail (listing, pricing story,
+    // developer card, suspended state) — the open action gates on it.
+    void loadMktInstalledDetail(app);
+  } else {
+    // Deployed apps can't be deleted until taken down — gate the button on that.
+    void gateAppDelete(app.slug);
+    // Required connections (installed Glyphh apps) — status + missing warning.
+    void renderRequiredConnections(app);
+  }
 
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -1977,7 +1790,7 @@ async function openPanelAppDetail(app: PanelApp) {
   appAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
-  switchAppTab("dashboard");
+  switchAppTab(mktInstalled ? "mkt-about" : "dashboard");
 }
 
 function getPreviewWebContentsId(): number | undefined {
@@ -2024,6 +1837,7 @@ function initApps() {
   initMcpTab();
   initReleasesTab();
   initMarketplaceTab();
+  initWorkPanels();
 
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
@@ -2108,40 +1922,8 @@ function initApps() {
   const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
   const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
 
-  // Apps page tabs: My apps ↔ Marketplace ↔ Public URLs.
-  for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".apps-page-tab"))) {
-    t.addEventListener("click", () => {
-      const page = t.dataset.page;
-      switchAppsPage(page === "marketplace" ? "marketplace" : "library");
-    });
-  }
-  // Marketplace scope (Public / Your organization).
-  for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".mkt-scope"))) {
-    t.addEventListener("click", () => {
-      const scope = t.dataset.scope === "private" ? "private" : "public";
-      if (scope === mktScope) return;
-      mktScope = scope; mktCategory = ""; mktPage = 1;
-      document.querySelectorAll<HTMLButtonElement>(".mkt-scope").forEach((x) => x.classList.toggle("active", x === t));
-      void loadMarketplace();
-    });
-  }
-  // Marketplace search (debounced) + sort.
-  mktSearchInput?.addEventListener("input", () => {
-    if (mktSearchTimer) clearTimeout(mktSearchTimer);
-    mktSearchTimer = setTimeout(() => { mktQuery = mktSearchInput.value.trim(); mktPage = 1; void loadMarketplace(); }, 200);
-  });
-  mktSortSelect?.addEventListener("change", () => {
-    mktSort = (mktSortSelect.value as "popular" | "rating" | "newest") || "popular";
-    mktPage = 1; void loadMarketplace();
-  });
-  // Refresh — reload the current storefront view.
-  const mktRefreshBtn = document.getElementById("mkt-refresh");
-  mktRefreshBtn?.addEventListener("click", async () => {
-    mktRefreshBtn.classList.add("spinning");
-    closeMktDetail();
-    await loadMarketplace();
-    mktRefreshBtn.classList.remove("spinning");
-  });
+  // (The Marketplace storefront is its own left-rail section now — its search,
+  // scope, sort, and refresh are wired by help/marketplace.ts.)
 
   document.getElementById("apps-add-btn")?.addEventListener("click", () => {
     addNameInput.value = "";
@@ -2244,6 +2026,9 @@ function initApps() {
   document.getElementById("app-detail-open")?.addEventListener("click", async () => {
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
+    // A suspended marketplace app has no open action (M7: lapse = unrouted).
+    // The button is already disabled — this backstops a stale click.
+    if (app.owned === false && mktUnavailable()) return;
     const glyphh = app.appArchetype === "glyphh-app";
     if (app.url || glyphh) {
       closeSettingsModal();

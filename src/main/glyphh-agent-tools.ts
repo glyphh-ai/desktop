@@ -278,6 +278,11 @@ async function executeConnectorWire(
     title: `Call ${wired.slug} → ${wired.tool}`,
     detail: JSON.stringify(args, null, 1).slice(0, 500),
   };
+  // Work panels are built in — refuse an entry mutation on their slugs before
+  // anything reaches the server, gate or no gate.
+  if (targetsBuiltinWorkpanel(wired.tool, args)) {
+    return { result: WORKPANEL_REFUSAL, denied: false, title: action.title };
+  }
   const gate = await gateGlyphhAction(wc, action);
   if (!gate.allowed) {
     return { result: `DENIED: ${gate.reason || "not allowed"}`, denied: true, title: action.title };
@@ -287,6 +292,27 @@ async function executeConnectorWire(
   } catch (err) {
     return { result: `ERROR: ${err instanceof Error ? err.message : String(err)}`, denied: false, title: action.title };
   }
+}
+
+// ── Built-in work panels — agent-proof ──────────────────────────────────────
+// The ten work panels (Office / Design / Memory / Media) are Apps-page
+// fixtures, not org apps. NO agent path may create, reshape, or remove an app
+// entry under their slugs — the refusal fires BEFORE any client call, on every
+// seam that can reach the entries API: wired connector tools, the call_tool
+// hatch, and the workdir install path (glyphh-app-builder.ts guards that one
+// at the manifest, where the slug first exists). apps-ipc.ts carries the same
+// set for the renderer's CRUD.
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+const WORKPANEL_REFUSAL = "ERROR: work panels are built in — they cannot be altered or removed";
+
+/** True when a tool call would mutate an app ENTRY under a built-in work-panel
+ *  slug. Matches the entry-mutation names however they're wired
+ *  (create_app_entry, update_app_entry, delete_app_entry, remove_app,
+ *  slug-prefixed variants) and reads the slug from the usual argument names. */
+function targetsBuiltinWorkpanel(toolName: string, args: Record<string, unknown>): boolean {
+  if (!/(^|_)(create|update|delete|remove)_app(_entry)?($|_)/i.test(toolName)) return false;
+  const slug = String(args.slug ?? args.app ?? args.id ?? args.name ?? "").trim().toLowerCase();
+  return BUILTIN_WORKPANELS.has(slug);
 }
 
 // create_app (the one-shot LLM builder) is retired — frontier agents build
@@ -524,13 +550,18 @@ const TOOLS: ToolDef[] = [
     },
     run: async (a) => {
       const inner = String(a.name ?? "");
+      const args = (a.arguments ?? {}) as Record<string, unknown>;
+      // Work panels are built in — an entry mutation on their slugs is refused
+      // here too, so the hatch is no way around the wired-tool guard.
+      if (targetsBuiltinWorkpanel(inner, args)) return WORKPANEL_REFUSAL;
       const wired = wireMap.get(inner);
       if (wired) {
+        if (targetsBuiltinWorkpanel(wired.tool, args)) return WORKPANEL_REFUSAL;
         noteToolUsed(inner);
-        return cap(await callConnectorTool(wired.slug, wired.tool, (a.arguments ?? {}) as Record<string, unknown>));
+        return cap(await callConnectorTool(wired.slug, wired.tool, args));
       }
       const builtin = TOOLS.find((t) => t.name === inner && t.name !== "call_tool" && t.name !== "find_tools");
-      if (builtin) return builtin.run((a.arguments ?? {}) as Record<string, unknown>);
+      if (builtin) return builtin.run(args);
       return `ERROR: unknown tool "${inner}" — use find_tools to get the exact name`;
     },
   },

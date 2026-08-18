@@ -3711,12 +3711,11 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
   min-height: 0;
 }
 
-/* The Marketplace has no split-detail pane, so it must NOT be its own nested
-   scroll container — otherwise its scrollbar lands 40px inside #help-content's
-   right padding, leaving an empty gap to the scrollbar's right. Letting the
-   section grow lets #help-content scroll, putting the scrollbar at the pane
-   edge. Scoped to when the Marketplace page (not My apps) is showing. */
-.help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
+/* The Marketplace (its own section now) has no split-detail pane, so it must
+   NOT be its own nested scroll container — otherwise its scrollbar lands 40px
+   inside #help-content's right padding. Letting the section grow lets
+   #help-content scroll, putting the scrollbar at the pane edge. */
+.help-section[data-section="marketplace"].active {
   height: auto;
   overflow: visible;
 }
@@ -4786,9 +4785,6 @@ ol.docs-list li::before {
 .settings-modal-body .settings-panel-section #apps-library-page > .section-desc {
   margin: 0 0 16px;
 }
-/* Apps keeps its My apps | Marketplace switcher above the header — snug it to
-   the same top line the other pages start on. */
-.settings-modal-body .settings-panel-section .apps-page-tabs { margin: 0 0 16px; }
 .settings-modal-body .settings-panel-section .apps-page-heading { margin-top: 0; }
 /* Editors align to the page gutter inside the modal — their legacy full-page
    16px inner insets would double the left edge here. The RIGHT edge keeps the
@@ -4806,14 +4802,6 @@ ol.docs-list li::before {
   padding: 0;
   overflow-y: hidden;
 }
-/* The full-page Apps marketplace rule lets the OUTER page (#help-content) scroll
-   by making the section overflow:visible — there's no such outer scroller in the
-   modal, so re-assert the section as the scroll container for that tab too. */
-.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
-  height: 100%;
-  overflow-y: auto;
-}
-
 /* Narrow modal — below this the modal is viewport-bound (96vw) and the
    side-by-side editors (Apps/Connections builder split, the Loops/Skills/
    Agents lib splits, the Layouts builder) would squeeze their right pane
@@ -11770,12 +11758,6 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
    left-aligned wrapping grid (the CC storefront centers; the page starts left). */
 .layouts-page-grid { justify-content: flex-start; padding: 6px 0; }
 
-/* Marketplace coming-soon placeholder — shown instead of the storefront. */
-.mkt-coming-soon { display: flex; align-items: center; justify-content: center; min-height: 340px; padding: 40px 20px; }
-.mkt-cs-inner { max-width: 420px; text-align: center; color: var(--text-2); }
-.mkt-cs-inner svg { width: 46px; height: 46px; color: var(--text-3); margin-bottom: 16px; }
-.mkt-cs-inner h2 { margin: 0 0 8px; font-size: 19px; color: var(--text); }
-.mkt-cs-inner p { margin: 0; font-size: 13.5px; line-height: 1.6; }
 /* Ada fallback — semantic memory hits when nothing matches by name. */
 
 
@@ -12610,16 +12592,15 @@ select:focus {
 .msg-warning svg { flex-shrink: 0; color: #f59e0b; margin-top: 0.0625rem; }
 .msg-warning a { color: var(--text); text-decoration: underline; font-weight: 600; cursor: pointer; }
 
-/* ══ Apps page: My-apps / Marketplace tabs (button pills) ═══ */
-.apps-page-tabs { display: flex; gap: 8px; margin: 6px 0 18px; }
+/* ══ Apps page ═══ */
 /* While an app editor / add form is open, hide the page-level chrome (the
-   My apps | Marketplace tabs + the "Apps" heading + description) so the form
+   "Apps" heading + description + the built-in Work panels grid) so the form
    stands alone with just its breadcrumb — same as the connection editor. */
-.help-section[data-section="apps"]:has(#app-detail:not(.hidden)) .apps-page-tabs,
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-detail:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) > #apps-library-page > .section-desc,
-.help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) .apps-page-tabs,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) > #apps-library-page > .section-desc {
   display: none !important;
 }
@@ -12629,20 +12610,20 @@ select:focus {
 .help-section[data-section="connections"]:has(#conn-detail:not(.hidden)) > .section-desc {
   display: none !important;
 }
-.apps-page-tab {
-  padding: 7px 16px; border-radius: 9px; cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  color: var(--text-2); font-size: 13px; font-weight: 600;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.apps-page-tab:hover { color: var(--text); border-color: var(--border-3, var(--border-2)); }
-.apps-page-tab.active { background: #fff; border-color: #fff; color: #111; }
-/* Page title sits under the tabs (library page only), with breathing room. */
 .apps-page-heading { margin-top: 20px; }
 
-/* ── Marketplace storefront ─────────────────────────────── */
-/* Banner starts at the same y-offset as the library page's heading
-   (.apps-page-heading margin-top:20px) so nothing jumps when toggling tabs. */
+/* Work panels — the fixed built-in cards above the org apps grid. Same
+   .app-card grammar as the grid below; only the inline SVG icon (verbatim
+   from the old view-dropdown buttons) needs a size. */
+.apps-workpanels-heading {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .04em;
+  margin: 4px 0 10px;
+}
+#apps-workpanels { margin-bottom: 22px; }
+.workpanel-card .app-card-icon svg { width: 28px; height: 28px; }
+
+/* ── Marketplace storefront (its own section — sections/marketplace.html) ── */
 .mkt-banner {
   position: relative; overflow: hidden;
   margin-top: 20px; margin-bottom: 24px;
@@ -12785,17 +12766,12 @@ select:focus {
 .mkt-strip { margin-bottom: 30px; }
 .mkt-strip-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
 .mkt-strip-head h4 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
-.mkt-strip-tag {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--text-3); border: 1px solid var(--border-2); border-radius: 4px; padding: 1px 5px;
-}
 .mkt-count { font-size: 12.5px; color: var(--text-3); }
 
 /* Grids */
 /* auto-fit (not auto-fill) so a partial last row stretches to the full width —
    auto-fill keeps phantom empty tracks on the right, which read as a gap. */
 .mkt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
-.mkt-featured-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
 /* Popular strip wraps onto multiple rows — no horizontal scroll. */
 .mkt-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
 
@@ -12808,7 +12784,6 @@ select:focus {
   transition: border-color .15s, transform .15s, box-shadow .15s;
 }
 .mkt-card:hover { border-color: var(--border-3, var(--accent)); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.14); }
-.mkt-card-featured { background: linear-gradient(180deg, var(--surface-2), var(--surface)); }
 .mkt-card-top { display: flex; align-items: flex-start; gap: 11px; }
 /* Icon matches the My-apps page card icon (32px). */
 .mkt-card-icon { width: 32px; height: 32px; border-radius: 7px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
@@ -12817,10 +12792,6 @@ select:focus {
 .mkt-card-head { min-width: 0; flex: 1; }
 .mkt-card-name { font-size: 14.5px; font-weight: 650; color: var(--text); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .mkt-card-metaline { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 5px; font-size: 11.5px; color: var(--text-3); }
-.mkt-ad {
-  border: 1px solid var(--border-2); border-radius: 4px; padding: 0 5px; line-height: 15px;
-  font-size: 10px; font-weight: 600; color: var(--text-2); background: var(--surface-2);
-}
 .mkt-rating { color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
 .mkt-rating b { color: var(--text); font-weight: 650; }
 .mkt-rating-count { color: var(--text-3); }
@@ -12969,6 +12940,156 @@ select:focus {
   .mkt-dt-icon { width: 64px; height: 64px; }
   .mkt-dt-cta { grid-column: 1 / -1; min-width: 0; }
 }
+
+/* ── Marketplace M2: badges, reviews, developer pages, console, desk ── */
+/* Every color is a theme variable — themes own colors (repo law). */
+
+/* Kind + state chips on cards and the detail hero. */
+.mkt-kind-badge {
+  align-self: flex-start;
+  font-size: 10.5px; font-weight: 650; letter-spacing: .02em;
+  color: var(--text-2); background: var(--surface-2);
+  border: 1px solid var(--border-2); border-radius: 5px; padding: 2px 7px;
+}
+.mkt-installed { color: var(--success, var(--accent)); font-weight: 650; }
+.mkt-rating-none, .mkt-rating-pending { color: var(--text-3); font-size: 11.5px; }
+.mkt-discount-chip {
+  font-size: 10.5px; font-weight: 650; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 5px; padding: 1px 6px;
+}
+.mkt-discount-note { font-size: 12px; color: var(--accent); margin-top: 6px; }
+.mkt-price s { color: var(--text-3); margin-right: 2px; }
+
+/* Suspension + admin strip on the detail page. */
+.mkt-suspended-banner {
+  margin: 10px 0; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--danger, #e5484d); color: var(--danger, #e5484d);
+  font-size: 12.5px;
+}
+.mkt-admin-strip {
+  display: flex; align-items: center; gap: 10px; margin: 10px 0;
+  padding: 8px 12px; border-radius: 8px;
+  background: var(--surface-2); border: 1px dashed var(--border-2);
+}
+.mkt-admin-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-3);
+}
+.mkt-reported-chip {
+  font-size: 11px; font-weight: 650; color: var(--danger, #e5484d);
+  border: 1px solid var(--danger, #e5484d); border-radius: 5px; padding: 1px 7px;
+}
+
+/* Review rows: actions, moderation chips, the developer's public reply. */
+.mkt-review-head { display: flex; align-items: center; gap: 8px; }
+.mkt-rev-act {
+  background: none; border: none; cursor: pointer; padding: 2px 4px;
+  font-size: 11.5px; color: var(--text-3);
+}
+.mkt-rev-act:hover { color: var(--text); text-decoration: underline; }
+.mkt-flag-chip {
+  font-size: 10px; font-weight: 650; color: var(--text-3);
+  border: 1px solid var(--border-2); border-radius: 4px; padding: 0 5px;
+}
+.mkt-review-response {
+  margin-top: 8px; padding: 8px 10px; border-left: 2px solid var(--accent);
+  background: var(--surface-2); border-radius: 0 8px 8px 0;
+  font-size: 12.5px; color: var(--text-2); line-height: 1.5;
+}
+.mkt-review-response-tag { display: block; font-size: 10.5px; font-weight: 700; color: var(--text-3); margin-bottom: 3px; }
+
+/* The write-a-review form (apps + developers share it). */
+.mkt-review-form { margin-top: 18px; padding: 14px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface); }
+.mkt-review-form h4 { margin: 0 0 10px; font-size: 13.5px; color: var(--text); }
+.mkt-star-input { display: flex; gap: 2px; margin-bottom: 10px; }
+.mkt-star-btn {
+  background: none; border: none; cursor: pointer; padding: 0 2px;
+  font-size: 22px; line-height: 1; color: var(--text-3);
+}
+.mkt-star-btn.on, .mkt-star-btn:hover { color: #f5a623; }
+
+/* Developer card (detail sidebar) + the public profile page. */
+.mkt-dev-row { display: flex; align-items: center; gap: 10px; }
+.mkt-dev-avatar {
+  width: 40px; height: 40px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; background: var(--surface-2);
+}
+.mkt-dev-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.mkt-dev-id { display: flex; flex-direction: column; min-width: 0; }
+.mkt-dev-id b { font-size: 13px; color: var(--text); }
+.mkt-dev-handle { font-size: 11.5px; color: var(--text-3); }
+.mkt-dev-stats { margin: 10px 0; font-size: 12px; color: var(--text-2); display: grid; gap: 4px; }
+.mkt-dev-rollup { color: var(--text-3); }
+.mkt-dev-profile-btn { width: 100%; }
+.mkt-support-link { display: block; margin-top: 8px; font-size: 12.5px; color: var(--accent); }
+.mkt-support-link:hover { text-decoration: underline; }
+.mkt-devp-hero { grid-template-columns: 84px 1fr; }
+.mkt-devp-avatar { border-radius: 50%; }
+.mkt-devp-avatar img { object-fit: cover; }
+.mkt-devp-bio { font-size: 13.5px; line-height: 1.6; color: var(--text-2); margin: 0; max-width: 640px; }
+.mkt-dev-apps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.mkt-dev-app {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px;
+  color: var(--text); text-align: left;
+}
+.mkt-dev-app:hover { border-color: var(--border-3, var(--accent)); }
+.mkt-dev-app-name { flex: 1; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Developer console. */
+.mkt-console-title { font-size: 22px; margin: 14px 0 4px; color: var(--text); }
+.mkt-console-profiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.mkt-console-card {
+  padding: 14px 16px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface);
+}
+.mkt-console-card h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13.5px; color: var(--text); }
+.mkt-console-avatar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.mkt-console-avatar-row .mkt-dev-avatar { width: 52px; height: 52px; }
+.mkt-console-apps { display: grid; gap: 10px; }
+.mkt-console-app { border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.mkt-console-app-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px;
+  background: none; border: none; cursor: pointer; color: var(--text); text-align: left;
+}
+.mkt-console-app-head:hover { background: var(--hover); }
+.mkt-console-app-head .mkt-card-icon { width: 28px; height: 28px; }
+.mkt-console-app-name { font-size: 13.5px; font-weight: 650; }
+.mkt-console-app-sub { font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
+.mkt-console-chev { color: var(--text-3); }
+.mkt-listed-chip {
+  font-size: 10.5px; font-weight: 650; color: var(--text-3);
+  border: 1px solid var(--border-2); border-radius: 5px; padding: 1px 7px;
+}
+.mkt-listed-chip.on { color: var(--success, var(--accent)); border-color: var(--success, var(--accent)); }
+.mkt-console-app-body { padding: 4px 14px 14px; border-top: 1px solid var(--border-1, var(--border-2)); }
+.mkt-console-cols { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 22px; }
+.mkt-console-col h5 {
+  margin: 12px 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--text-3);
+}
+.mkt-disc-window { display: flex; align-items: center; gap: 8px; }
+.mkt-disc-window span { color: var(--text-3); }
+@media (max-width: 900px) { .mkt-console-cols { grid-template-columns: 1fr; } }
+
+/* Release rows (console) + review-status chips (console + desk). */
+.mkt-release-row { padding: 8px 0; border-top: 1px solid var(--border-1, var(--border-2)); }
+.mkt-release-row:first-child { border-top: none; }
+.mkt-release-head { display: flex; align-items: center; gap: 8px; }
+.mkt-review-chip {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  border-radius: 4px; padding: 1px 6px; border: 1px solid var(--border-2); color: var(--text-3);
+}
+.mkt-review-chip.submitted, .mkt-review-chip.in_review { color: var(--accent); border-color: var(--accent); }
+.mkt-review-chip.approved { color: var(--success, var(--accent)); border-color: var(--success, var(--accent)); }
+.mkt-review-chip.rejected { color: var(--danger, #e5484d); border-color: var(--danger, #e5484d); }
+.mkt-review-notes { margin-top: 6px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+
+/* Review desk (platform admin). */
+.mkt-admin-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 16px; }
+.mkt-admin-row { padding: 12px 14px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface); margin-bottom: 10px; }
+.mkt-admin-row-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mkt-admin-app-link { background: none; border: none; cursor: pointer; padding: 0; color: var(--text); text-align: left; }
+.mkt-admin-app-link:hover b { text-decoration: underline; }
 
 /* ── Connections section ─────────────────────────────────────────── */
 .conn-tools-pane { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
