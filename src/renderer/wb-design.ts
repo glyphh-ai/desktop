@@ -439,7 +439,7 @@ export function initDesign(host: DesignHost): DesignPanel {
       if (dirtyWhileSaving) { dirtyWhileSaving = false; void save(); }
     };
     const touched = (): void => {
-      paintAll(body, doc);
+      paintAll(body, doc, file);
       saveState.textContent = "…";
       if (saveTimer) clearTimeout(saveTimer);
       saveTimer = setTimeout(() => { void save(); }, 700);
@@ -450,7 +450,7 @@ export function initDesign(host: DesignHost): DesignPanel {
       touched();
     });
 
-    paintAll(body, doc);
+    paintAll(body, doc, file);
     wireCanvas(body.querySelector<HTMLElement>(".gdz-canvas")!, body.querySelector<HTMLElement>(".gdz-world")!, doc, touched);
     buildRail(rail, doc, file, touched);
     body.addEventListener("gdz-imagery-changed", () => touched());
@@ -458,9 +458,9 @@ export function initDesign(host: DesignHost): DesignPanel {
 
   // ── the canvas + its artifacts ─────────────────────────────────────────────
 
-  function paintAll(body: HTMLElement, doc: DesignDoc): void {
+  function paintAll(body: HTMLElement, doc: DesignDoc, file: string): void {
     const world = body.querySelector<HTMLElement>(".gdz-world");
-    if (world) paintImagery(world, doc);
+    if (world) { paintImagery(world, doc); paintUploadCards(world, doc, file); }
     const shot = body.querySelector<HTMLElement>(".gdz-shot");
     if (shot) paintShot(shot, doc);
     const spec = body.querySelector<HTMLElement>(".gdz-spec-sheet");
@@ -701,6 +701,95 @@ export function initDesign(host: DesignHost): DesignPanel {
       });
       world.appendChild(card);
     });
+  }
+
+  /** Uploaded design assets are canvas citizens too — one draggable card per
+   *  upload, keyed `asset:<id>` in canvas.items (data-art carries the key).
+   *  Removal lives in the Uploads modal (it deletes the upload itself). */
+  function paintUploadCards(world: HTMLElement, doc: DesignDoc, file: string): void {
+    const want = new Set((doc.assets ?? []).map((a) => a.id));
+    world.querySelectorAll<HTMLElement>(".gdz-art-upload").forEach((el) => {
+      if (!want.has(el.dataset.uploadId ?? "")) el.remove();
+    });
+    (doc.assets ?? []).forEach((a, i) => {
+      if (world.querySelector(`.gdz-art-upload[data-upload-id="${a.id}"]`)) return;
+      const card = document.createElement("div");
+      card.className = "gdz-art gdz-art-imagery gdz-art-upload";
+      card.dataset.art = `asset:${a.id}`;
+      card.dataset.uploadId = a.id;
+      card.style.left = `${(i % 2) * 620}px`;
+      card.style.top = `${2160 + Math.floor(i / 2) * 300}px`;
+      card.style.width = "560px";
+      card.innerHTML = `
+        <div class="gdz-art-grip"><span class="gdz-img-role"></span></div>
+        <div class="gdz-img-frame"></div>`;
+      (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${a.title} · upload`;
+      const frame = card.querySelector<HTMLElement>(".gdz-img-frame")!;
+      void api().designAssetUrl?.(file, a.id).then((r) => {
+        if (!r?.ok || !r.url || !frame.isConnected) { frame.textContent = "unavailable"; return; }
+        const img = document.createElement("img");
+        img.src = r.url;
+        frame.appendChild(img);
+      });
+      world.appendChild(card);
+    });
+  }
+
+  // ── centered modal — Uploads / Imagery / Sources browse here: room to SEE
+  //    the images, an expand toggle, and pagination. One at a time. ──────────
+
+  function gdzModal(title: string): { body: HTMLElement; close: () => void } {
+    document.querySelectorAll(".gdz-modal-veil").forEach((el) => el.remove());
+    const veil = document.createElement("div");
+    veil.className = "gdz-modal-veil";
+    veil.innerHTML = `
+      <div class="gdz-modal">
+        <div class="gdz-modal-head">
+          <span class="gdz-modal-title"></span>
+          <span class="gdz-modal-tools">
+            <button class="ws-icon-btn gdz-modal-grow" title="Expand">⤢</button>
+            <button class="ws-icon-btn gdz-modal-x" title="Close">✕</button>
+          </span>
+        </div>
+        <div class="gdz-modal-body"></div>
+      </div>`;
+    (veil.querySelector(".gdz-modal-title") as HTMLElement).textContent = title;
+    const onKey = (ev: KeyboardEvent): void => { if (ev.key === "Escape") close(); };
+    const close = (): void => { veil.remove(); document.removeEventListener("keydown", onKey); };
+    veil.addEventListener("mousedown", (ev) => { if (ev.target === veil) close(); });
+    veil.querySelector(".gdz-modal-x")?.addEventListener("click", close);
+    veil.querySelector(".gdz-modal-grow")?.addEventListener("click", () => {
+      veil.querySelector(".gdz-modal")?.classList.toggle("expanded");
+    });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(veil);
+    return { body: veil.querySelector<HTMLElement>(".gdz-modal-body")!, close };
+  }
+
+  /** Modal scaffold: a search box that survives repaints + grid + pager. */
+  function modalGrid(body: HTMLElement, placeholder: string, paint: (q: string, page: number, grid: HTMLElement, foot: HTMLElement, go: (p: number) => void) => void): () => void {
+    body.textContent = "";
+    const search = document.createElement("input");
+    search.className = "office-search gdz-modal-search";
+    search.type = "text";
+    search.placeholder = placeholder;
+    search.spellcheck = false;
+    const grid = document.createElement("div");
+    grid.className = "gdz-modal-grid";
+    const foot = document.createElement("div");
+    foot.className = "gdz-modal-foot";
+    body.append(search, grid, foot);
+    let page = 0;
+    const go = (p: number): void => { page = p; repaint(); };
+    const repaint = (): void => {
+      grid.textContent = "";
+      foot.textContent = "";
+      paint(search.value.trim().toLowerCase(), page, grid, foot, go);
+    };
+    search.addEventListener("input", () => { page = 0; repaint(); });
+    repaint();
+    search.focus();
+    return repaint;
   }
 
   // ── the control rail ───────────────────────────────────────────────────────
@@ -952,10 +1041,10 @@ export function initDesign(host: DesignHost): DesignPanel {
       touched();
     }, "add a tone word…");
 
-    // — Assets —
+    // — Assets — uploads browse in a CENTERED MODAL (room to actually see
+    //   them, expandable, paginated); every upload also lands on the canvas
+    //   as its own draggable card (paintUploadCards via touched).
     const assets = section(rail, "Assets", false);
-    const assetGrid = document.createElement("div");
-    assetGrid.className = "gdz-assets";
     const upBtn = document.createElement("button");
     upBtn.className = "action-btn gdz-asset-up";
     upBtn.textContent = "＋ Upload image";
@@ -964,6 +1053,9 @@ export function initDesign(host: DesignHost): DesignPanel {
     fileIn.accept = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
     fileIn.style.display = "none";
     upBtn.addEventListener("click", () => fileIn.click());
+    const browseUp = document.createElement("button");
+    browseUp.className = "action-btn gdz-source-add";
+    const paintUpCount = (): void => { browseUp.textContent = `Browse uploads (${(doc.assets ?? []).length})`; };
     fileIn.addEventListener("change", () => {
       const f = fileIn.files?.[0];
       fileIn.value = "";
@@ -980,180 +1072,204 @@ export function initDesign(host: DesignHost): DesignPanel {
         });
         if (!res?.ok) { void host.confirm({ title: "Upload failed", body: res?.error || "Unknown error.", confirmLabel: "OK" }); return; }
         doc.assets = [...(doc.assets ?? []).filter((a) => a.id !== res.asset!.id), res.asset!];
-        paintAssets();
+        touched();   // the canvas card appears with the save
+        paintUpCount();
       })();
     });
-    const paintAssets = (): void => {
-      assetGrid.textContent = "";
-      for (const a of doc.assets ?? []) {
-        const tile = document.createElement("div");
-        tile.className = "gdz-asset";
-        tile.innerHTML = `<div class="gdz-asset-img"></div><span class="gdz-asset-name"></span><button class="ws-icon-btn gdz-asset-x" title="Remove">✕</button>`;
-        (tile.querySelector(".gdz-asset-name") as HTMLElement).textContent = a.title;
-        void api().designAssetUrl?.(file, a.id).then((r) => {
-          const box = tile.querySelector<HTMLElement>(".gdz-asset-img");
-          if (r?.ok && r.url && box?.isConnected) box.style.backgroundImage = `url("${r.url}")`;
-        });
-        tile.querySelector(".gdz-asset-x")?.addEventListener("click", () => {
-          void (async () => {
-            const yes = await host.confirm({ title: `Remove "${a.title}"?`, confirmLabel: "Remove", danger: true });
-            if (!yes) return;
-            await api().designAssetDelete?.(file, a.id);
-            doc.assets = (doc.assets ?? []).filter((x) => x.id !== a.id);
-            if (!doc.assets.length) delete doc.assets;
-            paintAssets();
-          })();
-        });
-        assetGrid.appendChild(tile);
-      }
-    };
+    browseUp.addEventListener("click", () => {
+      const m = gdzModal("Uploads");
+      const repaint = modalGrid(m.body, "Search uploads…", (q, page, grid, foot, go) => {
+        const pool = (doc.assets ?? []).filter((a) => !q || a.title.toLowerCase().includes(q));
+        const { items, page: p } = officePage(pool, page, 12);
+        for (const a of items) {
+          const tile = document.createElement("div");
+          tile.className = "gdz-modal-tile";
+          tile.innerHTML = `<div class="gdz-modal-img"></div><div class="gdz-modal-row"><span class="gdz-modal-name"></span><button class="ws-icon-btn gdz-modal-del" title="Delete upload">✕</button></div>`;
+          (tile.querySelector(".gdz-modal-name") as HTMLElement).textContent = a.title;
+          void api().designAssetUrl?.(file, a.id).then((r) => {
+            const box = tile.querySelector<HTMLElement>(".gdz-modal-img");
+            if (r?.ok && r.url && box?.isConnected) box.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+          });
+          tile.querySelector(".gdz-modal-del")?.addEventListener("click", () => {
+            void (async () => {
+              const yes = await host.confirm({ title: `Delete "${a.title}"?`, body: "Removes the upload from the system and the canvas.", confirmLabel: "Delete", danger: true });
+              if (!yes) return;
+              await api().designAssetDelete?.(file, a.id);
+              doc.assets = (doc.assets ?? []).filter((x) => x.id !== a.id);
+              if (!doc.assets.length) delete doc.assets;
+              touched();
+              paintUpCount();
+              repaint();
+            })();
+          });
+          grid.appendChild(tile);
+        }
+        if (!pool.length) grid.innerHTML = `<div class="gdz-modal-empty">No uploads yet — ＋ Upload image adds one.</div>`;
+        const pager = officePager(pool.length, p, 12, go);
+        if (pager) foot.appendChild(pager);
+      });
+    });
     assets.appendChild(upBtn);
     assets.appendChild(fileIn);
-    assets.appendChild(assetGrid);
-    paintAssets();
+    assets.appendChild(browseUp);
+    paintUpCount();
 
     // — Imagery — media-library adoptions: generated icons, site images,
     //   brand motion. Pointers into the org media library; the canvas shows
     //   each one as its own draggable card.
     const imagery = section(rail, "Imagery", false);
-    const imgWrap = document.createElement("div");
-    imgWrap.className = "gdz-imagery-rows";
-    imagery.appendChild(imgWrap);
-    const paintImageryRail = (): void => {
-      imgWrap.textContent = "";
-      for (const m of doc.imagery ?? []) {
-        const row = document.createElement("div");
-        row.className = "gdz-row";
-        row.innerHTML = `
-          <span class="gdz-row-label gdz-img-name" title="${m.title.replace(/"/g, "&quot;")}"></span>
-          <input type="text" class="gdz-pal-role gdz-img-role-in" spellcheck="false" placeholder="role (icon, hero…)" />
-          <button class="ws-icon-btn gdz-img-row-x" title="Remove">✕</button>`;
-        (row.querySelector(".gdz-img-name") as HTMLElement).textContent = m.title.slice(0, 18);
-        const roleIn = row.querySelector<HTMLInputElement>(".gdz-img-role-in")!;
-        roleIn.value = m.role ?? "";
-        roleIn.addEventListener("change", () => {
-          const v = roleIn.value.trim();
-          if (v) m.role = v; else delete m.role;
-          touched();
-        });
-        row.querySelector(".gdz-img-row-x")?.addEventListener("click", () => {
-          doc.imagery = (doc.imagery ?? []).filter((x) => x.assetId !== m.assetId);
-          if (!doc.imagery.length) delete doc.imagery;
-          touched(); paintImageryRail();
-        });
-        imgWrap.appendChild(row);
-      }
-      const add = document.createElement("button");
-      add.className = "action-btn gdz-source-add";
-      add.textContent = "＋ From library";
-      add.addEventListener("click", () => {
-        void (async () => {
-          const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
-          const pool = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])]
-            .filter((x) => x.status === "ready")
-            .filter((x) => !(doc.imagery ?? []).some((m2) => m2.assetId === x.id));
-          if (!pool.length) {
-            void host.confirm({ title: "Nothing to add", body: "The media library has no ready images or video yet — generate or upload some first.", confirmLabel: "OK" });
-            return;
-          }
-          // A searchable THUMBNAIL grid — the same library the Images page shows.
-          const picker = document.createElement("div");
-          picker.className = "ws-popover gdesign-menu gdz-img-picker gdz-img-picker-grid";
-          picker.innerHTML = `
-            <input class="office-search gdz-img-picker-search" type="text" placeholder="Search the library…" spellcheck="false" autocomplete="off" />
-            <div class="gdz-img-picker-thumbs"></div>`;
-          const searchIn = picker.querySelector<HTMLInputElement>(".gdz-img-picker-search")!;
-          const thumbs = picker.querySelector<HTMLElement>(".gdz-img-picker-thumbs")!;
-          const paint = (q: string): void => {
-            thumbs.textContent = "";
-            const ql = q.toLowerCase();
-            for (const x of pool.filter((y) => !ql || y.title.toLowerCase().includes(ql)).slice(0, 60)) {
-              const cell = document.createElement("button");
-              cell.className = "gdz-img-picker-thumb";
-              cell.title = x.title;
-              cell.innerHTML = `<span class="gdz-img-picker-tag">${x.kind === "video" ? "▶" : ""}</span><span class="gdz-img-picker-name"></span>`;
-              (cell.querySelector(".gdz-img-picker-name") as HTMLElement).textContent = x.title.slice(0, 22);
-              if (x.mime.startsWith("image/")) {
-                void api().mediaUrl?.(x.id).then((r) => {
-                  if (r?.ok && r.url && cell.isConnected) cell.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
-                });
-              }
-              cell.addEventListener("click", () => {
-                picker.remove();
-                // Adopt it — the canvas card appears immediately (paintAll).
-                doc.imagery = [...(doc.imagery ?? []), { assetId: x.id, kind: x.kind === "video" ? "video" : "image", title: x.title }];
-                touched(); paintImageryRail();
-              });
-              thumbs.appendChild(cell);
-            }
-          };
-          paint("");
-          searchIn.addEventListener("input", () => paint(searchIn.value.trim()));
-          document.body.appendChild(picker);
-          const r = add.getBoundingClientRect();
-          picker.style.top = `${Math.min(r.bottom + 4, window.innerHeight - picker.offsetHeight - 8)}px`;
-          picker.style.left = `${Math.min(r.left, window.innerWidth - picker.offsetWidth - 8)}px`;
-          searchIn.focus();
-          const onDoc = (ev: MouseEvent): void => {
-            if (!picker.contains(ev.target as Node)) { picker.remove(); document.removeEventListener("mousedown", onDoc, true); }
-          };
-          document.addEventListener("mousedown", onDoc, true);
-        })();
+    const browseImg = document.createElement("button");
+    browseImg.className = "action-btn gdz-source-add";
+    const paintImgCount = (): void => { browseImg.textContent = `Browse imagery (${(doc.imagery ?? []).length})`; };
+    browseImg.addEventListener("click", () => {
+      const m = gdzModal("Imagery");
+      const repaint = modalGrid(m.body, "Search imagery…", (q, page, grid, foot, go) => {
+        const pool = (doc.imagery ?? []).filter((x) => !q || x.title.toLowerCase().includes(q) || (x.role ?? "").toLowerCase().includes(q));
+        const { items, page: p } = officePage(pool, page, 12);
+        for (const x of items) {
+          const tile = document.createElement("div");
+          tile.className = "gdz-modal-tile";
+          tile.innerHTML = `
+            <div class="gdz-modal-img"><span class="gdz-img-picker-tag">${x.kind === "video" ? "▶" : ""}</span></div>
+            <div class="gdz-modal-row">
+              <span class="gdz-modal-name"></span>
+              <input type="text" class="gdz-pal-role gdz-modal-role" spellcheck="false" placeholder="role (icon, hero…)" />
+              <button class="ws-icon-btn gdz-modal-del" title="Remove from the system">✕</button>
+            </div>`;
+          (tile.querySelector(".gdz-modal-name") as HTMLElement).textContent = x.title;
+          void api().mediaUrl?.(x.assetId).then((r) => {
+            const box = tile.querySelector<HTMLElement>(".gdz-modal-img");
+            if (r?.ok && r.url && box?.isConnected) box.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+          });
+          const roleIn = tile.querySelector<HTMLInputElement>(".gdz-modal-role")!;
+          roleIn.value = x.role ?? "";
+          roleIn.addEventListener("change", () => {
+            const v = roleIn.value.trim();
+            if (v) x.role = v; else delete x.role;
+            touched();
+          });
+          tile.querySelector(".gdz-modal-del")?.addEventListener("click", () => {
+            doc.imagery = (doc.imagery ?? []).filter((y) => y.assetId !== x.assetId);
+            if (!doc.imagery.length) delete doc.imagery;
+            touched();
+            paintImgCount();
+            repaint();
+          });
+          grid.appendChild(tile);
+        }
+        if (!pool.length) grid.innerHTML = `<div class="gdz-modal-empty">No imagery adopted yet — ＋ From library adds some.</div>`;
+        const pager = officePager(pool.length, p, 12, go);
+        if (pager) foot.appendChild(pager);
       });
-      imgWrap.appendChild(add);
-    };
-    paintImageryRail();
+    });
+    const addImg = document.createElement("button");
+    addImg.className = "action-btn gdz-source-add";
+    addImg.textContent = "＋ From library";
+    addImg.addEventListener("click", () => {
+      void (async () => {
+        const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
+        const all = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])].filter((x) => x.status === "ready");
+        const m = gdzModal("Add from the library");
+        const repaint = modalGrid(m.body, "Search the library…", (q, page, grid, foot, go) => {
+          const pool = all
+            .filter((x) => !(doc.imagery ?? []).some((m2) => m2.assetId === x.id))
+            .filter((x) => !q || x.title.toLowerCase().includes(q));
+          const { items, page: p } = officePage(pool, page, 12);
+          for (const x of items) {
+            const cell = document.createElement("button");
+            cell.className = "gdz-modal-tile gdz-modal-pick";
+            cell.title = x.title;
+            cell.innerHTML = `<div class="gdz-modal-img"><span class="gdz-img-picker-tag">${x.kind === "video" ? "▶" : ""}</span></div><div class="gdz-modal-row"><span class="gdz-modal-name"></span></div>`;
+            (cell.querySelector(".gdz-modal-name") as HTMLElement).textContent = x.title;
+            if (x.mime.startsWith("image/")) {
+              void api().mediaUrl?.(x.id).then((r) => {
+                const box = cell.querySelector<HTMLElement>(".gdz-modal-img");
+                if (r?.ok && r.url && box?.isConnected) box.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+              });
+            }
+            cell.addEventListener("click", () => {
+              // Adopt it — the canvas card appears with the save; the modal
+              // stays up so several can be added in one visit.
+              doc.imagery = [...(doc.imagery ?? []), { assetId: x.id, kind: x.kind === "video" ? "video" : "image", title: x.title }];
+              touched();
+              paintImgCount();
+              repaint();
+            });
+            grid.appendChild(cell);
+          }
+          if (!pool.length) grid.innerHTML = `<div class="gdz-modal-empty">Nothing left to add — the library has no other ready images or video.</div>`;
+          const pager = officePager(pool.length, p, 12, go);
+          if (pager) foot.appendChild(pager);
+        });
+      })();
+    });
+    imagery.appendChild(browseImg);
+    imagery.appendChild(addImg);
+    paintImgCount();
 
     // — Sources (provenance) — fully editable: the user records where the
     //   system came from and steers future extractions from right here.
     const sources = section(rail, "Sources", false);
     doc.sources ??= [];
-    const srcWrap = document.createElement("div");
-    srcWrap.className = "gdz-sources";
-    sources.appendChild(srcWrap);
-    const paintSources = (): void => {
-      srcWrap.textContent = "";
-      for (const [i, src] of (doc.sources ?? []).entries()) {
-        const row = document.createElement("div");
-        row.className = "gdz-source-row";
-        row.innerHTML = `
-          <select class="gdz-select gdz-source-kind">
-            <option value="prompt">prompt</option>
-            <option value="site">site</option>
-            <option value="image">image</option>
-          </select>
-          <input type="text" class="gdz-source-ref-in" spellcheck="false" placeholder="url, file, or the words used…" />
-          <input type="text" class="gdz-source-note-in" spellcheck="false" placeholder="note" />
-          <button class="ws-icon-btn gdz-source-x" title="Remove">✕</button>`;
-        const kind = row.querySelector<HTMLSelectElement>(".gdz-source-kind")!;
-        const refIn = row.querySelector<HTMLInputElement>(".gdz-source-ref-in")!;
-        const noteIn = row.querySelector<HTMLInputElement>(".gdz-source-note-in")!;
-        kind.value = src.type;
-        refIn.value = src.ref;
-        noteIn.value = src.note ?? "";
-        kind.addEventListener("change", () => { src.type = kind.value; touched(); });
-        refIn.addEventListener("change", () => { src.ref = refIn.value.trim(); touched(); });
-        noteIn.addEventListener("change", () => {
-          const v = noteIn.value.trim();
-          if (v) src.note = v; else delete src.note;
+    const editSrc = document.createElement("button");
+    editSrc.className = "action-btn gdz-source-add";
+    const paintSrcCount = (): void => { editSrc.textContent = `Edit sources (${(doc.sources ?? []).length})`; };
+    editSrc.addEventListener("click", () => {
+      const m = gdzModal("Sources");
+      const repaint = modalGrid(m.body, "Search sources…", (q, page, grid, foot, go) => {
+        grid.classList.add("gdz-modal-rows");
+        const pool = (doc.sources ?? []).filter((s) => !q || s.ref.toLowerCase().includes(q) || (s.note ?? "").toLowerCase().includes(q) || s.type.includes(q));
+        const { items, page: p } = officePage(pool, page, 10);
+        for (const src of items) {
+          const row = document.createElement("div");
+          row.className = "gdz-source-row";
+          row.innerHTML = `
+            <select class="gdz-select gdz-source-kind">
+              <option value="prompt">prompt</option>
+              <option value="site">site</option>
+              <option value="image">image</option>
+            </select>
+            <input type="text" class="gdz-source-ref-in" spellcheck="false" placeholder="url, file, or the words used…" />
+            <input type="text" class="gdz-source-note-in" spellcheck="false" placeholder="note" />
+            <button class="ws-icon-btn gdz-source-x" title="Remove">✕</button>`;
+          const kind = row.querySelector<HTMLSelectElement>(".gdz-source-kind")!;
+          const refIn = row.querySelector<HTMLInputElement>(".gdz-source-ref-in")!;
+          const noteIn = row.querySelector<HTMLInputElement>(".gdz-source-note-in")!;
+          kind.value = src.type;
+          refIn.value = src.ref;
+          noteIn.value = src.note ?? "";
+          kind.addEventListener("change", () => { src.type = kind.value; touched(); });
+          refIn.addEventListener("change", () => { src.ref = refIn.value.trim(); touched(); });
+          noteIn.addEventListener("change", () => {
+            const v = noteIn.value.trim();
+            if (v) src.note = v; else delete src.note;
+            touched();
+          });
+          row.querySelector(".gdz-source-x")?.addEventListener("click", () => {
+            const i = doc.sources?.indexOf(src) ?? -1;
+            if (i >= 0) doc.sources?.splice(i, 1);
+            touched();
+            paintSrcCount();
+            repaint();
+          });
+          grid.appendChild(row);
+        }
+        const add = document.createElement("button");
+        add.className = "action-btn gdz-source-add";
+        add.textContent = "＋ Add source";
+        add.addEventListener("click", () => {
+          doc.sources = [...(doc.sources ?? []), { type: "prompt", ref: "", extractedAt: new Date().toISOString() }];
           touched();
+          paintSrcCount();
+          repaint();
         });
-        row.querySelector(".gdz-source-x")?.addEventListener("click", () => {
-          doc.sources?.splice(i, 1);
-          touched(); paintSources();
-        });
-        srcWrap.appendChild(row);
-      }
-      const add = document.createElement("button");
-      add.className = "action-btn gdz-source-add";
-      add.textContent = "＋ Add source";
-      add.addEventListener("click", () => {
-        doc.sources = [...(doc.sources ?? []), { type: "prompt", ref: "", extractedAt: new Date().toISOString() }];
-        touched(); paintSources();
+        grid.appendChild(add);
+        const pager = officePager(pool.length, p, 10, go);
+        if (pager) foot.appendChild(pager);
       });
-      srcWrap.appendChild(add);
-    };
-    paintSources();
+    });
+    sources.appendChild(editSrc);
+    paintSrcCount();
   }
 
   // (shared with the other office panels' pattern — a scoped popover)

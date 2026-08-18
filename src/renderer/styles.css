@@ -18078,3 +18078,41 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   padding: 2px 5px; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* Design modals — Uploads / Imagery / Sources browse centered, expandable, paginated */
+.gdz-modal-veil {
+  position: fixed; inset: 0; z-index: 1200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.gdz-modal {
+  display: flex; flex-direction: column;
+  width: min(880px, 92vw); max-height: 82vh;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: 12px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.gdz-modal.expanded { width: 96vw; height: 94vh; max-height: 94vh; }
+.gdz-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border-2);
+}
+.gdz-modal-title { font-size: 13px; font-weight: 600; }
+.gdz-modal-tools { display: flex; gap: 6px; }
+.gdz-modal-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; overflow-y: auto; flex: 1; }
+.gdz-modal-search { width: 100%; }
+.gdz-modal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.gdz-modal-grid.gdz-modal-rows { display: flex; flex-direction: column; gap: 8px; }
+.gdz-modal-tile {
+  border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden;
+  background: var(--bg); padding: 0; text-align: left;
+}
+.gdz-modal-pick { cursor: pointer; }
+.gdz-modal-pick:hover { border-color: var(--accent); }
+.gdz-modal-img { position: relative; aspect-ratio: 4 / 3; background: var(--bg) center / contain no-repeat; }
+.gdz-modal-img .gdz-img-picker-tag { font-size: 13px; }
+.gdz-modal-row { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+.gdz-modal-name { flex: 1; font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdz-modal-role { width: 110px; }
+.gdz-modal-foot .office-pager { padding: 4px 0 0; }
+.gdz-modal-empty { grid-column: 1 / -1; padding: 30px 0; text-align: center; color: var(--text-3); font-size: 12px; }

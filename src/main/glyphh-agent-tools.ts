@@ -1134,6 +1134,52 @@ const TOOLS: ToolDef[] = [
     action: (a) => ({ kind: "read", title: `Palette of ${String(a.path ?? "")}` }),
     run: async (a) => cap(JSON.stringify(await imagePalette(String(a.path ?? "")), null, 1)),
   },
+  {
+    name: "generate_design_mockup",
+    doc: "generate_design_mockup(name, prompt, title?, role?) — generate a MOCKUP image in a design system's own language: the system's palette, fonts, and tone are woven into the image prompt automatically, so describe only WHAT the mockup shows (landing hero, app screen, poster, packaging…). The result is a real media asset (visible in Images and on the Drive), adopted into the system's imagery, and placed on the design canvas as a draggable card. Charged in credits like any generation. role defaults to 'mockup'.",
+    action: (a) => ({ kind: "edit", title: `Design mockup for "${String(a.name ?? "")}"`, detail: String(a.prompt ?? "").slice(0, 80) }),
+    run: async (a) => {
+      const prompt = String(a.prompt ?? "").trim();
+      if (!prompt) return "ERROR: pass prompt — what the mockup shows";
+      const file = designFileName(a.name);
+      const current = await getClient().designs.get(file);
+      const doc = current.document as unknown as {
+        name?: string;
+        colors?: { primary?: string; accent?: string; background?: string; surface?: string };
+        fonts?: { display?: { family?: string }; body?: { family?: string } };
+        brand?: { tagline?: string; tone?: string[] };
+        imagery?: Array<{ assetId: string; kind: string; title: string; role?: string }>;
+        canvas?: { items?: Record<string, { x: number; y: number; w?: number }> };
+      };
+      const c = doc.colors ?? {};
+      const styleBits = [
+        c.primary && `primary ${c.primary}`,
+        c.accent && `accent ${c.accent}`,
+        c.background && `background ${c.background}`,
+        c.surface && `surfaces ${c.surface}`,
+      ].filter(Boolean).join(", ");
+      const fontBits = [doc.fonts?.display?.family, doc.fonts?.body?.family].filter(Boolean).join(" / ");
+      const styled = [
+        prompt,
+        `High-fidelity brand mockup in the "${doc.name ?? String(a.name)}" design system`,
+        styleBits && `strict palette: ${styleBits}`,
+        fontBits && `typography in the style of ${fontBits}`,
+        doc.brand?.tone?.length ? `tone: ${doc.brand.tone.join(", ")}` : "",
+        "clean presentation shot, no watermarks, no lorem-ipsum walls",
+      ].filter(Boolean).join(". ");
+      const title = String(a.title ?? "").trim() || `${doc.name ?? String(a.name)} mockup`;
+      const role = String(a.role ?? "").trim() || "mockup";
+      const made = await genImageAsset(styled, title);
+      // Adopt into the system + land on the canvas (same keying the panel uses).
+      const n = (doc.imagery ?? []).length;
+      doc.imagery = [...(doc.imagery ?? []), { assetId: made.id, kind: "image", title, role }];
+      doc.canvas ??= {};
+      doc.canvas.items ??= {};
+      doc.canvas.items[`img:${made.id}`] = { x: (n % 2) * 620, y: 760 + Math.floor(n / 2) * 300, w: 560 };
+      await getClient().designs.put(file, doc as unknown as DesignSystem);
+      return `mockup generated (${made.credits} credits): asset ${made.id} ("${title}", role ${role}) — saved to the org media library (Images + Drive), adopted into ${file}, and placed on the design canvas; open_design("${file}") shows it`;
+    },
+  },
   // ── Glyphh IMAGE / VIDEO / SOUNDS: generation with ANY catalog media model,
   //    metered in credits (the job is the charge; failure charges nothing).
   //    Models ride the org's governed catalog — list_media_models shows what
