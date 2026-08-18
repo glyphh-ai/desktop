@@ -13068,23 +13068,15 @@ select:focus {
   color: var(--text); margin: 0 0 6px;
 }
 .mkt-console-sub { font-size: 13.5px; color: var(--text-2); line-height: 1.5; margin: 0 0 28px; max-width: 640px; }
-.mkt-console-card {
-  padding: 16px; border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface);
-}
-/* Developer profile tabs (renderDeveloperProfiles): Organization/Personal as
-   the storefront's segmented tabs, the autosave chip beside them (no Save
-   buttons anywhere in the pane — fields commit themselves). */
-.mc-tabbar { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
-.mc-tabbar .mc-save-state { margin-left: 8px; }
-.mc-profile-pane { display: flex; flex-direction: column; gap: 14px; }
-/* Identity row — avatar + name/@handle, avatar + public-page controls right. */
-.mc-id-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.mc-id-row .mc-avatar { width: 52px; height: 52px; }
-.mc-id-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.mc-id-name { font-size: 14px; font-weight: 650; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Muted per-field hint — the quiet line under an input, never in the label. */
-.mc-field-hint { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
-.mc-create-lead { margin: 0; font-size: 12.5px; color: var(--text-3); line-height: 1.55; }
+/* Developer profile tabs (renderDeveloperProfiles): the app's REAL tab strip
+   (.app-detail-tabs — Workspaces/Models/app editors, underline active), with
+   the autosave chip riding the strip's right edge in place of the heading it
+   sits beside elsewhere. The pane content reuses the settings form grammar
+   (acct-identity / acct-row / acct-field) — nothing invented. */
+.mc-tabs { align-items: center; }
+.mc-tabs .mc-save-state { margin-left: auto; }
+/* "View public page" is navigation inside the identity card, not a button. */
+.mc-view-link { font-size: 12px; margin-top: 2px; }
 .mkt-console-apps { display: grid; gap: 10px; }
 .mkt-console-app { border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .mkt-console-app-head {
@@ -13127,16 +13119,8 @@ select:focus {
 .mkt-review-notes { margin-top: 6px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 
 /* ── Settings → Developer (the M7 program panel) ──────────────────── */
-/* Each subheading's content sits in a quiet card so the four areas (status /
-   signup / legal / payout) read as distinct blocks instead of running
-   together. Theme surfaces only — no new colors. */
-.settings-panel[data-sub="developer"] .dev-section {
-  padding: 14px 16px; margin-top: 10px;
-  background: var(--surface); border: 1px solid var(--border-2); border-radius: 12px;
-}
-/* Inside a card the profile pane sits one surface level deeper. */
-.settings-panel[data-sub="developer"] .dev-section .mkt-console-card { background: var(--surface-2); }
-/* Status chip on the same optical line as its explanation. */
+/* Flat subheading + acct-section blocks — the same grammar as Account; the
+   only bespoke bit is the status chip sitting on line with its explanation. */
 .dev-status-row { display: flex; align-items: flex-start; gap: 10px; }
 .dev-status-row .mkt-review-chip { padding: 3px 9px; border-radius: 6px; margin-top: 1px; }
 .dev-status-row .settings-hint { line-height: 1.55; }

@@ -253,52 +253,61 @@ let mcScopePinned = false;
 
 const HANDLE_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-/** One field in the house form grammar: short label, hint as a muted line
- *  under the input (never shouting inside the label), placeholders for
- *  by-example guidance. */
+/** One field in the settings form grammar (the Account panel's rows,
+ *  verbatim): acct-field wrapper, short settings-label, guidance in the
+ *  placeholder — the rare always-visible hint is a settings-hint line. */
 function mcFieldHtml(f: string, label: string, value: string, placeholder: string, opts: { hint?: string; wide?: boolean; textarea?: boolean } = {}): string {
   const control = opts.textarea
     ? `<textarea id="mc-${f}" class="settings-input mc-field" data-f="${f}" rows="3" placeholder="${escMkt(placeholder)}" spellcheck="true">${escMkt(value)}</textarea>`
-    : `<input id="mc-${f}" class="settings-input mc-field" data-f="${f}" value="${escMkt(value)}" placeholder="${escMkt(placeholder)}" spellcheck="false" autocomplete="off" />`;
+    : `<input id="mc-${f}" type="text" class="settings-input mc-field" data-f="${f}" value="${escMkt(value)}" placeholder="${escMkt(placeholder)}" spellcheck="false" autocomplete="off" />`;
   return `
     <div class="acct-field${opts.wide ? " acct-field-wide" : ""}">
       <label class="settings-label" for="mc-${f}">${label}</label>
       ${control}
-      ${opts.hint ? `<span class="mc-field-hint">${opts.hint}</span>` : ""}
+      ${opts.hint ? `<span class="settings-hint" style="margin:0;">${opts.hint}</span>` : ""}
     </div>`;
 }
 
-/** The active tab's pane when its profile EXISTS — identity row + autosaving
- *  fields. */
+/** The active tab's pane when its profile EXISTS — the Account panel's
+ *  identity card (avatar + name/@handle left, ONE action right) over
+ *  autosaving rows. "View public page" is navigation, so it's a link in the
+ *  identity text, never a button floating beside the fields. */
 function profileEditorHtml(dev: MktDeveloper): string {
   return `
-    <div class="mc-id-row">
-      <div class="mkt-dev-avatar mc-avatar">${dev.avatarUrl ? `<img src="${escMkt(dev.avatarUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>`}</div>
-      <div class="mc-id-main">
-        <b class="mc-id-name">${escMkt(dev.displayName)}</b>
-        <span class="mkt-dev-handle">@${escMkt(dev.handle)}${dev.ratingCount ? ` · ${dev.ratingAvg.toFixed(1)}★ (${dev.ratingCount})` : ""}</span>
+    <div class="acct-identity">
+      <div class="acct-id-face">
+        <div class="acct-avatar-slot">
+          <span class="acct-initials${dev.avatarUrl ? " hidden" : ""}">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>
+          <img class="acct-avatar${dev.avatarUrl ? "" : " hidden"}"${dev.avatarUrl ? ` src="${escMkt(dev.avatarUrl)}"` : ""} alt="" />
+        </div>
+        <div class="acct-id-text">
+          <div class="acct-name mc-id-name">${escMkt(dev.displayName)}</div>
+          <div class="acct-email">@${escMkt(dev.handle)}${dev.ratingCount ? ` · ${dev.ratingAvg.toFixed(1)}★ (${dev.ratingCount})` : ""}</div>
+          <a class="mc-view-link" href="#">View public page ↗</a>
+        </div>
       </div>
-      <button class="action-btn mc-avatar-pick" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change avatar…</button>
-      <input type="file" class="mc-avatar-file hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
-      <button class="action-btn mc-view-btn" type="button">View public page</button>
+      <div class="acct-id-actions">
+        <button class="action-btn mc-avatar-pick" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change avatar…</button>
+        <input type="file" class="mc-avatar-file hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
+      </div>
     </div>
     <div class="acct-row">
       ${mcFieldHtml("displayName", "Display name", dev.displayName, "Acme Tools")}
-      ${mcFieldHtml("website", "Website", dev.website || "", "https://… (optional)")}
+      ${mcFieldHtml("website", "Website", dev.website || "", "https://… — blank hides it")}
     </div>
     <div class="acct-row">
-      ${mcFieldHtml("bio", "Bio", dev.bio || "", "What you build (optional)", { wide: true, textarea: true })}
+      ${mcFieldHtml("bio", "Bio", dev.bio || "", "What you build — blank hides it", { wide: true, textarea: true })}
     </div>
     <div class="acct-row">
-      ${mcFieldHtml("supportEmail", "Support email", dev.supportEmail || "", "help@…", { hint: "Shown as “Support by you” on every listing." })}
+      ${mcFieldHtml("supportEmail", "Support email", dev.supportEmail || "", "help@… — shown as “Support by you” on every listing")}
     </div>`;
 }
 
-/** The active tab's pane when its profile DOESN'T exist yet — the same form,
+/** The active tab's pane when its profile DOESN'T exist yet — the same rows,
  *  plus the permanent handle; it creates itself once handle + name are set. */
 function profileCreateHtml(scope: MktScope): string {
   return `
-    <p class="mc-create-lead">${scope === "org"
+    <p class="settings-hint" style="margin:0;">${scope === "org"
       ? "No organization profile yet — the whole org publishes under it."
       : "No personal profile yet — publish under your own name."} Fill in a handle and display name and the profile creates itself.</p>
     <div class="acct-row">
@@ -310,7 +319,7 @@ function profileCreateHtml(scope: MktScope): string {
     </div>
     <div class="acct-row">
       ${mcFieldHtml("website", "Website", "", "https://… (optional)")}
-      ${mcFieldHtml("supportEmail", "Support email", "", "help@…", { hint: "Shown as “Support by you” on every listing." })}
+      ${mcFieldHtml("supportEmail", "Support email", "", "help@… — shown as “Support by you” on every listing")}
     </div>`;
 }
 
@@ -501,7 +510,7 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   };
 
   const wire = (dev: MktDeveloper | null): void => {
-    host.querySelectorAll<HTMLButtonElement>(".mkt-scope").forEach((b) => {
+    host.querySelectorAll<HTMLButtonElement>(".mc-tabs .app-detail-tab").forEach((b) => {
       b.addEventListener("click", () => {
         const scope: MktScope = b.dataset.scope === "personal" ? "personal" : "org";
         if (scope === mcScope) return;
@@ -530,7 +539,10 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
     });
 
     if (!dev) return;
-    host.querySelector(".mc-view-btn")?.addEventListener("click", () => opts.onView(dev.handle));
+    host.querySelector(".mc-view-link")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      opts.onView(dev.handle);
+    });
 
     // Avatar upload (file input → bytes → the write path; sniffed server-side).
     const pick = host.querySelector<HTMLButtonElement>(".mc-avatar-pick");
@@ -551,16 +563,18 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
 
   const paint = (): void => {
     const dev = mcScope === "org" ? me.org : me.personal;
+    // The app's REAL tab strip (Workspaces/Models/app editors): app-detail-tabs
+    // with the underline active treatment — not pill buttons. The autosave
+    // chip rides the strip's right edge, standing in for the heading it sits
+    // beside on other settings panels.
     host.innerHTML = `
       ${meError ? mktNoticeHtml(meError) : ""}
-      <div class="mc-tabbar">
-        <div class="mkt-scope-tabs">
-          <button class="mkt-scope${mcScope === "org" ? " active" : ""}" type="button" data-scope="org">Organization</button>
-          <button class="mkt-scope${mcScope === "personal" ? " active" : ""}" type="button" data-scope="personal">Personal</button>
-        </div>
+      <div class="app-detail-tabs mc-tabs">
+        <button class="app-detail-tab${mcScope === "org" ? " active" : ""}" data-scope="org" type="button">Organization</button>
+        <button class="app-detail-tab${mcScope === "personal" ? " active" : ""}" data-scope="personal" type="button">Personal</button>
         <span class="set-save-state mc-save-state"></span>
       </div>
-      <div class="mkt-console-card mc-profile-pane">
+      <div class="acct-section">
         ${dev ? profileEditorHtml(dev) : profileCreateHtml(mcScope)}
       </div>`;
     wire(dev);
