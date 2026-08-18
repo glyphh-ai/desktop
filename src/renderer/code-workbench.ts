@@ -1901,11 +1901,16 @@ async function init(): Promise<void> {
   function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
     return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
   }
-  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string) => void }).__wbOpenMedia = (view, assetId) => {
+  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
     const land = (t: GMediaSlot): void => {
       if (assetId) {
         gmediaPanelInstance().invalidate();
         t.assetId = assetId;
+      }
+      if (songId) {
+        t.studioTab = 1;
+        t.music = { songId };
+        delete t.assetId;
       }
     };
     const slot = rails.flatMap((r) => r.slots).find((t) => t.view === view) as GMediaSlot | undefined;

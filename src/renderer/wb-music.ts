@@ -18,7 +18,7 @@ interface Instrument { instrument: string; tweak: string }
 interface Song {
   id: string; title: string; lyrics: string; prompt: string; bandType: string;
   artistIds: string[]; instruments: Instrument[];
-  audioAssetId: string | null; parentId: string | null; model: string; updatedAt: string;
+  audioAssetId: string | null; parentId: string | null; model: string; visuals: string[]; updatedAt: string;
 }
 
 export interface MusicHost {
@@ -153,7 +153,10 @@ export function initMusic(host: MusicHost): MusicViews {
             <textarea class="gmus-lyrics" spellcheck="true" placeholder="Verse one…"></textarea>
             <label class="gmus-label">Prompt <span class="gmem-hint">what made the song — edit it, then Regenerate</span></label>
             <textarea class="gmus-prompt" spellcheck="false" placeholder="dusty desert blues, slide guitar, slow burn…"></textarea>
-            <div class="gmus-band-line"></div>
+            <label class="gmus-label">Band</label>
+            <input class="gmus-bandtype" spellcheck="false" placeholder="type of band — 'three-piece garage rock', 'bluegrass quartet'…" />
+            <div class="gmus-artist-chips"></div>
+            <div class="gmus-instruments"></div>
           </div>
           <div class="gmus-right">
             <div class="gmus-wave-bar">
@@ -188,10 +191,72 @@ export function initMusic(host: MusicHost): MusicViews {
     titleIn.value = song.title;
     lyricsIn.value = song.lyrics;
     promptIn.value = song.prompt;
-    const bandLine = pane.querySelector<HTMLElement>(".gmus-band-line")!;
-    const bandNames = song.artistIds.map((id) => artists.find((a) => a.id === id)?.name).filter(Boolean).join(", ");
-    bandLine.textContent = [song.bandType, bandNames, song.instruments.map((i) => i.instrument).join("/")]
-      .filter(Boolean).join(" · ") || "no band assembled — the New Song assembler or the agent sets one";
+    // ── the band assembler — every change autosaves onto the song ────────────
+    const bandTypeIn = pane.querySelector<HTMLInputElement>(".gmus-bandtype")!;
+    bandTypeIn.value = song.bandType;
+    const artistChips = pane.querySelector<HTMLElement>(".gmus-artist-chips")!;
+    const instrWrap = pane.querySelector<HTMLElement>(".gmus-instruments")!;
+    const saveBand = (): void => {
+      void api().musicSongSave?.(song.id, {
+        bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
+      });
+    };
+    bandTypeIn.addEventListener("change", () => { song.bandType = bandTypeIn.value.trim(); saveBand(); });
+    const paintArtistChips = (): void => {
+      artistChips.textContent = "";
+      for (const a2 of artists) {
+        const chip = document.createElement("button");
+        chip.className = "gmus-mv-chip" + (song.artistIds.includes(a2.id) ? " on" : "");
+        chip.textContent = `♪ ${a2.name}`;
+        chip.title = a2.style || a2.name;
+        chip.addEventListener("click", () => {
+          song.artistIds = song.artistIds.includes(a2.id)
+            ? song.artistIds.filter((x) => x !== a2.id)
+            : [...song.artistIds, a2.id];
+          saveBand(); paintArtistChips();
+        });
+        artistChips.appendChild(chip);
+      }
+      if (!artists.length) {
+        const hint = document.createElement("span");
+        hint.className = "gmem-hint";
+        hint.textContent = "no artists yet — build the band in the Artists tab";
+        artistChips.appendChild(hint);
+      }
+    };
+    paintArtistChips();
+    const paintInstruments = (): void => {
+      instrWrap.textContent = "";
+      song.instruments.forEach((inst, i) => {
+        const row = document.createElement("div");
+        row.className = "gmus-a-row";
+        row.innerHTML = `
+          <input class="gmus-a-style gmus-i-name" spellcheck="false" placeholder="instrument" style="max-width:130px" />
+          <input class="gmus-a-style gmus-i-tweak" spellcheck="false" placeholder="tweak — 'tight, dry, 90s'" style="flex:1" />
+          <button class="ws-icon-btn gmem-del" title="Remove">✕</button>`;
+        const nameIn = row.querySelector<HTMLInputElement>(".gmus-i-name")!;
+        const tweakIn = row.querySelector<HTMLInputElement>(".gmus-i-tweak")!;
+        nameIn.value = inst.instrument;
+        tweakIn.value = inst.tweak;
+        nameIn.addEventListener("change", () => { inst.instrument = nameIn.value.trim() || inst.instrument; saveBand(); });
+        tweakIn.addEventListener("change", () => { inst.tweak = tweakIn.value.trim(); saveBand(); });
+        row.querySelector(".gmem-del")?.addEventListener("click", () => {
+          song.instruments.splice(i, 1);
+          saveBand(); paintInstruments();
+        });
+        instrWrap.appendChild(row);
+      });
+      const add = document.createElement("button");
+      add.className = "action-btn gmus-i-add";
+      add.textContent = "＋ Instrument";
+      add.addEventListener("click", () => {
+        song.instruments.push({ instrument: "guitar", tweak: "" });
+        saveBand(); paintInstruments();
+      });
+      instrWrap.appendChild(add);
+    };
+    paintInstruments();
+    const bandNames = song.artistIds.map((id) => artists.find((a2) => a2.id === id)?.name).filter(Boolean).join(", ");
 
     // Doc autosave (700ms trailing) — the same local-first pattern as Sheets.
     let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -411,7 +476,7 @@ export function initMusic(host: MusicHost): MusicViews {
       void (async () => {
         const brief = [
           promptIn.value.trim(),
-          song.bandType ? `Band: ${song.bandType}.` : "",
+          bandTypeIn.value.trim() ? `Band: ${bandTypeIn.value.trim()}.` : "",
           bandNames ? `Vocalists: ${bandNames}.` : "",
           song.instruments.length ? `Instruments: ${song.instruments.map((i) => `${i.instrument}${i.tweak ? ` (${i.tweak})` : ""}`).join(", ")}.` : "",
           lyricsIn.value.trim() ? `Lyrics:\n${lyricsIn.value.trim()}` : "",
@@ -637,15 +702,24 @@ export function initMusic(host: MusicHost): MusicViews {
     const visuals = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])].filter((x) => x.status === "ready");
     pane.innerHTML = `
       <div class="gmus-list gmus-mv">
-        <div class="gmus-mv-head">Pick a song, pull in visuals — the RENDER lands with the pipeline phase; the assembly saves onto the song now.</div>
+        <div class="gmus-mv-head">Pick a song, pull in visuals — the assembly SAVES onto the song; the render lands with the pipeline phase.</div>
         <label class="gmus-label">Song</label>
         <select class="gdz-select gmus-mv-song">${songs.map((s) => `<option value="${s.id}">${s.title.replace(/</g, "&lt;")}</option>`).join("") || "<option value=''>(no songs with audio yet)</option>"}</select>
         <label class="gmus-label">Visuals <span class="gmem-hint">images + video from the library — click to toggle</span></label>
         <div class="gmus-mv-pool"></div>
         <button class="action-btn primary gmus-mv-save" ${songs.length ? "" : "disabled"}>Save assembly</button>
+        <span class="gmus-mv-state"></span>
       </div>`;
     const pool = pane.querySelector<HTMLElement>(".gmus-mv-pool")!;
-    const picked = new Set<string>();
+    const songSel = pane.querySelector<HTMLSelectElement>(".gmus-mv-song")!;
+    const stateEl = pane.querySelector<HTMLElement>(".gmus-mv-state")!;
+    let picked = new Set<string>();
+    const chips = new Map<string, HTMLElement>();
+    const loadPicks = (): void => {
+      const song = songs.find((s) => s.id === songSel.value);
+      picked = new Set(song?.visuals ?? []);
+      for (const [id, chip] of chips) chip.classList.toggle("on", picked.has(id));
+    };
     for (const v of visuals.slice(0, 60)) {
       const chip = document.createElement("button");
       chip.className = "gmus-mv-chip";
@@ -654,20 +728,20 @@ export function initMusic(host: MusicHost): MusicViews {
         if (picked.has(v.id)) picked.delete(v.id); else picked.add(v.id);
         chip.classList.toggle("on", picked.has(v.id));
       });
+      chips.set(v.id, chip);
       pool.appendChild(chip);
     }
+    songSel.addEventListener("change", loadPicks);
+    loadPicks();
     pane.querySelector(".gmus-mv-save")?.addEventListener("click", () => {
       void (async () => {
-        const songId = (pane.querySelector<HTMLSelectElement>(".gmus-mv-song"))?.value;
+        const songId = songSel.value;
         if (!songId) return;
-        await api().musicSongSave?.(songId, { instruments: undefined, ...( {} ) });
-        // The assembly rides the song's meta-free patch surface via lyrics-safe
-        // fields — visuals live in meta once the render phase adds it; for now
-        // the pick list is session-scoped and the button confirms the intent.
-        void host.confirm({ title: "Assembly noted", body: `${picked.size} visual${picked.size === 1 ? "" : "s"} staged for the render pipeline phase.`, confirmLabel: "OK" });
-        refresh();
+        const r = await api().musicSongSave?.(songId, { visuals: [...picked] });
+        stateEl.textContent = r?.ok ? `saved — ${picked.size} visual${picked.size === 1 ? "" : "s"} staged for the render` : `⚠ ${r?.error ?? "save failed"}`;
       })();
     });
+    void refresh;
   }
 
   return {

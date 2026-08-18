@@ -1227,6 +1227,119 @@ const TOOLS: ToolDef[] = [
     action: (a) => ({ kind: "command", title: a.id ? "Open sound" : "Open the Sounds panel" }),
     run: async (a) => { openMediaPanel("gsound", a.id ? String(a.id) : undefined); return "opened the Sounds panel"; },
   },
+  // ── MUSIC STUDIO: artists (a look + a voice + a style) and songs (lyrics +
+  //    prompt + band + LINEAGE). Generation is generate_music; these tools own
+  //    the DOCUMENTS the studio iterates on. ──
+  {
+    name: "list_artists",
+    doc: "list_artists() — the org's artist profiles (id, name, style, voice/look state)",
+    action: () => ({ kind: "read", title: "List artists" }),
+    run: async () => {
+      const artists = await getClient().music.artists();
+      if (!artists.length) return "(no artists yet — create_artist builds one)";
+      return cap(JSON.stringify(artists.map((a) => ({ id: a.id, name: a.name, style: a.style, voice: a.voiceAssetId ? "sample" : a.voiceId ? "synth" : "none", look: !!a.avatarAssetId })), null, 1));
+    },
+  },
+  {
+    name: "create_artist",
+    doc: "create_artist(name, style?, voice_id?, avatar_asset_id?) — create a band member: a name, a style line ('gravel-voiced blues shouter'), optionally a provider voice id and a look (generate_image an avatar first, pass its asset id). Voice-from-recording rides the Artists tab (consent flow).",
+    action: (a) => ({ kind: "edit", title: `Create artist "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const artist = await getClient().music.createArtist({
+        name: String(a.name ?? "").trim(),
+        ...(a.style ? { style: String(a.style) } : {}),
+        ...(a.voice_id ? { voiceId: String(a.voice_id) } : {}),
+        ...(a.avatar_asset_id ? { avatarAssetId: String(a.avatar_asset_id) } : {}),
+      });
+      return `created artist ${artist.id} ("${artist.name}")`;
+    },
+  },
+  {
+    name: "list_songs",
+    doc: "list_songs() — the org's songs: id, title, band, whether it has audio, lineage parent",
+    action: () => ({ kind: "read", title: "List songs" }),
+    run: async () => {
+      const songs = await getClient().music.songs();
+      if (!songs.length) return "(no songs yet — create_song starts one)";
+      return cap(JSON.stringify(songs.map((s) => ({ id: s.id, title: s.title, band: s.bandType, hasAudio: !!s.audioAssetId, parent: s.parentId })), null, 1));
+    },
+  },
+  {
+    name: "read_song",
+    doc: "read_song(id) — one song in full: lyrics, prompt, band type, artists, instruments, audio asset, visuals, lineage",
+    action: (a) => ({ kind: "read", title: `Read song ${String(a.id ?? "")}` }),
+    run: async (a) => cap(JSON.stringify(await getClient().music.song(String(a.id ?? "")), null, 1), READ_CAP),
+  },
+  {
+    name: "create_song",
+    doc: 'create_song(title, lyrics?, prompt?, band_type?, artist_ids?, instruments?) — start a song document. instruments: [{instrument: "drums", tweak: "tight, dry"}]. Then regenerate_song makes the audio (metered).',
+    action: (a) => ({ kind: "edit", title: `Create song "${String(a.title ?? "")}"` }),
+    run: async (a) => {
+      const song = await getClient().music.createSong({
+        title: String(a.title ?? "Untitled"),
+        ...(a.lyrics ? { lyrics: String(a.lyrics) } : {}),
+        ...(a.prompt ? { prompt: String(a.prompt) } : {}),
+        ...(a.band_type ? { bandType: String(a.band_type) } : {}),
+        ...(Array.isArray(a.artist_ids) ? { artistIds: a.artist_ids.map(String) } : {}),
+        ...(Array.isArray(a.instruments) ? { instruments: a.instruments as never } : {}),
+      });
+      return `created song ${song.id} ("${song.title}") — regenerate_song("${song.id}") makes the audio; open_song("${song.id}") opens the editor`;
+    },
+  },
+  {
+    name: "update_song",
+    doc: "update_song(id, title?, lyrics?, prompt?, band_type?, artist_ids?, instruments?, visuals?) — evolve the document (the audio stays until regenerate_song)",
+    action: (a) => ({ kind: "edit", title: `Update song ${String(a.id ?? "")}`, detail: Object.keys(a).filter((k) => k !== "id").join(", ") }),
+    run: async (a) => {
+      const song = await getClient().music.updateSong(String(a.id ?? ""), {
+        ...(a.title ? { title: String(a.title) } : {}),
+        ...(a.lyrics !== undefined ? { lyrics: String(a.lyrics) } : {}),
+        ...(a.prompt !== undefined ? { prompt: String(a.prompt) } : {}),
+        ...(a.band_type !== undefined ? { bandType: String(a.band_type) } : {}),
+        ...(Array.isArray(a.artist_ids) ? { artistIds: a.artist_ids.map(String) } : {}),
+        ...(Array.isArray(a.instruments) ? { instruments: a.instruments as never } : {}),
+        ...(Array.isArray(a.visuals) ? { visuals: a.visuals.map(String) } : {}),
+      });
+      return `updated ${song.id} ("${song.title}")`;
+    },
+  },
+  {
+    name: "regenerate_song",
+    doc: "regenerate_song(id, model?) — compose the song's prompt + band + instruments + lyrics into one brief, run the metered music model, and create a CHILD version carrying the new take (lineage — the original stays). Reports credits charged.",
+    action: (a) => ({ kind: "network", title: `Regenerate song ${String(a.id ?? "")}` }),
+    run: async (a) => {
+      const music = getClient().music;
+      const song = await music.song(String(a.id ?? ""));
+      const artists = await music.artists();
+      const names = song.artistIds.map((id) => artists.find((x) => x.id === id)?.name).filter(Boolean).join(", ");
+      const brief = [
+        song.prompt.trim(),
+        song.bandType ? `Band: ${song.bandType}.` : "",
+        names ? `Vocalists: ${names}.` : "",
+        song.instruments.length ? `Instruments: ${song.instruments.map((i) => `${i.instrument}${i.tweak ? ` (${i.tweak})` : ""}`).join(", ")}.` : "",
+        song.lyrics.trim() ? `Lyrics:\n${song.lyrics.trim()}` : "",
+      ].filter(Boolean).join("\n");
+      if (!brief) return "ERROR: the song has no prompt or lyrics to regenerate from — update_song first";
+      const started = await getClient().media.generate({ model: a.model ? String(a.model) : (song.model || "elevenlabs::music-v1"), prompt: brief, title: song.title });
+      const job = await getClient().media.waitForJob(started.job.id);
+      if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged)`;
+      const child = await music.createSong({
+        title: song.title, lyrics: song.lyrics, prompt: song.prompt,
+        bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
+        visuals: song.visuals, audioAssetId: job.assetId, parentId: song.id, model: job.model,
+      });
+      return `regenerated — child song ${child.id}, ${job.creditsCharged.toFixed(2)} credits charged. open_song("${child.id}") opens the editor.`;
+    },
+  },
+  {
+    name: "open_song",
+    doc: "open_song(id) — open the Sounds panel straight into that song's editor page",
+    action: () => ({ kind: "command", title: "Open song editor" }),
+    run: async (a) => {
+      openMediaPanel("gsound", undefined, String(a.id ?? ""));
+      return "opened the song editor";
+    },
+  },
   {
     name: "open_design",
     doc: "open_design(name?) — open the Design panel beside this conversation; with a system name it opens straight into that studio",

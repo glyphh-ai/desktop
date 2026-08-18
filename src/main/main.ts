@@ -161,6 +161,20 @@ async function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 
+  // A link clicked in the renderer must NEVER navigate the app window itself —
+  // that replaces the whole app with the page and TRAPS the user (no chrome, no
+  // way out). Only the app's own file:// bundle may load in-window; any external
+  // http(s) link opens in the system browser instead (in-app browser panels use
+  // <webview>, a separate webContents, so they're unaffected).
+  const openLinkExternally = (url: string): void => {
+    try { const p = new URL(url).protocol; if (p === "http:" || p === "https:") void shell.openExternal(url); }
+    catch { /* malformed URL — ignore */ }
+  };
+  mainWindow.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("file://")) { e.preventDefault(); openLinkExternally(url); }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => { openLinkExternally(url); return { action: "deny" }; });
+
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
   });
