@@ -240,7 +240,14 @@
                   <div id="dev-legal-body" style="margin-top:12px;"></div>
                 </div>
 
-                <h3 class="settings-subheading">Payout <span id="dev-payout-status" class="set-save-state"></span></h3>
+                <h3 class="settings-subheading">Payout
+                  <!-- Re-reads the program: payout readiness is webhook-driven
+                       server-side, so a fresh read is all "check again" takes
+                       (same refresh grammar as the plan chip / credits balance). -->
+                  <button id="dev-payout-refresh" class="acct-chip-refresh" title="Refresh payout status" aria-label="Refresh payout status">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+                  </button>
+                  <span id="dev-payout-status" class="set-save-state"></span></h3>
                 <div class="acct-section">
                   <p class="settings-hint" style="margin:0 0 10px;">Earned marketplace revenue pays out monthly via Stripe Connect. Purchased or granted credits are never redeemable for cash — only earned revenue is payable, through this program.</p>
                   <div id="dev-payout-body"></div>

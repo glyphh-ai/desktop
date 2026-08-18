@@ -441,6 +441,7 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("mkt-program-enroll", handle, agreementVersion) as Promise<unknown>,
   mktPayoutConfigSet: (handle: string, patch: { stripeConnectAccountId?: string | null; payoutThresholdCredits?: number }) =>
     ipcRenderer.invoke("mkt-payout-config-set", handle, patch) as Promise<unknown>,
+  mktStripeOnboarding: (handle: string) => ipcRenderer.invoke("mkt-stripe-onboarding", handle) as Promise<unknown>,
   mktEarnings: (handle: string, query?: { limit?: number; offset?: number }) =>
     ipcRenderer.invoke("mkt-earnings", handle, query) as Promise<unknown>,
   mktPayouts: (handle: string) => ipcRenderer.invoke("mkt-payouts", handle) as Promise<unknown>,

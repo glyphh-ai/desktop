@@ -159,6 +159,13 @@ export function registerMarketplaceIpc(): void {
     try { return { ok: true as const, state: await getClient().marketplace.setPayoutConfig(String(handle), patch || {}) }; }
     catch (err) { return fail(err); }
   });
+  // Stripe Connect onboarding — the server mints the Express account ONCE and
+  // a FRESH single-use Account Link on every call; only the URL crosses back
+  // (the renderer opens it in the app's own browser panel, never externally).
+  ipcMain.handle("mkt-stripe-onboarding", async (_e, handle: string) => {
+    try { return { ok: true as const, url: (await getClient().marketplace.startStripeOnboarding(String(handle))).url }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("mkt-earnings", async (_e, handle: string, query?: { limit?: number; offset?: number }) => {
     try { return { ok: true as const, earnings: await getClient().marketplace.developerEarnings(String(handle), query || {}) }; }
     catch (err) { return fail(err); }

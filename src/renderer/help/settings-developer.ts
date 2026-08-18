@@ -10,8 +10,13 @@
  *     settings toggle. Enrolled orgs see their accepted version/date and a
  *     re-consent prompt when the server reports a newer version.
  *   • Program status — none / enrolled / suspended, in plain language.
- *   • Payout — Stripe Connect config + threshold (both live INSIDE the
- *     program state), the earnings totals, and the payout history.
+ *   • Payout — Stripe Connect onboarding state (connect / verifying / ready /
+ *     restricted, all read off the program state; readiness is webhook-driven
+ *     server-side so a re-read is the whole refresh), the manual account-id
+ *     fallback + threshold, the earnings totals, and the payout history.
+ *     Connect/Resume are genuine actions (like "Change avatar…"), and the
+ *     hosted onboarding opens in the app's own browser panel — the same
+ *     in-app hand-off as the developer agreement, never an external browser.
  *
  * The program is HANDLE-scoped (contract DeveloperProgram): a PROFILE holds
  * enrollment/consent/payout, so the panel resolves the caller's profile first
@@ -64,6 +69,14 @@ export function initDeveloperPanel(): void {
     closeSettingsModal();
     openHostedPage("Developer agreement", AGREEMENT_URL, openUrlInWorkbench);
   });
+
+  // Payout-heading refresh: readiness flips server-side (Stripe's webhook), so
+  // "check again" is just a fresh program read — the same full-panel reload
+  // every write already does. The spin stops when the newest load lands.
+  document.getElementById("dev-payout-refresh")?.addEventListener("click", () => {
+    document.getElementById("dev-payout-refresh")?.classList.add("spinning");
+    void loadDeveloperPanel();
+  });
 }
 
 export async function loadDeveloperPanel(): Promise<void> {
@@ -101,6 +114,7 @@ export async function loadDeveloperPanel(): Promise<void> {
   renderStatus(state, failed, handle);
   renderLegal(state, failed, handle);
   await renderPayout(state, failed, epoch, handle);
+  document.getElementById("dev-payout-refresh")?.classList.remove("spinning");
 }
 
 // ── Program status ────────────────────────────────────────────────────────
@@ -226,6 +240,39 @@ function payoutsHtml(payouts: MktPayout[]): string {
   return `<h4 class="acct-row-head" style="margin-top:16px;">Payouts</h4>${rows}`;
 }
 
+/** The Stripe Connect state row — chip + plain-language line + (when there is
+ *  something to do) ONE genuine action, seated like "Change avatar…". The
+ *  states are the contract's payout shape verbatim: not connected → Connect;
+ *  pending → verifying chip + Resume; ready → READY chip + the masked account;
+ *  restricted → chip + Fix in Stripe (the same resume link recovers it). */
+function payoutConnectionHtml(p: MktProgramState["payout"]): string {
+  const masked = p.stripeConnectAccountId ? `<b>${escMkt(p.stripeConnectAccountId)}</b>` : "";
+  let chipCls = "mkt-review-chip"; let chipText = ""; let explain = ""; let action = "";
+  if (!p.connected) {
+    explain = "No Stripe account connected yet — connect one to receive payouts. Stripe collects your details on their hosted page; they never touch Glyphh.";
+    action = `<button id="dev-stripe-onboard" class="action-btn primary" type="button">Connect with Stripe</button>`;
+  } else if (p.payoutStatus === "ready") {
+    chipCls += " approved"; chipText = "Ready";
+    explain = `Payouts go to ${masked}.`;
+  } else if (p.payoutStatus === "restricted") {
+    chipCls += " rejected"; chipText = "Restricted";
+    explain = `Stripe can't pay ${masked || "this account"} yet — finish the verification they're asking for.`;
+    action = `<button id="dev-stripe-onboard" class="action-btn" type="button">Fix in Stripe</button>`;
+  } else {
+    // connected but not yet confirmed — 'pending' (and 'none' can't be
+    // connected, so anything unrecognized reads as still-verifying too).
+    chipCls += " in_review"; chipText = "Verifying with Stripe…";
+    explain = `${masked ? `${masked} is attached` : "Your account is attached"} — Stripe is confirming it can be paid. This updates here on its own.`;
+    action = `<button id="dev-stripe-onboard" class="action-btn" type="button">Resume onboarding</button>`;
+  }
+  return `
+    <div class="dev-status-row" style="margin:0 0 14px;">
+      ${chipText ? `<span class="${chipCls}">${chipText}</span>` : ""}
+      <span class="settings-hint" style="margin:0;flex:1;">${explain}</span>
+      ${action}
+    </div>`;
+}
+
 async function renderPayout(state: MktProgramState | null, failed: boolean, epoch: number, handle: string | null): Promise<void> {
   const body = document.getElementById("dev-payout-body");
   if (!body) return;
@@ -255,10 +302,12 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
   if (epoch !== loadEpoch) return;
 
   body.innerHTML = `
+    ${payoutConnectionHtml(state.payout)}
     <div class="acct-row">
       <div class="acct-field acct-field-wide">
         <label class="settings-label" for="dev-payout-account">Stripe Connect account ID</label>
         <input id="dev-payout-account" type="text" class="settings-input" placeholder="acct_… — blank disconnects" spellcheck="false" autocomplete="off" value="${escMkt(state.payout.stripeConnectAccountId || "")}" />
+        <span class="settings-hint" style="margin:0;">The fallback if you already have a Connect account — onboarding above fills this for you.</span>
       </div>
       <div class="acct-field">
         <label class="settings-label" for="dev-payout-threshold">Payout threshold</label>
@@ -268,6 +317,30 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
     </div>
     ${earnings ? earningsHtml(earnings) : ""}
     ${payouts ? payoutsHtml(payouts) : ""}`;
+
+  // Connect / Resume / Fix — one genuine action, not a form button: it asks
+  // the server for a FRESH Account Link (single-use, so every click re-mints)
+  // and opens it through the exact hand-off the developer agreement uses —
+  // close the settings modal, then the app's own browser panel. Never an
+  // external browser. The webhook flips readiness; refresh re-reads it.
+  const onboardBtn = body.querySelector<HTMLButtonElement>("#dev-stripe-onboard");
+  onboardBtn?.addEventListener("click", async () => {
+    onboardBtn.disabled = true;
+    chip("dev-payout-status", "Contacting Stripe…");
+    const res = await mktProgram.startOnboarding(handle);
+    if (!res.ok || !res.data) {
+      onboardBtn.disabled = false;
+      chip("dev-payout-status", "Couldn't start", "error");
+      showError(res.ok ? "Stripe didn't return an onboarding link." : res.error);
+      return;
+    }
+    chip("dev-payout-status", "");
+    closeSettingsModal();
+    if (!openHostedPage("Stripe onboarding", res.data, openUrlInWorkbench)) {
+      chip("dev-payout-status", "Stripe sent a malformed link", "error");
+    }
+    onboardBtn.disabled = false;
+  });
 
   // No Save button — the fields commit themselves (debounced while typing,
   // at once on blur), only sending what changed, reporting on the Payout
@@ -286,8 +359,12 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
     const thrChanged = thr != null && thr !== state.payout.thresholdCredits;
     if (!accountChanged && !thrChanged) { chip("dev-payout-status", ""); return; }
     chip("dev-payout-status", "Saving…");
+    // Only send what changed: the field shows the MASKED id ("acct_…1234"),
+    // so re-sending it untouched would overwrite the real account with the
+    // mask. An edited value is a raw acct_… (the manual fallback) or blank
+    // (null disconnects) — those are the only times the account crosses.
     const res = await mktProgram.setPayout(handle, {
-      stripeConnectAccountId: account || null,
+      ...(accountChanged ? { stripeConnectAccountId: account || null } : {}),
       ...(thrChanged ? { payoutThresholdCredits: thr! } : {}),
     });
     if (!res.ok) { chip("dev-payout-status", "Not saved", "error"); showError(res.error); return; }
@@ -295,6 +372,9 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
     state.payout.stripeConnectAccountId = account || null;
     if (thrChanged) state.payout.thresholdCredits = thr!;
     chip("dev-payout-status", "Saved", "success");
+    // A (dis)connected account changes the connection row (a manual id parks
+    // at 'pending' until the webhook confirms) — repaint off the fresh read.
+    if (accountChanged) void loadDeveloperPanel();
   };
   for (const id of ["dev-payout-account", "dev-payout-threshold"]) {
     const el = body.querySelector<HTMLElement>(`#${id}`);

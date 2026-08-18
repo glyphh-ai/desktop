@@ -200,6 +200,12 @@ export interface MktPricingPatch {
 
 export type MktProgramStatus = "none" | "enrolled" | "suspended";
 
+/** Payout readiness (contract DeveloperPayoutStatus), derived server-side
+ *  from Stripe's account.updated webhook: none (no account) → pending
+ *  (attached, unconfirmed) → ready (payable) / restricted (Stripe says it
+ *  cannot be paid). Only 'ready' is swept. */
+export type MktPayoutStatus = "none" | "pending" | "ready" | "restricted";
+
 /** A profile's program state (contract DeveloperProgram): enrollment, the
  *  agreement CONSENT RECORD, and payout config. Owner-only on the server. */
 export interface MktProgramState {
@@ -213,8 +219,12 @@ export interface MktProgramState {
     current: boolean;
   };
   payout: {
-    /** A Stripe Connect account id (acct_…). */
+    /** MASKED ("acct_…" + last 4) — the raw Connect id never leaves the server. */
     stripeConnectAccountId: string | null;
+    /** Whether a Connect account is attached at all (onboarded or manual). */
+    connected: boolean;
+    /** Webhook-derived readiness — 'ready' is the only payable state. */
+    payoutStatus: MktPayoutStatus;
     /** Minimum unpaid NET credits before the monthly sweep pays out (server default 1000). */
     thresholdCredits: number;
     status: "configured" | "unconfigured";
@@ -330,6 +340,7 @@ interface SdkMarketplace {
   program?: (handle: string) => Promise<MktProgramState>;
   enrollProgram?: (handle: string, agreementVersion: string) => Promise<MktProgramState>;
   setPayoutConfig?: (handle: string, patch: MktPayoutPatch) => Promise<MktProgramState>;
+  startStripeOnboarding?: (handle: string, input?: { country?: string }) => Promise<{ url: string }>;
   developerEarnings?: (handle: string, q?: { limit?: number; offset?: number }) => Promise<MktEarningsPage>;
   developerPayouts?: (handle: string) => Promise<MktPayout[]>;
 }
@@ -375,6 +386,7 @@ interface MktIpc {
   mktProgramState?: (handle: string) => Promise<unknown>;
   mktProgramEnroll?: (handle: string, agreementVersion: string) => Promise<unknown>;
   mktPayoutConfigSet?: (handle: string, patch: MktPayoutPatch) => Promise<unknown>;
+  mktStripeOnboarding?: (handle: string) => Promise<unknown>;
   mktEarnings?: (handle: string, q?: { limit?: number; offset?: number }) => Promise<unknown>;
   mktPayouts?: (handle: string) => Promise<unknown>;
 }
@@ -590,6 +602,20 @@ export const mktProgram = {
       catch (err) { return { ok: false, error: errText(err) }; }
     }
     return programIpcWrite<MktProgramState>(ipc().mktPayoutConfigSet?.(handle, patch), "state");
+  },
+  /** Start (or resume) self-serve Stripe Connect onboarding — resolves the
+   *  hosted Account Link URL. Links are SINGLE-USE and short-lived: the server
+   *  mints a fresh one on every call, so re-calling recovers a stuck
+   *  onboarding. Data is the URL string. */
+  startOnboarding: async (handle: string): Promise<MktWrite<string | null>> => {
+    const s = sdk();
+    if (s) {
+      const p = s.marketplace?.startStripeOnboarding?.(handle);
+      if (!p) return { ok: false, error: PROGRAM_OFFLINE };
+      try { return { ok: true, data: (await p).url }; }
+      catch (err) { return { ok: false, error: errText(err) }; }
+    }
+    return programIpcWrite<string>(ipc().mktStripeOnboarding?.(handle), "url");
   },
   earnings: async (handle: string, q: { limit?: number; offset?: number } = {}): Promise<MktEarningsPage | null> => {
     const s = sdk();
