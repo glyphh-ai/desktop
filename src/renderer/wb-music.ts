@@ -306,7 +306,12 @@ export function initMusic(host: MusicHost): MusicViews {
     pane.querySelector(".gmus-new")?.addEventListener("click", () => {
       void (async () => {
         const r = await api().musicSongSave?.(null, { title: "Untitled" });
-        if (r?.ok && r.song) { state.songId = r.song.id; refresh(); }
+        if (!r?.ok || !r.song) {
+          void host.confirm({ title: "Couldn't create the song", body: r?.error ?? (api().musicSongSave ? "Unknown error." : "Bridge not loaded — quit and relaunch the app."), confirmLabel: "OK" });
+          return;
+        }
+        state.songId = r.song.id;
+        refresh();
       })();
     });
     const list = pane.querySelector<HTMLElement>(".gmus-songs")!;
@@ -1296,8 +1301,17 @@ export function initMusic(host: MusicHost): MusicViews {
       </div>`;
     pane.querySelector(".gmus-new")?.addEventListener("click", () => {
       void (async () => {
+        if (!api().mediaProjectSave) {
+          void host.confirm({ title: "Restart needed", body: "The video-project bridge isn't loaded — quit and relaunch the app (a renderer reload isn't enough after a main-process update).", confirmLabel: "OK" });
+          return;
+        }
         const r = await api().mediaProjectSave?.(null, { title: "Untitled", scenes: { visuals: [] } });
-        if (r?.ok && r.project) { state.videoId = r.project.id; refresh(); }
+        if (!r?.ok || !r.project) {
+          void host.confirm({ title: "Couldn't create the video", body: r?.error ?? "Unknown error.", confirmLabel: "OK" });
+          return;
+        }
+        state.videoId = r.project.id;
+        refresh();
       })();
     });
     const list = pane.querySelector<HTMLElement>(".gmus-songs")!;
