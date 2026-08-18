@@ -17758,3 +17758,105 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdz-img-picker { max-height: 320px; overflow-y: auto; }
 .gdz-imagery-rows { display: flex; flex-direction: column; gap: 8px; }
 .gdz-img-name { cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ════ MUSIC STUDIO (the Sounds app's Songs / Artists / Music Video) ════ */
+.gmus-shell { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.gmus-tabs { flex: none; padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 2px; }
+.gmus-pane { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.gmus-list { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.gmus-count { font-size: 12px; color: var(--text-3); flex: 1; }
+.gmus-songs { display: flex; flex-direction: column; gap: 6px; }
+.gmus-song-card {
+  display: flex; align-items: center; gap: 12px; text-align: left;
+  padding: 10px 13px; border: 1px solid var(--border); border-radius: 11px;
+  background: var(--surface); cursor: pointer; font: inherit; color: var(--text);
+}
+.gmus-song-card:hover { border-color: var(--accent); }
+.gmus-song-title { flex: 1; min-width: 0; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmus-song-meta { flex: none; font-size: 11.5px; color: var(--text-3); }
+.gmus-song-badges { flex: none; font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+/* — the song page: Apps→General split — */
+.gmus-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.gmus-savestate { flex: 1; text-align: right; font-size: 11px; color: var(--text-3); padding-right: 6px; }
+.gmus-split { display: flex; flex: 1; min-height: 0; }
+.gmus-left {
+  flex: 0 0 44%; min-width: 300px; max-width: 560px;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 14px 16px; overflow-y: auto; border-right: 1px solid var(--border);
+}
+.gmus-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3); margin-top: 8px; display: flex; gap: 8px; align-items: baseline; }
+.gmus-title {
+  font: inherit; font-size: 17px; font-weight: 700; color: var(--text);
+  background: none; border: none; border-bottom: 2px solid var(--accent);
+  padding: 6px 2px; outline: none;
+  box-shadow: 0 12px 22px -14px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.gmus-lyrics {
+  flex: 1; min-height: 260px; resize: vertical;
+  font: inherit; font-size: 14px; line-height: 1.7; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 10px;
+  border-bottom: 2px solid var(--accent);
+  box-shadow: 0 18px 34px -18px color-mix(in srgb, var(--accent) 85%, transparent);
+  padding: 12px 14px; outline: none;
+}
+.gmus-lyrics:focus, .gmus-prompt:focus { border-color: var(--accent); }
+.gmus-prompt {
+  min-height: 84px; resize: vertical;
+  font-family: var(--mono, monospace); font-size: 12px; line-height: 1.6; color: var(--text-2);
+  background: var(--bg); border: 1px solid var(--border-2); border-radius: 10px;
+  padding: 10px 12px; outline: none;
+}
+.gmus-band-line { font-size: 11.5px; color: var(--text-3); margin-top: 10px; }
+
+/* — the sound editor — */
+.gmus-right { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; gap: 8px; }
+.gmus-wave-bar { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; }
+.gmus-tools { display: flex; gap: 5px; }
+.gmus-wave-bar .action-btn { height: 25px; padding: 2px 11px; font-size: 11.5px; }
+.gmus-time { font-family: var(--mono, monospace); font-size: 11.5px; color: var(--text-2); min-width: 84px; }
+.gmus-interval { width: 84px; flex: none; }
+.gmus-wave-wrap {
+  flex: 1; min-height: 160px; overflow-x: auto; overflow-y: hidden;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+.gmus-wave { display: block; height: 100%; cursor: crosshair; }
+.gmus-wave-hint { flex: none; font-size: 10.5px; color: var(--text-3); }
+
+/* — artists — */
+.gmus-artists { display: flex; flex-direction: column; gap: 8px; }
+.gmus-artist-card, .gmus-artist-editor {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface);
+}
+.gmus-artist-editor { flex-direction: column; align-items: stretch; gap: 8px; }
+.gmus-artist-face {
+  flex: none; width: 44px; height: 44px; border-radius: 12px;
+  background: var(--bg) center / cover no-repeat;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent); font-size: 18px;
+}
+.gmus-artist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gmus-artist-name { font-weight: 650; color: var(--text); }
+.gmus-artist-style { font-size: 11.5px; color: var(--text-2); }
+.gmus-artist-badges { font-size: 10.5px; color: var(--text-3); }
+.gmus-a-name, .gmus-a-style, .gmus-a-voiceid {
+  font: inherit; font-size: 13px; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border-2); border-radius: 8px; padding: 7px 10px; outline: none;
+}
+.gmus-a-name:focus, .gmus-a-style:focus, .gmus-a-voiceid:focus { border-color: var(--accent); }
+.gmus-a-row { display: flex; align-items: center; gap: 8px; }
+.gmus-a-voice-state, .gmus-a-avatar-state { font-size: 11.5px; color: var(--text-3); }
+.gmus-a-voiceid { flex: 1; }
+
+/* — music video assembler — */
+.gmus-mv-head { font-size: 12px; color: var(--text-2); }
+.gmus-mv-pool { display: flex; flex-wrap: wrap; gap: 6px; }
+.gmus-mv-chip {
+  font: inherit; font-size: 11.5px; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--border-2); border-radius: 100px;
+  padding: 4px 12px; cursor: pointer;
+}
+.gmus-mv-chip.on { color: var(--accent); border-color: var(--accent); }
+.gmus-mv-save { align-self: flex-start; }

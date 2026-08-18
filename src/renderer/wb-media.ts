@@ -10,6 +10,7 @@
  */
 
 import { officePager, officePage } from "./wb-office-ui.js";
+import { initMusic, type MusicViews, type MusicState } from "./wb-music.js";
 
 export interface MediaAssetLite {
   id: string;
@@ -33,6 +34,9 @@ export interface MediaSlotState {
   view: MediaView;
   assetId?: string;
   page?: number;
+  /** Sounds only — the studio tab (0 Library · 1 Songs · 2 Artists · 3 Music Video). */
+  studioTab?: number;
+  music?: MusicState;
 }
 
 export interface MediaHost {
@@ -150,6 +154,9 @@ export function initMedia(host: MediaHost): MediaPanel {
     }
   }
 
+  let music: MusicViews | null = null;
+  const musicViews = (): MusicViews => (music ??= initMusic({ confirm: host.confirm }));
+
   async function renderInner(body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement): Promise<void> {
     body.classList.add("ws-gmedia-body");
     const view = VIEWS[slot.view] ?? VIEWS.gimage;
@@ -157,6 +164,26 @@ export function initMedia(host: MediaHost): MediaPanel {
     if (titleEl) titleEl.textContent = view.title;
     const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
     if (slot.assetId) { await renderViewer(body, slot, refresh); return; }
+    // Sounds is the MUSIC STUDIO — tabs over the library.
+    if (slot.view === "gsound") {
+      const tab = slot.studioTab ?? 0;
+      body.innerHTML = `<div class="gmus-shell"><div class="gmem-tabs gmus-tabs"></div><div class="gmus-pane"></div></div>`;
+      const tabs = body.querySelector<HTMLElement>(".gmus-tabs")!;
+      ["Library", "Songs", "Artists", "Music Video"].forEach((name, i) => {
+        const b = document.createElement("button");
+        b.className = "gmem-tab" + (i === tab ? " on" : "");
+        b.textContent = name;
+        b.addEventListener("click", () => { slot.studioTab = i; refresh(); });
+        tabs.appendChild(b);
+      });
+      const pane = body.querySelector<HTMLElement>(".gmus-pane")!;
+      slot.music ??= {};
+      if (tab === 1) { await musicViews().renderSongs(pane, slot.music, refresh); return; }
+      if (tab === 2) { await musicViews().renderArtists(pane, slot.music, refresh); return; }
+      if (tab === 3) { await musicViews().renderMusicVideo(pane, refresh); return; }
+      await renderLibrary(pane, slot, view, refresh);
+      return;
+    }
     await renderLibrary(body, slot, view, refresh);
   }
 

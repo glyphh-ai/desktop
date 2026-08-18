@@ -398,6 +398,44 @@ export function buildContract(client, deps) {
     },
     // Web upload rides the panel's own file input in a later pass — explicit gap.
     mediaUploadPick: async () => ({ ok: false, error: "uploads ride the desktop for now" }),
+    musicArtists: async () => {
+      try { return { ok: true, artists: await client.music.artists() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), artists: [] }; }
+    },
+    musicArtistSave: async (id, input) => {
+      try { const artist = id ? await client.music.updateArtist(id, input) : await client.music.createArtist(input); return { ok: true, artist }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicArtistDelete: async (id) => {
+      try { await client.music.deleteArtist(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicSongs: async () => {
+      try { return { ok: true, songs: await client.music.songs() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), songs: [] }; }
+    },
+    musicSongSave: async (id, input) => {
+      try { const song = id ? await client.music.updateSong(id, input) : await client.music.createSong(input); return { ok: true, song }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicSongDelete: async (id) => {
+      try { await client.music.deleteSong(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaUploadBytes: async (input) => {
+      try {
+        const bytes = new Uint8Array(input.bytes);
+        const ticket = await client.media.uploadTicket({ kind: input.kind, mime: input.mime, title: input.title, sizeBytes: bytes.byteLength, ...(input.meta ? { meta: input.meta } : {}) });
+        if (ticket.url) {
+          const res = await fetch(ticket.url, { method: "PUT", headers: { "content-type": input.mime }, body: bytes });
+          if (!res.ok) throw new Error(`presigned upload failed: ${res.status}`);
+        } else {
+          await client.media.putBytes(ticket.asset.id, bytes);
+        }
+        const done = await client.media.finalize(ticket.asset.id);
+        return { ok: true, id: done.id, title: done.title };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     mediaSave: async (id) => {
       try {
         const asset = await client.media.get(id);

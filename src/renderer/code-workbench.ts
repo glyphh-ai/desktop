@@ -860,6 +860,22 @@ async function init(): Promise<void> {
         if (!rails[i].slots.length) rails.splice(i, 1);
       }
     }
+    // Keep the agent VISIBLE when a panel opens. A DOCKED agent (anchor left/right)
+    // lives on `.code-root` and stays put — leave it alone. But a GRID-hosted agent
+    // with no coding seat would be orphaned: renderRails parks the singleton
+    // `.code-agent` and, with no coding slot to re-home it, it vanishes (the bug —
+    // opening a panel wiped the agent). Give it a seat FIRST (leftmost) so the new
+    // panel lands to its right and the agent stays on screen.
+    const anchor = document.querySelector<HTMLElement>(".code-root")?.dataset.anchor;
+    const docked = anchor === "left" || anchor === "right";
+    // Only add a seat if there is NO agent seat AT ALL — checking the SAME
+    // `isAgentSeat` the loop below skips (coding OR the dashboard/home section),
+    // not just a coding slot. Otherwise a dashboard-hosted agent already has a
+    // seat being skipped and this would add a SECOND one → an empty blank column.
+    const hasAgentSeat = rails.some((r) => r.slots.some(isAgentSeat));
+    if (!docked && slot.view !== "section" && slot.view !== "coding" && !hasAgentSeat) {
+      rails.unshift({ id: nextRailId++, slots: [makeSlot("coding")] });
+    }
     for (const rail of rails) {
       // Never auto-stack under the agent seat: a rail holding it keeps its
       // column, so the first new item opens BESIDE the agent — one slot to its
