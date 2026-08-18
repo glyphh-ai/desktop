@@ -434,15 +434,16 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("mkt-admin-dev-moderate", reviewId, action) as Promise<unknown>,
   mktAdminSuspend: (slug: string, suspend: boolean) =>
     ipcRenderer.invoke("mkt-admin-suspend", slug, suspend) as Promise<unknown>,
-  // Developer program (M7) — Settings → Developer. The SDK surface ships
-  // separately; the handlers answer { unavailable: true } until it lands.
-  mktProgramState: () => ipcRenderer.invoke("mkt-program-state") as Promise<unknown>,
-  mktProgramEnroll: (input: { agreementVersion?: string }) =>
-    ipcRenderer.invoke("mkt-program-enroll", input) as Promise<unknown>,
-  mktPayoutConfig: () => ipcRenderer.invoke("mkt-payout-config") as Promise<unknown>,
-  mktPayoutConfigSet: (patch: { stripeAccountId?: string | null; thresholdCredits?: number | null }) =>
-    ipcRenderer.invoke("mkt-payout-config-set", patch) as Promise<unknown>,
-  mktEarnings: () => ipcRenderer.invoke("mkt-earnings") as Promise<unknown>,
+  // Developer program (M7) — Settings → Developer. Handle-scoped: a PROFILE
+  // (org or personal) holds the program; payout config rides inside the state.
+  mktProgramState: (handle: string) => ipcRenderer.invoke("mkt-program-state", handle) as Promise<unknown>,
+  mktProgramEnroll: (handle: string, agreementVersion: string) =>
+    ipcRenderer.invoke("mkt-program-enroll", handle, agreementVersion) as Promise<unknown>,
+  mktPayoutConfigSet: (handle: string, patch: { stripeConnectAccountId?: string | null; payoutThresholdCredits?: number }) =>
+    ipcRenderer.invoke("mkt-payout-config-set", handle, patch) as Promise<unknown>,
+  mktEarnings: (handle: string, query?: { limit?: number; offset?: number }) =>
+    ipcRenderer.invoke("mkt-earnings", handle, query) as Promise<unknown>,
+  mktPayouts: (handle: string) => ipcRenderer.invoke("mkt-payouts", handle) as Promise<unknown>,
 
   // Dashboard shell (5a): the Apps tab's data source. Every call here is a
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps

@@ -775,8 +775,10 @@ function showListingProgramGate(msg: string): void {
   gate.classList.remove("hidden");
 }
 
-/** The pre-gate: fetch the program state and, when it is KNOWN not-enrolled,
- *  disable List and say why before the server ever has to refuse. */
+/** The pre-gate: fetch the program state and, when it is KNOWN not-eligible,
+ *  disable List and say why before the server ever has to refuse. The program
+ *  is HANDLE-scoped, so resolve the caller's profile first (org over personal
+ *  — the publisher gate reads the org profile for org apps). */
 async function renderListingProgramGate(): Promise<void> {
   const gate = document.getElementById("listing-program-gate");
   const listBtn = document.getElementById("listing-list-btn") as HTMLButtonElement | null;
@@ -785,15 +787,24 @@ async function renderListingProgramGate(): Promise<void> {
   listBtn.disabled = false;
   const slug = currentApp?.slug;
   let state: MktProgramState | null = null;
-  try { state = await mktProgram.state(); }
-  catch { state = null; /* unknown → no pre-gate; the server still rules */ }
-  // Stale answer (the user opened another app meanwhile) or unknown state.
-  if (!state || !slug || currentApp?.slug !== slug) return;
-  if (state.status === "enrolled") return;
+  let noProfile = false;
+  try {
+    const me = await mkt.devMe();
+    const handle = me.org?.handle ?? me.personal?.handle ?? null;
+    if (handle) state = await mktProgram.state(handle);
+    else noProfile = true; // KNOWN ineligible: no profile, no program
+  } catch { /* unknown → no pre-gate; the server still rules */ }
+  // Stale answer (the user opened another app meanwhile) or unknown state
+  // (a fetch failed, or the SDK bundle predates the program surface).
+  if (!slug || currentApp?.slug !== slug) return;
+  if (!state && !noProfile) return;
+  if (state?.status === "enrolled" && state.agreement.current) return;
   listBtn.disabled = true;
-  showListingProgramGate(state.status === "suspended"
+  showListingProgramGate(state?.status === "suspended"
     ? "Your developer program membership is suspended — listing is paused while the suspension stands."
-    : "Listing on the marketplace requires the developer program: a developer profile, the developer agreement, and payout details.");
+    : state?.status === "enrolled"
+      ? "The developer agreement has been updated — re-accept it in Settings → Developer before listing."
+      : "Listing on the marketplace requires the developer program: a developer profile, the developer agreement, and payout details.");
 }
 
 /** The stored key back out of a served media URL — the remove call takes the key,

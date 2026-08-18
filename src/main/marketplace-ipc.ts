@@ -141,55 +141,31 @@ export function registerMarketplaceIpc(): void {
     catch (err) { return fail(err); }
   });
 
-  // ── developer program (M7) — SHIPPING SEPARATELY in the SDK ──────────────
-  // client.marketplace grows the program surface (state/enroll, payout config,
-  // earnings) on the sdk marketplace branch. FEATURE-DETECTED by name: until
-  // the method exists these answer { ok: false, unavailable: true } and
-  // Settings → Developer renders its "coming online" state instead of an
-  // error. Exact spellings are unconfirmed, so each handler probes 2 candidates.
-  const programFn = (names: string[]): ((...a: unknown[]) => Promise<unknown>) | null => {
-    const m = getClient().marketplace as unknown as Record<string, unknown>;
-    for (const n of names) {
-      if (typeof m[n] === "function") return (m[n] as (...a: unknown[]) => Promise<unknown>).bind(m);
-    }
-    return null;
-  };
-  const NOT_YET = { ok: false as const, unavailable: true as const, error: "The developer program isn't in this SDK build yet." };
-
-  ipcMain.handle("mkt-program-state", async () => {
-    try {
-      const fn = programFn(["programState", "program"]);
-      if (!fn) return NOT_YET;
-      return { ok: true as const, state: await fn() };
-    } catch (err) { return fail(err); }
+  // ── developer program (M7): consent, enrollment, payout, earnings ─────────
+  // client.marketplace's program surface — HANDLE-scoped like the server
+  // routes, contract shapes verbatim. Payout config rides INSIDE the
+  // DeveloperProgram payload (there is no separate config read).
+  ipcMain.handle("mkt-program-state", async (_e, handle: string) => {
+    try { return { ok: true as const, state: await getClient().marketplace.program(String(handle)) }; }
+    catch (err) { return fail(err); }
   });
-  ipcMain.handle("mkt-program-enroll", async (_e, input: { agreementVersion?: string }) => {
-    try {
-      const fn = programFn(["enrollProgram", "programEnroll"]);
-      if (!fn) return NOT_YET;
-      return { ok: true as const, state: await fn(input || {}) };
-    } catch (err) { return fail(err); }
+  ipcMain.handle("mkt-program-enroll", async (_e, handle: string, agreementVersion: string) => {
+    try { return { ok: true as const, state: await getClient().marketplace.enrollProgram(String(handle), String(agreementVersion)) }; }
+    catch (err) { return fail(err); }
   });
-  ipcMain.handle("mkt-payout-config", async () => {
-    try {
-      const fn = programFn(["payoutConfig", "getPayoutConfig"]);
-      if (!fn) return NOT_YET;
-      return { ok: true as const, config: await fn() };
-    } catch (err) { return fail(err); }
+  ipcMain.handle("mkt-payout-config-set", async (_e, handle: string, patch: {
+    stripeConnectAccountId?: string | null; payoutThresholdCredits?: number;
+  }) => {
+    try { return { ok: true as const, state: await getClient().marketplace.setPayoutConfig(String(handle), patch || {}) }; }
+    catch (err) { return fail(err); }
   });
-  ipcMain.handle("mkt-payout-config-set", async (_e, patch: { stripeAccountId?: string | null; thresholdCredits?: number | null }) => {
-    try {
-      const fn = programFn(["setPayoutConfig", "updatePayoutConfig"]);
-      if (!fn) return NOT_YET;
-      return { ok: true as const, config: await fn(patch || {}) };
-    } catch (err) { return fail(err); }
+  ipcMain.handle("mkt-earnings", async (_e, handle: string, query?: { limit?: number; offset?: number }) => {
+    try { return { ok: true as const, earnings: await getClient().marketplace.developerEarnings(String(handle), query || {}) }; }
+    catch (err) { return fail(err); }
   });
-  ipcMain.handle("mkt-earnings", async () => {
-    try {
-      const fn = programFn(["earnings", "programEarnings"]);
-      if (!fn) return NOT_YET;
-      return { ok: true as const, earnings: await fn() };
-    } catch (err) { return fail(err); }
+  ipcMain.handle("mkt-payouts", async (_e, handle: string) => {
+    try { return { ok: true as const, payouts: await getClient().marketplace.developerPayouts(String(handle)) }; }
+    catch (err) { return fail(err); }
   });
 
   // ── platform-admin queues (server enforces the role on every route) ───────
