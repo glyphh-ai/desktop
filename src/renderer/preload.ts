@@ -388,7 +388,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // on purpose — one contract, two copies (SDK + renderer), not three.
   mktBrowse: () => ipcRenderer.invoke("mkt-browse") as Promise<unknown>,
   mktDetail: (slug: string) => ipcRenderer.invoke("mkt-detail", slug) as Promise<unknown>,
-  mktAppToken: (slug: string) => ipcRenderer.invoke("mkt-app-token", slug) as Promise<unknown>,
   mktInstall: (slug: string) => ipcRenderer.invoke("mkt-install", slug) as Promise<unknown>,
   mktUninstall: (slug: string) => ipcRenderer.invoke("mkt-uninstall", slug) as Promise<unknown>,
   mktReviews: (slug: string, query?: { limit?: number; offset?: number }) =>
@@ -435,6 +434,15 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("mkt-admin-dev-moderate", reviewId, action) as Promise<unknown>,
   mktAdminSuspend: (slug: string, suspend: boolean) =>
     ipcRenderer.invoke("mkt-admin-suspend", slug, suspend) as Promise<unknown>,
+  // Developer program (M7) — Settings → Developer. The SDK surface ships
+  // separately; the handlers answer { unavailable: true } until it lands.
+  mktProgramState: () => ipcRenderer.invoke("mkt-program-state") as Promise<unknown>,
+  mktProgramEnroll: (input: { agreementVersion?: string }) =>
+    ipcRenderer.invoke("mkt-program-enroll", input) as Promise<unknown>,
+  mktPayoutConfig: () => ipcRenderer.invoke("mkt-payout-config") as Promise<unknown>,
+  mktPayoutConfigSet: (patch: { stripeAccountId?: string | null; thresholdCredits?: number | null }) =>
+    ipcRenderer.invoke("mkt-payout-config-set", patch) as Promise<unknown>,
+  mktEarnings: () => ipcRenderer.invoke("mkt-earnings") as Promise<unknown>,
 
   // Dashboard shell (5a): the Apps tab's data source. Every call here is a
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps

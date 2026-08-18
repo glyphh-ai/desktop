@@ -11,8 +11,8 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import {
   escMkt, mktConnChip, connLabel, mktConnIconApps,
-  mkt, mktMintAppToken, mktStarRow, mktDate, mktDiscountActive,
-  type MktDetail,
+  mkt, mktProgram, mktIsProgramRefusal, mktStarRow, mktDate, mktDiscountActive,
+  type MktDetail, type MktProgramState,
 } from "./marketplace-data.js";
 import { openMktDetail } from "./marketplace.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -334,7 +334,7 @@ let panelApps: PanelApp[] = [];
  *  surface an error. */
 async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
   return (await window.glyphh.appLaunch?.({
-    slug: app.slug, name: app.name, url: await appOpenUrl(app),
+    slug: app.slug, name: app.name, url: app.url,
     isBrowser: app.isBrowser,
     execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
   })) ?? { ok: false, error: "Launching apps isn't available on this surface." };
@@ -492,20 +492,11 @@ async function renderRequiredConnections(app: PanelApp): Promise<void> {
 // STORE's view: About (listing summary + the developer's pricing story),
 // Connections (the grants it needs), Support (the developer's, never ours).
 // Keyed off `owned === false`: builtin work panels never reach this editor,
-// and an org's own builds read as owned.
+// and an org's own builds read as owned. It opens INSIDE the user's
+// authenticated session (M7 one-seam: no identity handoff, no per-app signup).
 
 let currentMktDetail: MktDetail | null = null;
 let mktDetailEpoch = 0;
-
-/** The URL an installed MARKETPLACE app opens at: its hosted URL with the
- *  signed Glyphh identity token appended as a fragment (the M7 handoff), when
- *  the SDK can mint one. Feature-detected — the bare URL otherwise, and any
- *  other app's URL passes through untouched. */
-async function appOpenUrl(app: PanelApp): Promise<string | null | undefined> {
-  if (app.owned !== false || !app.url || !/^https?:\/\//i.test(app.url)) return app.url;
-  const token = await mktMintAppToken(app.slug);
-  return token ? `${app.url}#glyphh_token=${encodeURIComponent(token)}` : app.url;
-}
 
 /** Fetch the store detail for the OPEN marketplace-installed app, then
  *  re-render the consumer tabs and the open-action gate. */
@@ -760,6 +751,49 @@ function loadMarketplaceTab(): void {
     : `<span class="deploy-dot"></span>Not listed`;
   listBtn.classList.toggle("hidden", listed);
   unlistBtn.classList.toggle("hidden", !listed);
+  // M7: no enrollment, no listing — pre-gate the List button when the
+  // program state is knowable.
+  void renderListingProgramGate();
+}
+
+// ── M7 publish gate — no enrollment, no listing ──────────────────
+//
+// The server refuses listing without completed developer-program enrollment
+// (profile + agreement consent + payout config, Settings → Developer). Two
+// doors to the same truth: when the program state is KNOWN not-enrolled the
+// gate renders BEFORE any submission attempt; when it can't be known (the
+// program surface is still coming online) the List button stays live and the
+// server's actual refusal is rendered with the same gate + jump.
+
+/** Show the gate box with a reason; the button beside it jumps to
+ *  Settings → Developer (wired once in initMarketplaceTab). */
+function showListingProgramGate(msg: string): void {
+  const gate = document.getElementById("listing-program-gate");
+  const msgEl = document.getElementById("listing-program-gate-msg");
+  if (!gate || !msgEl) return;
+  msgEl.textContent = msg;
+  gate.classList.remove("hidden");
+}
+
+/** The pre-gate: fetch the program state and, when it is KNOWN not-enrolled,
+ *  disable List and say why before the server ever has to refuse. */
+async function renderListingProgramGate(): Promise<void> {
+  const gate = document.getElementById("listing-program-gate");
+  const listBtn = document.getElementById("listing-list-btn") as HTMLButtonElement | null;
+  if (!gate || !listBtn) return;
+  gate.classList.add("hidden");
+  listBtn.disabled = false;
+  const slug = currentApp?.slug;
+  let state: MktProgramState | null = null;
+  try { state = await mktProgram.state(); }
+  catch { state = null; /* unknown → no pre-gate; the server still rules */ }
+  // Stale answer (the user opened another app meanwhile) or unknown state.
+  if (!state || !slug || currentApp?.slug !== slug) return;
+  if (state.status === "enrolled") return;
+  listBtn.disabled = true;
+  showListingProgramGate(state.status === "suspended"
+    ? "Your developer program membership is suspended — listing is paused while the suspension stands."
+    : "Listing on the marketplace requires the developer program: a developer profile, the developer agreement, and payout details.");
 }
 
 /** The stored key back out of a served media URL — the remove call takes the key,
@@ -850,7 +884,15 @@ async function setListed(listed: boolean): Promise<void> {
   }
   listingStatus(listed ? "Listing…" : "Unlisting…");
   const res = await window.glyphh.appListingList?.(currentApp.slug, listed);
-  if (!res?.ok) { listingStatus(""); listingError(res?.error || "Couldn't change the listing."); return; }
+  if (!res?.ok) {
+    listingStatus("");
+    const err = res?.error || "Couldn't change the listing.";
+    // A developer-program refusal gets the server's actual reason plus the
+    // door to fix it (Settings → Developer); anything else is a plain error.
+    if (listed && mktIsProgramRefusal(err)) showListingProgramGate(err);
+    else listingError(err);
+    return;
+  }
   listingStatus(listed ? "Listed ✓" : "Unlisted ✓");
   await refreshCurrentApp();
   loadMarketplaceTab();
@@ -866,6 +908,9 @@ function initMarketplaceTab(): void {
   });
   document.getElementById("listing-list-btn")?.addEventListener("click", () => { void setListed(true); });
   document.getElementById("listing-unlist-btn")?.addEventListener("click", () => { void setListed(false); });
+  document.getElementById("listing-program-gate-btn")?.addEventListener("click", () => {
+    gotoSection("settings", "developer");
+  });
 }
 
 // ── Releases tab — the app's version history ─────────────────────
@@ -1975,11 +2020,8 @@ function initApps() {
     if (app.owned === false && mktUnavailable()) return;
     const glyphh = app.appArchetype === "glyphh-app";
     if (app.url || glyphh) {
-      // Marketplace apps get the M7 identity handoff appended to their hosted
-      // URL when the SDK can mint the token; everyone else opens as before.
-      const url = await appOpenUrl(app);
       closeSettingsModal();
-      openAppInWorkbench({ slug: app.slug, name: app.name, url, glyphh: glyphh || undefined });
+      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: glyphh || undefined });
       return;
     }
     const r = await launchPanelApp(app);

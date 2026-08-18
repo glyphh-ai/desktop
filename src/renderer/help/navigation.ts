@@ -25,6 +25,7 @@ import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
+import { loadDeveloperPanel, initDeveloperPanel } from "./settings-developer.js";
 import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
 import { loadVoiceSettings } from "./settings-voice.js";
 
@@ -426,6 +427,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "apikeys") void loadApiKeys();
+  // Developer — the M7 developer program (signup / consent / status / payout).
+  else if (sub === "developer") void loadDeveloperPanel();
   else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
@@ -705,6 +708,7 @@ export function initHelp() {
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("apikeys", initApiKeys);
+  boot("developer", initDeveloperPanel);
   boot("support", initSupportPanel);
   boot("guardrails", initGuardrails);
   boot("org", initOrgPanel);

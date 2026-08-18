@@ -558,6 +558,13 @@
                   <label class="settings-label">On the marketplace</label>
                   <div id="listing-listed-state" class="deploy-status">Not listed</div>
                   <p class="proxy-field-hint">Listing makes the app installable by other organizations, and open to reviews. Needs a tagline, a category, and an icon.</p>
+                  <!-- M7 developer-program gate: pre-gate (known not-enrolled)
+                       AND the server's actual refusal both render here, with
+                       the jump to Settings → Developer. -->
+                  <div id="listing-program-gate" class="hidden" style="margin:10px 0 0;padding:10px 12px;border:1px solid var(--border-2);border-radius:8px;">
+                    <p id="listing-program-gate-msg" class="settings-hint" style="margin:0 0 10px;"></p>
+                    <button id="listing-program-gate-btn" class="action-btn primary" type="button">Set up the developer program</button>
+                  </div>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;">
                     <button id="listing-list-btn" class="action-btn primary" type="button">List on marketplace</button>
                     <button id="listing-unlist-btn" class="action-btn danger hidden" type="button">Unlist</button>

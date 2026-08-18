@@ -190,6 +190,43 @@ export interface MktPricingPatch {
   discountEndsAt?: string | null;
 }
 
+// ── Developer program (M7) ────────────────────────────────────────────────
+//
+// The program/payout surface SHIPS SEPARATELY on the SDK's marketplace branch
+// (client.marketplace: program state/enroll, payout config, earnings). Until
+// it lands, every read below resolves null — Settings → Developer renders its
+// "coming online" state — and writes answer an honest offline error. Field
+// names are normalized through 2–3 plausible spellings at the seam; tighten
+// to a plain contract mirror once the SDK contract is in node_modules.
+
+export type MktProgramStatus = "none" | "enrolled" | "suspended";
+
+/** The org's developer-program standing + agreement-consent record. */
+export interface MktProgramState {
+  status: MktProgramStatus;
+  /** Agreement version this org accepted (null before enrollment). */
+  acceptedVersion: string | null;
+  acceptedAt: string | null;
+  /** The agreement version the server currently requires. */
+  currentVersion: string | null;
+  suspendedReason: string | null;
+}
+
+/** Stripe Connect payout configuration (M7: earned credits pay out monthly). */
+export interface MktPayoutConfig {
+  stripeAccountId: string | null;
+  thresholdCredits: number | null;
+  /** A server-minted Stripe Connect onboarding link, when the SDK exposes one. */
+  connectUrl: string | null;
+}
+
+/** Earned-credit ledger rollup. */
+export interface MktEarnings {
+  accruedCredits: number;
+  netCredits: number;
+  paidCredits: number;
+}
+
 /** One of the org's own apps as the console lists them (subset of OrgApp). */
 export interface MktOrgApp {
   id: string;
@@ -210,9 +247,6 @@ interface SdkApps {
   get?: (slug: string) => Promise<MktDetail>;
   install?: (slug: string) => Promise<{ slug: string }>;
   uninstall?: (slug: string) => Promise<void>;
-  /** M7 identity handoff — POST /api/apps/:slug/token. Shipping separately in
-   *  the SDK; every caller FEATURE-DETECTS it (mktMintAppToken below). */
-  mintAppToken?: (slug: string) => Promise<{ token: string } | string>;
   reviews?: (slug: string, q?: { limit?: number; offset?: number }) => Promise<{ reviews: MktReview[]; total: number }>;
   review?: (slug: string, input: { stars: number; body?: string }) => Promise<MktReview>;
   removeReview?: (slug: string) => Promise<void>;
@@ -246,6 +280,10 @@ interface SdkMarketplace {
   flaggedDeveloperReviews?: () => Promise<MktFlaggedReview[]>;
   moderateDeveloperReview?: (reviewId: string, action: "restore" | "remove") => Promise<MktReview>;
 }
+// The M7 program surface (programState/enrollProgram/payoutConfig/
+// setPayoutConfig/earnings) is deliberately NOT declared on SdkMarketplace —
+// its exact spellings are unconfirmed until the SDK branch lands, so mktProgram
+// feature-detects them by name at the seam (pickFn below).
 interface MktSdkHandle { apps?: SdkApps; marketplace?: SdkMarketplace }
 
 /** The desktop IPC methods (preload → marketplace-ipc.ts), typed loosely and
@@ -253,7 +291,6 @@ interface MktSdkHandle { apps?: SdkApps; marketplace?: SdkMarketplace }
 interface MktIpc {
   mktBrowse?: () => Promise<unknown>;
   mktDetail?: (slug: string) => Promise<unknown>;
-  mktAppToken?: (slug: string) => Promise<unknown>;
   mktInstall?: (slug: string) => Promise<unknown>;
   mktUninstall?: (slug: string) => Promise<unknown>;
   mktReviews?: (slug: string, q?: { limit?: number; offset?: number }) => Promise<unknown>;
@@ -285,6 +322,13 @@ interface MktIpc {
   mktAdminDevFlagged?: () => Promise<unknown>;
   mktAdminDevModerate?: (reviewId: string, action: "restore" | "remove") => Promise<unknown>;
   mktAdminSuspend?: (slug: string, suspend: boolean) => Promise<unknown>;
+  // Developer program (M7) — envelopes carry `unavailable: true` while the
+  // SDK's program surface hasn't shipped, so reads can answer null honestly.
+  mktProgramState?: () => Promise<unknown>;
+  mktProgramEnroll?: (input: { agreementVersion?: string }) => Promise<unknown>;
+  mktPayoutConfig?: () => Promise<unknown>;
+  mktPayoutConfigSet?: (patch: { stripeAccountId?: string | null; thresholdCredits?: number | null }) => Promise<unknown>;
+  mktEarnings?: () => Promise<unknown>;
 }
 
 const NO_TRANSPORT = "This build can't reach the marketplace.";
@@ -445,24 +489,149 @@ export const mkt = {
     ),
 };
 
-// ── Identity handoff (M7) ─────────────────────────────────────────────────
+// ── Developer program transport (M7) ──────────────────────────────────────
 
-/** Mint the short-lived signed Glyphh identity token a marketplace app
- *  receives on open (POST /api/apps/:slug/token) — how "no per-app signup"
- *  works. FEATURE-DETECTED on both transports: until the SDK ships
- *  client.apps.mintAppToken this resolves null and the app opens without a
- *  handoff — a missing token is a degraded open, never an error. */
-export async function mktMintAppToken(slug: string): Promise<string | null> {
+type MktAnyFn = (...args: unknown[]) => Promise<unknown>;
+
+/** First present function among candidate spellings — the program surface
+ *  ships separately in the SDK, so `typeof fn === "function"` is the gate. */
+function pickFn(obj: unknown, names: string[]): MktAnyFn | null {
+  if (!obj || typeof obj !== "object") return null;
+  const rec = obj as Record<string, unknown>;
+  for (const n of names) {
+    if (typeof rec[n] === "function") return (rec[n] as MktAnyFn).bind(obj);
+  }
+  return null;
+}
+
+const PROGRAM_OFFLINE = "The developer program hasn't come online in this build yet.";
+
+const asStr = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+const asNum = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+const unwrap = (r: unknown, keys: string[]): Record<string, unknown> | null => {
+  if (!r || typeof r !== "object") return null;
+  const o = r as Record<string, unknown>;
+  for (const k of keys) {
+    const inner = o[k];
+    if (inner && typeof inner === "object") return inner as Record<string, unknown>;
+  }
+  return o;
+};
+
+function normProgram(r: unknown): MktProgramState | null {
+  const o = unwrap(r, ["state", "program"]);
+  if (!o) return null;
+  const raw = String(o.status ?? o.programStatus ?? "none");
+  return {
+    status: raw === "enrolled" || raw === "suspended" ? raw : "none",
+    acceptedVersion: asStr(o.acceptedVersion ?? o.agreementVersion),
+    acceptedAt: asStr(o.acceptedAt ?? o.consentedAt ?? o.enrolledAt),
+    currentVersion: asStr(o.currentVersion ?? o.currentAgreementVersion ?? o.latestAgreementVersion),
+    suspendedReason: asStr(o.suspendedReason ?? o.suspensionReason),
+  };
+}
+
+function normPayout(r: unknown): MktPayoutConfig | null {
+  const o = unwrap(r, ["config", "payout"]);
+  if (!o) return null;
+  return {
+    stripeAccountId: asStr(o.stripeAccountId ?? o.accountId ?? o.stripeAccount),
+    thresholdCredits: asNum(o.thresholdCredits ?? o.payoutThresholdCredits ?? o.threshold),
+    connectUrl: asStr(o.connectUrl ?? o.onboardingUrl ?? o.stripeConnectUrl),
+  };
+}
+
+function normEarnings(r: unknown): MktEarnings | null {
+  const o = unwrap(r, ["earnings"]);
+  if (!o) return null;
+  return {
+    accruedCredits: asNum(o.accruedCredits ?? o.accrued) ?? 0,
+    netCredits: asNum(o.netCredits ?? o.net) ?? 0,
+    paidCredits: asNum(o.paidCredits ?? o.paid) ?? 0,
+  };
+}
+
+/** One desktop program envelope: null = surface not shipped, throw = real
+ *  failure the panel must show honestly, value = normalized payload. */
+async function programIpcRead<T>(
+  p: Promise<unknown> | undefined,
+  field: string,
+  norm: (r: unknown) => T | null,
+): Promise<T | null> {
+  const r = (await p) as ({ ok?: boolean; unavailable?: boolean; error?: string } & Record<string, unknown>) | null | undefined;
+  if (!r || r.unavailable) return null; // no preload / SDK method → not shipped yet
+  if (r.ok !== true) throw new Error(r.error || "Request failed");
+  return norm(r[field]);
+}
+
+async function programIpcWrite<T>(
+  p: Promise<unknown> | undefined,
+  field: string,
+  norm: (r: unknown) => T | null,
+): Promise<MktWrite<T | null>> {
   try {
+    const r = (await p) as ({ ok?: boolean; unavailable?: boolean; error?: string } & Record<string, unknown>) | null | undefined;
+    if (!r) return { ok: false, error: NO_TRANSPORT };
+    if (r.unavailable) return { ok: false, error: PROGRAM_OFFLINE };
+    if (r.ok !== true) return { ok: false, error: r.error || "Request failed" };
+    return { ok: true, data: norm(r[field]) };
+  } catch (err) { return { ok: false, error: errText(err) }; }
+}
+
+/** The developer-program surface. Reads resolve null while the SDK/program
+ *  surface hasn't shipped ("coming online"), and REJECT on real failures. */
+export const mktProgram = {
+  state: async (): Promise<MktProgramState | null> => {
     const s = sdk();
-    const mint = s?.apps?.mintAppToken;
-    if (typeof mint === "function") {
-      const r = await mint.call(s!.apps, slug);
-      return typeof r === "string" ? r : r?.token ?? null;
+    if (s) {
+      const fn = pickFn(s.marketplace, ["programState", "program"]);
+      return fn ? normProgram(await fn()) : null;
     }
-    const r = (await ipc().mktAppToken?.(slug)) as { ok?: boolean; token?: string } | null | undefined;
-    return r?.ok === true && typeof r.token === "string" && r.token ? r.token : null;
-  } catch { return null; }
+    return programIpcRead(ipc().mktProgramState?.(), "state", normProgram);
+  },
+  enroll: async (agreementVersion: string | null): Promise<MktWrite<MktProgramState | null>> => {
+    const input = agreementVersion ? { agreementVersion } : {};
+    const s = sdk();
+    if (s) {
+      const fn = pickFn(s.marketplace, ["enrollProgram", "programEnroll"]);
+      if (!fn) return { ok: false, error: PROGRAM_OFFLINE };
+      try { return { ok: true, data: normProgram(await fn(input)) }; }
+      catch (err) { return { ok: false, error: errText(err) }; }
+    }
+    return programIpcWrite(ipc().mktProgramEnroll?.(input), "state", normProgram);
+  },
+  payout: async (): Promise<MktPayoutConfig | null> => {
+    const s = sdk();
+    if (s) {
+      const fn = pickFn(s.marketplace, ["payoutConfig", "getPayoutConfig"]);
+      return fn ? normPayout(await fn()) : null;
+    }
+    return programIpcRead(ipc().mktPayoutConfig?.(), "config", normPayout);
+  },
+  setPayout: async (patch: { stripeAccountId?: string | null; thresholdCredits?: number | null }): Promise<MktWrite<MktPayoutConfig | null>> => {
+    const s = sdk();
+    if (s) {
+      const fn = pickFn(s.marketplace, ["setPayoutConfig", "updatePayoutConfig"]);
+      if (!fn) return { ok: false, error: PROGRAM_OFFLINE };
+      try { return { ok: true, data: normPayout(await fn(patch)) }; }
+      catch (err) { return { ok: false, error: errText(err) }; }
+    }
+    return programIpcWrite(ipc().mktPayoutConfigSet?.(patch), "config", normPayout);
+  },
+  earnings: async (): Promise<MktEarnings | null> => {
+    const s = sdk();
+    if (s) {
+      const fn = pickFn(s.marketplace, ["earnings", "programEarnings"]);
+      return fn ? normEarnings(await fn()) : null;
+    }
+    return programIpcRead(ipc().mktEarnings?.(), "earnings", normEarnings);
+  },
+};
+
+/** True when a publish/listing refusal reads as the M7 program gate — the cue
+ *  to offer "Set up the developer program" beside the server's actual reason. */
+export function mktIsProgramRefusal(error: string): boolean {
+  return /developer program|enroll|consent|developer agreement/i.test(error);
 }
 
 // ── Role gate ─────────────────────────────────────────────────────────────

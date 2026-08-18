@@ -8,6 +8,10 @@
  *     profile (avatar upload), the org's own listings with the credits
  *     pricing editor (monthly price + discount window), and each app's
  *     releases with submit-for-review + review-status chips.
+ *
+ * The PROFILE section (cards + create form + wiring) is exported as
+ * renderDeveloperProfiles — Settings → Developer (the M7 program signup area)
+ * renders the same machinery instead of duplicating it.
  */
 
 import { confirmAction, promptAction } from "./shared.js";
@@ -332,11 +336,6 @@ export async function loadMktConsole(): Promise<void> {
   el.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Loading…</div>`;
   el.querySelector(".mkt-back")?.addEventListener("click", () => showMktView("store"));
 
-  let me: { personal: MktDeveloper | null; org: MktDeveloper | null } = { personal: null, org: null };
-  let meError = "";
-  try { me = await mkt.devMe(); }
-  catch (err) { meError = err instanceof Error ? err.message : String(err); }
-
   let apps: MktOrgApp[] = [];
   try {
     apps = (await mkt.myApps()).apps.filter((a) => a.kind === "glyphh" && a.owned !== false);
@@ -352,16 +351,11 @@ export async function loadMktConsole(): Promise<void> {
     <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><span class="cur">Developer console</span></nav>
     <h1 class="mkt-console-title">Developer console</h1>
     <p class="section-desc">Your marketplace identity, your listings, their pricing in credits, and the release review pipeline.</p>
-    ${meError ? `<div class="crud-form-error">${escMkt(meError)}</div>` : ""}
 
     <section class="mkt-dt-section">
       <h3>Developer profiles</h3>
       <p class="settings-hint" style="margin:0 0 12px;">One profile per organization OR per person — apps you publish carry whichever profile your org uses.</p>
-      <div class="mkt-console-profiles">
-        ${profileCardHtml("org", me.org)}
-        ${profileCardHtml("personal", me.personal)}
-      </div>
-      <div id="mc-create-host"></div>
+      <div class="mc-profiles-host"><div class="crud-empty">Loading…</div></div>
     </section>
 
     <section class="mkt-dt-section">
@@ -371,7 +365,14 @@ export async function loadMktConsole(): Promise<void> {
         : `<p class="settings-hint">No published apps yet — build a Glyphh app and list it from Apps → the app → Marketplace tab.</p>`}
     </section>`;
 
-  wireConsole(el, me);
+  const profilesHost = el.querySelector<HTMLElement>(".mc-profiles-host");
+  if (profilesHost) {
+    void renderDeveloperProfiles(profilesHost, {
+      onChange: () => void loadMktConsole(),
+      onView: (handle) => void openMktDeveloper(handle),
+    });
+  }
+  wireConsole(el);
 }
 
 /** The create-profile form, mounted under the cards when "Create" is hit. */
@@ -402,19 +403,41 @@ function createFormHtml(scope: "personal" | "org"): string {
     </div>`;
 }
 
-function wireConsole(el: HTMLElement, me: { personal: MktDeveloper | null; org: MktDeveloper | null }): void {
-  el.querySelector(".mkt-back")?.addEventListener("click", () => showMktView("store"));
+/**
+ * The developer-profile SECTION — the org + personal cards, the create form,
+ * and all their wiring — rendered into `host`. Shared by the marketplace
+ * console and Settings → Developer (M7 signup). `onChange` fires after a
+ * successful create or avatar upload so the CALLER re-renders itself;
+ * `onView` opens a public profile page (the console's marketplace view —
+ * Settings closes its modal and navigates there first).
+ */
+export async function renderDeveloperProfiles(host: HTMLElement, opts: {
+  onChange: () => void;
+  onView: (handle: string) => void;
+}): Promise<void> {
+  let me: { personal: MktDeveloper | null; org: MktDeveloper | null } = { personal: null, org: null };
+  let meError = "";
+  try { me = await mkt.devMe(); }
+  catch (err) { meError = err instanceof Error ? err.message : String(err); }
+
+  host.innerHTML = `
+    ${meError ? `<div class="crud-form-error">${escMkt(meError)}</div>` : ""}
+    <div class="mkt-console-profiles">
+      ${profileCardHtml("org", me.org)}
+      ${profileCardHtml("personal", me.personal)}
+    </div>
+    <div class="mc-create-host"></div>`;
 
   // Create profile (org OR personal — the choice is explicit at creation).
-  el.querySelectorAll<HTMLButtonElement>(".mc-create-btn").forEach((b) => {
+  host.querySelectorAll<HTMLButtonElement>(".mc-create-btn").forEach((b) => {
     b.addEventListener("click", () => {
-      const host = el.querySelector<HTMLElement>("#mc-create-host");
-      if (!host) return;
-      host.innerHTML = createFormHtml(b.dataset.scope === "personal" ? "personal" : "org");
-      host.querySelector("#mc-new-cancel")?.addEventListener("click", () => { host.innerHTML = ""; });
-      host.querySelector("#mc-new-save")?.addEventListener("click", async () => {
-        const val = (id: string) => (host.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() || "";
-        const errEl = host.querySelector<HTMLElement>("#mc-new-error");
+      const formHost = host.querySelector<HTMLElement>(".mc-create-host");
+      if (!formHost) return;
+      formHost.innerHTML = createFormHtml(b.dataset.scope === "personal" ? "personal" : "org");
+      formHost.querySelector("#mc-new-cancel")?.addEventListener("click", () => { formHost.innerHTML = ""; });
+      formHost.querySelector("#mc-new-save")?.addEventListener("click", async () => {
+        const val = (id: string) => (formHost.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null)?.value.trim() || "";
+        const errEl = formHost.querySelector<HTMLElement>("#mc-new-error");
         errEl?.classList.add("hidden");
         const handle = val("mc-new-handle");
         const displayName = val("mc-new-name");
@@ -430,19 +453,19 @@ function wireConsole(el: HTMLElement, me: { personal: MktDeveloper | null; org: 
           ...(val("mc-new-website") ? { website: val("mc-new-website") } : {}),
           ...(val("mc-new-support") ? { supportEmail: val("mc-new-support") } : {}),
         });
-        if (res.ok) void loadMktConsole();
+        if (res.ok) opts.onChange();
         else if (errEl) { errEl.textContent = res.error; errEl.classList.remove("hidden"); }
       });
-      host.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      formHost.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
   });
 
   // Edit an existing profile.
-  el.querySelectorAll<HTMLButtonElement>(".mc-save-btn").forEach((b) => {
+  host.querySelectorAll<HTMLButtonElement>(".mc-save-btn").forEach((b) => {
     b.addEventListener("click", async () => {
       const p = b.dataset.p!;
-      const val = (id: string) => (el.querySelector(`#${p}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
-      const status = el.querySelector<HTMLElement>(`#${p}-status`);
+      const val = (id: string) => (host.querySelector(`#${p}-${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+      const status = host.querySelector<HTMLElement>(`#${p}-status`);
       if (status) status.textContent = "Saving…";
       const res = await mkt.devUpdate(b.dataset.handle!, {
         displayName: val("name") || undefined,
@@ -451,29 +474,33 @@ function wireConsole(el: HTMLElement, me: { personal: MktDeveloper | null; org: 
         supportEmail: val("support") || null,
       });
       if (status) status.textContent = res.ok ? "Saved ✓" : "";
-      if (!res.ok) note(el, res.error);
+      if (!res.ok) note(host, res.error);
     });
   });
-  el.querySelectorAll<HTMLButtonElement>(".mc-view-btn").forEach((b) => {
-    b.addEventListener("click", () => void openMktDeveloper(b.dataset.handle!));
+  host.querySelectorAll<HTMLButtonElement>(".mc-view-btn").forEach((b) => {
+    b.addEventListener("click", () => opts.onView(b.dataset.handle!));
   });
 
   // Avatar upload (file input → bytes → the write path; sniffed server-side).
-  el.querySelectorAll<HTMLButtonElement>(".mc-avatar-pick").forEach((b) => {
-    const file = el.querySelector<HTMLInputElement>(`#${b.dataset.p}-avatar-file`);
+  host.querySelectorAll<HTMLButtonElement>(".mc-avatar-pick").forEach((b) => {
+    const file = host.querySelector<HTMLInputElement>(`#${b.dataset.p}-avatar-file`);
     if (!file) return;
     b.addEventListener("click", () => file.click());
     file.addEventListener("change", async () => {
       const f = file.files?.[0];
       file.value = "";
       if (!f) return;
-      if (f.size > 512 * 1024) { note(el, "That image is over 512 KB — pick a smaller one."); return; }
+      if (f.size > 512 * 1024) { note(host, "That image is over 512 KB — pick a smaller one."); return; }
       const bytes = new Uint8Array(await f.arrayBuffer());
       const res = await mkt.devAvatar(b.dataset.handle!, bytes);
-      if (res.ok) void loadMktConsole();
-      else note(el, res.error);
+      if (res.ok) opts.onChange();
+      else note(host, res.error);
     });
   });
+}
+
+function wireConsole(el: HTMLElement): void {
+  el.querySelector(".mkt-back")?.addEventListener("click", () => showMktView("store"));
 
   // Listing folds: expand → load releases.
   el.querySelectorAll<HTMLElement>(".mkt-console-app").forEach((card) => {
