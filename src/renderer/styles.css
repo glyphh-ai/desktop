@@ -11722,8 +11722,10 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
 .ws-right-rails.solo-slot .ws-resize-v { display: none; }
 .ws-right-rails.solo-slot .ws-right-rail { width: auto !important; flex: 1 1 auto !important; }
 
-/* Hosted Apps page: its own big "Apps" heading duplicates the slot header. */
-.wb-hosted .apps-page-heading { display: none; }
+/* Hosted Apps page: the "Apps" h2 renders in-panel exactly like Connections'
+   h2 does — hiding it left .section-desc first, whose -16px top margin
+   (designed to tuck under an h2) pulled the subtitle up under the panel
+   title bar. */
 .ws-section-body > .help-section[data-section="docs"],
 .ws-section-body > .help-section[data-section="settings"],
 .ws-section-body > .help-section[data-section="dashboard"],
@@ -12626,7 +12628,10 @@ select:focus {
 .help-section[data-section="connections"]:has(#conn-detail:not(.hidden)) > .section-desc {
   display: none !important;
 }
-.apps-page-heading { margin-top: 20px; }
+/* .apps-page-heading carries NO offsets of its own — it renders on the base
+   .help-section h2 grammar so the Apps header lands exactly where the
+   Connections header does. (The old margin-top:20px was the dead
+   My apps | Marketplace tab-strip y-offset.) */
 
 /* Work panels — the fixed built-in cards that sit FIRST in the one apps grid
    (#apps-grid). Same .app-card grammar as the org cards after them; only the
