@@ -366,7 +366,7 @@ export function initMusic(host: MusicHost): MusicViews {
             <option value="300">5:00</option>
           </select>
           <button class="action-btn gmus-savenew" title="Encode the edited audio as a NEW take">Save as New</button>
-          <button class="action-btn primary gmus-regen" title="Re-run the music model with the edited prompt + lyrics — creates a child version">Regenerate</button>
+          <button class="action-btn primary gmus-regen" title="Run the music model with the prompt + band + lyrics — a first take fills this song; later runs create child versions">Regenerate</button>
         </div>
         <div class="gmus-team"></div>
         <div class="gmus-split">
@@ -736,12 +736,13 @@ export function initMusic(host: MusicHost): MusicViews {
     pane.querySelector(".gmus-zoom-out")?.addEventListener("click", () => { zoom = Math.max(0.4, zoom / 1.4); });
 
     const regenBtn = pane.querySelector<HTMLButtonElement>(".gmus-regen")!;
+    regenBtn.textContent = song.audioAssetId ? "Regenerate" : "Generate";
     const saveNewBtn = pane.querySelector<HTMLButtonElement>(".gmus-savenew")!;
     const setBusy = (busy: boolean, label?: string): void => {
       regenBtn.disabled = busy;
       saveNewBtn.disabled = busy;
       regenBtn.classList.toggle("busy", busy);
-      regenBtn.innerHTML = busy ? `<span class="gmus-spin"></span>${label ?? "Generating…"}` : "Regenerate";
+      regenBtn.innerHTML = busy ? `<span class="gmus-spin"></span>${label ?? "Generating…"}` : (song.audioAssetId ? "Regenerate" : "Generate");
     };
 
     // Save as New — encode the edited take, land it, version the song.
@@ -1462,6 +1463,7 @@ export function initMusic(host: MusicHost): MusicViews {
 
     // ── Generate / Regenerate — the songs pattern exactly ────────────────────
     const regenBtn = pane.querySelector<HTMLButtonElement>(".gmus-regen")!;
+    regenBtn.textContent = song.audioAssetId ? "Regenerate" : "Generate";
     regenBtn.addEventListener("click", () => {
       void (async () => {
         if (!promptIn.value.trim()) { void host.confirm({ title: "Give it a prompt first", confirmLabel: "OK" }); return; }
