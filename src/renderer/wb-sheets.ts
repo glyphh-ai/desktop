@@ -13,6 +13,7 @@
 
 import { officePager, officePage } from "./wb-office-ui.js";
 import { recalcWorkbook, cellValue, isFormulaCell, colLetter, shiftFormulaRows, type Workbook, type Worksheet, type SheetCell } from "../shared/sheets-engine.js";
+import { renderChartSVG } from "../shared/sheets-charts.js";
 
 export interface GSheetMeta { file: string; title: string; sheets: number; totalRows: number; size: number; folderId: string | null; mtime: number }
 
@@ -322,6 +323,7 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
         </div>
         <div class="gsheet-tabs${wb.sheets.length > 1 ? "" : " hidden"}"></div>
         <div class="gsheet-scroll" tabindex="0"><table class="gsheet-table"><colgroup></colgroup><thead></thead><tbody></tbody></table></div>
+        <div class="gsheet-charts"></div>
         <div class="gsheet-foot"><span class="gsheet-stats"></span><span class="gsheet-foot-pager"></span></div>
       </div>`;
 
@@ -880,6 +882,19 @@ export function initGSheets(host: GSheetHost): GSheetPanel {
       paintRows();
       paintSel();
     }
+    // Charts render read-only below the grid (authoring is via add_chart). They
+    // reflect the recalculated workbook, so re-render whenever the grid repaints.
+    const chartsEl = body.querySelector<HTMLElement>(".gsheet-charts")!;
+    function renderCharts(): void {
+      const charts = sheet.charts ?? [];
+      if (!charts.length) { chartsEl.innerHTML = ""; chartsEl.classList.remove("has"); return; }
+      chartsEl.classList.add("has");
+      chartsEl.innerHTML = charts.map((c) => {
+        const svg = renderChartSVG(wb, sheet, c, true);
+        return `<div class="gsheet-chart">${c.title ? `<div class="gsheet-chart-t">${c.title.replace(/[<>&]/g, "")}</div>` : ""}${svg || '<div class="gsheet-chart-empty">chart has no data</div>'}</div>`;
+      }).join("");
+    }
+    renderCharts();
     paintAll();
     if (sheet.rows.length) select(0, 0);
   }

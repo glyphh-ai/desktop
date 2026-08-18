@@ -161,3 +161,97 @@ describe("shiftFormulaRows (fill-down)", () => {
     expect(shiftFormulaRows("=A1", -5)).toBe("=A1");   // clamped at row 1
   });
 });
+
+// ── v3: dependency-ordered recalc, cross-sheet, named ranges, new functions ──
+describe("engine v3 — topological recalc", () => {
+  const cell = (r: Workbook, s: number, row: number, col: number): unknown =>
+    (r.sheets[s]!.rows[row]![col] as { v: unknown }).v;
+
+  it("resolves a formula that references a LATER formula (totals-first works now)", () => {
+    const wb: Workbook = {
+      sheets: [{
+        name: "S", columns: [{ name: "A" }, { name: "B" }],
+        rows: [
+          [{ f: "=A2+A3" }, null],   // total FIRST — used to break in v2
+          [10, null],
+          [{ f: "=A2*2" }, null],    // 20
+        ],
+      }],
+    };
+    recalcWorkbook(wb);
+    expect(cell(wb, 0, 2, 0)).toBe(20);
+    expect(cell(wb, 0, 0, 0)).toBe(30);   // 10 + 20, correctly ordered
+  });
+
+  it("marks circular references as #CIRC!", () => {
+    const wb: Workbook = {
+      sheets: [{
+        name: "S", columns: [{ name: "A" }],
+        rows: [[{ f: "=A2" }], [{ f: "=A1" }]],
+      }],
+    };
+    recalcWorkbook(wb);
+    expect(cell(wb, 0, 0, 0)).toBe("#CIRC!");
+    expect(cell(wb, 0, 1, 0)).toBe("#CIRC!");
+  });
+
+  it("resolves cross-sheet references", () => {
+    const wb: Workbook = {
+      sheets: [
+        { name: "Data", columns: [{ name: "A" }], rows: [[100], [200]] },
+        { name: "Sum", columns: [{ name: "A" }], rows: [[{ f: "=Data!A1+Data!A2" }], [{ f: "=SUM(Data!A1:A2)" }]] },
+      ],
+    };
+    recalcWorkbook(wb);
+    expect(cell(wb, 1, 0, 0)).toBe(300);
+    expect(cell(wb, 1, 1, 0)).toBe(300);
+  });
+
+  it("resolves named ranges in formulas + deps", () => {
+    const wb: Workbook = {
+      sheets: [{
+        name: "S", columns: [{ name: "A" }, { name: "B" }],
+        rows: [[10, null], [20, null], [{ f: "=SUM(costs)" }, { f: "=costs" }]],
+      }],
+      namedRanges: [{ name: "costs", sheet: "S", range: "A1:A2" }],
+    };
+    recalcWorkbook(wb);
+    expect(cell(wb, 0, 2, 0)).toBe(30);   // SUM(costs)
+    expect(cell(wb, 0, 2, 1)).toBe(10);   // costs → first cell scalar
+  });
+});
+
+describe("engine v3 — function library", () => {
+  const T = sheet([
+    ["apple", 3, 10],
+    ["banana", 5, 20],
+    ["cherry", 2, 30],
+  ]);
+  it("lookups: VLOOKUP / INDEX / MATCH", () => {
+    // 2-col VLOOKUP over A1:B3 (key, table, index=2)
+    expect(evalFormula(T, '=VLOOKUP("banana", A1:B3, 2)')).toBe(5);
+    expect(evalFormula(T, "=MATCH(30, C1:C3, 0)")).toBe(3);
+    expect(evalFormula(T, "=INDEX(A1:A3, 2)")).toBe("banana");
+  });
+  it("conditional aggregates: SUMIF / COUNTIF", () => {
+    expect(evalFormula(T, '=COUNTIF(B1:B3, ">2")')).toBe(2);
+    expect(evalFormula(T, '=SUMIF(B1:B3, ">2", C1:C3)')).toBe(30);   // banana(20)+... wait
+  });
+  it("logical: IF / IFERROR / AND / OR", () => {
+    expect(evalFormula(T, "=IF(B1>2, 1, 0)")).toBe(1);
+    expect(evalFormula(T, "=IFERROR(1/0, 99)")).toBe(99);
+    expect(evalFormula(T, "=AND(B1>0, B2>0)")).toBe(1);
+    expect(evalFormula(T, "=OR(B1<0, B2>0)")).toBe(1);
+  });
+  it("dates: DATE / YEAR / DATEDIF", () => {
+    expect(evalFormula(T, '=YEAR("2026-08-18")')).toBe(2026);
+    expect(evalFormula(T, '=DATEDIF("2026-01-01", "2026-03-01", "M")')).toBe(2);
+  });
+  it("text: TEXT / concatenation with &", () => {
+    expect(evalFormula(T, '=TEXT(0.5, "0%")')).toBe("50%");
+    expect(evalFormula(T, '="a" & "b" & 1')).toBe("ab1");
+  });
+  it("regex: REGEXMATCH", () => {
+    expect(evalFormula(T, '=REGEXMATCH("hello@x.com", "@")')).toBe(1);
+  });
+});

@@ -29,7 +29,8 @@ import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhAc
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openMediaPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
-import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
+import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell, type ChartSpec, type CondFormat, type NamedRange, type DataValidation, type CellStyle } from "../shared/sheets-engine";
+import { randomUUID } from "node:crypto";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
 import { renderDeck, renderSection, validateDeck, validateSlideSpec, layoutCatalog, themeCatalog, type SlideSpec, type RenderOptions } from "@glyphh/sdk/slides";
 import { gdocFileName as docsFileName } from "./office-docs";
@@ -990,7 +991,8 @@ const TOOLS: ToolDef[] = [
   },
   // ── Glyphh Office · SHEETS: JSON workbooks; the SHARED engine recalcs every
   //    write, so formula cells always land with fresh materialized values.
-  //    Refs read materialized values row-major — keep totals LAST. ──
+  //    Engine v3: dependency-ordered recalc (any order), cross-sheet refs,
+  //    named ranges, lookups + dates + text. ──
   {
     name: "list_sheets",
     doc: "list_sheets() — the org's workbooks: file, title, sheet + row counts",
@@ -1016,7 +1018,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_sheets",
-    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=…"} for a formula. The engine: arithmetic, parens, A1 refs, "string" literals, comparisons (= <> < > <= >=), and SUM AVG COUNT MIN MAX (ranges like B2:B9 or mixed args), ROUND ABS CONCAT UPPER LOWER TRIM LEN LEFT RIGHT MID IF(cond, then, else). Values compute on save; refs read stored values row-major — put totals LAST. AI columns: set ai_prompt, materialize with fill_column.',
+    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=…"} for a formula. Engine v3 recalcs in DEPENDENCY ORDER (a formula may reference a cell defined later or on another sheet — no "totals last" rule; circular refs show #CIRC!). Supports: arithmetic + & (concat), parens, A1 refs & ranges (B2:B9), cross-sheet refs (Sheet2!A1), named ranges, "string" literals, comparisons; functions SUM AVG COUNT COUNTA MEDIAN PRODUCT SUMIF COUNTIF AVERAGEIF ROUND/UP/DOWN ABS SQRT POWER MOD IF IFERROR AND OR NOT CONCAT UPPER LOWER TRIM LEN LEFT RIGHT MID SUBSTITUTE TEXT REGEXMATCH/EXTRACT/REPLACE TODAY DATE YEAR MONTH DAY DATEDIF VLOOKUP HLOOKUP INDEX MATCH FILTER UNIQUE SORT. Charts: add_chart. Styling: set_cell_style / add_conditional_format. Named ranges: add_named_range. AI columns: set ai_prompt, materialize with fill_column.',
     action: (a) => ({ kind: "edit", title: `Create workbook "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const cols = (Array.isArray(a.columns) ? a.columns : []).map((c): SheetColumn =>
@@ -1116,6 +1118,180 @@ const TOOLS: ToolDef[] = [
       });
       const r = await saveWorkbook(a.name, s.title, wb);
       return `filled ${Math.min(values.length, sheet.rows.length)} values into "${sheet.columns[i]!.name}" (${r.file})`;
+    },
+  },
+  {
+    name: "add_chart",
+    doc: 'add_chart(name, chart, sheet?) — add a chart to a workbook. chart = {type: bar|line|area|pie|scatter|combo, title?, categories?: "A2:A13" (x labels), series: [{name?, values: "B2:B13", type?, color?}], stacked?, legend?}. The chart is stored on the sheet and rendered (SVG) in the panel + exports. Returns its id.',
+    action: (a) => ({ kind: "edit", title: `Add chart to "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const c = (a.chart ?? a) as Record<string, unknown>;
+      const rawSeries = Array.isArray(c.series) ? c.series : [];
+      if (!rawSeries.length) return 'ERROR: add_chart needs series: [{values:"B2:B13"}]';
+      const chart: ChartSpec = {
+        id: `chart_${randomUUID().slice(0, 8)}`,
+        type: (["bar", "line", "area", "pie", "scatter", "combo"].includes(String(c.type)) ? c.type : "bar") as ChartSpec["type"],
+        ...(c.title ? { title: String(c.title) } : {}),
+        ...(c.categories ? { categoriesRef: String(c.categories) } : {}),
+        series: rawSeries.map((r) => {
+          const o = (r ?? {}) as Record<string, unknown>;
+          return { valuesRef: String(o.values ?? o.valuesRef ?? ""), ...(o.name ? { name: String(o.name) } : {}), ...(o.type ? { type: o.type as ChartSpec["type"] } : {}), ...(o.color ? { color: String(o.color) } : {}) };
+        }).filter((x) => x.valuesRef),
+        ...(c.stacked ? { stacked: true } : {}),
+        ...(c.legend === false ? { legend: false } : {}),
+      };
+      if (!chart.series.length) return 'ERROR: each series needs a values range like "B2:B13"';
+      (sheet.charts ??= []).push(chart);
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${chart.type} chart ${chart.id} to ${r.file}`;
+    },
+  },
+  {
+    name: "update_chart",
+    doc: "update_chart(name, chart_id, patch, sheet?) — merge patch into a chart (same fields as add_chart), or pass remove:true to delete it.",
+    action: (a) => ({ kind: "edit", title: `Update chart in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet?.charts) return "ERROR: no charts on that sheet";
+      const id = String(a.chart_id ?? "");
+      const idx = sheet.charts.findIndex((c) => c.id === id);
+      if (idx < 0) return `ERROR: no chart "${id}" — ids: ${sheet.charts.map((c) => c.id).join(", ")}`;
+      if (a.remove) { sheet.charts.splice(idx, 1); await saveWorkbook(a.name, s.title, wb); return `removed chart ${id}`; }
+      const p = (a.patch ?? {}) as Partial<ChartSpec>;
+      sheet.charts[idx] = { ...sheet.charts[idx]!, ...p, id };
+      await saveWorkbook(a.name, s.title, wb);
+      return `updated chart ${id}`;
+    },
+  },
+  {
+    name: "add_conditional_format",
+    doc: 'add_conditional_format(name, range, kind, sheet?, …) — paint a range by rule. kind: "colorScale" (scale:{min,mid?,max} hex), "dataBar" (bar:{color}), "cellRule"/"textRule" (op: gt|lt|gte|lte|eq|neq|between|contains|startsWith|endsWith + value[,value2] + style:{fill,color,bold}), "iconSet" (iconSet: arrows|traffic|flags, thresholds:[…]).',
+    action: (a) => ({ kind: "edit", title: `Format ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const range = String(a.range ?? "");
+      if (!/^[A-Z]+\d+(:[A-Z]+\d+)?$/i.test(range)) return 'ERROR: range like "B2:B100"';
+      const rule = {
+        id: `cf_${randomUUID().slice(0, 8)}`, range,
+        kind: (["colorScale", "dataBar", "cellRule", "textRule", "iconSet"].includes(String(a.kind)) ? a.kind : "cellRule") as CondFormat["kind"],
+        ...(a.scale ? { scale: a.scale as CondFormat["scale"] } : {}),
+        ...(a.bar ? { bar: a.bar as CondFormat["bar"] } : {}),
+        ...(a.op ? { op: a.op as CondFormat["op"] } : {}),
+        ...(a.value !== undefined ? { value: a.value as string | number } : {}),
+        ...(a.value2 !== undefined ? { value2: a.value2 as string | number } : {}),
+        ...(a.style ? { style: a.style as CellStyle } : {}),
+        ...(a.iconSet ? { iconSet: a.iconSet as CondFormat["iconSet"] } : {}),
+        ...(Array.isArray(a.thresholds) ? { thresholds: a.thresholds as number[] } : {}),
+      };
+      (sheet.condFormats ??= []).push(rule);
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${rule.kind} on ${range} (${r.file})`;
+    },
+  },
+  {
+    name: "set_cell_style",
+    doc: 'set_cell_style(name, range, style, sheet?) — style a cell or range. style = {bold?, italic?, underline?, color?(hex text), fill?(hex bg), align?(left|center|right), numberFormat?("#,##0.00"|"0%"|"$#,##0"|"yyyy-mm-dd")}. Applies to every cell in the range.',
+    action: (a) => ({ kind: "edit", title: `Style ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const style = (a.style ?? {}) as CellStyle;
+      const range = String(a.range ?? "");
+      const [ca, cb] = range.split(":");
+      const ra = parseA1(ca ?? ""), rb = parseA1(cb ?? ca ?? "");
+      if (!ra || !rb) return 'ERROR: range like "B2" or "B2:D10"';
+      sheet.styles ??= {};
+      let n = 0;
+      for (let r = Math.min(ra.row, rb.row); r <= Math.max(ra.row, rb.row); r++)
+        for (let c = Math.min(ra.col, rb.col); c <= Math.max(ra.col, rb.col); c++) {
+          const key = `${colLetter(c)}${r + 1}`;
+          sheet.styles[key] = { ...sheet.styles[key], ...style };
+          n++;
+        }
+      const rr = await saveWorkbook(a.name, s.title, wb);
+      return `styled ${n} cell${n === 1 ? "" : "s"} in ${rr.file}`;
+    },
+  },
+  {
+    name: "add_named_range",
+    doc: 'add_named_range(name, range_name, range, sheet?) — define a workbook-scoped named range (e.g. range_name="revenue", range="B2:B13") usable in formulas: =SUM(revenue). range_name must be a bare identifier (letters/digits/_).',
+    action: (a) => ({ kind: "edit", title: `Name range "${String(a.range_name ?? "")}" in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const rn = String(a.range_name ?? "");
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(rn)) return "ERROR: range_name must be a bare identifier (no spaces/A1)";
+      const range = String(a.range ?? "");
+      if (!/^[A-Z]+\d+(:[A-Z]+\d+)?$/i.test(range)) return 'ERROR: range like "B2:B13"';
+      const nr: NamedRange = { name: rn, sheet: sheet.name, range: range.toUpperCase() };
+      wb.namedRanges = [...(wb.namedRanges ?? []).filter((x) => x.name.toLowerCase() !== rn.toLowerCase()), nr];
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `named ${rn} → ${sheet.name}!${nr.range} (${r.file})`;
+    },
+  },
+  {
+    name: "add_data_validation",
+    doc: 'add_data_validation(name, range, rule, sheet?) — constrain a range. rule = {kind:"list", source:["A","B"]} for a dropdown, {kind:"listRange", ref:"F1:F9"}, {kind:"number", op:"between", value, value2}, {kind:"date", …}, {kind:"textLen", op, value}, or {kind:"custom", formula:"=…"}.',
+    action: (a) => ({ kind: "edit", title: `Validate ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const range = String(a.range ?? "");
+      const rule = a.rule as DataValidation["rule"] | undefined;
+      if (!range || !rule || typeof rule.kind !== "string") return "ERROR: pass range + rule{kind,…}";
+      (sheet.validations ??= []).push({ id: `dv_${randomUUID().slice(0, 8)}`, range, rule, ...(a.strict ? { strict: true } : {}) });
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${rule.kind} validation on ${range} (${r.file})`;
+    },
+  },
+  {
+    name: "manage_sheets",
+    doc: 'manage_sheets(name, op) — multi-sheet tab ops. op is ONE of: {add:{name, columns?}}, {rename:{from, to}}, {delete:"Sheet2"}, {reorder:["Sheet1","Sheet2"]}, {freeze:{sheet?, rows?, cols?}}.',
+    action: (a) => ({ kind: "edit", title: `Manage sheets in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const op = (a.op ?? a) as Record<string, unknown>;
+      if (op.add) {
+        const o = op.add as { name?: unknown; columns?: unknown };
+        const cols = Array.isArray(o.columns) ? o.columns.map((c) => ({ name: String(c) })) : [{ name: "A" }, { name: "B" }, { name: "C" }];
+        wb.sheets.push({ name: String(o.name ?? `Sheet${wb.sheets.length + 1}`), columns: cols, rows: [] });
+      } else if (op.rename) {
+        const o = op.rename as { from?: unknown; to?: unknown };
+        const sh = wb.sheets.find((x) => x.name === String(o.from));
+        if (!sh) return `ERROR: no sheet "${String(o.from)}"`;
+        sh.name = String(o.to);
+      } else if (op.delete) {
+        if (wb.sheets.length <= 1) return "ERROR: a workbook needs at least one sheet";
+        const i = wb.sheets.findIndex((x) => x.name === String(op.delete));
+        if (i < 0) return `ERROR: no sheet "${String(op.delete)}"`;
+        wb.sheets.splice(i, 1);
+      } else if (Array.isArray(op.reorder)) {
+        const order = op.reorder.map(String);
+        wb.sheets.sort((x, y) => order.indexOf(x.name) - order.indexOf(y.name));
+      } else if (op.freeze) {
+        const o = op.freeze as { sheet?: unknown; rows?: unknown; cols?: unknown };
+        const sh = o.sheet ? wb.sheets.find((x) => x.name === String(o.sheet)) : wb.sheets[0];
+        if (!sh) return "ERROR: no such worksheet";
+        sh.frozen = { ...(o.rows !== undefined ? { rows: Number(o.rows) } : {}), ...(o.cols !== undefined ? { cols: Number(o.cols) } : {}) };
+      } else return "ERROR: op must be one of add/rename/delete/reorder/freeze";
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `sheets: ${wb.sheets.map((x) => x.name).join(", ")} (${r.file})`;
     },
   },
   {

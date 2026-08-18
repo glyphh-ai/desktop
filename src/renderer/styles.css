@@ -17461,6 +17461,12 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gsheet-foot { display: flex; align-items: center; gap: 12px; padding: 0 12px; }
 .gsheet-stats { flex: 1; font-size: 11px; color: var(--text-2); font-family: var(--font-mono); padding: 6px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gsheet-foot-pager .office-pager { padding: 4px 0; }
+/* Read-only charts strip below the grid (authored via add_chart). */
+.gsheet-charts { flex: none; display: none; gap: 16px; flex-wrap: wrap; padding: 12px; overflow-x: auto; border-top: 1px solid var(--border-1); }
+.gsheet-charts.has { display: flex; }
+.gsheet-chart { flex: 0 0 auto; width: 360px; background: var(--surface-2, rgba(255,255,255,.02)); border: 1px solid var(--border-1); border-radius: 10px; padding: 12px; }
+.gsheet-chart-t { font-size: 12px; font-weight: 600; color: var(--text-1); margin-bottom: 6px; }
+.gsheet-chart-empty { font-size: 11px; color: var(--text-2); padding: 20px; text-align: center; }
 
 /* ════ GLYPHH DESIGN panel — library + the shots.so-shaped studio.
    Chrome = workbench theme vars ONLY; the design paints inside the shot. ════ */
