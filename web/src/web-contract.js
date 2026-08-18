@@ -410,6 +410,19 @@ export function buildContract(client, deps) {
       try { await client.music.deleteArtist(id); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    musicInstruments: async () => {
+      try { return { ok: true, instruments: await client.music.instruments() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), instruments: [] }; }
+    },
+    musicInstrumentSave: async (id, input) => {
+      try { const instrument = id ? await client.music.updateInstrument(id, input) : await client.music.createInstrument(input); return { ok: true, instrument }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicInstrumentDelete: async (id) => {
+      try { await client.music.deleteInstrument(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    musicInstrumentGenlook: async () => ({ ok: false, error: "look generation rides the desktop for now" }),
     musicSongs: async () => {
       try { return { ok: true, songs: await client.music.songs() }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), songs: [] }; }

@@ -47,6 +47,41 @@ export function registerMusicPanelIpc(): void {
     try { await getClient().music.deleteArtist(String(id)); return { ok: true }; }
     catch (err) { return { ok: false, error: errText(err) }; }
   });
+  ipcMain.handle("music-instruments", async () => {
+    try { return { ok: true, instruments: await getClient().music.instruments() }; }
+    catch (err) { return { ok: false, error: errText(err), instruments: [] }; }
+  });
+  ipcMain.handle("music-instrument-save", async (_e, id: unknown, input: unknown) => {
+    try {
+      const music = getClient().music;
+      const instrument = id
+        ? await music.updateInstrument(String(id), input as Parameters<typeof music.updateInstrument>[1])
+        : await music.createInstrument(input as Parameters<typeof music.createInstrument>[0]);
+      return { ok: true, instrument };
+    } catch (err) { return { ok: false, error: errText(err) }; }
+  });
+  ipcMain.handle("music-instrument-delete", async (_e, id: unknown) => {
+    try { await getClient().music.deleteInstrument(String(id)); return { ok: true }; }
+    catch (err) { return { ok: false, error: errText(err) }; }
+  });
+  ipcMain.handle("music-instrument-genlook", async (_e, id: unknown, description: unknown, replaceLook: unknown) => {
+    try {
+      const music = getClient().music;
+      const inst = (await music.instruments()).find((x) => x.id === String(id));
+      if (!inst) throw new Error("unknown instrument");
+      const img = await genImageAsset(
+        `Photorealistic product photograph of a ${inst.name}${String(description ?? inst.description ?? "").trim() ? `, ${String(description ?? inst.description).trim()}` : ""}, dark stage backdrop, dramatic lighting`,
+        `${inst.name} — look`,
+      );
+      const looks = [...((inst.meta.looks as Array<{ assetId: string }> | undefined) ?? [])];
+      const idx = replaceLook !== undefined && replaceLook !== null ? Math.trunc(Number(replaceLook)) - 1 : -1;
+      let active: number;
+      if (idx >= 0 && idx < looks.length) { looks[idx] = { assetId: img.id }; active = idx; }
+      else { looks.push({ assetId: img.id }); active = looks.length - 1; }
+      const updated = await music.updateInstrument(inst.id, { meta: { ...inst.meta, looks, activeLook: active } });
+      return { ok: true, instrument: updated, credits: img.credits };
+    } catch (err) { return { ok: false, error: errText(err) }; }
+  });
   ipcMain.handle("music-songs", async () => {
     try { return { ok: true, songs: await getClient().music.songs() }; }
     catch (err) { return { ok: false, error: errText(err), songs: [] }; }

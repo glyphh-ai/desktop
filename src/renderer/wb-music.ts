@@ -21,6 +21,7 @@ interface Song {
   audioAssetId: string | null; parentId: string | null; model: string; visuals: string[]; updatedAt: string;
 }
 
+interface LibInstrument { id: string; name: string; description: string; meta: Record<string, unknown>; updatedAt: string }
 interface Project { id: string; title: string; scenes: Record<string, unknown>; status: string; renderAssetId: string | null; updatedAt: string }
 
 export interface MusicHost {
@@ -30,6 +31,7 @@ export interface MusicHost {
 export interface MusicState {
   songId?: string;
   artistId?: string | null;
+  instrumentId?: string | null;
   videoId?: string | null;
 }
 
@@ -37,6 +39,10 @@ const api = () => (window as unknown as { glyphh?: {
   musicArtists?: () => Promise<{ ok: boolean; artists: Artist[]; error?: string }>;
   musicArtistSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; artist?: Artist; error?: string }>;
   musicArtistDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  musicInstruments?: () => Promise<{ ok: boolean; instruments: LibInstrument[]; error?: string }>;
+  musicInstrumentSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; instrument?: LibInstrument; error?: string }>;
+  musicInstrumentDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  musicInstrumentGenlook?: (id: string, description?: string, replaceLook?: number) => Promise<{ ok: boolean; instrument?: LibInstrument; credits?: number; error?: string }>;
   musicSongs?: () => Promise<{ ok: boolean; songs: Song[]; error?: string }>;
   musicSongSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; song?: Song; error?: string }>;
   musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -216,6 +222,7 @@ async function mediaUrlOf(id: string): Promise<string | null> {
 export interface MusicViews {
   renderSongs: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
   renderArtists: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
+  renderInstruments: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
   renderMusicVideo: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
   dispose: () => void;
 }
@@ -244,7 +251,7 @@ export function initBand(host: MusicHost): BandPanel {
       const tab = slot.tab ?? 0;
       body.innerHTML = `<div class="gmus-shell"><div class="gmem-tabs gmus-tabs"></div><div class="gmus-pane"></div></div>`;
       const tabs = body.querySelector<HTMLElement>(".gmus-tabs")!;
-      ["Songs", "Artists", "Music Video"].forEach((name, i) => {
+      ["Songs", "Artists", "Instruments", "Music Video"].forEach((name, i) => {
         const b = document.createElement("button");
         b.className = "gmem-tab" + (i === tab ? " on" : "");
         b.textContent = name;
@@ -254,7 +261,8 @@ export function initBand(host: MusicHost): BandPanel {
       const pane = body.querySelector<HTMLElement>(".gmus-pane")!;
       slot.music ??= {};
       if (tab === 1) { await views.renderArtists(pane, slot.music, refresh); return; }
-      if (tab === 2) { await views.renderMusicVideo(pane, slot.music, refresh); return; }
+      if (tab === 2) { await views.renderInstruments(pane, slot.music, refresh); return; }
+      if (tab === 3) { await views.renderMusicVideo(pane, slot.music, refresh); return; }
       await views.renderSongs(pane, slot.music, refresh);
     } catch (err) {
       console.warn("[gband] render failed:", err);
@@ -469,20 +477,31 @@ export function initMusic(host: MusicHost): MusicViews {
       onChange: (sel) => { song.artistIds = sel; saveBand(); },
     });
 
-    // Instruments — catalog left, the band's right; each selected row keeps
-    // its tweak line, look thumb and ⟳ generate.
+    // Instruments — the ORG LIBRARY left (looks included; the Instruments tab
+    // curates it), the band's right; each selected row keeps its tweak line.
+    const libRes = await api().musicInstruments?.();
+    const lib = libRes?.ok ? libRes.instruments : [];
+    const libThumb = (li: LibInstrument): string | null => {
+      const looks = (li.meta?.looks as Array<{ assetId: string }> | undefined) ?? [];
+      return looks[(li.meta?.activeLook as number | undefined) ?? 0]?.assetId ?? looks[0]?.assetId ?? null;
+    };
     const instSelected = song.instruments.map((i) => i.instrument);
     const instPicker = dualPicker({
       parent: pane.querySelector<HTMLElement>(".gmus-instruments-pick")!,
       available: [
-        ...INSTRUMENT_CATALOG.map((n) => ({ id: n, label: n })),
-        // Anything already on the song that isn't in the catalog stays pickable.
-        ...song.instruments.filter((i) => !INSTRUMENT_CATALOG.includes(i.instrument)).map((i) => ({ id: i.instrument, label: i.instrument })),
+        ...lib.map((li) => ({ id: li.name, label: li.name, thumbAssetId: libThumb(li) })),
+        ...INSTRUMENT_CATALOG.filter((n) => !lib.some((li) => li.name === n)).map((n) => ({ id: n, label: n })),
+        ...song.instruments.filter((i) => !INSTRUMENT_CATALOG.includes(i.instrument) && !lib.some((li) => li.name === i.instrument)).map((i) => ({ id: i.instrument, label: i.instrument })),
       ],
       selected: instSelected,
       searchPlaceholder: "Search instruments…",
       onChange: (sel) => {
-        song.instruments = sel.map((name) => song.instruments.find((i) => i.instrument === name) ?? { instrument: name, tweak: "" });
+        song.instruments = sel.map((name) => {
+          const existing = song.instruments.find((i) => i.instrument === name);
+          if (existing) return existing;
+          const li = lib.find((x) => x.name === name);
+          return { instrument: name, tweak: li?.description ?? "", ...(li && libThumb(li) ? { lookAssetId: libThumb(li) } : {}) };
+        });
         saveBand();
       },
       renderSelectedRow: (id, row) => {
@@ -1072,7 +1091,193 @@ export function initMusic(host: MusicHost): MusicViews {
     });
   }
 
-  // ── Music Video  // ── Music Video — many videos: list → the editor page ─────────────────────
+  // ── Music Video  // ── Instruments — the org library: list → the instrument page ─────────────
+
+  async function renderInstruments(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
+    stopPlayback();
+    if (state.instrumentId !== undefined) { await renderInstrumentPage(pane, state, refresh); return; }
+    const res = await api().musicInstruments?.();
+    const instruments = res?.ok ? res.instruments : [];
+    pane.innerHTML = `
+      <div class="gmus-list">
+        <div class="office-toolbar">
+          <span class="gmus-count">${instruments.length} instrument${instruments.length === 1 ? "" : "s"}</span>
+          <button class="action-btn primary gmus-new">＋ New Instrument</button>
+        </div>
+        <div class="gmus-artists"></div>
+        <div class="gdoc-empty ${instruments.length ? "hidden" : ""}">No instruments yet — an instrument is a NAME, a SOUND line and a LOOK.</div>
+      </div>`;
+    pane.querySelector(".gmus-new")?.addEventListener("click", () => { state.instrumentId = null; refresh(); });
+    const list = pane.querySelector<HTMLElement>(".gmus-artists")!;
+    for (const inst of instruments) {
+      const looks = (inst.meta?.looks as Array<{ assetId: string }> | undefined) ?? [];
+      const active = (inst.meta?.activeLook as number | undefined) ?? 0;
+      const row = document.createElement("button");
+      row.className = "gmus-artist-card";
+      row.innerHTML = `
+        <div class="gmus-artist-face">🎸</div>
+        <div class="gmus-artist-main">
+          <span class="gmus-artist-name"></span>
+          <span class="gmus-artist-style"></span>
+          <span class="gmus-artist-badges"></span>
+        </div>
+        <span class="ws-icon-btn gmem-del gmus-artist-del" title="Delete">✕</span>`;
+      (row.querySelector(".gmus-artist-name") as HTMLElement).textContent = inst.name;
+      (row.querySelector(".gmus-artist-style") as HTMLElement).textContent = inst.description || "—";
+      (row.querySelector(".gmus-artist-badges") as HTMLElement).textContent = looks.length ? `${looks.length} look${looks.length === 1 ? "" : "s"}` : "no looks";
+      const lookId = looks[active]?.assetId ?? looks[0]?.assetId;
+      if (lookId) {
+        const face = row.querySelector<HTMLElement>(".gmus-artist-face")!;
+        void mediaUrlOf(lookId).then((u) => {
+          if (u && face.isConnected) { face.textContent = ""; face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`; }
+        });
+      }
+      row.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".gmus-artist-del")) return;
+        state.instrumentId = inst.id;
+        refresh();
+      });
+      row.querySelector(".gmus-artist-del")?.addEventListener("click", () => {
+        void (async () => {
+          const yes = await host.confirm({ title: `Delete "${inst.name}"?`, confirmLabel: "Delete", danger: true });
+          if (!yes) return;
+          await api().musicInstrumentDelete?.(inst.id);
+          refresh();
+        })();
+      });
+      list.appendChild(row);
+    }
+  }
+
+  /** THE INSTRUMENT PAGE — ‹ Instruments on top; the INPUT on the left (name
+   *  + the sound/character line), the GENERATED OPTIONS on the right: a looks
+   *  gallery — generate, regenerate per option, pick the active one, click
+   *  to fill the panel. Exactly the artist page's shape. */
+  async function renderInstrumentPage(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
+    const isNew = state.instrumentId === null;
+    const res = isNew ? null : await api().musicInstruments?.();
+    const inst = isNew ? null : (res?.ok ? res.instruments : []).find((x) => x.id === state.instrumentId);
+    if (!isNew && !inst) { delete state.instrumentId; refresh(); return; }
+
+    pane.innerHTML = `
+      <div class="gmus-page">
+        <div class="gdz-topbar">
+          <button class="action-btn gmus-back">‹ Instruments</button>
+          <span class="gmus-savestate"></span>
+        </div>
+        <div class="gmus-split">
+          <div class="gmus-left">
+            <label class="gmus-label">Name</label>
+            <input class="gmus-title gmus-i-name-in" spellcheck="false" placeholder="pedal steel, 808 bass, banjo…" />
+            <label class="gmus-label">Sound <span class="gmem-hint">the character — this drives the look too</span></label>
+            <textarea class="gmus-prompt gmus-i-desc-in" spellcheck="false" placeholder="raw, overdriven, garage-y; sunburst body, heavy wear…"></textarea>
+            ${isNew ? '<button class="action-btn primary gmus-i-create">Create instrument</button>' : ""}
+          </div>
+          <div class="gmus-right">
+            <div class="gmus-looks-head">
+              <span class="gmus-label">Looks</span>
+              <button class="action-btn primary gmus-look-new" ${isNew ? "disabled title='Create the instrument first'" : ""}>＋ Generate look</button>
+            </div>
+            <div class="gmus-looks-gallery"></div>
+            <div class="gmus-look-hint">${isNew ? "Save the instrument, then generate looks from its sound line." : "click an image to fill the panel · ⟳ regenerates that option · the highlighted look fronts the instrument"}</div>
+          </div>
+        </div>
+        <div class="gmus-lightbox hidden"><img alt="" /></div>
+      </div>`;
+    pane.querySelector(".gmus-back")?.addEventListener("click", () => { delete state.instrumentId; refresh(); });
+
+    const saveState = pane.querySelector<HTMLElement>(".gmus-savestate")!;
+    const nameIn = pane.querySelector<HTMLInputElement>(".gmus-i-name-in")!;
+    const descIn = pane.querySelector<HTMLTextAreaElement>(".gmus-i-desc-in")!;
+    if (inst) { nameIn.value = inst.name; descIn.value = inst.description; }
+    const persist = async (): Promise<void> => {
+      if (isNew || !inst) return;
+      saveState.textContent = "…";
+      const r = await api().musicInstrumentSave?.(inst.id, { name: nameIn.value.trim() || inst.name, description: descIn.value.trim() });
+      saveState.textContent = r?.ok ? "Saved" : `⚠ ${r?.error ?? "save failed"}`;
+    };
+    nameIn.addEventListener("change", () => void persist());
+    descIn.addEventListener("change", () => void persist());
+    pane.querySelector(".gmus-i-create")?.addEventListener("click", () => {
+      void (async () => {
+        const name = nameIn.value.trim();
+        if (!name) { nameIn.focus(); return; }
+        const r = await api().musicInstrumentSave?.(null, { name, description: descIn.value.trim() });
+        if (r?.ok && r.instrument) { state.instrumentId = r.instrument.id; refresh(); }
+      })();
+    });
+
+    const gallery = pane.querySelector<HTMLElement>(".gmus-looks-gallery")!;
+    const lightbox = pane.querySelector<HTMLElement>(".gmus-lightbox")!;
+    lightbox.addEventListener("click", () => lightbox.classList.add("hidden"));
+    const openFull = (url: string): void => {
+      (lightbox.querySelector("img") as HTMLImageElement).src = url;
+      lightbox.classList.remove("hidden");
+    };
+    const paintLooks = (i2: LibInstrument | null): void => {
+      gallery.textContent = "";
+      const looks = (i2?.meta?.looks as Array<{ assetId: string }> | undefined) ?? [];
+      const active = (i2?.meta?.activeLook as number | undefined) ?? 0;
+      if (!looks.length) {
+        gallery.innerHTML = `<div class="gdoc-empty">${isNew ? "" : "No looks yet — ＋ Generate look renders one from the sound line."}</div>`;
+        return;
+      }
+      looks.forEach((lk, i3) => {
+        const card = document.createElement("div");
+        card.className = "gmus-lookcard" + (i3 === active ? " on" : "");
+        card.innerHTML = `
+          <div class="gmus-lookcard-head">
+            <button class="gmus-look-use">${i3 === active ? "Active look" : "Use this look"}</button>
+            <button class="ws-icon-btn gmus-look-regen" title="Regenerate this option (costs credits)">⟳</button>
+          </div>
+          <div class="gmus-lookcard-imgs"><div class="gmus-lookimg gmus-lookimg-solo"></div></div>`;
+        const el = card.querySelector<HTMLElement>(".gmus-lookimg")!;
+        void mediaUrlOf(lk.assetId).then((u) => {
+          if (!u || !el.isConnected) return;
+          el.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`;
+          el.addEventListener("click", () => openFull(u));
+        });
+        card.querySelector(".gmus-look-use")?.addEventListener("click", () => {
+          void (async () => {
+            if (!i2) return;
+            const r = await api().musicInstrumentSave?.(i2.id, { meta: { ...i2.meta, activeLook: i3 } });
+            if (r?.ok && r.instrument) paintLooks(r.instrument);
+          })();
+        });
+        card.querySelector(".gmus-look-regen")?.addEventListener("click", (ev) => {
+          void (async () => {
+            if (!i2 || card.querySelector(".gmus-look-busy")) return;
+            (ev.currentTarget as HTMLButtonElement).disabled = true;
+            const veil = document.createElement("div");
+            veil.className = "gmus-look-busy";
+            veil.innerHTML = `<span class="gmus-spin gmus-spin-lg"></span><span class="gmus-look-busy-label">Generating…</span>`;
+            card.appendChild(veil);
+            const r = await api().musicInstrumentGenlook?.(i2.id, descIn.value.trim(), i3 + 1);
+            saveState.textContent = r?.ok ? `option ${i3 + 1} regenerated — ${(r.credits ?? 0).toFixed(2)} credits` : `⚠ ${r?.error ?? "generation failed"}`;
+            if (r?.ok && r.instrument) paintLooks(r.instrument);
+            else veil.remove();
+          })();
+        });
+        gallery.appendChild(card);
+      });
+    };
+    paintLooks(inst ?? null);
+    pane.querySelector(".gmus-look-new")?.addEventListener("click", () => {
+      void (async () => {
+        if (!inst) return;
+        const btn = pane.querySelector<HTMLButtonElement>(".gmus-look-new")!;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="gmus-spin"></span>Generating…`;
+        const r = await api().musicInstrumentGenlook?.(inst.id, descIn.value.trim());
+        btn.disabled = false;
+        btn.textContent = "＋ Generate look";
+        saveState.textContent = r?.ok ? `new look — ${(r.credits ?? 0).toFixed(2)} credits` : `⚠ ${r?.error ?? "generation failed"}`;
+        if (r?.ok && r.instrument) paintLooks(r.instrument);
+      })();
+    });
+  }
+
+  // ── Music Video — many videos: list → the editor page ─────────────────────
 
   async function renderMusicVideo(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
     stopPlayback();
@@ -1131,8 +1336,6 @@ export function initMusic(host: MusicHost): MusicViews {
     const res = await api().mediaProjects?.();
     const project = (res?.ok ? res.projects : []).find((x) => x.id === state.videoId);
     if (!project) { delete state.videoId; refresh(); return; }
-    const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
-    const poolAll = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])].filter((x) => x.status === "ready");
     const selected: string[] = Array.isArray(project.scenes.visuals) ? [...(project.scenes.visuals as string[])] : [];
 
     pane.innerHTML = `
@@ -1145,15 +1348,13 @@ export function initMusic(host: MusicHost): MusicViews {
         <div class="gmus-team"></div>
         <div class="gmus-split">
           <div class="gmus-left">
-            <label class="gmus-label">Title</label>
-            <input class="gmus-title gmv-title" spellcheck="false" />
             <label class="gmus-label">Song <span class="gmem-hint">the song brings its band — artists, instruments, sound</span></label>
             <select class="gdz-select gmv-song"></select>
             <div class="gmus-team gmv-team"></div>
-            <label class="gmus-label">Scene <span class="gmem-hint">what the video should be</span></label>
-            <textarea class="gmus-prompt gmv-prompt" spellcheck="false" placeholder="neon-lit rooftop performance, slow dolly, rain…"></textarea>
-            <label class="gmus-label">Scene visuals <span class="gmem-hint">library left · in the video right</span></label>
-            <div class="gmv-visuals-pick"></div>
+            <label class="gmus-label">Title</label>
+            <input class="gmus-title gmv-title" spellcheck="false" />
+            <label class="gmus-label">Prompt <span class="gmem-hint">the scene — what the video should be</span></label>
+            <textarea class="gmus-prompt gmv-prompt gmv-prompt-tall" spellcheck="false" placeholder="neon-lit rooftop performance, slow dolly, rain…"></textarea>
           </div>
           <div class="gmus-right">
             <div class="gmv-player"><div class="gdoc-empty">${project.renderAssetId ? "loading…" : project.status === "rendering" ? "rendering — it attaches here when it lands" : "no render yet — Generate makes one"}</div></div>
@@ -1244,14 +1445,6 @@ export function initMusic(host: MusicHost): MusicViews {
       ].filter(Boolean).join("\n");
     };
 
-    // ── scene visuals — the searchable dual columns ──────────────────────────
-    dualPicker({
-      parent: pane.querySelector<HTMLElement>(".gmv-visuals-pick")!,
-      available: poolAll.map((a2) => ({ id: a2.id, label: a2.title, thumbAssetId: a2.mime.startsWith("image/") ? a2.id : null })),
-      selected,
-      searchPlaceholder: "Search the library…",
-      onChange: () => persist(),
-    });
 
     // ── the player ───────────────────────────────────────────────────────────
     const player = pane.querySelector<HTMLElement>(".gmv-player")!;
@@ -1309,6 +1502,7 @@ export function initMusic(host: MusicHost): MusicViews {
   return {
     renderSongs,
     renderArtists,
+    renderInstruments,
     renderMusicVideo,
     dispose: stopPlayback,
   };

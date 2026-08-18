@@ -41,7 +41,7 @@ import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./a
  *  dead doctrine (2026-08-02 "Ada cloud-only") — these tools rode it anyway
  *  until 2026-08-13, which is why memory written on one surface never
  *  recalled on another. */
-async function statorCall(path: "recall" | "write", body: Record<string, unknown>): Promise<string> {
+async function statorCall(path: "recall" | "write" | "browse" | "forget", body: Record<string, unknown>): Promise<string> {
   await ensureFreshToken();
   const token = getAuthToken();
   if (!token) return "ERROR: signed out — cloud memory needs a session";
@@ -1884,6 +1884,41 @@ const TOOLS: ToolDef[] = [
         const parsed = JSON.parse(out) as { block?: string };
         return cap(parsed.block?.trim() || "(nothing recalled)");
       } catch { return cap(out); }
+    },
+  },
+  {
+    name: "ada_browse",
+    doc: "ada_browse() — list the user's stored memory: current facts (entity · role · filler) + recent turns, so you can REVIEW it and prune junk. Pair with ada_forget to clean up. Read-only.",
+    action: () => ({ kind: "read", title: "Browse memory" }),
+    run: async () => {
+      const out = await statorCall("browse", {});
+      if (out.startsWith("ERROR")) return out;
+      try {
+        const j = JSON.parse(out) as { facts?: Array<{ entity?: string; role?: string; filler?: string; key?: string; is_current?: boolean }>; turns?: string[] };
+        const facts = (j.facts ?? []).filter((f) => f.is_current !== false);
+        const factLines = facts.slice(0, 80).map((f) => `• [fact] ${f.entity ?? ""} · ${f.role ?? ""} · ${(f.filler ?? "").slice(0, 140)}${f.key ? `  (key: ${f.key})` : ""}`);
+        const turns = j.turns ?? [];
+        const turnLines = turns.slice(0, 40).map((t) => `• [turn] ${String(t).slice(0, 180)}`);
+        return cap([`FACTS (${facts.length} current):`, ...factLines, "", `TURNS (${turns.length}):`, ...turnLines].join("\n") || "(memory is empty)");
+      } catch { return cap(out); }
+    },
+  },
+  {
+    name: "ada_forget",
+    doc: "ada_forget(entity?, role?, filler?, key?, turnText?) — DELETE stored memory. Pass a FACT filter (any of entity/role/filler/key — at least one; matches ALL facts with those fields) to remove matching facts, and/or turnText to remove a turn by its EXACT text (every duplicate goes). Use after ada_browse to prune junk. Returns how many records were deleted. Irreversible.",
+    action: (a) => ({ kind: "edit", title: "Forget memory", detail: JSON.stringify(a).slice(0, 200) }),
+    run: async (a) => {
+      const fact: Record<string, string> = {};
+      for (const f of ["entity", "role", "filler", "key"] as const) { const v = String(a[f] ?? "").trim(); if (v) fact[f] = v; }
+      const turnText = String(a.turnText ?? "").trim();
+      if (!Object.keys(fact).length && !turnText) return "ERROR: pass a fact filter (entity/role/filler/key) or turnText to delete";
+      const body: Record<string, unknown> = {};
+      if (Object.keys(fact).length) body.fact = fact;
+      if (turnText) body.turnText = turnText;
+      const out = await statorCall("forget", body);
+      if (out.startsWith("ERROR")) return out;
+      try { const j = JSON.parse(out) as { deleted?: number }; return `forgot ${j.deleted ?? 0} memory record(s)`; }
+      catch { return out; }
     },
   },
   {

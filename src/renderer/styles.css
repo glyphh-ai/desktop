@@ -18049,3 +18049,5 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmv-selrow .gmv-pick { flex: 0 0 44%; }
 .gmv-tweak { flex: 1; min-width: 0; font-size: 11.5px; }
 .gmv-col.gmv-avail { grid-template-columns: none; display: flex; flex-direction: column; gap: 5px; }
+.gmv-prompt-tall { min-height: 160px; }
+.gmus-lookimg-solo { aspect-ratio: 4/3; }
