@@ -1466,8 +1466,6 @@ const TOOLS: ToolDef[] = [
         colors?: { primary?: string; accent?: string; background?: string; surface?: string };
         fonts?: { display?: { family?: string }; body?: { family?: string } };
         brand?: { tagline?: string; tone?: string[] };
-        imagery?: Array<{ assetId: string; kind: string; title: string; role?: string }>;
-        canvas?: { items?: Record<string, { x: number; y: number; w?: number }> };
       };
       const c = doc.colors ?? {};
       const styleBits = [
@@ -1488,14 +1486,36 @@ const TOOLS: ToolDef[] = [
       const title = String(a.title ?? "").trim() || `${doc.name ?? String(a.name)} mockup`;
       const role = String(a.role ?? "").trim() || "mockup";
       const made = await genImageAsset(styled, title);
-      // Adopt into the system + land on the canvas (same keying the panel uses).
-      const n = (doc.imagery ?? []).length;
-      doc.imagery = [...(doc.imagery ?? []), { assetId: made.id, kind: "image", title, role }];
-      doc.canvas ??= {};
-      doc.canvas.items ??= {};
-      doc.canvas.items[`img:${made.id}`] = { x: (n % 2) * 620, y: 760 + Math.floor(n / 2) * 300, w: 560 };
-      await getClient().designs.put(file, doc as unknown as DesignSystem);
+      // ATOMIC adoption: the server appends + places under the design's row
+      // lock, so four parallel mockups can't stomp each other's writes.
+      await getClient().designs.addImagery(file, [{ assetId: made.id, kind: "image", title, role }]);
       return `mockup generated (${made.credits} credits): asset ${made.id} ("${title}", role ${role}) — saved to the org media library (Images + Drive), adopted into ${file}, and placed on the design canvas; open_design("${file}") shows it`;
+    },
+  },
+  {
+    name: "add_design_imagery",
+    doc: 'add_design_imagery(name, assetIds, role?) — associate existing Images-library assets with a design system: adopts them into the system\'s imagery and places each one on the design canvas as a draggable card. assetIds: media asset ids (list_images shows them). role names what they ARE in the system ("icon", "hero", "background", "motion"…). Adoption is atomic server-side — parallel calls all land. Returns what was adopted vs already present.',
+    action: (a) => ({ kind: "edit", title: `Adopt imagery into "${String(a.name ?? "")}"`, detail: `${Array.isArray(a.assetIds) ? a.assetIds.length : 0} asset(s)` }),
+    run: async (a) => {
+      const ids = (Array.isArray(a.assetIds) ? a.assetIds : []).map((v) => String(v).trim()).filter(Boolean);
+      if (!ids.length) return "ERROR: pass assetIds — media asset ids from the Images library (list_images shows them)";
+      const file = designFileName(a.name);
+      const role = String(a.role ?? "").trim();
+      // A design points at REAL library entries, never guesses — verify first.
+      const assets: Array<{ assetId: string; kind: "image" | "video"; title: string; role?: string }> = [];
+      for (const id of ids) {
+        const m = await getClient().media.get(id).catch(() => null);
+        if (!m) return `ERROR: asset ${id} is not in the media library — list_images shows what is`;
+        if (m.kind !== "image" && m.kind !== "video") return `ERROR: asset ${id} is ${m.kind} — a design's imagery takes images and video`;
+        assets.push({ assetId: id, kind: m.kind, title: m.title, ...(role ? { role } : {}) });
+      }
+      const out = await getClient().designs.addImagery(file, assets);
+      const took = out.adopted.map((m) => m.assetId);
+      return [
+        `adopted ${took.length} asset(s) into ${out.file}${took.length ? ` (${took.join(", ")})` : ""} — placed on the design canvas`,
+        out.alreadyPresent.length ? `already in the system (untouched): ${out.alreadyPresent.join(", ")}` : "",
+        `open_design("${out.file}") shows the canvas`,
+      ].filter(Boolean).join("; ");
     },
   },
   // ── Glyphh IMAGE / VIDEO / SOUNDS: generation with ANY catalog media model,
