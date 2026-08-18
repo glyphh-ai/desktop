@@ -47,34 +47,9 @@ type Connection = {
 };
 
 
-// Mirrors preload.ts MarketplaceApp — a marketplace listing.
-type MarketplaceApp = {
-  id: string; slug: string; name: string; tagline: string; description?: string;
-  iconUrl?: string; developer: { name: string; verified: boolean };
-  rating: number; ratingCount: number; priceCredits: number; category: string;
-  scope: "public" | "private"; featured: boolean; popular: boolean;
-  connections: Array<{ name: string; slug: string }>;
-  version?: string; videoUrl?: string; mockups?: string[]; installed: boolean;
-};
-
-// Mirrors preload.ts MarketplaceAppDetail — the full listing-page payload.
-type MarketplaceAppDetail = MarketplaceApp & {
-  description: string;
-  highlights: string[];
-  worksWith: string[];
-  screenshots: Array<{ url: string; caption: string }>;
-  plans: Array<{ name: string; priceCredits: number; blurb?: string; features: string[] }>;
-  ratingBreakdown: Array<{ stars: number; count: number }>;
-  reviews: Array<{ author: string; location?: string; rating: number; date: string; body: string; usage?: string }>;
-  launchedAt: string;
-  updatedAt?: string;
-  website?: string;
-  dataAccess: string[];
-  languages: string[];
-  similar: MarketplaceApp[];
-  requiredConnections: Array<{ slug: string; actAs: string; connected: boolean }>;
-  owned: boolean;
-};
+// Marketplace wire shapes live in help/marketplace-data.ts (structural mirrors
+// of the SDK contract); the marketplace modules reach their transport through
+// their own typed casts, so nothing marketplace-shaped is declared globally.
 
 // Mirrors preload.ts PanelAppInput — fields forwarded to /api/panel-apps.
 /** Mirrors the server's OrgApp.listing — the marketplace record. */
@@ -160,16 +135,6 @@ declare global {
       glyphhAppPreviewOpen: (slug: string, previewWcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>;
       glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
       appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
-      marketplaceList: (params: {
-        scope: "public" | "private"; category?: string; q?: string;
-        sort?: "popular" | "rating" | "newest"; page?: number;
-      }) => Promise<{
-        items: MarketplaceApp[]; total: number; page: number; pageSize: number;
-        categories: Array<{ id: string; label: string; count: number }>;
-        featured: MarketplaceApp[]; popular: MarketplaceApp[];
-      }>;
-      marketplaceDetail: (id: string) => Promise<MarketplaceAppDetail | null>;
-      marketplaceInstall: (id: string) => Promise<{ ok: boolean; slug?: string; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
       dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number }>;
       // `userId` narrows to one member (org_admin only); "" = the caller's scope.

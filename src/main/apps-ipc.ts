@@ -12,7 +12,7 @@ import { getClient } from "./glyphh-client";
 import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
 import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/sdk";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
-import { listMarketplace, getMarketplaceApp, installMarketplaceApp } from "./marketplace";
+import { registerMarketplaceIpc } from "./marketplace-ipc";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
@@ -120,29 +120,9 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   });
 
   // ── Marketplace ──────────────────────────────────────────────
-  // Shopify-style catalog (public + org-private). Backed by marketplace.ts,
-  // which serves a placeholder catalog until the yo-server routes land.
-  ipcMain.handle("marketplace-list", async (_e, params: {
-    scope?: string; category?: string; q?: string; sort?: string; page?: number;
-  }) => {
-    const scope = params?.scope === "private" ? "private" : "public";
-    try {
-      return await listMarketplace({
-        scope,
-        category: params?.category,
-        q: params?.q,
-        sort: (params?.sort as "popular" | "rating" | "newest") || "popular",
-        page: params?.page,
-      });
-    } catch {
-      return { items: [], total: 0, page: 1, pageSize: 12, categories: [], featured: [], popular: [] };
-    }
-  });
-  ipcMain.handle("marketplace-detail", async (_e, id: string) => {
-    try { return await getMarketplaceApp(String(id)); }
-    catch { return null; }
-  });
-  ipcMain.handle("marketplace-install", async (_e, id: string) => installMarketplaceApp(String(id)));
+  // The storefront / reviews / developer / admin transport lives in
+  // marketplace-ipc.ts (SDK contract shapes end to end).
+  registerMarketplaceIpc();
   // App CRUD is the entries API (`/api/apps/entries`). The renderer still
   // speaks the older field names, so translate here: a native app carries an
   // execPath, everything else a url, and `launchConfig` is the entry `config`.

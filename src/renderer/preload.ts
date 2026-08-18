@@ -196,50 +196,11 @@ export interface PanelAppInput {
   access?: "public" | "members";
 }
 
-/** A marketplace listing (public catalog or org-private). Rich enough for a
- *  Shopify-style storefront: developer identity, rating, media, price. */
-export interface MarketplaceApp {
-  id: string;
-  slug: string;
-  name: string;
-  tagline: string;
-  description?: string;
-  iconUrl?: string;
-  developer: { name: string; verified: boolean };
-  rating: number;          // 0–5
-  ratingCount: number;
-  priceCredits: number;    // 0 = free
-  category: string;        // category id
-  scope: "public" | "private";
-  featured: boolean;       // sponsored strip
-  popular: boolean;        // popular strip
-  connections: Array<{ name: string; slug: string }>;   // required connections (slug = Pipedream app id)
-  version?: string;
-  videoUrl?: string;
-  mockups?: string[];
-  installed: boolean;
-}
-
-/** Full detail payload for one marketplace app (Shopify-style listing page). */
-export interface MarketplaceAppDetail extends MarketplaceApp {
-  description: string;
-  highlights: string[];
-  worksWith: string[];
-  screenshots: Array<{ url: string; caption: string }>;
-  plans: Array<{ name: string; priceCredits: number; blurb?: string; features: string[] }>;
-  ratingBreakdown: Array<{ stars: number; count: number }>;
-  reviews: Array<{ author: string; location?: string; rating: number; date: string; body: string; usage?: string }>;
-  launchedAt: string;
-  updatedAt?: string;
-  website?: string;
-  dataAccess: string[];
-  languages: string[];
-  similar: MarketplaceApp[];
-  /** Manifest-declared connections + whether the caller's org has each connected. */
-  requiredConnections: Array<{ slug: string; actAs: string; connected: boolean }>;
-  /** True when the caller's org published this app (gates publish-side UI). */
-  owned: boolean;
-}
+// Marketplace wire shapes are the SDK CONTRACT (contract/apps.ts +
+// contract/marketplace.ts), passed through marketplace-ipc.ts verbatim. The
+// renderer's marketplace modules keep their own structural mirrors
+// (help/marketplace-data.ts), so preload types the payloads loosely here —
+// duplicating the whole contract in a third place buys nothing.
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
@@ -420,21 +381,59 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("working-dir-changed", (_e, dir) => callback(dir));
   },
 
-  // Marketplace — Shopify-style catalog of installable apps (public catalog +
-  // org-private). Server routes are pending; until they land the main process
-  // serves a placeholder catalog so the UI is fully renderable (see apps-ipc).
-  marketplaceList: (params: {
-    scope: "public" | "private"; category?: string; q?: string;
-    sort?: "popular" | "rating" | "newest"; page?: number;
-  }) => ipcRenderer.invoke("marketplace-list", params) as Promise<{
-    items: MarketplaceApp[]; total: number; page: number; pageSize: number;
-    categories: Array<{ id: string; label: string; count: number }>;
-    featured: MarketplaceApp[]; popular: MarketplaceApp[];
-  }>,
-  marketplaceDetail: (id: string) =>
-    ipcRenderer.invoke("marketplace-detail", id) as Promise<MarketplaceAppDetail | null>,
-  marketplaceInstall: (id: string) =>
-    ipcRenderer.invoke("marketplace-install", id) as Promise<{ ok: boolean; slug?: string; error?: string }>,
+  // Marketplace — the left-rail storefront + detail + reviews + developer
+  // profiles + platform-admin queues. Thin pass-throughs to marketplace-ipc.ts,
+  // which returns the SDK contract shapes verbatim; the renderer's marketplace
+  // modules own the (structurally mirrored) types, so these are typed loosely
+  // on purpose — one contract, two copies (SDK + renderer), not three.
+  mktBrowse: () => ipcRenderer.invoke("mkt-browse") as Promise<unknown>,
+  mktDetail: (slug: string) => ipcRenderer.invoke("mkt-detail", slug) as Promise<unknown>,
+  mktInstall: (slug: string) => ipcRenderer.invoke("mkt-install", slug) as Promise<unknown>,
+  mktUninstall: (slug: string) => ipcRenderer.invoke("mkt-uninstall", slug) as Promise<unknown>,
+  mktReviews: (slug: string, query?: { limit?: number; offset?: number }) =>
+    ipcRenderer.invoke("mkt-reviews", slug, query) as Promise<unknown>,
+  mktReviewPut: (slug: string, input: { stars: number; body?: string }) =>
+    ipcRenderer.invoke("mkt-review-put", slug, input) as Promise<unknown>,
+  mktReviewDelete: (slug: string) => ipcRenderer.invoke("mkt-review-delete", slug) as Promise<unknown>,
+  mktReviewReport: (slug: string, reviewId: string, reason: string) =>
+    ipcRenderer.invoke("mkt-review-report", slug, reviewId, reason) as Promise<unknown>,
+  mktReviewRespond: (slug: string, reviewId: string, response: string) =>
+    ipcRenderer.invoke("mkt-review-respond", slug, reviewId, response) as Promise<unknown>,
+  mktReportApp: (slug: string, reason: string, detail?: string) =>
+    ipcRenderer.invoke("mkt-report-app", slug, reason, detail) as Promise<unknown>,
+  mktMyApps: () => ipcRenderer.invoke("mkt-my-apps") as Promise<unknown>,
+  mktPricingSet: (slug: string, patch: unknown) => ipcRenderer.invoke("mkt-pricing-set", slug, patch) as Promise<unknown>,
+  mktReleases: (slug: string) => ipcRenderer.invoke("mkt-releases", slug) as Promise<unknown>,
+  mktReleaseSubmit: (slug: string, releaseId: string) =>
+    ipcRenderer.invoke("mkt-release-submit", slug, releaseId) as Promise<unknown>,
+  mktDevMe: () => ipcRenderer.invoke("mkt-dev-me") as Promise<unknown>,
+  mktDevGet: (handle: string) => ipcRenderer.invoke("mkt-dev-get", handle) as Promise<unknown>,
+  mktDevCreate: (input: unknown) => ipcRenderer.invoke("mkt-dev-create", input) as Promise<unknown>,
+  mktDevUpdate: (handle: string, patch: unknown) => ipcRenderer.invoke("mkt-dev-update", handle, patch) as Promise<unknown>,
+  mktDevAvatar: (handle: string, bytes: ArrayBuffer) => ipcRenderer.invoke("mkt-dev-avatar", handle, bytes) as Promise<unknown>,
+  mktDevReviews: (handle: string, query?: { limit?: number; offset?: number }) =>
+    ipcRenderer.invoke("mkt-dev-reviews", handle, query) as Promise<unknown>,
+  mktDevReviewPut: (handle: string, input: { stars: number; body?: string }) =>
+    ipcRenderer.invoke("mkt-dev-review-put", handle, input) as Promise<unknown>,
+  mktDevReviewDelete: (handle: string) => ipcRenderer.invoke("mkt-dev-review-delete", handle) as Promise<unknown>,
+  mktDevReviewRespond: (handle: string, reviewId: string, response: string) =>
+    ipcRenderer.invoke("mkt-dev-review-respond", handle, reviewId, response) as Promise<unknown>,
+  mktDevReviewReport: (handle: string, reviewId: string, reason: string) =>
+    ipcRenderer.invoke("mkt-dev-review-report", handle, reviewId, reason) as Promise<unknown>,
+  mktAdminQueue: () => ipcRenderer.invoke("mkt-admin-queue") as Promise<unknown>,
+  mktAdminReview: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string) =>
+    ipcRenderer.invoke("mkt-admin-review", releaseId, action, notes) as Promise<unknown>,
+  mktAdminReports: (status?: string) => ipcRenderer.invoke("mkt-admin-reports", status) as Promise<unknown>,
+  mktAdminReportResolve: (reportId: string, status: string) =>
+    ipcRenderer.invoke("mkt-admin-report-resolve", reportId, status) as Promise<unknown>,
+  mktAdminFlaggedReviews: () => ipcRenderer.invoke("mkt-admin-flagged-reviews") as Promise<unknown>,
+  mktAdminReviewModerate: (reviewId: string, action: "restore" | "remove") =>
+    ipcRenderer.invoke("mkt-admin-review-moderate", reviewId, action) as Promise<unknown>,
+  mktAdminDevFlagged: () => ipcRenderer.invoke("mkt-admin-dev-flagged") as Promise<unknown>,
+  mktAdminDevModerate: (reviewId: string, action: "restore" | "remove") =>
+    ipcRenderer.invoke("mkt-admin-dev-moderate", reviewId, action) as Promise<unknown>,
+  mktAdminSuspend: (slug: string, suspend: boolean) =>
+    ipcRenderer.invoke("mkt-admin-suspend", slug, suspend) as Promise<unknown>,
 
   // Dashboard shell (5a): the Apps tab's data source. Every call here is a
   // main-process-mediated, JWT-authed request to yo-server's /api/panel-apps

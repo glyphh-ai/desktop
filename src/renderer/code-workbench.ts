@@ -352,7 +352,8 @@ function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, 
 
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
-  dashboard: "Home", connections: "Connections", apps: "Apps", layouts: "Workspaces",
+  dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
+  layouts: "Workspaces",
   skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
   settings: "Settings", docs: "Docs",
 };
