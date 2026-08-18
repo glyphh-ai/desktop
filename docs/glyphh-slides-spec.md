@@ -26,9 +26,39 @@ learned the hard way); the shell is the spec's enforcement.
 - `#prog` — a bottom progress bar (accent-colored).
 - Base type: Inter/system stack, light-on-dark (`#0d0d0f` / `#f1f1f1`).
 
-## What the agent authors (`slides_html`)
+## What the agent authors — the LAYOUT + THEME engine (primary path)
 
-A sequence of `<section class="slide">…</section>` blocks:
+Agents no longer hand-write slide HTML. They **slot structured content into
+controlled layouts** and the engine (`@glyphh/sdk/slides`, mirrored to the web
+surface) renders professional, on-brand HTML that still passes through the
+structure lock. This is the enforcement of "the shell is code; the agent authors
+only content" taken one level further — the agent authors only *typed content*.
+
+- **`create_slides(name, title, slides, theme?, design?)`** — `slides` is an
+  array of typed specs, one per slide: `[{ layout, …fields }]`. The tool
+  validates each spec, renders it, resolves media, wraps it in the shell.
+- **Layouts** (`SLIDE_LAYOUTS`, ~18): `title`, `section-divider`, `bullets`,
+  `two-column`, `image-left`, `image-right`, `quote`, `big-stat`, `cards`,
+  `comparison`, `timeline`, `agenda`, `chart` (self-contained SVG), `code`,
+  `full-bleed-image`, `team`, `closing`, `blank` (raw-HTML escape hatch).
+  `list_slide_layouts` returns each layout's required fields + a copyable sample.
+- **Themes** (`SLIDE_THEMES`): `midnight` (the classic default), `paper`, `mono`,
+  `editorial`, `neon`, `corporate`, `warm`, `ocean` — each a `:root` block of
+  `--slide-*` vars every layout renders against. `list_slide_themes` lists them.
+- **Design-system spine**: pass `design="<name>"` and the deck derives its palette
+  + fonts from the org design system (`read_design` → `themeFromDesign`), so decks
+  match the org's docs by construction.
+- **Media slots**: a layout's `media`/`photo` field takes a media-library asset
+  **id**; the renderer inlines the bytes as a data URI (decks stay self-contained).
+- **Speaker notes**: `notes:"…"` on any spec → `data-notes` on the section →
+  surfaced in the presenter's **speaker view** (press `S` while presenting).
+- **`update_slides`** structural ops (`replace_slide`/`insert_slide`) take a
+  content `spec` (or `{html}` for raw); the engine re-renders that one section.
+
+### Escape hatch — raw `slides_html`
+
+When no layout fits, pass `slides_html`: a sequence of
+`<section class="slide">…</section>` blocks (the legacy contract):
 
 - First section: `class="slide on"`. Ids `s1…sN` (recommended — per-slide CSS
   hooks like `#s3 .card { … }`).

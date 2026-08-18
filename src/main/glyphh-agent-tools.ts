@@ -31,6 +31,7 @@ import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheet
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
+import { renderDeck, renderSection, validateDeck, validateSlideSpec, layoutCatalog, themeCatalog, type SlideSpec, type RenderOptions } from "@glyphh/sdk/slides";
 import { gdocFileName as docsFileName } from "./office-docs";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
@@ -82,6 +83,37 @@ interface ToolDef {
 }
 
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
+
+/** Resolve a media-library asset id to an inline data URI so a deck stays
+ *  self-contained. Images/avatars only; a miss or non-image drops to a themed
+ *  surface (the layout renders a placeholder rather than a broken link). */
+async function slideMediaDataUri(id: string): Promise<string | null> {
+  try {
+    const meta = await getClient().media.get(id).catch(() => null);
+    if (meta && !["image", "avatar"].includes(String(meta.kind))) return null;
+    const buf = await getClient().media.bytes(id);
+    const mime = meta?.mime || "image/png";
+    return `data:${mime};base64,${Buffer.from(buf).toString("base64")}`;
+  } catch { return null; }
+}
+
+/** Render options for the slides engine: the org media resolver, plus the org
+ *  design system overlaid on the chosen theme when a `design` name is given. */
+async function slideRenderOptions(theme?: unknown, design?: unknown): Promise<RenderOptions> {
+  const opts: RenderOptions = { resolveMedia: slideMediaDataUri };
+  if (theme != null && String(theme).trim()) opts.theme = String(theme).trim();
+  const d = design == null ? "" : String(design).trim();
+  if (d) opts.designCss = await getClient().designs.css(designFileName(d)).catch(() => undefined);
+  return opts;
+}
+
+/** Coerce a tool arg into a SlideSpec[] — accepts an array or a JSON string
+ *  (models sometimes stringify structured params). */
+function asSlideSpecs(v: unknown): SlideSpec[] | null {
+  let val = v;
+  if (typeof val === "string") { try { val = JSON.parse(val); } catch { return null; } }
+  return Array.isArray(val) ? (val as SlideSpec[]) : null;
+}
 
 /** Attachment content types by extension — the handful that matter for
  *  "email me the file"; anything else ships as octet-stream. */
@@ -734,28 +766,50 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "list_slide_layouts",
+    doc: "list_slide_layouts() — the controlled slide LAYOUTS you slot content into (title, bullets, two-column, image-left/right, quote, big-stat, cards, comparison, timeline, agenda, chart, code, full-bleed-image, team, closing, …). Each entry gives its required fields and a copyable sample. ALWAYS pick a layout + fill its fields rather than authoring HTML.",
+    action: () => ({ kind: "read", title: "List slide layouts" }),
+    run: async () => cap(JSON.stringify(layoutCatalog(), null, 1), READ_CAP),
+  },
+  {
+    name: "list_slide_themes",
+    doc: "list_slide_themes() — the deck THEMES (midnight, paper, mono, editorial, neon, corporate, warm, ocean). Pass one as create_slides(theme). Or pass a design-system name as create_slides(design) to match the org's brand + docs exactly (list_designs / read_design).",
+    action: () => ({ kind: "read", title: "List slide themes" }),
+    run: async () => cap(JSON.stringify(themeCatalog(), null, 1), READ_CAP),
+  },
+  {
     name: "create_slides",
-    doc: 'create_slides(name, title, slides_html) — create or overwrite a Glyphh Slides deck. Author ONLY the slide content: slides_html is a sequence of <section class="slide">…</section> blocks. THE STRUCTURE IS LOCKED: the tool owns the shell (1920×1080 stage, scaling, nav, progress), rewrites section tags (ids, on/hidden flags), scopes your <style> blocks to their own slide, strips scripts, and turns position:fixed into absolute — style INSIDE your slides freely, never the stage/body/other slides. Elements with class "frag" reveal as build steps — same data-step value reveals together.',
+    doc: 'create_slides(name, title, slides, theme?, design?) — create or overwrite a Glyphh Slides deck by SLOTTING CONTENT INTO CONTROLLED LAYOUTS. `slides` is an array of typed specs, one per slide: [{layout, …fields}] (see list_slide_layouts for each layout\'s fields + samples). Pick a theme (list_slide_themes) or a design-system name to match the org brand. Reference media-library images by asset id (list_media). The tool renders professional, design-consistent HTML — you never write HTML/CSS. (Escape hatch: pass slides_html — raw <section class="slide"> blocks — only when no layout fits.)',
     action: (a) => ({
       kind: "edit",
       title: `Create deck "${String(a.name ?? "")}"`,
-      detail: `${String(a.slides_html ?? a.html ?? "").length} chars`,
+      detail: a.slides ? `${asSlideSpecs(a.slides)?.length ?? 0} slides` : `${String(a.slides_html ?? a.html ?? "").length} chars`,
     }),
     run: async (a) => {
-      const sections = String(a.slides_html ?? "");
-      if (!sections) return "ERROR: pass slides_html (the <section class=\"slide\"> blocks) — the tool supplies the shell";
-      if (/<html[\s>]/i.test(sections)) return "ERROR: slides_html must be slide SECTIONS only — the shell is the tool's, not yours";
-      const doc = buildDeckDocument(String(a.title ?? a.name ?? "Deck"), sections);
-      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) {
-        return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
+      const title = String(a.title ?? a.name ?? "Deck");
+      // Primary path: typed layout specs → the engine renders + themes them.
+      if (a.slides !== undefined || a.slides_html === undefined) {
+        const specs = asSlideSpecs(a.slides);
+        if (!specs) return "ERROR: `slides` must be an array of {layout, …} specs — list_slide_layouts shows the shapes";
+        const v = validateDeck(specs);
+        if (!v.ok) return `ERROR: ${v.errors.slice(0, 6).join("; ")}`;
+        const opts = await slideRenderOptions(a.theme, a.design);
+        const sections = await renderDeck(specs, opts);
+        const r = await writeGPoint(a.name, buildDeckDocument(title, sections));
+        return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel on every surface; open_slides("${r.file}") jumps straight to it`;
       }
+      // Escape hatch: raw slide sections.
+      const raw = String(a.slides_html ?? "");
+      if (/<html[\s>]/i.test(raw)) return "ERROR: slides_html must be slide SECTIONS only — the shell is the tool's, not yours";
+      const doc = buildDeckDocument(title, raw);
+      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
       const r = await writeGPoint(a.name, doc);
-      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel on every surface; open_slides("${r.file}") jumps straight to it`;
+      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — open_slides("${r.file}") jumps to it`;
     },
   },
   {
     name: "update_slides",
-    doc: 'update_slides(name, …ops) — surgical deck edits, 1-BASED slide indexes. Ops (any combination, applied in this order): title="…" renames; replace_slide={index, html} swaps one <section class="slide"> block; insert_slide={index?, html} inserts BEFORE index (omit index to append); remove_slide=index deletes; hide_slide=index / unhide_slide=index toggle the presenter-skip flag. html values are single slide sections, same rules as create_slides.',
+    doc: 'update_slides(name, …ops) — surgical deck edits, 1-BASED slide indexes. Ops (any combination, applied in this order): title="…" renames; replace_slide={index, spec} swaps one slide (spec is a {layout, …} content spec — same as create_slides — or {html} for raw); insert_slide={index?, spec} inserts BEFORE index (omit index to append); remove_slide=index deletes; hide_slide=index / unhide_slide=index toggle the presenter-skip flag. theme?/design? re-theme a replaced/inserted slide to match the deck.',
     action: (a) => ({
       kind: "edit",
       title: `Update deck "${String(a.name ?? "")}"`,
@@ -765,19 +819,29 @@ const TOOLS: ToolDef[] = [
       let doc = await readGPoint(a.name);
       const before = slideSpans(doc).length;
       const idx = (v: unknown): number => Math.trunc(Number(v)) - 1;
-      const section = (v: unknown): string => {
-        const h = String((v as { html?: unknown } | null | undefined)?.html ?? "");
-        if (!/<section[^>]*class="[^"]*\bslide\b/i.test(h)) throw new Error('slide html must be a <section class="slide"> block');
-        return h;
+      const opts = await slideRenderOptions(a.theme, a.design);
+      // A slide op value is either {spec:{layout,…}} / a bare {layout,…}, or {html}.
+      const section = async (v: unknown): Promise<string> => {
+        const o = (v ?? {}) as Record<string, unknown>;
+        const raw = o.html ?? (o.spec as { html?: unknown } | undefined)?.html;
+        if (raw !== undefined) {
+          const h = String(raw ?? "");
+          if (!/<section[^>]*class="[^"]*\bslide\b/i.test(h)) throw new Error('raw slide html must be a <section class="slide"> block');
+          return h;
+        }
+        const spec = (o.spec ?? o) as SlideSpec;
+        const val = validateSlideSpec(spec);
+        if (!val.ok) throw new Error(val.errors[0] ?? "invalid slide spec");
+        return renderSection(spec, opts);
       };
       if (a.title !== undefined) doc = setDeckTitle(doc, String(a.title));
       if (a.replace_slide !== undefined) {
         const r = a.replace_slide as { index?: unknown };
-        doc = replaceSlideAt(doc, idx(r.index), section(a.replace_slide));
+        doc = replaceSlideAt(doc, idx(r.index), await section(a.replace_slide));
       }
       if (a.insert_slide !== undefined) {
         const ins = a.insert_slide as { index?: unknown };
-        doc = insertSlideAt(doc, ins.index === undefined ? Number.MAX_SAFE_INTEGER : idx(ins.index), section(a.insert_slide));
+        doc = insertSlideAt(doc, ins.index === undefined ? Number.MAX_SAFE_INTEGER : idx(ins.index), await section(a.insert_slide));
       }
       if (a.remove_slide !== undefined) {
         if (before <= 1) return "ERROR: a deck needs at least one slide — delete_slides removes the whole deck";
