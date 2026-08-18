@@ -67,7 +67,7 @@ type WbCmd =
   | { action: "gdoc"; file?: string; title?: string }
   | { action: "gsheet"; file?: string; title?: string }
   | { action: "gdesign"; file?: string; title?: string }
-  | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound"; assetId?: string; songId?: string }
+  | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound" | "gband"; assetId?: string; songId?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -256,8 +256,8 @@ export function openDesignPanel(file?: string, title?: string): void {
 
 /** Open a media panel (Image / Video / Sounds) — optionally straight at an
  *  asset, or (Sounds) straight into a SONG's editor page. */
-export function openMediaPanel(view: "gimage" | "gvideo" | "gsound", assetId?: string, songId?: string): void {
-  if (songId) { sendWbCmd({ action: "gmedia", view: "gsound", songId }); return; }
+export function openMediaPanel(view: "gimage" | "gvideo" | "gsound" | "gband", assetId?: string, songId?: string): void {
+  if (songId) { sendWbCmd({ action: "gmedia", view: "gband", songId }); return; }
   sendWbCmd(assetId ? { action: "gmedia", view, assetId } : { action: "tool", tool: view });
 }
 

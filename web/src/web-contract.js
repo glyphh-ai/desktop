@@ -428,6 +428,22 @@ export function buildContract(client, deps) {
       try { const r = await client.music.regenerateSong(id, input ?? {}); return { ok: true, song: r.song, job: r.job }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
     },
+    mediaProjects: async () => {
+      try { return { ok: true, projects: await client.media.projects() }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err), projects: [] }; }
+    },
+    mediaProjectSave: async (id, input) => {
+      try { const project = id ? await client.media.updateProject(id, input) : await client.media.createProject(input); return { ok: true, project }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaProjectDelete: async (id) => {
+      try { await client.media.deleteProject(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
+    mediaProjectGenerate: async (id, input) => {
+      try { const r = await client.media.generateProject(id, input ?? {}); return { ok: true, project: r.project, job: r.job }; }
+      catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     mediaUploadBytes: async (input) => {
       try {
         const bytes = new Uint8Array(input.bytes);

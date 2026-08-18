@@ -97,6 +97,30 @@ export function registerMusicPanelIpc(): void {
     } catch (err) { return { ok: false, error: errText(err) }; }
   });
 
+  ipcMain.handle("media-projects", async () => {
+    try { return { ok: true, projects: await getClient().media.projects() }; }
+    catch (err) { return { ok: false, error: errText(err), projects: [] }; }
+  });
+  ipcMain.handle("media-project-save", async (_e, id: unknown, input: unknown) => {
+    try {
+      const media = getClient().media;
+      const project = id
+        ? await media.updateProject(String(id), input as Parameters<typeof media.updateProject>[1])
+        : await media.createProject(input as Parameters<typeof media.createProject>[0]);
+      return { ok: true, project };
+    } catch (err) { return { ok: false, error: errText(err) }; }
+  });
+  ipcMain.handle("media-project-delete", async (_e, id: unknown) => {
+    try { await getClient().media.deleteProject(String(id)); return { ok: true }; }
+    catch (err) { return { ok: false, error: errText(err) }; }
+  });
+  ipcMain.handle("media-project-generate", async (_e, id: unknown, input: unknown) => {
+    try {
+      const r = await getClient().media.generateProject(String(id), (input ?? {}) as { model?: string; seconds?: number; prompt?: string });
+      return { ok: true, project: r.project, job: r.job };
+    } catch (err) { return { ok: false, error: errText(err) }; }
+  });
+
   // Byte-level upload — the editor's WAV export and the mic recorder both
   // land through the same presigned pipeline as everything else.
   ipcMain.handle("media-upload-bytes", async (_e, input: unknown) => {

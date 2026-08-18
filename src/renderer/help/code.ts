@@ -4324,6 +4324,24 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(gmemory);
 
+  // BAND — the music studio app, same fixed-tile treatment.
+  const gband = document.createElement("button");
+  gband.className = "app-rail-tile";
+  gband.type = "button";
+  gband.title = "Band — songs, artists, music video";
+  const gbIcon = document.createElement("div");
+  gbIcon.className = "tile-icon";
+  gbIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>`;
+  const gbName = document.createElement("div");
+  gbName.className = "tile-name";
+  gbName.textContent = "Band";
+  gband.append(gbIcon, gbName);
+  gband.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gband");
+  });
+  list.appendChild(gband);
+
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {

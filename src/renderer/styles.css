@@ -17944,3 +17944,26 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmus-lightbox.hidden { display: none; }
 .gmus-lightbox img { max-width: 94%; max-height: 94%; border-radius: 10px; }
 .gmus-page { position: relative; }
+.ws-gband-body { display: flex; flex-direction: column; overflow: hidden; }
+
+/* — the music video dual-column picker + player — */
+.gmv-dual { display: flex; gap: 8px; min-height: 180px; }
+.gmv-col {
+  flex: 1; min-width: 0; overflow-y: auto; max-height: 300px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px;
+  align-content: start;
+  border: 1px solid var(--border-2); border-radius: 10px; padding: 8px; background: var(--bg);
+}
+.gmv-ctl { flex: none; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.gmv-ctl .ws-icon-btn { font-size: 15px; }
+.gmv-thumb {
+  aspect-ratio: 1; border-radius: 7px; border: 1.5px solid transparent;
+  background: var(--surface) center / cover no-repeat; cursor: pointer; position: relative;
+  padding: 0;
+}
+.gmv-thumb.marked { border-color: var(--accent); }
+.gmv-thumb-tag { position: absolute; right: 3px; bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 1px 3px #000; }
+.gmv-player {
+  flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden;
+}

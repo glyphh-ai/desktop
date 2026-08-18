@@ -21,6 +21,8 @@ interface Song {
   audioAssetId: string | null; parentId: string | null; model: string; visuals: string[]; updatedAt: string;
 }
 
+interface Project { id: string; title: string; scenes: Record<string, unknown>; status: string; renderAssetId: string | null; updatedAt: string }
+
 export interface MusicHost {
   confirm: (opts: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
 }
@@ -28,6 +30,7 @@ export interface MusicHost {
 export interface MusicState {
   songId?: string;
   artistId?: string | null;
+  videoId?: string | null;
 }
 
 const api = () => (window as unknown as { glyphh?: {
@@ -39,6 +42,10 @@ const api = () => (window as unknown as { glyphh?: {
   musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   musicSongRegenerate?: (id: string, input?: unknown) => Promise<{ ok: boolean; song?: Song; job?: { id: string }; error?: string }>;
   musicArtistGenlook?: (id: string, description?: string, replaceLook?: number) => Promise<{ ok: boolean; artist?: Artist; credits?: number; error?: string }>;
+  mediaProjects?: () => Promise<{ ok: boolean; projects: Project[]; error?: string }>;
+  mediaProjectSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; project?: Project; error?: string }>;
+  mediaProjectDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  mediaProjectGenerate?: (id: string, input?: unknown) => Promise<{ ok: boolean; project?: Project; job?: { id: string }; error?: string }>;
   mediaUploadBytes?: (input: unknown) => Promise<{ ok: boolean; id?: string; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: Array<{ id: string; kind: string; title: string; mime: string; status: string }>; error?: string }>;
@@ -89,8 +96,56 @@ function versionTitle(rawTitle: string, all: Array<{ title: string }>): string {
 export interface MusicViews {
   renderSongs: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
   renderArtists: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
-  renderMusicVideo: (pane: HTMLElement, refresh: () => void) => Promise<void>;
+  renderMusicVideo: (pane: HTMLElement, state: MusicState, refresh: () => void) => Promise<void>;
   dispose: () => void;
+}
+
+export interface BandSlotState {
+  id: number;
+  tab?: number;
+  music?: MusicState;
+}
+
+export interface BandPanel {
+  renderIntoSlot: (body: HTMLElement, slot: BandSlotState, wrap: HTMLElement) => Promise<void>;
+  invalidate: () => void;
+}
+
+/** GLYPHH BAND — the standalone studio app: Songs · Artists · Music Video.
+ *  (Sounds keeps the raw library; every take still lands there.) */
+export function initBand(host: MusicHost): BandPanel {
+  const views = initMusic(host);
+  async function renderIntoSlot(body: HTMLElement, slot: BandSlotState, wrap: HTMLElement): Promise<void> {
+    try {
+      body.classList.add("ws-gband-body");
+      const titleEl = wrap.querySelector(".ws-rail-slot-header .title");
+      if (titleEl) titleEl.textContent = "Band";
+      const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
+      const tab = slot.tab ?? 0;
+      body.innerHTML = `<div class="gmus-shell"><div class="gmem-tabs gmus-tabs"></div><div class="gmus-pane"></div></div>`;
+      const tabs = body.querySelector<HTMLElement>(".gmus-tabs")!;
+      ["Songs", "Artists", "Music Video"].forEach((name, i) => {
+        const b = document.createElement("button");
+        b.className = "gmem-tab" + (i === tab ? " on" : "");
+        b.textContent = name;
+        b.addEventListener("click", () => { slot.tab = i; refresh(); });
+        tabs.appendChild(b);
+      });
+      const pane = body.querySelector<HTMLElement>(".gmus-pane")!;
+      slot.music ??= {};
+      if (tab === 1) { await views.renderArtists(pane, slot.music, refresh); return; }
+      if (tab === 2) { await views.renderMusicVideo(pane, slot.music, refresh); return; }
+      await views.renderSongs(pane, slot.music, refresh);
+    } catch (err) {
+      console.warn("[gband] render failed:", err);
+      if (body.isConnected) {
+        body.innerHTML = `<div class="gdoc-empty">Band hit an error rendering.<br><code class="gpoint-err"></code></div>`;
+        const code = body.querySelector(".gpoint-err");
+        if (code) code.textContent = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+  return { renderIntoSlot, invalidate: views.dispose };
 }
 
 export function initMusic(host: MusicHost): MusicViews {
@@ -884,55 +939,225 @@ export function initMusic(host: MusicHost): MusicViews {
     });
   }
 
-  // ── Music Video  // ── Music Video — the assembler (renders when the pipeline phase lands) ────
+  // ── Music Video  // ── Music Video — many videos: list → the editor page ─────────────────────
 
-  async function renderMusicVideo(pane: HTMLElement, refresh: () => void): Promise<void> {
+  async function renderMusicVideo(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
     stopPlayback();
-    const [songsRes, imgs, vids] = await Promise.all([api().musicSongs?.(), api().mediaList?.("image"), api().mediaList?.("video")]);
-    const songs = (songsRes?.ok ? songsRes.songs : []).filter((s) => s.audioAssetId);
-    const visuals = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])].filter((x) => x.status === "ready");
+    if (state.videoId !== undefined) { await renderVideoPage(pane, state, refresh); return; }
+    const res = await api().mediaProjects?.();
+    const projects = res?.ok ? res.projects : [];
     pane.innerHTML = `
-      <div class="gmus-list gmus-mv">
-        <div class="gmus-mv-head">Pick a song, pull in visuals — the assembly SAVES onto the song; the render lands with the pipeline phase.</div>
-        <label class="gmus-label">Song</label>
-        <select class="gdz-select gmus-mv-song">${songs.map((s) => `<option value="${s.id}">${s.title.replace(/</g, "&lt;")}</option>`).join("") || "<option value=''>(no songs with audio yet)</option>"}</select>
-        <label class="gmus-label">Visuals <span class="gmem-hint">images + video from the library — click to toggle</span></label>
-        <div class="gmus-mv-pool"></div>
-        <button class="action-btn primary gmus-mv-save" ${songs.length ? "" : "disabled"}>Save assembly</button>
-        <span class="gmus-mv-state"></span>
+      <div class="gmus-list">
+        <div class="office-toolbar">
+          <span class="gmus-count">${projects.length} video${projects.length === 1 ? "" : "s"}</span>
+          <button class="action-btn primary gmus-new">＋ New Video</button>
+        </div>
+        <div class="gmus-songs"></div>
+        <div class="gdoc-empty ${projects.length ? "hidden" : ""}">No music videos yet — ＋ New Video starts one.</div>
       </div>`;
-    const pool = pane.querySelector<HTMLElement>(".gmus-mv-pool")!;
-    const songSel = pane.querySelector<HTMLSelectElement>(".gmus-mv-song")!;
-    const stateEl = pane.querySelector<HTMLElement>(".gmus-mv-state")!;
-    let picked = new Set<string>();
-    const chips = new Map<string, HTMLElement>();
-    const loadPicks = (): void => {
-      const song = songs.find((s) => s.id === songSel.value);
-      picked = new Set(song?.visuals ?? []);
-      for (const [id, chip] of chips) chip.classList.toggle("on", picked.has(id));
-    };
-    for (const v of visuals.slice(0, 60)) {
-      const chip = document.createElement("button");
-      chip.className = "gmus-mv-chip";
-      chip.textContent = `${v.kind === "video" ? "▶" : "◻"} ${v.title.slice(0, 28)}`;
-      chip.addEventListener("click", () => {
-        if (picked.has(v.id)) picked.delete(v.id); else picked.add(v.id);
-        chip.classList.toggle("on", picked.has(v.id));
-      });
-      chips.set(v.id, chip);
-      pool.appendChild(chip);
-    }
-    songSel.addEventListener("change", loadPicks);
-    loadPicks();
-    pane.querySelector(".gmus-mv-save")?.addEventListener("click", () => {
+    pane.querySelector(".gmus-new")?.addEventListener("click", () => {
       void (async () => {
-        const songId = songSel.value;
-        if (!songId) return;
-        const r = await api().musicSongSave?.(songId, { visuals: [...picked] });
-        stateEl.textContent = r?.ok ? `saved — ${picked.size} visual${picked.size === 1 ? "" : "s"} staged for the render` : `⚠ ${r?.error ?? "save failed"}`;
+        const r = await api().mediaProjectSave?.(null, { title: "Untitled", scenes: { visuals: [] } });
+        if (r?.ok && r.project) { state.videoId = r.project.id; refresh(); }
       })();
     });
-    void refresh;
+    const list = pane.querySelector<HTMLElement>(".gmus-songs")!;
+    for (const pr of projects) {
+      const card = document.createElement("button");
+      card.className = "gmus-song-card";
+      card.innerHTML = `
+        <span class="gmus-song-title"></span>
+        <span class="gmus-song-meta"></span>
+        <span class="gmus-song-badges">${pr.renderAssetId ? "▶" : pr.status === "rendering" ? "…" : "·"}</span>
+        <span class="ws-icon-btn gmem-del gmus-song-del" title="Delete video">✕</span>`;
+      (card.querySelector(".gmus-song-title") as HTMLElement).textContent = pr.title;
+      const nVisuals = Array.isArray(pr.scenes.visuals) ? (pr.scenes.visuals as string[]).length : 0;
+      (card.querySelector(".gmus-song-meta") as HTMLElement).textContent =
+        [`${nVisuals} visual${nVisuals === 1 ? "" : "s"}`, pr.status].filter(Boolean).join(" · ");
+      card.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".gmus-song-del")) return;
+        state.videoId = pr.id;
+        refresh();
+      });
+      card.querySelector(".gmus-song-del")?.addEventListener("click", () => {
+        void (async () => {
+          const yes = await host.confirm({ title: `Delete "${pr.title}"?`, body: "The rendered clip stays in the Video library.", confirmLabel: "Delete", danger: true });
+          if (!yes) return;
+          await api().mediaProjectDelete?.(pr.id);
+          refresh();
+        })();
+      });
+      list.appendChild(card);
+    }
+  }
+
+  /** THE VIDEO PAGE — left: title + prompt + the DUAL-COLUMN visual picker
+   *  (available ⇄ selected with > < >> <<); right: the generated video +
+   *  Generate/Regenerate exactly like Songs (server-side, versioned, busy). */
+  async function renderVideoPage(pane: HTMLElement, state: MusicState, refresh: () => void): Promise<void> {
+    const res = await api().mediaProjects?.();
+    const project = (res?.ok ? res.projects : []).find((x) => x.id === state.videoId);
+    if (!project) { delete state.videoId; refresh(); return; }
+    const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
+    const poolAll = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])].filter((x) => x.status === "ready");
+    const selected: string[] = Array.isArray(project.scenes.visuals) ? [...(project.scenes.visuals as string[])] : [];
+
+    pane.innerHTML = `
+      <div class="gmus-page">
+        <div class="gdz-topbar">
+          <button class="action-btn gmus-back">‹ Music Video</button>
+          <span class="gmus-savestate"></span>
+          <button class="action-btn primary gmus-regen">${project.renderAssetId ? "Regenerate" : "Generate"}</button>
+        </div>
+        <div class="gmus-split">
+          <div class="gmus-left">
+            <label class="gmus-label">Title</label>
+            <input class="gmus-title gmv-title" spellcheck="false" />
+            <label class="gmus-label">Prompt <span class="gmem-hint">what the video should be</span></label>
+            <textarea class="gmus-prompt gmv-prompt" spellcheck="false" placeholder="neon-lit rooftop performance, slow dolly, rain…"></textarea>
+            <label class="gmus-label">Visuals <span class="gmem-hint">left = library · right = in the video</span></label>
+            <div class="gmv-dual">
+              <div class="gmv-col gmv-avail"></div>
+              <div class="gmv-ctl">
+                <button class="ws-icon-btn gmv-add" title="Add selected">›</button>
+                <button class="ws-icon-btn gmv-addall" title="Add all">»</button>
+                <button class="ws-icon-btn gmv-rem" title="Remove selected">‹</button>
+                <button class="ws-icon-btn gmv-remall" title="Remove all">«</button>
+              </div>
+              <div class="gmv-col gmv-chosen"></div>
+            </div>
+          </div>
+          <div class="gmus-right">
+            <div class="gmv-player"><div class="gdoc-empty">${project.renderAssetId ? "loading…" : project.status === "rendering" ? "rendering — it attaches here when it lands" : "no render yet — Generate makes one"}</div></div>
+          </div>
+        </div>
+      </div>`;
+    pane.querySelector(".gmus-back")?.addEventListener("click", () => { delete state.videoId; refresh(); });
+
+    const saveState = pane.querySelector<HTMLElement>(".gmus-savestate")!;
+    const titleIn = pane.querySelector<HTMLInputElement>(".gmv-title")!;
+    const promptIn = pane.querySelector<HTMLTextAreaElement>(".gmv-prompt")!;
+    titleIn.value = project.title;
+    promptIn.value = String(project.scenes.prompt ?? "");
+
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const persist = (): void => {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveState.textContent = "…";
+      saveTimer = setTimeout(() => {
+        void (async () => {
+          const r = await api().mediaProjectSave?.(project.id, {
+            title: titleIn.value.trim() || "Untitled",
+            scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected },
+          });
+          saveState.textContent = r?.ok ? "Saved" : `⚠ ${r?.error ?? "save failed"}`;
+        })();
+      }, 600);
+    };
+    titleIn.addEventListener("input", persist);
+    promptIn.addEventListener("input", persist);
+
+    // ── the dual-column picker ───────────────────────────────────────────────
+    const availEl = pane.querySelector<HTMLElement>(".gmv-avail")!;
+    const chosenEl = pane.querySelector<HTMLElement>(".gmv-chosen")!;
+    const marked = new Set<string>();
+    const thumb = (asset: { id: string; kind: string; title: string; mime: string }): HTMLElement => {
+      const cell = document.createElement("button");
+      cell.className = "gmv-thumb" + (marked.has(asset.id) ? " marked" : "");
+      cell.title = asset.title;
+      cell.innerHTML = `<span class="gmv-thumb-tag">${asset.kind === "video" || asset.kind === "recording" ? "▶" : ""}</span>`;
+      if (asset.mime.startsWith("image/")) {
+        void api().mediaUrl?.(asset.id).then((r) => {
+          if (r?.ok && r.url && cell.isConnected) cell.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+        });
+      }
+      cell.addEventListener("click", () => {
+        if (marked.has(asset.id)) marked.delete(asset.id); else marked.add(asset.id);
+        cell.classList.toggle("marked", marked.has(asset.id));
+      });
+      return cell;
+    };
+    const paintCols = (): void => {
+      availEl.textContent = "";
+      chosenEl.textContent = "";
+      const chosenSet = new Set(selected);
+      for (const a2 of poolAll.filter((x) => !chosenSet.has(x.id))) availEl.appendChild(thumb(a2));
+      for (const id2 of selected) {
+        const a2 = poolAll.find((x) => x.id === id2);
+        if (a2) chosenEl.appendChild(thumb(a2));
+      }
+    };
+    const move = (dir: "add" | "rem", all = false): void => {
+      const chosenSet = new Set(selected);
+      if (dir === "add") {
+        const source = poolAll.filter((x) => !chosenSet.has(x.id)).map((x) => x.id);
+        for (const id2 of source) if (all || marked.has(id2)) selected.push(id2);
+      } else {
+        for (let i = selected.length - 1; i >= 0; i--) {
+          if (all || marked.has(selected[i]!)) selected.splice(i, 1);
+        }
+      }
+      marked.clear();
+      paintCols();
+      persist();
+    };
+    pane.querySelector(".gmv-add")?.addEventListener("click", () => move("add"));
+    pane.querySelector(".gmv-addall")?.addEventListener("click", () => move("add", true));
+    pane.querySelector(".gmv-rem")?.addEventListener("click", () => move("rem"));
+    pane.querySelector(".gmv-remall")?.addEventListener("click", () => move("rem", true));
+    paintCols();
+
+    // ── the player ───────────────────────────────────────────────────────────
+    const player = pane.querySelector<HTMLElement>(".gmv-player")!;
+    if (project.renderAssetId) {
+      void api().mediaUrl?.(project.renderAssetId).then((r) => {
+        if (!r?.ok || !r.url || !player.isConnected) return;
+        player.textContent = "";
+        const v = document.createElement("video");
+        v.className = "gmedia-full";
+        v.src = r.url;
+        v.controls = true;
+        player.appendChild(v);
+      });
+    }
+
+    // ── Generate / Regenerate — the songs pattern exactly ────────────────────
+    const regenBtn = pane.querySelector<HTMLButtonElement>(".gmus-regen")!;
+    regenBtn.addEventListener("click", () => {
+      void (async () => {
+        if (!promptIn.value.trim()) { void host.confirm({ title: "Give it a prompt first", confirmLabel: "OK" }); return; }
+        regenBtn.disabled = true;
+        regenBtn.innerHTML = `<span class="gmus-spin"></span>Generating…`;
+        saveState.textContent = "generating…";
+        await api().mediaProjectSave?.(project.id, {
+          title: titleIn.value.trim() || "Untitled",
+          scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected },
+        });
+        const started = await api().mediaProjectGenerate?.(project.id, {});
+        if (!started?.ok || !started.project || !started.job) {
+          saveState.textContent = `⚠ ${started?.error ?? "couldn't start"}`;
+          regenBtn.disabled = false;
+          regenBtn.textContent = project.renderAssetId ? "Regenerate" : "Generate";
+          return;
+        }
+        const childId = started.project.id;
+        for (;;) {
+          await new Promise((r2) => setTimeout(r2, 3000));
+          const poll = await api().mediaJob?.(started.job.id);
+          if (!poll?.ok || !poll.job) break;
+          if (poll.job.status === "failed") { saveState.textContent = `⚠ ${poll.job.error ?? "generation failed"}`; break; }
+          if (poll.job.status === "succeeded") {
+            saveState.textContent = `done — ${poll.job.creditsCharged.toFixed(2)} credits`;
+            state.videoId = childId;
+            refresh();
+            return;
+          }
+          if (!pane.isConnected) return; // the server attaches regardless
+        }
+        regenBtn.disabled = false;
+        regenBtn.textContent = project.renderAssetId ? "Regenerate" : "Generate";
+      })();
+    });
   }
 
   return {
