@@ -1514,7 +1514,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "save_workspace",
-    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan. Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
+    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan, tool:gpoint (Slides), tool:gdoc (Docs), tool:gsheet (Sheets), tool:gdrive (Drive), tool:gdesign (Design), tool:gmemory (Memory), tool:gimage (Image), tool:gvideo (Video), tool:gsound (Sounds). Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
     action: (a) => ({ kind: "edit", title: `Save workspace "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const name = String(a.name ?? "").trim();
