@@ -7424,6 +7424,15 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 /* The compact 402 "Add credits" dialog — reuses the topup-card grid + toggle. */
 .buy-credits-box { max-width: 480px; }
 .buy-credits-box .bc-balance { margin: 0 0 4px; color: var(--text-2); font-size: 13px; }
+/* Super-admin org detail (Orgs → Manage): stat cards + key/value grid. */
+.pa-org-stats { display: flex; gap: 12px; margin: 12px 0 10px; }
+.pa-stat { flex: 1; border: 1px solid var(--border-1, #2a2a2a); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.pa-stat-num { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.pa-stat-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+.pa-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; margin: 6px 0 4px; }
+.pa-kv > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-1, #2a2a2a); font-size: 13px; }
+.pa-kv > div > span { color: var(--text-3); }
+.pa-kv > div > b { color: var(--text); font-weight: 600; text-align: right; }
 .billing-topup-card {
   display: flex;
   flex-direction: column;
@@ -17922,7 +17931,25 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 .gmus-lookcard.on .gmus-look-use { color: var(--accent); cursor: default; }
 .gmus-look-use:hover { color: var(--text); }
-.gmus-look-regen.busy { animation: gmus-spin 1s linear infinite; }
+/* Busy look card: a veil + centered ring + label; the whole card breathes. */
+.gmus-lookcard { position: relative; }
+.gmus-look-busy {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+  border-radius: inherit;
+  animation: gmus-busy-in 220ms ease;
+}
+.gmus-look-busy-label { font-size: 11px; font-weight: 650; color: var(--text-2); letter-spacing: 0.03em; }
+.gmus-spin-lg {
+  width: 26px; height: 26px; margin: 0;
+  border-width: 3px;
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+  border-top-color: var(--accent);
+  vertical-align: 0;
+}
+@keyframes gmus-busy-in { from { opacity: 0; } to { opacity: 1; } }
 .gmus-lookcard-imgs { display: flex; gap: 2px; }
 .gmus-lookimg {
   flex: 1; aspect-ratio: 2/3; cursor: zoom-in; position: relative;

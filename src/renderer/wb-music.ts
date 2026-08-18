@@ -1037,12 +1037,19 @@ export function initMusic(host: MusicHost): MusicViews {
         });
         card.querySelector(".gmus-look-regen")?.addEventListener("click", (ev) => {
           void (async () => {
-            if (!a2) return;
-            (ev.currentTarget as HTMLElement).classList.add("busy");
+            if (!a2 || card.querySelector(".gmus-look-busy")) return;
+            (ev.currentTarget as HTMLButtonElement).disabled = true;
+            // A real busy state: the card veils, a ring spins, the label says
+            // what's happening — not a twitching glyph in the corner.
+            const veil = document.createElement("div");
+            veil.className = "gmus-look-busy";
+            veil.innerHTML = `<span class="gmus-spin gmus-spin-lg"></span><span class="gmus-look-busy-label">Generating front + back…</span>`;
+            card.appendChild(veil);
             saveState.textContent = "generating look…";
             const r = await api().musicArtistGenlook?.(a2.id, styleIn.value.trim(), i + 1);
             saveState.textContent = r?.ok ? `look ${i + 1} regenerated — ${(r.credits ?? 0).toFixed(2)} credits` : `⚠ ${r?.error ?? "generation failed"}`;
             if (r?.ok && r.artist) paintLooks(r.artist);
+            else veil.remove();
           })();
         });
         gallery.appendChild(card);
