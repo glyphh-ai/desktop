@@ -4830,7 +4830,10 @@ export function initCode(): void {
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent");
+    // A PENDING seat (.ws-agent-pending — renderCodingIntoSlot is mid-retry
+    // adopting the singleton) counts as hosted: bouncing to gotoSection("agent")
+    // here would raise Echo again on top of the seat that is about to fill.
+    const hosted = !!document.querySelector(".echo-card .code-agent, .ws-rail-slot .code-agent, .ws-rail-slot .ws-agent-pending");
     if (hosted) return;
     // A DOCKED agent (global anchor) stays exactly where it is on a new session —
     // never full-screened. Just re-assert the dock so the empty thread renders in place.

@@ -1309,6 +1309,32 @@ async function init(): Promise<void> {
     }
   }
 
+  /** Move any live singleton still inside a dying — possibly already DETACHED
+   *  — Echo card back home by DIRECT reference. parkAgent/adoptComposer find
+   *  their targets via document.querySelector, which cannot see into a
+   *  detached subtree: when a rails rebuild wiped `#code-wb-rails` (Echo cards
+   *  live inside it) before closeCard's deferred teardown ran, the deferred
+   *  park found nothing, card.remove() destroyed the one `.code-agent`, and
+   *  the agent was gone for the session ("The agent is unavailable."). This
+   *  is the last line of defense before a card's DOM goes away. */
+  function rescueStraySingletons(card: HTMLElement): void {
+    const agent = card.querySelector<HTMLElement>(".code-agent");
+    const aside = document.getElementById("code-workbench");
+    if (agent && aside?.parentElement) {
+      aside.parentElement.insertBefore(agent, aside);
+      document.querySelector(".code-root")?.classList.remove("agent-hosted");
+    }
+    // A stray composer (adopted into a Home card that is going away) returns
+    // to the agent's tail — its one true home; appendChild keeps the "composer
+    // is the agent's LAST child" contract parkThread depends on.
+    const comp = card.querySelector<HTMLElement>(".code-composer");
+    if (comp) {
+      const home = document.querySelector<HTMLElement>(".code-agent");
+      if (home && comp.parentElement !== home) home.appendChild(comp);
+      document.body.classList.remove("composer-on-home");
+    }
+  }
+
   /** Return the live #code-thread to its home in .code-agent (before any
    *  rails rebuild, and when the transcript panel closes). Same contract as
    *  parkAgent — adopt on render, park before wipe. insertBefore the composer,
@@ -3393,6 +3419,17 @@ async function init(): Promise<void> {
       if (!opts?.keepSession && (e.tile.kind === "agent" || card.querySelector(".code-agent"))) {
         (window as unknown as { __glyphhForgetSession?: () => void }).__glyphhForgetSession?.();
       }
+      // SINGLETONS ARE RESCUED NOW, not at the deferred zoom-back teardown.
+      // Callers that close a card and then synchronously rebuild the rails
+      // (hostAgentInNextSlot's resetEcho → closeEchoSurface → placeSlot) wipe
+      // `#code-wb-rails` — and the Echo cards live INSIDE it — long before the
+      // 380ms teardown fires. Once the card is detached, the deferred
+      // parkAgent(true) (a document query) can't find the agent, card.remove()
+      // destroys the singleton, and the agent is unrecoverable. Park the agent
+      // and reclaim the composer while the card is still attached; the
+      // zoom-back animates an empty card body, which is fine.
+      if (card.querySelector(".code-agent")) parkAgent(true);
+      if (card.querySelector(".code-composer")) (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
       e.card = undefined;
       e.open = false;
       // WEB: stop the desktop-side page + socket NOW — the card's DOM lingers
@@ -3425,10 +3462,10 @@ async function init(): Promise<void> {
         ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
-        // the card's DOM goes away (same contract as parkSections)
+        // the card's DOM goes away (same contract as parkSections). The agent
+        // + composer were already parked synchronously above; the finally's
+        // rescueStraySingletons backstops anything that re-entered since.
         try {
-          if (card.querySelector(".code-agent")) parkAgent(true);   // the singleton goes home
-          if (card.querySelector(".code-composer")) (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
           const pen = document.getElementById("page-body");
           card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
             sec.classList.remove("active", "wb-hosted");
@@ -3445,6 +3482,10 @@ async function init(): Promise<void> {
             }
           }
         } finally {
+          // NEVER destroy the singletons with the card — whatever path got us
+          // here (including a rails wipe that already detached this card, where
+          // document queries go blind), move them home by direct reference.
+          rescueStraySingletons(card);
           card.remove();   // NEVER leave a zombie card
         }
       }, 380);
@@ -4219,8 +4260,18 @@ async function init(): Promise<void> {
      *  echo slot). placeSlot while Echo still owned the workspace was the
      *  historic agent-dump bug. codingHosted() guards the double-place. */
     const hostAgentInNextSlot = (): void => {
+      // The HOME landing may hold the live composer — reclaim it BEFORE the
+      // seat renders (the same adoption-first ordering openAgentCard keeps),
+      // so the coding slot never adopts an agent with no input.
+      (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
       resetEcho();
       closeEchoSurface();
+      // SELF-HEAL, never a dead end: a coding slot whose adoption failed (the
+      // seat exists in the rails model but no `.code-agent` actually sits in a
+      // rail) must not count as hosted — close it and seat again fresh, or the
+      // model-only codingHosted() guard wedges every further click into a
+      // no-op against a panel that says "unavailable".
+      if (codingHosted() && !document.querySelector(".ws-rail-slot .code-agent")) closeAllOfView("coding");
       if (!codingHosted()) placeSlot(makeSlot("coding"));
     };
     const activateTile = (e: TileEntry): void => {
@@ -4909,14 +4960,35 @@ async function init(): Promise<void> {
   }
 
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
-    const agent = document.querySelector<HTMLElement>(".code-agent");
-    if (!agent) { body.innerHTML = `<div class="ws-empty">The agent is unavailable.</div>`; return; }
-    // The coding panel has NO header row — the agent's own head carries the
-    // session title + history/+ controls (help/code.ts wires them).
-    wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
-    body.classList.add("ws-coding-body");
-    body.appendChild(agent);
-    document.querySelector(".code-root")?.classList.add("agent-hosted");
+    // The singleton may be mid-flight for a few frames — a closing Echo card's
+    // deferred teardown (closeCard's 380ms zoom-back) can still hold it, and
+    // its backstop parks it home when the timer fires. NEVER paint a dead
+    // "unavailable" panel for that race: show a pending state, retry the
+    // adoption, and only give up with a message that names the way out (the
+    // next Glyphh click closes a seat with no agent and seats fresh —
+    // hostAgentInNextSlot's self-heal).
+    const adopt = (tries: number): void => {
+      if (!body.isConnected) return;   // the rails re-rendered — a fresh render owns the seat
+      const agent = document.querySelector<HTMLElement>(".code-agent");
+      if (!agent) {
+        if (tries === 0) {
+          body.classList.add("ws-agent-pending");
+          body.innerHTML = `<div class="ws-empty">Preparing the agent…</div>`;
+        }
+        if (tries < 60) { window.setTimeout(() => adopt(tries + 1), 50); return; }
+        body.innerHTML = `<div class="ws-empty">The agent is unavailable — click the Glyphh tile to retry.</div>`;
+        return;
+      }
+      body.classList.remove("ws-agent-pending");
+      body.innerHTML = "";
+      // The coding panel has NO header row — the agent's own head carries the
+      // session title + history/+ controls (help/code.ts wires them).
+      wrap.querySelector(".ws-rail-slot-header")?.classList.add("hidden-header");
+      body.classList.add("ws-coding-body");
+      body.appendChild(agent);
+      document.querySelector(".code-root")?.classList.add("agent-hosted");
+    };
+    adopt(0);
   }
 
   // ── App view — in-workbench apps (the OS-window replacement) ──
