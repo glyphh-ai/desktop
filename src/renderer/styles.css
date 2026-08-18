@@ -17860,3 +17860,21 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 .gmus-mv-chip.on { color: var(--accent); border-color: var(--accent); }
 .gmus-mv-save { align-self: flex-start; }
+
+/* — band looks — */
+.gmus-looks { display: flex; gap: 8px; margin-top: 6px; }
+.gmus-look {
+  display: flex; gap: 2px; padding: 2px;
+  border: 1.5px solid var(--border-2); border-radius: 9px; background: var(--bg); cursor: pointer;
+}
+.gmus-look.on { border-color: var(--accent); }
+.gmus-look-f, .gmus-look-b {
+  width: 30px; height: 42px; border-radius: 5px;
+  background: var(--surface) center / cover no-repeat;
+}
+.gmus-i-look {
+  flex: none; width: 34px; height: 34px; border-radius: 8px;
+  background: var(--bg) center / cover no-repeat;
+  border: 1px solid var(--border-2);
+}
+.gmus-i-look.busy { animation: pulse-dot 1.2s ease infinite; }

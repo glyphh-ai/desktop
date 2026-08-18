@@ -13,8 +13,8 @@
  *           the original never moves).
  */
 
-interface Artist { id: string; name: string; style: string; voiceAssetId: string | null; voiceId: string | null; avatarAssetId: string | null; updatedAt: string }
-interface Instrument { instrument: string; tweak: string }
+interface Artist { id: string; name: string; style: string; voiceAssetId: string | null; voiceId: string | null; avatarAssetId: string | null; meta: Record<string, unknown>; updatedAt: string }
+interface Instrument { instrument: string; tweak: string; lookAssetId?: string | null }
 interface Song {
   id: string; title: string; lyrics: string; prompt: string; bandType: string;
   artistIds: string[]; instruments: Instrument[];
@@ -231,9 +231,55 @@ export function initMusic(host: MusicHost): MusicViews {
         const row = document.createElement("div");
         row.className = "gmus-a-row";
         row.innerHTML = `
+          <span class="gmus-i-look" title="Instrument look"></span>
           <input class="gmus-a-style gmus-i-name" spellcheck="false" placeholder="instrument" style="max-width:130px" />
           <input class="gmus-a-style gmus-i-tweak" spellcheck="false" placeholder="tweak — 'tight, dry, 90s'" style="flex:1" />
+          <button class="ws-icon-btn gmus-i-gen" title="Generate a look image (costs credits)">⟳</button>
           <button class="ws-icon-btn gmem-del" title="Remove">✕</button>`;
+        const lookEl = row.querySelector<HTMLElement>(".gmus-i-look")!;
+        if (inst.lookAssetId) {
+          void api().mediaUrl?.(inst.lookAssetId).then((r) => {
+            if (r?.ok && r.url && lookEl.isConnected) lookEl.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+          });
+        }
+        row.querySelector(".gmus-i-gen")?.addEventListener("click", () => {
+          void (async () => {
+            lookEl.classList.add("busy");
+            const started = await api().mediaGenerate?.({
+              model: "",
+              prompt: `Photorealistic product photograph of a ${inst.instrument}${inst.tweak ? `, ${inst.tweak}` : ""}, for a ${bandTypeIn.value.trim() || "rock"} band, dark stage backdrop, dramatic lighting`,
+              title: `${inst.instrument} — look`,
+            }).catch(() => null);
+            // model "" → the org's first image model, resolved main-side? The
+            // generate endpoint needs a model — fall back to asking for one.
+            if (!started?.ok || !started.job) {
+              const models = ["openai::gpt-image-1", "blackforest::flux-pro-1.1", "xai::grok-2-image-1212", "google::gemini-3-pro-image"];
+              for (const m2 of models) {
+                const retry = await api().mediaGenerate?.({ model: m2, prompt: `Photorealistic product photograph of a ${inst.instrument}${inst.tweak ? `, ${inst.tweak}` : ""}, dark stage backdrop, dramatic lighting`, title: `${inst.instrument} — look` });
+                if (retry?.ok && retry.job) { await followJob(retry.job.id); return; }
+              }
+              lookEl.classList.remove("busy");
+              return;
+            }
+            await followJob(started.job.id);
+            async function followJob(jobId: string): Promise<void> {
+              for (;;) {
+                await new Promise((r2) => setTimeout(r2, 2500));
+                const poll = await api().mediaJob?.(jobId);
+                if (!poll?.ok || !poll.job) break;
+                if (poll.job.status === "failed") break;
+                if (poll.job.status === "succeeded") {
+                  inst.lookAssetId = poll.job.assetId;
+                  saveBand();
+                  break;
+                }
+                if (!row.isConnected) return;
+              }
+              lookEl.classList.remove("busy");
+              paintInstruments();
+            }
+          })();
+        });
         const nameIn = row.querySelector<HTMLInputElement>(".gmus-i-name")!;
         const tweakIn = row.querySelector<HTMLInputElement>(".gmus-i-tweak")!;
         nameIn.value = inst.instrument;
@@ -678,6 +724,31 @@ export function initMusic(host: MusicHost): MusicViews {
             face.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
           }
         });
+      }
+      const looks = (a.meta?.looks as Array<{ front: string; back: string }> | undefined) ?? [];
+      if (looks.length) {
+        const strip = document.createElement("div");
+        strip.className = "gmus-looks";
+        looks.forEach((lk, i) => {
+          const cell = document.createElement("button");
+          cell.className = "gmus-look" + ((a.meta?.activeLook ?? 0) === i ? " on" : "");
+          cell.title = `Look ${i + 1} — click to make active`;
+          cell.innerHTML = `<span class="gmus-look-f"></span><span class="gmus-look-b"></span>`;
+          for (const [cls, id] of [[".gmus-look-f", lk.front], [".gmus-look-b", lk.back]] as const) {
+            const el2 = cell.querySelector<HTMLElement>(cls)!;
+            void api().mediaUrl?.(id).then((r) => {
+              if (r?.ok && r.url && el2.isConnected) el2.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+            });
+          }
+          cell.addEventListener("click", () => {
+            void (async () => {
+              await api().musicArtistSave?.(a.id, { avatarAssetId: lk.front, meta: { ...a.meta, activeLook: i } });
+              refresh();
+            })();
+          });
+          strip.appendChild(cell);
+        });
+        row.querySelector(".gmus-artist-main")?.appendChild(strip);
       }
       row.querySelector(".gmus-a-edit")?.addEventListener("click", () => editor(a));
       row.querySelector(".gmem-del")?.addEventListener("click", () => {

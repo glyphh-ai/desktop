@@ -1341,6 +1341,115 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "create_band",
+    doc: 'create_band(name, band_type, members, instruments?, song_prompt?, lyrics?) — BUILD THE WHOLE BAND in one call (heavily metered — say the cost after). members: [{name, description}] (≤4) — each gets TWO photoreal LOOKS, front AND back (4 images per member), saved to the Image library and onto the artist (meta.looks; look 1 active). instruments: [{instrument, tweak?}] (≤6) — each gets a generated look image. Then the song document is created wired to it all. Finish with open_song.',
+    action: (a) => ({ kind: "network", title: `Create band "${String(a.name ?? "")}"`, detail: `${Array.isArray(a.members) ? a.members.length : 0} members` }),
+    run: async (a) => {
+      const bandType = String(a.band_type ?? "").trim();
+      const members = (Array.isArray(a.members) ? a.members : []).slice(0, 4) as Array<{ name?: unknown; description?: unknown }>;
+      if (!members.length) return "ERROR: members is required — [{name, description}]";
+      const instruments = (Array.isArray(a.instruments) ? a.instruments : []).slice(0, 6) as Array<{ instrument?: unknown; tweak?: unknown }>;
+      let credits = 0;
+      const artistIds: string[] = [];
+      const lines: string[] = [];
+      for (const m of members) {
+        const name = String(m.name ?? "").trim() || "member";
+        const desc = String(m.description ?? "").trim();
+        const look1 = await genLook(name, desc, bandType);
+        const look2 = await genLook(name, `${desc} — an alternate second look, different outfit and hair`, bandType);
+        credits += look1.credits + look2.credits;
+        const artist = await getClient().music.createArtist({
+          name, style: desc,
+          avatarAssetId: look1.front,
+          meta: { looks: [{ front: look1.front, back: look1.back }, { front: look2.front, back: look2.back }], activeLook: 0 },
+        });
+        artistIds.push(artist.id);
+        lines.push(`${name}: artist ${artist.id}, 2 looks (front+back each)`);
+      }
+      const instRows: Array<{ instrument: string; tweak: string; lookAssetId?: string }> = [];
+      for (const inst of instruments) {
+        const kind = String(inst.instrument ?? "").trim() || "guitar";
+        const tweak = String(inst.tweak ?? "").trim();
+        const img = await genImageAsset(
+          `Photorealistic product photograph of a ${kind}${tweak ? `, ${tweak}` : ""}, for a ${bandType || "rock"} band, dark stage backdrop, dramatic lighting`,
+          `${kind} — look`,
+        );
+        credits += img.credits;
+        instRows.push({ instrument: kind, tweak, lookAssetId: img.id });
+        lines.push(`${kind}: look image ${img.id}`);
+      }
+      const song = await getClient().music.createSong({
+        title: String(a.name ?? "Untitled"),
+        bandType,
+        artistIds,
+        instruments: instRows,
+        ...(a.song_prompt ? { prompt: String(a.song_prompt) } : {}),
+        ...(a.lyrics ? { lyrics: String(a.lyrics) } : {}),
+      });
+      return cap(`band built — ${credits.toFixed(2)} credits total.\n${lines.join("\n")}\nsong ${song.id} ("${song.title}") — regenerate_song("${song.id}") makes the audio; open_song("${song.id}") opens the studio.`);
+    },
+  },
+  {
+    name: "generate_artist_look",
+    doc: "generate_artist_look(artist_id, description?) — a fresh look for a band member: photoreal FRONT + BACK pair, saved to Images, appended to the artist's looks and made active. Metered (2 images).",
+    action: (a) => ({ kind: "network", title: `New look for artist ${String(a.artist_id ?? "")}` }),
+    run: async (a) => {
+      const music = getClient().music;
+      const artist = (await music.artists()).find((x) => x.id === String(a.artist_id ?? ""));
+      if (!artist) return "ERROR: unknown artist — list_artists shows ids";
+      const look = await genLook(artist.name, String(a.description ?? artist.style ?? ""), "");
+      const looks = [...((artist.meta.looks as Array<{ front: string; back: string }> | undefined) ?? []), { front: look.front, back: look.back }];
+      await music.updateArtist(artist.id, {
+        avatarAssetId: look.front,
+        meta: { ...artist.meta, looks, activeLook: looks.length - 1 },
+      });
+      return `new look ${looks.length} for ${artist.name} (front+back) — ${look.credits.toFixed(2)} credits. open_image("${look.front}") shows it.`;
+    },
+  },
+  {
+    name: "generate_instrument_look",
+    doc: "generate_instrument_look(song_id, instrument, description?) — generate (or refresh) an instrument's look image on a song and save it to Images. Metered (1 image).",
+    action: (a) => ({ kind: "network", title: `Instrument look: ${String(a.instrument ?? "")}` }),
+    run: async (a) => {
+      const music = getClient().music;
+      const song = await music.song(String(a.song_id ?? ""));
+      const kind = String(a.instrument ?? "").trim().toLowerCase();
+      const row = song.instruments.find((i) => i.instrument.toLowerCase() === kind);
+      if (!row) return `ERROR: song has no "${kind}" — its instruments: ${song.instruments.map((i) => i.instrument).join(", ") || "(none)"}`;
+      const img = await genImageAsset(
+        `Photorealistic product photograph of a ${row.instrument}${row.tweak ? `, ${row.tweak}` : ""}${a.description ? `, ${String(a.description)}` : ""}, for a ${song.bandType || "rock"} band, dark stage backdrop, dramatic lighting`,
+        `${row.instrument} — look`,
+      );
+      row.lookAssetId = img.id;
+      await music.updateSong(song.id, { instruments: song.instruments });
+      return `${row.instrument} look regenerated — ${img.credits.toFixed(2)} credits. open_image("${img.id}") shows it.`;
+    },
+  },
+  {
+    name: "update_artist",
+    doc: "update_artist(artist_id, name?, style?, voice_id?, avatar_asset_id?, active_look?) — evolve a band member; active_look (1-based) switches which look fronts the artist.",
+    action: (a) => ({ kind: "edit", title: `Update artist ${String(a.artist_id ?? "")}` }),
+    run: async (a) => {
+      const music = getClient().music;
+      const artist = (await music.artists()).find((x) => x.id === String(a.artist_id ?? ""));
+      if (!artist) return "ERROR: unknown artist — list_artists shows ids";
+      const patch: Record<string, unknown> = {};
+      if (a.name) patch.name = String(a.name);
+      if (a.style !== undefined) patch.style = String(a.style);
+      if (a.voice_id !== undefined) patch.voiceId = a.voice_id ? String(a.voice_id) : null;
+      if (a.avatar_asset_id) patch.avatarAssetId = String(a.avatar_asset_id);
+      if (a.active_look !== undefined) {
+        const looks = (artist.meta.looks as Array<{ front: string; back: string }> | undefined) ?? [];
+        const idx = Math.trunc(Number(a.active_look)) - 1;
+        if (idx < 0 || idx >= looks.length) return `ERROR: active_look must be 1-${looks.length}`;
+        patch.meta = { ...artist.meta, activeLook: idx };
+        patch.avatarAssetId = looks[idx]!.front;
+      }
+      const updated = await music.updateArtist(artist.id, patch as never);
+      return `updated ${updated.name}`;
+    },
+  },
+  {
     name: "open_design",
     doc: "open_design(name?) — open the Design panel beside this conversation; with a system name it opens straight into that studio",
     action: (a) => ({ kind: "command", title: a.name ? `Open design "${String(a.name)}"` : "Open the Design panel" }),
@@ -1990,6 +2099,25 @@ async function generateMedia(
   if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged)`;
   const open = started.outputKind === "image" ? "open_image" : started.outputKind === "video" ? "open_video" : "open_sounds";
   return `generated ${job.assetId} with ${job.model} — ${job.creditsCharged.toFixed(2)} credits charged. ${open}("${job.assetId}") shows it in the panel.`;
+}
+
+/** One metered IMAGE job, structured — the band builder's brush. */
+async function genImageAsset(prompt: string, title: string): Promise<{ id: string; credits: number }> {
+  const models = await getClient().models.available();
+  const model = models.find((m) => String((m as { modality?: string }).modality ?? "") === "image");
+  if (!model) throw new Error("this org has no enabled image model");
+  const started = await getClient().media.generate({ model: model.id, prompt, title, options: { size: "1024x1536" } });
+  const job = await getClient().media.waitForJob(started.job.id);
+  if (job.status === "failed" || !job.assetId) throw new Error(job.error ?? "image generation failed");
+  return { id: job.assetId, credits: job.creditsCharged };
+}
+
+/** A member look: FRONT + BACK of the same person, photoreal, stage-ready. */
+async function genLook(name: string, description: string, bandType: string): Promise<{ front: string; back: string; credits: number }> {
+  const base = `Photorealistic full-body studio photograph of ${description || name}, member of a ${bandType || "rock"} band, stage outfit, neutral dark backdrop, cinematic lighting, lifelike skin texture, 85mm`;
+  const front = await genImageAsset(`${base}. FRONT view, facing the camera.`, `${name} — look (front)`);
+  const back = await genImageAsset(`${base}. BACK view — the SAME person and outfit seen from behind.`, `${name} — look (back)`);
+  return { front: front.id, back: back.id, credits: front.credits + back.credits };
 }
 
 /** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.
