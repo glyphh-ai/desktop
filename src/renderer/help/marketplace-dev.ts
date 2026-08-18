@@ -639,6 +639,14 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   };
 
   const paint = (): void => {
+    // Bump the repaint epoch FIRST — any debounce timer armed by the previous
+    // paint (a mid-edit save) now measures against a newer epoch in commit()
+    // and aborts, so it can never fire a write against the freshly-populated
+    // inputs this repaint is about to paint. Without this the guard is dead
+    // and a stale timer autosaves programmatic values → the server's zod
+    // bounces the malformed body as the purple "invalid request body" note.
+    paintEpoch++;
+    window.clearTimeout(saveTimer);
     const dev = mcScope === "org" ? me.org : me.personal;
     // The app's REAL tab strip (Workspaces/Models/app editors): app-detail-tabs
     // with the underline active treatment — not pill buttons. The autosave
