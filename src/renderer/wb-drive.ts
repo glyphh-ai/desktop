@@ -26,6 +26,8 @@ export interface GDriveSlotState {
   id: number;
   /** Selected folder (null/undefined = root view). */
   folderId?: string | null;
+  /** Selected LIBRARY folder (virtual, read-only R2/app-data mapping). */
+  lib?: string | null;
   /** The folder rail — open by default, collapsible from the toolbar. */
   railOpen?: boolean;
   /** "browse" (folders + recents) or "list" (every file, newest first). */
@@ -54,7 +56,81 @@ const driveApi = () => (window as unknown as { glyphh?: {
   gdriveFolderDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   gpointDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdocDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: unknown[]; error?: string }>;
+  mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
+  musicSongs?: () => Promise<{ ok: boolean; songs: unknown[]; error?: string }>;
+  musicArtists?: () => Promise<{ ok: boolean; artists: unknown[]; error?: string }>;
+  musicInstruments?: () => Promise<{ ok: boolean; instruments: unknown[]; error?: string }>;
 } }).glyphh ?? {};
+
+// ── the LIBRARY — every app's R2-backed data, mapped into Drive READ-ONLY.
+//    These are virtual folders over the org media library and the Band tables;
+//    nothing here renames/moves/deletes — management lives in the owning app. ──
+
+interface LibItem { id: string; title: string; sub: string; thumb?: boolean; open: () => void }
+interface LibDef { id: string; name: string; icon: string }
+
+const LIB_ICONS: Record<string, string> = {
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
+  audio: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
+  band: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 3v10a3 3 0 1 1-2-2.83V6l-8 1.6V15a3 3 0 1 1-2-2.83V5z"/></svg>`,
+};
+
+const LIBS: LibDef[] = [
+  { id: "images", name: "Images", icon: LIB_ICONS.image! },
+  { id: "video", name: "Video", icon: LIB_ICONS.video! },
+  { id: "sounds", name: "Sounds", icon: LIB_ICONS.audio! },
+  { id: "voices", name: "Voices", icon: LIB_ICONS.audio! },
+  { id: "recordings", name: "Recordings", icon: LIB_ICONS.video! },
+  { id: "songs", name: "Songs", icon: LIB_ICONS.band! },
+  { id: "artists", name: "Artists", icon: LIB_ICONS.band! },
+  { id: "instruments", name: "Instruments", icon: LIB_ICONS.band! },
+];
+
+interface MediaAssetLite { id: string; kind: string; title: string; mime?: string; sizeBytes?: number; updatedAt?: string; status?: string }
+interface NamedRowLite { id: string; name?: string; title?: string; updatedAt?: string }
+
+const openMediaBridge = (view: "gimage" | "gvideo" | "gsound" | "gband", assetId?: string, songId?: string): void => {
+  (window as unknown as { __wbOpenMedia?: (v: string, a?: string, s?: string) => void }).__wbOpenMedia?.(view, assetId, songId);
+};
+
+async function libItemsFor(lib: string, q: string): Promise<LibItem[]> {
+  const api = driveApi();
+  const ql = q.toLowerCase();
+  const when = (u?: string): string => (u ? new Date(u).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+  const mediaLib = async (kind: string, view: "gimage" | "gvideo" | "gsound", label: string): Promise<LibItem[]> => {
+    const res = await api.mediaList?.(kind, q || undefined);
+    const assets = (res?.ok ? res.assets : []) as MediaAssetLite[];
+    return assets.filter((a) => a.status !== "failed").map((a) => ({
+      id: a.id,
+      title: a.title || "(untitled)",
+      sub: `${label}${a.sizeBytes ? ` · ${fmtSize(a.sizeBytes)}` : ""}${a.updatedAt ? ` · ${when(a.updatedAt)}` : ""}`,
+      thumb: (a.mime ?? "").startsWith("image/"),
+      open: () => openMediaBridge(view, a.id),
+    }));
+  };
+  const bandLib = async (rows: NamedRowLite[] | undefined, label: string, open: (r: NamedRowLite) => void): Promise<LibItem[]> =>
+    (rows ?? [])
+      .filter((r) => { const n = (r.name ?? r.title ?? "").toLowerCase(); return !ql || n.includes(ql); })
+      .map((r) => ({
+        id: r.id,
+        title: r.name ?? r.title ?? "(untitled)",
+        sub: `${label}${r.updatedAt ? ` · ${when(r.updatedAt)}` : ""}`,
+        open: () => open(r),
+      }));
+  switch (lib) {
+    case "images": return mediaLib("image", "gimage", "Image");
+    case "video": return mediaLib("video", "gvideo", "Video");
+    case "sounds": return mediaLib("audio", "gsound", "Audio");
+    case "voices": return mediaLib("voice", "gsound", "Voice");
+    case "recordings": return mediaLib("recording", "gvideo", "Recording");
+    case "songs": return bandLib(((await driveApi().musicSongs?.())?.songs ?? []) as NamedRowLite[], "Song", (r) => openMediaBridge("gband", undefined, r.id));
+    case "artists": return bandLib(((await driveApi().musicArtists?.())?.artists ?? []) as NamedRowLite[], "Artist", () => openMediaBridge("gband"));
+    case "instruments": return bandLib(((await driveApi().musicInstruments?.())?.instruments ?? []) as NamedRowLite[], "Instrument", () => openMediaBridge("gband"));
+    default: return [];
+  }
+}
 
 interface PopItem { label: string; danger?: boolean; fn: () => void }
 function popMenu(x: number, y: number, items: PopItem[]): void {
@@ -249,7 +325,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
 
       const railRow = (id: string | null, name: string, depth: number): HTMLElement => {
         const row = document.createElement("button");
-        row.className = "gdrive-railrow" + (here === id && !query && slot.viewMode !== "list" ? " active" : "");
+        row.className = "gdrive-railrow" + (here === id && !slot.lib && !query && slot.viewMode !== "list" ? " active" : "");
         row.style.paddingLeft = `${10 + depth * 14}px`;
         row.innerHTML = `<span class="gdrive-railrow-ic">${host.icons.folder}</span><span class="gdrive-railrow-name"></span><span class="gdrive-railrow-plus" title="New in ${name.replace(/"/g, "&quot;")}…">＋</span>`;
         (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = name;
@@ -260,6 +336,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         });
         row.addEventListener("click", () => {
           slot.folderId = id;
+          slot.lib = null;
           slot.viewMode = "browse";
           slot.page = 0;
           query = ""; search.value = "";
@@ -277,6 +354,27 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       };
       rail.appendChild(railRow(null, "My Drive", 0));
       for (const f of ordered) rail.appendChild(railRow(f.id, f.name, depthOf(f)));
+
+      // ── The LIBRARY rail — the org's R2-backed app data, read-only. ──
+      const libHead = document.createElement("div");
+      libHead.className = "gdrive-lib-head";
+      libHead.textContent = "Library";
+      rail.appendChild(libHead);
+      for (const lib of LIBS) {
+        const row = document.createElement("button");
+        row.className = "gdrive-railrow gdrive-librow" + (slot.lib === lib.id && !query ? " active" : "");
+        row.title = `${lib.name} — mapped from the org library, read-only here`;
+        row.innerHTML = `<span class="gdrive-railrow-ic">${lib.icon}</span><span class="gdrive-railrow-name"></span>`;
+        (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = lib.name;
+        row.addEventListener("click", () => {
+          slot.lib = lib.id;
+          slot.folderId = null;
+          slot.viewMode = "browse";
+          slot.page = 0;
+          void paint();
+        });
+        rail.appendChild(row);
+      }
 
       const folderMenuItems = (f: DriveFolder): Array<{ label: string; danger?: boolean; fn: () => void }> => [
         { label: "Open", fn: () => { slot.folderId = f.id; slot.viewMode = "browse"; slot.page = 0; void paint(); } },
@@ -407,6 +505,65 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       // ── Breadcrumbs — Drive › folder › subfolder (browse mode only). ──
       const crumbs = body.querySelector<HTMLElement>(".gdrive-crumbs")!;
       crumbs.textContent = "";
+      if (slot.lib) {
+        const libDef = LIBS.find((l) => l.id === slot.lib);
+        const back = document.createElement("button");
+        back.className = "gdrive-crumb";
+        back.textContent = "Drive";
+        back.addEventListener("click", () => { slot.lib = null; slot.page = 0; void paint(); });
+        const sep = document.createElement("span");
+        sep.className = "gdrive-crumb-sep";
+        sep.textContent = "›";
+        const cur = document.createElement("button");
+        cur.className = "gdrive-crumb current";
+        cur.textContent = `Library · ${libDef?.name ?? slot.lib}`;
+        crumbs.append(back, sep, cur);
+        crumbs.classList.remove("hidden");
+
+        // ── LIBRARY view — read-only paginated grid mapped from R2/app data. ──
+        const sec = document.createElement("div");
+        sec.className = "gdrive-section";
+        sec.appendChild(sectionHead(`${libDef?.name ?? slot.lib} — from the app library (read-only)`));
+        const items = await libItemsFor(slot.lib, query);
+        if (!body.isConnected) return;
+        const grid = document.createElement("div");
+        grid.className = "gdrive-files";
+        if (!items.length) {
+          const none = document.createElement("div");
+          none.className = "gdoc-empty";
+          none.textContent = query ? "No matches." : "Nothing here yet — this folder fills as the app creates things.";
+          grid.appendChild(none);
+        }
+        const paged = officePage(items, slot.page ?? 0, GRID_PER);
+        slot.page = paged.page;
+        for (const it of paged.items) {
+          const card = document.createElement("div");
+          card.className = "gdrive-card gdrive-libcard";
+          card.title = `${it.title} — read-only here; manage it in the app`;
+          card.innerHTML = `
+            <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${libDef?.icon ?? ""}</div></div>
+            <div class="gdrive-card-row"><span class="gdrive-card-title"></span></div>
+            <span class="gdrive-card-meta"></span>`;
+          (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = it.title;
+          (card.querySelector(".gdrive-card-meta") as HTMLElement).textContent = it.sub;
+          if (it.thumb) {
+            void driveApi().mediaUrl?.(it.id).then((r) => {
+              const box = card.querySelector<HTMLElement>(".gdrive-thumb");
+              if (r?.ok && r.url && box?.isConnected) {
+                box.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+                box.classList.add("gdrive-thumb-img");
+              }
+            });
+          }
+          card.addEventListener("click", () => it.open());
+          grid.appendChild(card);
+        }
+        sec.appendChild(grid);
+        const pager = officePager(items.length, paged.page, GRID_PER, (pg) => { slot.page = pg; void paint(); });
+        if (pager) sec.appendChild(pager);
+        scroll.appendChild(sec);
+        return;
+      }
       if (here && !query && slot.viewMode !== "list") {
         const chain: DriveFolder[] = [];
         let cur: string | null = here;

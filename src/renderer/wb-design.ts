@@ -614,20 +614,32 @@ export function initDesign(host: DesignHost): DesignPanel {
       apply();
       persistView();
     }, { passive: false });
-    let drag: { x: number; y: number; art?: HTMLElement; ax?: number; ay?: number } | null = null;
+    // EVERY canvas item drags on its own — grab a card ANYWHERE (not just the
+    // grip) and only that card moves; the empty stage pans the view. The
+    // corner handle resizes (width; images keep their aspect).
+    let drag: { x: number; y: number; art?: HTMLElement; ax?: number; ay?: number; aw?: number; resize?: boolean } | null = null;
     stage.addEventListener("mousedown", (ev) => {
-      const grip = (ev.target as HTMLElement).closest<HTMLElement>(".gdz-art-grip");
-      const art = grip?.closest<HTMLElement>(".gdz-art") ?? undefined;
-      if (!art && (ev.target as HTMLElement).closest("input, button, select, textarea")) return;
+      const target = ev.target as HTMLElement;
+      const rz = target.closest<HTMLElement>(".gdz-art-resize");
+      const art = target.closest<HTMLElement>(".gdz-art") ?? undefined;
+      if (!rz && target.closest("input, button, select, textarea")) return;
       drag = art
-        ? { x: ev.clientX, y: ev.clientY, art, ax: parseFloat(art.style.left) || 0, ay: parseFloat(art.style.top) || 0 }
+        ? {
+            x: ev.clientX, y: ev.clientY, art,
+            ax: parseFloat(art.style.left) || 0,
+            ay: parseFloat(art.style.top) || 0,
+            aw: parseFloat(art.style.width) || art.offsetWidth,
+            resize: !!rz,
+          }
         : { x: ev.clientX, y: ev.clientY };
       ev.preventDefault();
     });
     const onMove = (ev: MouseEvent): void => {
       if (!drag) return;
       const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
-      if (drag.art) {
+      if (drag.art && drag.resize) {
+        drag.art.style.width = `${Math.max(160, Math.min(2400, (drag.aw ?? 560) + dx / scale))}px`;
+      } else if (drag.art) {
         drag.art.style.left = `${(drag.ax ?? 0) + dx / scale}px`;
         drag.art.style.top = `${(drag.ay ?? 0) + dy / scale}px`;
       } else {
@@ -677,7 +689,8 @@ export function initDesign(host: DesignHost): DesignPanel {
       card.style.width = "560px";
       card.innerHTML = `
         <div class="gdz-art-grip"><span class="gdz-img-role"></span><button class="ws-icon-btn gdz-img-x" title="Remove from the system">✕</button></div>
-        <div class="gdz-img-frame"></div>`;
+        <div class="gdz-img-frame"></div>
+        <span class="gdz-art-resize" title="Resize"></span>`;
       (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${m.title}${m.role ? ` · ${m.role}` : ""}`;
       card.querySelector(".gdz-img-x")?.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -722,7 +735,8 @@ export function initDesign(host: DesignHost): DesignPanel {
       card.style.width = "560px";
       card.innerHTML = `
         <div class="gdz-art-grip"><span class="gdz-img-role"></span></div>
-        <div class="gdz-img-frame"></div>`;
+        <div class="gdz-img-frame"></div>
+        <span class="gdz-art-resize" title="Resize"></span>`;
       (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${a.title} · upload`;
       const frame = card.querySelector<HTMLElement>(".gdz-img-frame")!;
       void api().designAssetUrl?.(file, a.id).then((r) => {

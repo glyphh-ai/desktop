@@ -17217,6 +17217,14 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdrive-railrow-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gdrive-rail-toggle.active { color: var(--accent); }
 .gdrive-rail-toggle svg { width: 14px; height: 14px; }
+.gdrive-lib-head {
+  margin-top: 12px; padding: 4px 10px 2px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.gdrive-libcard .gdrive-thumb-img { background-size: cover; background-position: center; }
+.gdrive-libcard .gdrive-thumb-img .gpoint-thumb-ph { display: none; }
+.gdrive-libcard .gpoint-thumb-ph svg { width: 26px; height: 26px; color: var(--text-3); }
 .gdrive-section-head { display: flex; align-items: baseline; gap: 10px; }
 .gdrive-section-head .gdrive-section-title { flex: 1; }
 .gdrive-viewall {
@@ -17774,6 +17782,16 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 
 /* Design canvas: adopted imagery cards. */
 .gdz-art-imagery .gdz-art-grip { display: flex; align-items: center; gap: 8px; left: 0; right: 0; }
+.gdz-art { cursor: grab; }
+.gdz-art:active { cursor: grabbing; }
+.gdz-art-resize {
+  position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+  cursor: nwse-resize; border-radius: 4px; opacity: 0;
+  background:
+    linear-gradient(135deg, transparent 0 50%, var(--text-3) 50% 58%, transparent 58% 70%, var(--text-3) 70% 78%, transparent 78%);
+  transition: opacity 0.15s;
+}
+.gdz-art:hover .gdz-art-resize { opacity: 0.9; }
 .gdz-img-role { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gdz-img-x { opacity: 0; }
 .gdz-art-imagery:hover .gdz-img-x { opacity: 1; }
