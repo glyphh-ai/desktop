@@ -131,8 +131,9 @@ interface ReleasesSlot { id: number; view: "releases"; slug?: string; sticky?: b
  *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
  *  from its rail tab. `taskId` remembers an opened detail across renders. */
 interface TasksSlot { id: number; view: "tasks"; taskId?: string; sticky?: boolean }
-/** The Coding Agent tile — HOSTS the live agent DOM (same sessions, same
- *  composer); nothing of its own beyond the header's session controls. */
+/** The Glyphh seat (internal view "coding" — persisted layouts reference the
+ *  key) — HOSTS the live agent DOM (same sessions, same composer); nothing
+ *  of its own beyond the header's session controls. */
 interface CodingSlot { id: number; view: "coding"; sticky?: boolean }
 /** The Transcript panel — HOSTS the live #code-thread DOM (renderThread()
  *  wipes it every repaint and the streamer writes into it, so it is MOVED,
@@ -260,7 +261,10 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   preview:  { title: "Browser",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
   echo:     { title: "Echo",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
-  coding:   { title: "Coding Agent", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
+  // ONE agent, ONE identity: the rails seat carries the same user-facing name
+  // as the Echo agent card ("Glyphh") — the internal view key stays "coding"
+  // (persisted layouts reference it).
+  coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
@@ -1997,7 +2001,7 @@ async function init(): Promise<void> {
     });
   };
 
-  // ── Coding Agent view — the SAME agent, reparented into a tile ──
+  // ── Glyphh seat (view "coding") — the SAME agent, reparented into a tile ──
   // The slot hosts the live .code-agent element (thread, composer, everything
   // — one runtime, shared sessions). The header gains the session controls:
   // title on the left, history dropdown + new-session on the right.
@@ -4274,29 +4278,54 @@ async function init(): Promise<void> {
       if (codingHosted() && !document.querySelector(".ws-rail-slot .code-agent")) closeAllOfView("coding");
       if (!codingHosted()) placeSlot(makeSlot("coding"));
     };
+    /** THE GLYPHH CLICK (his rule, verbatim): the glyphh icon does EXACTLY
+     *  what the sidebar ＋ New Session does, in all situations — the SAME
+     *  function (`__glyphhNewSession` → newSessionInPlace), never copied
+     *  logic, so the two entries cannot drift. ONE exception: a LIVE LAYOUT
+     *  clears completely — cards (memory saved by the reset), wall, seat —
+     *  and the fresh agent session comes up ALONE. Every glyphh entry lands
+     *  here: the wall's fixed GLYPHH tile, the agent tile (one identity —
+     *  "Glyphh"), and ctl.openApp's front door. */
+    const activateGlyphh = (self?: TileEntry): void => {
+      const newSession = (): void => {
+        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+      };
+      const layoutLive = activeLayoutId != null || echoLayoutName != null || openList.some((x) => x !== self && x.layoutId != null);
+      if (!openingLayout && layoutLive) {
+        // THE ONE EXCEPTION: in a layout, the glyphh click closes the layout
+        // and a FRESH agent session comes up completely by itself. The clear
+        // runs in the leak-safe order (resetEcho closes cards properly — an
+        // Echo-hosted agent survives via the forced park — and persists the
+        // empty wall; closeEchoSurface drops the echo slot; then the seat).
+        // A VISIBLE dock is the agent's home — clear the surface and let
+        // newSessionInPlace re-assert the dock; never steal it into a seat.
+        if (anchorMode() !== "rail" && anchorMode() !== "none") {
+          (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
+          resetEcho();
+          closeEchoSurface();
+          if (codingHosted()) closeAllOfView("coding");
+        } else {
+          hostAgentInNextSlot();
+        }
+        newSession();
+        return;
+      }
+      // No layout: EXACTLY the ＋ New Session path. Picking the tile dismisses
+      // the wall (agent already visible outside it); an unseated agent seats
+      // FIRST — newSessionInPlace's hosted check (and newChat's
+      // ensureCodeSection) must SEE the seated agent, the same
+      // adoption-before-session order openAgentCard keeps.
+      if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); }
+      else hostAgentInNextSlot();
+      newSession();
+    };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
-      // HOME — the fixed first tile. The wall activates tiles DIRECTLY (this
+      // HOME — the fixed first tile — and the agent tile are ONE identity
+      // (Glyphh) with ONE behavior. The wall activates tiles DIRECTLY (this
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
-      if (t.slug === "glyphh-home") {
-        if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
-        // Not visible → seat the agent in the next slot, THEN start the fresh
-        // session: newSessionInPlace's hosted check (and newChat's
-        // ensureCodeSection) must SEE the seated agent — the same
-        // adoption-before-ensureAgentSession order openAgentCard keeps.
-        hostAgentInNextSlot();
-        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-        return;
-      }
-      if (t.kind === "agent") {
-        if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
-        // Not visible → the same seat, resuming the session that's up (the
-        // repaint openAgentCard's codingHosted branch ran).
-        hostAgentInNextSlot();
-        ensureAgentSession();
-        return;
-      }
+      if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -4441,16 +4470,9 @@ async function init(): Promise<void> {
       openApp: (app) => {
         const key = (app.slug || "").trim().toLowerCase();
         // The fixed GLYPHH tile is the + New Session front door, not an app.
-        if (key === "glyphh-home") {
-          // THE RETURN RULE (see agentVisibleOutsideWall): the agent is
-          // already up outside the wall — the click means "back to my agent".
-          if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
-          // Not visible → the SAME matrix as the wall's own tile: seat the
-          // agent in the next workspace slot first, then the fresh session.
-          hostAgentInNextSlot();
-          (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-          return;
-        }
+        // ONE path with the wall's own tiles (activateGlyphh) — the two
+        // entries can never disagree.
+        if (key === "glyphh-home") { activateGlyphh(); return; }
         // The Browser builtin IS the tabbed Browser card — a URL open adds a
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
@@ -8295,17 +8317,9 @@ async function init(): Promise<void> {
     openEchoSurface();
     echoCtl?.reset();
   };
-  /** "+ New session" / the fixed Glyphh tile: CLOSE EVERYTHING — every echo
-   *  card, every panel, any open layout (its memory saved by the reset) and
-   *  every rail slot — leaving a bare surface for the landing to mount into.
-   *  Unlike __wbEchoReset this does not re-open the wall: the caller is about
-   *  to navigate to the + New Session screen. */
-  (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession = () => {
-    echoCtl?.reset();
-    for (let i = rails.length - 1; i >= 0; i--) rails.splice(i, 1);
-    renderRails();
-    saveLayout();
-  };
+  // (__wbCloseAllForNewSession is gone with newSessionLanding — the ONE
+  // new-session path is newSessionInPlace via __glyphhNewSession, and the
+  // layout-clearing variant lives in activateGlyphh's leak-safe order.)
   // ⌘W (the menu's Close) closes the TOP PANEL first; only with nothing
   // open does it fall through to closing the window (the old behavior).
   // Esc no longer closes panels — it's real input to whatever is inside.

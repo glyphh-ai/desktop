@@ -69,11 +69,13 @@ void (async () => {
       document.head.appendChild(style);
       gotoSection("code");
       const SOLO_LABELS: Record<string, string> = {
-        preview: "Browser", coding: "Coding Agent", diff: "Diff", monaco: "Editor",
+        preview: "Browser", coding: "Glyphh", diff: "Diff", monaco: "Editor",
         files: "Files", plan: "Plan", terminal: "Terminal",
       };
       const kind = solo.slice(5);
-      document.title = `${SOLO_LABELS[kind] || kind} — Glyphh`;
+      const soloLabel = SOLO_LABELS[kind] || kind;
+      // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
+      document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
       const payload = {
         cols: 1, colWidths: [], rowHeights: [],
         cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],

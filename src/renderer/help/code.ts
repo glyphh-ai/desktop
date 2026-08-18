@@ -4841,61 +4841,11 @@ export function initCode(): void {
     gotoSection("agent");
   };
 
-  /** The RAIL's "+ New session" — the FULL reset: every panel closes, the
-   *  layout clears, and the new-session screen loads. */
-  const newSessionLanding = (): void => {
-    currentId = "";
-    // CLEAN SLATE: + New session wipes the remembered source, folder, and
-    // GitHub repo — the next session starts from this surface's default with
-    // no inherited workspace. (A LAYOUT-born session is the one override: it
-    // stamps its own folder/space on the chat and never routes through here.)
-    pendingSource = resolvedDefaultSource.kind === "local"
-      ? { kind: "local", path: "" }
-      : { ...resolvedDefaultSource };
-    void window.glyphh.setPreference?.(SOURCE_PREF, null);
-    pendingWorkdir = "";
-    sourceChip?.setSource(activeSource());
-    paintSourceDependents();
-    // DESKTOP: the machine's saved working folder resets too — the folder
-    // chip on a fresh landing must not carry the previous session's folder
-    // (empty = main falls back to the default/home).
-    if (!onWebTarget()) {
-      void (window as unknown as { wb?: { setCwd?: (dir: string) => Promise<unknown> } }).wb?.setCwd?.("");
-    }
-    // WEB: the boot-time default is stale the moment the desktop attaches or
-    // drops — re-resolve LIVE so a clean session lands on the machine when one
-    // is reachable now, and on cloud-new (no folder, no repo) when not.
-    if (onWebTarget()) {
-      void (async () => {
-        let attached = false;
-        try {
-          const st = await (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean }> } } }).glyphhSdk?.attach?.status?.();
-          attached = !!st?.attached;
-        } catch { /* unreachable → cloud */ }
-        const next: Source = attached ? { kind: "local", path: "" } : { kind: "cloud-new" };
-        resolvedDefaultSource = { ...next };
-        // Only apply while the slate is still clean (the user may have picked).
-        if (!current() && !pendingWorkdir) {
-          pendingSource = { ...next };
-          sourceChip?.setSource(activeSource());
-          paintSourceDependents();
-        }
-      })();
-    }
-    void saveStore();
-    syncSpaceAttrs();
-    // CLOSE EVERYTHING FIRST: every open card, panel and layout goes, then the
-    // landing mounts. (Ordering matters — a reset AFTER the section opens tore
-    // down the landing's own card and left the surface with no composer.)
-    (window as unknown as { __wbCloseAllForNewSession?: () => void }).__wbCloseAllForNewSession?.();
-    renderHistory();
-    renderThread();
-    void checkWorkdirGate();
-    // A DOCKED agent stays docked — only the in-workspace `rail` anchor full-screens the
-    // agent for a new session. Docked: re-assert the dock (the panel-close above can
-    // undo the collapsed-mode surgery), never yank it to a full-screen "new session" one-off.
-    if (anchorMode() !== "rail") applyAnchor(); else gotoSection("agent");
-  };
+  // The old newSessionLanding "full reset + landing screen" path is DELETED:
+  // newSessionInPlace (below, bound as __glyphhNewSession) is the ONE new-
+  // session behavior — every entry (the rail's +, Home, the agent header's +,
+  // and the workbench's glyphh tiles) calls the same function, so no second
+  // copy exists to drift.
   // A new session JUST LOADS THE AGENT in place — no separate "New Session"
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
