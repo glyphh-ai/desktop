@@ -11,7 +11,7 @@ import {
   renderDeck, renderSection, validateDeck, validateSlideSpec,
   layoutCatalog, themeCatalog, SLIDE_LAYOUTS, SLIDE_THEMES, resolveTheme, themeFromDesign,
 } from "@glyphh/sdk/slides";
-import { lockDeckSections, buildDeckDocument, slideSpans } from "../../src/main/gpoints";
+import { lockDeckSections, buildDeckDocument, slideSpans, normalizeDeckHtml } from "../../src/main/gpoints";
 
 const deck = async (specs: unknown[], opts = {}) =>
   renderDeck(specs as never, { resolveMedia: async () => null, ...opts });
@@ -103,6 +103,23 @@ describe("theme + design binding", () => {
   it("keeps the base theme when the design CSS has no known tokens", () => {
     const t = themeFromDesign("/* nothing */", SLIDE_THEMES.ocean!);
     expect(t).toBe(SLIDE_THEMES.ocean);
+  });
+});
+
+describe("the #stage scale transform is VALID (scale needs a unitless number)", () => {
+  it("the shell divides length-by-length so calc yields a number", () => {
+    const doc = buildDeckDocument("t", '<section class="slide on">x</section>');
+    // valid: calc(100vw / 1920px) → number; invalid legacy: calc(100vw / 1920)
+    expect(doc).toContain("calc(100vw / 1920px)");
+    expect(doc).toContain("calc(100vh / 1080px)");
+    expect(doc).not.toMatch(/calc\(100vw \/ 1920\)/);
+  });
+  it("normalizeDeckHtml heals a legacy deck and is idempotent", () => {
+    const legacy = "transform: translate(-50%, -50%) scale(min(calc(100vw / 1920), calc(100vh / 1080)));";
+    const fixed = normalizeDeckHtml(legacy);
+    expect(fixed).toContain("calc(100vw / 1920px)");
+    expect(fixed).toContain("calc(100vh / 1080px)");
+    expect(normalizeDeckHtml(fixed)).toBe(fixed); // idempotent
   });
 });
 

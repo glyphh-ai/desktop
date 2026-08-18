@@ -252,10 +252,41 @@ let mcScope: MktScope = "org";
 let mcScopePinned = false;
 
 const HANDLE_RE = /^[a-z0-9][a-z0-9-]*$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** One field in the settings form grammar (the Account panel's rows,
- *  verbatim): acct-field wrapper, short settings-label, guidance in the
- *  placeholder — the rare always-visible hint is a settings-hint line. */
+// ── Field validation (Apps → New grammar: `.invalid` + an inline
+//    settings-error line under the field; NEVER a banner, NEVER a request) ──
+//
+// The server's zod schemas hard-require website `.url()` and supportEmail
+// `.email()` — an unvalidated autosave PATCHing a half-typed value used to
+// bounce off them as a 400 "invalid request body" banner. Invalid values now
+// report inline and never cross the wire.
+
+const HANDLE_MSG = "Lowercase letters, numbers, dashes.";
+const WEBSITE_MSG = "Enter a full URL, like https://acme.com.";
+const EMAIL_MSG = "Enter an email address, like help@acme.com.";
+
+/** "" stays "" (blank hides it); a bare domain gains https://; anything that
+ *  still isn't an http(s) URL with a real hostname returns null (invalid). */
+function normalizeWebsite(v: string): string | null {
+  if (!v) return "";
+  const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withScheme);
+    if (!/^https?:$/.test(u.protocol) || !u.hostname.includes(".")) return null;
+    return withScheme;
+  } catch { return null; }
+}
+
+function handleError(v: string): string | null {
+  if (!v) return null; // required-ness reports on commit, not per keystroke
+  return HANDLE_RE.test(v) && v.length >= 2 && v.length <= 40 ? null : HANDLE_MSG;
+}
+
+/** One field in the settings form grammar (the Account panel's rows, in the
+ *  Apps → New form idiom): acct-field wrapper, short settings-label, guidance
+ *  in the placeholder, an inline settings-error line for validation — the
+ *  rare always-visible hint is a settings-hint line. */
 function mcFieldHtml(f: string, label: string, value: string, placeholder: string, opts: { hint?: string; wide?: boolean; textarea?: boolean } = {}): string {
   const control = opts.textarea
     ? `<textarea id="mc-${f}" class="settings-input mc-field" data-f="${f}" rows="3" placeholder="${escMkt(placeholder)}" spellcheck="true">${escMkt(value)}</textarea>`
@@ -264,6 +295,7 @@ function mcFieldHtml(f: string, label: string, value: string, placeholder: strin
     <div class="acct-field${opts.wide ? " acct-field-wide" : ""}">
       <label class="settings-label" for="mc-${f}">${label}</label>
       ${control}
+      <span class="settings-error hidden" data-err="${f}"></span>
       ${opts.hint ? `<span class="settings-hint" style="margin:0;">${opts.hint}</span>` : ""}
     </div>`;
 }
@@ -443,6 +475,11 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   let saveTimer = 0;
   let statusTimer = 0;
   let busy = false; // one write at a time — creation must never double-fire
+  // Repaint guard: paint() bumps this, and a commit measured against a stale
+  // epoch aborts. A debounce timer armed before a re-render (a write's
+  // onChange → the caller reloads → fresh innerHTML) would otherwise fire
+  // against the freshly-POPULATED fields and autosave programmatic values.
+  let paintEpoch = 0;
 
   /** The one place a write reports itself (no Save button anywhere). */
   const setStatus = (msg: string, kind: "success" | "error" | "" = ""): void => {
@@ -457,19 +494,49 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   const val = (f: string): string =>
     host.querySelector<HTMLInputElement | HTMLTextAreaElement>(`.mc-field[data-f="${f}"]`)?.value.trim() ?? "";
 
-  /** Autosave an existing profile — only the fields that actually changed. */
+  /** Inline field validation, Apps → New style: `.invalid` on the control,
+   *  the message on the settings-error line under it. Field errors NEVER
+   *  reach the note banner and NEVER produce a request. */
+  const setFieldError = (f: string, msg: string | null): void => {
+    const input = host.querySelector<HTMLElement>(`.mc-field[data-f="${f}"]`);
+    const err = host.querySelector<HTMLElement>(`[data-err="${f}"]`);
+    input?.classList.toggle("invalid", !!msg);
+    if (err) {
+      err.textContent = msg || "";
+      err.classList.toggle("hidden", !msg);
+    }
+  };
+
+  /** Validate website + supportEmail off the live inputs. Returns the wire
+   *  values (website normalized to https://…) or null when anything is
+   *  invalid — in which case the errors are already showing inline. */
+  const validateOptionalFields = (): { website: string; supportEmail: string } | null => {
+    const website = normalizeWebsite(val("website"));
+    setFieldError("website", website === null ? WEBSITE_MSG : null);
+    const supportEmail = val("supportEmail");
+    const emailOk = !supportEmail || EMAIL_RE.test(supportEmail);
+    setFieldError("supportEmail", emailOk ? null : EMAIL_MSG);
+    if (website === null || !emailOk) return null;
+    return { website, supportEmail };
+  };
+
+  /** Autosave an existing profile — only the fields that actually changed,
+   *  and only when every field is valid (an invalid field holds the save and
+   *  reports inline — the server's zod is never reachable from typing). */
   const saveExisting = async (dev: MktDeveloper): Promise<void> => {
     if (busy) return;
     const displayName = val("displayName");
     // An empty name is an unfinished edit, not a save — say so and wait.
     if (!displayName) { setStatus("Needs a display name", "error"); return; }
+    const optional = validateOptionalFields();
+    if (!optional) { setStatus(""); return; } // inline errors are the report
     const patch: MktDeveloperPatch = {};
     if (displayName !== dev.displayName) patch.displayName = displayName;
-    for (const f of ["bio", "website", "supportEmail"] as const) {
-      const v = val(f);
-      if (v !== (dev[f] || "")) patch[f] = v || null;
-    }
-    if (!Object.keys(patch).length) { setStatus(""); return; }
+    const bio = val("bio");
+    if (bio !== (dev.bio || "")) patch.bio = bio || null;
+    if (optional.website !== (dev.website || "")) patch.website = optional.website || null;
+    if (optional.supportEmail !== (dev.supportEmail || "")) patch.supportEmail = optional.supportEmail || null;
+    if (!Object.keys(patch).length) { setStatus(""); return; } // never PATCH {}
     busy = true;
     setStatus("Saving…");
     const res = await mkt.devUpdate(dev.handle, patch);
@@ -490,9 +557,12 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
     const handle = val("handle");
     const displayName = val("displayName");
     if (!handle && !displayName) { setStatus(""); return; } // untouched form
+    setFieldError("handle", handleError(handle));
+    const optional = validateOptionalFields();
     if (!handle) { setStatus("Needs a handle", "error"); return; }
-    if (!HANDLE_RE.test(handle)) { setStatus("Handle must be kebab-case (a–z, 0–9, dashes)", "error"); return; }
+    if (handleError(handle)) return; // inline error is showing on the field
     if (!displayName) { setStatus("Needs a display name", "error"); return; }
+    if (!optional) return; // inline errors are showing — hold the create
     busy = true;
     setStatus("Creating…");
     const res = await mkt.devCreate({
@@ -500,8 +570,8 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
       handle,
       displayName,
       ...(val("bio") ? { bio: val("bio") } : {}),
-      ...(val("website") ? { website: val("website") } : {}),
-      ...(val("supportEmail") ? { supportEmail: val("supportEmail") } : {}),
+      ...(optional.website ? { website: optional.website } : {}),
+      ...(optional.supportEmail ? { supportEmail: optional.supportEmail } : {}),
     });
     busy = false;
     if (!res.ok) { setStatus("Not created", "error"); note(host, res.error); return; }
@@ -510,6 +580,7 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   };
 
   const wire = (dev: MktDeveloper | null): void => {
+    const epoch = paintEpoch;
     host.querySelectorAll<HTMLButtonElement>(".mc-tabs .app-detail-tab").forEach((b) => {
       b.addEventListener("click", () => {
         const scope: MktScope = b.dataset.scope === "personal" ? "personal" : "org";
@@ -523,6 +594,7 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
 
     const commit = (): void => {
       window.clearTimeout(saveTimer);
+      if (epoch !== paintEpoch) return; // stale — the pane was re-rendered
       void (dev ? saveExisting(dev) : create());
     };
     host.querySelectorAll<HTMLElement>(".mc-field").forEach((f) => {
@@ -536,6 +608,11 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
         });
       }
       f.addEventListener("change", commit);
+    });
+    // The permanent handle validates LIVE — the kebab-case rule shows the
+    // moment a keystroke breaks it, not after a failed commit.
+    host.querySelector<HTMLInputElement>(`.mc-field[data-f="handle"]`)?.addEventListener("input", (e) => {
+      setFieldError("handle", handleError((e.currentTarget as HTMLInputElement).value.trim()));
     });
 
     if (!dev) return;

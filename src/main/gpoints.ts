@@ -64,7 +64,7 @@ export function buildDeckDocument(title: string, slidesHtml: string): string {
   /* The stage is a FIXED 1920×1080 canvas; CSS alone scales it to fit
      whatever surface renders it (panel, popout, fullscreen). */
   #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
-           transform: translate(-50%, -50%) scale(min(calc(100vw / 1920), calc(100vh / 1080))); }
+           transform: translate(-50%, -50%) scale(min(calc(100vw / 1920px), calc(100vh / 1080px))); }
   .slide { position: absolute; inset: 0; opacity: 0; visibility: hidden;
            transition: opacity .5s ease; overflow: hidden; }
   .slide.on { opacity: 1; visibility: visible; }
@@ -334,13 +334,25 @@ export async function listGPoints(): Promise<GPointMeta[]> {
   return (await getClient().officeSlides.list()).map(metaOf);
 }
 
+/** Heal shell defects in a stored deck at render/save time. Older decks baked a
+ *  CSS-only #stage scale that divided a length by a UNITLESS number
+ *  (`scale(min(calc(100vw / 1920), …))`) — invalid per spec (scale() needs a
+ *  number), so Chromium drops the transform and the deck renders unscaled and
+ *  off-centre. Dividing length-by-length (`/ 1920px`) yields a number. Idempotent. */
+export function normalizeDeckHtml(html: string): string {
+  return html
+    .replace(/calc\(\s*100vw\s*\/\s*1920\s*\)/g, "calc(100vw / 1920px)")
+    .replace(/calc\(\s*100vh\s*\/\s*1080\s*\)/g, "calc(100vh / 1080px)");
+}
+
 export async function readGPoint(name: unknown): Promise<string> {
-  return (await getClient().officeSlides.get(gpointFileName(name))).html;
+  return normalizeDeckHtml((await getClient().officeSlides.get(gpointFileName(name))).html);
 }
 
 export async function writeGPoint(name: unknown, html: string): Promise<{ file: string; path: string; slides: number }> {
-  // Every save passes the STRUCTURE LOCK — agent or import, no exceptions.
-  const meta = await getClient().officeSlides.put(gpointFileName(name), lockDeckSections(html));
+  // Every save passes the STRUCTURE LOCK — agent or import, no exceptions — and
+  // heals any legacy shell defect so re-saved decks are permanently fixed.
+  const meta = await getClient().officeSlides.put(gpointFileName(name), normalizeDeckHtml(lockDeckSections(html)));
   return { file: meta.file, path: `the org's Slides library (${meta.file})`, slides: meta.slides };
 }
 

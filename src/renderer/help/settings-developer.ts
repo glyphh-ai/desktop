@@ -1,28 +1,37 @@
 /**
  * settings-developer.ts — Settings → Developer: the M7 developer program.
  *
- * Four areas on one page:
- *   • Signup — the org/personal developer profile, REUSING the marketplace
- *     console's machinery (renderDeveloperProfiles) rather than duplicating it.
- *   • Legal & consent — the developer agreement (a hosted legal page opened
- *     in the app's own browser panel), the current version, and the consent
- *     checkbox that commits on check (program enrollment) like any other
- *     settings toggle. Enrolled orgs see their accepted version/date and a
- *     re-consent prompt when the server reports a newer version.
- *   • Program status — none / enrolled / suspended, in plain language.
- *   • Payout — Stripe Connect onboarding state (connect / verifying / ready /
- *     restricted, all read off the program state; readiness is webhook-driven
- *     server-side so a re-read is the whole refresh), the manual account-id
- *     fallback + threshold, the earnings totals, and the payout history.
- *     Connect/Resume are genuine actions (like "Change avatar…"), and the
- *     hosted onboarding opens in the app's own browser panel — the same
- *     in-app hand-off as the developer agreement, never an external browser.
+ * TWO TABS on the app's real tab strip (app-detail-tabs), matching the Usage
+ * page's look (dash-card stat grid + lib-table rows) and the Apps → New form
+ * grammar (settings-label/input/hint, inline `.invalid` + settings-error
+ * validation — never a top banner for field validation):
+ *
+ *   • Developer — the org/personal PROFILE form at the very top (REUSING the
+ *     marketplace console's renderDeveloperProfiles), then EARNINGS as
+ *     usage-style stat cards (Gross / Net / Unpaid / Paid out) with the payout
+ *     history table below them, then the PAYOUT CONNECTION block: Stripe
+ *     Connect onboarding state (connect / verifying / ready / restricted, all
+ *     read off the program state; readiness is webhook-driven server-side so a
+ *     re-read is the whole refresh), the manual account-id fallback and the
+ *     payout threshold. Connect/Resume open the hosted onboarding in the app's
+ *     own browser panel — never an external browser.
+ *   • Developer Agreement — the legal/consent area alone: the hosted agreement
+ *     (opened in the app's own browser panel), the current version, the
+ *     consent checkbox that commits on check (program enrollment) like any
+ *     other settings toggle, and the program status chip. Enrolled orgs see
+ *     their accepted version/date and a re-consent prompt when the server
+ *     reports a newer version.
  *
  * The program is HANDLE-scoped (contract DeveloperProgram): a PROFILE holds
  * enrollment/consent/payout, so the panel resolves the caller's profile first
  * (org over personal — the publisher gate's profile for org apps). mktProgram
  * still resolves null when the SDK bundle in front of us predates the surface
  * — this panel then renders an honest "coming online" state.
+ *
+ * The #dev-program-error banner is reserved for GENUINE action failures (a
+ * load that couldn't reach the server, a real commit the server refused).
+ * Field validation reports inline on the field and never sends the request —
+ * the server's "invalid request body" must never be reachable from typing.
  */
 
 import {
@@ -37,7 +46,8 @@ import { openUrlInWorkbench } from "./code.js";
 const AGREEMENT_URL = "https://glyphh.ai/developer-agreement";
 
 /** The panel's one error surface — the shared marketplace notice banner
- *  (icon + message on a quiet surface), never a raw red text row. */
+ *  (icon + message on a quiet surface). GENUINE action failures only; field
+ *  validation reports inline on the field instead. */
 function showError(msg: string): void {
   const el = document.getElementById("dev-program-error");
   if (!el) return;
@@ -57,10 +67,30 @@ function chip(id: string, msg: string, kind: "success" | "error" | "" = ""): voi
   if (kind === "success") chipTimers.set(id, window.setTimeout(() => { el.textContent = ""; }, 2500));
 }
 
+/** One field-level inline error (Apps → New grammar): `.invalid` on the input,
+ *  the message in the settings-error line right under it. */
+function fieldError(input: HTMLInputElement, errEl: HTMLElement | null, msg: string | null): void {
+  input.classList.toggle("invalid", !!msg);
+  if (!errEl) return;
+  errEl.textContent = msg || "";
+  errEl.classList.toggle("hidden", !msg);
+}
+
 // Stale-load guard — the panel refetches on every show and after every write.
 let loadEpoch = 0;
 
 export function initDeveloperPanel(): void {
+  // The two-tab strip — the same app-detail-tabs idiom the app editors use.
+  const panes: Record<string, string> = { main: "dev-tab-main", agreement: "dev-tab-agreement" };
+  document.querySelectorAll<HTMLButtonElement>("#dev-tabs .app-detail-tab").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#dev-tabs .app-detail-tab").forEach((t) => t.classList.toggle("active", t === b));
+      for (const [tab, paneId] of Object.entries(panes)) {
+        document.getElementById(paneId)?.classList.toggle("hidden", tab !== b.dataset.devtab);
+      }
+    });
+  });
+
   // The agreement is a hosted legal page but it never leaves the app: the
   // same in-app hand-off the billing pages use (a workbench browser panel on
   // desktop, a tab on web) — the settings modal closes so the panel is seen.
@@ -70,8 +100,8 @@ export function initDeveloperPanel(): void {
     openHostedPage("Developer agreement", AGREEMENT_URL, openUrlInWorkbench);
   });
 
-  // Payout-heading refresh: readiness flips server-side (Stripe's webhook), so
-  // "check again" is just a fresh program read — the same full-panel reload
+  // Earnings-heading refresh: readiness flips server-side (Stripe's webhook),
+  // so "check again" is just a fresh program read — the same full-panel reload
   // every write already does. The spin stops when the newest load lands.
   document.getElementById("dev-payout-refresh")?.addEventListener("click", () => {
     document.getElementById("dev-payout-refresh")?.classList.add("spinning");
@@ -83,7 +113,8 @@ export async function loadDeveloperPanel(): Promise<void> {
   const epoch = ++loadEpoch;
   document.getElementById("dev-program-error")?.classList.add("hidden");
 
-  // Signup — the shared M2 profile section (create/edit, avatar, view page).
+  // Profile — the shared M2 section (create/edit, avatar, view page), at the
+  // very top of the Developer tab.
   const profilesHost = document.getElementById("dev-profiles-host");
   if (profilesHost) {
     void renderDeveloperProfiles(profilesHost, {
@@ -113,52 +144,52 @@ export async function loadDeveloperPanel(): Promise<void> {
 
   renderStatus(state, failed, handle);
   renderLegal(state, failed, handle);
-  await renderPayout(state, failed, epoch, handle);
+  await renderMoney(state, failed, epoch, handle);
   document.getElementById("dev-payout-refresh")?.classList.remove("spinning");
 }
 
-// ── Program status ────────────────────────────────────────────────────────
+// ── Program status (Developer Agreement tab) ──────────────────────────────
 
 function renderStatus(state: MktProgramState | null, failed: boolean, handle: string | null): void {
-  const chip = document.getElementById("dev-status-chip");
+  const chipEl = document.getElementById("dev-status-chip");
   const explain = document.getElementById("dev-status-explain");
-  if (!chip || !explain) return;
+  if (!chipEl || !explain) return;
   if (failed) {
-    chip.className = "mkt-review-chip";
-    chip.textContent = "Unknown";
+    chipEl.className = "mkt-review-chip";
+    chipEl.textContent = "Unknown";
     explain.textContent = "Couldn't load your program status — see the error above.";
     return;
   }
   if (!handle) {
-    chip.className = "mkt-review-chip";
-    chip.textContent = "Not enrolled";
-    explain.textContent = "You haven't joined the developer program yet. Create a developer profile below, then accept the developer agreement — listing on the marketplace is gated on both.";
+    chipEl.className = "mkt-review-chip";
+    chipEl.textContent = "Not enrolled";
+    explain.textContent = "You haven't joined the developer program yet. Create a developer profile on the Developer tab, then accept the developer agreement above — listing on the marketplace is gated on both.";
     return;
   }
   if (!state) {
-    chip.className = "mkt-review-chip";
-    chip.textContent = "Coming online";
-    explain.textContent = "The developer program is rolling out. Your profile below is live today; enrollment, standing, and payouts light up here the moment the program surface ships.";
+    chipEl.className = "mkt-review-chip";
+    chipEl.textContent = "Coming online";
+    explain.textContent = "The developer program is rolling out. Your profile is live today; enrollment, standing, and payouts light up here the moment the program surface ships.";
     return;
   }
   if (state.status === "enrolled") {
-    chip.className = "mkt-review-chip approved";
-    chip.textContent = "Enrolled";
+    chipEl.className = "mkt-review-chip approved";
+    chipEl.textContent = "Enrolled";
     explain.textContent = state.agreement.current
       ? "You're in the developer program — publishing to the marketplace is open to you."
-      : "You're enrolled, but the developer agreement has been updated — re-accept it below to keep publishing.";
+      : "You're enrolled, but the developer agreement has been updated — re-accept it above to keep publishing.";
   } else if (state.status === "suspended") {
-    chip.className = "mkt-review-chip rejected";
-    chip.textContent = "Suspended";
+    chipEl.className = "mkt-review-chip rejected";
+    chipEl.textContent = "Suspended";
     explain.textContent = "Your membership is suspended — listings are paused and payouts held. Contact support to resolve it.";
   } else {
-    chip.className = "mkt-review-chip";
-    chip.textContent = "Not enrolled";
-    explain.textContent = "You haven't joined the developer program yet. Accept the developer agreement below — listing on the marketplace is gated on it.";
+    chipEl.className = "mkt-review-chip";
+    chipEl.textContent = "Not enrolled";
+    explain.textContent = "You haven't joined the developer program yet. Accept the developer agreement above — listing on the marketplace is gated on it.";
   }
 }
 
-// ── Legal & consent ───────────────────────────────────────────────────────
+// ── Developer Agreement (consent) ─────────────────────────────────────────
 
 function renderLegal(state: MktProgramState | null, failed: boolean, handle: string | null): void {
   const body = document.getElementById("dev-legal-body");
@@ -168,7 +199,7 @@ function renderLegal(state: MktProgramState | null, failed: boolean, handle: str
     return;
   }
   if (!handle) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">Create a developer profile above first — enrollment records consent for a specific profile.</p>`;
+    body.innerHTML = `<p class="settings-hint" style="margin:0;">Create a developer profile on the Developer tab first — enrollment records consent for a specific profile.</p>`;
     return;
   }
   if (!state) {
@@ -182,6 +213,13 @@ function renderLegal(state: MktProgramState | null, failed: boolean, handle: str
     body.innerHTML = `
       <div class="mkt-side-row"><span>Accepted version</span><b>${escMkt(acceptedVersion || "—")}</b></div>
       <div class="mkt-side-row"><span>Accepted on</span><b>${escMkt(mktDate(acceptedAt))}</b></div>`;
+    return;
+  }
+  // The server must name a current version before consent can be recorded
+  // against it — enrolling with an empty version is exactly the malformed
+  // request the server's schema rejects, so it never leaves the client.
+  if (!currentVersion) {
+    body.innerHTML = `<p class="settings-hint" style="margin:0;">The current agreement version hasn't been published yet — consent opens here once it is.</p>`;
     return;
   }
 
@@ -217,28 +255,39 @@ function renderLegal(state: MktProgramState | null, failed: boolean, handle: str
   });
 }
 
-// ── Payout ────────────────────────────────────────────────────────────────
+// ── Earnings (usage-style stat cards + payout history table) ──────────────
 
-function earningsHtml(e: MktEarningsPage): string {
-  const t = e.totals;
+function earningsCardsHtml(e: MktEarningsPage | null): string {
+  const t = e?.totals ?? null;
+  const v = (micro: number | undefined): string => (t && micro !== undefined ? mktCreditsFromMicro(micro) : "—");
+  const paidMicro = t ? t.netCreditsMicro - t.unpaidNetCreditsMicro : undefined;
   return `
-    <h4 class="acct-row-head" style="margin-top:16px;">Earnings</h4>
     <div class="dash-grid">
-      <div class="dash-card"><div class="dash-card-label">Gross</div><div class="dash-card-value">${mktCreditsFromMicro(t.grossCreditsMicro)}</div><div class="dash-card-sub">earned credits</div></div>
-      <div class="dash-card"><div class="dash-card-label">Net</div><div class="dash-card-value">${mktCreditsFromMicro(t.netCreditsMicro)}</div><div class="dash-card-sub">after the store cut</div></div>
-      <div class="dash-card"><div class="dash-card-label">Unpaid</div><div class="dash-card-value">${mktCreditsFromMicro(t.unpaidNetCreditsMicro)}</div><div class="dash-card-sub">awaiting payout</div></div>
+      <div class="dash-card"><div class="dash-card-label">Gross</div><div class="dash-card-value">${v(t?.grossCreditsMicro)}</div><div class="dash-card-sub">earned credits</div></div>
+      <div class="dash-card"><div class="dash-card-label">Net</div><div class="dash-card-value">${v(t?.netCreditsMicro)}</div><div class="dash-card-sub">after the store cut</div></div>
+      <div class="dash-card"><div class="dash-card-label">Unpaid</div><div class="dash-card-value">${v(t?.unpaidNetCreditsMicro)}</div><div class="dash-card-sub">awaiting payout</div></div>
+      <div class="dash-card"><div class="dash-card-label">Paid out</div><div class="dash-card-value">${v(paidMicro)}</div><div class="dash-card-sub">already paid</div></div>
     </div>`;
 }
 
-function payoutsHtml(payouts: MktPayout[]): string {
-  if (!payouts.length) return "";
-  const rows = payouts.slice(0, 10).map((p) => `
-    <div class="mkt-side-row">
-      <span>${escMkt(mktDate(p.createdAt))}</span>
-      <b>${mktCreditsFromMicro(p.amountCreditsMicro)} credits — ${escMkt(p.status)}${p.status === "failed" && p.error ? ` (${escMkt(p.error)})` : ""}</b>
-    </div>`).join("");
-  return `<h4 class="acct-row-head" style="margin-top:16px;">Payouts</h4>${rows}`;
+function payoutsTableHtml(payouts: MktPayout[] | null): string {
+  if (!payouts?.length) {
+    return `<p class="settings-hint" style="margin:10px 0 0;">No payouts yet — unpaid net credits sweep monthly once they clear your threshold.</p>`;
+  }
+  const rows = payouts.slice(0, 12).map((p) => `
+    <tr>
+      <td>${escMkt(mktDate(p.createdAt))}</td>
+      <td>${mktCreditsFromMicro(p.amountCreditsMicro)} credits</td>
+      <td>${escMkt(p.status)}${p.status === "failed" && p.error ? ` — ${escMkt(p.error)}` : ""}</td>
+    </tr>`).join("");
+  return `
+    <table class="lib-table dev-payouts" style="margin-top:12px;">
+      <thead><tr><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
+
+// ── Payout connection ─────────────────────────────────────────────────────
 
 /** The Stripe Connect state row — chip + plain-language line + (when there is
  *  something to do) ONE genuine action, seated like "Change avatar…". The
@@ -249,7 +298,7 @@ function payoutConnectionHtml(p: MktProgramState["payout"]): string {
   const masked = p.stripeConnectAccountId ? `<b>${escMkt(p.stripeConnectAccountId)}</b>` : "";
   let chipCls = "mkt-review-chip"; let chipText = ""; let explain = ""; let action = "";
   if (!p.connected) {
-    explain = "No Stripe account connected yet — connect one to receive payouts. Stripe collects your details on their hosted page; they never touch Glyphh.";
+    explain = "No Stripe account connected yet — connect one to receive payouts.";
     action = `<button id="dev-stripe-onboard" class="action-btn primary" type="button">Connect with Stripe</button>`;
   } else if (p.payoutStatus === "ready") {
     chipCls += " approved"; chipText = "Ready";
@@ -273,57 +322,71 @@ function payoutConnectionHtml(p: MktProgramState["payout"]): string {
     </div>`;
 }
 
-async function renderPayout(state: MktProgramState | null, failed: boolean, epoch: number, handle: string | null): Promise<void> {
-  const body = document.getElementById("dev-payout-body");
-  if (!body) return;
+/** Earnings + payout connection — the Developer tab's money sections. The
+ *  config itself rides on the program state; only the ledger is a fetch. */
+async function renderMoney(state: MktProgramState | null, failed: boolean, epoch: number, handle: string | null): Promise<void> {
+  const earningsBody = document.getElementById("dev-earnings-body");
+  const payoutBody = document.getElementById("dev-payout-body");
+  if (!earningsBody || !payoutBody) return;
+  const hint = (msg: string): string => `<p class="settings-hint" style="margin:0;">${msg}</p>`;
   if (failed) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">Payout configuration is unavailable right now.</p>`;
+    earningsBody.innerHTML = hint("Earnings are unavailable right now.");
+    payoutBody.innerHTML = hint("Payout configuration is unavailable right now.");
     return;
   }
   if (!handle || !state) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">${handle ? "Payout configuration comes online with the program surface." : "Payout details unlock once you have a profile and are enrolled."}</p>`;
+    const msg = handle
+      ? "This comes online with the program surface."
+      : "This unlocks once you have a profile and are enrolled.";
+    earningsBody.innerHTML = hint(msg);
+    payoutBody.innerHTML = hint(msg);
     return;
   }
   if (state.status === "none") {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">Payout details unlock once you're enrolled.</p>`;
+    earningsBody.innerHTML = hint("Earnings unlock once you're enrolled — accept the developer agreement on the Developer Agreement tab.");
+    payoutBody.innerHTML = hint("Payout details unlock once you're enrolled.");
     return;
   }
 
-  // The config itself rides on the program state; only the ledger is a fetch.
-  body.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  earningsBody.innerHTML = `<div class="crud-empty">Loading…</div>`;
   let earnings: MktEarningsPage | null = null;
   let payouts: MktPayout[] | null = null;
   try { [earnings, payouts] = await Promise.all([mktProgram.earnings(handle), mktProgram.payouts(handle)]); }
   catch (err) {
     if (epoch !== loadEpoch) return;
-    body.innerHTML = mktNoticeHtml(mktErrorText(err));
+    earningsBody.innerHTML = mktNoticeHtml(mktErrorText(err));
     return;
   }
   if (epoch !== loadEpoch) return;
 
-  body.innerHTML = `
+  // Earnings: the Usage page's stat-card grid, history rows right below.
+  earningsBody.innerHTML = `${earningsCardsHtml(earnings)}${payoutsTableHtml(payouts)}`;
+
+  // Payout connection: the Stripe state row over the two config fields —
+  // Apps → New field grammar, inline validation, autosave (no Save button).
+  payoutBody.innerHTML = `
     ${payoutConnectionHtml(state.payout)}
     <div class="acct-row">
       <div class="acct-field acct-field-wide">
         <label class="settings-label" for="dev-payout-account">Stripe Connect account ID</label>
         <input id="dev-payout-account" type="text" class="settings-input" placeholder="acct_… — blank disconnects" spellcheck="false" autocomplete="off" value="${escMkt(state.payout.stripeConnectAccountId || "")}" />
+        <span id="dev-payout-account-err" class="settings-error hidden"></span>
         <span class="settings-hint" style="margin:0;">The fallback if you already have a Connect account — onboarding above fills this for you.</span>
       </div>
       <div class="acct-field">
         <label class="settings-label" for="dev-payout-threshold">Payout threshold</label>
         <input id="dev-payout-threshold" type="number" min="1" step="1" class="settings-input" placeholder="1000" value="${state.payout.thresholdCredits}" />
+        <span id="dev-payout-threshold-err" class="settings-error hidden"></span>
         <span class="settings-hint" style="margin:0;">Unpaid net credits held until this balance (program default 1000).</span>
       </div>
-    </div>
-    ${earnings ? earningsHtml(earnings) : ""}
-    ${payouts ? payoutsHtml(payouts) : ""}`;
+    </div>`;
 
   // Connect / Resume / Fix — one genuine action, not a form button: it asks
   // the server for a FRESH Account Link (single-use, so every click re-mints)
   // and opens it through the exact hand-off the developer agreement uses —
   // close the settings modal, then the app's own browser panel. Never an
   // external browser. The webhook flips readiness; refresh re-reads it.
-  const onboardBtn = body.querySelector<HTMLButtonElement>("#dev-stripe-onboard");
+  const onboardBtn = payoutBody.querySelector<HTMLButtonElement>("#dev-stripe-onboard");
   onboardBtn?.addEventListener("click", async () => {
     onboardBtn.disabled = true;
     chip("dev-payout-status", "Contacting Stripe…");
@@ -343,26 +406,42 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
   });
 
   // No Save button — the fields commit themselves (debounced while typing,
-  // at once on blur), only sending what changed, reporting on the Payout
+  // at once on blur), only sending what changed, reporting on the Earnings
   // heading's chip. Contract field names: stripeConnectAccountId (null
-  // disconnects), payoutThresholdCredits (omitted = unchanged).
+  // disconnects), payoutThresholdCredits (omitted = unchanged). An INVALID
+  // field reports inline and never crosses the wire — the server's zod must
+  // be unreachable from typing.
+  const accountEl = payoutBody.querySelector<HTMLInputElement>("#dev-payout-account")!;
+  const thresholdEl = payoutBody.querySelector<HTMLInputElement>("#dev-payout-threshold")!;
+  const accountErr = payoutBody.querySelector<HTMLElement>("#dev-payout-account-err");
+  const thresholdErr = payoutBody.querySelector<HTMLElement>("#dev-payout-threshold-err");
+
+  // Blank disconnects; unchanged never re-sends (the field shows the MASKED
+  // id — re-sending it untouched would overwrite the real account with the
+  // mask); anything else must look like a raw Connect id.
+  const accountError = (v: string): string | null =>
+    v === "" || v === (state.payout.stripeConnectAccountId || "") || /^acct_[A-Za-z0-9]+$/.test(v)
+      ? null : "Stripe Connect IDs look like acct_1ABC… — paste the whole ID.";
+  const thresholdError = (v: string): string | null => {
+    if (v === "") return null; // unfinished edit — wait, don't nag
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 ? null : "Must be a whole number, at least 1.";
+  };
+
   let timer = 0;
   const save = async (): Promise<void> => {
-    const account = (body.querySelector("#dev-payout-account") as HTMLInputElement | null)?.value.trim() ?? "";
-    const thrRaw = (body.querySelector("#dev-payout-threshold") as HTMLInputElement | null)?.value.trim() ?? "";
+    const account = accountEl.value.trim();
+    const thrRaw = thresholdEl.value.trim();
+    const accErr = accountError(account);
+    const thrErr = thresholdError(thrRaw);
+    fieldError(accountEl, accountErr, accErr);
+    fieldError(thresholdEl, thresholdErr, thrErr);
+    if (accErr || thrErr) return; // inline only — nothing sent, no banner
     const thr = thrRaw === "" ? null : Number(thrRaw);
-    if (thr != null && (!Number.isInteger(thr) || thr < 1)) {
-      chip("dev-payout-status", "Threshold must be a whole number, at least 1", "error");
-      return;
-    }
     const accountChanged = account !== (state.payout.stripeConnectAccountId || "");
     const thrChanged = thr != null && thr !== state.payout.thresholdCredits;
     if (!accountChanged && !thrChanged) { chip("dev-payout-status", ""); return; }
     chip("dev-payout-status", "Saving…");
-    // Only send what changed: the field shows the MASKED id ("acct_…1234"),
-    // so re-sending it untouched would overwrite the real account with the
-    // mask. An edited value is a raw acct_… (the manual fallback) or blank
-    // (null disconnects) — those are the only times the account crosses.
     const res = await mktProgram.setPayout(handle, {
       ...(accountChanged ? { stripeConnectAccountId: account || null } : {}),
       ...(thrChanged ? { payoutThresholdCredits: thr! } : {}),
@@ -376,12 +455,13 @@ async function renderPayout(state: MktProgramState | null, failed: boolean, epoc
     // at 'pending' until the webhook confirms) — repaint off the fresh read.
     if (accountChanged) void loadDeveloperPanel();
   };
-  for (const id of ["dev-payout-account", "dev-payout-threshold"]) {
-    const el = body.querySelector<HTMLElement>(`#${id}`);
-    el?.addEventListener("input", () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => { void save(); }, 700);
-    });
-    el?.addEventListener("change", () => { window.clearTimeout(timer); void save(); });
-  }
+  // The account id commits on blur ONLY — a debounce mid-paste would ship a
+  // half-typed id (valid-looking prefixes exist). It still validates live.
+  accountEl.addEventListener("input", () => fieldError(accountEl, accountErr, accountError(accountEl.value.trim())));
+  accountEl.addEventListener("change", () => { window.clearTimeout(timer); void save(); });
+  thresholdEl.addEventListener("input", () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => { void save(); }, 700);
+  });
+  thresholdEl.addEventListener("change", () => { window.clearTimeout(timer); void save(); });
 }
