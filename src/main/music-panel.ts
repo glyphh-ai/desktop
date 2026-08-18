@@ -41,6 +41,12 @@ export function registerMusicPanelIpc(): void {
       return { ok: true, song };
     } catch (err) { return { ok: false, error: errText(err) }; }
   });
+  ipcMain.handle("music-song-regenerate", async (_e, id: unknown, input: unknown) => {
+    try {
+      const r = await getClient().music.regenerateSong(String(id), (input ?? {}) as { model?: string; seconds?: number });
+      return { ok: true, song: r.song, job: r.job };
+    } catch (err) { return { ok: false, error: errText(err) }; }
+  });
   ipcMain.handle("music-song-delete", async (_e, id: unknown) => {
     try { await getClient().music.deleteSong(String(id)); return { ok: true }; }
     catch (err) { return { ok: false, error: errText(err) }; }

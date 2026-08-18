@@ -866,16 +866,6 @@ async function init(): Promise<void> {
     // `.code-agent` and, with no coding slot to re-home it, it vanishes (the bug —
     // opening a panel wiped the agent). Give it a seat FIRST (leftmost) so the new
     // panel lands to its right and the agent stays on screen.
-    const anchor = document.querySelector<HTMLElement>(".code-root")?.dataset.anchor;
-    const docked = anchor === "left" || anchor === "right";
-    // Only add a seat if there is NO agent seat AT ALL — checking the SAME
-    // `isAgentSeat` the loop below skips (coding OR the dashboard/home section),
-    // not just a coding slot. Otherwise a dashboard-hosted agent already has a
-    // seat being skipped and this would add a SECOND one → an empty blank column.
-    const hasAgentSeat = rails.some((r) => r.slots.some(isAgentSeat));
-    if (!docked && slot.view !== "section" && slot.view !== "coding" && !hasAgentSeat) {
-      rails.unshift({ id: nextRailId++, slots: [makeSlot("coding")] });
-    }
     for (const rail of rails) {
       // Never auto-stack under the agent seat: a rail holding it keeps its
       // column, so the first new item opens BESIDE the agent — one slot to its
@@ -1269,10 +1259,17 @@ async function init(): Promise<void> {
   function parkAgent(): void {
     const agent = document.querySelector<HTMLElement>(".code-agent");
     const aside = document.getElementById("code-workbench");
-    if (agent && aside && agent.parentElement !== aside.parentElement) {
+    // LEAVE AN ECHO-HOSTED AGENT ALONE. renderRails wipes only `#code-wb-rails`;
+    // an agent living in an Echo card (`.echo-card-body`, a DIFFERENT container)
+    // survives that wipe untouched, so parking it here just STEALS it from its
+    // card and orphans it — which read as the agent vanishing / getting "docked"
+    // when a panel opened. Only park a RAIL-hosted agent (whose slot really is
+    // about to be rebuilt); renderCodingIntoSlot re-homes that one after.
+    const inEchoCard = !!agent?.closest(".echo-card-body");
+    if (agent && aside && !inEchoCard && agent.parentElement !== aside.parentElement) {
       aside.parentElement!.insertBefore(agent, aside);
+      document.querySelector(".code-root")?.classList.remove("agent-hosted");
     }
-    document.querySelector(".code-root")?.classList.remove("agent-hosted");
   }
 
   /** Return the live #code-thread to its home in .code-agent (before any

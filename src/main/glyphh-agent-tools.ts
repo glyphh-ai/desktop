@@ -1305,30 +1305,16 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "regenerate_song",
-    doc: "regenerate_song(id, model?) — compose the song's prompt + band + instruments + lyrics into one brief, run the metered music model, and create a CHILD version carrying the new take (lineage — the original stays). Reports credits charged.",
+    doc: "regenerate_song(id, model?, seconds?) — SERVER-SIDE regenerate: composes the song's prompt + band + instruments + lyrics, creates the CHILD version immediately (title auto-numbered 'Base - NN'), runs the metered music model, attaches the take on success. Reports credits.",
     action: (a) => ({ kind: "network", title: `Regenerate song ${String(a.id ?? "")}` }),
     run: async (a) => {
-      const music = getClient().music;
-      const song = await music.song(String(a.id ?? ""));
-      const artists = await music.artists();
-      const names = song.artistIds.map((id) => artists.find((x) => x.id === id)?.name).filter(Boolean).join(", ");
-      const brief = [
-        song.prompt.trim(),
-        song.bandType ? `Band: ${song.bandType}.` : "",
-        names ? `Vocalists: ${names}.` : "",
-        song.instruments.length ? `Instruments: ${song.instruments.map((i) => `${i.instrument}${i.tweak ? ` (${i.tweak})` : ""}`).join(", ")}.` : "",
-        song.lyrics.trim() ? `Lyrics:\n${song.lyrics.trim()}` : "",
-      ].filter(Boolean).join("\n");
-      if (!brief) return "ERROR: the song has no prompt or lyrics to regenerate from — update_song first";
-      const started = await getClient().media.generate({ model: a.model ? String(a.model) : (song.model || "elevenlabs::music-v1"), prompt: brief, title: song.title });
-      const job = await getClient().media.waitForJob(started.job.id);
-      if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged)`;
-      const child = await music.createSong({
-        title: song.title, lyrics: song.lyrics, prompt: song.prompt,
-        bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
-        visuals: song.visuals, audioAssetId: job.assetId, parentId: song.id, model: job.model,
+      const started = await getClient().music.regenerateSong(String(a.id ?? ""), {
+        ...(a.model ? { model: String(a.model) } : {}),
+        ...(a.seconds !== undefined ? { seconds: Number(a.seconds) } : {}),
       });
-      return `regenerated — child song ${child.id}, ${job.creditsCharged.toFixed(2)} credits charged. open_song("${child.id}") opens the editor.`;
+      const job = await getClient().media.waitForJob(started.job.id);
+      if (job.status === "failed") return `ERROR: generation failed — ${job.error ?? "unknown"} (nothing was charged; child ${started.song.id} has no take)`;
+      return `regenerated — child song ${started.song.id} ("${started.song.title}"), ${job.creditsCharged.toFixed(2)} credits charged. open_song("${started.song.id}") opens the editor.`;
     },
   },
   {

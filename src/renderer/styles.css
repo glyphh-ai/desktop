@@ -17880,3 +17880,15 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmus-i-look.busy { animation: pulse-dot 1.2s ease infinite; }
 .gmus-song-card .gmus-song-del { opacity: 0; flex: none; }
 .gmus-song-card:hover .gmus-song-del { opacity: 1; }
+
+/* Regenerate busy state — spinner in the button, both actions disabled. */
+.gmus-regen.busy { opacity: 0.75; pointer-events: none; }
+.gmus-regen:disabled, .gmus-savenew:disabled { opacity: 0.55; cursor: default; }
+.gmus-spin {
+  display: inline-block; width: 11px; height: 11px; margin-right: 7px;
+  border: 2px solid rgba(255, 255, 255, 0.35); border-top-color: currentColor;
+  border-radius: 50%; vertical-align: -2px;
+  animation: gmus-spin 0.8s linear infinite;
+}
+@keyframes gmus-spin { to { transform: rotate(360deg); } }
+.gmus-length { width: 104px; flex: none; }

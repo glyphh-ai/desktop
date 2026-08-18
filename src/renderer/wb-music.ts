@@ -37,6 +37,7 @@ const api = () => (window as unknown as { glyphh?: {
   musicSongs?: () => Promise<{ ok: boolean; songs: Song[]; error?: string }>;
   musicSongSave?: (id: string | null, input: unknown) => Promise<{ ok: boolean; song?: Song; error?: string }>;
   musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  musicSongRegenerate?: (id: string, input?: unknown) => Promise<{ ok: boolean; song?: Song; job?: { id: string }; error?: string }>;
   mediaUploadBytes?: (input: unknown) => Promise<{ ok: boolean; id?: string; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: Array<{ id: string; kind: string; title: string; mime: string; status: string }>; error?: string }>;
@@ -68,6 +69,18 @@ function encodeWav(channels: Float32Array[], sampleRate: number): ArrayBuffer {
     }
   }
   return buf;
+}
+
+/** "Dust Choir" → "Dust Choir - 01", next sibling → "- 02", … The base is
+ *  the title with any existing "- NN" stripped; numbering scans all songs. */
+function versionTitle(rawTitle: string, all: Array<{ title: string }>): string {
+  const base = rawTitle.replace(/\s*-\s*\d{2,}$/, "").trim() || "Untitled";
+  let max = 0;
+  for (const s2 of all) {
+    const m = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*-\\s*(\\d{2,})$`).exec(s2.title.trim());
+    if (m) max = Math.max(max, parseInt(m[1]!, 10));
+  }
+  return `${base} - ${String(max + 1).padStart(2, "0")}`;
 }
 
 // ── the panel ────────────────────────────────────────────────────────────────
@@ -160,6 +173,14 @@ export function initMusic(host: MusicHost): MusicViews {
         <div class="gdz-topbar">
           <button class="action-btn gmus-back">‹ Songs</button>
           <span class="gmus-savestate"></span>
+          <select class="gdz-select gmus-length" title="Song length">
+            <option value="">Auto length</option>
+            <option value="60">1:00</option>
+            <option value="120">2:00</option>
+            <option value="180">3:00</option>
+            <option value="240">4:00</option>
+            <option value="300">5:00</option>
+          </select>
           <button class="action-btn gmus-savenew" title="Encode the edited audio as a NEW take">Save as New</button>
           <button class="action-btn primary gmus-regen" title="Re-run the music model with the edited prompt + lyrics — creates a child version">Regenerate</button>
         </div>
@@ -372,7 +393,7 @@ export function initMusic(host: MusicHost): MusicViews {
         g.clearRect(0, 0, wrapW, h);
         g.fillStyle = "rgba(140,59,242,0.35)";
         g.font = "12px sans-serif";
-        g.fillText(song.audioAssetId ? "decoding…" : "no take yet — Regenerate makes one", 14, h / 2);
+        g.fillText(song.audioAssetId ? "decoding…" : "no take yet — generating attaches it here when it lands (refresh)", 14, h / 2);
         return;
       }
       const barW = Math.max(2, 4 * zoom);
@@ -513,64 +534,86 @@ export function initMusic(host: MusicHost): MusicViews {
     pane.querySelector(".gmus-zoom-in")?.addEventListener("click", () => { zoom = Math.min(8, zoom * 1.4); });
     pane.querySelector(".gmus-zoom-out")?.addEventListener("click", () => { zoom = Math.max(0.4, zoom / 1.4); });
 
+    const regenBtn = pane.querySelector<HTMLButtonElement>(".gmus-regen")!;
+    const saveNewBtn = pane.querySelector<HTMLButtonElement>(".gmus-savenew")!;
+    const setBusy = (busy: boolean, label?: string): void => {
+      regenBtn.disabled = busy;
+      saveNewBtn.disabled = busy;
+      regenBtn.classList.toggle("busy", busy);
+      regenBtn.innerHTML = busy ? `<span class="gmus-spin"></span>${label ?? "Generating…"}` : "Regenerate";
+    };
+
     // Save as New — encode the edited take, land it, version the song.
     pane.querySelector(".gmus-savenew")?.addEventListener("click", () => {
       void (async () => {
         if (!buffer) { void host.confirm({ title: "Nothing to save", body: "There is no audio take loaded.", confirmLabel: "OK" }); return; }
+        setBusy(true, "Saving…");
         saveState.textContent = "encoding…";
+        const all = await api().musicSongs?.();
+        const vTitle = versionTitle(titleIn.value.trim() || "Untitled", all?.ok ? all.songs : []);
         const wav = encodeWav(channelsOf(buffer), buffer.sampleRate);
         const up = await api().mediaUploadBytes?.({
-          title: `${titleIn.value.trim() || "Untitled"} (edit)`,
+          title: vTitle,
           kind: "audio", mime: "audio/wav", bytes: wav,
           meta: { songId: song.id, edited: true },
         });
-        if (!up?.ok || !up.id) { saveState.textContent = `⚠ ${up?.error ?? "upload failed"}`; return; }
+        if (!up?.ok || !up.id) { saveState.textContent = `⚠ ${up?.error ?? "upload failed"}`; setBusy(false); return; }
         const created = await api().musicSongSave?.(null, {
-          title: `${titleIn.value.trim() || "Untitled"} (edit)`,
+          title: vTitle,
           lyrics: lyricsIn.value, prompt: promptIn.value,
           bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
           audioAssetId: up.id, parentId: song.id, model: song.model,
         });
+        setBusy(false);
         if (created?.ok && created.song) { stopPlayback(); state.songId = created.song.id; refresh(); }
       })();
     });
 
-    // Regenerate — the metered path; the edited prompt + lyrics steer it.
+    // Regenerate — SERVER-SIDE: the child version exists immediately and the
+    // take attaches on job success even if this panel dies. We jump to the
+    // child and poll the job for the credits line.
     pane.querySelector(".gmus-regen")?.addEventListener("click", () => {
       void (async () => {
-        const brief = [
-          promptIn.value.trim(),
-          bandTypeIn.value.trim() ? `Band: ${bandTypeIn.value.trim()}.` : "",
-          bandNames ? `Vocalists: ${bandNames}.` : "",
-          song.instruments.length ? `Instruments: ${song.instruments.map((i) => `${i.instrument}${i.tweak ? ` (${i.tweak})` : ""}`).join(", ")}.` : "",
-          lyricsIn.value.trim() ? `Lyrics:\n${lyricsIn.value.trim()}` : "",
-        ].filter(Boolean).join("\n");
-        if (!brief) { void host.confirm({ title: "Nothing to regenerate from", body: "Give it a prompt (and lyrics) first.", confirmLabel: "OK" }); return; }
+        if (!promptIn.value.trim() && !lyricsIn.value.trim()) {
+          void host.confirm({ title: "Nothing to regenerate from", body: "Give it a prompt (and lyrics) first.", confirmLabel: "OK" });
+          return;
+        }
+        setBusy(true);
         saveState.textContent = "generating…";
-        const started = await api().mediaGenerate?.({ model: song.model || "elevenlabs::music-v1", prompt: brief, title: titleIn.value.trim() || "Untitled" });
-        if (!started?.ok || !started.job) { saveState.textContent = `⚠ ${started?.error ?? "couldn't start"}`; return; }
+        // Flush any pending doc edits first so the brief reads them.
+        await api().musicSongSave?.(song.id, {
+          title: titleIn.value.trim() || "Untitled",
+          lyrics: lyricsIn.value,
+          prompt: promptIn.value,
+        });
+        const secsRaw = pane.querySelector<HTMLSelectElement>(".gmus-length")?.value;
+        const started = await api().musicSongRegenerate?.(song.id, secsRaw ? { seconds: Number(secsRaw) } : {});
+        if (!started?.ok || !started.song || !started.job) {
+          saveState.textContent = `⚠ ${started?.error ?? "couldn't start"}`;
+          setBusy(false);
+          return;
+        }
+        const childId = started.song.id;
+        const jobId = started.job.id;
         for (;;) {
-          await new Promise((r) => setTimeout(r, 2500));
-          const poll = await api().mediaJob?.(started.job.id);
-          if (!poll?.ok || !poll.job) { saveState.textContent = "⚠ lost the job"; return; }
-          if (poll.job.status === "failed") { saveState.textContent = `⚠ ${poll.job.error ?? "generation failed"}`; return; }
+          await new Promise((r2) => setTimeout(r2, 2500));
+          const poll = await api().mediaJob?.(jobId);
+          if (!poll?.ok || !poll.job) { setBusy(false); break; }
+          if (poll.job.status === "failed") { saveState.textContent = `⚠ ${poll.job.error ?? "generation failed"}`; setBusy(false); break; }
           if (poll.job.status === "succeeded") {
-            const created = await api().musicSongSave?.(null, {
-              title: titleIn.value.trim() || "Untitled",
-              lyrics: lyricsIn.value, prompt: promptIn.value,
-              bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
-              audioAssetId: poll.job.assetId, parentId: song.id, model: poll.job.model,
-            });
             saveState.textContent = `done — ${poll.job.creditsCharged.toFixed(2)} credits`;
-            if (created?.ok && created.song) { stopPlayback(); state.songId = created.song.id; refresh(); }
+            setBusy(false);
+            stopPlayback();
+            state.songId = childId;
+            refresh();
             return;
           }
-          if (!pane.isConnected) return;
+          if (!pane.isConnected) return; // the server finishes + attaches regardless
         }
       })();
     });
 
-    // load + decode the current take
+    // load + decode    // load + decode the current take
     raf = requestAnimationFrame(tick);
     if (song.audioAssetId) {
       const u = await api().mediaUrl?.(song.audioAssetId);

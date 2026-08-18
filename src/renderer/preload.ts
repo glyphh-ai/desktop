@@ -999,6 +999,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   musicSongs: () => ipcRenderer.invoke("music-songs") as Promise<{ ok: boolean; songs: unknown[]; error?: string }>,
   musicSongSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-song-save", id, input) as Promise<{ ok: boolean; song?: unknown; error?: string }>,
   musicSongDelete: (id: string) => ipcRenderer.invoke("music-song-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicSongRegenerate: (id: string, input?: unknown) => ipcRenderer.invoke("music-song-regenerate", id, input) as Promise<{ ok: boolean; song?: unknown; job?: unknown; error?: string }>,
   mediaUploadBytes: (input: unknown) => ipcRenderer.invoke("media-upload-bytes", input) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
   gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: "slides" | "docs"; file: string; title: string; sizeBytes: number; folderId: string | null; updatedAt: string }>; error?: string }>,
   gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
