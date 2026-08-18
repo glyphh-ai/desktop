@@ -19,6 +19,9 @@
       ],
       "@glyphh/sdk/machine": [
         "./node_modules/@glyphh/sdk/dist/machine.d.ts"
+      ],
+      "@glyphh/sdk/slides": [
+        "./node_modules/@glyphh/sdk/dist/slides.d.ts"
       ]
     },
     "declaration": true,

@@ -29,9 +29,12 @@ import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhAc
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openMediaPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
-import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell } from "../shared/sheets-engine";
+import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell, type ChartSpec, type CondFormat, type NamedRange, type DataValidation, type CellStyle } from "../shared/sheets-engine";
+import { randomUUID } from "node:crypto";
 import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
+import { renderDeck, renderSection, validateDeck, validateSlideSpec, layoutCatalog, themeCatalog, type SlideSpec, type RenderOptions } from "@glyphh/sdk/slides";
 import { gdocFileName as docsFileName } from "./office-docs";
+import { docThemeCss, docStyleFromDesign, writeDocStyle, DOC_THEMES } from "../shared/doc-styles";
 import { currentLoop, resolveRoles } from "./loop-selections";
 import { dispatchRelayMethod } from "./relay-client";
 import { getAccountInfo, AUTH_SERVER, getAuthToken, ensureFreshToken } from "./auth";
@@ -82,6 +85,37 @@ interface ToolDef {
 }
 
 const cap = (s: string, n = OUTPUT_CAP) => (s.length > n ? `${s.slice(0, n)}\n…(truncated, ${s.length} chars total)` : s);
+
+/** Resolve a media-library asset id to an inline data URI so a deck stays
+ *  self-contained. Images/avatars only; a miss or non-image drops to a themed
+ *  surface (the layout renders a placeholder rather than a broken link). */
+async function slideMediaDataUri(id: string): Promise<string | null> {
+  try {
+    const meta = await getClient().media.get(id).catch(() => null);
+    if (meta && !["image", "avatar"].includes(String(meta.kind))) return null;
+    const buf = await getClient().media.bytes(id);
+    const mime = meta?.mime || "image/png";
+    return `data:${mime};base64,${Buffer.from(buf).toString("base64")}`;
+  } catch { return null; }
+}
+
+/** Render options for the slides engine: the org media resolver, plus the org
+ *  design system overlaid on the chosen theme when a `design` name is given. */
+async function slideRenderOptions(theme?: unknown, design?: unknown): Promise<RenderOptions> {
+  const opts: RenderOptions = { resolveMedia: slideMediaDataUri };
+  if (theme != null && String(theme).trim()) opts.theme = String(theme).trim();
+  const d = design == null ? "" : String(design).trim();
+  if (d) opts.designCss = await getClient().designs.css(designFileName(d)).catch(() => undefined);
+  return opts;
+}
+
+/** Coerce a tool arg into a SlideSpec[] — accepts an array or a JSON string
+ *  (models sometimes stringify structured params). */
+function asSlideSpecs(v: unknown): SlideSpec[] | null {
+  let val = v;
+  if (typeof val === "string") { try { val = JSON.parse(val); } catch { return null; } }
+  return Array.isArray(val) ? (val as SlideSpec[]) : null;
+}
 
 /** Attachment content types by extension — the handful that matter for
  *  "email me the file"; anything else ships as octet-stream. */
@@ -734,28 +768,50 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "list_slide_layouts",
+    doc: "list_slide_layouts() — the controlled slide LAYOUTS you slot content into (title, bullets, two-column, image-left/right, quote, big-stat, cards, comparison, timeline, agenda, chart, code, full-bleed-image, team, closing, …). Each entry gives its required fields and a copyable sample. ALWAYS pick a layout + fill its fields rather than authoring HTML.",
+    action: () => ({ kind: "read", title: "List slide layouts" }),
+    run: async () => cap(JSON.stringify(layoutCatalog(), null, 1), READ_CAP),
+  },
+  {
+    name: "list_slide_themes",
+    doc: "list_slide_themes() — the deck THEMES (midnight, paper, mono, editorial, neon, corporate, warm, ocean). Pass one as create_slides(theme). Or pass a design-system name as create_slides(design) to match the org's brand + docs exactly (list_designs / read_design).",
+    action: () => ({ kind: "read", title: "List slide themes" }),
+    run: async () => cap(JSON.stringify(themeCatalog(), null, 1), READ_CAP),
+  },
+  {
     name: "create_slides",
-    doc: 'create_slides(name, title, slides_html) — create or overwrite a Glyphh Slides deck. Author ONLY the slide content: slides_html is a sequence of <section class="slide">…</section> blocks. THE STRUCTURE IS LOCKED: the tool owns the shell (1920×1080 stage, scaling, nav, progress), rewrites section tags (ids, on/hidden flags), scopes your <style> blocks to their own slide, strips scripts, and turns position:fixed into absolute — style INSIDE your slides freely, never the stage/body/other slides. Elements with class "frag" reveal as build steps — same data-step value reveals together.',
+    doc: 'create_slides(name, title, slides, theme?, design?) — create or overwrite a Glyphh Slides deck by SLOTTING CONTENT INTO CONTROLLED LAYOUTS. `slides` is an array of typed specs, one per slide: [{layout, …fields}] (see list_slide_layouts for each layout\'s fields + samples). Pick a theme (list_slide_themes) or a design-system name to match the org brand. Reference media-library images by asset id (list_media). The tool renders professional, design-consistent HTML — you never write HTML/CSS. (Escape hatch: pass slides_html — raw <section class="slide"> blocks — only when no layout fits.)',
     action: (a) => ({
       kind: "edit",
       title: `Create deck "${String(a.name ?? "")}"`,
-      detail: `${String(a.slides_html ?? a.html ?? "").length} chars`,
+      detail: a.slides ? `${asSlideSpecs(a.slides)?.length ?? 0} slides` : `${String(a.slides_html ?? a.html ?? "").length} chars`,
     }),
     run: async (a) => {
-      const sections = String(a.slides_html ?? "");
-      if (!sections) return "ERROR: pass slides_html (the <section class=\"slide\"> blocks) — the tool supplies the shell";
-      if (/<html[\s>]/i.test(sections)) return "ERROR: slides_html must be slide SECTIONS only — the shell is the tool's, not yours";
-      const doc = buildDeckDocument(String(a.title ?? a.name ?? "Deck"), sections);
-      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) {
-        return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
+      const title = String(a.title ?? a.name ?? "Deck");
+      // Primary path: typed layout specs → the engine renders + themes them.
+      if (a.slides !== undefined || a.slides_html === undefined) {
+        const specs = asSlideSpecs(a.slides);
+        if (!specs) return "ERROR: `slides` must be an array of {layout, …} specs — list_slide_layouts shows the shapes";
+        const v = validateDeck(specs);
+        if (!v.ok) return `ERROR: ${v.errors.slice(0, 6).join("; ")}`;
+        const opts = await slideRenderOptions(a.theme, a.design);
+        const sections = await renderDeck(specs, opts);
+        const r = await writeGPoint(a.name, buildDeckDocument(title, sections));
+        return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel on every surface; open_slides("${r.file}") jumps straight to it`;
       }
+      // Escape hatch: raw slide sections.
+      const raw = String(a.slides_html ?? "");
+      if (/<html[\s>]/i.test(raw)) return "ERROR: slides_html must be slide SECTIONS only — the shell is the tool's, not yours";
+      const doc = buildDeckDocument(title, raw);
+      if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
       const r = await writeGPoint(a.name, doc);
-      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — it's in the org's Slides panel on every surface; open_slides("${r.file}") jumps straight to it`;
+      return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — open_slides("${r.file}") jumps to it`;
     },
   },
   {
     name: "update_slides",
-    doc: 'update_slides(name, …ops) — surgical deck edits, 1-BASED slide indexes. Ops (any combination, applied in this order): title="…" renames; replace_slide={index, html} swaps one <section class="slide"> block; insert_slide={index?, html} inserts BEFORE index (omit index to append); remove_slide=index deletes; hide_slide=index / unhide_slide=index toggle the presenter-skip flag. html values are single slide sections, same rules as create_slides.',
+    doc: 'update_slides(name, …ops) — surgical deck edits, 1-BASED slide indexes. Ops (any combination, applied in this order): title="…" renames; replace_slide={index, spec} swaps one slide (spec is a {layout, …} content spec — same as create_slides — or {html} for raw); insert_slide={index?, spec} inserts BEFORE index (omit index to append); remove_slide=index deletes; hide_slide=index / unhide_slide=index toggle the presenter-skip flag. theme?/design? re-theme a replaced/inserted slide to match the deck.',
     action: (a) => ({
       kind: "edit",
       title: `Update deck "${String(a.name ?? "")}"`,
@@ -765,19 +821,29 @@ const TOOLS: ToolDef[] = [
       let doc = await readGPoint(a.name);
       const before = slideSpans(doc).length;
       const idx = (v: unknown): number => Math.trunc(Number(v)) - 1;
-      const section = (v: unknown): string => {
-        const h = String((v as { html?: unknown } | null | undefined)?.html ?? "");
-        if (!/<section[^>]*class="[^"]*\bslide\b/i.test(h)) throw new Error('slide html must be a <section class="slide"> block');
-        return h;
+      const opts = await slideRenderOptions(a.theme, a.design);
+      // A slide op value is either {spec:{layout,…}} / a bare {layout,…}, or {html}.
+      const section = async (v: unknown): Promise<string> => {
+        const o = (v ?? {}) as Record<string, unknown>;
+        const raw = o.html ?? (o.spec as { html?: unknown } | undefined)?.html;
+        if (raw !== undefined) {
+          const h = String(raw ?? "");
+          if (!/<section[^>]*class="[^"]*\bslide\b/i.test(h)) throw new Error('raw slide html must be a <section class="slide"> block');
+          return h;
+        }
+        const spec = (o.spec ?? o) as SlideSpec;
+        const val = validateSlideSpec(spec);
+        if (!val.ok) throw new Error(val.errors[0] ?? "invalid slide spec");
+        return renderSection(spec, opts);
       };
       if (a.title !== undefined) doc = setDeckTitle(doc, String(a.title));
       if (a.replace_slide !== undefined) {
         const r = a.replace_slide as { index?: unknown };
-        doc = replaceSlideAt(doc, idx(r.index), section(a.replace_slide));
+        doc = replaceSlideAt(doc, idx(r.index), await section(a.replace_slide));
       }
       if (a.insert_slide !== undefined) {
         const ins = a.insert_slide as { index?: unknown };
-        doc = insertSlideAt(doc, ins.index === undefined ? Number.MAX_SAFE_INTEGER : idx(ins.index), section(a.insert_slide));
+        doc = insertSlideAt(doc, ins.index === undefined ? Number.MAX_SAFE_INTEGER : idx(ins.index), await section(a.insert_slide));
       }
       if (a.remove_slide !== undefined) {
         if (before <= 1) return "ERROR: a deck needs at least one slide — delete_slides removes the whole deck";
@@ -836,7 +902,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_docs",
-    doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Start from a template via list_doc_templates when one fits, filling the {{placeholders}} from what the user told you.",
+    doc: "create_docs(name, markdown) — create or overwrite a document. Markdown only; the first `# H1` is the document's title; h1-h3 headings become its table of contents. Rich blocks are supported: fenced callouts `:::note …\\n:::` (also tip/warning/info), two-up `:::columns …\\n+++\\n…\\n:::`, plus tables/lists/quotes/code. Style the paper with set_doc_style (theme or org design system); build structure with insert_doc_block. Start from list_doc_templates when one fits.",
     action: (a) => ({ kind: "edit", title: `Create document "${String(a.name ?? "")}"`, detail: `${String(a.markdown ?? "").length} chars` }),
     run: async (a) => {
       const mdErr = rejectDocHtml(String(a.markdown ?? ""));
@@ -903,6 +969,52 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "set_doc_style",
+    doc: `set_doc_style(name, theme?, design?) — style a document's paper. theme is one of ${Object.keys(DOC_THEMES).join(", ")} (fonts + accent). Or pass a design-system name to match the org brand (and its decks) exactly — list_designs / read_design. Applies instantly in the Docs panel.`,
+    action: (a) => ({ kind: "edit", title: `Style document "${String(a.name ?? "")}"`, detail: String(a.design ?? a.theme ?? "") }),
+    run: async (a) => {
+      const doc = await getClient().officeDocs.get(docsFileName(a.name)).catch(() => null);
+      if (!doc) return `ERROR: no document "${docsFileName(a.name)}"`;
+      let vars = "";
+      const design = a.design == null ? "" : String(a.design).trim();
+      if (design) {
+        const css = await getClient().designs.css(designFileName(design)).catch(() => "");
+        vars = docStyleFromDesign(css);
+        if (!vars) return `ERROR: couldn't read design "${design}"`;
+      } else {
+        vars = docThemeCss(a.theme ? String(a.theme) : undefined);
+      }
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), writeDocStyle(doc.markdown, vars));
+      return `styled ${meta.file} (${design ? `design ${design}` : `theme ${a.theme ?? "classic"}`})`;
+    },
+  },
+  {
+    name: "insert_doc_block",
+    doc: 'insert_doc_block(name, block, after_section?) — append a STRUCTURED block to a document (or after the named heading). block is one of: {type:"heading", level?, text}, {type:"paragraph", text}, {type:"bullets", items:[…]}, {type:"numbered", items:[…]}, {type:"table", headers:[…], rows:[[…]]}, {type:"callout", style?:"note|tip|warning|info", title?, text}, {type:"columns", left, right}, {type:"quote", text}, {type:"code", language?, code}, {type:"divider"}. Renders to markdown — the app owns the paper.',
+    action: (a) => ({ kind: "edit", title: `Add a block to "${String(a.name ?? "")}"`, detail: String((a.block as { type?: unknown })?.type ?? "") }),
+    run: async (a) => {
+      const doc = await getClient().officeDocs.get(docsFileName(a.name)).catch(() => null);
+      if (!doc) return `ERROR: no document "${docsFileName(a.name)}"`;
+      const md = renderDocBlock(a.block);
+      if (md.startsWith("ERROR")) return md;
+      let full = doc.markdown;
+      const after = a.after_section == null ? "" : String(a.after_section).trim();
+      if (after) {
+        // insert just before the NEXT heading after the named section (or append)
+        const re = new RegExp(`(^#{1,3}\\s+${after.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}[^\\n]*\\n)`, "im");
+        const m = re.exec(full);
+        if (m) {
+          const from = m.index + m[0].length;
+          const next = full.slice(from).search(/\n#{1,3}\s/);
+          const at = next < 0 ? full.length : from + next;
+          full = `${full.slice(0, at)}\n\n${md}\n${full.slice(at)}`;
+        } else full = `${full.trimEnd()}\n\n${md}\n`;
+      } else full = `${full.trimEnd()}\n\n${md}\n`;
+      const meta = await getClient().officeDocs.put(docsFileName(a.name), full);
+      return `added a ${String((a.block as { type?: unknown })?.type ?? "block")} to ${meta.file}`;
+    },
+  },
+  {
     name: "list_doc_templates",
     doc: "list_doc_templates() — the org's document templates (resume, bill of sale, …): slug, name, category, and the markdown with {{placeholders}} to fill",
     action: () => ({ kind: "read", title: "List document templates" }),
@@ -926,7 +1038,8 @@ const TOOLS: ToolDef[] = [
   },
   // ── Glyphh Office · SHEETS: JSON workbooks; the SHARED engine recalcs every
   //    write, so formula cells always land with fresh materialized values.
-  //    Refs read materialized values row-major — keep totals LAST. ──
+  //    Engine v3: dependency-ordered recalc (any order), cross-sheet refs,
+  //    named ranges, lookups + dates + text. ──
   {
     name: "list_sheets",
     doc: "list_sheets() — the org's workbooks: file, title, sheet + row counts",
@@ -952,7 +1065,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_sheets",
-    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=…"} for a formula. The engine: arithmetic, parens, A1 refs, "string" literals, comparisons (= <> < > <= >=), and SUM AVG COUNT MIN MAX (ranges like B2:B9 or mixed args), ROUND ABS CONCAT UPPER LOWER TRIM LEN LEFT RIGHT MID IF(cond, then, else). Values compute on save; refs read stored values row-major — put totals LAST. AI columns: set ai_prompt, materialize with fill_column.',
+    doc: 'create_sheets(name, title, columns, rows?) — create or overwrite a workbook. columns: ["Name", …] or [{name, type?: "text"|"number"|"date"|"currency", ai_prompt?}]; rows: array of cell arrays — a cell is a value, or {f: "=…"} for a formula. Engine v3 recalcs in DEPENDENCY ORDER (a formula may reference a cell defined later or on another sheet — no "totals last" rule; circular refs show #CIRC!). Supports: arithmetic + & (concat), parens, A1 refs & ranges (B2:B9), cross-sheet refs (Sheet2!A1), named ranges, "string" literals, comparisons; functions SUM AVG COUNT COUNTA MEDIAN PRODUCT SUMIF COUNTIF AVERAGEIF ROUND/UP/DOWN ABS SQRT POWER MOD IF IFERROR AND OR NOT CONCAT UPPER LOWER TRIM LEN LEFT RIGHT MID SUBSTITUTE TEXT REGEXMATCH/EXTRACT/REPLACE TODAY DATE YEAR MONTH DAY DATEDIF VLOOKUP HLOOKUP INDEX MATCH FILTER UNIQUE SORT. Charts: add_chart. Styling: set_cell_style / add_conditional_format. Named ranges: add_named_range. AI columns: set ai_prompt, materialize with fill_column.',
     action: (a) => ({ kind: "edit", title: `Create workbook "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const cols = (Array.isArray(a.columns) ? a.columns : []).map((c): SheetColumn =>
@@ -1052,6 +1165,180 @@ const TOOLS: ToolDef[] = [
       });
       const r = await saveWorkbook(a.name, s.title, wb);
       return `filled ${Math.min(values.length, sheet.rows.length)} values into "${sheet.columns[i]!.name}" (${r.file})`;
+    },
+  },
+  {
+    name: "add_chart",
+    doc: 'add_chart(name, chart, sheet?) — add a chart to a workbook. chart = {type: bar|line|area|pie|scatter|combo, title?, categories?: "A2:A13" (x labels), series: [{name?, values: "B2:B13", type?, color?}], stacked?, legend?}. The chart is stored on the sheet and rendered (SVG) in the panel + exports. Returns its id.',
+    action: (a) => ({ kind: "edit", title: `Add chart to "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const c = (a.chart ?? a) as Record<string, unknown>;
+      const rawSeries = Array.isArray(c.series) ? c.series : [];
+      if (!rawSeries.length) return 'ERROR: add_chart needs series: [{values:"B2:B13"}]';
+      const chart: ChartSpec = {
+        id: `chart_${randomUUID().slice(0, 8)}`,
+        type: (["bar", "line", "area", "pie", "scatter", "combo"].includes(String(c.type)) ? c.type : "bar") as ChartSpec["type"],
+        ...(c.title ? { title: String(c.title) } : {}),
+        ...(c.categories ? { categoriesRef: String(c.categories) } : {}),
+        series: rawSeries.map((r) => {
+          const o = (r ?? {}) as Record<string, unknown>;
+          return { valuesRef: String(o.values ?? o.valuesRef ?? ""), ...(o.name ? { name: String(o.name) } : {}), ...(o.type ? { type: o.type as ChartSpec["type"] } : {}), ...(o.color ? { color: String(o.color) } : {}) };
+        }).filter((x) => x.valuesRef),
+        ...(c.stacked ? { stacked: true } : {}),
+        ...(c.legend === false ? { legend: false } : {}),
+      };
+      if (!chart.series.length) return 'ERROR: each series needs a values range like "B2:B13"';
+      (sheet.charts ??= []).push(chart);
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${chart.type} chart ${chart.id} to ${r.file}`;
+    },
+  },
+  {
+    name: "update_chart",
+    doc: "update_chart(name, chart_id, patch, sheet?) — merge patch into a chart (same fields as add_chart), or pass remove:true to delete it.",
+    action: (a) => ({ kind: "edit", title: `Update chart in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet?.charts) return "ERROR: no charts on that sheet";
+      const id = String(a.chart_id ?? "");
+      const idx = sheet.charts.findIndex((c) => c.id === id);
+      if (idx < 0) return `ERROR: no chart "${id}" — ids: ${sheet.charts.map((c) => c.id).join(", ")}`;
+      if (a.remove) { sheet.charts.splice(idx, 1); await saveWorkbook(a.name, s.title, wb); return `removed chart ${id}`; }
+      const p = (a.patch ?? {}) as Partial<ChartSpec>;
+      sheet.charts[idx] = { ...sheet.charts[idx]!, ...p, id };
+      await saveWorkbook(a.name, s.title, wb);
+      return `updated chart ${id}`;
+    },
+  },
+  {
+    name: "add_conditional_format",
+    doc: 'add_conditional_format(name, range, kind, sheet?, …) — paint a range by rule. kind: "colorScale" (scale:{min,mid?,max} hex), "dataBar" (bar:{color}), "cellRule"/"textRule" (op: gt|lt|gte|lte|eq|neq|between|contains|startsWith|endsWith + value[,value2] + style:{fill,color,bold}), "iconSet" (iconSet: arrows|traffic|flags, thresholds:[…]).',
+    action: (a) => ({ kind: "edit", title: `Format ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const range = String(a.range ?? "");
+      if (!/^[A-Z]+\d+(:[A-Z]+\d+)?$/i.test(range)) return 'ERROR: range like "B2:B100"';
+      const rule = {
+        id: `cf_${randomUUID().slice(0, 8)}`, range,
+        kind: (["colorScale", "dataBar", "cellRule", "textRule", "iconSet"].includes(String(a.kind)) ? a.kind : "cellRule") as CondFormat["kind"],
+        ...(a.scale ? { scale: a.scale as CondFormat["scale"] } : {}),
+        ...(a.bar ? { bar: a.bar as CondFormat["bar"] } : {}),
+        ...(a.op ? { op: a.op as CondFormat["op"] } : {}),
+        ...(a.value !== undefined ? { value: a.value as string | number } : {}),
+        ...(a.value2 !== undefined ? { value2: a.value2 as string | number } : {}),
+        ...(a.style ? { style: a.style as CellStyle } : {}),
+        ...(a.iconSet ? { iconSet: a.iconSet as CondFormat["iconSet"] } : {}),
+        ...(Array.isArray(a.thresholds) ? { thresholds: a.thresholds as number[] } : {}),
+      };
+      (sheet.condFormats ??= []).push(rule);
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${rule.kind} on ${range} (${r.file})`;
+    },
+  },
+  {
+    name: "set_cell_style",
+    doc: 'set_cell_style(name, range, style, sheet?) — style a cell or range. style = {bold?, italic?, underline?, color?(hex text), fill?(hex bg), align?(left|center|right), numberFormat?("#,##0.00"|"0%"|"$#,##0"|"yyyy-mm-dd")}. Applies to every cell in the range.',
+    action: (a) => ({ kind: "edit", title: `Style ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const style = (a.style ?? {}) as CellStyle;
+      const range = String(a.range ?? "");
+      const [ca, cb] = range.split(":");
+      const ra = parseA1(ca ?? ""), rb = parseA1(cb ?? ca ?? "");
+      if (!ra || !rb) return 'ERROR: range like "B2" or "B2:D10"';
+      sheet.styles ??= {};
+      let n = 0;
+      for (let r = Math.min(ra.row, rb.row); r <= Math.max(ra.row, rb.row); r++)
+        for (let c = Math.min(ra.col, rb.col); c <= Math.max(ra.col, rb.col); c++) {
+          const key = `${colLetter(c)}${r + 1}`;
+          sheet.styles[key] = { ...sheet.styles[key], ...style };
+          n++;
+        }
+      const rr = await saveWorkbook(a.name, s.title, wb);
+      return `styled ${n} cell${n === 1 ? "" : "s"} in ${rr.file}`;
+    },
+  },
+  {
+    name: "add_named_range",
+    doc: 'add_named_range(name, range_name, range, sheet?) — define a workbook-scoped named range (e.g. range_name="revenue", range="B2:B13") usable in formulas: =SUM(revenue). range_name must be a bare identifier (letters/digits/_).',
+    action: (a) => ({ kind: "edit", title: `Name range "${String(a.range_name ?? "")}" in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const rn = String(a.range_name ?? "");
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(rn)) return "ERROR: range_name must be a bare identifier (no spaces/A1)";
+      const range = String(a.range ?? "");
+      if (!/^[A-Z]+\d+(:[A-Z]+\d+)?$/i.test(range)) return 'ERROR: range like "B2:B13"';
+      const nr: NamedRange = { name: rn, sheet: sheet.name, range: range.toUpperCase() };
+      wb.namedRanges = [...(wb.namedRanges ?? []).filter((x) => x.name.toLowerCase() !== rn.toLowerCase()), nr];
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `named ${rn} → ${sheet.name}!${nr.range} (${r.file})`;
+    },
+  },
+  {
+    name: "add_data_validation",
+    doc: 'add_data_validation(name, range, rule, sheet?) — constrain a range. rule = {kind:"list", source:["A","B"]} for a dropdown, {kind:"listRange", ref:"F1:F9"}, {kind:"number", op:"between", value, value2}, {kind:"date", …}, {kind:"textLen", op, value}, or {kind:"custom", formula:"=…"}.',
+    action: (a) => ({ kind: "edit", title: `Validate ${String(a.range ?? "")} in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const sheet = a.sheet ? wb.sheets.find((x) => x.name === String(a.sheet)) : wb.sheets[0];
+      if (!sheet) return "ERROR: no such worksheet";
+      const range = String(a.range ?? "");
+      const rule = a.rule as DataValidation["rule"] | undefined;
+      if (!range || !rule || typeof rule.kind !== "string") return "ERROR: pass range + rule{kind,…}";
+      (sheet.validations ??= []).push({ id: `dv_${randomUUID().slice(0, 8)}`, range, rule, ...(a.strict ? { strict: true } : {}) });
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `added ${rule.kind} validation on ${range} (${r.file})`;
+    },
+  },
+  {
+    name: "manage_sheets",
+    doc: 'manage_sheets(name, op) — multi-sheet tab ops. op is ONE of: {add:{name, columns?}}, {rename:{from, to}}, {delete:"Sheet2"}, {reorder:["Sheet1","Sheet2"]}, {freeze:{sheet?, rows?, cols?}}.',
+    action: (a) => ({ kind: "edit", title: `Manage sheets in "${String(a.name ?? "")}"` }),
+    run: async (a) => {
+      const s = await getClient().officeSheets.get(gsheetFileName(a.name));
+      const wb = s.workbook as Workbook;
+      const op = (a.op ?? a) as Record<string, unknown>;
+      if (op.add) {
+        const o = op.add as { name?: unknown; columns?: unknown };
+        const cols = Array.isArray(o.columns) ? o.columns.map((c) => ({ name: String(c) })) : [{ name: "A" }, { name: "B" }, { name: "C" }];
+        wb.sheets.push({ name: String(o.name ?? `Sheet${wb.sheets.length + 1}`), columns: cols, rows: [] });
+      } else if (op.rename) {
+        const o = op.rename as { from?: unknown; to?: unknown };
+        const sh = wb.sheets.find((x) => x.name === String(o.from));
+        if (!sh) return `ERROR: no sheet "${String(o.from)}"`;
+        sh.name = String(o.to);
+      } else if (op.delete) {
+        if (wb.sheets.length <= 1) return "ERROR: a workbook needs at least one sheet";
+        const i = wb.sheets.findIndex((x) => x.name === String(op.delete));
+        if (i < 0) return `ERROR: no sheet "${String(op.delete)}"`;
+        wb.sheets.splice(i, 1);
+      } else if (Array.isArray(op.reorder)) {
+        const order = op.reorder.map(String);
+        wb.sheets.sort((x, y) => order.indexOf(x.name) - order.indexOf(y.name));
+      } else if (op.freeze) {
+        const o = op.freeze as { sheet?: unknown; rows?: unknown; cols?: unknown };
+        const sh = o.sheet ? wb.sheets.find((x) => x.name === String(o.sheet)) : wb.sheets[0];
+        if (!sh) return "ERROR: no such worksheet";
+        sh.frozen = { ...(o.rows !== undefined ? { rows: Number(o.rows) } : {}), ...(o.cols !== undefined ? { cols: Number(o.cols) } : {}) };
+      } else return "ERROR: op must be one of add/rename/delete/reorder/freeze";
+      const r = await saveWorkbook(a.name, s.title, wb);
+      return `sheets: ${wb.sheets.map((x) => x.name).join(", ")} (${r.file})`;
     },
   },
   {
@@ -2208,6 +2495,35 @@ async function generateMedia(
 
 /** Docs are MARKDOWN ONLY — structural HTML is how an agent breaks the paper.
  *  One narrow allowance: <br>. Everything else bounces with the reason. */
+/** Render a structured doc block spec to markdown (the Docs write vocabulary). */
+function renderDocBlock(raw: unknown): string {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const type = String(b.type ?? "").toLowerCase();
+  const s = (v: unknown): string => String(v ?? "").trim();
+  const items = (v: unknown): string[] => (Array.isArray(v) ? v.map(s).filter(Boolean) : []);
+  switch (type) {
+    case "heading": return `${"#".repeat(Math.min(3, Math.max(1, Number(b.level ?? 2))))} ${s(b.text)}`;
+    case "paragraph": return s(b.text);
+    case "bullets": return items(b.items).map((x) => `- ${x}`).join("\n") || "ERROR: bullets needs items[]";
+    case "numbered": return items(b.items).map((x, i) => `${i + 1}. ${x}`).join("\n") || "ERROR: numbered needs items[]";
+    case "quote": return s(b.text).split("\n").map((l) => `> ${l}`).join("\n");
+    case "divider": return "---";
+    case "code": return `\`\`\`${s(b.language)}\n${s(b.code)}\n\`\`\``;
+    case "callout": { const st = ["note", "tip", "warning", "info"].includes(s(b.style)) ? s(b.style) : "note"; return `:::${st}${b.title ? ` ${s(b.title)}` : ""}\n${s(b.text)}\n:::`; }
+    case "columns": return `:::columns\n${s(b.left)}\n+++\n${s(b.right)}\n:::`;
+    case "table": {
+      const headers = items(b.headers);
+      const rows = Array.isArray(b.rows) ? b.rows : [];
+      if (!headers.length) return "ERROR: table needs headers[]";
+      const head = `| ${headers.join(" | ")} |`;
+      const sep = `| ${headers.map(() => "---").join(" | ")} |`;
+      const body = rows.map((r) => `| ${(Array.isArray(r) ? r : []).map(s).join(" | ")} |`).join("\n");
+      return `${head}\n${sep}\n${body}`;
+    }
+    default: return `ERROR: unknown block type "${type}" — heading|paragraph|bullets|numbered|table|callout|columns|quote|code|divider`;
+  }
+}
+
 function rejectDocHtml(md: string): string | null {
   const m = /<\s*(script|style|iframe|div|section|link|object|embed|html|body|img|span|table)\b/i.exec(md);
   return m ? `ERROR: documents are markdown ONLY — found <${m[1]}>. Use markdown headings/lists/tables; the app owns the paper.` : null;

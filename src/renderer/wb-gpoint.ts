@@ -92,6 +92,23 @@ function removeSlideAt(html: string, i: number): string {
   const s = slideSpans(html)[i];
   return s ? html.slice(0, s.start) + html.slice(s.end) : html;
 }
+/** Speaker notes per slide (data-notes on the section), decoded for display.
+ *  Parallel to slideSpans — index N is slide N. Empty string when a slide has
+ *  no notes. */
+function slideNotes(html: string): string[] {
+  const dec = (s: string): string => s
+    .replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  return slideSpans(html).map((sp) =>
+    dec(html.slice(sp.start, sp.openEnd).match(/\sdata-notes="([^"]*)"/i)?.[1] ?? ""));
+}
+/** The first slide's readable title (for the next-slide cue). */
+function slideTitle(html: string, i: number): string {
+  const sp = slideSpans(html)[i];
+  if (!sp) return "";
+  const inner = html.slice(sp.openEnd, sp.end);
+  const m = inner.match(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/i);
+  return (m?.[1] ?? "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+}
 function toggleHiddenAt(html: string, i: number): string {
   const s = slideSpans(html)[i];
   if (!s) return html;
@@ -237,9 +254,42 @@ export function initGPoint(host: GPointHost): GPointPanel {
     frame.srcdoc = startAt(html, startSlide);
     const hint = document.createElement("div");
     hint.className = "gpoint-presenter-hint";
-    hint.textContent = "Esc to exit";
+    hint.textContent = "Esc to exit · S for speaker notes";
     overlay.appendChild(frame);
     overlay.appendChild(hint);
+    // ── Speaker view: notes + timer + next-slide cue, toggled with S. Reads
+    // the deck's #sN hash (the shell writes it on every nav) to track position.
+    const notes = slideNotes(html);
+    const total = slideSpans(html).length;
+    const speaker = document.createElement("div");
+    speaker.className = "gpoint-speaker";
+    speaker.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:10;display:none;"
+      + "padding:22px 30px;background:rgba(10,10,14,.92);color:#f1f1f1;border-top:1px solid #2a2a31;"
+      + "font:400 20px/1.5 Inter,-apple-system,system-ui,sans-serif;backdrop-filter:blur(8px);max-height:34vh;overflow:auto";
+    speaker.innerHTML = '<div class="gp-sp-meta" style="display:flex;gap:22px;color:#8e8e9c;font-size:16px;margin-bottom:10px;letter-spacing:.02em"></div>'
+      + '<div class="gp-sp-notes" style="font-size:23px;line-height:1.5;white-space:pre-wrap"></div>';
+    overlay.appendChild(speaker);
+    const startedAt = Date.now();
+    let speakerOn = false;
+    const curSlide = (): number => {
+      try {
+        const m = frame.contentWindow?.location.hash.match(/^#s(\d+)/);
+        if (m) return Math.max(0, Math.min(total - 1, Number(m[1]) - 1));
+      } catch { /* srcdoc access — keep 0 */ }
+      return 0;
+    };
+    const paintSpeaker = (): void => {
+      if (!speakerOn) return;
+      const i = curSlide();
+      const secs = Math.floor((Date.now() - startedAt) / 1000);
+      const clock = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+      const nextTitle = i + 1 < total ? slideTitle(html, i + 1) : "";
+      const meta = speaker.querySelector(".gp-sp-meta");
+      const body = speaker.querySelector(".gp-sp-notes");
+      if (meta) meta.textContent = `Slide ${i + 1} / ${total}   ·   ${clock}${nextTitle ? `   ·   Next: ${nextTitle}` : "   ·   Last slide"}`;
+      if (body) body.textContent = notes[i] || "— no notes for this slide —";
+    };
+    const speakerTimer = window.setInterval(paintSpeaker, 500);
     document.body.appendChild(overlay);
     // In a POPPED-OUT window (data-gp-popout) presenting takes the whole
     // screen — real HTML fullscreen; leaving fullscreen IS the exit, so the
@@ -262,13 +312,20 @@ export function initGPoint(host: GPointHost): GPointPanel {
         document.removeEventListener("fullscreenchange", onFsChange);
         if (document.fullscreenElement) void document.exitFullscreen().catch(() => { /* window close mid-present */ });
       }
+      window.clearInterval(speakerTimer);
       overlay.remove();
       document.removeEventListener("keydown", onKey, true);
       restorePanelsForModal(panelsWereHidden);
       onExit(last);
     };
+    const toggleSpeaker = (): void => {
+      speakerOn = !speakerOn;
+      speaker.style.display = speakerOn ? "block" : "none";
+      if (speakerOn) paintSpeaker();
+    };
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); exit(); }
+      else if (e.key === "s" || e.key === "S") { e.preventDefault(); e.stopPropagation(); toggleSpeaker(); }
     };
     document.addEventListener("keydown", onKey, true);
     frame.addEventListener("load", () => {
@@ -277,6 +334,7 @@ export function initGPoint(host: GPointHost): GPointPanel {
       try {
         frame.contentWindow?.addEventListener("keydown", ((e: KeyboardEvent) => {
           if (e.key === "Escape") { e.preventDefault(); exit(); }
+          else if (e.key === "s" || e.key === "S") { e.preventDefault(); toggleSpeaker(); }
         }) as EventListener, true);
         frame.contentWindow?.focus();
       } catch { /* the parent's capture listener still exits */ }

@@ -56,9 +56,11 @@ export function buildDeckDocument(title: string, slidesHtml: string): string {
 <title>${esc}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; overflow: hidden; background: #0d0d0f; }
-  body { font-family: Inter, -apple-system, system-ui, sans-serif; color: #f1f1f1;
-         -webkit-font-smoothing: antialiased; }
+  /* Theme hooks: the layout engine (renderDeck) may emit a :root block that
+     overrides these --slide-* vars; the defaults reproduce the classic deck. */
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--slide-bg, #0d0d0f); }
+  body { font-family: var(--slide-font-body, Inter, -apple-system, system-ui, sans-serif);
+         color: var(--slide-fg, #f1f1f1); -webkit-font-smoothing: antialiased; }
   /* The stage is a FIXED 1920×1080 canvas; CSS alone scales it to fit
      whatever surface renders it (panel, popout, fullscreen). */
   #stage { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
@@ -70,7 +72,7 @@ export function buildDeckDocument(title: string, slidesHtml: string): string {
           transition: opacity .5s ease, transform .5s ease; }
   .slide.on .frag.show { opacity: 1; transform: none; }
   #prog { position: fixed; left: 0; bottom: 0; height: 3px; width: 0; z-index: 9;
-          background: #8c3bf2; transition: width .3s ease; }
+          background: var(--slide-accent, #8c3bf2); transition: width .3s ease; }
 </style></head>
 <body>
 <div id="stage">
@@ -254,7 +256,9 @@ export function lockDeckSections(html: string): string {
     const id = `s${idx + 1}`;
     const on = !span.hidden && !firstVisibleSeen;
     if (on) firstVisibleSeen = true;
-    const open = `<section class="slide${on ? " on" : ""}" id="${id}"${span.hidden ? ' data-gp-hidden="1"' : ""}>`;
+    // Speaker notes ride through the lock (everything else on the tag is rebuilt).
+    const notes = html.slice(span.start, span.openEnd).match(/\sdata-notes="([^"]*)"/i)?.[0] ?? "";
+    const open = `<section class="slide${on ? " on" : ""}" id="${id}"${span.hidden ? ' data-gp-hidden="1"' : ""}${notes}>`;
     const inner = html.slice(span.openEnd, span.end - "</section>".length);
     out += open + lockSectionContent(inner, id) + "</section>";
     cursor = span.end;

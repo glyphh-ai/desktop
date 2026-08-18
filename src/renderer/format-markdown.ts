@@ -45,6 +45,30 @@ export function formatMarkdown(text: string): string {
   while (i < lines.length) {
     const line = lines[i];
 
+    // Container directives (Glyphh Docs): `:::glyphh …` is inert metadata (the
+    // document's style directive); `:::callout|note|tip|warning|info [title]`
+    // and `:::columns` are structured blocks that render richly. Closed by a
+    // lone `:::`. Safe/additive for chat too (`:::` blocks are rare there).
+    const dir = line.match(/^:::(\w+)(?:\s+(.*))?$/);
+    if (dir) {
+      const kind = dir[1].toLowerCase();
+      if (kind === "glyphh") { i++; continue; }   // style directive → render nothing
+      const CALLOUTS: Record<string, string> = { callout: "note", note: "note", tip: "tip", warning: "warning", info: "info", important: "warning" };
+      i++;
+      const inner: string[] = [];
+      while (i < lines.length && lines[i].trim() !== ":::") { inner.push(lines[i]); i++; }
+      if (i < lines.length) i++;   // consume closing :::
+      if (kind === "columns") {
+        const cols = inner.join("\n").split(/^\+\+\+\s*$/m);
+        out.push(`<div class="yo-md-columns">${cols.map((c) => `<div class="yo-md-col">${formatMarkdown(c.trim())}</div>`).join("")}</div>`);
+      } else {
+        const cls = CALLOUTS[kind] ?? "note";
+        const title = dir[2] ? `<div class="yo-md-callout-t">${inline(esc(dir[2]))}</div>` : "";
+        out.push(`<div class="yo-md-callout yo-md-callout-${cls}">${title}<div class="yo-md-callout-b">${formatMarkdown(inner.join("\n"))}</div></div>`);
+      }
+      continue;
+    }
+
     // Fenced code block
     const fenceMatch = line.match(/^```(\w*)/);
     if (fenceMatch) {
