@@ -375,25 +375,34 @@ function renderAppsList() {
     ? panelApps.filter((a) => a.name.toLowerCase().includes(query) || (a.url || "").toLowerCase().includes(query))
     : panelApps;
 
-  appsList.className = "app-list-wrap";
+  // ONE grid for everything: #apps-grid is static in sections/apps.html and
+  // already holds the ten built-in work-panel cards. We only manage the org
+  // cards rendered after them — clear those (plus any pagination bar / empty
+  // message, which live as SIBLINGS of the grid; a bar inside the grid would
+  // be a stray grid cell) and leave the work panels alone.
+  const grid = document.getElementById("apps-grid")!;
+  grid.querySelectorAll(".app-card:not(.workpanel-card)").forEach((el) => el.remove());
+  appsList.querySelectorAll(".pagination-bar, .crud-empty").forEach((el) => el.remove());
 
-  if (panelApps.length === 0) {
-    appsList.innerHTML = `<div class="crud-empty">No apps yet. Click "+ New" to add one.</div>`;
-    return;
-  }
-  if (filtered.length === 0) {
-    appsList.innerHTML = `<div class="crud-empty">No apps matching "${query}"</div>`;
+  // The work panels join the search: hide the cards that don't match.
+  let panelsVisible = 0;
+  grid.querySelectorAll<HTMLElement>(".workpanel-card").forEach((card) => {
+    const name = (card.querySelector(".app-card-name")?.textContent || "").toLowerCase();
+    const hit = !query || name.includes(query);
+    card.classList.toggle("hidden", !hit);
+    if (hit) panelsVisible++;
+  });
+
+  if (query && filtered.length === 0) {
+    if (panelsVisible === 0) {
+      appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps matching "${query}"</div>`);
+    }
     return;
   }
 
   const { items: pageApps, state } = paginate(filtered, appsPage);
   appsPage = state.page;
-  appsList.innerHTML = "";
 
-  // Cards live in their own grid; the pagination bar is a sibling below it
-  // (appending the bar into the grid would make it a stray grid cell).
-  const grid = document.createElement("div");
-  grid.className = "app-grid";
   for (const app of pageApps) {
     const badges: string[] = [];
 
@@ -411,7 +420,6 @@ function renderAppsList() {
     card.addEventListener("dblclick", () => { void launchPanelApp(app); });
     grid.appendChild(card);
   }
-  appsList.appendChild(grid);
 
   if (state.totalPages > 1) {
     appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
@@ -420,10 +428,11 @@ function renderAppsList() {
 
 // ── Work panels (built-in) ───────────────────────────────
 // The ten built-in panels — Office (Slides/Docs/Sheets/Drive), Design,
-// Memory, and Media (Image/Video/Sounds/Band) — live on the Apps page as
-// fixed "work panel" cards (sections/apps.html #apps-workpanels). They are
-// not org apps: no editor, no delete, and the agent/IPC layers refuse their
-// slugs outright. A click opens the panel through its workbench bridge.
+// Memory, and Media (Image/Video/Sounds/Band) — sit FIRST in the one Apps
+// grid as fixed "work panel" cards (static markup in sections/apps.html
+// #apps-grid). They are not org apps: no editor, no delete, and the
+// agent/IPC layers refuse their slugs outright. A single click opens the
+// panel through its workbench bridge.
 const WORKPANEL_OPENERS: Record<string, () => void> = {
   gpoint: () => openWorkPanelInWorkbench("__wbOpenGPoint"),
   gdoc: () => openWorkPanelInWorkbench("__wbOpenGDoc"),
@@ -440,7 +449,7 @@ const WORKPANEL_OPENERS: Record<string, () => void> = {
 /** Wire the static work-panel cards (once, at boot). Opening leaves settings
  *  the same way "Open app" does — close the modal, then land in the workbench. */
 function initWorkPanels(): void {
-  document.querySelectorAll<HTMLElement>("#apps-workpanels .app-card[data-workpanel]").forEach((card) => {
+  document.querySelectorAll<HTMLElement>("#apps-grid .app-card[data-workpanel]").forEach((card) => {
     card.addEventListener("click", () => {
       const open = WORKPANEL_OPENERS[card.dataset.workpanel || ""];
       if (!open) return;

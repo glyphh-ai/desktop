@@ -7,14 +7,30 @@
           <h2 class="apps-page-heading">Apps</h2>
           <p class="section-desc">Web apps and native tools your agent opens as panels beside you.</p>
 
-          <!-- Work panels — the built-in panels (Office / Design / Memory /
-               Media) that used to live in the agent's view dropdown. They're
-               apps of type "work panel": fixed fixtures with no editor, no
-               kebab, no delete — clicking a card opens the panel beside the
-               agent (help/apps.ts wires the launch via the __wbOpen* bridges). -->
-          <div id="apps-workpanels">
-            <h3 class="apps-workpanels-heading">Work panels</h3>
-            <div class="app-grid">
+          <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
+          <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
+            <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
+            <button id="apps-upgrade-btn" class="action-btn primary">Upgrade to Advanced</button>
+          </div>
+
+          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 apps. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
+          <div id="apps-toolbar" class="crud-toolbar">
+            <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
+            <button id="apps-add-btn" class="action-btn primary">+ New</button>
+            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
+            <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
+          </div>
+
+          <!-- ONE grid for every app. The ten built-in work panels (Office /
+               Design / Memory / Media — fixed fixtures: no editor, no kebab,
+               no delete; a click opens the panel via the __wbOpen* bridges in
+               help/apps.ts) sit first as static cards; the org's apps are
+               rendered in after them by renderAppsList(). The pagination bar
+               is appended as a SIBLING of the grid (never a grid cell). -->
+          <div id="apps-list" class="app-list-wrap">
+            <div id="apps-grid" class="app-grid">
               <div class="app-card workpanel-card" data-workpanel="gpoint" title="Glyphh Slides — agent-built presentations">
                 <div class="app-card-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#8c3bf2;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg></div>
                 <div class="app-card-name">Slides</div>
@@ -67,24 +83,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
-          <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
-            <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
-            <button id="apps-upgrade-btn" class="action-btn primary">Upgrade to Advanced</button>
-          </div>
-
-          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 apps. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
-          <div id="apps-toolbar" class="crud-toolbar">
-            <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
-            <button id="apps-add-btn" class="action-btn primary">+ New</button>
-            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
-            <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
-          </div>
-
-          <div id="apps-list" class="crud-cards"></div>
 
           <!-- App add form -->
           <div id="app-add-form" class="crud-inline-form hidden">
