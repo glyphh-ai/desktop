@@ -1083,7 +1083,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_design",
-    doc: 'create_design(name, document) — create or overwrite an org design system. document: {version: 1, name, colors: {primary, background, text (required, hex), accent?, surface?, muted?, palette?: [{name, hex, role?}]}, fonts: {display: {family, fallback?, weights?, source?: "system"|"google"|"custom"}, body: {…}, mono?: {…}}, type?: {baseSize, scale, headingWeight, letterSpacing}, styles?: {radius, borderWidth, shadow: "none"|"soft"|"medium"|"bold", density, gradient: {from, to, angle}}, brand?: {tagline, tone: […]}, sources?: [{type: "image"|"site"|"prompt", ref, note?, extractedAt}]}. Record where every choice CAME from in sources.',
+    doc: 'create_design(name, document) — create or overwrite an org design system. document: {version: 1, name, colors: {primary, background, text (required, hex), accent?, surface?, muted?, palette?: [{name, hex, role?}]}, fonts: {display: {family, fallback?, weights?, source?: "system"|"google"|"custom"}, body: {…}, mono?: {…}}, type?: {baseSize, scale, headingWeight, letterSpacing}, styles?: {radius, borderWidth, shadow: "none"|"soft"|"medium"|"bold", density, gradient: {from, to, angle}}, brand?: {tagline, tone: […]}, sources?: [{type: "image"|"site"|"prompt", ref, note?, extractedAt}], imagery?: [{assetId, kind: "image"|"video", title, role?}] — ADOPT generated media into the system (generate_image an icon set, then reference the asset ids here with roles like "icon"/"hero"/"motion")}. Record where every choice CAME from in sources.',
     action: (a) => ({ kind: "edit", title: `Create design "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const doc = a.document as DesignSystem | undefined;

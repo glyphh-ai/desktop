@@ -1172,28 +1172,41 @@
                 <p class="section-desc">Talk to your agent — pick the model that transcribes your speech and the model + voice that speaks replies. Choices are saved to your account.</p>
                 <div id="voice-settings-error" class="settings-error hidden"></div>
 
-                <label class="settings-label" for="voice-mode">Capture mode</label>
-                <select id="voice-mode" class="settings-input">
-                  <option value="off">Off</option>
-                  <option value="push-to-talk">Push to talk</option>
-                  <option value="continuous">Continuous — hands-free</option>
-                </select>
+                <div class="settings-form">
+                  <label class="settings-label" for="voice-mode">Capture mode</label>
+                  <select id="voice-mode" class="settings-input">
+                    <option value="off">Off</option>
+                    <option value="push-to-talk">Push to talk</option>
+                    <option value="continuous">Continuous — hands-free</option>
+                  </select>
+                  <label class="settings-label" for="voice-device">Microphone</label>
+                  <select id="voice-device" class="settings-input"><option value="">System default</option></select>
+                </div>
 
                 <h3 class="settings-subheading">Voice input · speech to text</h3>
-                <label class="settings-label" for="voice-input-model">Transcription model</label>
-                <select id="voice-input-model" class="settings-input"><option value="">None</option></select>
+                <div class="settings-form">
+                  <label class="settings-label" for="voice-input-model">Transcription model</label>
+                  <select id="voice-input-model" class="settings-input"><option value="">None</option></select>
+                </div>
 
                 <h3 class="settings-subheading">Voice output · text to speech</h3>
-                <label class="settings-label" for="voice-output-model">Speech model</label>
-                <select id="voice-output-model" class="settings-input"><option value="">None</option></select>
-                <label class="settings-label" for="voice-output-voice">Voice</label>
-                <select id="voice-output-voice" class="settings-input"><option value="">Provider default</option></select>
+                <div class="settings-form">
+                  <label class="settings-label" for="voice-output-model">Speech model</label>
+                  <select id="voice-output-model" class="settings-input"><option value="">None</option></select>
+                  <label class="settings-label" for="voice-output-voice">Voice</label>
+                  <select id="voice-output-voice" class="settings-input"><option value="">Provider default</option></select>
+                </div>
 
                 <div class="settings-toggles" style="margin-top:24px;">
                   <label class="settings-toggle">
                     <input type="checkbox" id="voice-autoplay" />
                     <span class="toggle-switch"></span>
                     Auto-play the agent's spoken reply
+                  </label>
+                  <label class="settings-toggle" style="margin-top:16px;">
+                    <input type="checkbox" id="voice-brief" />
+                    <span class="toggle-switch"></span>
+                    Speech mode — keep replies short (a sentence or two, no lists or code, spoken and on screen)
                   </label>
                 </div>
               </div>

@@ -446,6 +446,7 @@ export async function runRemoteTurn(
       ...(workdir ? { workdir } : {}),
       ...(repo ? { repo } : {}),
       ...(opts.model ? { model: opts.model } : {}),
+      ...(opts.rotor ? { loop: String(opts.rotor) } : {}),
       ...(opts.permission ? { permission: opts.permission } : {}),
       ...(opts.images && opts.images.length ? { images: opts.images } : {}),
       ...(opts.memory ? { memory: opts.memory } : {}),

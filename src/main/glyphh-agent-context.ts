@@ -227,7 +227,7 @@ const flatten = (msgs: ChatMessage[]) => msgs.map((m) => `<${m.role}>\n${m.conte
  * tail drops oldest-first when over budget (recency floor applies, smaller
  * when a superfly-sized reply squeezes the window).
  */
-export async function assemblePrompt(chatId: string, replyBudget: number): Promise<ChatMessage[]> {
+export async function assemblePrompt(chatId: string, replyBudget: number, steer?: string): Promise<ChatMessage[]> {
   const { chats } = loadSessions();
   const chat = chats.find((c) => c.id === chatId);
   if (!chat) throw new Error(`unknown chat: ${chatId}`);
@@ -238,6 +238,9 @@ export async function assemblePrompt(chatId: string, replyBudget: number): Promi
   let system = MODE_SYSTEM[mode] ?? GLYPHH_SYSTEM;
   if (glyphhMode() === "plan") system += PLAN_ADDENDUM;
   prefix.push({ role: "system", content: system });
+  // Per-turn steer (e.g. Voice speech mode → keep replies short). A system line,
+  // so it shapes the whole turn — spoken and rendered — without touching history.
+  if (steer && steer.trim()) prefix.push({ role: "system", content: steer.trim() });
   const mem = memoryBlock();
   if (mem) prefix.push({ role: "system", content: mem });
   if (entry?.summary) {

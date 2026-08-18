@@ -17,7 +17,8 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
-import { initVoiceMic } from "./voice-mic.js";
+import { initVoiceMic, renderMicMenu, onTurnComplete, briefSteer } from "./voice-mic.js";
+import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { initAnchor, initAnchorEvents, isCollapsed, anchorMode, applyAnchor } from "./code-anchor.js";
@@ -720,12 +721,35 @@ function initComposerControls(): void {
     cpop.classList.toggle("hidden");
     if (opening) { openChipDropUp(cpop); void renderCtxPop(); }
   });
+  // Mic device/mode drop-up — opened by the caret next to the mic chip.
+  const micWrap = el("code-mic-wrap");
+  if (micWrap) {
+    const mpop = document.createElement("div");
+    mpop.id = "code-mic-menu";
+    mpop.className = "code-drop-up hidden";
+    micWrap.appendChild(mpop);
+    el("code-mic-caret")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el("code-mode-menu")?.classList.add("hidden");
+      el("code-effort-pop")?.classList.add("hidden");
+      el("code-model-menu")?.classList.add("hidden");
+      el("code-ctx-pop")?.classList.add("hidden");
+      const opening = mpop.classList.contains("hidden");
+      mpop.classList.toggle("hidden");
+      if (opening) void renderMicMenu(mpop).then(() => { if (!mpop.classList.contains("hidden")) openChipDropUp(mpop); });
+    });
+  }
+  // "Stop" chip — visible only while the agent is speaking a reply aloud.
+  onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
+  el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSpeaking()) { e.stopPropagation(); stopReply(); } }, true);
   document.addEventListener("click", (e) => {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
+    if (micWrap && !micWrap.contains(t)) el("code-mic-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -3245,10 +3269,14 @@ function send(): void {
   // not implement — so a Chat turn spun forever with no answer and no error
   // (Work and Code worked, which is exactly why it hid). The pod runs chat as a
   // tool-less completion, the same shape the desktop's chatRun produced.
+  // Speech mode (Settings › Voice): a hidden preamble steering the agent to a
+  // short, spoken-style answer. Prepended to the model prompt only — never to
+  // the message shown in the thread (already pushed clean above).
+  const steer = briefSteer();
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
-  if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, text, src ?? { kind: "cloud-new" })); return; }
+  if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -3495,6 +3523,11 @@ function finishRun(chatId: string, text: string, stopped = false): void {
     refreshCtxMeter();
     // Anything typed while this run was in flight goes now, as its own turn.
     flushPendingNotes();
+    // Speak the reply (if Voice autoplay is on) and, in hands-free mode, start
+    // listening again for the next thing the user says. Fire on EVERY completed
+    // turn (not only ones that end with text) — a tool-only turn still needs to
+    // hand the mic back, or hands-free dies after one exchange.
+    if (!stopped) void onTurnComplete(text || "");
   }
 }
 

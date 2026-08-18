@@ -291,6 +291,13 @@ export async function harnessRun(
    *  sink, so it leaves this false; the desktop-local IPC path sets it true. Best-effort:
    *  a closed socket just means nobody's watching elsewhere — the local run is untouched. */
   publishFrames = false,
+  /** Model id from a RELAYING client (web/mobile driving this machine). When set
+   *  it OVERRIDES the desktop's own loop model — the caller's picker wins. Absent
+   *  for a desktop-local run → the local `runModel('default')` resolution. */
+  modelOverride?: string,
+  /** Agent LOOP (rotor) id from a RELAYING client. When set it OVERRIDES the
+   *  desktop's own active loop (the `rotor` the pod runs). Absent → `currentLoop()`. */
+  loopOverride?: string,
 ): Promise<void> {
   const cloud = isCloudSource(source);
   // Monotonic seq for the published wire frames (broker ordering rides Redis stream
@@ -388,7 +395,9 @@ export async function harnessRun(
     // 5. Start the run and translate its frames. The model is the user's pick,
     //    already constrained to what their workspace allows (loop-selections);
     //    an unresolved one lets the pod fall back to its own default.
-    const model = await runModel("default").catch(() => null);
+    // A relaying client's model wins outright; else resolve via ITS loop (or the
+    // desktop's own when no override), so the caller's loop pick drives the model.
+    const model = modelOverride ?? await runModel("default", loopOverride).catch(() => null);
     const pod = getClient().harness({
       url: target.url,
       ...(target.token ? { token: async (): Promise<string> => target.token as string } : {}),

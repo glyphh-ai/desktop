@@ -1508,6 +1508,25 @@ async function loadDeployTab(): Promise<void> {
   void loadServerSection();
 }
 
+/** Delete is refused server-side while a live deployment exists — it would orphan
+ *  the running Fly machine. So gate the Delete button on deploy state: clearly
+ *  INACTIVE (with a why) until the app is taken down, instead of failing on click. */
+async function gateAppDelete(slug: string): Promise<void> {
+  const btn = document.getElementById("app-detail-delete") as HTMLButtonElement | null;
+  if (!btn || btn.classList.contains("hidden")) return;
+  let live = false;
+  try {
+    const res = await window.glyphh.hostingStatus?.(slug);
+    const d = res?.deployment;
+    live = !!d && (d.status === "live" || d.status === "building" || d.status === "queued");
+  } catch { /* status unknown — don't block the user */ }
+  btn.disabled = live;
+  btn.title = live
+    ? "Take it down first — an app can't be deleted while it's deployed (Hosting tab → Take down)."
+    : "";
+  btn.classList.toggle("delete-blocked", live);
+}
+
 // ── Dedicated server + custom domains (last-mile Phase F) ──────────────────────
 // One section under the hosting tab: pick a size and deploy the app to its OWN
 // machine, then point custom domains at a running server. All through the SDK
@@ -1941,6 +1960,8 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
+  // Deployed apps can't be deleted until taken down — gate the button on that.
+  void gateAppDelete(app.slug);
 
   // Required connections (installed Glyphh apps) — status + missing warning.
   void renderRequiredConnections(app);
@@ -2312,7 +2333,18 @@ function initApps() {
       danger: true,
     });
     if (!confirmed) return;
-    await window.glyphh.panelAppsDelete?.(currentAppId);
+    const res = await window.glyphh.panelAppsDelete?.(currentAppId);
+    if (res && res.ok === false) {
+      // Almost always the live-deployment guard. Tell the user instead of silently
+      // closing as if it worked, and re-sync the gate.
+      await confirmAction({
+        title: "Couldn't delete this app",
+        body: res.error || "Take the app down first (Hosting tab → Take down), then delete.",
+        confirmLabel: "OK",
+      });
+      if (currentApp?.slug) void gateAppDelete(currentApp.slug);
+      return;
+    }
     closeAppDetail();
   });
 
@@ -2361,6 +2393,8 @@ function initApps() {
     btn.disabled = false; btn.textContent = prev;
     if (!res?.ok) { if (err) { err.textContent = res?.error || "Take-down failed."; err.classList.remove("hidden"); } return; }
     await loadDeployTab();
+    // Taken down → Delete can go active again.
+    if (currentApp?.slug) void gateAppDelete(currentApp.slug);
   });
 
   // ── Dedicated server: deploy, tear down (delegated) ─────────────────────────

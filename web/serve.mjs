@@ -153,7 +153,10 @@ function securityHeaders(res, isHttps) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Allow the app's OWN page to use the mic + camera (voice input, and camera
+  // capture for attachments) — `(self)`, not the blanket `()` which disabled
+  // them outright. Geolocation stays off; nothing needs it.
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   if (isHttps) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 }
 

@@ -46,6 +46,7 @@ const api = () => (window as unknown as { glyphh?: {
   mediaDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   mediaJob?: (id: string) => Promise<{ ok: boolean; job?: MediaJobLite; error?: string }>;
   mediaUploadPick?: (kind?: string) => Promise<{ ok: boolean; id?: string; title?: string; error?: string }>;
+  mediaSave?: (id: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 } }).glyphh ?? {};
 
 /** What each view shows and says. */
@@ -75,6 +76,26 @@ const fmtSize = (b: number): string => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` :
 export interface MediaPanel {
   renderIntoSlot: (body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement) => Promise<void>;
   invalidate: () => void;
+}
+
+interface PopItem { label: string; danger?: boolean; fn: () => void }
+function popMenu(x: number, y: number, items: PopItem[]): void {
+  document.querySelectorAll(".gmedia-menu").forEach((el) => el.remove());
+  const menu = document.createElement("div");
+  menu.className = "ws-popover gmedia-menu";
+  for (const it of items) {
+    const b = document.createElement("button");
+    b.className = "ws-popover-item" + (it.danger ? " danger" : "");
+    b.textContent = it.label;
+    b.addEventListener("click", () => { close(); it.fn(); });
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+  menu.style.top = `${Math.min(y, window.innerHeight - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.min(x, window.innerWidth - menu.offsetWidth - 8)}px`;
+  const onDoc = (ev: MouseEvent): void => { if (!menu.contains(ev.target as Node)) close(); };
+  const close = (): void => { menu.remove(); document.removeEventListener("mousedown", onDoc, true); };
+  document.addEventListener("mousedown", onDoc, true);
 }
 
 export function initMedia(host: MediaHost): MediaPanel {
@@ -195,13 +216,20 @@ export function initMedia(host: MediaHost): MediaPanel {
         });
         card.querySelector(".office-card-kebab")?.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          void (async () => {
-            const yes = await host.confirm({ title: `Delete "${m.title}"?`, body: "Removed from the org library for real.", confirmLabel: "Delete", danger: true });
-            if (!yes) return;
-            await api().mediaDelete?.(m.id);
-            urlCache.delete(m.id);
-            refresh();
-          })();
+          const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+          popMenu(r.left, r.bottom + 4, [
+            { label: "Open", fn: () => { slot.assetId = m.id; refresh(); } },
+            { label: "Download…", fn: () => { void api().mediaSave?.(m.id); } },
+            { label: "Delete…", danger: true, fn: () => {
+              void (async () => {
+                const yes = await host.confirm({ title: `Delete "${m.title}"?`, body: "Removed from the org library for real.", confirmLabel: "Delete", danger: true });
+                if (!yes) return;
+                await api().mediaDelete?.(m.id);
+                urlCache.delete(m.id);
+                refresh();
+              })();
+            } },
+          ]);
         });
         grid.appendChild(card);
       }
@@ -219,12 +247,16 @@ export function initMedia(host: MediaHost): MediaPanel {
         <div class="gdz-topbar">
           <button class="action-btn gmedia-back">‹ ${VIEWS[slot.view]?.title ?? "Library"}</button>
           <span class="gmedia-viewer-title"></span>
+          <button class="ws-icon-btn gmedia-viewer-dl" title="Download / export">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
           <button class="ws-icon-btn gmem-del gmedia-viewer-del" title="Delete">✕</button>
         </div>
         <div class="gmedia-stage"><div class="gdoc-empty">Loading…</div></div>
         <div class="gmedia-meta"></div>
       </div>`;
     body.querySelector(".gmedia-back")?.addEventListener("click", () => { delete slot.assetId; refresh(); });
+    body.querySelector(".gmedia-viewer-dl")?.addEventListener("click", () => { void api().mediaSave?.(id); });
 
     const lists = await Promise.all((VIEWS[slot.view]?.kinds ?? []).map((k) => api().mediaList?.(k)));
     const asset = lists.flatMap((r) => (r?.ok ? r.assets : [])).find((x) => x.id === id);

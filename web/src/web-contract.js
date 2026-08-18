@@ -398,6 +398,19 @@ export function buildContract(client, deps) {
     },
     // Web upload rides the panel's own file input in a later pass — explicit gap.
     mediaUploadPick: async () => ({ ok: false, error: "uploads ride the desktop for now" }),
+    mediaSave: async (id) => {
+      try {
+        const asset = await client.media.get(id);
+        const bytes = await client.media.bytes(id);
+        const blobUrl = URL.createObjectURL(new Blob([bytes], { type: asset.mime }));
+        const a2 = document.createElement("a");
+        a2.href = blobUrl;
+        a2.download = (asset.title || "media").replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-");
+        a2.click();
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30_000);
+        return { ok: true };
+      } catch (err) { return { ok: false, error: err?.message ?? String(err) }; }
+    },
     gdriveList: async (q) => {
       try { const l = await client.officeDrive.list(q || undefined); return { ok: true, folders: l.folders, files: l.files }; }
       catch (err) { return { ok: false, error: err?.message ?? String(err), folders: [], files: [] }; }

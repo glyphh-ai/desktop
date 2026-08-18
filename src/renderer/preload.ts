@@ -702,7 +702,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
     ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
   glyphhPickAttachments: (mode?: "files" | "folder") =>
     ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,
@@ -992,6 +992,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   mediaGenerate: (input: unknown) => ipcRenderer.invoke("media-generate", input) as Promise<{ ok: boolean; job?: unknown; outputKind?: string; error?: string }>,
   mediaJob: (id: string) => ipcRenderer.invoke("media-job", id) as Promise<{ ok: boolean; job?: unknown; error?: string }>,
   mediaUploadPick: (kind?: string) => ipcRenderer.invoke("media-upload-pick", kind) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  mediaSave: (id: string) => ipcRenderer.invoke("media-save", id) as Promise<{ ok: boolean; path?: string; error?: string }>,
   gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: "slides" | "docs"; file: string; title: string; sizeBytes: number; folderId: string | null; updatedAt: string }>; error?: string }>,
   gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
   gdriveMove: (kind: "slides" | "docs", file: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, file, folderId) as Promise<{ ok: boolean; error?: string }>,

@@ -207,6 +207,9 @@
                 </div>
                 <div class="code-input-wrap">
                   <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                  <!-- Live mic waveform — a transparent overlay drawn while recording
+                       voice input (voice-mic.ts). Hidden + pointer-transparent otherwise. -->
+                  <canvas id="code-rec-wave" class="code-rec-wave hidden" aria-hidden="true"></canvas>
                   <button id="code-send" class="code-send" title="Send">
                     <svg class="icon-return" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
                     <svg class="icon-stop" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg>
@@ -226,8 +229,19 @@
                     <!-- Voice input: hidden unless Settings › Voice enables it. Click to
                          record, click to stop → transcribed into the composer. -->
                     <div id="code-mic-wrap" class="code-chipwrap hidden">
-                      <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Hold a thought — click to talk, click to stop">
+                      <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Hold to talk — press and hold, release to transcribe">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                      </button>
+                      <button id="code-mic-caret" class="code-chip code-mic-caret" type="button" title="Microphone &amp; recording mode" aria-label="Microphone settings">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+                      </button>
+                    </div>
+                    <!-- Appears only while the agent is speaking a reply aloud —
+                         click (or Esc) to stop the voice. -->
+                    <div id="code-speak-wrap" class="code-chipwrap hidden">
+                      <button id="code-speak-stop" class="code-chip code-speak-stop" type="button" title="Stop the spoken reply (Esc)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span>Stop</span>
                       </button>
                     </div>
                     <!-- Collapsed (centre-anchored) mode only: the left rail is

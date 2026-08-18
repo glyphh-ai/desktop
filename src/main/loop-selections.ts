@@ -131,8 +131,7 @@ async function loopType(loop: string): Promise<string | undefined> {
   } catch { return undefined; }
 }
 
-export async function runModel(role = "default"): Promise<string | null> {
-  const loop = currentLoop();
+export async function runModel(role = "default", loop = currentLoop()): Promise<string | null> {
   try {
     const roles = await resolveRoles(loop);
     // ROVER: hop across the distinct bound models — never the same twice in a

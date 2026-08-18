@@ -80,12 +80,17 @@ export function installAttachRunHandlers(): void {
     const permission = (PERMS as readonly string[]).includes(p.permission as string)
       ? (p.permission as (typeof PERMS)[number])
       : undefined;
+    // The RELAYING client's loop + model MUST win over the machine's own — the
+    // run is theirs (e.g. the web picker). Absent ⇒ harnessRun resolves the
+    // desktop's own active loop + default model.
+    const modelOverride = typeof p.model === "string" && p.model ? p.model : undefined;
+    const loopOverride = typeof p.loop === "string" && p.loop ? p.loop : undefined;
     const ctrl = new AbortController();
     controllers.set(runId, ctrl);
     const sink = makeSink(runId);
     // Fire-and-forget: frames stream via pushToAttach. Ack the runId immediately
     // so the caller knows the run is live (it already subscribed to run:<runId>).
-    void harnessRun(sink, runId, baseMessages(p, prompt), ctrl, [], threadId, workdir, mode, source, permission)
+    void harnessRun(sink, runId, baseMessages(p, prompt), ctrl, [], threadId, workdir, mode, source, permission, false, modelOverride, loopOverride)
       .catch((err) => { try { sink.send("glyphh-agent:error", { error: err instanceof Error ? err.message : String(err) }); } catch { /* socket gone */ } })
       .finally(() => { controllers.delete(runId); });
     return { runId, started: true };

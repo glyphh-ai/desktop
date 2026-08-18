@@ -90,7 +90,7 @@ export function registerGlyphhIpc(): void {
   registerGlyphhContextIpc();
   // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; source?: RunSource }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -125,7 +125,7 @@ export function registerGlyphhIpc(): void {
     // Assembly is token-true (needs the server for /tokenize) — bring the
     // runtime up first so counting and completion share one warm process.
     const replyBudget = await runMaxOutputTokens();
-    const messages = await assemblePrompt(chatId, replyBudget);
+    const messages = await assemblePrompt(chatId, replyBudget, typeof payload?.steer === "string" ? payload.steer : undefined);
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     setRunAttachments(id, attachments.map((a) => a.path));
     const ctrl = new AbortController();

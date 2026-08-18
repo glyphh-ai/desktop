@@ -13360,6 +13360,78 @@ select:focus {
 }
 .code-chip.code-mic-chip.transcribing { opacity: 0.55; }
 @keyframes code-mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); } }
+/* The caret that opens the mic device/mode drop-up — a slim sibling of the chip. */
+.code-chip.code-mic-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  margin-left: -2px;
+  color: var(--text-3);
+}
+.code-chip.code-mic-caret:hover { color: var(--text); }
+/* Mic drop-up extras: a divider + the "Hold to record" toggle row. */
+.code-drop-sep { height: 1px; background: var(--border-2); margin: 6px 0; }
+.code-drop-item.code-drop-toggle { justify-content: space-between; gap: 10px; }
+.code-drop-switch {
+  position: relative;
+  width: 34px;
+  min-width: 34px;
+  height: 19px;
+  border-radius: 10px;
+  background: var(--border-3);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.code-drop-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform 0.2s, background 0.2s;
+}
+.code-drop-switch.on { background: var(--accent); }
+.code-drop-switch.on::after { transform: translateX(15px); background: var(--white); }
+/* "Stop" chip shown while the agent speaks a reply — gentle pulse, click/Esc to halt. */
+.code-chip.code-speak-stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: #fff;
+  background: var(--danger, #ef4444);
+  animation: code-mic-pulse 1.4s ease-in-out infinite;
+}
+.code-chip.code-speak-stop:hover { filter: brightness(1.08); }
+/* Live mic waveform — a transparent canvas laid over the composer input while
+   recording voice. Pointer-transparent so the field stays usable; the bars are
+   drawn in the accent colour from the real mic level (voice-mic.ts). */
+.code-rec-wave {
+  position: absolute;
+  left: 14px;
+  right: 44px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 24px;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0.9;
+}
+.code-rec-wave.hidden { display: none; }
+/* While recording, clear the placeholder so the waveform has a clean field. */
+.code-input-wrap.code-recording .code-input::placeholder { color: transparent; }
+/* Mic capture error (permission denied / unsupported) — a brief red flash on the
+   chip so a blocked mic never reads as "the button does nothing". */
+.code-chip.code-mic-chip.mic-error {
+  color: #fff;
+  background: var(--danger, #ef4444);
+  animation: mic-error-flash 0.9s ease-in-out 0s 3;
+}
+@keyframes mic-error-flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
 .code-chip.code-plus-chip {
   display: inline-flex;
@@ -17671,3 +17743,18 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gmedia-meta { flex: none; padding: 10px 14px; border-top: 1px solid var(--border); }
 .gmedia-meta-prompt { font-size: 12.5px; color: var(--text-2); font-style: italic; margin-bottom: 5px; }
 .gmedia-meta-row { font-size: 11px; color: var(--text-3); font-family: var(--mono, monospace); }
+
+/* Design canvas: adopted imagery cards. */
+.gdz-art-imagery .gdz-art-grip { display: flex; align-items: center; gap: 8px; left: 0; right: 0; }
+.gdz-img-role { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdz-img-x { opacity: 0; }
+.gdz-art-imagery:hover .gdz-img-x { opacity: 1; }
+.gdz-img-frame {
+  border-radius: 14px; overflow: hidden; background: var(--bg);
+  border: 1px solid var(--border-2); min-height: 120px;
+  display: flex; align-items: center; justify-content: center; color: var(--text-3); font-size: 12px;
+}
+.gdz-img-frame img, .gdz-img-frame video { display: block; width: 100%; height: auto; }
+.gdz-img-picker { max-height: 320px; overflow-y: auto; }
+.gdz-imagery-rows { display: flex; flex-direction: column; gap: 8px; }
+.gdz-img-name { cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

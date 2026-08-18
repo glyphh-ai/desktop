@@ -9,8 +9,10 @@ interface VoiceSettingsView {
   inputModel: string | null;
   outputModel: string | null;
   voiceId: string | null;
+  deviceId?: string | null;
   mode: "off" | "push-to-talk" | "continuous";
   autoplay: boolean;
+  brief?: boolean;
 }
 interface CatalogModel { id: string; name: string; providerSlug: string; modality: string; active: boolean }
 interface VoiceItem { id: string; name: string; providerSlug: string }
@@ -42,6 +44,14 @@ function asArray<T>(v: unknown): T[] {
   return [];
 }
 
+/** Unwrap a single object from the web `lib()` envelope ({ok, data}) or return it raw. */
+function unwrap<T>(v: unknown): T | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if ("ok" in o && "data" in o) return (o.data ?? null) as T | null;
+  return v as T;
+}
+
 let wired = false;
 
 function setErr(msg: string): void {
@@ -58,6 +68,24 @@ function fillModelSelect(id: string, models: CatalogModel[], selected: string): 
 }
 
 const providerOf = (modelId: string): string => (modelId.includes("::") ? modelId.slice(0, modelId.indexOf("::")) : "");
+
+/** Populate the microphone picker from the OS device list. Labels only appear after
+ *  mic permission is granted, so request it once if they're blank. */
+async function fillMicDevices(selected: string): Promise<void> {
+  const sel = $<HTMLSelectElement>("voice-device");
+  if (!sel || !navigator.mediaDevices?.enumerateDevices) return;
+  try {
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    // Real mics have a non-empty deviceId; the pre-permission placeholder does not.
+    const mics = () => devices.filter((d) => d.kind === "audioinput" && d.deviceId);
+    if (!mics().length || mics().every((d) => !d.label)) {
+      try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach((t) => t.stop()); devices = await navigator.mediaDevices.enumerateDevices(); } catch { /* denied */ }
+    }
+    sel.innerHTML = `<option value="">System default</option>` +
+      mics().map((d, i) => `<option value="${d.deviceId}">${d.label || `Microphone ${i + 1}`}</option>`).join("");
+    sel.value = selected;
+  } catch { /* enumeration unsupported */ }
+}
 
 async function refreshVoices(outputModelId: string, selectedVoice: string): Promise<void> {
   const el = $<HTMLSelectElement>("voice-output-voice");
@@ -83,7 +111,9 @@ async function save(patch: Partial<VoiceSettingsView>): Promise<void> {
 function wire(): void {
   $<HTMLSelectElement>("voice-mode")?.addEventListener("change", (e) => void save({ mode: (e.target as HTMLSelectElement).value as VoiceSettingsView["mode"] }));
   $<HTMLInputElement>("voice-autoplay")?.addEventListener("change", (e) => void save({ autoplay: (e.target as HTMLInputElement).checked }));
+  $<HTMLInputElement>("voice-brief")?.addEventListener("change", (e) => void save({ brief: (e.target as HTMLInputElement).checked }));
   $<HTMLSelectElement>("voice-input-model")?.addEventListener("change", (e) => void save({ inputModel: (e.target as HTMLSelectElement).value || null }));
+  $<HTMLSelectElement>("voice-device")?.addEventListener("change", (e) => void save({ deviceId: (e.target as HTMLSelectElement).value || null }));
   $<HTMLSelectElement>("voice-output-voice")?.addEventListener("change", (e) => void save({ voiceId: (e.target as HTMLSelectElement).value || null }));
   $<HTMLSelectElement>("voice-output-model")?.addEventListener("change", (e) => {
     const v = (e.target as HTMLSelectElement).value || null;
@@ -100,13 +130,15 @@ export async function loadVoiceSettings(): Promise<void> {
       Promise.resolve(bridge().voiceSettingsGet?.()).catch(() => undefined),
     ]);
     const models = asArray<CatalogModel>(modelsRaw);
-    const settings = (settingsRaw && typeof settingsRaw === "object" && !Array.isArray(settingsRaw)) ? (settingsRaw as VoiceSettingsView) : null;
+    const settings = unwrap<VoiceSettingsView>(settingsRaw);
     const stt = models.filter((m) => m.modality === "transcription" && m.active);
     const tts = models.filter((m) => m.modality === "speech" && m.active);
     fillModelSelect("voice-input-model", stt, settings?.inputModel ?? "");
     fillModelSelect("voice-output-model", tts, settings?.outputModel ?? "");
     const mode = $<HTMLSelectElement>("voice-mode"); if (mode) mode.value = settings?.mode ?? "off";
     const auto = $<HTMLInputElement>("voice-autoplay"); if (auto) auto.checked = settings?.autoplay ?? true;
+    const brief = $<HTMLInputElement>("voice-brief"); if (brief) brief.checked = settings?.brief ?? false;
+    await fillMicDevices((settings as { deviceId?: string } | null)?.deviceId ?? "");
     await refreshVoices(settings?.outputModel ?? "", settings?.voiceId ?? "");
     if (!wired) { wire(); wired = true; }
   } catch (e) { setErr((e as Error).message); }

@@ -110,6 +110,20 @@ export function registerMediaPanelIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
+  ipcMain.handle("media-save", async (_e, id: unknown) => {
+    try {
+      const asset = await getClient().media.get(String(id));
+      const ext = EXT_BY_MIME[asset.mime] ?? ".bin";
+      const stem = asset.title.replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "media";
+      const picked = await dialog.showSaveDialog({ defaultPath: `${stem}${ext}` });
+      if (picked.canceled || !picked.filePath) return { ok: false, error: "cancelled" };
+      const bytes = await getClient().media.bytes(String(id));
+      writeFileSync(picked.filePath, Buffer.from(bytes));
+      return { ok: true, path: picked.filePath, bytes: bytes.byteLength };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
   ipcMain.handle("media-upload-pick", async () => {
     try {
       const picked = await dialog.showOpenDialog({

@@ -19,6 +19,7 @@ interface DFont { family: string; fallback?: string; weights?: number[]; source?
 interface DColor { name: string; hex: string; role?: string }
 interface DAsset { id: string; kind: string; title: string; contentType: string; sizeBytes: number }
 interface DSource { type: string; ref: string; note?: string; extractedAt: string }
+interface DImagery { assetId: string; kind: "image" | "video"; title: string; role?: string }
 interface DesignDoc {
   version: 1;
   name: string;
@@ -28,6 +29,7 @@ interface DesignDoc {
   type?: { baseSize?: number; scale?: number; headingWeight?: number; letterSpacing?: number };
   styles?: { radius?: number; borderWidth?: number; shadow?: string; density?: string; gradient?: { from: string; to: string; angle?: number } };
   assets?: DAsset[];
+  imagery?: DImagery[];
   sources?: DSource[];
 }
 
@@ -53,6 +55,8 @@ const api = () => (window as unknown as { glyphh?: {
   designAssetUpload?: (file: string, input: unknown) => Promise<{ ok: boolean; asset?: DAsset; error?: string }>;
   designAssetUrl?: (file: string, assetId: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   designAssetDelete?: (file: string, assetId: string) => Promise<{ ok: boolean; error?: string }>;
+  mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: Array<{ id: string; kind: string; title: string; mime: string; status: string }>; error?: string }>;
+  mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
 } }).glyphh ?? {};
 
 const docCache = new Map<string, DesignDoc>();
@@ -425,11 +429,14 @@ export function initDesign(host: DesignHost): DesignPanel {
     paintAll(body, doc);
     wireCanvas(body.querySelector<HTMLElement>(".gdz-canvas")!, body.querySelector<HTMLElement>(".gdz-world")!);
     buildRail(rail, doc, file, touched);
+    body.addEventListener("gdz-imagery-changed", () => touched());
   }
 
   // ── the canvas + its artifacts ─────────────────────────────────────────────
 
   function paintAll(body: HTMLElement, doc: DesignDoc): void {
+    const world = body.querySelector<HTMLElement>(".gdz-world");
+    if (world) paintImagery(world, doc);
     const shot = body.querySelector<HTMLElement>(".gdz-shot");
     if (shot) paintShot(shot, doc);
     const spec = body.querySelector<HTMLElement>(".gdz-spec-sheet");
@@ -582,6 +589,49 @@ export function initDesign(host: DesignHost): DesignPanel {
     const onUp = (): void => { drag = null; };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  /** Imagery cards on the canvas — one draggable artifact per adopted media
+   *  asset, laid out below the built-in sheets; removal lives on the grip. */
+  function paintImagery(world: HTMLElement, doc: DesignDoc): void {
+    const want = new Set((doc.imagery ?? []).map((m) => m.assetId));
+    world.querySelectorAll<HTMLElement>(".gdz-art-imagery").forEach((el) => {
+      if (!want.has(el.dataset.assetId ?? "")) el.remove();
+    });
+    (doc.imagery ?? []).forEach((m, i) => {
+      if (world.querySelector(`.gdz-art-imagery[data-asset-id="${m.assetId}"]`)) return;
+      const card = document.createElement("div");
+      card.className = "gdz-art gdz-art-imagery";
+      card.dataset.assetId = m.assetId;
+      card.style.left = `${(i % 2) * 620}px`;
+      card.style.top = `${760 + Math.floor(i / 2) * 300}px`;
+      card.style.width = "560px";
+      card.innerHTML = `
+        <div class="gdz-art-grip"><span class="gdz-img-role"></span><button class="ws-icon-btn gdz-img-x" title="Remove from the system">✕</button></div>
+        <div class="gdz-img-frame"></div>`;
+      (card.querySelector(".gdz-img-role") as HTMLElement).textContent = `${m.title}${m.role ? ` · ${m.role}` : ""}`;
+      card.querySelector(".gdz-img-x")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        doc.imagery = (doc.imagery ?? []).filter((x) => x.assetId !== m.assetId);
+        if (!doc.imagery.length) delete doc.imagery;
+        card.dispatchEvent(new CustomEvent("gdz-imagery-changed", { bubbles: true }));
+        card.remove();
+      });
+      const frame = card.querySelector<HTMLElement>(".gdz-img-frame")!;
+      void api().mediaUrl?.(m.assetId).then((r) => {
+        if (!r?.ok || !r.url || !frame.isConnected) { frame.textContent = "unavailable"; return; }
+        if (m.kind === "video") {
+          const v = document.createElement("video");
+          v.src = r.url; v.muted = true; v.loop = true; v.autoplay = true; v.playsInline = true;
+          frame.appendChild(v);
+        } else {
+          const img = document.createElement("img");
+          img.src = r.url;
+          frame.appendChild(img);
+        }
+      });
+      world.appendChild(card);
+    });
   }
 
   // ── the control rail ───────────────────────────────────────────────────────
@@ -892,6 +942,78 @@ export function initDesign(host: DesignHost): DesignPanel {
     assets.appendChild(fileIn);
     assets.appendChild(assetGrid);
     paintAssets();
+
+    // — Imagery — media-library adoptions: generated icons, site images,
+    //   brand motion. Pointers into the org media library; the canvas shows
+    //   each one as its own draggable card.
+    const imagery = section(rail, "Imagery", false);
+    const imgWrap = document.createElement("div");
+    imgWrap.className = "gdz-imagery-rows";
+    imagery.appendChild(imgWrap);
+    const paintImageryRail = (): void => {
+      imgWrap.textContent = "";
+      for (const m of doc.imagery ?? []) {
+        const row = document.createElement("div");
+        row.className = "gdz-row";
+        row.innerHTML = `
+          <span class="gdz-row-label gdz-img-name" title="${m.title.replace(/"/g, "&quot;")}"></span>
+          <input type="text" class="gdz-pal-role gdz-img-role-in" spellcheck="false" placeholder="role (icon, hero…)" />
+          <button class="ws-icon-btn gdz-img-row-x" title="Remove">✕</button>`;
+        (row.querySelector(".gdz-img-name") as HTMLElement).textContent = m.title.slice(0, 18);
+        const roleIn = row.querySelector<HTMLInputElement>(".gdz-img-role-in")!;
+        roleIn.value = m.role ?? "";
+        roleIn.addEventListener("change", () => {
+          const v = roleIn.value.trim();
+          if (v) m.role = v; else delete m.role;
+          touched();
+        });
+        row.querySelector(".gdz-img-row-x")?.addEventListener("click", () => {
+          doc.imagery = (doc.imagery ?? []).filter((x) => x.assetId !== m.assetId);
+          if (!doc.imagery.length) delete doc.imagery;
+          touched(); paintImageryRail();
+        });
+        imgWrap.appendChild(row);
+      }
+      const add = document.createElement("button");
+      add.className = "action-btn gdz-source-add";
+      add.textContent = "＋ From library";
+      add.addEventListener("click", () => {
+        void (async () => {
+          const [imgs, vids] = await Promise.all([api().mediaList?.("image"), api().mediaList?.("video")]);
+          const pool = [...(imgs?.ok ? imgs.assets : []), ...(vids?.ok ? vids.assets : [])]
+            .filter((x) => x.status === "ready")
+            .filter((x) => !(doc.imagery ?? []).some((m) => m.assetId === x.id))
+            .slice(0, 40);
+          if (!pool.length) {
+            void host.confirm({ title: "Nothing to add", body: "The media library has no ready images or video yet — generate or upload some first.", confirmLabel: "OK" });
+            return;
+          }
+          const picker = document.createElement("div");
+          picker.className = "ws-popover gdesign-menu gdz-img-picker";
+          for (const x of pool) {
+            const b = document.createElement("button");
+            b.className = "ws-popover-item";
+            b.textContent = `${x.kind === "video" ? "▶ " : "◻ "}${x.title.slice(0, 44)}`;
+            b.addEventListener("click", () => {
+              picker.remove();
+              doc.imagery = [...(doc.imagery ?? []), { assetId: x.id, kind: x.kind === "video" ? "video" : "image", title: x.title }];
+              touched(); paintImageryRail();
+            });
+            picker.appendChild(b);
+          }
+          document.body.appendChild(picker);
+          const r = add.getBoundingClientRect();
+          picker.style.top = `${Math.min(r.bottom + 4, window.innerHeight - picker.offsetHeight - 8)}px`;
+          picker.style.left = `${Math.min(r.left, window.innerWidth - picker.offsetWidth - 8)}px`;
+          const onDoc = (ev: MouseEvent): void => {
+            if (!picker.contains(ev.target as Node)) { picker.remove(); document.removeEventListener("mousedown", onDoc, true); }
+          };
+          document.addEventListener("mousedown", onDoc, true);
+        })();
+      });
+      imgWrap.appendChild(add);
+    };
+    paintImageryRail();
 
     // — Sources (provenance) — fully editable: the user records where the
     //   system came from and steers future extractions from right here.
