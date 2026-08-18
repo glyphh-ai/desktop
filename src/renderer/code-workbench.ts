@@ -883,6 +883,26 @@ async function init(): Promise<void> {
     renderRails();
     saveLayout();
   }
+  /** The deep-link opener: land a payload in a tool's slot wherever the tool
+   *  should live RIGHT NOW — an Echo card while the wall is up (never a rail
+   *  slot that dumps the wall + agent), else the existing rail slot, else a
+   *  fresh placed one. */
+  function openToolWithPayload(view: Exclude<ViewKind, "app" | "echo" | "coding" | "thread">, land: (slot: Slot) => void): void {
+    if (echoCtl) {
+      echoCtl.openToolWith(view, land);
+      return;
+    }
+    const existing = rails.flatMap((r) => r.slots).find((t) => t.view === view);
+    if (!existing) {
+      const fresh = makeSlot(view);
+      land(fresh);
+      placeSlot(fresh);
+      return;
+    }
+    land(existing);
+    renderRails();
+  }
+
   function placeView(view: Exclude<ViewKind, "app">): void {
     // Echo owns the workspace while it's up — a tool opens as an ECHO CARD,
     // never as a rail slot beside it. (echo/coding/thread have their own
@@ -956,6 +976,11 @@ async function init(): Promise<void> {
     refreshForCwd(): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"): void;
+    /** Open (or re-front) a tool card and LAND a payload in its slot before the
+     *  card repaints — the deep-link path (open_video("id") etc.) while Echo
+     *  owns the workspace. Landing via placeSlot instead tore the wall down —
+     *  and the agent card with it. */
+    openToolWith(view: Exclude<ViewKind, "app" | "echo" | "coding" | "thread">, land: (slot: Slot) => void): void;
     openPreviewHtml(html: string, label?: string): void;
     openPreviewUrl(url: string): void;
     openFileTab(node: { name: string; path: string }, content: string, mode?: "preview" | "code"): void;
@@ -1813,23 +1838,13 @@ async function init(): Promise<void> {
   }
 
   (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet = (file, title) => {
-    const land = (t: GSheetSlot): void => {
+    openToolWithPayload("gsheet", (t) => {
+      const sl = t as GSheetSlot;
       if (!file) return;
       gsheetPanelInstance().invalidate(file);
-      t.file = file;
-      t.title = title || file.replace(/\.json$/i, "");
-      t.tab = 0;
-      t.rowPage = 0;
-    };
-    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === "gsheet") as GSheetSlot | undefined;
-    if (!slot) {
-      const fresh = makeSlot("gsheet") as GSheetSlot;
-      land(fresh);
-      placeSlot(fresh);
-      return;
-    }
-    land(slot);
-    renderRails();
+      sl.file = file;
+      sl.title = title ?? file;
+    });
   };
 
   // ── Design — org design systems (wb-design.ts) ───────────────────────────
@@ -1847,22 +1862,13 @@ async function init(): Promise<void> {
     return gdesignPanelInstance().renderIntoSlot(body, slot, wrap);
   }
   (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign = (file, title) => {
-    const land = (t: GDesignSlot): void => {
-      if (file) {
-        gdesignPanelInstance().invalidate(file);
-        t.file = file;
-        t.title = title ?? file;
-      }
-    };
-    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === "gdesign") as GDesignSlot | undefined;
-    if (!slot) {
-      const fresh = makeSlot("gdesign") as GDesignSlot;
-      land(fresh);
-      placeSlot(fresh);
-      return;
-    }
-    land(slot);
-    renderRails();
+    openToolWithPayload("gdesign", (t) => {
+      const sl = t as GDesignSlot;
+      if (!file) return;
+      gdesignPanelInstance().invalidate(file);
+      sl.file = file;
+      sl.title = title ?? file;
+    });
   };
 
   // ── Memory — the stator visualized (wb-memory.ts) ─────────────────────────
@@ -1880,13 +1886,7 @@ async function init(): Promise<void> {
     return gmemoryPanelInstance().renderIntoSlot(body, slot, wrap);
   }
   (window as unknown as { __wbOpenMemory?: () => void }).__wbOpenMemory = () => {
-    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === "gmemory") as GMemorySlot | undefined;
-    if (!slot) {
-      gmemoryPanelInstance().invalidate();
-      placeSlot(makeSlot("gmemory") as GMemorySlot);
-      return;
-    }
-    renderRails();
+    openToolWithPayload("gmemory", () => { gmemoryPanelInstance().invalidate(); });
   };
 
   // ── Media — Image / Video / Sounds (wb-media.ts) ──────────────────────────
@@ -1920,77 +1920,44 @@ async function init(): Promise<void> {
   (window as unknown as { __wbOpenMedia?: (view: MediaView | "gband", assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
     // A song deep-link (or an explicit gband open) lands in the BAND app.
     if (view === "gband" || songId) {
-      const landBand = (t: GBandSlot): void => {
+      openToolWithPayload("gband", (t) => {
+        const b = t as GBandSlot;
         if (songId) {
-          t.tab = 0;
-          t.music = { songId };
+          b.tab = 0;
+          b.music = { songId };
         }
-      };
-      const bandSlot = rails.flatMap((r) => r.slots).find((t) => t.view === "gband") as GBandSlot | undefined;
-      if (!bandSlot) {
-        const fresh = makeSlot("gband") as GBandSlot;
-        landBand(fresh);
-        placeSlot(fresh);
-        return;
-      }
-      landBand(bandSlot);
-      renderRails();
+      });
       return;
     }
-    const land = (t: GMediaSlot): void => {
+    openToolWithPayload(view, (t) => {
+      const m = t as GMediaSlot;
       if (assetId) {
         gmediaPanelInstance().invalidate();
-        t.assetId = assetId;
+        m.assetId = assetId;
       }
-    };
-    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === view) as GMediaSlot | undefined;
-    if (!slot) {
-      const fresh = makeSlot(view) as GMediaSlot;
-      land(fresh);
-      placeSlot(fresh);
-      return;
-    }
-    land(slot);
-    renderRails();
+    });
   };
 
   (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc = (file, title) => {
-    const land = (t: GDocSlot): void => {
+    openToolWithPayload("gdoc", (t) => {
+      const sl = t as GDocSlot;
       if (!file) return;
       gdocPanelInstance().invalidate(file);
-      t.file = file;
-      t.title = title || file.replace(/\.md$/i, "");
-    };
-    const slot = rails.flatMap((r) => r.slots).find((t) => t.view === "gdoc") as GDocSlot | undefined;
-    if (!slot) {
-      const fresh = makeSlot("gdoc") as GDocSlot;
-      land(fresh);
-      placeSlot(fresh);
-      return;
-    }
-    land(slot);
-    renderRails();
+      sl.file = file;
+      sl.title = title ?? file;
+    });
   };
 
   // The agent's open_gpoint (and any main-side opener) lands here: reuse the
   // open gPoint panel or place one, optionally straight onto a deck.
   (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint = (file, title) => {
-    const land = (s: GPointSlot): void => {
+    openToolWithPayload("gpoint", (t) => {
+      const sl = t as GPointSlot;
       if (!file) return;
-      gpointPanelInstance().invalidate(file);   // the agent may have just rebuilt it
-      s.file = file;
-      s.title = title || file.replace(/\.html$/i, "");
-      s.slideIdx = 0;
-    };
-    const slot = rails.flatMap((r) => r.slots).find((s) => s.view === "gpoint") as GPointSlot | undefined;
-    if (!slot) {
-      const fresh = makeSlot("gpoint") as GPointSlot;
-      land(fresh);
-      placeSlot(fresh);
-      return;
-    }
-    land(slot);
-    renderRails();
+      gpointPanelInstance().invalidate(file);
+      sl.file = file;
+      sl.title = title ?? file;
+    });
   };
 
   // ── Coding Agent view — the SAME agent, reparented into a tile ──
@@ -4390,6 +4357,17 @@ async function init(): Promise<void> {
       },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
+      openToolWith: (view, land) => {
+        const entry = getOrOpenTool(view as Parameters<typeof getOrOpenTool>[0]);
+        if (entry.toolSlot) {
+          land(entry.toolSlot);
+          const body = entry.card?.querySelector<HTMLElement>(".echo-card-body");
+          if (body && entry.card) {
+            body.textContent = "";
+            mountToolIntoCard(entry, entry.card);
+          }
+        }
+      },
       hasTool: (view) => openList.some((x) => x.tile.toolView === view),
       closeTool: (view) => { for (const x of openList.filter((c) => c.tile.toolView === view)) closeCard(x); },
       // A folder change re-roots the folder-backed cards IN PLACE — the echo
