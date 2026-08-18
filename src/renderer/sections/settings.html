@@ -1647,7 +1647,7 @@
               <!-- Orgs — the org list + admin credit grants. -->
               <div class="settings-panel" data-sub="padmin-orgs">
                 <h2>Organizations</h2>
-                <p class="section-desc">Every organization on the platform. Open one to grant credits — admin grants never expire.</p>
+                <p class="section-desc">Every organization on the platform. Open one to manage its plan, credits, and members.</p>
                 <div id="pa-orgs-gate" class="crud-empty hidden">Only a platform super admin can manage organizations.</div>
                 <div id="pa-orgs-body">
                   <div id="pa-orgs-error" class="settings-error hidden"></div>
@@ -1658,6 +1658,17 @@
                     </div>
                     <div id="pa-orgs-list"></div>
                     <p class="settings-hint" id="pa-orgs-total"></p>
+                  </div>
+
+                  <!-- Full org management view — rendered dynamically (info,
+                       admin, credits have/used, plan, members + controls). -->
+                  <div id="pa-org-detail" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-org-detail-back">&larr; Organizations</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-org-detail-error" class="crud-form-error hidden"></div>
+                    <div id="pa-org-detail-body"></div>
                   </div>
 
                   <div id="pa-org-grant" class="crud-inline-form hidden">

@@ -91,6 +91,126 @@ function versionTitle(rawTitle: string, all: Array<{ title: string }>): string {
   return `${base} - ${String(max + 1).padStart(2, "0")}`;
 }
 
+/** Common instruments — the "available" column of the instrument picker. */
+const INSTRUMENT_CATALOG = [
+  "drums", "trap hi-hats", "808 bass", "bass guitar", "electric guitar", "acoustic guitar",
+  "slide guitar", "pedal steel", "banjo", "fiddle", "violin", "cello", "strings",
+  "piano", "keys", "organ", "synth", "horns", "trumpet", "sax", "harmonica",
+  "tambourine", "turntables", "beatbox", "choir",
+];
+
+interface DualItem { id: string; label: string; thumbAssetId?: string | null }
+
+/** A searchable dual-column picker: available ⇄ selected with › ‹ » «.
+ *  Click marks; the arrows move marked (or all). Order of `selected` is
+ *  preserved and returned via onChange. */
+function dualPicker(opts: {
+  parent: HTMLElement;
+  available: DualItem[];
+  selected: string[];
+  searchPlaceholder: string;
+  onChange: (selected: string[]) => void;
+  renderSelectedRow?: (id: string, row: HTMLElement) => void;
+}): { repaint: () => void } {
+  const wrap = document.createElement("div");
+  wrap.className = "gmv-pickwrap";
+  wrap.innerHTML = `
+    <input class="office-search gmv-search" type="text" placeholder="${opts.searchPlaceholder}" spellcheck="false" autocomplete="off" />
+    <div class="gmv-dual">
+      <div class="gmv-col gmv-avail"></div>
+      <div class="gmv-ctl">
+        <button class="ws-icon-btn gmv-add" title="Add marked">›</button>
+        <button class="ws-icon-btn gmv-addall" title="Add all shown">»</button>
+        <button class="ws-icon-btn gmv-rem" title="Remove marked">‹</button>
+        <button class="ws-icon-btn gmv-remall" title="Remove all">«</button>
+      </div>
+      <div class="gmv-col gmv-chosen gmv-rows"></div>
+    </div>`;
+  opts.parent.appendChild(wrap);
+  const search = wrap.querySelector<HTMLInputElement>(".gmv-search")!;
+  const availEl = wrap.querySelector<HTMLElement>(".gmv-avail")!;
+  const chosenEl = wrap.querySelector<HTMLElement>(".gmv-chosen")!;
+  const marked = new Set<string>();
+  const selected = opts.selected;
+
+  const chip = (item: DualItem, inChosen: boolean): HTMLElement => {
+    const el = document.createElement("button");
+    el.className = "gmv-pick" + (marked.has(item.id) ? " marked" : "");
+    el.innerHTML = `<span class="gmv-pick-face"></span><span class="gmv-pick-name"></span>`;
+    (el.querySelector(".gmv-pick-name") as HTMLElement).textContent = item.label;
+    const face = el.querySelector<HTMLElement>(".gmv-pick-face")!;
+    if (item.thumbAssetId) {
+      void mediaUrlOf(item.thumbAssetId).then((u) => {
+        if (u && face.isConnected) face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`;
+      });
+    } else face.textContent = "♪";
+    el.addEventListener("click", () => {
+      if (marked.has(item.id)) marked.delete(item.id); else marked.add(item.id);
+      el.classList.toggle("marked", marked.has(item.id));
+    });
+    void inChosen;
+    return el;
+  };
+
+  const repaint = (): void => {
+    const q = search.value.trim().toLowerCase();
+    availEl.textContent = "";
+    chosenEl.textContent = "";
+    const chosenSet = new Set(selected);
+    for (const item of opts.available.filter((x) => !chosenSet.has(x.id))) {
+      if (q && !item.label.toLowerCase().includes(q)) continue;
+      availEl.appendChild(chip(item, false));
+    }
+    for (const id of selected) {
+      const item = opts.available.find((x) => x.id === id) ?? { id, label: id };
+      if (opts.renderSelectedRow) {
+        const row = document.createElement("div");
+        row.className = "gmv-selrow";
+        const c = chip(item, true);
+        row.appendChild(c);
+        opts.renderSelectedRow(id, row);
+        chosenEl.appendChild(row);
+      } else {
+        chosenEl.appendChild(chip(item, true));
+      }
+    }
+  };
+  const shownAvail = (): string[] => {
+    const q = search.value.trim().toLowerCase();
+    const chosenSet = new Set(selected);
+    return opts.available.filter((x) => !chosenSet.has(x.id) && (!q || x.label.toLowerCase().includes(q))).map((x) => x.id);
+  };
+  const commit = (): void => { marked.clear(); repaint(); opts.onChange([...selected]); };
+  wrap.querySelector(".gmv-add")?.addEventListener("click", () => {
+    for (const id of shownAvail()) if (marked.has(id)) selected.push(id);
+    commit();
+  });
+  wrap.querySelector(".gmv-addall")?.addEventListener("click", () => {
+    for (const id of shownAvail()) selected.push(id);
+    commit();
+  });
+  wrap.querySelector(".gmv-rem")?.addEventListener("click", () => {
+    for (let i = selected.length - 1; i >= 0; i--) if (marked.has(selected[i]!)) selected.splice(i, 1);
+    commit();
+  });
+  wrap.querySelector(".gmv-remall")?.addEventListener("click", () => {
+    selected.length = 0;
+    commit();
+  });
+  search.addEventListener("input", repaint);
+  repaint();
+  return { repaint };
+}
+
+const mediaUrlCache2 = new Map<string, string | null>();
+async function mediaUrlOf(id: string): Promise<string | null> {
+  if (mediaUrlCache2.has(id)) return mediaUrlCache2.get(id) ?? null;
+  const r = await api().mediaUrl?.(id);
+  const u = r?.ok && r.url ? r.url : null;
+  mediaUrlCache2.set(id, u);
+  return u;
+}
+
 // ── the panel ────────────────────────────────────────────────────────────────
 
 export interface MusicViews {
@@ -240,6 +360,7 @@ export function initMusic(host: MusicHost): MusicViews {
           <button class="action-btn gmus-savenew" title="Encode the edited audio as a NEW take">Save as New</button>
           <button class="action-btn primary gmus-regen" title="Re-run the music model with the edited prompt + lyrics — creates a child version">Regenerate</button>
         </div>
+        <div class="gmus-team"></div>
         <div class="gmus-split">
           <div class="gmus-left">
             <label class="gmus-label">Title</label>
@@ -250,8 +371,10 @@ export function initMusic(host: MusicHost): MusicViews {
             <textarea class="gmus-prompt" spellcheck="false" placeholder="dusty desert blues, slide guitar, slow burn…"></textarea>
             <label class="gmus-label">Band</label>
             <input class="gmus-bandtype" spellcheck="false" placeholder="type of band — 'three-piece garage rock', 'bluegrass quartet'…" />
-            <div class="gmus-artist-chips"></div>
-            <div class="gmus-instruments"></div>
+            <label class="gmus-label">Members <span class="gmem-hint">library left · in the band right</span></label>
+            <div class="gmus-members-pick"></div>
+            <label class="gmus-label">Instruments <span class="gmem-hint">catalog left · in the band right (tweak each)</span></label>
+            <div class="gmus-instruments-pick"></div>
           </div>
           <div class="gmus-right">
             <div class="gmus-wave-bar">
@@ -286,117 +409,120 @@ export function initMusic(host: MusicHost): MusicViews {
     titleIn.value = song.title;
     lyricsIn.value = song.lyrics;
     promptIn.value = song.prompt;
-    // ── the band assembler — every change autosaves onto the song ────────────
+    // ── the band assembler — dual-column pickers; every change autosaves ─────
     const bandTypeIn = pane.querySelector<HTMLInputElement>(".gmus-bandtype")!;
     bandTypeIn.value = song.bandType;
-    const artistChips = pane.querySelector<HTMLElement>(".gmus-artist-chips")!;
-    const instrWrap = pane.querySelector<HTMLElement>(".gmus-instruments")!;
     const saveBand = (): void => {
       void api().musicSongSave?.(song.id, {
         bandType: song.bandType, artistIds: song.artistIds, instruments: song.instruments,
       });
+      paintTeam();
     };
     bandTypeIn.addEventListener("change", () => { song.bandType = bandTypeIn.value.trim(); saveBand(); });
-    const paintArtistChips = (): void => {
-      artistChips.textContent = "";
-      for (const a2 of artists) {
-        const chip = document.createElement("button");
-        chip.className = "gmus-mv-chip" + (song.artistIds.includes(a2.id) ? " on" : "");
-        chip.textContent = `♪ ${a2.name}`;
-        chip.title = a2.style || a2.name;
-        chip.addEventListener("click", () => {
-          song.artistIds = song.artistIds.includes(a2.id)
-            ? song.artistIds.filter((x) => x !== a2.id)
-            : [...song.artistIds, a2.id];
-          saveBand(); paintArtistChips();
-        });
-        artistChips.appendChild(chip);
-      }
-      if (!artists.length) {
-        const hint = document.createElement("span");
-        hint.className = "gmem-hint";
-        hint.textContent = "no artists yet — build the band in the Artists tab";
-        artistChips.appendChild(hint);
-      }
-    };
-    paintArtistChips();
-    const paintInstruments = (): void => {
-      instrWrap.textContent = "";
-      song.instruments.forEach((inst, i) => {
-        const row = document.createElement("div");
-        row.className = "gmus-a-row";
-        row.innerHTML = `
-          <span class="gmus-i-look" title="Instrument look"></span>
-          <input class="gmus-a-style gmus-i-name" spellcheck="false" placeholder="instrument" style="max-width:130px" />
-          <input class="gmus-a-style gmus-i-tweak" spellcheck="false" placeholder="tweak — 'tight, dry, 90s'" style="flex:1" />
-          <button class="ws-icon-btn gmus-i-gen" title="Generate a look image (costs credits)">⟳</button>
-          <button class="ws-icon-btn gmem-del" title="Remove">✕</button>`;
-        const lookEl = row.querySelector<HTMLElement>(".gmus-i-look")!;
-        if (inst.lookAssetId) {
-          void api().mediaUrl?.(inst.lookAssetId).then((r) => {
-            if (r?.ok && r.url && lookEl.isConnected) lookEl.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+
+    // THE SONG TEAM — every member and instrument, faces first, above the song.
+    const teamEl = pane.querySelector<HTMLElement>(".gmus-team")!;
+    const paintTeam = (): void => {
+      teamEl.textContent = "";
+      for (const aid of song.artistIds) {
+        const a2 = artists.find((x) => x.id === aid);
+        if (!a2) continue;
+        const m2 = document.createElement("div");
+        m2.className = "gmus-team-member";
+        m2.title = a2.style || a2.name;
+        m2.innerHTML = `<span class="gmus-team-face">♪</span><span class="gmus-team-name"></span>`;
+        (m2.querySelector(".gmus-team-name") as HTMLElement).textContent = a2.name;
+        const face = m2.querySelector<HTMLElement>(".gmus-team-face")!;
+        if (a2.avatarAssetId) {
+          void mediaUrlOf(a2.avatarAssetId).then((u) => {
+            if (u && face.isConnected) { face.textContent = ""; face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`; }
           });
         }
-        row.querySelector(".gmus-i-gen")?.addEventListener("click", () => {
+        teamEl.appendChild(m2);
+      }
+      for (const inst of song.instruments) {
+        const m2 = document.createElement("div");
+        m2.className = "gmus-team-member gmus-team-inst";
+        m2.title = inst.tweak || inst.instrument;
+        m2.innerHTML = `<span class="gmus-team-face">🎸</span><span class="gmus-team-name"></span>`;
+        (m2.querySelector(".gmus-team-name") as HTMLElement).textContent = inst.instrument;
+        const face = m2.querySelector<HTMLElement>(".gmus-team-face")!;
+        if (inst.lookAssetId) {
+          void mediaUrlOf(inst.lookAssetId).then((u) => {
+            if (u && face.isConnected) { face.textContent = ""; face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`; }
+          });
+        }
+        teamEl.appendChild(m2);
+      }
+      if (!teamEl.childNodes.length) {
+        teamEl.innerHTML = `<span class="gmem-hint">the Song team assembles here — add members and instruments below</span>`;
+      }
+    };
+    paintTeam();
+
+    // Members — searchable dual columns over the org roster.
+    dualPicker({
+      parent: pane.querySelector<HTMLElement>(".gmus-members-pick")!,
+      available: artists.map((a2) => ({ id: a2.id, label: a2.name, thumbAssetId: a2.avatarAssetId })),
+      selected: song.artistIds,
+      searchPlaceholder: "Search artists…",
+      onChange: (sel) => { song.artistIds = sel; saveBand(); },
+    });
+
+    // Instruments — catalog left, the band's right; each selected row keeps
+    // its tweak line, look thumb and ⟳ generate.
+    const instSelected = song.instruments.map((i) => i.instrument);
+    const instPicker = dualPicker({
+      parent: pane.querySelector<HTMLElement>(".gmus-instruments-pick")!,
+      available: [
+        ...INSTRUMENT_CATALOG.map((n) => ({ id: n, label: n })),
+        // Anything already on the song that isn't in the catalog stays pickable.
+        ...song.instruments.filter((i) => !INSTRUMENT_CATALOG.includes(i.instrument)).map((i) => ({ id: i.instrument, label: i.instrument })),
+      ],
+      selected: instSelected,
+      searchPlaceholder: "Search instruments…",
+      onChange: (sel) => {
+        song.instruments = sel.map((name) => song.instruments.find((i) => i.instrument === name) ?? { instrument: name, tweak: "" });
+        saveBand();
+      },
+      renderSelectedRow: (id, row) => {
+        const inst = song.instruments.find((i) => i.instrument === id) ?? { instrument: id, tweak: "" };
+        const tweak = document.createElement("input");
+        tweak.className = "gmus-a-style gmv-tweak";
+        tweak.placeholder = "tweak — 'tight, dry, 90s'";
+        tweak.value = inst.tweak;
+        tweak.spellcheck = false;
+        tweak.addEventListener("click", (ev) => ev.stopPropagation());
+        tweak.addEventListener("change", () => { inst.tweak = tweak.value.trim(); saveBand(); });
+        row.appendChild(tweak);
+        const gen = document.createElement("button");
+        gen.className = "ws-icon-btn";
+        gen.title = "Generate a look image (costs credits)";
+        gen.textContent = "⟳";
+        gen.addEventListener("click", (ev) => {
+          ev.stopPropagation();
           void (async () => {
-            lookEl.classList.add("busy");
-            const started = await api().mediaGenerate?.({
-              model: "",
-              prompt: `Photorealistic product photograph of a ${inst.instrument}${inst.tweak ? `, ${inst.tweak}` : ""}, for a ${bandTypeIn.value.trim() || "rock"} band, dark stage backdrop, dramatic lighting`,
-              title: `${inst.instrument} — look`,
-            }).catch(() => null);
-            // model "" → the org's first image model, resolved main-side? The
-            // generate endpoint needs a model — fall back to asking for one.
-            if (!started?.ok || !started.job) {
-              const models = ["openai::gpt-image-1", "blackforest::flux-pro-1.1", "xai::grok-2-image-1212", "google::gemini-3-pro-image"];
-              for (const m2 of models) {
-                const retry = await api().mediaGenerate?.({ model: m2, prompt: `Photorealistic product photograph of a ${inst.instrument}${inst.tweak ? `, ${inst.tweak}` : ""}, dark stage backdrop, dramatic lighting`, title: `${inst.instrument} — look` });
-                if (retry?.ok && retry.job) { await followJob(retry.job.id); return; }
-              }
-              lookEl.classList.remove("busy");
-              return;
-            }
-            await followJob(started.job.id);
-            async function followJob(jobId: string): Promise<void> {
+            gen.classList.add("busy");
+            const models = ["openai::gpt-image-1", "blackforest::flux-pro-1.1", "xai::grok-2-image-1212", "google::gemini-3-pro-image"];
+            for (const m3 of models) {
+              const started = await api().mediaGenerate?.({ model: m3, prompt: `Photorealistic product photograph of a ${inst.instrument}${inst.tweak ? `, ${inst.tweak}` : ""}, for a ${bandTypeIn.value.trim() || "rock"} band, dark stage backdrop, dramatic lighting`, title: `${inst.instrument} — look` });
+              if (!started?.ok || !started.job) continue;
               for (;;) {
                 await new Promise((r2) => setTimeout(r2, 2500));
-                const poll = await api().mediaJob?.(jobId);
-                if (!poll?.ok || !poll.job) break;
-                if (poll.job.status === "failed") break;
-                if (poll.job.status === "succeeded") {
-                  inst.lookAssetId = poll.job.assetId;
-                  saveBand();
-                  break;
-                }
-                if (!row.isConnected) return;
+                const poll = await api().mediaJob?.(started.job.id);
+                if (!poll?.ok || !poll.job || poll.job.status === "failed") break;
+                if (poll.job.status === "succeeded") { inst.lookAssetId = poll.job.assetId; saveBand(); break; }
               }
-              lookEl.classList.remove("busy");
-              paintInstruments();
+              break;
             }
+            gen.classList.remove("busy");
+            instPicker.repaint();
           })();
         });
-        const nameIn = row.querySelector<HTMLInputElement>(".gmus-i-name")!;
-        const tweakIn = row.querySelector<HTMLInputElement>(".gmus-i-tweak")!;
-        nameIn.value = inst.instrument;
-        tweakIn.value = inst.tweak;
-        nameIn.addEventListener("change", () => { inst.instrument = nameIn.value.trim() || inst.instrument; saveBand(); });
-        tweakIn.addEventListener("change", () => { inst.tweak = tweakIn.value.trim(); saveBand(); });
-        row.querySelector(".gmem-del")?.addEventListener("click", () => {
-          song.instruments.splice(i, 1);
-          saveBand(); paintInstruments();
-        });
-        instrWrap.appendChild(row);
-      });
-      const add = document.createElement("button");
-      add.className = "action-btn gmus-i-add";
-      add.textContent = "＋ Instrument";
-      add.addEventListener("click", () => {
-        song.instruments.push({ instrument: "guitar", tweak: "" });
-        saveBand(); paintInstruments();
-      });
-      instrWrap.appendChild(add);
-    };
-    paintInstruments();
+        row.appendChild(gen);
+      },
+    });
+
     const bandNames = song.artistIds.map((id) => artists.find((a2) => a2.id === id)?.name).filter(Boolean).join(", ");
 
     // Doc autosave (700ms trailing) — the same local-first pattern as Sheets.
@@ -1009,23 +1135,18 @@ export function initMusic(host: MusicHost): MusicViews {
           <span class="gmus-savestate"></span>
           <button class="action-btn primary gmus-regen">${project.renderAssetId ? "Regenerate" : "Generate"}</button>
         </div>
+        <div class="gmus-team"></div>
         <div class="gmus-split">
           <div class="gmus-left">
             <label class="gmus-label">Title</label>
             <input class="gmus-title gmv-title" spellcheck="false" />
-            <label class="gmus-label">Prompt <span class="gmem-hint">what the video should be</span></label>
+            <label class="gmus-label">Song <span class="gmem-hint">the song brings its band — artists, instruments, sound</span></label>
+            <select class="gdz-select gmv-song"></select>
+            <div class="gmus-team gmv-team"></div>
+            <label class="gmus-label">Scene <span class="gmem-hint">what the video should be</span></label>
             <textarea class="gmus-prompt gmv-prompt" spellcheck="false" placeholder="neon-lit rooftop performance, slow dolly, rain…"></textarea>
-            <label class="gmus-label">Visuals <span class="gmem-hint">left = library · right = in the video</span></label>
-            <div class="gmv-dual">
-              <div class="gmv-col gmv-avail"></div>
-              <div class="gmv-ctl">
-                <button class="ws-icon-btn gmv-add" title="Add selected">›</button>
-                <button class="ws-icon-btn gmv-addall" title="Add all">»</button>
-                <button class="ws-icon-btn gmv-rem" title="Remove selected">‹</button>
-                <button class="ws-icon-btn gmv-remall" title="Remove all">«</button>
-              </div>
-              <div class="gmv-col gmv-chosen"></div>
-            </div>
+            <label class="gmus-label">Scene visuals <span class="gmem-hint">library left · in the video right</span></label>
+            <div class="gmv-visuals-pick"></div>
           </div>
           <div class="gmus-right">
             <div class="gmv-player"><div class="gdoc-empty">${project.renderAssetId ? "loading…" : project.status === "rendering" ? "rendering — it attaches here when it lands" : "no render yet — Generate makes one"}</div></div>
@@ -1048,7 +1169,7 @@ export function initMusic(host: MusicHost): MusicViews {
         void (async () => {
           const r = await api().mediaProjectSave?.(project.id, {
             title: titleIn.value.trim() || "Untitled",
-            scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected },
+            scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected, songId: songSel.value || undefined },
           });
           saveState.textContent = r?.ok ? "Saved" : `⚠ ${r?.error ?? "save failed"}`;
         })();
@@ -1057,55 +1178,73 @@ export function initMusic(host: MusicHost): MusicViews {
     titleIn.addEventListener("input", persist);
     promptIn.addEventListener("input", persist);
 
-    // ── the dual-column picker ───────────────────────────────────────────────
-    const availEl = pane.querySelector<HTMLElement>(".gmv-avail")!;
-    const chosenEl = pane.querySelector<HTMLElement>(".gmv-chosen")!;
-    const marked = new Set<string>();
-    const thumb = (asset: { id: string; kind: string; title: string; mime: string }): HTMLElement => {
-      const cell = document.createElement("button");
-      cell.className = "gmv-thumb" + (marked.has(asset.id) ? " marked" : "");
-      cell.title = asset.title;
-      cell.innerHTML = `<span class="gmv-thumb-tag">${asset.kind === "video" || asset.kind === "recording" ? "▶" : ""}</span>`;
-      if (asset.mime.startsWith("image/")) {
-        void api().mediaUrl?.(asset.id).then((r) => {
-          if (r?.ok && r.url && cell.isConnected) cell.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
-        });
-      }
-      cell.addEventListener("click", () => {
-        if (marked.has(asset.id)) marked.delete(asset.id); else marked.add(asset.id);
-        cell.classList.toggle("marked", marked.has(asset.id));
-      });
-      return cell;
-    };
-    const paintCols = (): void => {
-      availEl.textContent = "";
-      chosenEl.textContent = "";
-      const chosenSet = new Set(selected);
-      for (const a2 of poolAll.filter((x) => !chosenSet.has(x.id))) availEl.appendChild(thumb(a2));
-      for (const id2 of selected) {
-        const a2 = poolAll.find((x) => x.id === id2);
-        if (a2) chosenEl.appendChild(thumb(a2));
-      }
-    };
-    const move = (dir: "add" | "rem", all = false): void => {
-      const chosenSet = new Set(selected);
-      if (dir === "add") {
-        const source = poolAll.filter((x) => !chosenSet.has(x.id)).map((x) => x.id);
-        for (const id2 of source) if (all || marked.has(id2)) selected.push(id2);
-      } else {
-        for (let i = selected.length - 1; i >= 0; i--) {
-          if (all || marked.has(selected[i]!)) selected.splice(i, 1);
+    // ── the song + its team ──────────────────────────────────────────────────
+    const songsRes = await api().musicSongs?.();
+    const allSongs = (songsRes?.ok ? songsRes.songs : []).filter((s2) => s2.audioAssetId);
+    const artistsRes = await api().musicArtists?.();
+    const allArtists = artistsRes?.ok ? artistsRes.artists : [];
+    const songSel = pane.querySelector<HTMLSelectElement>(".gmv-song")!;
+    songSel.innerHTML = `<option value="">(pick a song)</option>` +
+      allSongs.map((s2) => `<option value="${s2.id}">${s2.title.replace(/</g, "&lt;")}</option>`).join("");
+    songSel.value = String(project.scenes.songId ?? "");
+    const teamEl = pane.querySelector<HTMLElement>(".gmv-team")!;
+    const paintTeam = (): void => {
+      teamEl.textContent = "";
+      const song = allSongs.find((s2) => s2.id === songSel.value);
+      if (!song) { teamEl.innerHTML = `<span class="gmem-hint">pick a song and its band shows here</span>`; return; }
+      for (const aid of song.artistIds) {
+        const a2 = allArtists.find((x) => x.id === aid);
+        if (!a2) continue;
+        const m2 = document.createElement("div");
+        m2.className = "gmus-team-member";
+        m2.innerHTML = `<span class="gmus-team-face">♪</span><span class="gmus-team-name"></span>`;
+        (m2.querySelector(".gmus-team-name") as HTMLElement).textContent = a2.name;
+        const face = m2.querySelector<HTMLElement>(".gmus-team-face")!;
+        if (a2.avatarAssetId) {
+          void mediaUrlOf(a2.avatarAssetId).then((u) => {
+            if (u && face.isConnected) { face.textContent = ""; face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`; }
+          });
         }
+        teamEl.appendChild(m2);
       }
-      marked.clear();
-      paintCols();
-      persist();
+      for (const inst of song.instruments) {
+        const m2 = document.createElement("div");
+        m2.className = "gmus-team-member gmus-team-inst";
+        m2.innerHTML = `<span class="gmus-team-face">🎸</span><span class="gmus-team-name"></span>`;
+        (m2.querySelector(".gmus-team-name") as HTMLElement).textContent = inst.instrument;
+        const face = m2.querySelector<HTMLElement>(".gmus-team-face")!;
+        if (inst.lookAssetId) {
+          void mediaUrlOf(inst.lookAssetId).then((u) => {
+            if (u && face.isConnected) { face.textContent = ""; face.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`; }
+          });
+        }
+        teamEl.appendChild(m2);
+      }
     };
-    pane.querySelector(".gmv-add")?.addEventListener("click", () => move("add"));
-    pane.querySelector(".gmv-addall")?.addEventListener("click", () => move("add", true));
-    pane.querySelector(".gmv-rem")?.addEventListener("click", () => move("rem"));
-    pane.querySelector(".gmv-remall")?.addEventListener("click", () => move("rem", true));
-    paintCols();
+    songSel.addEventListener("change", () => { paintTeam(); persist(); });
+    paintTeam();
+
+    /** The full brief: the scene + everything the song knows about its band. */
+    const composedBrief = (): string => {
+      const song = allSongs.find((s2) => s2.id === songSel.value);
+      const names = song ? song.artistIds.map((aid) => allArtists.find((x) => x.id === aid)?.name).filter(Boolean).join(", ") : "";
+      return [
+        `Music video: ${promptIn.value.trim()}`,
+        song?.bandType ? `Band: ${song.bandType}.` : "",
+        names ? `Performers: ${names}.` : "",
+        song?.instruments.length ? `Instruments on stage: ${song.instruments.map((i) => i.instrument).join(", ")}.` : "",
+        song?.prompt ? `The song: ${song.prompt}.` : "",
+      ].filter(Boolean).join("\n");
+    };
+
+    // ── scene visuals — the searchable dual columns ──────────────────────────
+    dualPicker({
+      parent: pane.querySelector<HTMLElement>(".gmv-visuals-pick")!,
+      available: poolAll.map((a2) => ({ id: a2.id, label: a2.title, thumbAssetId: a2.mime.startsWith("image/") ? a2.id : null })),
+      selected,
+      searchPlaceholder: "Search the library…",
+      onChange: () => persist(),
+    });
 
     // ── the player ───────────────────────────────────────────────────────────
     const player = pane.querySelector<HTMLElement>(".gmv-player")!;
@@ -1131,9 +1270,9 @@ export function initMusic(host: MusicHost): MusicViews {
         saveState.textContent = "generating…";
         await api().mediaProjectSave?.(project.id, {
           title: titleIn.value.trim() || "Untitled",
-          scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected },
+          scenes: { ...project.scenes, prompt: promptIn.value.trim(), visuals: selected, songId: songSel.value || undefined },
         });
-        const started = await api().mediaProjectGenerate?.(project.id, {});
+        const started = await api().mediaProjectGenerate?.(project.id, { prompt: composedBrief() });
         if (!started?.ok || !started.project || !started.job) {
           saveState.textContent = `⚠ ${started?.error ?? "couldn't start"}`;
           regenBtn.disabled = false;

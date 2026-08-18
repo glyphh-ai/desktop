@@ -665,6 +665,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-usage-by-runtime", q) as Promise<{ runtimes: unknown[] }>,
   adminOrgs: (q: { q?: string; page?: number; limit?: number }) =>
     ipcRenderer.invoke("admin-orgs", q) as Promise<{ orgs: unknown[]; total: number }>,
+  adminOrg: (id: string) => ipcRenderer.invoke("admin-org", id) as Promise<unknown>,
+  adminOrgUpdate: (id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
+    ipcRenderer.invoke("admin-org-update", id, patch) as Promise<unknown>,
   adminOrgGrantCredits: (id: string, credits: number, note?: string) =>
     ipcRenderer.invoke("admin-org-grant-credits", id, credits, note) as Promise<{ ok: boolean; balance?: number; error?: string }>,
   // ── Files artifact store (Files gallery) — the MAIN-process SDK client

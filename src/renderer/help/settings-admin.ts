@@ -84,6 +84,13 @@ interface AdminUsageByRuntime {
   runtimes: number; orgs: number; users: number; requests: number; credits: number;
 }
 interface AdminOrgRow { id: string; name: string; tier: string; billing_status: string; member_count: number }
+interface AdminOrgMember { id: string; first_name: string; last_name: string; email: string; role: string; status: string }
+interface AdminOrgDetail extends AdminOrgRow {
+  max_seats: number; created_at: string;
+  credits: { balance: number; used: number };  // micro-credits
+  members: AdminOrgMember[];
+}
+type AdminOrgPatch = { name?: string; tier?: string; billingStatus?: string };
 
 // ── Transport ─────────────────────────────────────────────────────────────
 
@@ -107,6 +114,8 @@ interface SdkAdmin {
   usageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
   usageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   orgs?: (q?: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
+  org?: (id: string) => Promise<AdminOrgDetail>;
+  updateOrg?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   grantCredits?: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
 }
 interface DesktopAdminIpc {
@@ -129,6 +138,8 @@ interface DesktopAdminIpc {
   adminUsageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
   adminUsageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   adminOrgs?: (q: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
+  adminOrg?: (id: string) => Promise<AdminOrgDetail>;
+  adminOrgUpdate?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   adminOrgGrantCredits?: (id: string, credits: number, note?: string) => Promise<{ ok: boolean; balance?: number; error?: string }>;
 }
 
@@ -1196,9 +1207,9 @@ function paintOrgs(): void {
         if (dim) dim.textContent = o.billing_status || "—";
       }
     }
-    tr.addEventListener("click", () => openGrantForm(o));
+    tr.addEventListener("click", () => void openOrgDetail(o));
     tr.appendChild(kebabCell(() => [
-      { icon: ROW_MENU_ICONS.edit, label: "Grant credits", onClick: () => openGrantForm(o) },
+      { icon: ROW_MENU_ICONS.edit, label: "Manage", onClick: () => void openOrgDetail(o) },
     ]));
     tbody.appendChild(tr);
   }
@@ -1250,6 +1261,122 @@ async function grantCredits(): Promise<void> {
   if (input) input.value = "";
 }
 
+// ── Org detail (full management view) ─────────────────────────────────────
+let detailOrg: AdminOrgDetail | null = null;
+const ORG_TIERS = ["free", "basic", "pro", "enterprise"];
+
+/** Show exactly one of the org sub-views. */
+function showOrgView(view: "list" | "detail" | "grant"): void {
+  $("pa-orgs-list-view")?.classList.toggle("hidden", view !== "list");
+  $("pa-org-detail")?.classList.toggle("hidden", view !== "detail");
+  $("pa-org-grant")?.classList.toggle("hidden", view !== "grant");
+}
+
+async function openOrgDetail(o: AdminOrgRow): Promise<void> {
+  showOrgView("detail");
+  setErr("pa-org-detail-error", "");
+  const body = $("pa-org-detail-body");
+  if (body) body.innerHTML = `<div class="crud-empty">Loading ${escapeHtml(o.name)}…</div>`;
+  try {
+    const [detail, plansRes] = await Promise.all([
+      read((a) => a.org?.(o.id), (g) => g.adminOrg?.(o.id)),
+      read((a) => a.plans?.(), (g) => g.adminPlans?.()).catch(() => ({ plans: [] as AdminPlan[] })),
+    ]);
+    detailOrg = detail;
+    renderOrgDetail(detail, plansRes?.plans ?? []);
+  } catch (err) {
+    setErr("pa-org-detail-error", `Couldn't load this organization — ${errText(err)}`);
+    if (body) body.innerHTML = "";
+  }
+}
+
+function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
+  const body = $("pa-org-detail-body");
+  if (!body) return;
+  const owner = d.members.find((m) => m.role === "owner" || m.role === "org_admin") ?? d.members[0];
+  const ownerName = owner ? (`${owner.first_name} ${owner.last_name}`.trim() || owner.email) : "—";
+  const plan = plans.find((p) => p.tier === d.tier);
+  const allowance = plan ? microToCredits(Number(plan.included_credits)) : null;
+  body.innerHTML = `
+    <h3 class="settings-subheading" style="margin-top:0;">${escapeHtml(d.name)} <span id="pa-org-detail-state" class="set-save-state"></span></h3>
+    <p class="settings-hint" style="margin:-4px 0 12px;">${escapeHtml(d.id)}</p>
+    <div class="pa-org-stats">
+      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
+      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
+      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
+    </div>
+    <div class="pa-kv">
+      <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
+      <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
+      <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
+      <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
+      <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
+    </div>
+    <h4 class="acct-row-head">Plan</h4>
+    <div class="settings-inline">
+      <select id="pa-org-tier" class="settings-input settings-input-md">${ORG_TIERS.map((t) => `<option value="${t}"${t === d.tier ? " selected" : ""}>${t}</option>`).join("")}</select>
+      <button id="pa-org-tier-save" class="action-btn" type="button">Change plan</button>
+    </div>
+    <h4 class="acct-row-head">Grant credits</h4>
+    <div class="settings-inline">
+      <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
+      <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
+    </div>
+    <p class="settings-hint" style="margin-top:4px;">Admin-granted credits never expire and land on the balance immediately.</p>
+    <h4 class="acct-row-head">Members (${fmtInt(d.members.length)})</h4>
+    <div id="pa-org-members" class="mbr-list"></div>`;
+  const ml = $("pa-org-members");
+  if (ml) for (const m of d.members) {
+    const row = document.createElement("div");
+    row.className = "mbr-row";
+    const nm = `${m.first_name} ${m.last_name}`.trim() || m.email;
+    row.innerHTML = `<div class="mbr-main"><b></b><span class="lib-table-dim"></span></div><span class="lib-badge"></span>`;
+    row.querySelector(".mbr-main b")!.textContent = nm;
+    row.querySelector(".mbr-main .lib-table-dim")!.textContent = m.email;
+    row.querySelector(".lib-badge")!.textContent = m.role;
+    ml.appendChild(row);
+  }
+  $("pa-org-tier-save")?.addEventListener("click", () => void changeOrgTier());
+  $("pa-org-grant-go")?.addEventListener("click", () => void grantFromDetail());
+}
+
+function detailState(msg: string): void {
+  const el = $("pa-org-detail-state");
+  if (el) { el.textContent = msg; el.className = "set-save-state success"; }
+}
+
+async function changeOrgTier(): Promise<void> {
+  if (!detailOrg) return;
+  const tier = inputVal("pa-org-tier");
+  if (!tier || tier === detailOrg.tier) return;
+  const sure = await confirmAction({ title: `Move “${detailOrg.name}” to ${tier}?`, body: "Changes the org's plan tier immediately.", confirmLabel: "Change plan" });
+  if (!sure) return;
+  try {
+    const updated = await read((a) => a.updateOrg?.(detailOrg!.id, { tier }), (g) => g.adminOrgUpdate?.(detailOrg!.id, { tier }));
+    detailOrg = updated;
+    const plansRes = await read((a) => a.plans?.(), (g) => g.adminPlans?.()).catch(() => ({ plans: [] as AdminPlan[] }));
+    renderOrgDetail(updated, plansRes?.plans ?? []);
+    detailState("Plan updated ✓");
+  } catch (err) { setErr("pa-org-detail-error", `Couldn't change the plan — ${errText(err)}`); }
+}
+
+async function grantFromDetail(): Promise<void> {
+  if (!detailOrg) return;
+  const credits = Math.round(Number(inputVal("pa-org-grant-amt")) || 0);
+  if (credits <= 0) { setErr("pa-org-detail-error", "Enter a positive number of credits."); return; }
+  const sure = await confirmAction({ title: `Grant ${fmtInt(credits)} credits to ${detailOrg.name}?`, body: "Admin-granted credits never expire.", confirmLabel: "Grant credits" });
+  if (!sure) return;
+  const res = await write<number>(
+    (a) => a.grantCredits?.(detailOrg!.id, credits).then((r) => r.balance),
+    (g) => g.adminOrgGrantCredits?.(detailOrg!.id, credits), "balance");
+  if (!res.ok) { setErr("pa-org-detail-error", res.error); return; }
+  setErr("pa-org-detail-error", "");
+  detailOrg.credits.balance = res.data;
+  const plansRes = await read((a) => a.plans?.(), (g) => g.adminPlans?.()).catch(() => ({ plans: [] as AdminPlan[] }));
+  renderOrgDetail(detailOrg, plansRes?.plans ?? []);
+  detailState(`Granted — balance now ${fmtInt(microToCredits(res.data))} credits`);
+}
+
 async function refreshOrgs(): Promise<void> {
   try {
     const r = await read(
@@ -1276,13 +1403,14 @@ export function loadAdminOrgs(): void {
     });
     $("pa-org-grant-back")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); void refreshOrgs(); });
     $("pa-grant-cancel")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); });
+    $("pa-org-detail-back")?.addEventListener("click", () => { detailOrg = null; showOrgView("list"); void refreshOrgs(); });
     $("pa-grant-save")?.addEventListener("click", () => { void grantCredits(); });
   }
   void (async () => {
     const allowed = await isSuperAdmin();
     if (allowed === false) { gatePanel("pa-orgs-gate", "pa-orgs-body", false); return; }
     gatePanel("pa-orgs-gate", "pa-orgs-body", true);
-    showGrantForm(false);
+    showOrgView("list");
     const wrap = $("pa-orgs-list");
     if (wrap && !orgs.length) wrap.innerHTML = `<div class="crud-empty">Loading…</div>`;
     await refreshOrgs();

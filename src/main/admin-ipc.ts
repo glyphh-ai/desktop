@@ -123,6 +123,9 @@ export function registerAdminIpc(): void {
   // ── orgs + credit grants ────────────────────────────────────────────────
   ipcMain.handle("admin-orgs", (_e, q: { q?: string; page?: number; limit?: number }) =>
     getClient().admin.orgs({ q: q?.q, page: q?.page, limit: q?.limit }));
+  ipcMain.handle("admin-org", (_e, id: string) => getClient().admin.org(String(id)));
+  ipcMain.handle("admin-org-update", (_e, id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
+    getClient().admin.updateOrg(String(id), patch));
   ipcMain.handle("admin-org-grant-credits", async (_e, id: string, credits: number, note?: string) => {
     try { return { ok: true as const, balance: (await getClient().admin.grantCredits(String(id), Number(credits) || 0, note)).balance }; }
     catch (err) { return fail(err); }

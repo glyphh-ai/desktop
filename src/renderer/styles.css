@@ -17967,3 +17967,42 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
   background: var(--bg); border-radius: 12px; border: 1px solid var(--border); overflow: hidden;
 }
+
+/* — the Song team strip + picker chrome — */
+.gmus-team {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  padding: 8px 14px; border-bottom: 1px solid var(--border); flex: none;
+  min-height: 44px;
+}
+.gmv-team { border-bottom: none; padding: 6px 0; }
+.gmus-team-member { display: flex; align-items: center; gap: 7px; }
+.gmus-team-face {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  background: var(--surface) center / cover no-repeat;
+  border: 1px solid var(--border-2);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent); font-size: 13px;
+}
+.gmus-team-inst .gmus-team-face { border-radius: 50%; font-size: 12px; }
+.gmus-team-name { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+.gmv-pickwrap { display: flex; flex-direction: column; gap: 6px; }
+.gmv-search { width: 100%; }
+.gmv-rows { display: flex; flex-direction: column; gap: 5px; grid-template-columns: none; }
+.gmv-pick {
+  display: flex; align-items: center; gap: 8px; text-align: left;
+  font: inherit; font-size: 12px; color: var(--text);
+  background: var(--surface); border: 1.5px solid var(--border-2); border-radius: 8px;
+  padding: 4px 8px; cursor: pointer; width: 100%;
+}
+.gmv-pick.marked { border-color: var(--accent); }
+.gmv-pick-face {
+  width: 24px; height: 24px; border-radius: 6px; flex: none;
+  background: var(--bg) center / cover no-repeat;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--accent); font-size: 11px;
+}
+.gmv-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmv-selrow { display: flex; align-items: center; gap: 6px; }
+.gmv-selrow .gmv-pick { flex: 0 0 44%; }
+.gmv-tweak { flex: 1; min-width: 0; font-size: 11.5px; }
+.gmv-col.gmv-avail { grid-template-columns: none; display: flex; flex-direction: column; gap: 5px; }
