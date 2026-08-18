@@ -1287,7 +1287,7 @@ async function init(): Promise<void> {
 
   /** Return the live agent DOM to its home column (before the workbench
    *  aside). Called before any rails rebuild and when the coding tile closes. */
-  function parkAgent(): void {
+  function parkAgent(force = false): void {
     const agent = document.querySelector<HTMLElement>(".code-agent");
     const aside = document.getElementById("code-workbench");
     // LEAVE AN ECHO-HOSTED AGENT ALONE. renderRails wipes only `#code-wb-rails`;
@@ -1296,8 +1296,13 @@ async function init(): Promise<void> {
     // card and orphans it — which read as the agent vanishing / getting "docked"
     // when a panel opened. Only park a RAIL-hosted agent (whose slot really is
     // about to be rebuilt); renderCodingIntoSlot re-homes that one after.
+    //
+    // `force` is for callers whose Echo card is GOING AWAY (closeCard's
+    // teardown, clearCardContent, the dock reclaim): there the guard is fatal
+    // — refusing to park lets the card's DOM removal destroy the singleton,
+    // after which the agent can never be opened again.
     const inEchoCard = !!agent?.closest(".echo-card-body");
-    if (agent && aside && !inEchoCard && agent.parentElement !== aside.parentElement) {
+    if (agent && aside && (force || !inEchoCard) && agent.parentElement !== aside.parentElement) {
       aside.parentElement!.insertBefore(agent, aside);
       document.querySelector(".code-root")?.classList.remove("agent-hosted");
     }
@@ -3416,7 +3421,7 @@ async function init(): Promise<void> {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections)
         try {
-          if (card.querySelector(".code-agent")) parkAgent();   // the singleton goes home
+          if (card.querySelector(".code-agent")) parkAgent(true);   // the singleton goes home
           if (card.querySelector(".code-composer")) (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
           const pen = document.getElementById("page-body");
           card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
@@ -4074,7 +4079,7 @@ async function init(): Promise<void> {
     /** Tear a card's content down (agent/sections park, PTYs die, RPA
      *  unhooks) WITHOUT closing the card — the pin retarget reuses it. */
     const clearCardContent = (e: TileEntry, card: HTMLElement): void => {
-      if (card.querySelector(".code-agent")) parkAgent();
+      if (card.querySelector(".code-agent")) parkAgent(true);
       const pen = document.getElementById("page-body");
       card.querySelectorAll<HTMLElement>(".help-section.wb-hosted").forEach((sec) => {
         sec.classList.remove("active", "wb-hosted");
@@ -4165,6 +4170,13 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home") {
+        // THE OPEN RULE: new session (like the Glyphh icon) always removes an
+        // active layout — no pin exception. Reset first so the agent surface
+        // is reclaimed out of the layout's card, then start the session.
+        if (activeLayoutId != null || openList.some((x) => x.layoutId != null)) {
+          resetEcho();
+          void openAgentCard();
+        }
         (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
         return;
       }
@@ -8013,7 +8025,9 @@ async function init(): Promise<void> {
   // can style. applyAnchor() calls this whenever the anchor is a dock mode, so PICKING the
   // dock from the menu finally moves the agent. Lightweight (no render) to avoid recursion.
   (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => {
-    parkAgent();
+    // FORCE: this is the dock RECLAIMING the agent — pulling it out of an
+    // Echo card is the entire point, so the echo-hosted guard must not apply.
+    parkAgent(true);
     // Docked → the Echo card the agent lived in is now an empty husk. Close it
     // (session stays alive) so a docked agent isn't shadowed by a blank panel.
     echoCtl?.detachAgent();
