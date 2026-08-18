@@ -58,7 +58,7 @@ export async function loadMktAdmin(): Promise<void> {
     <button class="mkt-back">‹ Back to marketplace</button>
     <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><span class="cur">Review desk</span></nav>
     <h1 class="mkt-console-title">Review desk</h1>
-    <p class="section-desc">Nothing ships without approval — every release and every update comes through here, and every report is taken seriously.</p>
+    <p class="mkt-console-sub">Nothing ships without approval — every release and every update comes through here, and every report is taken seriously.</p>
     <div class="mkt-admin-tabs">
       <button class="mkt-scope${adminTab === "queue" ? " active" : ""}" data-atab="queue">Release queue</button>
       <button class="mkt-scope${adminTab === "reports" ? " active" : ""}" data-atab="reports">App reports</button>
