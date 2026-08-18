@@ -399,6 +399,23 @@ button, input, select, textarea {
   font-family: var(--font-sans);
 }
 
+/* Icon buttons are BARE ICONS — no chip, no border, no default button chrome.
+   Work panels (Docs/Sheets/Slides/Drive/Media/Design/Memory) build their icon
+   controls with `.ws-icon-btn`; without this base they'd fall back to the
+   browser's default button box. Hover just brightens the glyph — no background.
+   Surfaces that intentionally want a hover chip (Echo cards/top bar) override
+   this with their own more-specific rules. */
+.ws-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; margin: 0; padding: 3px;
+  color: var(--text-2); cursor: pointer; border-radius: 6px; line-height: 1;
+  transition: color 0.12s ease, opacity 0.12s ease;
+  -webkit-appearance: none; appearance: none;
+}
+.ws-icon-btn:hover { color: var(--text); background: none; }
+.ws-icon-btn:disabled { opacity: 0.4; cursor: default; }
+.ws-icon-btn svg { display: block; }
+
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -11254,7 +11271,7 @@ body.wb-modal-open #code-wb-applayer { visibility: hidden !important; }
   display: flex; align-items: center; gap: 6px;
 }
 /* + file / + folder — same 24px/13px rules as the Browser bar's buttons
-   (.ws-icon-btn has no base style; every use is bespoke). */
+   (.ws-icon-btn now has a bare-icon base near the top reset; this just sizes). */
 .ws-file-add {
   background: transparent; border: none; padding: 0;
   width: 24px; height: 24px; border-radius: 4px;

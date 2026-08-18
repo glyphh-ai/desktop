@@ -227,7 +227,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
         <span class="gmem-fact-role"></span>
         <span class="gmem-fact-filler" title="Click to edit"></span>
         <span class="gmem-fact-meta"></span>
-        <button class="ws-icon-btn gmem-del" title="Forget this fact">✕</button>`;
+        <button class="ws-icon-btn gmem-del" title="Forget this fact"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>`;
       (row.querySelector(".gmem-fact-entity") as HTMLElement).textContent = f.entity;
       (row.querySelector(".gmem-fact-role") as HTMLElement).textContent = f.role;
       (row.querySelector(".gmem-fact-filler") as HTMLElement).textContent = f.filler;
@@ -318,7 +318,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
           <div class="gmem-chunk-text" title="Click to expand"></div>
           <div class="gmem-chunk-meta"></div>
         </div>
-        <button class="ws-icon-btn gmem-del" title="Forget this chunk">✕</button>`;
+        <button class="ws-icon-btn gmem-del" title="Forget this chunk"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>`;
       const textEl = el.querySelector<HTMLElement>(".gmem-chunk-text")!;
       textEl.textContent = meta.text;
       textEl.addEventListener("click", () => el.classList.toggle("collapsed"));
