@@ -43,6 +43,25 @@ export function registerMarketplaceIpc(): void {
     return { detail, installed: installs.some((i) => i.slug === detail.slug) };
   });
 
+  // ── identity handoff (M7) ─────────────────────────────────────────────────
+  // The short-lived signed Glyphh identity token an installed marketplace app
+  // receives on open (POST /api/apps/:slug/token). FEATURE-DETECTED: the SDK
+  // method ships separately; until it exists this answers { ok: false } and
+  // the renderer opens the app without a handoff — degraded, never broken.
+  ipcMain.handle("mkt-app-token", async (_e, slug: string) => {
+    try {
+      const apps = getClient().apps as unknown as {
+        mintAppToken?: (slug: string) => Promise<{ token?: string } | string>;
+      };
+      if (typeof apps.mintAppToken !== "function") {
+        return { ok: false as const, error: "Identity handoff isn't in this SDK build yet." };
+      }
+      const r = await apps.mintAppToken(String(slug));
+      const token = typeof r === "string" ? r : r?.token;
+      return token ? { ok: true as const, token } : { ok: false as const, error: "No token returned." };
+    } catch (err) { return fail(err); }
+  });
+
   // ── install / uninstall ───────────────────────────────────────────────────
   ipcMain.handle("mkt-install", async (_e, slug: string) => {
     try {

@@ -210,6 +210,9 @@ interface SdkApps {
   get?: (slug: string) => Promise<MktDetail>;
   install?: (slug: string) => Promise<{ slug: string }>;
   uninstall?: (slug: string) => Promise<void>;
+  /** M7 identity handoff — POST /api/apps/:slug/token. Shipping separately in
+   *  the SDK; every caller FEATURE-DETECTS it (mktMintAppToken below). */
+  mintAppToken?: (slug: string) => Promise<{ token: string } | string>;
   reviews?: (slug: string, q?: { limit?: number; offset?: number }) => Promise<{ reviews: MktReview[]; total: number }>;
   review?: (slug: string, input: { stars: number; body?: string }) => Promise<MktReview>;
   removeReview?: (slug: string) => Promise<void>;
@@ -250,6 +253,7 @@ interface MktSdkHandle { apps?: SdkApps; marketplace?: SdkMarketplace }
 interface MktIpc {
   mktBrowse?: () => Promise<unknown>;
   mktDetail?: (slug: string) => Promise<unknown>;
+  mktAppToken?: (slug: string) => Promise<unknown>;
   mktInstall?: (slug: string) => Promise<unknown>;
   mktUninstall?: (slug: string) => Promise<unknown>;
   mktReviews?: (slug: string, q?: { limit?: number; offset?: number }) => Promise<unknown>;
@@ -440,6 +444,26 @@ export const mkt = {
       (g) => g.mktAdminSuspend?.(slug, suspend),
     ),
 };
+
+// ── Identity handoff (M7) ─────────────────────────────────────────────────
+
+/** Mint the short-lived signed Glyphh identity token a marketplace app
+ *  receives on open (POST /api/apps/:slug/token) — how "no per-app signup"
+ *  works. FEATURE-DETECTED on both transports: until the SDK ships
+ *  client.apps.mintAppToken this resolves null and the app opens without a
+ *  handoff — a missing token is a degraded open, never an error. */
+export async function mktMintAppToken(slug: string): Promise<string | null> {
+  try {
+    const s = sdk();
+    const mint = s?.apps?.mintAppToken;
+    if (typeof mint === "function") {
+      const r = await mint.call(s!.apps, slug);
+      return typeof r === "string" ? r : r?.token ?? null;
+    }
+    const r = (await ipc().mktAppToken?.(slug)) as { ok?: boolean; token?: string } | null | undefined;
+    return r?.ok === true && typeof r.token === "string" && r.token ? r.token : null;
+  } catch { return null; }
+}
 
 // ── Role gate ─────────────────────────────────────────────────────────────
 

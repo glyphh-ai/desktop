@@ -3,13 +3,19 @@
  */
 
 import {
-  paginate, renderPaginationBar, confirmAction, clearInvalid,
+  paginate, renderPaginationBar, confirmAction, promptAction, clearInvalid,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
-import { escMkt, mktConnChip, connLabel, mktConnIconApps } from "./marketplace-data.js";
+import {
+  escMkt, mktConnChip, connLabel, mktConnIconApps,
+  mkt, mktMintAppToken, mktStarRow, mktDate, mktDiscountActive,
+  type MktDetail,
+} from "./marketplace-data.js";
+import { openMktDetail } from "./marketplace.js";
+import { formatMarkdown } from "../format-markdown.js";
 
 declare const Chart: any;
 
@@ -328,7 +334,7 @@ let panelApps: PanelApp[] = [];
  *  surface an error. */
 async function launchPanelApp(app: PanelApp): Promise<{ ok: boolean; error?: string }> {
   return (await window.glyphh.appLaunch?.({
-    slug: app.slug, name: app.name, url: app.url,
+    slug: app.slug, name: app.name, url: await appOpenUrl(app),
     isBrowser: app.isBrowser,
     execPath: app.execPath, appArchetype: app.appArchetype, launchConfig: app.launchConfig,
   })) ?? { ok: false, error: "Launching apps isn't available on this surface." };
@@ -478,6 +484,176 @@ async function renderRequiredConnections(app: PanelApp): Promise<void> {
   primeConnectedIcons(mktConnIconApps(required.map((slug) => ({ slug }))), render);
 }
 
+// ── Marketplace-installed consumer view (M7) ─────────────────────────────
+//
+// An app installed FROM the marketplace is an approved release its DEVELOPER
+// runs on Glyphh's hosting pipeline — always on, nothing for the installer to
+// deploy, configure, or switch off. The installer's detail view is the
+// STORE's view: About (listing summary + the developer's pricing story),
+// Connections (the grants it needs), Support (the developer's, never ours).
+// Keyed off `owned === false`: builtin work panels never reach this editor,
+// and an org's own builds read as owned.
+
+let currentMktDetail: MktDetail | null = null;
+let mktDetailEpoch = 0;
+
+/** The URL an installed MARKETPLACE app opens at: its hosted URL with the
+ *  signed Glyphh identity token appended as a fragment (the M7 handoff), when
+ *  the SDK can mint one. Feature-detected — the bare URL otherwise, and any
+ *  other app's URL passes through untouched. */
+async function appOpenUrl(app: PanelApp): Promise<string | null | undefined> {
+  if (app.owned !== false || !app.url || !/^https?:\/\//i.test(app.url)) return app.url;
+  const token = await mktMintAppToken(app.slug);
+  return token ? `${app.url}#glyphh_token=${encodeURIComponent(token)}` : app.url;
+}
+
+/** Fetch the store detail for the OPEN marketplace-installed app, then
+ *  re-render the consumer tabs and the open-action gate. */
+async function loadMktInstalledDetail(app: PanelApp): Promise<void> {
+  const epoch = ++mktDetailEpoch;
+  let detail: MktDetail | null = null;
+  try { detail = (await mkt.detail(app.slug)).detail; }
+  catch { detail = null; /* the tabs render an honest fallback */ }
+  if (epoch !== mktDetailEpoch || currentApp?.slug !== app.slug) return;
+  currentMktDetail = detail;
+  syncMktAvailability();
+  renderMktAboutTab();
+  renderMktSupportTab();
+}
+
+/** True when the server says the app can't open right now. Suspended is also
+ *  how a hosting lapse presents (lapse = unrouted, data retained — never
+ *  uninstalled), so one flag gates the open action. */
+function mktUnavailable(): boolean { return currentMktDetail?.suspended === true; }
+
+/** Gate the header's open action on the app's availability. */
+function syncMktAvailability(): void {
+  const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
+  if (!openBtn || currentApp?.owned !== false) return;
+  const off = mktUnavailable();
+  openBtn.disabled = off;
+  openBtn.textContent = off ? "Temporarily unavailable" : "Open app";
+  openBtn.title = off ? "The developer's hosting is paused." : "Open this app as a panel";
+}
+
+/** About — the listing summary on the left, the developer's pricing story +
+ *  version + rating link on the right. */
+function renderMktAboutTab(): void {
+  const app = currentApp;
+  const aboutEl = document.getElementById("mkt-inst-about");
+  const priceEl = document.getElementById("mkt-inst-pricing");
+  if (!app || app.owned !== false || !aboutEl || !priceEl) return;
+  const d = currentMktDetail;
+  document.getElementById("mkt-inst-unavailable")?.classList.toggle("hidden", !mktUnavailable());
+
+  // Left: the store copy, not an editor. The PanelApp's own listing snapshot
+  // is the fallback when the store detail can't load.
+  const l = d?.listing ?? app.listing ?? null;
+  if (!l) {
+    aboutEl.innerHTML = `<div class="inline-empty">Couldn't load this app's listing right now.</div>`;
+  } else {
+    const title = l.title || app.name;
+    aboutEl.innerHTML = `
+      <h3 class="settings-subheading" style="margin:0 0 4px;">${escMkt(title)}</h3>
+      ${l.tagline ? `<p class="settings-hint" style="margin:0 0 12px;">${escMkt(l.tagline)}</p>` : ""}
+      ${l.body ? `<div class="mkt-md">${formatMarkdown(l.body)}</div>` : `<p class="settings-hint">The developer hasn't written a description yet.</p>`}`;
+  }
+
+  // Right: pricing story (the developer's, in their economics: install price
+  // here, in-app charges theirs), version, rating link into the store page.
+  const p = d?.pricing;
+  const story = !p
+    ? `<p class="settings-hint">Pricing unavailable right now.</p>`
+    : p.effectiveMonthlyCredits > 0
+      ? `<div class="mkt-plan">
+          <div class="mkt-plan-price">${mktDiscountActive(p) ? `<s>${p.monthlyCredits}</s> ${p.effectiveMonthlyCredits}` : p.monthlyCredits}<small> credits/mo</small></div>
+          <div class="mkt-plan-blurb">Billed monthly in Glyphh credits.${mktDiscountActive(p) && p.discountEndsAt ? ` ${p.discountPercent}% off until ${escMkt(mktDate(p.discountEndsAt))}.` : ""}</div>
+        </div>`
+      : `<div class="mkt-plan">
+          <div class="mkt-plan-price">Free</div>
+          <div class="mkt-plan-blurb">Free to install. The developer may charge for services inside the app — any in-app purchase is between you and the developer.</div>
+        </div>`;
+  const rating = d
+    ? (d.listing.ratingCount
+      ? `${mktStarRow(d.listing.ratingAvg)} <b>${d.listing.ratingAvg.toFixed(1)}</b> <a href="#" id="mkt-inst-rating-link">${d.listing.ratingCount.toLocaleString()} review${d.listing.ratingCount === 1 ? "" : "s"}</a>`
+      : `<a href="#" id="mkt-inst-rating-link">No reviews yet — write the first</a>`)
+    : "";
+  priceEl.innerHTML = `
+    <h3 class="settings-subheading" style="margin:0 0 8px;">Pricing</h3>
+    ${story}
+    <div class="mkt-side-row" style="margin-top:14px;"><span>Version</span><b>${escMkt(d?.version || app.latestVersion || "—")}</b></div>
+    ${rating ? `<div class="mkt-side-row"><span>Rating</span><span>${rating}</span></div>` : ""}
+    <p class="proxy-field-hint" style="margin-top:14px;">Always on — the developer runs this app on Glyphh's hosting. There's nothing to deploy or switch off.</p>`;
+  document.getElementById("mkt-inst-rating-link")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    gotoSection("marketplace");
+    void openMktDetail(app.slug);
+  });
+}
+
+/** Support — the developer's card + channel, release notes, and the
+ *  report-app door into the platform triage queue. */
+function renderMktSupportTab(): void {
+  const app = currentApp;
+  const el = document.getElementById("mkt-inst-support");
+  if (!app || app.owned !== false || !el) return;
+  const d = currentMktDetail;
+  const dev = d?.developer;
+  const supportEmail = d?.listing.supportEmail || dev?.supportEmail || null;
+  const website = d?.listing.website || null;
+
+  const devCard = dev ? `
+    <div class="mkt-dev-row" style="margin:6px 0 10px;">
+      <div class="mkt-dev-avatar">${dev.avatarUrl ? `<img src="${escMkt(dev.avatarUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt(dev.displayName.charAt(0).toUpperCase())}</span>`}</div>
+      <div class="mkt-dev-id">
+        <b>${escMkt(dev.displayName)}</b>
+        <span class="mkt-dev-handle">@${escMkt(dev.handle)}</span>
+      </div>
+    </div>
+    ${dev.ratingCount ? `<div style="font-size:12px;">${mktStarRow(dev.ratingAvg)} <b>${dev.ratingAvg.toFixed(1)}</b> <span class="mkt-rating-count">(${dev.ratingCount} developer review${dev.ratingCount === 1 ? "" : "s"})</span></div>` : ""}`
+    : `<p class="settings-hint" style="margin:2px 0 0;">${d ? "This developer hasn't published a profile." : "Couldn't load the developer card right now."}</p>`;
+
+  const support = supportEmail
+    ? `<a class="mkt-support-link" href="mailto:${escMkt(supportEmail)}">${escMkt(supportEmail)}</a>`
+    : website
+      ? `<a class="mkt-support-link mkt-inst-ext" data-url="${escMkt(website)}" href="#">${escMkt(website.replace(/^https?:\/\//, ""))}</a>`
+      : `<p class="settings-hint" style="margin:2px 0 0;">The developer hasn't published a support channel yet.</p>`;
+
+  // Release notes — the installed bundle's own record when it carries one.
+  const rel = (app.launchConfig as { release?: { version?: string; notes?: string | null } } | null)?.release;
+  const notes = rel?.notes
+    ? `<div class="release-notes-preview" style="white-space:pre-wrap;">${escMkt(rel.notes)}</div>`
+    : `<p class="settings-hint" style="margin:2px 0 0;">No release notes for this version.</p>`;
+
+  el.innerHTML = `
+    <label class="settings-label">Developer</label>
+    ${devCard}
+    <label class="settings-label" style="margin-top:16px;">Support</label>
+    <p class="settings-hint" style="margin:2px 0 6px;">Support for this app comes from its developer, not Glyphh.</p>
+    ${support}
+    <label class="settings-label" style="margin-top:16px;">Release notes${rel?.version ? ` — v${escMkt(rel.version)}` : ""}</label>
+    ${notes}
+    <div class="app-detail-section-sep"></div>
+    <label class="settings-label">Something wrong?</label>
+    <p class="proxy-field-hint" style="margin:2px 0 10px;">Reports of malicious apps are taken seriously — every one lands in the platform triage queue.</p>
+    <button id="mkt-inst-report-btn" class="action-btn" type="button">Report this app</button>`;
+
+  el.querySelector<HTMLElement>(".mkt-inst-ext")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const url = (e.currentTarget as HTMLElement).dataset.url;
+    if (!url) return;
+    if (IS_WEB) window.open(url, "_blank", "noopener");
+    else void window.glyphh.execCommand(`dip ${url}`);
+  });
+  document.getElementById("mkt-inst-report-btn")?.addEventListener("click", async () => {
+    const reason = await promptAction("Report this app — what's wrong?", "", "It exfiltrates data / it's malicious / it impersonates…", "Report");
+    if (!reason?.trim()) return;
+    const res = await mkt.reportApp(app.slug, reason.trim());
+    const btn = document.getElementById("mkt-inst-report-btn");
+    if (btn) btn.textContent = res.ok ? "Reported ✓" : (res.error || "Report failed");
+  });
+}
+
 // ── Tab switching ────────────────────────────────────────
 
 function switchAppTab(tab: string) {
@@ -496,6 +672,10 @@ function switchAppTab(tab: string) {
   if (tab === "releases") void loadReleasesTab();
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
+  // Consumer view (marketplace-installed): render from the cached store
+  // detail; loadMktInstalledDetail re-renders both when the fetch lands.
+  if (tab === "mkt-about") renderMktAboutTab();
+  if (tab === "mkt-support") renderMktSupportTab();
   // Deploy + "own your code" share the Public hosting tab: both answer "who runs
   // this for the public", which is a different question from how it is distributed
   // inside Glyphh (Releases + Marketplace).
@@ -1469,7 +1649,20 @@ async function openPanelAppDetail(app: PanelApp) {
   // installed it; Marketplace + Public hosting are the builder's alone.
   const isBuilt = app.appArchetype === "glyphh-app";
   const owned = app.owned !== false;   // undefined (self/legacy) reads as owned
-  document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => el.classList.toggle("hidden", !isBuilt));
+  // M7 consumer view: installed FROM the marketplace, not published here. The
+  // developer hosts it, so the installer sees the store's tabs — exactly
+  // About / Connections / Support — and none of the builder affordances.
+  const mktInstalled = !owned;
+  currentMktDetail = null;
+  document.querySelectorAll<HTMLElement>(".tab-mkt-installed").forEach((el) => el.classList.toggle("hidden", !mktInstalled));
+  document.querySelector(".app-detail-tab[data-tab='dashboard']")?.classList.toggle("hidden", mktInstalled);
+  document.querySelector(".app-detail-tab[data-tab='config']")?.classList.toggle("hidden", mktInstalled);
+  document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => {
+    // The consumer view keeps Connections (the grants the app needs) and
+    // drops Releases (the publisher's history, not the installer's).
+    const show = mktInstalled ? el.dataset.tab === "connections" : isBuilt;
+    el.classList.toggle("hidden", !show);
+  });
   document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
     el.classList.toggle("hidden", !(isBuilt && owned));
   });
@@ -1500,8 +1693,11 @@ async function openPanelAppDetail(app: PanelApp) {
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
 
-  // MCP + Guardrails tabs — installed apps that declare tools.
-  syncMcpTabs(app);
+  // MCP + Guardrails tabs — installed apps that declare tools. The consumer
+  // view doesn't carry them (its tabs are exactly About/Connections/Support);
+  // the app's tools still reach the org's agents through the install.
+  if (mktInstalled) document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
+  else syncMcpTabs(app);
 
   // Shared edit header: icon + name + slug (the header title span is now blank).
   appDetailHeading.textContent = "";
@@ -1512,11 +1708,20 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
-  // Deployed apps can't be deleted until taken down — gate the button on that.
-  void gateAppDelete(app.slug);
-
-  // Required connections (installed Glyphh apps) — status + missing warning.
-  void renderRequiredConnections(app);
+  // The open action resets per app — a prior suspended marketplace app must
+  // not leave the button dead for the next one opened.
+  const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
+  if (openBtn) { openBtn.disabled = false; openBtn.textContent = "Open app"; openBtn.title = "Open this app as a panel"; }
+  if (mktInstalled) {
+    // Consumer view: hydrate the store detail (listing, pricing story,
+    // developer card, suspended state) — the open action gates on it.
+    void loadMktInstalledDetail(app);
+  } else {
+    // Deployed apps can't be deleted until taken down — gate the button on that.
+    void gateAppDelete(app.slug);
+    // Required connections (installed Glyphh apps) — status + missing warning.
+    void renderRequiredConnections(app);
+  }
 
   // All tabs always visible
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
@@ -1529,7 +1734,7 @@ async function openPanelAppDetail(app: PanelApp) {
   appAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
-  switchAppTab("dashboard");
+  switchAppTab(mktInstalled ? "mkt-about" : "dashboard");
 }
 
 function getPreviewWebContentsId(): number | undefined {
@@ -1765,10 +1970,16 @@ function initApps() {
   document.getElementById("app-detail-open")?.addEventListener("click", async () => {
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
+    // A suspended marketplace app has no open action (M7: lapse = unrouted).
+    // The button is already disabled — this backstops a stale click.
+    if (app.owned === false && mktUnavailable()) return;
     const glyphh = app.appArchetype === "glyphh-app";
     if (app.url || glyphh) {
+      // Marketplace apps get the M7 identity handoff appended to their hosted
+      // URL when the SDK can mint the token; everyone else opens as before.
+      const url = await appOpenUrl(app);
       closeSettingsModal();
-      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: glyphh || undefined });
+      openAppInWorkbench({ slug: app.slug, name: app.name, url, glyphh: glyphh || undefined });
       return;
     }
     const r = await launchPanelApp(app);

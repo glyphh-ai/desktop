@@ -388,6 +388,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // on purpose — one contract, two copies (SDK + renderer), not three.
   mktBrowse: () => ipcRenderer.invoke("mkt-browse") as Promise<unknown>,
   mktDetail: (slug: string) => ipcRenderer.invoke("mkt-detail", slug) as Promise<unknown>,
+  mktAppToken: (slug: string) => ipcRenderer.invoke("mkt-app-token", slug) as Promise<unknown>,
   mktInstall: (slug: string) => ipcRenderer.invoke("mkt-install", slug) as Promise<unknown>,
   mktUninstall: (slug: string) => ipcRenderer.invoke("mkt-uninstall", slug) as Promise<unknown>,
   mktReviews: (slug: string, query?: { limit?: number; offset?: number }) =>

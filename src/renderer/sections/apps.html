@@ -169,6 +169,12 @@
             <div id="app-detail-head" class="edit-head" style="margin-top:12px;"></div>
 
             <div class="app-detail-tabs">
+              <!-- M7 consumer view: an app INSTALLED from the marketplace (not
+                   published by this org) is developer-hosted on Glyphh's
+                   pipeline — always on, nothing to deploy or configure. Its
+                   tabs are exactly About / Connections / Support; every
+                   builder tab below stays the owner's. -->
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-about">About</button>
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
@@ -182,6 +188,7 @@
                    the builder's alone (tab-owner-only). -->
               <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
               <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="hosting">Public hosting</button>
             </div>
@@ -403,6 +410,26 @@
                   </div>
                 </div>
 
+                <!-- About left (marketplace-installed): the store's listing
+                     summary. The app is developer-hosted on Glyphh's pipeline
+                     (M7) — no deploy, no on/off; a suspended/hosting-lapsed
+                     app says so here instead of offering the open action. -->
+                <div class="app-tab-left" data-tab="mkt-about">
+                  <div id="mkt-inst-unavailable" class="app-req-conns-warn hidden">
+                    <strong>Temporarily unavailable</strong> — the developer's hosting is paused.
+                    Your data is retained; the app comes back when the developer renews.
+                  </div>
+                  <div id="mkt-inst-about"><div class="inline-empty">Loading…</div></div>
+                </div>
+
+                <!-- Support left (marketplace-installed): the developer's card
+                     and support channel — support is the developer's
+                     obligation, never Glyphh's — plus release notes and the
+                     report-app door into the platform triage queue. -->
+                <div class="app-tab-left" data-tab="mkt-support">
+                  <div id="mkt-inst-support"><div class="inline-empty">Loading…</div></div>
+                </div>
+
                 <!-- Connections left: the connections this app requires, connected
                      status, and (expandable) the tools it depends on. -->
                 <div class="app-tab-left" data-tab="connections">
@@ -607,6 +634,32 @@
                       PNG, JPEG, GIF, or WebP. The file's real type is checked from its bytes, so
                       a renamed file is refused. Your agent can upload these for you — ask it to
                       draft the listing, then review it here before you press List.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- About right (marketplace-installed): the developer's
+                     pricing story — what installing costs, what the developer
+                     may charge in-app, version, and the rating link back to
+                     the marketplace listing. -->
+                <div class="app-tab-right" data-tab="mkt-about">
+                  <div style="padding:12px 16px;max-width:560px;" id="mkt-inst-pricing"></div>
+                </div>
+
+                <!-- Support right (marketplace-installed): who answers for
+                     this app — the ground rules, stated plainly. -->
+                <div class="app-tab-right" data-tab="mkt-support">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Who supports this app</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Marketplace apps are built and operated by their <strong>developers</strong>, running on
+                      Glyphh's hosting. Questions, bugs, and billing for anything bought inside the app go to
+                      the developer through the support channel on the left — support is their obligation.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Something that looks malicious — data exfiltration, impersonation, abuse — is a different
+                      matter: <strong>report the app</strong> and it lands directly in Glyphh's platform triage
+                      queue. Every report is taken seriously.
                     </p>
                   </div>
                 </div>
