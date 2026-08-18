@@ -1776,8 +1776,12 @@ function historyRow(c: CodeChat): HTMLDivElement {
     // run — without this the chip stays on the previous (pending) source and
     // every rail-opened session looked like it ran in the cloud.
     repaintSourceUi();
-    // a rail session press behaves like the Glyphh icon: the agent ALONE
-    gotoSection("agent");
+    // ONLY navigate to the agent when one isn't already showing. If an agent is
+    // on screen, the session was just swapped into it (renderThread above) — never
+    // reset the workbench layout or spawn a second agent for a rail click.
+    const agent = document.querySelector<HTMLElement>(".code-agent");
+    const agentShowing = !!agent && agent.offsetParent !== null;
+    if (!agentShowing) gotoSection("agent");
   });
   return row;
 }
