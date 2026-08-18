@@ -4170,12 +4170,30 @@ async function init(): Promise<void> {
     };
 
     let openingLayout = false;
+    /** THE RETURN RULE: clicking the Glyphh tile / ＋ New Session while the
+     *  agent is ALREADY VISIBLE OUTSIDE the wall means "get me back to my
+     *  agent" — close the command center, nothing else (no wall reset churn
+     *  the user can see, no second agent card, no new session). The
+     *  visible-agent notion is the rail-session-click one (69383cd2): the
+     *  live `.code-agent` with a real offsetParent — a rails coding slot or
+     *  the docked anchor. An agent hosted INSIDE an Echo card (parkAgent's
+     *  own `.echo-card-body` boundary) does NOT count: that click keeps the
+     *  open rule below. Callers run resetEcho() before closeEchoSurface()
+     *  because a bare surface close skips closeCard — an active layout would
+     *  stay in the persisted wall pref (resurrecting at next boot) and its
+     *  cards would die without parking; the reset closes them properly,
+     *  saves the layout's memory, and persists the now-empty wall. */
+    const agentVisibleOutsideWall = (): boolean => {
+      const agent = document.querySelector<HTMLElement>(".code-agent");
+      return !!agent && agent.offsetParent !== null && !agent.closest(".echo-card-body");
+    };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
       // HOME — the fixed first tile. The wall activates tiles DIRECTLY (this
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home") {
+        if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
         // THE OPEN RULE: new session (like the Glyphh icon) always removes an
         // active layout — no pin exception. Reset first so the agent surface
         // is reclaimed out of the layout's card, then start the session.
@@ -4187,6 +4205,7 @@ async function init(): Promise<void> {
         return;
       }
       if (t.kind === "agent") {
+        if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
         // the wall's Glyphh tile IS the universal chat icon too
         if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
         void openAgentCard();
@@ -4317,6 +4336,9 @@ async function init(): Promise<void> {
         const key = (app.slug || "").trim().toLowerCase();
         // The fixed GLYPHH tile is the + New Session front door, not an app.
         if (key === "glyphh-home") {
+          // THE RETURN RULE (see agentVisibleOutsideWall): the agent is
+          // already up outside the wall — the click means "back to my agent".
+          if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); return; }
           (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
           return;
         }
