@@ -21,6 +21,19 @@ import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-
 import { installGlyphhAppBundle } from "./glyphh-app-host";
 import { getClient } from "./glyphh-client";
 
+// The ten built-in work panels (Office / Design / Memory / Media) are
+// Apps-page fixtures, not org apps — an install or deploy under their slugs is
+// refused at the manifest, where the slug first exists (glyphh-agent-tools.ts
+// and apps-ipc.ts refuse the slug-carrying seams the same way).
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+
+/** Throw the refusal when a workdir manifest names a built-in work panel. */
+function refuseBuiltinWorkpanel(slug: string): void {
+  if (BUILTIN_WORKPANELS.has(slug)) {
+    throw new Error("work panels are built in — they cannot be altered or removed");
+  }
+}
+
 /** Next unused release version — the app's own version, or the next free patch
  *  above it, so repeated deploys don't collide on an existing release. */
 function nextFreeVersion(taken: string[], base: string): string {
@@ -104,9 +117,10 @@ export async function updateAppFromWorkdir(
     const remote = lintRemoteAssets({ ...textAssets, "manifest.json": built.manifestJson });
     if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
 
+    const m = JSON.parse(built.manifestJson) as { slug: string; name: string };
+    refuseBuiltinWorkpanel(m.slug);
     const r = await packageBuiltAndInstall(built.files, built.manifestJson);
     if (!r.ok) throw new Error(r.error || "install failed");
-    const m = JSON.parse(built.manifestJson) as { slug: string; name: string };
     return { slug: m.slug, name: r.name || m.name, warnings: [] };
   }
 
@@ -122,6 +136,7 @@ export async function updateAppFromWorkdir(
   if (remote.length) throw new Error(`app references remote assets (inline or bundle them instead): ${remote.join("; ")}`);
   const v = validateAppBundle(bundle, lookup);
   if (!v.ok) throw new Error(`source fails validation: ${v.errors.join("; ")}`);
+  refuseBuiltinWorkpanel(v.manifest!.slug);
   const r = await packageAndInstall(bundle);
   if (!r.ok) throw new Error(r.error || "install failed");
   return { slug: v.manifest!.slug, name: r.name || v.manifest!.name, warnings: v.warnings };
@@ -147,6 +162,7 @@ export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug:
   }
   const manifest = JSON.parse(built.manifestJson) as { slug: string; name: string; version?: string };
   const slug = manifest.slug;
+  refuseBuiltinWorkpanel(slug);
   // The Releases tab builds FOR a specific app — refuse before any upload if
   // the working folder holds a different project, so a stray cwd can't cut a
   // release (or deploy) under the wrong slug.

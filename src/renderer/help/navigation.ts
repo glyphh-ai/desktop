@@ -6,7 +6,7 @@ import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, 
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
-import { loadApps, initApps } from "./apps.js";
+import { loadApps, initApps, loadMarketplaceSection } from "./apps.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
@@ -108,6 +108,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
+  else if (sec === "marketplace") loadMarketplaceSection();
   else if (sec === "code") loadCode();
   else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
@@ -154,7 +155,7 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  if (["apps", "connections", "layouts", "agents"].includes(section)) {
+  if (["apps", "marketplace", "connections", "layouts", "agents"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -587,7 +588,7 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   // "artifacts" is the files section's rail name.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", connections: "connections", layouts: "layouts", artifacts: "files" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", marketplace: "marketplace", connections: "connections", layouts: "layouts", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;

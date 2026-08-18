@@ -8,7 +8,7 @@ import {
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
-import { openAppInWorkbench } from "./code.js";
+import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 declare const Chart: any;
@@ -412,13 +412,44 @@ function renderAppsList() {
   }
 }
 
+// ── Work panels (built-in) ───────────────────────────────
+// The ten built-in panels — Office (Slides/Docs/Sheets/Drive), Design,
+// Memory, and Media (Image/Video/Sounds/Band) — live on the Apps page as
+// fixed "work panel" cards (sections/apps.html #apps-workpanels). They are
+// not org apps: no editor, no delete, and the agent/IPC layers refuse their
+// slugs outright. A click opens the panel through its workbench bridge.
+const WORKPANEL_OPENERS: Record<string, () => void> = {
+  gpoint: () => openWorkPanelInWorkbench("__wbOpenGPoint"),
+  gdoc: () => openWorkPanelInWorkbench("__wbOpenGDoc"),
+  gsheet: () => openWorkPanelInWorkbench("__wbOpenGSheet"),
+  gdrive: () => openWorkPanelInWorkbench("__wbOpenGDrive"),
+  gdesign: () => openWorkPanelInWorkbench("__wbOpenDesign"),
+  gmemory: () => openWorkPanelInWorkbench("__wbOpenMemory"),
+  gimage: () => openWorkPanelInWorkbench("__wbOpenMedia", "gimage"),
+  gvideo: () => openWorkPanelInWorkbench("__wbOpenMedia", "gvideo"),
+  gsound: () => openWorkPanelInWorkbench("__wbOpenMedia", "gsound"),
+  gband: () => openWorkPanelInWorkbench("__wbOpenMedia", "gband"),
+};
+
+/** Wire the static work-panel cards (once, at boot). Opening leaves settings
+ *  the same way "Open app" does — close the modal, then land in the workbench. */
+function initWorkPanels(): void {
+  document.querySelectorAll<HTMLElement>("#apps-workpanels .app-card[data-workpanel]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const open = WORKPANEL_OPENERS[card.dataset.workpanel || ""];
+      if (!open) return;
+      closeSettingsModal();
+      open();
+    });
+  });
+}
+
 // ── Marketplace (Shopify-style storefront) ───────────────
 // Public catalog + org-private apps: search, categories, sponsored + popular
 // strips, paginated grid. Backed by marketplace.ts (placeholder catalog until
 // the yo-server routes land).
 type MktApp = Awaited<ReturnType<typeof window.glyphh.marketplaceList>>["items"][number];
 
-const marketplaceLibraryPage = document.getElementById("apps-library-page")!;
 const marketplacePage = document.getElementById("apps-marketplace-page")!;
 const mktStoreEl = document.getElementById("mkt-store")!;
 const mktDetailEl = document.getElementById("mkt-detail")!;
@@ -901,12 +932,9 @@ function renderMktDetail(d: MktDetail): void {
  *  to false to bring the live storefront + the app-editor Marketplace tab back. */
 const MARKETPLACE_COMING_SOON = true;
 
-/** Switch between the "My apps" library and the Marketplace storefront. */
-function switchAppsPage(page: "library" | "marketplace"): void {
-  document.querySelectorAll<HTMLButtonElement>(".apps-page-tab").forEach((t) => t.classList.toggle("active", t.dataset.page === page));
-  marketplaceLibraryPage.classList.toggle("hidden", page !== "library");
-  marketplacePage.classList.toggle("hidden", page !== "marketplace");
-  if (page !== "marketplace") return;
+/** Load the Marketplace SECTION — its own left-rail page now, not an Apps
+ *  tab. Called by navigation.ts whenever the section shows. */
+function loadMarketplaceSection(): void {
   const soon = document.getElementById("mkt-coming-soon");
   const store = document.getElementById("mkt-store");
   if (MARKETPLACE_COMING_SOON) {
@@ -2024,6 +2052,7 @@ function initApps() {
   initMcpTab();
   initReleasesTab();
   initMarketplaceTab();
+  initWorkPanels();
 
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
@@ -2108,13 +2137,6 @@ function initApps() {
   const addArchetypeSelect = document.getElementById("app-add-archetype") as HTMLSelectElement;
   const addExecPath = document.getElementById("app-add-exec-path") as HTMLInputElement;
 
-  // Apps page tabs: My apps ↔ Marketplace ↔ Public URLs.
-  for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".apps-page-tab"))) {
-    t.addEventListener("click", () => {
-      const page = t.dataset.page;
-      switchAppsPage(page === "marketplace" ? "marketplace" : "library");
-    });
-  }
   // Marketplace scope (Public / Your organization).
   for (const t of Array.from(document.querySelectorAll<HTMLButtonElement>(".mkt-scope"))) {
     t.addEventListener("click", () => {
@@ -2545,4 +2567,4 @@ function initApps() {
   divider.addEventListener("pointercancel", releaseDivider);
 }
 
-export { loadApps, initApps, closeAppDetail };
+export { loadApps, initApps, closeAppDetail, loadMarketplaceSection };

@@ -4664,6 +4664,23 @@ export function openAppInWorkbench(app: { slug: string; name: string; url?: stri
   open();
 }
 
+/** Open a built-in WORK PANEL as a workbench panel — the Apps page's "Work
+ *  panels" cards. Same cold-safe mechanics as openAppInWorkbench: flip to the
+ *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenGPoint,
+ *  __wbOpenMedia, …) is assigned by the workbench init. */
+export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): void {
+  showWorkspaceSurface();
+  const w = window as unknown as { __initCodeWorkbench?: () => void } & Record<string, unknown>;
+  w.__initCodeWorkbench?.();
+  let tries = 0;
+  const open = (): void => {
+    const fn = w[bridge];
+    if (typeof fn === "function") { (fn as (...a: unknown[]) => void)(...args); return; }
+    if (tries++ < 40) setTimeout(open, 50);
+  };
+  open();
+}
+
 /** Open the command center (app/layout launcher) from ANY section — even before
  *  the Code workbench has ever mounted. Flips to the agent surface, boots the
  *  workbench (idempotent async init), then retries the toggle over rAF because

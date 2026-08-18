@@ -3711,15 +3711,9 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
   min-height: 0;
 }
 
-/* The Marketplace has no split-detail pane, so it must NOT be its own nested
-   scroll container — otherwise its scrollbar lands 40px inside #help-content's
-   right padding, leaving an empty gap to the scrollbar's right. Letting the
-   section grow lets #help-content scroll, putting the scrollbar at the pane
-   edge. Scoped to when the Marketplace page (not My apps) is showing. */
-.help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
-  height: auto;
-  overflow: visible;
-}
+/* The Marketplace (its own section now) has no split-detail pane, so it is
+   NOT in the full-height flex list above — the default block section lets
+   #help-content scroll, putting the scrollbar at the pane edge. */
 
 .help-section[data-section="apps"] #app-detail,
 .help-section[data-section="library"] #lib-detail,
@@ -4786,9 +4780,6 @@ ol.docs-list li::before {
 .settings-modal-body .settings-panel-section #apps-library-page > .section-desc {
   margin: 0 0 16px;
 }
-/* Apps keeps its My apps | Marketplace switcher above the header — snug it to
-   the same top line the other pages start on. */
-.settings-modal-body .settings-panel-section .apps-page-tabs { margin: 0 0 16px; }
 .settings-modal-body .settings-panel-section .apps-page-heading { margin-top: 0; }
 /* Editors align to the page gutter inside the modal — their legacy full-page
    16px inner insets would double the left edge here. The RIGHT edge keeps the
@@ -4806,14 +4797,6 @@ ol.docs-list li::before {
   padding: 0;
   overflow-y: hidden;
 }
-/* The full-page Apps marketplace rule lets the OUTER page (#help-content) scroll
-   by making the section overflow:visible — there's no such outer scroller in the
-   modal, so re-assert the section as the scroll container for that tab too. */
-.settings-modal-body .settings-panel-section > [id$="-host"] > .help-section[data-section="apps"].active:has(#apps-marketplace-page:not(.hidden)) {
-  height: 100%;
-  overflow-y: auto;
-}
-
 /* Narrow modal — below this the modal is viewport-bound (96vw) and the
    side-by-side editors (Apps/Connections builder split, the Loops/Skills/
    Agents lib splits, the Layouts builder) would squeeze their right pane
@@ -12610,16 +12593,15 @@ select:focus {
 .msg-warning svg { flex-shrink: 0; color: #f59e0b; margin-top: 0.0625rem; }
 .msg-warning a { color: var(--text); text-decoration: underline; font-weight: 600; cursor: pointer; }
 
-/* ══ Apps page: My-apps / Marketplace tabs (button pills) ═══ */
-.apps-page-tabs { display: flex; gap: 8px; margin: 6px 0 18px; }
+/* ══ Apps page ═══ */
 /* While an app editor / add form is open, hide the page-level chrome (the
-   My apps | Marketplace tabs + the "Apps" heading + description) so the form
+   "Apps" heading + description + the built-in Work panels grid) so the form
    stands alone with just its breadcrumb — same as the connection editor. */
-.help-section[data-section="apps"]:has(#app-detail:not(.hidden)) .apps-page-tabs,
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-detail:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) > #apps-library-page > .section-desc,
-.help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) .apps-page-tabs,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) > #apps-library-page > .section-desc {
   display: none !important;
 }
@@ -12629,20 +12611,20 @@ select:focus {
 .help-section[data-section="connections"]:has(#conn-detail:not(.hidden)) > .section-desc {
   display: none !important;
 }
-.apps-page-tab {
-  padding: 7px 16px; border-radius: 9px; cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border-2);
-  color: var(--text-2); font-size: 13px; font-weight: 600;
-  transition: background .12s, color .12s, border-color .12s;
-}
-.apps-page-tab:hover { color: var(--text); border-color: var(--border-3, var(--border-2)); }
-.apps-page-tab.active { background: #fff; border-color: #fff; color: #111; }
-/* Page title sits under the tabs (library page only), with breathing room. */
 .apps-page-heading { margin-top: 20px; }
 
-/* ── Marketplace storefront ─────────────────────────────── */
-/* Banner starts at the same y-offset as the library page's heading
-   (.apps-page-heading margin-top:20px) so nothing jumps when toggling tabs. */
+/* Work panels — the fixed built-in cards above the org apps grid. Same
+   .app-card grammar as the grid below; only the inline SVG icon (verbatim
+   from the old view-dropdown buttons) needs a size. */
+.apps-workpanels-heading {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .04em;
+  margin: 4px 0 10px;
+}
+#apps-workpanels { margin-bottom: 22px; }
+.workpanel-card .app-card-icon svg { width: 28px; height: 28px; }
+
+/* ── Marketplace storefront (its own section — sections/marketplace.html) ── */
 .mkt-banner {
   position: relative; overflow: hidden;
   margin-top: 20px; margin-bottom: 24px;
