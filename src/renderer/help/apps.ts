@@ -8,7 +8,7 @@ import {
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
-import { openAppInWorkbench } from "./code.js";
+import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { escMkt, mktConnChip, connLabel, mktConnIconApps } from "./marketplace-data.js";
 
 declare const Chart: any;
@@ -410,6 +410,38 @@ function renderAppsList() {
   if (state.totalPages > 1) {
     appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
   }
+}
+
+// ── Work panels (built-in) ───────────────────────────────
+// The ten built-in panels — Office (Slides/Docs/Sheets/Drive), Design,
+// Memory, and Media (Image/Video/Sounds/Band) — live on the Apps page as
+// fixed "work panel" cards (sections/apps.html #apps-workpanels). They are
+// not org apps: no editor, no delete, and the agent/IPC layers refuse their
+// slugs outright. A click opens the panel through its workbench bridge.
+const WORKPANEL_OPENERS: Record<string, () => void> = {
+  gpoint: () => openWorkPanelInWorkbench("__wbOpenGPoint"),
+  gdoc: () => openWorkPanelInWorkbench("__wbOpenGDoc"),
+  gsheet: () => openWorkPanelInWorkbench("__wbOpenGSheet"),
+  gdrive: () => openWorkPanelInWorkbench("__wbOpenGDrive"),
+  gdesign: () => openWorkPanelInWorkbench("__wbOpenDesign"),
+  gmemory: () => openWorkPanelInWorkbench("__wbOpenMemory"),
+  gimage: () => openWorkPanelInWorkbench("__wbOpenMedia", "gimage"),
+  gvideo: () => openWorkPanelInWorkbench("__wbOpenMedia", "gvideo"),
+  gsound: () => openWorkPanelInWorkbench("__wbOpenMedia", "gsound"),
+  gband: () => openWorkPanelInWorkbench("__wbOpenMedia", "gband"),
+};
+
+/** Wire the static work-panel cards (once, at boot). Opening leaves settings
+ *  the same way "Open app" does — close the modal, then land in the workbench. */
+function initWorkPanels(): void {
+  document.querySelectorAll<HTMLElement>("#apps-workpanels .app-card[data-workpanel]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const open = WORKPANEL_OPENERS[card.dataset.workpanel || ""];
+      if (!open) return;
+      closeSettingsModal();
+      open();
+    });
+  });
 }
 
 /** "Required connections" block on the app editor — one row per connector the
@@ -1544,6 +1576,7 @@ function initApps() {
   initMcpTab();
   initReleasesTab();
   initMarketplaceTab();
+  initWorkPanels();
 
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.

@@ -143,6 +143,12 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     const apps = await fetchOrgApps();
     return apps.find((a) => a.id === id)?.slug ?? id;
   };
+  // The ten built-in work panels (Office / Design / Memory / Media) are
+  // Apps-page fixtures, not org apps — no create/update/delete may ever land
+  // on their slugs, whoever asks (the agent's tool seam refuses them too,
+  // glyphh-agent-tools.ts).
+  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+  const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
   ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
     setTimeout(() => { void refreshForceWebSlugs(); }, 500);   // guard set follows app edits
@@ -150,6 +156,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
       const slug = String(input.slug || input.name || "").toLowerCase().trim()
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) return { ok: false, error: "A name is required." };
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
       const app = await getClient().apps.createEntry({
         kind: entryKind(input),
         slug,
@@ -169,7 +176,11 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
       // row kept its old kind; with it on a built app, the server would refuse
       // the whole patch — a glyphh app's kind comes from its bundle.
       const kind = patch.isBrowser !== undefined ? entryKind(patch) : undefined;
-      const app = await getClient().apps.updateEntry(await appSlug(id), {
+      const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug) || BUILTIN_WORKPANELS.has(String(patch.slug ?? ""))) {
+        return { ok: false, error: WORKPANEL_REFUSAL };
+      }
+      const app = await getClient().apps.updateEntry(slug, {
         ...entryFields(patch),
         ...(kind === "web" || kind === "native" ? { kind } : {}),
       });
@@ -179,7 +190,13 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
-    try { await getClient().apps.removeEntry(await appSlug(id)); invalidateOrgApps(); return { ok: true }; }
+    try {
+      const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
+      await getClient().apps.removeEntry(slug);
+      invalidateOrgApps();
+      return { ok: true };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   // ── Loops (Build → Loops on the platform; role-scoped) ───────

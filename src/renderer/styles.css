@@ -12594,11 +12594,13 @@ select:focus {
 
 /* ══ Apps page ═══ */
 /* While an app editor / add form is open, hide the page-level chrome (the
-   "Apps" heading + description) so the form stands alone with just its
-   breadcrumb — same as the connection editor. */
+   "Apps" heading + description + the built-in Work panels grid) so the form
+   stands alone with just its breadcrumb — same as the connection editor. */
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-detail:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-detail:not(.hidden)) > #apps-library-page > .section-desc,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) .apps-page-heading,
+.help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) #apps-workpanels,
 .help-section[data-section="apps"]:has(#app-add-form:not(.hidden)) > #apps-library-page > .section-desc {
   display: none !important;
 }
@@ -12610,9 +12612,18 @@ select:focus {
 }
 .apps-page-heading { margin-top: 20px; }
 
-/* ── Marketplace storefront ─────────────────────────────── */
-/* Banner starts at the same y-offset as the library page's heading
-   (.apps-page-heading margin-top:20px) so nothing jumps when toggling tabs. */
+/* Work panels — the fixed built-in cards above the org apps grid. Same
+   .app-card grammar as the grid below; only the inline SVG icon (verbatim
+   from the old view-dropdown buttons) needs a size. */
+.apps-workpanels-heading {
+  font-size: 13px; font-weight: 600; color: var(--text-2);
+  text-transform: uppercase; letter-spacing: .04em;
+  margin: 4px 0 10px;
+}
+#apps-workpanels { margin-bottom: 22px; }
+.workpanel-card .app-card-icon svg { width: 28px; height: 28px; }
+
+/* ── Marketplace storefront (its own section — sections/marketplace.html) ── */
 .mkt-banner {
   position: relative; overflow: hidden;
   margin-top: 20px; margin-bottom: 24px;
