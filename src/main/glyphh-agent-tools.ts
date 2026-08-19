@@ -71,6 +71,7 @@ import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed }
 import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
+import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
 
 const OUTPUT_CAP = 8000;
 const READ_CAP = 24000;
@@ -496,6 +497,36 @@ const TOOLS: ToolDef[] = [
         const dest = join(dir, fileName);
         writeFileSync(dest, Buffer.from(out.dataBase64, "base64"));
         return `saved ${out.bytes} bytes (${out.contentType || "unknown type"}) to ${dest}`;
+      } catch (err) {
+        return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    },
+  },
+  {
+    name: "save_media",
+    doc: "save_media(id, filename?) — save a MEDIA-LIBRARY asset (a generated image/logo/mockup from list_media / list_images, a design system's imagery assetId) as a real FILE in the working folder, under assets/. Returns the local path + mime, ready to bundle into an app build or reference from code. This is the bridge from 'generated in the library' to 'asset on disk' — without it those assets are metadata-only here.",
+    action: (a) => ({ kind: "read", title: "Save media asset to the working folder", detail: String(a.id ?? "").slice(0, 80) }),
+    run: async (a) => {
+      const id = String(a.id ?? "").trim();
+      if (!id) return "ERROR: id is required (a media asset id — list_media shows them)";
+      try {
+        const meta = await getClient().media.get(id).catch(() => null);
+        const buf = await getClient().media.bytes(id);
+        const mime = meta?.mime || "application/octet-stream";
+        const extByMime: Record<string, string> = {
+          "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+          "image/svg+xml": ".svg", "image/gif": ".gif", "video/mp4": ".mp4", "audio/mpeg": ".mp3",
+        };
+        const ext = extByMime[mime] ?? "";
+        // basename only — the tool decides the directory, not the model
+        const rawName = String(a.filename ?? "").trim() || `${String(meta?.title || id).trim()}${ext}`;
+        let fileName = basename(rawName).replace(/[^\w.\- ()]/g, "_");
+        if (ext && !fileName.toLowerCase().endsWith(ext)) fileName += ext;
+        const dir = join(workdir(), "assets");
+        mkdirSync(dir, { recursive: true });
+        const dest = join(dir, fileName);
+        writeFileSync(dest, Buffer.from(buf));
+        return `saved ${Buffer.from(buf).length} bytes (${mime}) to ${dest}`;
       } catch (err) {
         return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
       }
@@ -2222,6 +2253,39 @@ const TOOLS: ToolDef[] = [
         args: (a.args ?? {}) as Record<string, unknown>,
       });
       return cap(`scheduled ✓ "${task.name}" — ${task.kind}:${task.target} @ ${task.cron}`);
+    },
+  },
+  {
+    name: "run_agent_task",
+    doc: 'run_agent_task(agentSlug, task?) — fire an agent\'s scheduled task NOW instead of waiting for its cron ("run it now"). task: the task name or id; omit when the agent has exactly one. Returns the run outcome.',
+    action: (a) => ({ kind: "command", title: `Run ${String(a.agentSlug ?? "")}${a.task ? ` / ${String(a.task)}` : ""} now` }),
+    run: async (a) => {
+      const client = getClient();
+      const agent = (await client.agents.list()).find((x) => x.slug === String(a.agentSlug ?? ""));
+      if (!agent) return `ERROR: no agent "${String(a.agentSlug ?? "")}" — agents_list() shows what exists`;
+      const tasks = await client.agents.tasks(agent.id);
+      if (!tasks.length) return `ERROR: agent "${agent.slug}" has no tasks — agent_task_add() creates one`;
+      const want = String(a.task ?? "").trim().toLowerCase();
+      const task = want
+        ? tasks.find((t) => t.id === a.task || t.name.toLowerCase() === want)
+        : (tasks.length === 1 ? tasks[0] : undefined);
+      if (!task) return `ERROR: ${want ? `no task "${String(a.task)}"` : "several tasks"} on "${agent.slug}" — tasks: ${tasks.map((t) => t.name).join(", ")}`;
+      const out = await runTaskNow(agent.id, task.id);
+      return out.ok ? cap(`ran ✓ "${task.name}" (${task.kind}:${task.target})`) : `ERROR: ${out.error ?? "run failed"}`;
+    },
+  },
+  {
+    name: "run_skill",
+    doc: "run_skill(slug, args?) — run a skill's program immediately with the given input. The direct twin of the scheduler's skill runs; use it to test a skill you just saved.",
+    action: (a) => ({ kind: "command", title: `Run skill ${String(a.slug ?? "")}` }),
+    run: async (a) => {
+      const slug = String(a.slug ?? "").trim();
+      if (!slug) return "ERROR: slug is required — skills_list() shows what exists";
+      try {
+        return cap(await runSkillBySlug(slug, (a.args ?? {}) as Record<string, unknown>));
+      } catch (err) {
+        return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      }
     },
   },
   {

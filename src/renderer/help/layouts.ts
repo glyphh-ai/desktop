@@ -893,6 +893,12 @@ export { loadLayouts };
 
 export function initLayoutsEvents() {
   void ensureAppNames();
+  // Echo tile menu bridge: "Edit" on a command-center workspace tile opens
+  // the Workspaces section straight onto that layout's editor.
+  (window as unknown as { __glyphhEditLayout?: (name: string) => void }).__glyphhEditLayout = (name: string) => {
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("layouts");
+    void editLayout(name);
+  };
   document.getElementById("layout-new-btn")!.addEventListener("click", newLayout);
   document.getElementById("layout-save-btn")!.addEventListener("click", saveLayout);
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);

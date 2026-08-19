@@ -8,6 +8,7 @@
 import { initHelp, gotoSection } from "./help/index.js";
 import { seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
+import { installAutofillGuard } from "./autofill-guard.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.
 // Here we re-fetch the authoritative value from main and keep localStorage in sync.
@@ -32,6 +33,7 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", as
 
 initHelp();
 initSearchClears();
+installAutofillGuard();
 window.glyphh.refreshAuth?.().catch(() => {});
 
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the

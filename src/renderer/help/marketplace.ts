@@ -73,7 +73,26 @@ let mktSort: "popular" | "rating" | "newest" = "popular";
 let mktPage = 1;
 let mktSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
-const PAGE_SIZE = 12;
+// Page size adapts to resolution instead of a fixed count. The grid is
+// `repeat(auto-fit, minmax(260px, 1fr))` with a 14px gap, so we derive the
+// column count the same way the browser lays it out, work out how many rows
+// today's baseline of 12 cards would occupy at that width, and show ONE row
+// fewer — a full page minus a row, per desktop / iPad / phone.
+const MKT_CARD_MIN = 260; // .mkt-grid minmax() floor
+const MKT_GRID_GAP = 14;  // .mkt-grid gap
+const MKT_BASE_ITEMS = 12; // the previous fixed page size we trim a row from
+
+function mktColumns(): number {
+  const width = mktListEl.clientWidth || marketplacePage.clientWidth || 0;
+  return Math.max(1, Math.floor((width + MKT_GRID_GAP) / (MKT_CARD_MIN + MKT_GRID_GAP)));
+}
+
+function mktPageSize(): number {
+  const cols = mktColumns();
+  const baseRows = Math.max(1, Math.ceil(MKT_BASE_ITEMS / cols)); // rows 12 cards fill now
+  const rows = Math.max(1, baseRows - 1);                         // one row fewer
+  return cols * rows;
+}
 
 let mktRows: MktListing[] = [];
 let installedSlugs = new Set<string>();
@@ -267,9 +286,10 @@ function renderMktStorefront(): void {
     : mktQuery ? `Results for “${mktQuery}”` : "All apps";
   mktCountEl.textContent = rows.length ? `${rows.length} app${rows.length === 1 ? "" : "s"}` : "";
 
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const pageSize = mktPageSize();
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   if (mktPage > totalPages) mktPage = totalPages;
-  const pageRows = rows.slice((mktPage - 1) * PAGE_SIZE, mktPage * PAGE_SIZE);
+  const pageRows = rows.slice((mktPage - 1) * pageSize, mktPage * pageSize);
 
   mktListEl.innerHTML = "";
   if (rows.length === 0) {
@@ -836,6 +856,19 @@ export function initMarketplace(): void {
   // The publish + moderation doors.
   document.getElementById("mkt-console-btn")?.addEventListener("click", () => { void loadMktConsole(); });
   document.getElementById("mkt-admin-btn")?.addEventListener("click", () => { void loadMktAdmin(); });
+  // Re-page when the panel width changes breakpoints (the column count, and so
+  // the page size, is resolution-derived). Debounced; only while the store shows.
+  let mktResizeTimer: ReturnType<typeof setTimeout> | null = null;
+  let mktLastCols = mktColumns();
+  window.addEventListener("resize", () => {
+    if (mktResizeTimer) clearTimeout(mktResizeTimer);
+    mktResizeTimer = setTimeout(() => {
+      const cols = mktColumns();
+      if (cols === mktLastCols) return;
+      mktLastCols = cols;
+      if (!mktStoreEl.classList.contains("hidden")) renderMktStorefront();
+    }, 150);
+  });
 }
 
 /** The store's hydrated detail for a slug, when it already landed — the

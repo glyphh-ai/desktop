@@ -908,12 +908,13 @@ body {
 
 #onboarding-overlay .auth-shell-title {
   font-family: var(--font-sans);
-  /* The WEB hero's scale + finish: big, tight, pure white. */
+  /* The WEB hero's scale + finish — in the THEME'S ink, not hardcoded white:
+     a light background needs a dark header. */
   font-size: clamp(2.4rem, 3.2vw, 3.1rem);
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.08;
-  color: #fff;
+  color: var(--text);
   margin-bottom: 0.75rem;
   /* The headline (and its tagline, below) sit CENTERED in the login column. */
   text-align: center;
@@ -13375,7 +13376,8 @@ select:focus {
   color: var(--text-3);
   cursor: pointer;
 }
-.code-icon-btn:hover { background: var(--hover); color: var(--text); }
+.code-icon-btn { transition: background 0.12s ease, color 0.12s ease, transform 0.15s cubic-bezier(0.25, 0.9, 0.3, 1); }
+.code-icon-btn:hover { background: var(--hover); color: var(--text); transform: scale(var(--icon-zoom, 1.08)); }
 .code-thread {
   flex: 1;
   overflow-y: auto;
@@ -16117,7 +16119,7 @@ body.code-dragging webview { pointer-events: none !important; }
 /* Keep only the command icon (.echo-shadow-btn = "show the wall"); hide the
    zoom in/out/reset trio. The elements STAY in the DOM so their click handlers
    (bound later via querySelector(...)!.addEventListener) don't null-throw. */
-.echo-z-in, .echo-z-out, .echo-z-reset { display: none; }
+.echo-z-in, .echo-z-out { display: none; }
 /* the header's command-center eye mirrors the echo eye's pinned state */
 #code-cc-btn.active { color: var(--accent); }
 
@@ -16224,22 +16226,19 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-page {
   flex: 0 0 100%; height: 100%;
   scroll-snap-align: start;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; align-items: flex-start; justify-content: center;
+  /* Big icons × many-per-page can outgrow the band — scroll, never clip. */
+  overflow-y: auto;
+  scrollbar-width: none;
 }
-/* 8 columns; rows fall out of the per-page count. Anchored to the TOP —
-   right under the dock — with roomier spacing; clear of the composer below. */
-.echo-page {
-  align-items: flex-start;
-}
+.echo-page::-webkit-scrollbar { display: none; }
 .echo-page-grid {
   display: grid;
-  grid-template-columns: repeat(8, minmax(72px, 112px));
+  grid-template-columns: repeat(8, minmax(calc(var(--echo-icon-size, 76px) * 0.95), calc(var(--echo-icon-size, 76px) * 1.45)));
   gap: 22px 26px;
   justify-content: center; align-content: start;
   padding: 118px 34px 148px;
 }
-/* Auto-hidden dock frees the top — the grid moves up close to the edge. */
-body.echo-dock-autohide .echo-page-grid { padding-top: 40px; }
 
 /* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
    which sits on the agent's top row, right of the caret) */
@@ -16286,37 +16285,12 @@ body.echo-dock-autohide .echo-page-grid { padding-top: 40px; }
 .echo-pages.echo-edit .echo-app-btn.removable .echo-app-del { display: flex; }
 
 /* ── DOCK AUTO-HIDE: hidden until the top edge is hovered ── */
-.echo-topbar { transition: transform 0.22s ease, opacity 0.22s ease; }
-body.echo-dock-autohide .echo-topbar {
-  transform: translate(-50%, calc(-100% - 28px));
-  opacity: 0;
-  pointer-events: none;
-}
-body.echo-dock-autohide.echo-dock-peek .echo-topbar {
-  transform: translateX(-50%);
-  opacity: 1;
-  pointer-events: auto;
-  /* Above the agent overlay layer (#code-agent-layer is z 118) — a layout's
-     agent cell was painting OVER the revealed dock. */
-  z-index: 130;
-}
-/* Blur veil UNDER the revealed dock — everything beneath goes soft while it
-   is peeked, fading out toward the bottom edge. */
-.echo-dock-blurveil {
-  position: absolute; top: 0; left: 0; right: 0; height: 68px;
-  z-index: 126; pointer-events: none;
-  backdrop-filter: blur(13px);
-  -webkit-backdrop-filter: blur(13px);
-  -webkit-mask-image: linear-gradient(to bottom, black 38%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 38%, transparent 100%);
-  opacity: 0;
-  transition: opacity 0.42s cubic-bezier(0.25, 0.6, 0.3, 1);
-}
-body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
 /* MAGNIFICATION — a super smooth follow on every slot (JS sets the scale). */
-/* The command-center (wall) button in the bottom-right cluster — BIGGER. */
-.echo-zoom .ws-icon-btn.echo-shadow-btn { width: 46px; height: 46px; }
-.echo-zoom .ws-icon-btn.echo-shadow-btn svg { width: 26px; height: 26px; }
+/* The command-center (wall) button + the RESET above it — equal peers. */
+.echo-zoom .ws-icon-btn.echo-shadow-btn,
+.echo-zoom .ws-icon-btn.echo-z-reset { width: 46px; height: 46px; }
+.echo-zoom .ws-icon-btn.echo-shadow-btn svg,
+.echo-zoom .ws-icon-btn.echo-z-reset svg { width: 26px; height: 26px; }
 
 .echo-dock-btn { transform-origin: top center; transition: transform 0.2s cubic-bezier(0.25, 0.9, 0.3, 1), box-shadow 0.12s ease; will-change: transform; }
 .echo-app-btn {
@@ -16326,13 +16300,19 @@ body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
 /* SAME square as the dock slots — one icon language everywhere. */
 .echo-app-ic {
   display: flex; align-items: center; justify-content: center;
-  width: clamp(46px, 7.2vw, 76px); height: clamp(46px, 7.2vw, 76px);
+  width: clamp(46px, 7.2vw, var(--echo-icon-size, 76px)); height: clamp(46px, 7.2vw, var(--echo-icon-size, 76px));
   border-radius: clamp(12px, 1.8vw, 18px);
   background: var(--surface-3);
   color: var(--text-2);
   overflow: hidden;
   transition: box-shadow 0.12s ease;
 }
+/* LIGHT ICON ZOOM (Appearance → Icon zoom, --icon-zoom): every icon in the
+   app breathes up a touch on hover. On the launcher the whole tile (icon +
+   label) scales — sturdier target than the inner span, and reads more
+   iPhone. Edit-mode wiggle (an animation) takes precedence while active. */
+.echo-pages .echo-app-btn { transition: transform 0.15s cubic-bezier(0.25, 0.9, 0.3, 1); will-change: transform; }
+.echo-pages .echo-app-btn:hover { transform: scale(var(--icon-zoom, 1.08)); }
 .echo-app-btn:hover .echo-app-ic { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
 .echo-app-btn.open .echo-app-ic { box-shadow: 0 0 0 1.5px var(--accent); }
 .echo-app-ic svg { width: 62%; height: 62%; }
@@ -16349,6 +16329,20 @@ body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
 .echo-app-mini .mini img { width: 80%; height: 80%; object-fit: contain; }
 .echo-app-mini .mini i { font-style: normal; font-size: 9px; font-weight: 600; color: var(--text-3); }
 .echo-app-btn.dock-dragging { opacity: 0.4; }
+/* Multi-select: picked icons ring in accent; the square + line lassos. */
+.echo-app-btn.selected .echo-app-ic { box-shadow: 0 0 0 2px var(--accent); }
+.echo-marquee {
+  position: absolute; z-index: 4; pointer-events: none;
+  border: 1.5px solid var(--accent); border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.echo-lasso-line {
+  position: absolute; z-index: 4; pointer-events: none;
+  height: 3px; border-radius: 2px;
+  background: var(--accent);
+  transform-origin: 0 50%;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+}
 /* Page dots — just UNDER the icon grid (code-workbench positions top). */
 .echo-page-dots {
   position: absolute; left: 50%; transform: translateX(-50%);
@@ -16377,7 +16371,7 @@ body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
   color: var(--text-2); cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease;
 }
-.echo-page-arrow:hover { color: var(--text); background: var(--surface-3); }
+.echo-page-arrow:hover { color: var(--text); background: var(--surface-3); transform: scale(var(--icon-zoom, 1.08)); }
 .echo-page-arrow svg { width: 18px; height: 18px; }
 .echo-page-arrow.prev { left: 22px; }
 .echo-page-arrow.next { right: 22px; }
@@ -16415,7 +16409,7 @@ body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
    glyphs ride along), so the dock always fits the window on one row. */
 .echo-dock-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: clamp(46px, 7.2vw, 76px); height: clamp(46px, 7.2vw, 76px);
+  width: clamp(46px, 7.2vw, var(--echo-icon-size, 76px)); height: clamp(46px, 7.2vw, var(--echo-icon-size, 76px));
   padding: 0; flex-shrink: 1; min-width: 40px;
   border: none; border-radius: clamp(12px, 1.8vw, 18px);
   background: var(--surface-3);
@@ -16423,6 +16417,9 @@ body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
   transition: box-shadow 0.12s ease;
 }
 .echo-dock-btn:hover { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
+/* Dock slots pick the hover zoom up too when the arch magnification is off
+   (its inline transforms take precedence while active). */
+.echo-dock-btn:hover:not([style*="transform"]) { transform: scale(var(--icon-zoom, 1.08)); }
 .echo-dock-btn.dock-dragging { opacity: 0.4; }
 .echo-dock-btn svg { width: clamp(28px, 4.6vw, 48px); height: clamp(28px, 4.6vw, 48px); display: block; }
 
@@ -17216,6 +17213,9 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
    element, so a clone would be stale within a frame. "Last few messages"
    falls out of the existing bottom-pinned scroll plus max-height. */
 .code-root[data-anchor="center"].peeking > .code-agent > .code-thread {
+  /* Echo Agent transparency (Appearance slider): panel AND text fade as one,
+     so the work underneath shows through while the conversation stays legible. */
+  opacity: var(--echo-agent-opacity, 1);
   display: block;
   position: absolute;
   bottom: calc(100% + 10px);

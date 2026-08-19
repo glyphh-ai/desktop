@@ -44,11 +44,14 @@ interface AdminModel {
   context_window: number | null;
   max_output_tokens: number | null;
   active: boolean;
+  /** Live per-org default: orgs with no explicit override follow this. */
+  default_on: boolean;
 }
 interface AdminModelPatch {
   display_name?: string;
   alias?: string | null;
   active?: boolean;
+  default_on?: boolean;
   modality?: string;
   rate_unit?: string;
   input_credits_per_mtok?: number | null;
@@ -536,6 +539,8 @@ function openModelEditor(m: AdminModel): void {
   set("pa-model-max", m.max_output_tokens == null ? "" : String(m.max_output_tokens));
   const active = $<HTMLInputElement>("pa-model-active");
   if (active) active.checked = m.active;
+  const defaultOn = $<HTMLInputElement>("pa-model-default-on");
+  if (defaultOn) defaultOn.checked = m.default_on;
   showModelEditor(true);
 }
 
@@ -554,6 +559,7 @@ async function saveModel(): Promise<void> {
     display_name: name,
     alias: alias || null,
     active: !!$<HTMLInputElement>("pa-model-active")?.checked,
+    default_on: !!$<HTMLInputElement>("pa-model-default-on")?.checked,
     modality: inputVal("pa-model-modality") || "chat",
     rate_unit: inputVal("pa-model-rate-unit") || "mtok",
     input_credits_per_mtok: inCr == null ? null : inCr * MICRO,

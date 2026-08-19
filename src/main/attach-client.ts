@@ -61,13 +61,7 @@ function connect(): void {
 
   socket.on("open", () => {
     backoff = 1000;
-    socket.send(JSON.stringify({
-      t: "hello",
-      app: "glyphh-desktop",
-      version: app.getVersion(),
-      name: hostname(),
-      capabilities: listRelayMethods(),
-    }));
+    sendHello(socket);
   });
 
   socket.on("message", (raw) => {
@@ -93,6 +87,31 @@ function connect(): void {
   };
   socket.on("close", drop);
   socket.on("error", () => { try { socket.close(); } catch { /* noop */ } drop(); });
+}
+
+/** The hello frame: identity + the CURRENT relay method table. */
+function sendHello(socket: WebSocket): void {
+  try {
+    socket.send(JSON.stringify({
+      t: "hello",
+      app: "glyphh-desktop",
+      version: app.getVersion(),
+      name: hostname(),
+      capabilities: listRelayMethods(),
+    }));
+  } catch { /* socket died mid-send — reconnect covers it */ }
+}
+
+/**
+ * Re-advertise capabilities on the live socket. Auth can open the attach
+ * socket BEFORE main.ts finishes registering relay handlers (the panel host,
+ * ptys, fs) — the first hello then lists a PARTIAL method table, and the
+ * server's capability-aware dispatch refuses the missing methods until a
+ * reconnect: web panels streamed but swallowed every input event. Call after
+ * the last installer; the server folds repeated hellos into presence.
+ */
+export function refreshHello(): void {
+  if (ws && ws.readyState === WebSocket.OPEN) sendHello(ws);
 }
 
 /** Start (or restart) the attach connection — call on sign-in / boot. */

@@ -4817,6 +4817,28 @@ export function initCode(): void {
   // (The chrome-cluster command button is GONE — ⌘⇧Space / ⌘. open the
   // command center; the wall's own eye button pins the shadow.)
   el("code-send")?.addEventListener("click", send);
+  // Command-center icon size (Appearance slider) — the CSS var the launcher
+  // squares read. Settings applies it live; this seeds it at boot.
+  void window.glyphh.getPreference?.("echoIconSize", 76).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--echo-icon-size", `${Number.isFinite(n) ? Math.max(48, Math.min(104, n)) : 76}px`);
+  });
+  // Icon hover zoom (Appearance slider) — every icon scales by this on
+  // hover. Settings applies it live; this seeds it at boot.
+  void window.glyphh.getPreference?.("iconHoverZoom", 1.08).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--icon-zoom", String(Number.isFinite(n) ? Math.max(1, Math.min(1.5, n)) : 1.08));
+  });
+  // Echo Agent panel transparency (Appearance slider) — the CSS var the
+  // caret panel reads. Settings applies it live; this seeds it at boot.
+  void window.glyphh.getPreference?.("echoAgentOpacity", 0.92).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--echo-agent-opacity", String(Number.isFinite(n) ? Math.max(0.25, Math.min(1, n)) : 0.92));
+  });
+  // Voice input — the mic chip + hands-free convo mode + start/stop cues.
+  // (This call was lost in the cc-button removal; without it the chip is
+  // wired to NOTHING — "the record button isn't turning on".)
+  initVoiceMic();
   // ── Drips — the droplet on the agent's top row, RIGHT of the caret. The
   // picker opens UPWARD (.echo-drip-anchor positions it); the typed `.dip`
   // watcher lands on the same opener. ──
@@ -5044,9 +5066,28 @@ export function initCode(): void {
   // rail's Recents AND the agent head's dropdown read the same store.
   void (async () => {
     await loadStore();
-    // Don't auto-select a session on load — a fresh open highlights no Recent
-    // (the composer opens ready; typing starts a new session). A saved
-    // currentId still resumes, and only highlights while on the agent.
+    // BOOT RESTORES THE SESSION THAT WAS IN THE AGENT (his rule, 2026-08-19):
+    // the hydrated currentId — or its persisted twin when the store forgot —
+    // comes back into the permanent composer (thread, meter, source), with no
+    // navigation and no focus steal. Only a session WITH TURNS is worth
+    // surfacing: restoring an empty one painted a blank thread strip with no
+    // landing behind it (his screenshot, 2026-08-19) — an empty session and no
+    // session are the SAME fresh-landing boot.
+    if (!current()) {
+      const lco = String((await window.glyphh.getPreference?.(LAST_SESSION_PREF, "")) || "");
+      if (lco && chats.some((c) => c.id === lco)) currentId = lco;
+    }
+    const c = current();
+    if (c && c.messages.length > 0) {
+      lastSession = c.id;
+      renderThread();
+      refreshCtxMeter();
+      repaintSourceUi();
+      void checkWorkdirGate();
+    } else if (c) {
+      currentId = "";
+      renderThread();   // no current session → the fresh landing (greeting)
+    }
     renderHistory();
   })();
   // A folder change while a session is current binds THAT session to it —

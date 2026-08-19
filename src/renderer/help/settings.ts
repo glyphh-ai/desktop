@@ -348,6 +348,67 @@ function initSettings() {
       });
     });
   }
+  // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
+  // drives the caret panel), persisted on release.
+  {
+    const o = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
+    const ov = document.getElementById("settings-echo-agent-opacity-val");
+    const paint = (): void => {
+      if (!o) return;
+      document.documentElement.style.setProperty("--echo-agent-opacity", o.value);
+      if (ov) ov.textContent = `${Math.round(Number(o.value) * 100)}%`;
+    };
+    o?.addEventListener("input", paint);
+    o?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentOpacity", Number(o.value));
+    });
+  }
+
+  // Command center: icon size (live CSS var) + apps per page (the launcher
+  // re-reads on the event and re-chunks its pages).
+  {
+    const sz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
+    const szv = document.getElementById("settings-echo-icon-size-val");
+    const paintSz = (): void => {
+      if (!sz) return;
+      document.documentElement.style.setProperty("--echo-icon-size", `${sz.value}px`);
+      if (szv) szv.textContent = `${sz.value}px`;
+    };
+    sz?.addEventListener("input", paintSz);
+    sz?.addEventListener("change", () => {
+      paintSz();
+      void window.glyphh.setPreference("echoIconSize", Number(sz.value));
+    });
+    const pp = document.getElementById("settings-echo-per-page") as HTMLInputElement | null;
+    const ppv = document.getElementById("settings-echo-per-page-val");
+    const paintPp = (): void => { if (pp && ppv) ppv.textContent = pp.value; };
+    pp?.addEventListener("input", paintPp);
+    pp?.addEventListener("change", () => {
+      paintPp();
+      void Promise.resolve(window.glyphh.setPreference("echoIconsPerPage", Number(pp.value))).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
+      });
+    });
+  }
+
+  // Icon hover zoom — every icon in the app scales by this on hover.
+  // Applied LIVE via the CSS var; persisted like every other preference.
+  {
+    const z = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
+    const zv = document.getElementById("settings-icon-zoom-val");
+    const paint = (): void => {
+      if (!z) return;
+      document.documentElement.style.setProperty("--icon-zoom", z.value);
+      if (zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`;
+    };
+    z?.addEventListener("input", paint);
+    z?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("iconHoverZoom", Number(z.value));
+    });
+  }
+
   // Dock zoom (magnification strength; 1 = off) — same live re-read event.
   {
     const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
@@ -475,6 +536,34 @@ async function loadSettings() {
   // Dock auto-hide — defaults ON; zoom defaults 20%.
   const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
   if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
+  const agOp = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
+  if (agOp) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentOpacity", 0.92));
+    agOp.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 0.92);
+    const ov = document.getElementById("settings-echo-agent-opacity-val");
+    if (ov) ov.textContent = `${Math.round(Number(agOp.value) * 100)}%`;
+  }
+  const echoSz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
+  if (echoSz) {
+    const raw = Number(await window.glyphh.getPreference("echoIconSize", 76));
+    echoSz.value = String(Number.isFinite(raw) ? Math.max(48, Math.min(104, raw)) : 76);
+    const szv = document.getElementById("settings-echo-icon-size-val");
+    if (szv) szv.textContent = `${echoSz.value}px`;
+  }
+  const echoPp = document.getElementById("settings-echo-per-page") as HTMLInputElement | null;
+  if (echoPp) {
+    const raw = Number(await window.glyphh.getPreference("echoIconsPerPage", 56));
+    echoPp.value = String(Number.isFinite(raw) ? Math.max(16, Math.min(96, raw)) : 56);
+    const ppv = document.getElementById("settings-echo-per-page-val");
+    if (ppv) ppv.textContent = echoPp.value;
+  }
+  const iconZoom = document.getElementById("settings-icon-zoom") as HTMLInputElement | null;
+  if (iconZoom) {
+    const raw = Number(await window.glyphh.getPreference("iconHoverZoom", 1.08));
+    iconZoom.value = String(Number.isFinite(raw) ? Math.max(1, Math.min(1.5, raw)) : 1.08);
+    const zv = document.getElementById("settings-icon-zoom-val");
+    if (zv) zv.textContent = Number(iconZoom.value) <= 1 ? "Off" : `${Math.round((Number(iconZoom.value) - 1) * 100)}%`;
+  }
   const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
   if (zoom) {
     const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));

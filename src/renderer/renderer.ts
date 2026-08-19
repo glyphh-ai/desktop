@@ -10,6 +10,7 @@
 import { showOnboarding } from "./onboarding.js";
 import { initBootGate, webShowFirstRun, webEnterApp } from "./boot-gate-ui.js";
 import { initDrip } from "./drip-ui.js";
+import { installAutofillGuard } from "./autofill-guard.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 import type { LibEnvelope } from "./help/library-types.js";
 
@@ -484,6 +485,9 @@ updateDismiss.addEventListener("click", () => {
 
 // -- Drip effects (extracted to drip-ui.ts) --
 initDrip();
+
+// Suppress browser autocomplete / password-manager bars on ad-hoc fields.
+installAutofillGuard();
 
 
 // -- Home surface chrome --

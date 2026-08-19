@@ -353,8 +353,14 @@ async function loadApps() {
     // Keep browser apps (have a url) and native apps (isBrowser === false).
     // Legacy rows have neither field set but always carry a url, so the url
     // check still covers them.
-    // Hide seeded system apps (Glyphh) — they aren't user-managed.
-    panelApps = apps.filter((a) => !a.system && (a.url || a.isBrowser === false)).map(toPanelApp);
+    // Hide seeded system apps (Glyphh) — they aren't user-managed. The
+    // built-in WORKPANELS (Slides/Docs/Sheets/… — launchConfig.workbench)
+    // are launcher furniture, not installs: they stay on the command center
+    // and OUT of this list.
+    panelApps = apps
+      .filter((a) => !a.system && (a.url || a.isBrowser === false))
+      .filter((a) => !(a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench)
+      .map(toPanelApp);
   } catch { panelApps = []; }
   // The rail's Apps grid mirrors this list — tell it to refresh.
   document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
@@ -1895,6 +1901,21 @@ function initApps() {
   initReleasesTab();
   initMarketplaceTab();
   initWorkPanels();
+
+  // Echo tile menu bridge: "Edit" on a command-center app tile opens the
+  // Apps section straight onto that app's edit screen.
+  (window as unknown as { __glyphhEditApp?: (idOrSlug: string) => void }).__glyphhEditApp = (idOrSlug: string) => {
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("apps");
+    void (async () => {
+      try {
+        const apps = (await window.glyphh.panelAppsList?.()) || [];
+        const app = apps.find((a) => a.id === idOrSlug || a.slug === idOrSlug);
+        if (app) await openPanelAppDetail(app as PanelApp);
+      } catch (err) {
+        console.error("[apps] edit-from-tile failed:", err);
+      }
+    })();
+  };
 
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.

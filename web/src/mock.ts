@@ -45,6 +45,7 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
   { label: 'App', rows: [
     { icon: 'cloud', label: 'Runtime', sub: 'runtime' },
     { icon: 'sliders', label: 'General', sub: 'general' },
+    { icon: 'voice', label: 'Voice', sub: 'voice' },
     { icon: 'grid', label: 'Connections', sub: 'connections' },
     { icon: 'grid', label: 'Apps', sub: 'apps' },
     { icon: 'filedoc', label: 'Artifacts', sub: 'artifacts' },

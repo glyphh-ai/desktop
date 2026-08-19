@@ -122,7 +122,14 @@ export function connectRelaySocket(token: string): Promise<RelaySocket> {
       try { f = JSON.parse(String(ev.data)); } catch { return; }
       if (f.t === "res" && typeof f.id === "string") {
         const p = pending.get(f.id);
-        if (!p) return;
+        if (!p) {
+          // Fire-and-forget ("i…") errors were swallowed whole — a broken
+          // dispatch (no attached machine, method not allowed) made panel
+          // input look like the CLIENT went dead. Keep them non-fatal, but
+          // say so where a bug report can find it.
+          if (f.ok === false && f.id.startsWith("i")) console.warn("[relay] send failed:", f.error || "relay error");
+          return;
+        }
         pending.delete(f.id);
         clearTimeout(p.timer);
         if (f.ok) p.resolve(f.result);

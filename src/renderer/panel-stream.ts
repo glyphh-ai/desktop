@@ -249,7 +249,11 @@ export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHan
   }
 
   canvas.addEventListener("mousemove", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "move", x, y, buttons: e.buttons, mods: modBits(e) }); });
-  canvas.addEventListener("mousedown", (e) => { kb.focus(); const { x, y } = pt(e); input({ type: "mouse", action: "down", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
+  // preventDefault BEFORE focusing the key proxy: mousedown's DEFAULT action
+  // moves focus to the clicked element (an unfocusable canvas → the body),
+  // which blurred the proxy right after kb.focus() and silently dropped every
+  // keystroke — clicks worked, typing went nowhere.
+  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); kb.focus(); const { x, y } = pt(e); input({ type: "mouse", action: "down", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
   canvas.addEventListener("mouseup", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "up", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); const { x, y } = pt(e); input({ type: "wheel", x, y, dx: e.deltaX, dy: e.deltaY, mods: modBits(e) }); }, { passive: false });

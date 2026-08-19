@@ -801,6 +801,7 @@ body {
 
 .m-composer { flex: 0 0 auto; padding: 8px 12px calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px); }
 .m-composer-box {
+  position: relative;   /* anchors the mic drop-up (.m-micmenu) */
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -863,6 +864,56 @@ body {
   cursor: pointer;
 }
 .m-tool-mic svg { width: 22px; height: 22px; }
+/* The mic's caret (voice options) — slimmer, points up, sits flush to the mic. */
+.m-tool-mic-caret { flex: 0 0 20px; width: 20px; margin-left: -6px; }
+.m-tool-mic-caret svg { width: 14px; height: 14px; transform: rotate(-90deg); }
+/* The mic drop-up: mode / device / reply options (desktop's chip menu). */
+.m-micmenu {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 8px);
+  z-index: 40;
+  min-width: 230px;
+  max-width: calc(100vw - 24px);
+  max-height: 46vh;
+  overflow-y: auto;
+  background: var(--surface, var(--bg-2));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+.m-micmenu-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3, var(--text-2));
+  padding: 8px 10px 4px;
+}
+.m-micmenu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.m-micmenu-row.on { color: var(--accent); }
+.m-micmenu-row svg { width: 16px; height: 16px; flex: 0 0 16px; }
+.m-micmenu-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.m-micmenu-note {
+  font-size: 12px;
+  color: var(--text-2);
+  padding: 6px 10px 8px;
+}
 .m-composer-send {
   flex: 0 0 40px;
   width: 40px;

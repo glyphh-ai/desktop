@@ -390,6 +390,12 @@ async function boot() {
   installRpaHandlers();
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
+  // Every relay handler is registered now — re-advertise the FULL method
+  // table on the attach socket. Auth can win the race and open the socket
+  // before this block runs; its first hello then lists a partial table and
+  // the server's capability-aware dispatch refuses the rest (web panel
+  // input silently dead). A repeated hello just updates presence.
+  void import("./attach-client.js").then((m) => m.refreshHello()).catch(() => {});
 
   layoutManager = new LayoutManager();
   commandParser = new CommandParser();
