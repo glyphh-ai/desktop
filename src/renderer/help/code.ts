@@ -21,7 +21,7 @@ import { initVoiceMic, onTurnComplete, maybeSpeakFirstLine, briefSteer } from ".
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { initAnchor, initAnchorEvents } from "./code-anchor.js";
+import { initAnchor, initAnchorEvents, isPeeking, togglePeek } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -1962,6 +1962,11 @@ function renderThread(): void {
   syncActiveRunAttach();   // attach to / detach from a run happening on another surface
   paintAskDock();          // re-bind the approval dock to the session now on screen
   paintChips();            // the mode chip reflects the SESSION on screen (per-session mode)
+  // The one-line status is CURRENT-SESSION state: without this, switching
+  // away from a running session left ITS "Working…"/steps painted above a
+  // session that isn't running (every live update is currentId-guarded, so
+  // nothing else ever corrected it).
+  paintStatusLine();
   const thread = el<HTMLDivElement>("code-thread");
   if (!thread) return;
   wireThreadScroll(thread);
@@ -3029,9 +3034,14 @@ function autoGrow(ta: HTMLTextAreaElement): void {
   // collapses what IT opened, never a caret-opened card.
   const card = ta.closest(".code-input-card");
   if (!card) return;
+  // STICKY expansion (his rule, 2026-08-19): expanding reseats the +/mic
+  // chips, which CHANGES the wrap width — closing on "back under one line"
+  // re-wrapped the text and re-opened it, flickering at the breakpoint. So
+  // auto-open latches: it only releases when the input is EMPTY (sent or
+  // cleared). Definitive, no oscillation.
   const tall = h > 44;
   if (tall && !card.classList.contains("options-open")) card.classList.add("options-open", "auto-open");
-  else if (!tall && card.classList.contains("auto-open")) card.classList.remove("options-open", "auto-open");
+  else if (!ta.value.trim() && card.classList.contains("auto-open")) card.classList.remove("options-open", "auto-open");
   (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic?.();
 }
 /** Recompute the composer height whenever its WIDTH changes — card
@@ -3685,6 +3695,12 @@ function paintAskDock(): void {
   dock.hidden = !item;
   dock.textContent = "";
   stopDockTicker();
+  // An approval DEMANDS the stage (his rule, 2026-08-19): the composer
+  // un-tucks (body class beats the wall-covered slide), the thread panel
+  // opens so the card sits in context, and the card layers ON TOP of the
+  // panel at full opacity — never behind the glass.
+  document.body.classList.toggle("glyphh-ask-pending", !!item);
+  if (item && !isPeeking()) togglePeek();
   if (!item) return;
 
   if (item.type === "approval") {
@@ -4526,12 +4542,16 @@ export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): vo
 /** Every launcher entry point (⌘⇧Space, ⌘., the Glyphh rail, boot) opens
  *  ECHO — the command center is gone; Echo is the launcher AND the layout
  *  manager. (opts kept for caller compatibility; there is no overlay mode.) */
-export function openCommandCenter(_opts: { forceInline?: boolean } = {}): void {
-  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void };
+export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean } = {}): void {
+  const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __wbOpenEchoHome?: () => void };
   w.__initCodeWorkbench?.();
   let tries = 0;
   const go = (): void => {
-    if (w.__wbToggleAppSwitcher) w.__wbToggleAppSwitcher();   // → openEchoSurface
+    // BOOT raises the surface WITHOUT the shadow toggle — a restored layout
+    // must come back seated, not with the launcher lifted over it (the
+    // toggle is for the user's chord/button, where toggling back is obvious).
+    const fn = opts.boot ? (w.__wbOpenEchoHome ?? w.__wbToggleAppSwitcher) : w.__wbToggleAppSwitcher;
+    if (fn) fn();
     else if (tries++ < 40) requestAnimationFrame(go);
   };
   go();
@@ -4814,7 +4834,7 @@ export function initCode(): void {
     // presentation and raises the wall. lastSession stays loaded so the
     // history dropdown / enter-space can resume it later.
     void initAnchor();
-    openCommandCenter();
+    openCommandCenter({ boot: true });
   });
   // (The chrome-cluster command button is GONE — ⌘⇧Space / ⌘. open the
   // command center; the wall's own eye button pins the shadow.)
@@ -4830,16 +4850,20 @@ export function initCode(): void {
   // listeners. The workbench calls this global after re-homing the agent.
   const seatMic = (): void => {
     const mic = el("code-mic-wrap");
+    const plus = el("code-plus-wrap");
     const agent = document.querySelector(".code-agent");
-    if (!mic || !agent) return;
+    if (!mic || !plus || !agent) return;
     const docked = !!agent.closest(".ws-agent-holder");
     const expanded = !!agent.querySelector(".code-input-card.options-open");
     if (docked || expanded) {
+      // Bottom-left chip order (his rule, 2026-08-19): permissions, +, mic.
       const mode = el("code-mode-wrap");
-      if (mode && mic.previousElementSibling !== mode) mode.after(mic);
+      if (mode && plus.previousElementSibling !== mode) mode.after(plus);
+      if (mic.previousElementSibling !== plus) plus.after(mic);
     } else {
       const wrap = agent.querySelector(".code-input-wrap");
       const wave = el("code-rec-wave");
+      if (wrap && wrap.firstElementChild !== plus) wrap.insertBefore(plus, wrap.firstElementChild);
       if (wrap && wave && mic.parentElement !== wrap) wrap.insertBefore(mic, wave);
     }
   };

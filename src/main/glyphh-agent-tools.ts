@@ -23,6 +23,7 @@
 import { exec } from "child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { promises as fsp } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
@@ -136,6 +137,21 @@ const MIME_BY_EXT: Record<string, string> = {
 // run_role's nested packets), with the global pick as the fallback for
 // callers outside a run (relay, loopback MCP).
 const toolRunContext = new AsyncLocalStorage<{ workdir: string }>();
+
+/** Deliverable MIME by extension — enough for the Drive card + inline viewers. */
+function lookupMime(name: string): string {
+  const ext = name.toLowerCase().slice(name.lastIndexOf(".") + 1);
+  const map: Record<string, string> = {
+    pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", zip: "application/zip",
+    csv: "text/csv", json: "application/json", txt: "text/plain", md: "text/markdown",
+    html: "text/html", mp4: "video/mp4", mp3: "audio/mpeg", wav: "audio/wav",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
 
 function workdir(): string {
   const wd = toolRunContext.getStore()?.workdir || getExplicitWorkingDirectory();
@@ -2253,6 +2269,29 @@ const TOOLS: ToolDef[] = [
         args: (a.args ?? {}) as Record<string, unknown>,
       });
       return cap(`scheduled ✓ "${task.name}" — ${task.kind}:${task.target} @ ${task.cron}`);
+    },
+  },
+  {
+    name: "store_file",
+    doc: "store_file(path, name?, folderId?) — publish a DELIVERABLE (pdf, export, image, zip — any finished file) from the working folder to the org's cloud Drive (R2). Every surface (web, mobile) can reach it instantly; it appears as a card in Drive. Use this for finished outputs; plain save_file/workdir writes stay local to this machine. path is relative to the working folder or absolute inside it.",
+    action: (a) => ({ kind: "edit", title: `Store ${String(a.path ?? "")} in Drive` }),
+    run: async (a) => {
+      const rel = String(a.path ?? "").trim();
+      if (!rel) return "ERROR: path is required";
+      const abs = resolve(workdir(), rel);
+      if (!abs.startsWith(resolve(workdir()))) return "ERROR: path must stay inside the working folder";
+      let bytes: Buffer;
+      try { bytes = await fsp.readFile(abs); } catch (err) { return `ERROR: ${err instanceof Error ? err.message : String(err)}`; }
+      if (bytes.byteLength > 50 * 1024 * 1024) return "ERROR: file exceeds 50MB";
+      const name = String(a.name ?? "").trim() || basename(abs);
+      const mime = lookupMime(name);
+      try {
+        const file = await getClient().files.create({ name, mime, contentBase64: bytes.toString("base64") });
+        if (a.folderId) await getClient().officeDrive.move("file", file.id, String(a.folderId));
+        return cap(`stored ✓ "${name}" (${bytes.byteLength} bytes) — in Drive as a file card${file.downloadUrl ? `\nurl: ${file.downloadUrl}` : ""}`);
+      } catch (err) {
+        return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
+      }
     },
   },
   {

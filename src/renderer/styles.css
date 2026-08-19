@@ -7426,7 +7426,13 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   margin-top: 12px;
 }
 /* The compact 402 "Add credits" dialog — reuses the topup-card grid + toggle. */
-.buy-credits-box { max-width: 480px; }
+.buy-credits-box { max-width: 480px; width: min(480px, 92vw); }
+/* Embedded Stripe checkout mounted inside the modal: give the iframe room and
+   its own scroll — the modal must never grow past the viewport. */
+.bc-checkout-stage { min-height: 420px; max-height: min(64vh, 620px); overflow-y: auto; border-radius: 10px; }
+.bc-confirming { display: flex; align-items: center; gap: 10px; justify-content: center; min-height: 120px; color: var(--text-2); font-size: 14px; text-align: center; padding: 20px; }
+.bc-confirming.bc-done { color: var(--text); font-weight: 600; }
+.bc-back { margin-top: 10px; align-self: flex-start; }
 .buy-credits-box .bc-balance { margin: 0 0 4px; color: var(--text-2); font-size: 13px; }
 /* Super-admin org detail (Orgs → Manage): stat cards + key/value grid. */
 .pa-org-stats { display: flex; gap: 12px; margin: 12px 0 10px; }
@@ -14462,7 +14468,12 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 12px 14px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
-  background: var(--surface-2);
+  /* OPAQUE on purpose: the approval must never inherit the Echo Agent
+     transparency or show the panel through itself. */
+  background: color-mix(in srgb, var(--surface-2) 100%, transparent);
+  position: relative;
+  z-index: 4;   /* above the connected thread panel (2) AND the pill (3) */
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.35);
   animation: askDockIn 0.16s ease;
 }
 @keyframes askDockIn {
@@ -15387,6 +15398,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .release-version { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; }
 .release-date { margin-left: auto; font-size: 11px; color: var(--text-3); }
 
+.release-check { flex: 0 0 14px; vertical-align: -2px; margin-right: 2px; }
 .release-badge {
   font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
   padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--text-3);
@@ -16291,7 +16303,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-app-btn:hover .echo-app-ic { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
 .echo-app-btn.open .echo-app-ic { box-shadow: 0 0 0 1.5px var(--accent); }
 .echo-app-ic svg { width: 62%; height: 62%; }
-.echo-app-ic img { width: 74%; height: 74%; object-fit: contain; }
+.echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
 .echo-app-fallback { font: 600 20px var(--font-sans); color: var(--text-2); }
 .echo-app-name {
   max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -16358,9 +16370,11 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 }
 .echo-page-dot.active { background: var(--text-2); }
 /* Traded-in app icons render as images inside dock slots. */
-.echo-dock-btn img { width: 62%; height: 62%; object-fit: contain; }
-.echo-dock-btn .echo-app-mini { width: 66%; height: 66%; }
-.echo-dock-btn .echo-app-fallback { font-size: 18px; }
+/* SAME inner proportions as the page tiles (.echo-app-ic) — one icon
+   language: the glyph scales with ITS square, not the viewport. */
+.echo-dock-btn img { width: 54%; height: 54%; object-fit: contain; }
+.echo-dock-btn .echo-app-mini { width: 72%; height: 72%; }   /* = the page tiles' mini */
+.echo-dock-btn .echo-app-fallback { font-size: 20px; }
 
 /* Echo top bar — JUST the dock now, sitting high on the page. Sits over
    the pages, under the cards. (Search is gone; drips live on the composer
@@ -16396,7 +16410,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    (its inline transforms take precedence while active). */
 .echo-dock-btn:hover:not([style*="transform"]) { transform: scale(var(--icon-zoom, 1.08)); }
 .echo-dock-btn.dock-dragging { opacity: 0.4; }
-.echo-dock-btn svg { width: clamp(28px, 4.6vw, 48px); height: clamp(28px, 4.6vw, 48px); display: block; }
+.echo-dock-btn svg { width: 62%; height: 62%; display: block; }
 
 
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
@@ -16488,25 +16502,63 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   max-width: 70%;
 }
 .echo-layout-bar.hidden { display: none; }
-/* AUTO-HIDE while a layout shows (his rule, 2026-08-19): the bar tucks up
-   into the header leaving a sliver; hovering the top edge slides it down. */
+/* AUTO-HIDE while a layout shows (his rule, 2026-08-19): the bar tucks fully
+   OUT OF SIGHT like the docked composer — only a grabber LINE stays visible;
+   hovering it slides the bar down. */
 .echo-layout-bar:not(.hidden) {
-  transition: transform 0.22s ease, opacity 0.22s ease;
-  transform: translate(-50%, calc(-100% + 8px));
-  opacity: 0.35;
+  transition: transform 0.22s ease, opacity 0.22s ease, box-shadow 0.22s ease;
+  /* FULLY off: the bar's untransformed top edge is 19px into the header
+     (top:50% of 38px), so -100%-4px left a 15px sliver on screen. -100%-26px
+     puts the bottom edge at -7px — nothing shows but the grabber line. */
+  transform: translate(-50%, calc(-100% - 26px));
+  box-shadow: none;   /* the 20px blur bled below the window edge otherwise */
+}
+.echo-layout-bar:not(.hidden)::after {
+  content: "";
+  position: absolute;
+  top: calc(100% + 15px);   /* bar bottom sits at -7px → line lands at 8px */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-3) 60%, transparent);
+}
+/* A GENEROUS invisible hover pad under the tucked bar — the 4px line alone
+   was a needle-threading target. Full pill width + margins, 34px tall. */
+.echo-layout-bar:not(.hidden)::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: -48px;
+  right: -48px;
+  height: 34px;
 }
 .echo-layout-bar:not(.hidden):hover,
 .echo-layout-bar:not(.hidden):focus-within {
   transform: translate(-50%, -50%);
-  opacity: 1;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
-.glyphh-web .echo-layout-bar:not(.hidden) { transform: translate(-50%, calc(-100% + 8px)) !important; }
+.echo-layout-bar:not(.hidden):hover::after,
+.echo-layout-bar:not(.hidden):focus-within::after { opacity: 0; }
+.echo-layout-bar.intro,
+.echo-layout-bar.intro:not(.hidden) { transform: translate(-50%, -50%); opacity: 1; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); }
+.glyphh-web .echo-layout-bar:not(.hidden) { transform: translate(-50%, calc(-100% - 14px)) !important; }   /* fixed top:6px → bottom edge -8px */
+.glyphh-web .echo-layout-bar.intro:not(.hidden) { transform: translateX(-50%) !important; opacity: 1; }
 .glyphh-web .echo-layout-bar:not(.hidden):hover,
 .glyphh-web .echo-layout-bar:not(.hidden):focus-within { transform: translateX(-50%) !important; }
 .echo-layout-bar-name {
   font-size: 12px; font-weight: 600; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.echo-layout-cc, .echo-layout-reset {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: none; border-radius: 50%; background: none;
+  color: var(--text-2); cursor: pointer;
+}
+.echo-layout-cc:hover, .echo-layout-reset:hover { background: var(--hover); color: var(--text); }
+.echo-layout-cc svg, .echo-layout-reset svg { width: 15px; height: 15px; }
 .echo-layout-close {
   display: flex; align-items: center; gap: 6px;
   padding: 4px 12px 4px 10px; width: auto; height: auto;
@@ -17203,6 +17255,14 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-status-line.is-running { color: var(--text); }
 .code-status-line.is-blocked { border-left: 2px solid var(--accent); padding-left: 14px; }
 
+/* The raised wall (⌘⇧Space over a layout/cards) must never sit UNDER the
+   layout-docked agent — the holder rides a body-level layer above the
+   workbench, so it hides while the wall is lifted. */
+body.echo-wall-lifted .ws-agent-holder { visibility: hidden; pointer-events: none; }
+/* A FULLSCREEN card covers every panel — the docked agent included. */
+body.echo-card-fullscreen .ws-agent-holder { visibility: hidden; pointer-events: none; }
+body.echo-card-fullscreen .code-root[data-anchor="center"] > .code-agent { visibility: hidden; pointer-events: none; }
+
 /* ── Agent OVERLAY + AUTO-HIDE over open apps (his rule, 2026-08-19) ─────────
    With loose app cards open (anything but the bare command center or a
    layout — exactly body.echo-cc-needed), the composer rides ON TOP of the
@@ -17221,7 +17281,8 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent {
 }
 body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:hover,
 body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:focus-within,
-body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent {
+body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent,
+body.echo-wall-covered.glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent {
   transform: translateX(-50%);
 }
 /* Tucked: the agent-output row (status line) hides with it — only the
@@ -17230,7 +17291,8 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
   opacity: 0;
   transition: opacity 0.18s ease;
 }
-body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent .code-agent-toprow { opacity: 1; }
+body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent .code-agent-toprow,
+body.echo-wall-covered.glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent .code-agent-toprow { opacity: 1; }
 /* The grabber — a small bar marking the hidden composer's hover sliver. */
 body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within)::after {
   content: "";
@@ -17256,7 +17318,10 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
    INTERNAL ring — is a thin gray/white line. */
 .code-root[data-anchor="center"] > .code-agent .code-pill-row {
   position: relative;
-  z-index: 3;   /* above the connected peek panel (z 2) — it tucks BEHIND */
+  /* The stacking order of the agent's own layers (his rule, 2026-08-19):
+     chip DROP-UPS must ALWAYS win, so the pill row (their stacking context)
+     sits above the ask dock (4), which sits above the thread panel (2). */
+  z-index: 5;
   display: flex;
   align-items: stretch;
   border-radius: 999px;
@@ -17281,11 +17346,15 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  z-index: 4;   /* the outer ring rides over BOTH pills */
+  /* Above both pill SURFACES (z-auto positioned) but BELOW every chip menu
+     (z 200+): the ring must never cross a drop-up again. */
+  z-index: 1;
 }
 .code-root[data-anchor="center"] > .code-agent .code-input-card {
+  /* NO z-index on purpose: a z here makes the card a stacking context that
+     CAPS its chip menus under the ring/ask-dock. Paint order comes from DOM
+     order + the band being click-transparent instead. */
   position: relative;
-  z-index: 2;   /* the input pill sits ON TOP of the button pill */
   flex: 1;
   min-width: 0;
   /* The INTERNAL ring: thin, gray-white — the gradient belongs to the
@@ -17387,7 +17456,9 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
 .code-side-band { display: none; }
 .code-root[data-anchor="center"] > .code-agent .code-side-band {
   position: relative;
-  z-index: 1;            /* UNDER the input pill */
+  /* Painted after the card (DOM order) but CLICK-TRANSPARENT except its
+     buttons — its tucked-under padding must never eat the send button. */
+  pointer-events: none;
   display: flex;
   align-items: center;
   align-self: stretch;   /* EXACTLY the input pill's height */
@@ -17398,6 +17469,7 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
   padding: 5px 10px 5px 42px;
 }
 .code-side-band .ws-icon-btn {
+  pointer-events: auto;
   width: 34px;
   height: 34px;
   display: flex;
@@ -17737,6 +17809,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px;
   font: inherit; font-size: 12px; outline: none;
 }
+/* Drive drag-and-drop: the dragged card dims; a hovered folder target rings. */
+.gdrive-dragging { opacity: 0.45; }
+.gdrive-droptarget { box-shadow: 0 0 0 2px var(--accent) !important; border-radius: 10px; }
+
 .gdrive-card {
   display: flex; flex-direction: column; gap: 6px; padding: 12px;
   background: var(--surface-3); border: 1px solid var(--border);

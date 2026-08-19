@@ -98,8 +98,10 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdrive-move", async (_e, kind: unknown, file: unknown, folderId: unknown) => {
     try {
-      const k = String(kind ?? "");
-      if (k !== "slides" && k !== "docs") throw new Error("kind must be slides or docs");
+      // Drive is the UNIVERSAL surface: every kind moves through one seam.
+      const KINDS = ["slides", "docs", "sheets", "design", "media", "music", "file"] as const;
+      const k = String(kind ?? "") as (typeof KINDS)[number];
+      if (!KINDS.includes(k)) throw new Error(`unknown drive kind "${String(kind)}"`);
       await getClient().officeDrive.move(k, String(file ?? ""), folderId ? String(folderId) : null);
       return { ok: true };
     } catch (err) {

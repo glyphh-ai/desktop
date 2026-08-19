@@ -133,7 +133,8 @@ interface SdkAccountHandle {
     setAutotopup?: (input: Autotopup) => Promise<Autotopup>;
     subscribe?: (tier: string) => Promise<{ url: string }>;
     changePlan?: (tier: string) => Promise<PlanChange>;
-    topup?: (input: { credits: number }) => Promise<{ url: string }>;
+    topup?: (input: { credits: number; embedded?: boolean }) => Promise<{ url?: string; clientSecret?: string }>;
+    config?: () => Promise<{ publishableKey: string | null }>;
     portal?: () => Promise<{ url: string }>;
   };
   org?: { get?: () => Promise<Org>; update?: (patch: OrgUpdate) => Promise<Org> };
@@ -156,7 +157,8 @@ interface DesktopAccountIpc {
   billingAutotopupSet?: (input: Autotopup) => Promise<{ ok: boolean; config?: Autotopup; error?: string }>;
   billingSubscribe?: (tier: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   billingChangePlan?: (tier: string) => Promise<{ ok: boolean; change?: PlanChange; error?: string }>;
-  billingTopup?: (credits: number) => Promise<{ ok: boolean; url?: string; error?: string }>;
+  billingTopup?: (credits: number, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
+  billingConfig?: () => Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>;
   billingPortal?: () => Promise<{ ok: boolean; url?: string; error?: string }>;
   accountOrgGet?: () => Promise<Org>;
   accountOrgUpdate?: (patch: OrgUpdate) => Promise<{ ok: boolean; org?: Org; error?: string }>;
@@ -179,6 +181,10 @@ export interface AccountApi {
   subscribe(tier: string): Promise<WriteResult<string>>;
   changePlan(tier: string): Promise<WriteResult<PlanChange>>;
   topup(microCredits: number): Promise<WriteResult<string>>;
+  /** Embedded Checkout: a client secret to mount in-app. */
+  topupEmbedded(microCredits: number): Promise<WriteResult<string>>;
+  /** The public Stripe key, or null → embedded unavailable, use hosted. */
+  billingConfig(): Promise<string | null>;
   portal(): Promise<WriteResult<string>>;
   org(): Promise<Org>;
   updateOrg(patch: OrgUpdate): Promise<WriteResult<Org>>;
@@ -255,7 +261,14 @@ export function accountApi(): AccountApi {
       changePlan: (tier) => web(b.changePlan && (() => b.changePlan!(tier))),
       topup: async (micro) => {
         const r = await web(b.topup && (() => b.topup!({ credits: micro })));
-        return r.ok ? { ok: true, data: r.data.url } : r;
+        return r.ok && r.data.url ? { ok: true, data: r.data.url } : r.ok ? { ok: false, error: "no checkout url" } : r;
+      },
+      topupEmbedded: async (micro) => {
+        const r = await web(b.topup && (() => b.topup!({ credits: micro, embedded: true })));
+        return r.ok && r.data.clientSecret ? { ok: true, data: r.data.clientSecret } : r.ok ? { ok: false, error: "no client secret" } : r;
+      },
+      billingConfig: async () => {
+        try { return b.config ? (await b.config()).publishableKey : null; } catch { return null; }
       },
       portal: async () => {
         const r = await web(b.portal && (() => b.portal!()));
@@ -284,6 +297,10 @@ export function accountApi(): AccountApi {
     subscribe: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier)), "url"),
     changePlan: (tier) => ipc(g?.billingChangePlan && (() => g.billingChangePlan!(tier)), "change"),
     topup: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro)), "url"),
+    topupEmbedded: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro, true)), "clientSecret"),
+    billingConfig: async () => {
+      try { const r = await g?.billingConfig?.(); return r?.ok ? (r.publishableKey ?? null) : null; } catch { return null; }
+    },
     portal: () => ipc(g?.billingPortal && (() => g.billingPortal!()), "url"),
     org: () => need(g?.accountOrgGet, g),
     updateOrg: (patch) => ipc(g?.accountOrgUpdate && (() => g.accountOrgUpdate!(patch)), "org"),

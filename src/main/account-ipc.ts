@@ -70,8 +70,14 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, change: await getClient().billing.changePlan(String(tier || "")) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("billing-topup", async (_e, credits: number) => {
-    try { return { ok: true as const, url: (await getClient().billing.topup({ credits: Number(credits) || 0 })).url }; }
+  ipcMain.handle("billing-topup", async (_e, credits: number, embedded?: boolean) => {
+    try {
+      const out = await getClient().billing.topup({ credits: Number(credits) || 0, ...(embedded ? { embedded: true } : {}) });
+      return { ok: true as const, url: out.url, clientSecret: out.clientSecret };
+    } catch (err) { return fail(err); }
+  });
+  ipcMain.handle("billing-config", async () => {
+    try { return { ok: true as const, publishableKey: (await getClient().billing.config()).publishableKey }; }
     catch (err) { return fail(err); }
   });
   ipcMain.handle("billing-portal", async () => {

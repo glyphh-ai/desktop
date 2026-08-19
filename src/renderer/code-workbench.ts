@@ -1931,6 +1931,19 @@ async function init(): Promise<void> {
     });
   };
 
+  // Drive's text/code files open IN THE EDITOR as content tabs (drive://
+  // paths — viewable, copyable; a disk save is refused by the write bridge).
+  (window as unknown as { __wbOpenMonacoText?: (name: string, content: string) => void }).__wbOpenMonacoText = (name, content) => {
+    openToolWithPayload("monaco", (t) => {
+      const sl = t as MonacoSlot;
+      const path = `drive://${name}`;
+      const existing = sl.tabs.findIndex((x) => x.path === path);
+      if (existing >= 0) { sl.tabs[existing].content = content; sl.activeIdx = existing; return; }
+      sl.tabs.push({ name, path, content, dirty: false });
+      sl.activeIdx = sl.tabs.length - 1;
+    });
+  };
+
   (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc = (file, title) => {
     openToolWithPayload("gdoc", (t) => {
       const sl = t as GDocSlot;
@@ -1982,6 +1995,12 @@ async function init(): Promise<void> {
         <button class="ws-icon-btn echo-layout-close" type="button" title="Close workspace — close every panel in it">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
           <span>Close workspace</span>
+        </button>
+        <button class="ws-icon-btn echo-layout-cc" type="button" title="Show the command center (hold ⌃⌥)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        </button>
+        <button class="ws-icon-btn echo-layout-reset" type="button" title="Reset — close every panel, back to the command center">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
         </button>
       </div>
       <div class="echo-cards"></div>
@@ -2058,7 +2077,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
@@ -2187,7 +2206,7 @@ async function init(): Promise<void> {
       if (!body.isConnected) return;
       if (ev.key === "Escape" && iconEditMode) { ev.stopPropagation(); setIconEdit(false); }
     }, true);
-    const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || (t.kind === "layout" && !!t.layoutName);
+    const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || t.houseDefault === true || (t.kind === "layout" && !!t.layoutName);
     /** Delete what an icon stands for — the app or the layout — after the
      *  standard confirm, then drop it off the launcher (and the saved order). */
     const deleteTileEntry = (e: TileEntry): void => {
@@ -2198,14 +2217,24 @@ async function init(): Promise<void> {
           title: `Delete "${t.name}"?`,
           body: t.kind === "layout"
             ? "The workspace is removed from your library."
-            : "The app is removed from your library on every device.",
+            : t.houseDefault
+              ? "The app is removed from your command center on every device."
+              : "The app is removed from your library on every device.",
           confirmLabel: "Delete",
           danger: true,
         });
         if (!ok) return;
-        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).glyphh;
+        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean>; getPreference?: (k: string, d: unknown) => Promise<unknown>; setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh;
         try {
-          if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
+          if (t.houseDefault && t.slug) {
+            // A HOUSE DEFAULT has no user row to delete — hiding is a per-user
+            // pref of hidden slugs the launcher filters on load.
+            const cur = await yo?.getPreference?.("ccHiddenDefaults", []) ?? [];
+            const list = Array.isArray(cur) ? cur.map(String) : [];
+            if (!list.includes(t.slug)) list.push(t.slug);
+            await yo?.setPreference?.("ccHiddenDefaults", list);
+          }
+          else if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
           else if (t.appId) {
             const res = await yo?.panelAppsDelete?.(t.appId);
             if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }
@@ -2374,6 +2403,9 @@ async function init(): Promise<void> {
       }
       if (t.kind === "layout" && t.layoutName) {
         items.push({ label: "Edit", onPick: () => w.__glyphhEditLayout?.(t.layoutName!) });
+        items.push({ label: "Delete", onPick: () => deleteTileEntry(e), danger: true });
+      }
+      if (t.houseDefault) {
         items.push({ label: "Delete", onPick: () => deleteTileEntry(e), danger: true });
       }
       // Open-state close items. A layout tile is "open" when ITS workspace is
@@ -2635,6 +2667,8 @@ async function init(): Promise<void> {
       const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
       return {
         name: a.name, slug, appId: a.id, url: a.url || undefined,
+        // No id = a HOUSE DEFAULT (the glyphh launcher set, not a user row).
+        houseDefault: !a.id || undefined,
         glyphh: a.appArchetype === "glyphh-app" || undefined,
         // A WORKBENCH app is a chromeless panel — no address bar, ever.
         workbench: (a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true || undefined,
@@ -2673,7 +2707,8 @@ async function init(): Promise<void> {
       yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
       yoApi?.getPreference?.("echoDockOrder", null) ?? null,
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
-    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults]) => {
+      yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
+    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       // The HOUSE DEFAULTS (the glyphh launcher set) join the org's own rows —
@@ -2683,8 +2718,9 @@ async function init(): Promise<void> {
       // saved icon order working across the copy→global transition.
       const userRows = (rows || []).filter(wallAppRow);
       const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
+      const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
       const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
-        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()))
+        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);
@@ -3153,6 +3189,10 @@ async function init(): Promise<void> {
       shadowPinned = on && pin;
       cardsLayer.classList.toggle("echo-shadow", on);
       document.body.classList.toggle("echo-cc-pinned", shadowPinned);
+      // Body mirror for layers OUTSIDE the workbench DOM: the layout-docked
+      // agent holder rides a body-level layer (z 118) that would paint OVER
+      // the raised wall — it hides while the wall is lifted (⌘⇧Space).
+      document.body.classList.toggle("echo-wall-lifted", on);
       // Pull focus out of any app webview so Esc reaches the document —
       // without this, Esc "didn't work" whenever an app had keyboard focus.
       if (on) {
@@ -3160,6 +3200,9 @@ async function init(): Promise<void> {
         stage.focus?.();
       }
       syncWallVisibility();
+      // The dock's visibility JUST changed the band's top edge — re-measure,
+      // or the layout keeps the lifted-state gap after Esc drops the wall.
+      layoutCards();
     };
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
@@ -3477,7 +3520,23 @@ async function init(): Promise<void> {
       // The composer NEVER hides while the echo panel is showing (his rule,
       // 2026-08-19) — it tucks to the page bottom ONLY when cards fully cover
       // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
-      document.body.classList.toggle("echo-wall-covered", hidden && !layoutUp);
+      const covered = hidden && !layoutUp;
+      const wasCovered = document.body.classList.contains("echo-wall-covered");
+      document.body.classList.toggle("echo-wall-covered", covered);
+      // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
+      // leaves focus inside the agent — :focus-within then pins it up until a
+      // hover cycle releases it ("doesn't hide right away"). The moment the
+      // wall becomes covered, any focus held in the composer drops so the
+      // tuck starts immediately.
+      if (covered && !wasCovered) {
+        const active = document.activeElement as HTMLElement | null;
+        // Release BUTTON focus only (the ⋮-menu case). A TEXTAREA/INPUT is the
+        // user TYPING — the agent opening panels mid-run must never steal the
+        // keyboard out of their hands.
+        if (active && active.closest(".code-agent")
+          && !(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLInputElement)
+          && !active.isContentEditable) active.blur();
+      }
     };
     // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
     // page). The search bar is gone; drips moved onto the composer card
@@ -3536,11 +3595,41 @@ async function init(): Promise<void> {
     // (the wall renders but nothing is clickable).
     const layoutBarName = layoutBar.querySelector<HTMLElement>(".echo-layout-bar-name")!;
     layoutBar.querySelector<HTMLElement>(".echo-layout-close")!
-      .addEventListener("click", () => closeLayoutGroup());
+      .addEventListener("click", () => {
+        if (openList.some((e) => e.layoutId != null)) closeLayoutGroup();
+        else resetEcho();   // loose panels: close everything, back to the CC
+      });
+    // Command center + reset ride the layout bar too (his rule, 2026-08-19):
+    // right of the close — CC first (lift the wall over the layout), reset last.
+    layoutBar.querySelector<HTMLElement>(".echo-layout-cc")!
+      .addEventListener("click", () => {
+        (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
+      });
+    layoutBar.querySelector<HTMLElement>(".echo-layout-reset")!
+      .addEventListener("click", () => resetEcho());
+    let layoutBarIntro = 0;
     const paintLayoutBar = (): void => {
+      // THE WORKSPACE BAR is on EVERY page except the bare command center
+      // (his rule, 2026-08-19): a layout titles it by name; loose panels
+      // title it by their names — five or more reads "Multi".
       const inLayout = openList.some((e) => e.layoutId != null);
-      layoutBar.classList.toggle("hidden", !inLayout);
+      const cards = openList.filter((e) => e.card && e.tile.kind !== "agent");
+      const show = inLayout || cards.length > 0;
+      const wasHidden = layoutBar.classList.contains("hidden");
+      layoutBar.classList.toggle("hidden", !show);
       if (inLayout) layoutBarName.textContent = echoLayoutName || "Workspace";
+      else if (cards.length > 4) layoutBarName.textContent = "Multi";
+      else layoutBarName.textContent = cards.map((e) => e.tile.name).join(" · ");
+      // INTRO: a freshly shown bar (layout open / boot restore) stays fully
+      // visible for a beat before the auto-hide tucks it — otherwise the
+      // restored layout reads as having NO close pill at all.
+      if (show && wasHidden) {
+        layoutBar.classList.add("intro");
+        window.clearTimeout(layoutBarIntro);
+        layoutBarIntro = window.setTimeout(() => layoutBar.classList.remove("intro"), 2600);
+      } else if (!show) {
+        layoutBar.classList.remove("intro");
+      }
     };
     const layoutCards = (): void => {
       const n = openList.length;
@@ -3579,6 +3668,12 @@ async function init(): Promise<void> {
       // card — panels "active" in the launcher but a blank screen. layoutCards
       // is the one reconciler, so the class always mirrors reality here.
       cardsLayer.classList.toggle("has-expanded", anyExpanded);
+      // A FULLSCREEN panel covers EVERYTHING — including the layout-docked
+      // agent, whose holder rides a body-level layer no in-stage z-index can
+      // beat (his rule, 2026-08-19). Body class, unless the agent's own cell
+      // is the expanded one.
+      const expandedIsAgent = openList.some((e) => e.tile.kind === "agent" && e.card?.classList.contains("expanded"));
+      document.body.classList.toggle("echo-card-fullscreen", anyExpanded && !expandedIsAgent);
       if (grid) paintDividers(!anyExpanded);
       else paintFlowDividers(anyExpanded ? null : openList.filter((e) => e.card));
       syncWallVisibility();
@@ -4499,7 +4594,10 @@ async function init(): Promise<void> {
       if (!t.toolView || t.toolView === "coding" || t.toolView === "echo") return;
         const body = card.querySelector<HTMLElement>(".echo-card-body")!;
         body.classList.add("ws-rail-slot-body");   // the panels' own CSS scope
-        const slot = makeSlot(t.toolView);
+        // REUSE a live slot: openToolWith LANDS its payload (file/asset) on
+        // e.toolSlot and remounts — minting a fresh slot here threw the landed
+        // payload away every time ("Docs opens but not the doc").
+        const slot = (e.toolSlot && e.toolSlot.view === t.toolView) ? e.toolSlot : makeSlot(t.toolView);
         // Adopt a PARKED terminal here, before the renderer runs: with the
         // live pty + xterm already in the slot, renderTerminalIntoSlot takes
         // its re-attach path (same process, same scrollback) instead of
@@ -4767,14 +4865,27 @@ async function init(): Promise<void> {
       openTool: (view) => { void getOrOpenTool(view); },
       openToolWith: (view, land) => {
         const entry = getOrOpenTool(view as Parameters<typeof getOrOpenTool>[0]);
-        if (entry.toolSlot) {
-          land(entry.toolSlot);
-          const body = entry.card?.querySelector<HTMLElement>(".echo-card-body");
-          if (body && entry.card) {
-            body.textContent = "";
-            mountToolIntoCard(entry, entry.card);
+        // A FRESHLY opened card creates its slot after mount — landing only
+        // `if (toolSlot)` silently dropped the payload on every first open
+        // (Docs opened, the DOC didn't). Wait for the slot, then land+remount.
+        let tries = 0;
+        const settle = (): void => {
+          // A PINNED card retarget hosts the view on a DIFFERENT entry than
+          // getOrOpenTool returned — land on whoever actually holds the slot.
+          const target = entry.toolSlot ? entry
+            : openList.find((x) => x.tile.toolView === view && x.toolSlot);
+          if (target?.toolSlot) {
+            land(target.toolSlot);
+            const body = target.card?.querySelector<HTMLElement>(".echo-card-body");
+            if (body && target.card) {
+              body.textContent = "";
+              mountToolIntoCard(target, target.card);
+            }
+          } else if (tries++ < 40) {
+            requestAnimationFrame(settle);
           }
-        }
+        };
+        settle();
       },
       hasTool: (view) => openList.some((x) => x.tile.toolView === view),
       closeTool: (view) => { for (const x of openList.filter((c) => c.tile.toolView === view)) closeCard(x); },
@@ -5900,6 +6011,61 @@ async function init(): Promise<void> {
         // the strip otherwise reads as a bare gap
         tabsEl.innerHTML = `<span class="ws-monaco-tabs-empty">No file open</span>`;
       }
+      const closeTabAt = async (i: number): Promise<void> => {
+        const t = slot.tabs[i];
+        if (!t) return;
+        flushEditorModel();
+        if (t.dirty) {
+          const ok = await appConfirm({
+            title: `Close ${t.name}?`,
+            body: "This tab has unsaved changes.",
+            confirmLabel: "Close without saving",
+            danger: true,
+          });
+          if (!ok) return;
+        }
+        slot.tabs.splice(i, 1);
+        // The panel STAYS when the last tab closes — mountActive() paints
+        // the landing state. Tearing the pane out from under the user cost
+        // them their workbench slot for what reads as "I closed a file".
+        if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = Math.max(0, slot.tabs.length - 1);
+        paintTabs();
+        void mountActive();
+      };
+      /** RIGHT-CLICK on a tab (his rule, 2026-08-19): Save (when dirty) /
+       *  Close / Close all / Save all — the dirty prompts ride the actions. */
+      const openTabDropdown = (anchor: HTMLElement, i: number): void => {
+        document.querySelector(".ws-tab-ctx-menu")?.remove();
+        const t = slot.tabs[i];
+        if (!t) return;
+        const menu = document.createElement("div");
+        menu.className = "ws-tab-ctx-menu";
+        const dismiss = (): void => {
+          menu.remove();
+          document.removeEventListener("mousedown", onAway, true);
+          document.removeEventListener("keydown", onKey, true);
+        };
+        const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+        const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
+        const mkItem = (label: string, onPick: () => void): void => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "ws-tab-ctx-item";
+          btn.textContent = label;
+          btn.addEventListener("click", () => { dismiss(); onPick(); });
+          menu.appendChild(btn);
+        };
+        if (t.dirty) mkItem("Save", () => { void saveActive(); });
+        mkItem("Close", () => { void closeTabAt(i); });
+        mkItem("Close all", () => { void closeAll(); });
+        mkItem("Save all", () => { void saveAll(); });
+        document.body.appendChild(menu);
+        const r = anchor.getBoundingClientRect();
+        menu.style.left = Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 6)) + "px";
+        menu.style.top = Math.max(6, Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 6)) + "px";
+        document.addEventListener("mousedown", onAway, true);
+        document.addEventListener("keydown", onKey, true);
+      };
       slot.tabs.forEach((t, i) => {
         const tab = document.createElement("div");
         tab.className = "ws-monaco-tab" + (i === slot.activeIdx ? " active" : "");
@@ -5909,30 +6075,17 @@ async function init(): Promise<void> {
         tab.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".close")) {
             ev.stopPropagation();
-            void (async () => {
-              flushEditorModel();
-              if (t.dirty) {
-                const ok = await appConfirm({
-                  title: `Close ${t.name}?`,
-                  body: "This tab has unsaved changes.",
-                  confirmLabel: "Close without saving",
-                  danger: true,
-                });
-                if (!ok) return;
-              }
-              slot.tabs.splice(i, 1);
-              // The panel STAYS when the last tab closes — mountActive() paints
-              // the landing state. Tearing the pane out from under the user cost
-              // them their workbench slot for what reads as "I closed a file".
-              if (slot.activeIdx >= slot.tabs.length) slot.activeIdx = Math.max(0, slot.tabs.length - 1);
-              paintTabs();
-              void mountActive();
-            })();
+            void closeTabAt(i);
           } else if (i !== slot.activeIdx) {
             slot.activeIdx = i;
             paintTabs();
             void mountActive();
           }
+        });
+        tab.addEventListener("contextmenu", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();   // the strip-level menu must not double-fire
+          openTabDropdown(tab, i);
         });
         tabsEl.appendChild(tab);
       });
@@ -8274,6 +8427,10 @@ async function init(): Promise<void> {
     // them (the shadow pin) — and the same chord toggles back out.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
   };
+  // BOOT lands here instead (his rule, 2026-08-19): raise the surface, NO
+  // shadow toggle — a boot-restored layout must come back seated, never with
+  // the launcher lifted over it and no visible way down.
+  (wbApp as { __wbOpenEchoHome?: () => void }).__wbOpenEchoHome = () => { openEchoSurface(); };
   // Tool panels by name (.dip plan, open_app("files"), tool-only layouts) —
   // in Echo they open as Echo cards like everything else.
   // A popup a page opened (target=_blank / window.open) — main denies the OS

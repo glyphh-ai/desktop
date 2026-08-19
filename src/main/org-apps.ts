@@ -138,7 +138,31 @@ function toRow(app: OrgApp): OrgAppRow {
  *  render and the click that follows share one request. */
 export function fetchOrgApps(): Promise<OrgAppRow[]> {
   return appCache.cached(CACHE_KEY, async () => {
-    const rows = (await getClient().apps.mine()).map(toRow);
+    // The org's own rows + the HOUSE DEFAULTS (the glyphh launcher set):
+    // per-user copies are retired, so .dip/open_app/palette/layout-cell
+    // resolution by slug or id must see the canonical glyphh rows. A user
+    // row WINS its slug; defaults ride with their REAL global ids (layout
+    // cells reference those).
+    const [mine, houseDefaults] = await Promise.all([
+      getClient().apps.mine(),
+      getClient().apps.defaults().catch(() => []),
+    ]);
+    const mineRows = mine.map(toRow);
+    const taken = new Set(mineRows.map((r) => r.slug.toLowerCase()));
+    const defaultRows: OrgAppRow[] = houseDefaults
+      .filter((d) => !!d.url && !taken.has(d.slug.toLowerCase()))
+      .map((d): OrgAppRow => ({
+        id: d.id, orgId: "", createdBy: "",
+        name: d.name, slug: d.slug,
+        system: true,                 // house-owned: not deletable as a user row
+        url: d.url, isBrowser: true, execPath: null,
+        appArchetype: "web", launchConfig: null,
+        access: "members", owned: false,
+        latestVersion: null, requiredConnections: [], connectionIds: [],
+        mcp: null, commands: {},
+        createdAt: "", updatedAt: "",
+      }));
+    const rows = [...mineRows, ...defaultRows];
     // If the org already has a row with the "glyphh" slug (server-seeded, or
     // user-created), THAT row is the built-in: keep its real id — layouts and
     // recents reference it — normalize its archetype, and pin it first.

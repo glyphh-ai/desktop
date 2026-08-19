@@ -33,4 +33,24 @@ export function registerFilesIpc(): void {
     try { return { ok: true as const, file: await getClient().files.create(input) }; }
     catch (err) { return fail(err); }
   });
+
+  // Content — Drive's text/code cards read their bytes for the editor. The
+  // MAIN process fetches the signed URL (no CORS), capped at 2MB of text.
+  ipcMain.handle("files-content", async (_e, id: string) => {
+    try {
+      const f = await getClient().files.get(String(id || ""));
+      if (!f.downloadUrl) return { ok: false as const, error: "no download url" };
+      const res = await fetch(f.downloadUrl);
+      if (!res.ok) return { ok: false as const, error: `HTTP ${res.status}` };
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.byteLength > 2 * 1024 * 1024) return { ok: false as const, error: "file exceeds the 2MB editor cap" };
+      return { ok: true as const, content: buf.toString("utf8") };
+    } catch (err) { return fail(err); }
+  });
+
+  // Delete — Drive's file-artifact cards remove the object + row.
+  ipcMain.handle("files-delete", async (_e, id: string) => {
+    try { await getClient().files.delete(String(id || "")); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
 }

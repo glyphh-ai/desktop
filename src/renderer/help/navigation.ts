@@ -124,6 +124,9 @@ export function loadActiveSection(explicit?: string) {
  * truth. (The old #help-nav sidebar — hidden but load-bearing — is deleted.)
  */
 export function gotoSection(section: string, sub?: string): void {
+  // "workspaces" IS the layouts section (the product word) — .dip workspaces
+  // and .dip layouts land in the same place (his rule, 2026-08-19).
+  if (section === "workspaces") section = "layouts";
   const moved = SECTION_ALIAS[section];
   if (moved) { section = moved.section; sub = sub || moved.sub; }
   // Settings is a MODAL now — intercept before the workbench section swap so

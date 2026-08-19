@@ -619,8 +619,10 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("billing-subscribe", tier) as Promise<{ ok: boolean; url?: string; error?: string }>,
   billingChangePlan: (tier: string) =>
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
-  billingTopup: (credits: number) =>
-    ipcRenderer.invoke("billing-topup", credits) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  billingTopup: (credits: number, embedded?: boolean) =>
+    ipcRenderer.invoke("billing-topup", credits, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
+  billingConfig: () =>
+    ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,
   accountOrgGet: () => ipcRenderer.invoke("account-org-get") as Promise<AccountOrg>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>
@@ -687,6 +689,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // mirrors these shapes and owns the web target's SDK-handle transport. ──
   filesList: () => ipcRenderer.invoke("files-list") as Promise<FileArtifactRow[]>,
   filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
+  filesDelete: (id: string) => ipcRenderer.invoke("files-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  filesContent: (id: string) => ipcRenderer.invoke("files-content", id) as Promise<{ ok: boolean; content?: string; error?: string }>,
   filesCreate: (input: FileCreateInputRow) =>
     ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
@@ -1024,9 +1028,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   mediaProjectDelete: (id: string) => ipcRenderer.invoke("media-project-delete", id) as Promise<{ ok: boolean; error?: string }>,
   mediaProjectGenerate: (id: string, input?: unknown) => ipcRenderer.invoke("media-project-generate", id, input) as Promise<{ ok: boolean; project?: unknown; job?: unknown; error?: string }>,
   mediaUploadBytes: (input: unknown) => ipcRenderer.invoke("media-upload-bytes", input) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
-  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: "slides" | "docs"; file: string; title: string; sizeBytes: number; folderId: string | null; updatedAt: string }>; error?: string }>,
+  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: string; ref: string; file?: string; title: string; sizeBytes: number; folderId: string | null; subkind?: string; mime?: string; updatedAt: string }>; error?: string }>,
   gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
-  gdriveMove: (kind: "slides" | "docs", file: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, file, folderId) as Promise<{ ok: boolean; error?: string }>,
+  gdriveMove: (kind: string, ref: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, ref, folderId) as Promise<{ ok: boolean; error?: string }>,
   gdriveFolderRename: (id: string, name: string) => ipcRenderer.invoke("gdrive-folder-rename", id, name) as Promise<{ ok: boolean; error?: string }>,
   gdriveFolderDelete: (id: string) => ipcRenderer.invoke("gdrive-folder-delete", id) as Promise<{ ok: boolean; error?: string }>,
   gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,

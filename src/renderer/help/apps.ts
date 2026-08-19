@@ -1066,8 +1066,10 @@ async function loadReleasesTab(): Promise<void> {
     row.dataset.id = r.id;
     // A failed build is the row an author most needs to find, so it carries its
     // compiler error inline rather than hiding it behind a click.
+    // RELEASED = live + ready: a green check says so at a glance.
+    const released = r.channel === "live" && r.status === "ready";
     const badge = r.channel === "live"
-      ? `<span class="release-badge live">live</span>`
+      ? `${released ? '<svg class="release-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-label="Released"><polyline points="20 6 9 17 4 12"/></svg>' : ""}<span class="release-badge live">live</span>`
       : `<span class="release-badge">dev</span>`;
     const state = r.status === "ready" ? "" : `<span class="release-state ${r.status}">${escMkt(r.status)}</span>`;
     row.innerHTML = `

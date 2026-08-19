@@ -10,6 +10,7 @@
  */
 
 import { officePager, officePage } from "./wb-office-ui.js";
+import { biasThumbCrop } from "./wb-drive.js";
 
 
 export interface MediaAssetLite {
@@ -139,6 +140,8 @@ function popMenu(x: number, y: number, items: PopItem[]): void {
 
 export function initMedia(host: MediaHost): MediaPanel {
   async function renderIntoSlot(body: HTMLElement, slot: MediaSlotState, wrap: HTMLElement): Promise<void> {
+    const st = slot as MediaSlotState & { __gen?: number };
+    st.__gen = (st.__gen ?? 0) + 1;
     try {
       await renderInner(body, slot, wrap);
     } catch (err) {
@@ -158,7 +161,7 @@ export function initMedia(host: MediaHost): MediaPanel {
     if (titleEl) titleEl.textContent = view.title;
     const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
     if (slot.assetId) { await renderViewer(body, slot, refresh); return; }
-    await renderLibrary(body, slot, view, refresh);    await renderLibrary(body, slot, view, refresh);
+    await renderLibrary(body, slot, view, refresh);
   }
 
   async function renderLibrary(
@@ -193,8 +196,12 @@ export function initMedia(host: MediaHost): MediaPanel {
 
     const grid = body.querySelector<HTMLElement>(".gmedia-grid")!;
     const empty = body.querySelector<HTMLElement>(".gdoc-empty")!;
+    const myGen = (slot as MediaSlotState & { __gen?: number }).__gen;
     const lists = await Promise.all(view.kinds.map((k) => api().mediaList?.(k)));
-    if (!body.isConnected) return;
+    // SUPERSEDED? A newer render (the asset viewer landing) owns the DOM now —
+    // painting the library here stomped the just-opened asset.
+    if (!body.isConnected || (slot as MediaSlotState & { __gen?: number }).__gen !== myGen) return;
+    if (!grid.isConnected) return;
     const anyErr = lists.find((r) => r && !r.ok);
     const assets = lists.flatMap((r) => (r?.ok ? r.assets : []))
       .filter((x) => x.status === "ready")
@@ -239,6 +246,7 @@ export function initMedia(host: MediaHost): MediaPanel {
             if (!u || !thumb.isConnected) return;
             thumb.innerHTML = "";
             thumb.style.backgroundImage = `url("${u.replace(/"/g, "%22")}")`;
+            biasThumbCrop(thumb, u);
           });
         } else if (m.mime.startsWith("audio/")) {
           thumb.classList.add("gmedia-thumb-audio");
@@ -302,14 +310,21 @@ export function initMedia(host: MediaHost): MediaPanel {
     body.querySelector(".gmedia-back")?.addEventListener("click", () => { delete slot.assetId; refresh(); });
     body.querySelector(".gmedia-viewer-dl")?.addEventListener("click", () => { void api().mediaSave?.(id); });
 
+    const myGen = (slot as MediaSlotState & { __gen?: number }).__gen;
     const lists = await Promise.all((VIEWS[slot.view]?.kinds ?? []).map((k) => api().mediaList?.(k)));
+    if ((slot as MediaSlotState & { __gen?: number }).__gen !== myGen) return;
+    // SUPERSEDED? A newer render may have wiped the body during the await —
+    // touching the old nodes crashed the panel. Bail quietly; the newer
+    // render owns the DOM now.
+    const stage = body.querySelector<HTMLElement>(".gmedia-stage");
+    const titleNode = body.querySelector<HTMLElement>(".gmedia-viewer-title");
+    if (!stage || !titleNode || !body.isConnected) return;
     const asset = lists.flatMap((r) => (r?.ok ? r.assets : [])).find((x) => x.id === id);
-    const stage = body.querySelector<HTMLElement>(".gmedia-stage")!;
     if (!asset) {
       stage.innerHTML = `<div class="gdoc-empty">This asset is gone.</div>`;
       return;
     }
-    (body.querySelector(".gmedia-viewer-title") as HTMLElement).textContent = asset.title;
+    titleNode.textContent = asset.title;
     body.querySelector(".gmedia-viewer-del")?.addEventListener("click", () => {
       void (async () => {
         const yes = await host.confirm({ title: `Delete "${asset.title}"?`, confirmLabel: "Delete", danger: true });

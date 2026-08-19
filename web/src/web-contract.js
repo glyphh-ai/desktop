@@ -682,6 +682,22 @@ export function buildContract(client, deps) {
     catalogVoices: lib((provider) => client.catalog.voices(provider)),
     voiceSettingsGet: lib(() => client.profile.voiceSettings()),
     voiceSettingsSet: lib((patch) => client.profile.setVoiceSettings(patch)),
+    // Drive file artifacts — metadata (+ signed URL), delete, and text
+    // content for the editor (browser fetch; R2 CORS permitting, else the
+    // caller falls back to the Browser panel).
+    filesGet: (id) => client.files.get(id).catch(() => null),
+    filesDelete: (id) => client.files.delete(id).then(() => ({ ok: true })).catch((e) => ({ ok: false, error: String(e?.message ?? e) })),
+    filesContent: async (id) => {
+      try {
+        const f = await client.files.get(id);
+        if (!f?.downloadUrl) return { ok: false, error: 'no download url' };
+        const res = await fetch(f.downloadUrl);
+        if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+        const text = await res.text();
+        if (text.length > 2 * 1024 * 1024) return { ok: false, error: 'file exceeds the 2MB editor cap' };
+        return { ok: true, content: text };
+      } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+    },
     // The HOUSE DEFAULTS — the glyphh launcher set (command center only).
     appsDefaults: () => client.apps.defaults().catch(() => []),
     voiceTranscribe: lib((audio, mime, model, ms) => client.voice.transcribe(new Uint8Array(audio), model, mime, ms)),

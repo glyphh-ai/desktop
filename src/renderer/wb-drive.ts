@@ -1,11 +1,13 @@
 /**
  * wb-drive.ts — GLYPHH DRIVE, the workbench panel.
  *
- * The index over every Office file: folders on the left, file cards on the
- * right, search across everything. Entries are POINTERS — opening one routes
- * to its own panel (Slides reader / Docs paper); moving one repoints its
- * folder_id; nothing here copies bytes. Folder ops are safe by construction:
- * deleting a folder re-parents its contents.
+ * THE UNIVERSAL SURFACE (his rule, 2026-08-19): the left rail is FOLDERS
+ * ONLY; every object — slides, docs, sheets, designs, media, music, and the
+ * R2 file artifacts — renders as a card and associates to the same folders.
+ * Entries are POINTERS — clicking one opens THAT OBJECT in its own editor
+ * (a doc opens Docs on that file); moving one repoints its folder_id;
+ * nothing here copies bytes. Folder ops are safe by construction: deleting
+ * a folder re-parents its contents.
  */
 
 import { deckHtml, staticDoc, fillThumbs } from "./wb-gpoint.js";
@@ -13,12 +15,19 @@ import { officePager, officePage, mountDocThumb } from "./wb-office-ui.js";
 import { mountSheetThumb } from "./wb-sheets.js";
 
 export interface DriveFolder { id: string; name: string; parentId: string | null }
+export type DriveKind = "slides" | "docs" | "sheets" | "design" | "media" | "music" | "file";
 export interface DriveEntry {
-  kind: "slides" | "docs" | "sheets";
-  file: string;
+  kind: DriveKind;
+  /** The stable reference: office/design = the file name; media/music/file = the uuid. */
+  ref: string;
+  /** Office/design keep their file name for the editors' open-by-name APIs. */
+  file?: string;
   title: string;
   sizeBytes: number;
   folderId: string | null;
+  /** media: image|video|audio|voice|…; file: the files.kind bucket. */
+  subkind?: string;
+  mime?: string;
   updatedAt: string;
 }
 
@@ -26,8 +35,6 @@ export interface GDriveSlotState {
   id: number;
   /** Selected folder (null/undefined = root view). */
   folderId?: string | null;
-  /** Selected LIBRARY folder (virtual, read-only R2/app-data mapping). */
-  lib?: string | null;
   /** The folder rail — open by default, collapsible from the toolbar. */
   railOpen?: boolean;
   /** "browse" (folders + recents) or "list" (every file, newest first). */
@@ -50,7 +57,9 @@ const driveApi = () => (window as unknown as { glyphh?: {
   gpointNew?: (name: string, title?: string) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
   gdocWrite?: (file: string, markdown: string, folderId?: string | null) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
   gsheetWrite?: (file: string, title: string, workbook: unknown) => Promise<{ ok: boolean; file?: string; title?: string; error?: string }>;
-  gdriveMove?: (kind: "slides" | "docs" | "sheets", file: string, folderId: string | null) => Promise<{ ok: boolean; error?: string }>;
+  gdriveMove?: (kind: string, ref: string, folderId: string | null) => Promise<{ ok: boolean; error?: string }>;
+  filesGet?: (id: string) => Promise<{ id: string; name: string; downloadUrl?: string } | null>;
+  filesDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   gsheetDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdriveFolderRename?: (id: string, name: string) => Promise<{ ok: boolean; error?: string }>;
   gdriveFolderDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
@@ -63,97 +72,88 @@ const driveApi = () => (window as unknown as { glyphh?: {
   musicInstruments?: () => Promise<{ ok: boolean; instruments: unknown[]; error?: string }>;
 } }).glyphh ?? {};
 
-// ── the LIBRARY — every app's R2-backed data, mapped into Drive READ-ONLY.
-//    These are virtual folders over the org media library and the Band tables;
-//    nothing here renames/moves/deletes — management lives in the owning app. ──
+// ── per-kind card icons (media/music/file kinds reuse the app glyphs) ──
 
-interface LibItem { id: string; title: string; sub: string; thumb?: boolean; open: () => void }
-interface LibDef { id: string; name: string; icon: string }
-
-const LIB_ICONS: Record<string, string> = {
+const KIND_ICONS: Record<string, string> = {
   image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
   video: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>`,
   audio: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
   band: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 3v10a3 3 0 1 1-2-2.83V6l-8 1.6V15a3 3 0 1 1-2-2.83V5z"/></svg>`,
+  design: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.9-.5-1.4 0-1.1.9-2 2-2h2.4c3.1 0 5.6-2.5 5.6-5.6C23 5.5 18.1 2 12 2z"/></svg>`,
+  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
 };
 
-const LIBS: LibDef[] = [
-  { id: "images", name: "Images", icon: LIB_ICONS.image! },
-  { id: "video", name: "Video", icon: LIB_ICONS.video! },
-  { id: "sounds", name: "Sounds", icon: LIB_ICONS.audio! },
-  { id: "voices", name: "Voices", icon: LIB_ICONS.audio! },
-  { id: "recordings", name: "Recordings", icon: LIB_ICONS.video! },
-  { id: "songs", name: "Songs", icon: LIB_ICONS.band! },
-  { id: "artists", name: "Artists", icon: LIB_ICONS.band! },
-  { id: "instruments", name: "Instruments", icon: LIB_ICONS.band! },
-];
-
-interface MediaAssetLite { id: string; kind: string; title: string; mime?: string; sizeBytes?: number; updatedAt?: string; status?: string }
-interface NamedRowLite { id: string; name?: string; title?: string; updatedAt?: string }
+const mediaIconFor = (subkind?: string): string =>
+  subkind === "video" || subkind === "recording" ? KIND_ICONS.video!
+    : subkind === "audio" || subkind === "voice" ? KIND_ICONS.audio!
+    : KIND_ICONS.image!;
 
 const openMediaBridge = (view: "gimage" | "gvideo" | "gsound" | "gband", assetId?: string, songId?: string): void => {
   (window as unknown as { __wbOpenMedia?: (v: string, a?: string, s?: string) => void }).__wbOpenMedia?.(view, assetId, songId);
 };
 
-async function libItemsFor(lib: string, q: string): Promise<LibItem[]> {
-  const api = driveApi();
-  const ql = q.toLowerCase();
-  const when = (u?: string): string => (u ? new Date(u).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
-  const mediaLib = async (kind: string, view: "gimage" | "gvideo" | "gsound", label: string): Promise<LibItem[]> => {
-    const res = await api.mediaList?.(kind, q || undefined);
-    const assets = (res?.ok ? res.assets : []) as MediaAssetLite[];
-    return assets.filter((a) => a.status !== "failed").map((a) => ({
-      id: a.id,
-      title: a.title || "(untitled)",
-      sub: `${label}${a.sizeBytes ? ` · ${fmtSize(a.sizeBytes)}` : ""}${a.updatedAt ? ` · ${when(a.updatedAt)}` : ""}`,
-      thumb: (a.mime ?? "").startsWith("image/"),
-      open: () => openMediaBridge(view, a.id),
-    }));
+const mediaViewFor = (subkind?: string): "gimage" | "gvideo" | "gsound" =>
+  subkind === "video" || subkind === "recording" ? "gvideo"
+    : subkind === "audio" || subkind === "voice" ? "gsound"
+    : "gimage";
+
+/** Bytes → a compact human size. */
+
+/** PEOPLE-AWARE crop bias: cover-cropping from dead center decapitates
+ *  portraits — faces live in the upper third. Portrait-aspect images shift
+ *  the crop window up; landscape/square keep the default center. Dimension
+ *  probe only (Image() rides the same cached fetch) — no pixel readback, so
+ *  no CORS demands on the signed URL. */
+export function biasThumbCrop(host: HTMLElement, url: string): void {
+  const im = new Image();
+  im.onload = () => {
+    if (!host.isConnected) return;
+    if (im.naturalHeight > im.naturalWidth * 1.15) host.style.backgroundPosition = "50% 22%";
   };
-  const bandLib = async (rows: NamedRowLite[] | undefined, label: string, open: (r: NamedRowLite) => void): Promise<LibItem[]> =>
-    (rows ?? [])
-      .filter((r) => { const n = (r.name ?? r.title ?? "").toLowerCase(); return !ql || n.includes(ql); })
-      .map((r) => ({
-        id: r.id,
-        title: r.name ?? r.title ?? "(untitled)",
-        sub: `${label}${r.updatedAt ? ` · ${when(r.updatedAt)}` : ""}`,
-        open: () => open(r),
-      }));
-  switch (lib) {
-    case "images": return mediaLib("image", "gimage", "Image");
-    case "video": return mediaLib("video", "gvideo", "Video");
-    case "sounds": return mediaLib("audio", "gsound", "Audio");
-    case "voices": return mediaLib("voice", "gsound", "Voice");
-    case "recordings": return mediaLib("recording", "gvideo", "Recording");
-    case "songs": return bandLib(((await driveApi().musicSongs?.())?.songs ?? []) as NamedRowLite[], "Song", (r) => openMediaBridge("gband", undefined, r.id));
-    case "artists": return bandLib(((await driveApi().musicArtists?.())?.artists ?? []) as NamedRowLite[], "Artist", () => openMediaBridge("gband"));
-    case "instruments": return bandLib(((await driveApi().musicInstruments?.())?.instruments ?? []) as NamedRowLite[], "Instrument", () => openMediaBridge("gband"));
-    default: return [];
-  }
+  im.src = url;
 }
 
-interface PopItem { label: string; danger?: boolean; fn: () => void }
-function popMenu(x: number, y: number, items: PopItem[]): void {
-  document.querySelectorAll(".gdrive-menu").forEach((el) => el.remove());
+function fmtSize(n: number): string {
+  if (!n) return "0 B";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** A small anchored menu — shared by folder rows, cards, and list rows. */
+function popMenu(x: number, y: number, items: Array<{ label: string; danger?: boolean; fn: () => void }>): void {
+  document.querySelector(".ws-tab-ctx-menu")?.remove();
   const menu = document.createElement("div");
-  menu.className = "ws-popover gdrive-menu";
+  menu.className = "ws-tab-ctx-menu";
+  const dismiss = (): void => {
+    menu.remove();
+    document.removeEventListener("mousedown", onAway, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
+  const onAway = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) dismiss(); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") dismiss(); };
   for (const it of items) {
-    const b = document.createElement("button");
-    b.className = "ws-popover-item" + (it.danger ? " danger" : "");
-    b.textContent = it.label;
-    b.addEventListener("click", () => { close(); it.fn(); });
-    menu.appendChild(b);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ws-tab-ctx-item" + (it.danger ? " danger" : "");
+    btn.textContent = it.label;
+    btn.addEventListener("click", () => { dismiss(); it.fn(); });
+    menu.appendChild(btn);
   }
   document.body.appendChild(menu);
-  menu.style.top = `${Math.min(y, window.innerHeight - menu.offsetHeight - 8)}px`;
-  menu.style.left = `${Math.min(x, window.innerWidth - menu.offsetWidth - 8)}px`;
-  const onDoc = (ev: MouseEvent): void => { if (!menu.contains(ev.target as Node)) close(); };
-  const close = (): void => { menu.remove(); document.removeEventListener("mousedown", onDoc, true); };
-  document.addEventListener("mousedown", onDoc, true);
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - r.width - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - r.height - 6))}px`;
+  document.addEventListener("mousedown", onAway, true);
+  document.addEventListener("keydown", onKey, true);
 }
 
-const fmtSize = (n: number): string => (n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
-
+/** What a card says under its title. */
+const kindLabel = (f: DriveEntry): string =>
+  f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : f.kind === "docs" ? "Docs"
+    : f.kind === "design" ? "Design" : f.kind === "music" ? "Song"
+    : f.kind === "media" ? (f.subkind ? f.subkind[0]!.toUpperCase() + f.subkind.slice(1) : "Media")
+    : (f.mime === "application/pdf" ? "PDF" : "File");
 
 export interface GDrivePanel {
   renderIntoSlot: (body: HTMLElement, slot: GDriveSlotState, wrap: HTMLElement) => Promise<void>;
@@ -290,13 +290,13 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       const createInto = (kind: "docs" | "sheets" | "slides", folderId: string | null): void => {
         void (async () => {
           if (kind === "docs") {
-            const taken = new Set(files.filter((f) => f.kind === "docs").map((f) => f.file));
+            const taken = new Set(files.filter((f) => f.kind === "docs").map((f) => f.file || f.ref));
             const stem = freshName(taken, "untitled", ".md");
             const w = await api.gdocWrite?.(stem, "# Untitled\n\nStart here.", folderId);
             if (!w?.ok || !w.file) { void host.confirm({ title: "Couldn't create the document", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
             (window as unknown as { __wbOpenGDoc?: (f?: string, t?: string) => void }).__wbOpenGDoc?.(w.file, w.title);
           } else if (kind === "sheets") {
-            const taken = new Set(files.filter((f) => f.kind === "sheets").map((f) => f.file));
+            const taken = new Set(files.filter((f) => f.kind === "sheets").map((f) => f.file || f.ref));
             const stem = freshName(taken, "untitled", ".json");
             const blank = { sheets: [{ name: "Sheet1", columns: [{ name: "Column 1" }, { name: "Column 2" }, { name: "Column 3" }], rows: Array.from({ length: 8 }, () => [null, null, null]) }] };
             const w = await api.gsheetWrite?.(stem, "Untitled", blank);
@@ -304,7 +304,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             if (folderId) await api.gdriveMove?.("sheets", w.file, folderId);
             (window as unknown as { __wbOpenGSheet?: (f?: string, t?: string) => void }).__wbOpenGSheet?.(w.file, w.title);
           } else {
-            const taken = new Set(files.filter((f) => f.kind === "slides").map((f) => f.file));
+            const taken = new Set(files.filter((f) => f.kind === "slides").map((f) => f.file || f.ref));
             const stem = freshName(taken, "untitled", ".html");
             const w = await api.gpointNew?.(stem, "Untitled");
             if (!w?.ok || !w.file) { void host.confirm({ title: "Couldn't create the deck", body: w?.error || "Unknown error.", confirmLabel: "OK" }); return; }
@@ -323,9 +323,33 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         ]);
       };
 
+      /** Make an element a FOLDER DROP TARGET (null = My Drive root). */
+      const wireFolderDrop = (elm: HTMLElement, folderId: string | null): void => {
+        elm.addEventListener("dragover", (ev) => {
+          if (!ev.dataTransfer?.types.includes("application/x-glyphh-drive")) return;
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "move";
+          elm.classList.add("gdrive-droptarget");
+        });
+        elm.addEventListener("dragleave", () => elm.classList.remove("gdrive-droptarget"));
+        elm.addEventListener("drop", (ev) => {
+          elm.classList.remove("gdrive-droptarget");
+          const raw = ev.dataTransfer?.getData("application/x-glyphh-drive");
+          if (!raw) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          void (async () => {
+            try {
+              const { kind, ref } = JSON.parse(raw) as { kind: string; ref: string };
+              await api.gdriveMove?.(kind, ref, folderId);
+            } catch { /* malformed payload — ignore */ }
+            void paint();
+          })();
+        });
+      };
       const railRow = (id: string | null, name: string, depth: number): HTMLElement => {
         const row = document.createElement("button");
-        row.className = "gdrive-railrow" + (here === id && !slot.lib && !query && slot.viewMode !== "list" ? " active" : "");
+        row.className = "gdrive-railrow" + (here === id && !query && slot.viewMode !== "list" ? " active" : "");
         row.style.paddingLeft = `${10 + depth * 14}px`;
         row.innerHTML = `<span class="gdrive-railrow-ic">${host.icons.folder}</span><span class="gdrive-railrow-name"></span><span class="gdrive-railrow-plus" title="New in ${name.replace(/"/g, "&quot;")}…">＋</span>`;
         (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = name;
@@ -336,7 +360,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         });
         row.addEventListener("click", () => {
           slot.folderId = id;
-          slot.lib = null;
           slot.viewMode = "browse";
           slot.page = 0;
           query = ""; search.value = "";
@@ -352,27 +375,14 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         }
         return row;
       };
-      rail.appendChild(railRow(null, "My Drive", 0));
-      for (const f of ordered) rail.appendChild(railRow(f.id, f.name, depthOf(f)));
-
-      // ── The LIBRARY rail — the org's R2-backed app data, read-only. ──
-      const libHead = document.createElement("div");
-      libHead.className = "gdrive-lib-head";
-      libHead.textContent = "Library";
-      rail.appendChild(libHead);
-      for (const lib of LIBS) {
-        const row = document.createElement("button");
-        row.className = "gdrive-railrow gdrive-librow" + (slot.lib === lib.id && !query ? " active" : "");
-        row.title = `${lib.name} — mapped from the org library, read-only here`;
-        row.innerHTML = `<span class="gdrive-railrow-ic">${lib.icon}</span><span class="gdrive-railrow-name"></span>`;
-        (row.querySelector(".gdrive-railrow-name") as HTMLElement).textContent = lib.name;
-        row.addEventListener("click", () => {
-          slot.lib = lib.id;
-          slot.folderId = null;
-          slot.viewMode = "browse";
-          slot.page = 0;
-          void paint();
-        });
+      {
+        const root = railRow(null, "My Drive", 0);
+        wireFolderDrop(root, null);
+        rail.appendChild(root);
+      }
+      for (const f of ordered) {
+        const row = railRow(f.id, f.name, depthOf(f));
+        wireFolderDrop(row, f.id);
         rail.appendChild(row);
       }
 
@@ -408,22 +418,68 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
         })() },
       ];
 
+      /** Open THE OBJECT — never its container. */
+      const openEntry = (f: DriveEntry): void => {
+        const w = window as unknown as {
+          __wbOpenDesign?: (file?: string, title?: string) => void;
+          __wbOpenApp?: (app: { slug: string; name: string; url: string }) => void;
+        };
+        if (f.kind === "slides" || f.kind === "docs" || f.kind === "sheets") host.openFile(f.kind, f.file || f.ref, f.title || f.ref);
+        else if (f.kind === "design") w.__wbOpenDesign?.(f.file || f.ref, f.title || f.ref);
+        else if (f.kind === "media") openMediaBridge(mediaViewFor(f.subkind), f.ref);
+        else if (f.kind === "music") openMediaBridge("gband", undefined, f.ref);
+        else {
+          // A FILE artifact (R2) opens with the RIGHT tool for its type
+          // (his rule, 2026-08-19): text/code → the EDITOR as a content tab;
+          // pdf/html/images/video/audio → the Browser panel (inline render).
+          void (async () => {
+            const name = f.title || f.ref;
+            const mime = f.mime || "";
+            const ext = name.toLowerCase().slice(name.lastIndexOf(".") + 1);
+            const TEXT_EXT = new Set(["txt", "md", "csv", "json", "js", "ts", "tsx", "jsx", "css", "scss", "py", "rb", "go", "rs", "java", "sh", "yml", "yaml", "toml", "xml", "sql", "log", "env", "ini"]);
+            const textual = mime.startsWith("text/") || mime === "application/json" || TEXT_EXT.has(ext);
+            const wm = window as unknown as {
+              __wbOpenMonacoText?: (name: string, content: string) => void;
+              __wbOpenApp?: (app: { slug: string; name: string; url: string }) => void;
+            };
+            if (textual && (driveApi() as { filesContent?: (id: string) => Promise<{ ok: boolean; content?: string }> }).filesContent) {
+              const c = await (driveApi() as { filesContent?: (id: string) => Promise<{ ok: boolean; content?: string }> }).filesContent!(f.ref);
+              if (c?.ok && typeof c.content === "string") { wm.__wbOpenMonacoText?.(name, c.content); return; }
+            }
+            const r = await api.filesGet?.(f.ref);
+            if (r?.downloadUrl) wm.__wbOpenApp?.({ slug: `file-${f.ref.slice(0, 8)}`, name: f.title, url: r.downloadUrl });
+          })();
+        }
+      };
+      const iconFor = (f: DriveEntry): string =>
+        f.kind === "slides" ? host.icons.slides : f.kind === "sheets" ? host.icons.sheets : f.kind === "docs" ? host.icons.docs
+          : f.kind === "design" ? KIND_ICONS.design! : f.kind === "music" ? KIND_ICONS.band!
+          : f.kind === "media" ? mediaIconFor(f.subkind) : KIND_ICONS.file!;
+
       const fileCard = (f: DriveEntry): HTMLElement => {
         const card = document.createElement("div");
         card.className = "gdrive-card";
         card.innerHTML = `
-          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${f.kind === "slides" ? host.icons.slides : f.kind === "sheets" ? host.icons.sheets : host.icons.docs}</div></div>
+          <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${iconFor(f)}</div></div>
           <div class="gdrive-card-row">
             <span class="gdrive-card-title"></span>
             <button class="ws-icon-btn gdrive-card-kebab" title="Options">
               <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
             </button>
           </div>
-          <span class="gdrive-card-meta">${f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : "Docs"} · ${fmtSize(f.sizeBytes)}</span>`;
-        (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = f.title || f.file;
+          <span class="gdrive-card-meta">${kindLabel(f)}${f.sizeBytes ? ` · ${fmtSize(f.sizeBytes)}` : ""}</span>`;
+        (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = f.title || f.ref;
+        // DRAG a card onto a folder (rail row or folder card) to file it.
+        card.draggable = true;
+        card.addEventListener("dragstart", (ev) => {
+          ev.dataTransfer?.setData("application/x-glyphh-drive", JSON.stringify({ kind: f.kind, ref: f.ref }));
+          ev.dataTransfer!.effectAllowed = "move";
+          card.classList.add("gdrive-dragging");
+        });
+        card.addEventListener("dragend", () => card.classList.remove("gdrive-dragging"));
         card.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
-          host.openFile(f.kind, f.file, f.title || f.file);
+          openEntry(f);
         });
         card.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -431,51 +487,84 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
           popMenu(r.right - 170, r.bottom + 4, fileMenuItems(f));
         });
         const thumb = card.querySelector<HTMLElement>(".gdrive-thumb")!;
-        if (f.kind === "slides") {
+        if (f.kind === "slides" && f.file) {
           void deckHtml(f.file).then((html) => {
             if (html && thumb.isConnected) fillThumbs([{ host: thumb, doc: staticDoc(html, 0) }]);
           });
-        } else if (f.kind === "sheets") {
+        } else if (f.kind === "sheets" && f.file) {
           mountSheetThumb(thumb, f.file);
-        } else {
+        } else if (f.kind === "docs" && f.file) {
           mountDocThumb(thumb, f.file);
+        } else if (f.kind === "media" && (f.subkind === "image" || f.subkind === "avatar")) {
+          void driveApi().mediaUrl?.(f.ref).then((r) => {
+            if (r?.ok && r.url && thumb.isConnected) {
+              thumb.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
+              thumb.classList.add("gdrive-thumb-img");
+              biasThumbCrop(thumb, r.url);
+            }
+          });
+        } else if (f.kind === "file" && (f.mime || "").startsWith("image/")) {
+          // File artifacts that ARE images preview like media cards — the
+          // signed URL renders inline now.
+          void api.filesGet?.(f.ref).then((r) => {
+            if (r?.downloadUrl && thumb.isConnected) {
+              thumb.style.backgroundImage = `url("${r.downloadUrl.replace(/"/g, "%22")}")`;
+              thumb.classList.add("gdrive-thumb-img");
+              biasThumbCrop(thumb, r.downloadUrl);
+            }
+          });
         }
         return card;
       };
 
-      const fileMenuItems = (f: DriveEntry): Array<{ label: string; danger?: boolean; fn: () => void }> => [
-        { label: "Open", fn: () => host.openFile(f.kind, f.file, f.title || f.file) },
-        { label: "Move to root", fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, null); void paint(); })() },
-        ...folders.map((fo) => ({
-          label: `Move to ${fo.name}`,
-          fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.file, fo.id); void paint(); })(),
-        })),
-        { label: "Delete…", danger: true, fn: () => void (async () => {
-          const ok = await host.confirm({ title: `Delete “${f.title || f.file}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
-          if (!ok) return;
-          if (f.kind === "slides") await driveApi().gpointDelete?.(f.file);
-          else if (f.kind === "sheets") await driveApi().gsheetDelete?.(f.file);
-          else await driveApi().gdocDelete?.(f.file);
-          void paint();
-        })() },
-      ];
+      const fileMenuItems = (f: DriveEntry): Array<{ label: string; danger?: boolean; fn: () => void }> => {
+        const items: Array<{ label: string; danger?: boolean; fn: () => void }> = [
+          { label: "Open", fn: () => openEntry(f) },
+          { label: "Move to root", fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.ref, null); void paint(); })() },
+          ...folders.map((fo) => ({
+            label: `Move to ${fo.name}`,
+            fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.ref, fo.id); void paint(); })(),
+          })),
+        ];
+        // Delete where a bridge exists (design/music manage deletion in their apps).
+        const del = f.kind === "slides" ? () => driveApi().gpointDelete?.(f.file || f.ref)
+          : f.kind === "sheets" ? () => driveApi().gsheetDelete?.(f.file || f.ref)
+          : f.kind === "docs" ? () => driveApi().gdocDelete?.(f.file || f.ref)
+          : f.kind === "media" ? () => (driveApi() as { mediaDelete?: (id: string) => Promise<unknown> }).mediaDelete?.(f.ref)
+          : f.kind === "file" ? () => api.filesDelete?.(f.ref)
+          : null;
+        if (del) {
+          items.push({ label: "Delete…", danger: true, fn: () => void (async () => {
+            const ok = await host.confirm({ title: `Delete “${f.title || f.ref}”?`, body: "Removed for the whole org. This can't be undone.", confirmLabel: "Delete", danger: true });
+            if (!ok) return;
+            await del();
+            void paint();
+          })() });
+        }
+        return items;
+      };
 
       const fileRow = (f: DriveEntry): HTMLElement => {
         const row = document.createElement("div");
         row.className = "gdrive-listrow";
         row.innerHTML = `
-          <span class="gdrive-listrow-ic">${f.kind === "slides" ? host.icons.slides : f.kind === "sheets" ? host.icons.sheets : host.icons.docs}</span>
+          <span class="gdrive-listrow-ic">${iconFor(f)}</span>
           <span class="gdrive-listrow-title"></span>
-          <span class="gdrive-listrow-kind">${f.kind === "slides" ? "Slides" : f.kind === "sheets" ? "Sheets" : "Docs"}</span>
-          <span class="gdrive-listrow-size">${fmtSize(f.sizeBytes)}</span>
+          <span class="gdrive-listrow-kind">${kindLabel(f)}</span>
+          <span class="gdrive-listrow-size">${f.sizeBytes ? fmtSize(f.sizeBytes) : ""}</span>
           <span class="gdrive-listrow-date">${new Date(f.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
           <button class="ws-icon-btn gdrive-card-kebab" title="Options">
             <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
           </button>`;
-        (row.querySelector(".gdrive-listrow-title") as HTMLElement).textContent = f.title || f.file;
+        (row.querySelector(".gdrive-listrow-title") as HTMLElement).textContent = f.title || f.ref;
+        row.draggable = true;
+        row.addEventListener("dragstart", (ev) => {
+          ev.dataTransfer?.setData("application/x-glyphh-drive", JSON.stringify({ kind: f.kind, ref: f.ref }));
+          ev.dataTransfer!.effectAllowed = "move";
+        });
         row.addEventListener("click", (ev) => {
           if ((ev.target as HTMLElement).closest(".gdrive-card-kebab")) return;
-          host.openFile(f.kind, f.file, f.title || f.file);
+          openEntry(f);
         });
         row.querySelector(".gdrive-card-kebab")?.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -505,65 +594,6 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       // ── Breadcrumbs — Drive › folder › subfolder (browse mode only). ──
       const crumbs = body.querySelector<HTMLElement>(".gdrive-crumbs")!;
       crumbs.textContent = "";
-      if (slot.lib) {
-        const libDef = LIBS.find((l) => l.id === slot.lib);
-        const back = document.createElement("button");
-        back.className = "gdrive-crumb";
-        back.textContent = "Drive";
-        back.addEventListener("click", () => { slot.lib = null; slot.page = 0; void paint(); });
-        const sep = document.createElement("span");
-        sep.className = "gdrive-crumb-sep";
-        sep.textContent = "›";
-        const cur = document.createElement("button");
-        cur.className = "gdrive-crumb current";
-        cur.textContent = `Library · ${libDef?.name ?? slot.lib}`;
-        crumbs.append(back, sep, cur);
-        crumbs.classList.remove("hidden");
-
-        // ── LIBRARY view — read-only paginated grid mapped from R2/app data. ──
-        const sec = document.createElement("div");
-        sec.className = "gdrive-section";
-        sec.appendChild(sectionHead(`${libDef?.name ?? slot.lib} — from the app library (read-only)`));
-        const items = await libItemsFor(slot.lib, query);
-        if (!body.isConnected) return;
-        const grid = document.createElement("div");
-        grid.className = "gdrive-files";
-        if (!items.length) {
-          const none = document.createElement("div");
-          none.className = "gdoc-empty";
-          none.textContent = query ? "No matches." : "Nothing here yet — this folder fills as the app creates things.";
-          grid.appendChild(none);
-        }
-        const paged = officePage(items, slot.page ?? 0, GRID_PER);
-        slot.page = paged.page;
-        for (const it of paged.items) {
-          const card = document.createElement("div");
-          card.className = "gdrive-card gdrive-libcard";
-          card.title = `${it.title} — read-only here; manage it in the app`;
-          card.innerHTML = `
-            <div class="gpoint-thumb gdrive-thumb"><div class="gpoint-thumb-ph">${libDef?.icon ?? ""}</div></div>
-            <div class="gdrive-card-row"><span class="gdrive-card-title"></span></div>
-            <span class="gdrive-card-meta"></span>`;
-          (card.querySelector(".gdrive-card-title") as HTMLElement).textContent = it.title;
-          (card.querySelector(".gdrive-card-meta") as HTMLElement).textContent = it.sub;
-          if (it.thumb) {
-            void driveApi().mediaUrl?.(it.id).then((r) => {
-              const box = card.querySelector<HTMLElement>(".gdrive-thumb");
-              if (r?.ok && r.url && box?.isConnected) {
-                box.style.backgroundImage = `url("${r.url.replace(/"/g, "%22")}")`;
-                box.classList.add("gdrive-thumb-img");
-              }
-            });
-          }
-          card.addEventListener("click", () => it.open());
-          grid.appendChild(card);
-        }
-        sec.appendChild(grid);
-        const pager = officePager(items.length, paged.page, GRID_PER, (pg) => { slot.page = pg; void paint(); });
-        if (pager) sec.appendChild(pager);
-        scroll.appendChild(sec);
-        return;
-      }
       if (here && !query && slot.viewMode !== "list") {
         const chain: DriveFolder[] = [];
         let cur: string | null = here;
@@ -658,6 +688,7 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
             popMenu(r.right - 170, r.bottom + 4, folderMenuItems(f));
           });
+          wireFolderDrop(card, f.id);
           grid.appendChild(card);
         }
         sec.appendChild(grid);

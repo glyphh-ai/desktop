@@ -384,6 +384,35 @@ async function refreshCredits(): Promise<void> {
   }
 }
 
+/** A dedicated little overlay holding ONLY the embedded checkout — the
+ *  Settings page's topup cards use this so the purchase happens in place.
+ *  Resolves true when it handled the purchase (mounted), false → hosted. */
+async function embeddedTopupOverlay(usd: number): Promise<boolean> {
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay buy-credits-overlay";
+  overlay.innerHTML = `
+    <div class="confirm-box buy-credits-box">
+      <div class="confirm-head"><h3>Add ${escapeHtml(fmtInt(creditsForUsd(usd)))} credits — $${usd}</h3></div>
+      <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
+      <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
+    </div>`;
+  const closeIt = (): void => overlay.remove();
+  overlay.querySelector("#bc-x")!.addEventListener("click", closeIt);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeIt(); });
+  document.body.appendChild(overlay);
+  const stage = overlay.querySelector<HTMLElement>(".bc-checkout-stage")!;
+  const mounted = await tryEmbeddedTopup(usd, stage, (grantSeen) => {
+    if (!overlay.isConnected) return;
+    stage.innerHTML = grantSeen
+      ? `<div class="bc-confirming bc-done">✓ Credits added.</div>`
+      : `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
+    void refreshCredits();
+    window.setTimeout(() => { if (overlay.isConnected) closeIt(); }, 1600);
+  }).catch(() => false);
+  if (!mounted) closeIt();
+  return mounted;
+}
+
 async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
   if (!usd || usd < 5) { toast("Minimum top-up is $5."); return; }
   if (busy) return;
@@ -392,6 +421,8 @@ async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
   // from spans, so rewriting their text would eat the markup.
   if (btn) btn.disabled = true;
   try {
+    // Embedded first — the purchase completes in an in-app overlay.
+    if (await embeddedTopupOverlay(usd)) { repollAfterStripe(); return; }
     // topup() takes MICRO-credits; the USD amount converts through the display
     // rate. Math.round because the server schema is z.number().int() and float
     // arithmetic can leave ×1e6 fractionally off an integer → 400.
@@ -411,11 +442,87 @@ async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
   }
 }
 
+// ── Embedded Checkout ────────────────────────────────────────────────────
+// Stripe's payment UI mounted INSIDE our own modal (ui_mode:"embedded") — the
+// user pays without ever leaving the app, and completion fires an in-page
+// callback instead of a redirect nobody handles. Requires the server's public
+// key (GET /api/billing/config); anything missing → the hosted page, as before.
+
+type StripeEmbedded = { mount(el: HTMLElement): void; destroy(): void };
+type StripeCtor = (key: string) => { initEmbeddedCheckout(opts: { clientSecret: string; onComplete?: () => void }): Promise<StripeEmbedded> };
+
+let stripeJsLoad: Promise<StripeCtor | null> | null = null;
+function loadStripeJs(): Promise<StripeCtor | null> {
+  const w = window as unknown as { Stripe?: StripeCtor };
+  if (w.Stripe) return Promise.resolve(w.Stripe);
+  if (stripeJsLoad) return stripeJsLoad;
+  stripeJsLoad = new Promise((resolve) => {
+    const el = document.createElement("script");
+    el.src = "https://js.stripe.com/v3/";
+    el.async = true;
+    el.onload = () => resolve(w.Stripe ?? null);
+    el.onerror = () => { stripeJsLoad = null; resolve(null); };   // offline → retry next attempt
+    document.head.appendChild(el);
+  });
+  return stripeJsLoad;
+}
+
+/** null = the server has no publishable key → embedded is off. Cached for the
+ *  session; a key change is a deploy, not a runtime event. */
+let pubKeyCache: Promise<string | null> | null = null;
+function publishableKey(): Promise<string | null> {
+  if (!pubKeyCache) pubKeyCache = accountApi().billingConfig().catch(() => null);
+  return pubKeyCache;
+}
+
+/**
+ * Try the whole purchase inside `host`: mount Stripe's embedded checkout, and
+ * on completion poll the balance until the webhook grant lands (or the window
+ * closes). Returns false when embedded isn't available — the caller falls
+ * back to the hosted page, the pre-existing path.
+ */
+async function tryEmbeddedTopup(
+  usd: number,
+  host: HTMLElement,
+  onSettled: (grantSeen: boolean) => void,
+): Promise<boolean> {
+  const key = await publishableKey();
+  if (!key) return false;
+  const Stripe = await loadStripeJs();
+  if (!Stripe) return false;
+  const res = await accountApi().topupEmbedded(Math.round(creditsForUsd(usd) * MICRO));
+  if (!res.ok) return false;   // old server without embedded support → hosted
+
+  const api = accountApi();
+  const before = await api.credits().then((c) => c.balance).catch(() => -1);
+  const checkout = await Stripe(key).initEmbeddedCheckout({
+    clientSecret: res.data,
+    onComplete: () => {
+      // Paid. The credits land on the checkout.session.completed webhook —
+      // swap to a confirming state and poll until the balance moves.
+      checkout.destroy();
+      host.innerHTML = `<div class="bc-confirming"><span class="spinner"></span> Payment received — confirming your credits…</div>`;
+      const until = Date.now() + POLL_WINDOW_MS;
+      const tick = async (): Promise<void> => {
+        const bal = await api.credits().then((c) => c.balance).catch(() => -1);
+        if (bal >= 0 && bal !== before) { onSettled(true); return; }
+        if (Date.now() > until || !host.isConnected) { onSettled(false); return; }
+        window.setTimeout(() => { void tick(); }, POLL_EVERY_MS);
+      };
+      window.setTimeout(() => { void tick(); }, 2000);
+    },
+  });
+  host.innerHTML = "";
+  checkout.mount(host);
+  return true;
+}
+
 /**
  * The COMPACT "out of credits" dialog — the 402 hand-off. Buy ad-hoc credits
- * (the SAME Stripe checkout as Settings › Billing) and flip auto-top-up on,
- * without leaving the agent. Redirects to Stripe for the purchase (no card
- * details in-app), exactly like the Billing page.
+ * without leaving the agent: Stripe's Embedded Checkout mounts INSIDE this
+ * modal (card details go to Stripe's iframe, never our DOM), completion is
+ * confirmed in place, and the hosted page remains the fallback when the
+ * server has no publishable key.
  */
 export async function openBuyCreditsModal(): Promise<void> {
   if (document.querySelector(".buy-credits-overlay")) return;   // never stack two
@@ -464,6 +571,36 @@ export async function openBuyCreditsModal(): Promise<void> {
       if (busy) return;
       busy = `bc-${usd}`; card.disabled = true; setErr("");
       try {
+        // Embedded first: the purchase completes INSIDE this modal.
+        const body = overlay.querySelector<HTMLElement>(".confirm-body")!;
+        const stage = document.createElement("div");
+        stage.className = "bc-checkout-stage";
+        const mounted = await tryEmbeddedTopup(usd, stage, (grantSeen) => {
+          if (!overlay.isConnected) return;
+          if (grantSeen) {
+            stage.innerHTML = `<div class="bc-confirming bc-done">✓ Credits added — you're good to go.</div>`;
+            void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(toCredits(c.balance)); }).catch(() => {});
+            window.setTimeout(() => { if (overlay.isConnected) close(); }, 1600);
+          } else {
+            stage.innerHTML = `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
+          }
+        });
+        if (mounted) {
+          // Swap the picker for the checkout, with a way back.
+          for (const el of Array.from(body.children)) (el as HTMLElement).classList.add("hidden");
+          body.appendChild(stage);
+          const back = document.createElement("button");
+          back.type = "button";
+          back.className = "action-btn bc-back";
+          back.textContent = "← Back";
+          back.addEventListener("click", () => {
+            stage.remove(); back.remove();
+            for (const el of Array.from(body.children)) (el as HTMLElement).classList.remove("hidden");
+          });
+          body.appendChild(back);
+          return;
+        }
+        // No key / no Stripe.js / old server → the hosted page, as before.
         const res = await api.topup(Math.round(creditsForUsd(usd) * MICRO));
         if (!res.ok) { setErr(res.error || "Could not start checkout."); return; }
         if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) { setErr("The checkout link came back malformed."); return; }
