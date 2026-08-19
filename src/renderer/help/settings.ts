@@ -339,14 +339,25 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
-  // Sidebar trays (Apps / Layouts under Recents) — opt-in; the rail listens
-  // for the change event and shows/hides the sections live.
-  for (const [id, pref] of [["settings-rail-apps", "railShowApps"], ["settings-rail-layouts", "railShowLayouts"]] as const) {
-    const toggle = document.getElementById(id) as HTMLInputElement | null;
-    toggle?.addEventListener("change", () => {
-      // Persist BEFORE announcing — the rail re-reads the pref on the event.
-      void Promise.resolve(window.glyphh.setPreference(pref, toggle.checked)).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:rail-sections-changed"));
+  // Dock auto-hide (default ON) — the echo surface re-reads on the event.
+  {
+    const t = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
+    t?.addEventListener("change", () => {
+      void Promise.resolve(window.glyphh.setPreference("echoAutoHideDock", t.checked)).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
+      });
+    });
+  }
+  // Dock zoom (magnification strength; 1 = off) — same live re-read event.
+  {
+    const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
+    const zv = document.getElementById("settings-dock-zoom-val");
+    const paint = (): void => { if (z && zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`; };
+    z?.addEventListener("input", paint);
+    z?.addEventListener("change", () => {
+      paint();
+      void Promise.resolve(window.glyphh.setPreference("echoDockZoom", Number(z.value))).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
       });
     });
   }
@@ -461,11 +472,16 @@ async function loadSettings() {
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 
-  // Sidebar trays — reflect the opt-in state.
-  const railApps = document.getElementById("settings-rail-apps") as HTMLInputElement | null;
-  if (railApps) railApps.checked = (await window.glyphh.getPreference("railShowApps", false)) === true;
-  const railLayouts = document.getElementById("settings-rail-layouts") as HTMLInputElement | null;
-  if (railLayouts) railLayouts.checked = (await window.glyphh.getPreference("railShowLayouts", false)) === true;
+  // Dock auto-hide — defaults ON; zoom defaults 20%.
+  const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
+  if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
+  const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
+  if (zoom) {
+    const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
+    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(2, zRaw)) : 1.2);
+    const zv = document.getElementById("settings-dock-zoom-val");
+    if (zv) zv.textContent = Number(zoom.value) <= 1 ? "Off" : `${Math.round((Number(zoom.value) - 1) * 100)}%`;
+  }
 }
 
 /** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts

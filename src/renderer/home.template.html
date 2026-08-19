@@ -51,29 +51,20 @@
 </head>
 <body class="wb-booting">
   <div id="home-root">
-    <!-- Rail-top chrome cluster — traffic lights | mark | rail toggle |
-         command. Fixed top-left (survives the rail collapsing) and every
-         child explicitly no-drag so the strip's drag region can't swallow
-         clicks. -->
+    <!-- Top chrome cluster — traffic lights only. Every child explicitly
+         no-drag so the strip's drag region can't swallow clicks. The command
+         center opens with ⌘⇧Space / ⌘. — no chrome button. -->
     <div id="panel-wc">
       <button id="panel-btn-close" class="wc wc-close"></button>
       <button id="panel-btn-minimize" class="wc wc-minimize"></button>
       <button id="panel-btn-maximize" class="wc wc-maximize"></button>
-      <!-- HOME: always back to the + New Session landing. -->
-      <button id="rail-home-btn" class="app-rail-mark-btn" title="Home — new session" type="button">
-        <img class="app-rail-mark app-rail-wordmark" src="brand/glyphh-logo-text.png" alt="Glyphh — home" />
-      </button>
-      <button id="code-rail-toggle" class="code-icon-btn" title="Toggle rail">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-      </button>
-      <button id="code-cc-btn" class="code-icon-btn" title="Show the wall (hold ⌃⌥)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-      </button>
     </div>
     <!-- The APP HEADER — a real full-width bar across the top. The chrome
          cluster (#panel-wc, fixed) sits on it; every panel opens below it
          (#help-overlay starts at the same 38px). Whole bar drags the window;
          the cluster's buttons are explicitly no-drag. -->
+    <!-- Bare header: drag surface only. Settings (and Account inside it)
+         live in the wall's dock; no logo, no user chip. -->
     <header id="shell-drag-strip"><div class="shell-drag-area app-rail-top"></div></header>
     <div id="help-overlay">
     <div id="help-layout">
@@ -131,36 +122,6 @@
           <input id="recents-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
         </div>
         <div id="code-history" class="code-history"></div>
-        <!-- Apps + Layouts quick-launch trays — OPT-IN via Settings →
-             Appearance ("Show Apps/Layouts in the sidebar"). Everything ships
-             hidden; code.ts unhides per the railShowApps/railShowLayouts
-             preferences. Same list + icons as the Apps page / command center,
-             ordered by last-opened, opened with the same launch. -->
-        <div id="recents-vsplit" class="recents-vsplit hidden" title="Drag to resize"></div>
-        <div id="rail-apps-head" class="code-rail-label app-rail-section-head hidden">
-          <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
-            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <span>Apps</span>
-          </button>
-        </div>
-        <div id="rail-apps-body" class="app-rail-section-body hidden">
-          <div class="app-rail-search">
-            <input id="recent-apps-search" class="rail-recents-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
-          </div>
-          <div id="recent-apps-list" class="app-rail-grid"></div>
-        </div>
-        <div id="rail-layouts-head" class="code-rail-label app-rail-section-head hidden">
-          <button id="rail-layouts-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
-            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            <span>Workspaces</span>
-          </button>
-        </div>
-        <div id="rail-layouts-body" class="app-rail-section-body hidden">
-          <div class="app-rail-search">
-            <input id="recent-layouts-search" class="rail-recents-search" type="text" placeholder="Search layouts…" spellcheck="false" autocomplete="off" />
-          </div>
-          <div id="recent-layouts-list" class="app-rail-grid"></div>
-        </div>
         <div class="app-rail-user">
           <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>

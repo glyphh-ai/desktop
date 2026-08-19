@@ -547,8 +547,7 @@ export function initHelp() {
   // after mounting a section panel so the section's data actually loads.
   (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad =
     (section: string) => loadActiveSection(section);
-  // The header's Glyphh mark opens the coding agent full screen.
-  document.querySelector<HTMLElement>("#panel-wc .app-rail-mark")?.addEventListener("click", () => gotoSection("agent"));
+  // (The header's Glyphh mark is gone — no logo in the chrome cluster.)
   // The code section is the permanent shell now — always active.
   document.querySelector(`.help-section[data-section="code"]`)?.classList.add("active");
   document.body.dataset.railSection ||= "code";
@@ -651,9 +650,14 @@ export function initHelp() {
   const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
   const userBtn = document.getElementById("app-rail-user-btn");
   let userMenu: HTMLDivElement | null = null;
-  const closeUserMenu = () => { userMenu?.remove(); userMenu = null; };
-  userBtn?.addEventListener("click", (e) => {
-    e.stopPropagation();
+  let userMenuAnchor: HTMLElement | null = null;
+  const closeUserMenu = () => { userMenu?.remove(); userMenu = null; userMenuAnchor = null; };
+  /** The account dropdown — Docs / Settings / Account / Logout. ANCHOR-aware:
+   *  opens upward from a bottom-of-screen anchor (the retired rail button)
+   *  and downward from a top one. (No visible opener today — the retired
+   *  rail button keeps the binding; Settings/Account run through the dock's
+   *  gear → settings modal.) */
+  const openUserMenu = (anchor: HTMLElement): void => {
     if (userMenu) { closeUserMenu(); return; }
     const m = document.createElement("div");
     m.className = "code-menu app-rail-user-menu";
@@ -671,23 +675,36 @@ export function initHelp() {
     mk("Account", USER_SVG, () => gotoSection("settings", "account"));
     mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
     document.body.appendChild(m);
-    const r = userBtn.getBoundingClientRect();
-    m.style.left = `${r.left}px`;
-    m.style.top = `${Math.max(8, r.top - m.offsetHeight - 6)}px`;
+    const r = anchor.getBoundingClientRect();
+    const openUp = r.top > window.innerHeight / 2;
+    const top = openUp
+      ? Math.max(8, r.top - m.offsetHeight - 6)
+      : Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8);
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
+    m.style.top = `${top}px`;
     userMenu = m;
+    userMenuAnchor = anchor;
+  };
+  userBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openUserMenu(userBtn);
   });
   document.addEventListener("mousedown", (e) => {
-    if (userMenu && !userMenu.contains(e.target as Node) && e.target !== userBtn) closeUserMenu();
+    if (userMenu && !userMenu.contains(e.target as Node) && !userMenuAnchor?.contains(e.target as Node)) closeUserMenu();
   });
+  // The wall's dock gear lands here (the workbench bundle can't import this
+  // module): open the SETTINGS MODAL — gotoSection("settings") is the modal
+  // path. Account/Logout live inside it.
+  (window as unknown as { __glyphhOpenSettings?: () => void }).__glyphhOpenSettings = () => gotoSection("settings");
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
-  // repaints the rail instead of showing the previous identity all run.
+  // repaints it instead of showing the previous identity all run.
   const fillRailUser = (info: { email?: string; firstName?: string; lastName?: string } | null): void => {
     const nameEl = document.getElementById("app-rail-user-name");
     if (!nameEl) return;
-    if (!info) { nameEl.textContent = "Account"; return; }
-    nameEl.textContent =
-      (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account";
+    nameEl.textContent = info
+      ? (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account"
+      : "Account";
   };
   void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
   window.glyphh.onAccountUpdated?.(fillRailUser);

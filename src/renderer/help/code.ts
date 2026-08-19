@@ -21,7 +21,7 @@ import { initVoiceMic, renderMicMenu, onTurnComplete, briefSteer } from "./voice
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { initAnchor, initAnchorEvents, isCollapsed, anchorMode, applyAnchor } from "./code-anchor.js";
+import { initAnchor, initAnchorEvents } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -572,6 +572,8 @@ function refreshCtxMeter(): void {
       // empty meter, not the previous session's frozen fill
       const fill = meter.querySelector<HTMLElement>(".ctx-fill");
       if (fill) { fill.style.width = "0%"; fill.classList.remove("hot"); }
+      meter.style.setProperty("--ctx-pct", "0%");
+      meter.classList.remove("hot");
       meter.title = "Context — empty (new session)";
       return;
     }
@@ -582,6 +584,8 @@ function refreshCtxMeter(): void {
       const pct = Math.round(u.ratio * 100);
       fill.style.width = `${pct}%`;
       fill.classList.toggle("hot", u.ratio >= u.foldAt);
+      meter.style.setProperty("--ctx-pct", `${pct}%`);
+      meter.classList.toggle("hot", u.ratio >= u.foldAt);
       tick.style.left = `${u.foldAt * 100}%`;
       // Bar tracks the local lane (the one compaction keys off); the title
       // sketches every lane, the click panel has the full picture.
@@ -1065,7 +1069,6 @@ function paintStatusLine(running = !!currentRun()): void {
   const line = el("code-status-line");
   const text = el("code-status-text");
   if (!line || !text) return;
-  if (!isCollapsed()) return;
   const run = currentRun();
   const steps = run?.steps ?? [];
   const last = steps.length ? steps[steps.length - 1]! : "";
@@ -1222,12 +1225,8 @@ const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? 
  *  guarantees a coding slot without clearing). Empty workspace → the full
  *  Glyphh-mark move: agent full screen ("agent"). */
 function ensureCodeSection(): void {
-  // Already visible → nothing to do: a coding-seat placeholder is up (the agent
-  // overlay follows it) or the agent is docked (not a `rail` anchor).
-  if (anchorMode() !== "rail") return;
-  if (document.querySelector(".ws-rail-slot .ws-agent-placeholder, .echo-agent-card .ws-agent-placeholder")) return;
-  const hasPanels = !!document.querySelector("#code-wb-rails .ws-rail-slot");
-  gotoSection(hasPanels ? "code" : "agent");
+  // The agent is the PERMANENT bottom composer — always visible, nothing to
+  // surface. (The old rail-seat/section bounce died with the anchor system.)
 }
 
 /** The session surface the Coding Agent workspace panel drives — same
@@ -1363,10 +1362,13 @@ function newChat(): void {
 
 
 /**
- * Leave the open session for its tab's + New Session screen — the MAIN one,
- * every time. Backing out of a session and closing one both mean "I am done
- * here", so they land on the same screen a fresh start does, whether the agent
- * was full-screen or hosted in a layout.
+ * Leave the open session — land on the COMMAND CENTER, not the agent.
+ * Backing out of a session and closing one both mean "I am done here".
+ * CRITICAL: this must NOT call gotoSection("agent") — that routes to
+ * openSectionInWorkbench("agent") → echoCtl.openChat() and RE-OPENS the
+ * agent card. Closing a layout whose agent cell held the current session
+ * fires __glyphhForgetSession → here mid-teardown, which is exactly how the
+ * agent "got stuck" on screen after the layout was dropped.
  */
 function leaveSessionToLanding(): void {
   currentId = "";
@@ -1375,7 +1377,7 @@ function leaveSessionToLanding(): void {
   renderThread();
   void checkWorkdirGate();
   syncSpaceAttrs();
-  gotoSection("agent");
+  openCommandCenter();
 }
 
 /**
@@ -3956,78 +3958,13 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
   syncRailLayout();
 }
 
-// ── Rail sections (Apps, Layouts) — each collapsible, state remembered ───────
-interface RailSectionDef { toggle: string; body: string; pref: string; head: string; showPref: string }
-// Both sections are OPT-IN (Settings → Appearance → sidebar toggles) and start
-// COLLAPSED — the rail leads with sessions; Apps and Layouts are there when
-// wanted. The open-pref keys carry a "2": the v1 keys hold stale "open" values
-// from before these sections were hidden, and honoring those would expand the
-// rail on exactly the machines that were using it.
-const RAIL_SECTIONS: RailSectionDef[] = [
-  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railAppsOpen2", head: "rail-apps-head", showPref: "railShowApps" },
-  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railLayoutsOpen2", head: "rail-layouts-head", showPref: "railShowLayouts" },
-];
-// Enabled (Appearance opt-in) and open (disclosure) are separate axes: a
-// section's body shows only when BOTH hold, so flipping the Appearance toggle
-// preserves the user's collapsed/expanded choice.
-const railSectionEnabled: Record<string, boolean> = {};
-const railSectionOpen: Record<string, boolean> = {};
-/** The user's chosen Recents height — the splitter's flex-basis. Kept in a var
- *  so syncRailLayout can restore it after a "both sections closed" fill. */
-let railRecentsH = 170;
-
-function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
-  railSectionOpen[def.toggle] = open;
-  el(def.toggle)?.classList.toggle("closed", !open);
-  el(def.body)?.classList.toggle("hidden", !(open && railSectionEnabled[def.toggle] === true));
-  if (persist) void window.glyphh.setPreference?.(def.pref, open);
-  syncRailLayout();
-}
-
-/** Show/hide whole sections per the Appearance opt-in. Settings dispatches
- *  glyphh:rail-sections-changed after flipping a toggle; this re-reads. */
-async function applyRailSectionsVisibility(): Promise<void> {
-  for (const def of RAIL_SECTIONS) {
-    const on = (await window.glyphh.getPreference?.(def.showPref, false)) === true;
-    railSectionEnabled[def.toggle] = on;
-    el(def.head)?.classList.toggle("hidden", !on);
-    el(def.body)?.classList.toggle("hidden", !(on && railSectionOpen[def.toggle] === true));
-  }
-  syncRailLayout();
-}
-
-/**
- * One authority over how the rail's lower stack shares vertical space:
- *
- *   - Recents open + a section open → the splitter is live; Recents holds its
- *     chosen height and the open section(s) take the rest.
- *   - Recents open + BOTH sections closed → nothing below to resize, so Recents
- *     fills all the way to the user area and the splitter hides.
- *   - Recents closed → the sections own the whole stack; no splitter.
- *
- * Without this, collapsing both sections left Recents pinned at its dragged
- * height with dead space beneath it — the "doesn't go past a certain point" bug.
- */
+// (The rail's Apps/Workspaces tray sections are REMOVED all the way to the
+// DB — settings toggles gone, prefs swept by migration 0034. The recents
+// list owns the rail stack.)
 function syncRailLayout(): void {
   const hist = el("code-history");
-  const vs = el("recents-vsplit");
-  const recentsOpen = !hist?.classList.contains("hidden");
-  const anySectionOpen = RAIL_SECTIONS.some((d) => !el(d.body)?.classList.contains("hidden"));
-  vs?.classList.toggle("hidden", !(recentsOpen && anySectionOpen));
-  if (hist && recentsOpen) hist.style.flex = anySectionOpen ? `0 1 ${railRecentsH}px` : "1 1 auto";
-}
-
-/** Bind each rail section's disclosure toggle + restore its remembered state. */
-function initRailSections(): void {
-  for (const def of RAIL_SECTIONS) {
-    el(def.toggle)?.addEventListener("click", () => {
-      const open = el(def.toggle)!.classList.contains("closed"); // was closed → open it
-      setRailSectionOpen(def, open, true);
-    });
-    void window.glyphh.getPreference?.(def.pref, false).then((v) => setRailSectionOpen(def, v === true, false));
-  }
-  void applyRailSectionsVisibility();
-  document.addEventListener("glyphh:rail-sections-changed", () => { void applyRailSectionsVisibility(); });
+  el("recents-vsplit")?.classList.add("hidden");
+  if (hist && !hist.classList.contains("hidden")) hist.style.flex = "1 1 auto";
 }
 
 // ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
@@ -4431,45 +4368,8 @@ function paintLayoutsGrid(host: RailGridHost): void {
   if (!layouts.length) railEmpty(list, q, "Workspace", "layouts");
 }
 
-// ── Recents vertical resize ──────────────────────────────────────────────
-function initRecentsVsplit(): void {
-  const vs = el("recents-vsplit");
-  const hist = el("code-history");
-  if (!vs || !hist) return;
-  vs.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    document.body.classList.add("code-vdragging");
-    const startY = e.clientY;
-    const startTop = hist.getBoundingClientRect().top;
-    const startH = hist.getBoundingClientRect().height;
-    // The cap is computed against the WHOLE lower stack, not a snapshot of one
-    // grid: Recents may grow until the still-open section(s) hit a usable
-    // minimum. A collapsed section reserves nothing, so Recents reclaims its
-    // space. This is what makes the splitter reach far down when only one
-    // section is open (the old cap stopped at the apps grid's 96px).
-    const MIN_BODY = 110;
-    const userTop = el("app-rail-user")?.getBoundingClientRect().top ?? window.innerHeight;
-    const available = userTop - startTop;
-    const move = (ev: MouseEvent) => {
-      let reserve = vs.offsetHeight;
-      document.querySelectorAll<HTMLElement>(".app-rail-section-head").forEach((h) => { reserve += h.offsetHeight; });
-      const openBodies = RAIL_SECTIONS.filter((d) => !el(d.body)?.classList.contains("hidden")).length;
-      reserve += openBodies * MIN_BODY;
-      const maxH = Math.max(60, available - reserve);
-      const h = Math.max(60, Math.min(maxH, startH + (ev.clientY - startY)));
-      hist.style.flex = `0 1 ${h}px`;
-      railRecentsH = h;
-    };
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.body.classList.remove("code-vdragging");
-      if (railRecentsH > 0) void window.glyphh.setPreference?.("codeRecentsH", railRecentsH);
-    };
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-  });
-}
+// (The recents splitter died with the rail tray sections — recents fills
+// the stack; see syncRailLayout.)
 
 /** Wire the rail's Apps grid: restore its height, load, and bind search. */
 function initRailApps(): void {
@@ -4485,7 +4385,6 @@ function initRailApps(): void {
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
   void (async () => {
     const recentsH = Number(await window.glyphh.getPreference?.("codeRecentsH", 0)) || 0;
-    if (recentsH > 0) railRecentsH = recentsH;
     syncRailLayout();
   })();
   void loadRecentApps();
@@ -4494,8 +4393,6 @@ function initRailApps(): void {
   // are pure quick-launch grids.
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
-  initRecentsVsplit();
-  initRailSections();
 
   // Apps search — its own page; Enter runs the text as a command (palette parity).
   if (leftApps) wireRailSearch(leftApps.search, () => { leftApps.page = 0; paintAppsGrid(leftApps); });
@@ -4507,70 +4404,10 @@ function initRailApps(): void {
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
 
-  initMiniTrays();
 }
 
-// ── Collapsed-bar mini trays — Apps + Workspaces as drop-up popovers ──────
-// Each chip opens a body-appended popover (search + grid) that registers as a
-// RailGridHost on open, so refreshes repaint it like the left rail; closing
-// removes the popover and the isConnected sweep drops the host.
-function openMiniTray(kind: "apps" | "layouts", anchor: HTMLElement): void {
-  const existing = document.querySelector<HTMLElement>(".code-mini-tray");
-  const wasKind = existing?.dataset.kind;
-  existing?.remove();
-  if (wasKind === kind) return;   // second click on the same chip = toggle off
-
-  const pop = document.createElement("div");
-  pop.className = "code-mini-tray";
-  pop.dataset.kind = kind;
-  const searchWrap = document.createElement("div");
-  searchWrap.className = "app-rail-search";
-  const search = document.createElement("input");
-  search.type = "text";
-  search.className = "rail-recents-search";
-  search.placeholder = kind === "apps" ? "Search apps…" : "Search layouts…";
-  search.spellcheck = false;
-  search.autocomplete = "off";
-  searchWrap.appendChild(search);
-  const list = document.createElement("div");
-  list.className = "app-rail-grid";
-  pop.append(searchWrap, list);
-
-  const host: RailGridHost = { list, search, page: 0 };
-  registerRailGridHost(kind, host);
-  const paint = kind === "apps" ? paintAppsGrid : paintLayoutsGrid;
-  paint(host);
-  wireRailSearch(search, () => { host.page = 0; paint(host); });
-
-  document.body.appendChild(pop);
-  placeDropup(anchor, pop);
-  search.focus();
-
-  const dismiss = (e: Event): void => {
-    const t = e.target as Node;
-    if (pop.contains(t) || anchor.contains(t)) return;
-    close();
-  };
-  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
-  const close = (): void => {
-    pop.remove();   // host leaves the DOM → the isConnected sweep drops it
-    document.removeEventListener("mousedown", dismiss, true);
-    document.removeEventListener("keydown", onKey, true);
-  };
-  document.addEventListener("mousedown", dismiss, true);
-  document.addEventListener("keydown", onKey, true);
-}
-
-function initMiniTrays(): void {
-  el("code-tray-apps")?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    openMiniTray("apps", ev.currentTarget as HTMLElement);
-  });
-  el("code-tray-layouts")?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    openMiniTray("layouts", ev.currentTarget as HTMLElement);
-  });
-}
+// (The Apps/Workspaces tray chips are GONE — the source/folder/git chips
+// live in the card's bottom-left row instead.)
 
 // ── Left-rail splitter ───────────────────────────────────────────────────
 function initRailSplitter(): void {
@@ -4599,12 +4436,8 @@ function initRailSplitter(): void {
 }
 
 async function applyPanelPrefs(): Promise<void> {
-  const railCollapsed = ((await window.glyphh.getPreference?.("codeRailCollapsed", false)) as boolean) || false;
-  el("app-rail")?.classList.toggle("collapsed", railCollapsed);
-  document.body.classList.toggle("rail-collapsed", railCollapsed);
-  const railW = Number(await window.glyphh.getPreference?.("codeRailWidth", 0)) || 0;
-  const rail = el("app-rail");
-  if (rail && railW > 0) { rail.style.width = `${railW}px`; rail.style.minWidth = `${railW}px`; }
+  // (The rail collapse/width prefs died with the visible rail — the rail's
+  // DOM is display:none'd in styles.css and has no toggle.)
   const recentsOpen = (await window.glyphh.getPreference?.("codeRecentsOpen", true)) as boolean;
   setRecentsOpen(recentsOpen !== false, false);
 }
@@ -4716,6 +4549,19 @@ export function initCode(): void {
   // "/" in the composer pops the installed-skill menu at the caret.
   const composerTa = input();
   if (composerTa) { attachSlashMenu(composerTa); watchComposerWidth(composerTa); }
+  // TYPING GLOW — the accent halo around the floating composer while keys
+  // land (theme-aligned: it's all var(--accent)). The class rides the
+  // composer wrap; a short quiet period lets it breathe back out.
+  if (composerTa) {
+    let glowTimer: number | undefined;
+    composerTa.addEventListener("input", () => {
+      composerTa.closest(".code-composer")?.classList.add("typing-glow");
+      window.clearTimeout(glowTimer);
+      glowTimer = window.setTimeout(() => {
+        composerTa.closest(".code-composer")?.classList.remove("typing-glow");
+      }, 900);
+    });
+  }
   // Cmd+. / Ctrl+. opens the command center from any section. Registered in
   // the home-panel document (owns gotoSection + the switcher overlay), NOT
   // renderer.ts (the index shell — different webContents, no overlay reach).
@@ -4824,24 +4670,27 @@ export function initCode(): void {
    *  selection and shows the space's landing. Both entry points use this:
    *  the rail's "+ New session" and the agent header's +, which used to call
    *  startNew() and leave an empty "New session" row behind. */
-  /** The AGENT's own + — a generic new session OF THIS AGENT'S TYPE, in place.
-   *  A layout-hosted agent stays in its slot with its arrangement intact; the
-   *  thread empties to the bare mascot state and the composer keeps its chips. */
+  /** NEW SESSION (his rule, 2026-08-18): everything that is showing closes —
+   *  cards, layouts, seats — and the agent comes up ALONE as a regular Echo
+   *  panel (its card header carries the title + ✕). The workbench owns the
+   *  surface work (__wbNewSessionPanel); this empties the thread state first. */
   const newSessionInPlace = (): void => {
     currentId = "";
     void saveStore();
     renderHistory();
     renderThread();
     void checkWorkdirGate();
-    // A coding-seat or echo-card placeholder means the agent overlay is already
-    // on screen: bouncing to gotoSection("agent") here would raise Echo again on
-    // top of the seat.
-    const hosted = !!document.querySelector(".echo-card .ws-agent-placeholder, .ws-rail-slot .ws-agent-placeholder");
-    if (hosted) return;
-    // A DOCKED agent (global anchor) stays exactly where it is on a new session —
-    // never full-screened. Just re-assert the dock so the empty thread renders in place.
-    if (anchorMode() !== "rail") { applyAnchor(); return; }
-    gotoSection("agent");
+    // (No gotoSection("agent") — that path opens its OWN agent card via
+    // openSectionInWorkbench; __wbNewSessionPanel below owns the whole
+    // surface change, and the code section is the permanent shell.)
+    const w = window as unknown as { __initCodeWorkbench?: () => void; __wbNewSessionPanel?: () => void };
+    w.__initCodeWorkbench?.();
+    let tries = 0;
+    const go = (): void => {
+      if (w.__wbNewSessionPanel) w.__wbNewSessionPanel();
+      else if (tries++ < 40) requestAnimationFrame(go);
+    };
+    go();
   };
 
   // The old newSessionLanding "full reset + landing screen" path is DELETED:
@@ -4854,7 +4703,6 @@ export function initCode(): void {
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
   el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
-  el("rail-home-btn")?.addEventListener("click", () => newSessionInPlace());
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
@@ -4893,12 +4741,9 @@ export function initCode(): void {
     void checkWorkdirGate();
     if (!navigate) return;
     gotoSection("agent");
-    // Re-READ the saved anchor from prefs and apply it AFTER the agent mounts.
-    // NOT applyAnchor() — that defaults to domMode() (the DOM's data-anchor),
-    // which RACES the async initAnchor() at boot and almost always still reads
-    // "rail", silently dropping the saved dock EVERY reload. initAnchor() reads
-    // the pref itself (glyphhAnchorMode), so the restore can't lose the race; it
-    // also runs relocateActions to normalize the header order.
+    // Re-assert the composer's one presentation after the surface flip (the
+    // anchor SYSTEM is gone — this is just the bottom-composer mode + the
+    // session-button relocation).
     void initAnchor();
     paintCw();
   };
@@ -4960,31 +4805,80 @@ export function initCode(): void {
   });
   void window.glyphh.getPreference?.(LAST_SESSION_PREF, "").then((lco) => {
     lastSession = String(lco || "");
-    // boot: RESUME the last session and load the agent — not a fresh New Session.
-    // enterAgent(true) lands on lastSession when it exists (else the empty agent).
-    enterAgent(true);
-  });
-  el("code-rail-toggle")?.addEventListener("click", () => {
-    const collapsed = el("app-rail")!.classList.toggle("collapsed");
-    document.body.classList.toggle("rail-collapsed", collapsed);
-    void window.glyphh.setPreference?.("codeRailCollapsed", collapsed);
-  });
-  // The command-center eye beside the rail toggle — the same control as the
-  // echo panel's eye button: pin the shadow so the wall shows through the
-  // open cards. Cold-safe: mounts echo first, then toggles the pin.
-  el("code-cc-btn")?.addEventListener("click", () => {
+    // BOOT = THE COMMAND CENTER + the permanent bottom composer, and that is
+    // it (his rule, 2026-08-18): no session resume, no agent panel. NO
+    // gotoSection("agent") here — the code section is the permanent shell
+    // (initHelp marks it active), so boot asserts the composer's one
+    // presentation and raises the wall. lastSession stays loaded so the
+    // history dropdown / enter-space can resume it later.
+    void initAnchor();
     openCommandCenter();
-    const w = window as unknown as { __wbEchoShadowPin?: () => void };
-    let tries = 0;
-    const go = (): void => {
-      if (w.__wbEchoShadowPin) w.__wbEchoShadowPin();
-      else if (tries++ < 40) requestAnimationFrame(go);
-    };
-    go();
   });
+  // (The chrome-cluster command button is GONE — ⌘⇧Space / ⌘. open the
+  // command center; the wall's own eye button pins the shadow.)
   el("code-send")?.addEventListener("click", send);
-  initVoiceMic();
-  // Session head (SessionHeader port): ‹/name → the space's list view; the
+  // ── Drips — the droplet on the agent's top row, RIGHT of the caret. The
+  // picker opens UPWARD (.echo-drip-anchor positions it); the typed `.dip`
+  // watcher lands on the same opener. ──
+  {
+    const dripBtn = el("code-drips-btn");
+    const dripPop = el("code-drip-pop");
+    if (dripBtn && dripPop) {
+      const DRIP_EMOJI: Record<string, string> = {
+        fireworks: "🎆", hearts: "💖", confetti: "🎉", stars: "⭐", rain: "🌧️",
+        bubbles: "🫧", sparkle: "✨", spiral: "🌀", emoji: "😀", wave: "🌊",
+        thumbsup: "👍", peace: "✌️", cat: "🐱", snow: "❄️",
+        matrix: "🟩", aurora: "🌌", nebula: "💜", plasma: "🔮", fireflies: "🪲", starfield: "🌠",
+      };
+      const closeDripPop = (): void => dripPop.classList.add("hidden");
+      const openDripPop = async (): Promise<void> => {
+        type BuiltinFx = { name: string; kind: "one-shot" | "loop" };
+        const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<Array<BuiltinFx | string>>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
+        const [builtinsRaw, customsRaw] = await Promise.all([
+          yoD?.dripsBuiltinEffects?.().catch(() => [] as Array<BuiltinFx | string>) ?? [],
+          yoD?.dripsList?.().catch(() => [] as Array<{ name: string; recipe: string }>) ?? [],
+        ]);
+        const builtins: BuiltinFx[] = (builtinsRaw || []).map((b) =>
+          typeof b === "string" ? { name: b, kind: "one-shot" as const } : b);
+        const customs = customsRaw || [];
+        dripPop.innerHTML = "";
+        const tile = (name: string, recipe: string, emoji: string): void => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "echo-drip-tile";
+          b.innerHTML = `<span class="edt-ic"></span><span class="edt-nm"></span>`;
+          (b.querySelector(".edt-ic") as HTMLElement).textContent = emoji;
+          (b.querySelector(".edt-nm") as HTMLElement).textContent = name;
+          b.addEventListener("click", (e2) => { e2.stopPropagation(); void yoD?.dripsPreview?.(recipe); closeDripPop(); });
+          dripPop.appendChild(b);
+        };
+        for (const fx of builtins) tile(fx.name, fx.name, DRIP_EMOJI[fx.name] || (fx.kind === "loop" ? "♾️" : "🎨"));
+        for (const c of customs) tile(c.name, c.recipe, "💧");
+        if (!dripPop.childElementCount) {
+          const empty = document.createElement("div");
+          empty.className = "echo-drip-empty";
+          empty.textContent = "No drips yet";
+          dripPop.appendChild(empty);
+        }
+        dripPop.classList.remove("hidden");
+      };
+      dripBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
+        void openDripPop();
+      });
+      // THE global drips opener — the typed `.dip` watcher (help/dip-watch.ts)
+      // lands here from anywhere in the app.
+      (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips = () => { void openDripPop(); };
+      document.addEventListener("click", (ev) => {
+        if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
+      });
+      document.addEventListener("keydown", (ev) => {
+        if (ev.key === "Escape" && !dripPop.classList.contains("hidden")) closeDripPop();
+      });
+    }
+  }
+    // Session head (SessionHeader port): ‹/name → the space's list view; the
   // kebab → Rename / Pin / Delete.
   // BACK = out to the MAIN landing (there was no way back to it from inside
   // a session). The session survives in history — the head's history

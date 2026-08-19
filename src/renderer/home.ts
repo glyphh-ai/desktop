@@ -105,23 +105,24 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // Every restart lands on the NEW-SESSION screen — the agent landing, not the
-  // dashboard — no matter what was open before. (?section / ?solo panels above
-  // are system windows, not normal boots.)
-  gotoSection("agent");
-  // Lift the boot veil only once the LANDING is actually hosted — the wall
-  // mounts first and its bare paint was the flash between splash and Home.
+  // Every restart lands on the COMMAND CENTER — the bare wall, no agent (his
+  // rule, 2026-08-18). initCode's boot raises it (openCommandCenter); calling
+  // gotoSection("agent") here would open the agent card via
+  // openSectionInWorkbench("agent") → openChat, which is exactly the
+  // agent-on-boot he keeps seeing. (?section / ?solo panels above are system
+  // windows, not normal boots.)
+  // Lift the boot veil only once the WALL is actually up — its bare first
+  // paint was the flash between splash and Home.
   let veilTries = 0;
   let settled = 0;
   const lift = (): void => {
-    // The landing is UP when the agent surface holds its rendered thread — but
-    // frame ONE of the card's zoom is mostly bare wall, which was still the
-    // flash. Wait until the agent box is present AND stable for ~20 frames so
-    // the first visible frame is the settled new-session screen, then lift.
-    const agent = document.querySelector('.code-agent .code-thread');
-    const up = !!agent && agent.getClientRects().length > 0;
+    // The launcher is UP when a page grid has rendered its icons. Wait until
+    // it is present AND stable for ~10 frames so the first visible frame is
+    // the settled command center, then lift.
+    const wall = document.querySelector(".echo-pages .echo-page-grid");
+    const up = !!wall && wall.getClientRects().length > 0;
     settled = up ? settled + 1 : 0;
-    if (settled >= 20 || veilTries++ > 360) {
+    if (settled >= 10 || veilTries++ > 360) {
       document.body.classList.remove("wb-booting");
       return;
     }

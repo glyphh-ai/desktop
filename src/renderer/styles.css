@@ -1549,8 +1549,6 @@ body.account-locked #dl-btn-wrap {
    comfortably below the window edge (traffic lights are hidden, left inset
    pulled in). */
 .glyphh-web #panel-wc { padding-left: 2px; padding-top: 10px; height: auto; }
-.glyphh-web #panel-wc .app-rail-mark { margin-left: 8px; }
-.glyphh-web #panel-wc .app-rail-mark.app-rail-wordmark { height: 32px; }
 /* A browser tab has no OS window to drag — kill every drag-region claim (incl.
    the header's drag band) so the splash/login/header behave like ordinary pages.
    The empty drag GAP right of the cluster (margin-left offsets sized to clear the
@@ -11783,11 +11781,17 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
    #help-overlay offsets by, so every panel opens exactly under it. The whole
    bar is a window-drag surface; #panel-wc (fixed, z 300) rides on top with
    no-drag buttons. */
+/* The app header — a SMALL, slightly transparent bar in the theme's surface
+   color (the content shows through faintly; blur keeps text legible). */
 #shell-drag-strip {
   position: fixed; top: 0; left: 0; right: 0; height: var(--titlebar-h); z-index: 200;
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
+/* (The header carries no buttons — settings/account live in the wall's
+   dock, inside the settings modal.) */
 /* The DRAG surface is a child that starts past the chrome cluster — a drag
    region overlapping the buttons eats their clicks (the original rail bug).
    syncDragStripOffset() measures the cluster and overrides the fallback. */
@@ -13830,11 +13834,7 @@ body.wb-max .ws-right-rails { width: 100%; }
 }
 #panel-wc,
 #panel-wc * { -webkit-app-region: no-drag; }
-#panel-wc .app-rail-mark { width: 20px; height: 20px; margin-left: 14px; cursor: pointer; }
-/* The rail-top brand is the WORDMARK (the platform rail's asset), not the
-   mascot: it reads as the product name at a glance and matches the web. It
-   sizes by HEIGHT with a free width — the mark's square box would squash it. */
-#panel-wc .app-rail-mark.app-rail-wordmark { width: auto; height: 26px; }
+/* (No brand mark in the cluster anymore — traffic lights + the wall button.) */
 #panel-wc .code-icon-btn { width: 26px; height: 26px; }
 .app-rail-top {
   flex: 0 0 38px;
@@ -13847,8 +13847,6 @@ body.wb-max .ws-right-rails { width: 100%; }
   margin-left: 218px;
   -webkit-app-region: drag;
 }
-.app-rail-mark { width: 16px; height: 16px; opacity: 0.9; }
-
 /* Layout tiles — mini 2x2 stack of the layout's app icons. */
 .tile-layout .mini {
   display: flex;
@@ -14010,12 +14008,16 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 /* Compaction meter — fills toward the fold tick (compaction point). */
 .code-ctx-meter {
   position: relative;
-  width: 52px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--border);
-  overflow: visible;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  --ctx-color: var(--accent);
+  background:
+    radial-gradient(closest-side, var(--surface-2) 60%, transparent 61% 100%),
+    conic-gradient(var(--ctx-color) var(--ctx-pct, 0%), var(--border) 0);
 }
+.code-ctx-meter.hot { --ctx-color: var(--danger, #ef4444); }
+.code-ctx-meter .ctx-tick, .code-ctx-meter .ctx-fill { display: none; }
 .code-ctx-meter .ctx-fill {
   position: absolute;
   inset: 0 auto 0 0;
@@ -15509,6 +15511,14 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   transition: width 0.16s ease, min-width 0.16s ease;
 }
 
+/* The left rail is RETIRED from the shell (2026-08-18): navigation moved onto
+   the wall (the Echo dock + top bar carry Apps/Marketplace/Connections/
+   Workspaces/Tasks/Agents, settings, and the account dropdown). The rail's
+   DOM stays — recents/search/user wiring still renders into it — but nothing
+   shows it and there is no collapse toggle anymore. */
+#app-rail,
+#code-rail-splitter { display: none !important; }
+
 #app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
 
 /* + New session IS the theme's primary button (.btn .btn-primary). Keep it a
@@ -16094,7 +16104,7 @@ body.code-dragging webview { pointer-events: none !important; }
 
 /* Zoom controls, bottom-right over the scene. */
 .echo-zoom {
-  position: absolute; right: 14px; bottom: 14px; z-index: 5;
+  position: absolute; right: 14px; bottom: 14px; z-index: 40;
   display: flex; flex-direction: column; gap: 6px;
 }
 .echo-zoom .ws-icon-btn {
@@ -16202,40 +16212,40 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-card.dragging { transition: none; z-index: 5; opacity: 0.92; }
 /* Dividers — the seams between layout slots (the old rail handles): drag
    to reshape the whole layout. */
-/* Echo top bar — wall controls: SPOTLIGHT-style search + the drip picker.
-   Sits over the canvas, under the cards. */
-.echo-topbar {
-  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; z-index: 3;
+/* ── The FLAT LAUNCHER — iPhone-style pages of icons (no WebGL) ── */
+.echo-pages {
+  position: absolute; inset: 0;
+  display: flex;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
 }
-.echo-search-wrap {
-  display: flex; align-items: center; gap: 10px;
-  flex: 0 1 560px; min-width: 0; max-width: 64vw;
-  padding: 0 16px; height: 46px;
-  border: 1px solid var(--border); border-radius: 13px;
-  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+.echo-pages::-webkit-scrollbar { display: none; }
+.echo-page {
+  flex: 0 0 100%; height: 100%;
+  scroll-snap-align: start;
+  display: flex; align-items: center; justify-content: center;
 }
-.echo-search-wrap:focus-within { border-color: var(--accent); }
-.echo-search-ic { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
-.echo-search {
-  flex: 1; min-width: 0; border: none; background: none; outline: none;
-  color: var(--text); font-size: 16px;
+/* 8 columns; rows fall out of the per-page count. Anchored to the TOP —
+   right under the dock — with roomier spacing; clear of the composer below. */
+.echo-page {
+  align-items: flex-start;
 }
-.echo-search::placeholder { color: var(--text-faint); }
-.echo-topbar .ws-icon-btn {
-  border: 1px solid var(--border); border-radius: 13px;
-  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
-  backdrop-filter: blur(18px);
-  width: 46px; height: 46px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+.echo-page-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(72px, 112px));
+  gap: 22px 26px;
+  justify-content: center; align-content: start;
+  padding: 118px 34px 148px;
 }
-.echo-topbar .ws-icon-btn svg { width: 18px; height: 18px; }
+/* Auto-hidden dock frees the top — the grid moves up close to the edge. */
+body.echo-dock-autohide .echo-page-grid { padding-top: 40px; }
 
-/* the drip PICKER popup — under the bar, right-aligned to the droplet */
+/* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
+   which sits on the agent's top row, right of the caret) */
+.echo-drip-anchor { position: relative; display: inline-flex; }
 .echo-drip-pop {
-  position: absolute; top: 54px; right: 0;
+  position: absolute; bottom: calc(100% + 8px); top: auto; right: 0;
   display: grid; grid-template-columns: repeat(3, 96px); gap: 6px;
   padding: 10px;
   border: 1px solid var(--border); border-radius: 13px;
@@ -16254,6 +16264,169 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-drip-tile .edt-nm { max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .echo-drip-empty { padding: 12px 16px; color: var(--text-faint); font-size: 12.5px; grid-column: 1 / -1; }
 
+/* ── EDIT MODE (press-and-hold): iPhone wiggle + delete badges ── */
+.echo-pages.echo-edit .echo-app-btn { animation: echo-jiggle 0.30s ease-in-out infinite alternate; }
+.echo-pages.echo-edit .echo-app-btn:nth-child(2n) { animation-duration: 0.26s; animation-delay: -0.1s; }
+.echo-pages.echo-edit .echo-app-btn:nth-child(3n) { animation-duration: 0.34s; animation-delay: -0.18s; }
+@keyframes echo-jiggle {
+  from { transform: rotate(-1.7deg); }
+  to   { transform: rotate(1.7deg); }
+}
+.echo-app-btn { position: relative; }
+.echo-app-del {
+  position: absolute; top: -7px; left: -7px; z-index: 2;
+  width: 21px; height: 21px; border-radius: 50%;
+  border: none; padding: 0;
+  background: #e5484d; color: #ffffff;
+  font-size: 12px; line-height: 1;
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.echo-pages.echo-edit .echo-app-btn.removable .echo-app-del { display: flex; }
+
+/* ── DOCK AUTO-HIDE: hidden until the top edge is hovered ── */
+.echo-topbar { transition: transform 0.22s ease, opacity 0.22s ease; }
+body.echo-dock-autohide .echo-topbar {
+  transform: translate(-50%, calc(-100% - 28px));
+  opacity: 0;
+  pointer-events: none;
+}
+body.echo-dock-autohide.echo-dock-peek .echo-topbar {
+  transform: translateX(-50%);
+  opacity: 1;
+  pointer-events: auto;
+  /* Above the agent overlay layer (#code-agent-layer is z 118) — a layout's
+     agent cell was painting OVER the revealed dock. */
+  z-index: 130;
+}
+/* Blur veil UNDER the revealed dock — everything beneath goes soft while it
+   is peeked, fading out toward the bottom edge. */
+.echo-dock-blurveil {
+  position: absolute; top: 0; left: 0; right: 0; height: 68px;
+  z-index: 126; pointer-events: none;
+  backdrop-filter: blur(13px);
+  -webkit-backdrop-filter: blur(13px);
+  -webkit-mask-image: linear-gradient(to bottom, black 38%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 38%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.42s cubic-bezier(0.25, 0.6, 0.3, 1);
+}
+body.echo-dock-autohide.echo-dock-peek .echo-dock-blurveil { opacity: 1; }
+/* MAGNIFICATION — a super smooth follow on every slot (JS sets the scale). */
+/* The command-center (wall) button in the bottom-right cluster — BIGGER. */
+.echo-zoom .ws-icon-btn.echo-shadow-btn { width: 46px; height: 46px; }
+.echo-zoom .ws-icon-btn.echo-shadow-btn svg { width: 26px; height: 26px; }
+
+.echo-dock-btn { transform-origin: top center; transition: transform 0.2s cubic-bezier(0.25, 0.9, 0.3, 1), box-shadow 0.12s ease; will-change: transform; }
+.echo-app-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  border: none; background: none; padding: 0; cursor: pointer;
+}
+/* SAME square as the dock slots — one icon language everywhere. */
+.echo-app-ic {
+  display: flex; align-items: center; justify-content: center;
+  width: clamp(46px, 7.2vw, 76px); height: clamp(46px, 7.2vw, 76px);
+  border-radius: clamp(12px, 1.8vw, 18px);
+  background: var(--surface-3);
+  color: var(--text-2);
+  overflow: hidden;
+  transition: box-shadow 0.12s ease;
+}
+.echo-app-btn:hover .echo-app-ic { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
+.echo-app-btn.open .echo-app-ic { box-shadow: 0 0 0 1.5px var(--accent); }
+.echo-app-ic svg { width: 62%; height: 62%; }
+.echo-app-ic img { width: 74%; height: 74%; object-fit: contain; }
+.echo-app-fallback { font: 600 20px var(--font-sans); color: var(--text-2); }
+.echo-app-name {
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11.5px; color: var(--text-2);
+}
+/* Layout icons — the 2×2 mini stack, DOM edition. */
+.echo-app-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 72%; height: 72%; }
+.echo-app-mini .mini { display: flex; align-items: center; justify-content: center; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.echo-app-mini .mini svg { width: 70%; height: 70%; }
+.echo-app-mini .mini img { width: 80%; height: 80%; object-fit: contain; }
+.echo-app-mini .mini i { font-style: normal; font-size: 9px; font-weight: 600; color: var(--text-3); }
+.echo-app-btn.dock-dragging { opacity: 0.4; }
+/* Page dots — just UNDER the icon grid (code-workbench positions top). */
+.echo-page-dots {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 3;
+}
+/* EDGE-DROP hints — glow strips while a card drag holds a band edge. */
+.echo-stage::before, .echo-stage::after {
+  content: "";
+  position: absolute; top: 0; bottom: 0; width: 52px;
+  pointer-events: none; opacity: 0; z-index: 6;
+  transition: opacity 0.15s ease;
+}
+.echo-stage::before { left: 0; background: linear-gradient(to right, color-mix(in srgb, var(--accent) 30%, transparent), transparent); }
+.echo-stage::after { right: 0; background: linear-gradient(to left, color-mix(in srgb, var(--accent) 30%, transparent), transparent); }
+.echo-stage.echo-edge-left::before { opacity: 1; }
+.echo-stage.echo-edge-right::after { opacity: 1; }
+
+/* Page arrows — either side of the icon lists. */
+.echo-page-arrow {
+  position: absolute; z-index: 3;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(12px);
+  color: var(--text-2); cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.echo-page-arrow:hover { color: var(--text); background: var(--surface-3); }
+.echo-page-arrow svg { width: 18px; height: 18px; }
+.echo-page-arrow.prev { left: 22px; }
+.echo-page-arrow.next { right: 22px; }
+.echo-page-dots.hidden { display: none; }
+.echo-page-dot {
+  width: 8px; height: 8px; border-radius: 50%; border: none; padding: 0;
+  background: color-mix(in srgb, var(--text) 25%, transparent);
+  cursor: pointer;
+}
+.echo-page-dot.active { background: var(--text-2); }
+/* Traded-in app icons render as images inside dock slots. */
+.echo-dock-btn img { width: 62%; height: 62%; object-fit: contain; }
+.echo-dock-btn .echo-app-mini { width: 66%; height: 66%; }
+.echo-dock-btn .echo-app-fallback { font-size: 18px; }
+
+/* Echo top bar — JUST the dock now, sitting high on the page. Sits over
+   the pages, under the cards. (Search is gone; drips live on the composer
+   card.) */
+.echo-topbar {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 3;
+}
+/* The dock — FIXED nav slots above the search box: Apps / Marketplace /
+   Connections / Workspaces / Scheduled Tasks / Agents / Browser / Settings.
+   Office-icon language (full-bleed object silhouettes, the VIEW_META
+   family). NO wrapping chrome — a bare row; each slot is the SAME rounded
+   square the wall tiles draw (surface-3 box, hover ring in the tile
+   highlight ink). */
+.echo-dock {
+  display: flex; align-items: center;
+  gap: clamp(6px, 1.2vw, 16px);
+  max-width: calc(100vw - 32px);
+}
+/* Slots SHRINK to fit the page: fluid between 46px and 76px squares (the
+   glyphs ride along), so the dock always fits the window on one row. */
+.echo-dock-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: clamp(46px, 7.2vw, 76px); height: clamp(46px, 7.2vw, 76px);
+  padding: 0; flex-shrink: 1; min-width: 40px;
+  border: none; border-radius: clamp(12px, 1.8vw, 18px);
+  background: var(--surface-3);
+  cursor: pointer;
+  transition: box-shadow 0.12s ease;
+}
+.echo-dock-btn:hover { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
+.echo-dock-btn.dock-dragging { opacity: 0.4; }
+.echo-dock-btn svg { width: clamp(28px, 4.6vw, 48px); height: clamp(28px, 4.6vw, 48px); display: block; }
+
+
 .echo-dividers { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .echo-div { position: absolute; pointer-events: auto; border-radius: 4px; transition: background 0.12s ease; }
 .echo-div-v { width: 8px; cursor: col-resize; }
@@ -16264,7 +16437,53 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* Inside a workbench/layout panel the composer's default 48/52px gutters +
    880px centering cap scrunch the input into a narrow column. Drop the gutters
    right down and release the cap so the input uses the panel's full width. */
-.ws-agent-holder .code-composer { padding: 4px 12px 14px; max-width: 880px; margin: 0 auto; }
+.ws-agent-holder .code-composer { padding: 4px 12px 14px; max-width: 880px; margin: 0 auto; width: 100%; }
+/* The HOLDER-hosted agent (a layout's Glyphh cell) wears the SAME design as
+   the center agent — head hidden, thread above, the floating INPUT CARD
+   below. The card/chip chrome is class-based and applies on its own; these
+   mirror the center-scoped overrides that don't reach outside .code-root. */
+.ws-agent-holder .code-agent > .code-thread { display: block; flex: 1; min-height: 0; overflow-y: auto; }
+.ws-agent-holder .code-input {
+  border: none;
+  background: none;
+  padding: 12px 44px 6px 6px;
+  min-height: 48px;
+  font-size: 14px;
+}
+.ws-agent-holder .code-input:focus { outline: none; box-shadow: none; }
+.ws-agent-holder .code-composer-bar { padding: 2px 2px 0; }
+
+/* The caret/status row is the BOTTOM composer's thread peek — in a cell the
+   thread is right there above the input, so the row hides; drips/recents/+
+   stay useful and keep their spots. */
+.ws-agent-holder .code-status-line { display: none; }
+/* CELL ARRANGEMENT (his spec): one row under the card header — session TITLE
+   top left, the right-hand menu (droplet/recents/+/⋮ + kebab) top right —
+   then the thread, then the input card (source row above the input; the
+   permission/+ group bottom-left, model/loop/meter bottom-right ride the
+   card's own bar). Grid places the two shared DOM rows side by side. */
+.ws-agent-holder > .code-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.ws-agent-holder .code-agent-head {
+  display: flex;
+  grid-area: 1 / 1 / 2 / 2;
+  position: static;
+  background: none;
+  border-bottom: none;
+  padding: 4px 4px 2px 10px;
+  min-height: 0;
+  -webkit-app-region: no-drag;
+}
+.ws-agent-holder .code-agent-toprow {
+  grid-area: 1 / 2 / 2 / 3;
+  padding: 4px 10px 2px 4px;
+}
+.ws-agent-holder .code-agent > .code-thread { grid-area: 2 / 1 / 3 / 3; }
+.ws-agent-holder .code-agent > .code-composer { grid-area: 3 / 1 / 4 / 3; }
+.ws-agent-holder .code-composer.typing-glow .code-input-card { animation: composer-glow 1.6s ease-in-out infinite; border-color: color-mix(in srgb, var(--accent) 60%, var(--border)); }
 .echo-card-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* bare glyph buttons — no UA button chrome (the gray box) */
 .echo-card-head .ws-icon-btn {
@@ -16701,7 +16920,7 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 /* The wall's Chat/Work/Code agent tabs were removed — one session type now. */
 /* Keep the drip button to the RIGHT of the search on one row (never wrap it
    below); the search itself shrinks in tight panels via its flex-basis. */
-.echo-topbar-stacked { flex-wrap: nowrap; justify-content: center; max-width: 92%; }
+.echo-topbar-stacked { max-width: 92%; }
 
 /* The rail's mark is the HOME button. */
 .app-rail-mark-btn { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; }
@@ -16877,97 +17096,105 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .rail-more-menu { position: fixed; z-index: 300; display: flex; flex-direction: column; gap: 2px; min-width: 172px; padding: 6px; }
 .rail-more-menu .app-rail-nav-item { width: 100%; }
 
-/* ── Agent anchor ───────────────────────────────────────────────────────────
-   Where the agent sits relative to the workspace. `rail` is the default and
-   is deliberately absent here: with no [data-anchor="left|right|center|none"]
-   every rule below is inert, so today's layout is untouched until the user
-   opts in.
-
-   LEFT/RIGHT flip with `order`, never by moving DOM — in a dock the agent is a
-   `.code-root` child (its flex home; __wbParkAgent puts it there) and the
-   overlay reconciler leaves it alone. Colours come from the theme; these
-   rules only ever set geometry. */
-
-.code-root[data-anchor="left"],
-.code-root[data-anchor="right"],
-.code-root[data-anchor="none"] { --agent-dock-w: clamp(320px, calc(var(--agent-dock-frac, 0.32) * 100%), 60%); }
-
-.code-root[data-anchor="left"] > .code-agent,
-.code-root[data-anchor="right"] > .code-agent {
-  display: flex;
-  flex: 0 0 var(--agent-dock-w);
-  min-width: 0;
-  position: relative;
-}
-.code-root[data-anchor="left"]  > .code-agent     { order: 0; }
-.code-root[data-anchor="left"]  > .code-workbench { order: 1; }
-.code-root[data-anchor="right"] > .code-agent     { order: 1; }
-.code-root[data-anchor="right"] > .code-workbench { order: 0; }
-
-/* Anchored modes give the aside the whole remainder. */
-.code-root[data-anchor="left"]  > .code-workbench,
-.code-root[data-anchor="right"] > .code-workbench,
+/* ── The agent — the PERMANENT floating bottom composer ──────────────────
+   The anchor SYSTEM is gone (2026-08-18): no rail/left/right/none modes, no
+   picker, no dock splitter. data-anchor="center" is asserted at boot and is
+   the ONLY presentation: the composer floats bottom-center OVER the
+   workspace — no background, no full-width bar — and the caret PEEKS the
+   live thread as a dialog above it. z-index is explicit because
+   container-type:inline-size on .code-agent makes it a stacking context. */
+.code-root[data-anchor="center"] { position: relative; }
 .code-root[data-anchor="center"] > .code-workbench { flex: 1 1 auto; min-width: 0; }
-
-.code-root[data-anchor="none"] > .code-agent { display: none; }
-
-/* The workbench's own edge handle assumes the aside is at the RIGHT edge
-   (`dx = startX - clientX`), so in right-anchor it would invert. Hidden while
-   anchored; #code-agent-edge drives the dock instead, and each rail keeps its
-   own .ws-resize-v. */
-.code-root[data-anchor="left"]  #code-wb-edge,
-.code-root[data-anchor="right"] #code-wb-edge,
-.code-root[data-anchor="center"] #code-wb-edge,
-.code-root[data-anchor="none"]  #code-wb-edge { display: none; }
-
-.code-agent-edge { display: none; }
-.code-root[data-anchor="left"] > .code-agent > .code-agent-edge,
-.code-root[data-anchor="right"] > .code-agent > .code-agent-edge {
-  display: block;
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  z-index: 6;
-  -webkit-app-region: no-drag;
-}
-.code-root[data-anchor="left"]  > .code-agent > .code-agent-edge { right: -3px; }
-.code-root[data-anchor="right"] > .code-agent > .code-agent-edge { left: -3px; }
-.code-agent-edge:hover, .code-agent-edge.dragging { background: var(--accent); opacity: 0.5; }
-
-/* ── Collapsed (centre) ─────────────────────────────────────────────────────
-   The agent becomes a one-line bar along the bottom; the layout takes
-   everything above. z-index is explicit because container-type:inline-size on
-   .code-agent makes it a stacking context — without this the peek renders
-   BEHIND the layout. */
-.code-root[data-anchor="center"] { flex-direction: column; }
-.code-root[data-anchor="center"] > .code-workbench { order: 0; min-height: 0; }
+.code-root[data-anchor="center"] #code-wb-edge { display: none; }
 .code-root[data-anchor="center"] > .code-agent {
-  order: 1;
   display: flex;
-  flex: 0 0 auto;
-  position: relative;
+  flex-direction: column;
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: min(920px, calc(100% - 48px));
+  background: none;
+  border: none;
   z-index: 30;
-  border-top: 1px solid var(--border-2);
 }
-/* Hidden, never removed — flipping back must restore a working header. */
+/* Hidden, never removed — the ids must survive (listeners live on them). */
 .code-root[data-anchor="center"] .code-agent-head { display: none; }
 .code-root[data-anchor="center"] > .code-agent > .code-thread { display: none; }
-/* The 880px cap is right for a column and wrong for a full-width bar. */
-.code-root[data-anchor="center"] .code-composer { max-width: min(1200px, 100%); padding: 6px 16px 10px; }
+/* A live layout HOSTING the agent removes the center composer — the agent is
+   in the layout's cell (the overlay follows its placeholder; a holder-hosted
+   agent is not a .code-root child, so this only hides the PARKED composer). */
+body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { display: none; }
+/* The composer fills the floating box — its 880px cap and side gutters were
+   for the full-page column. */
+.code-root[data-anchor="center"] .code-composer { max-width: 100%; padding: 6px 4px 8px; }
 
-.code-bar-actions { display: none; }
-.code-root[data-anchor="center"] .code-bar-actions { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+/* THE INPUT CARD — the composer's one visual object, floating over the wall
+   in the dock's own language (translucent surface, blur, soft shadow):
+   the textarea and the chip row live INSIDE it; the input itself goes bare. */
+.code-input-card {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 8px;
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.code-root[data-anchor="center"] .code-input {
+  border: none;
+  background: none;
+  padding: 12px 44px 6px 6px;
+  min-height: 48px;
+  font-size: 14px;
+}
+.code-root[data-anchor="center"] .code-input:focus { outline: none; box-shadow: none; }
+.code-root[data-anchor="center"] .code-composer-bar { padding: 2px 2px 0; }
+
+/* Source / git / folder — its own quiet row ABOVE the input, left-aligned
+   (inside the card, both hosts). */
+.code-input-card .code-source-slot {
+  display: flex; align-items: center; gap: 4px;
+  margin: 0; padding: 6px 4px 0;
+  min-width: 0;
+  color: var(--text-3);
+}
+
+/* The row ABOVE the input card: [drips][recents][+] on the left, then the
+   status line — whose caret sits at the far right — filling the rest. */
+.code-agent-toprow { display: flex; align-items: center; gap: 2px; padding: 0 6px 4px; }
+.code-agent-toprow .code-status-line { flex: 1; width: auto; }
+
+/* TYPING GLOW — the theme's accent breathing around the input card while
+   keys land. Pure var(--accent) mixes, so every theme owns its own halo. */
+.code-composer.typing-glow .code-input-card {
+  animation: composer-glow 1.6s ease-in-out infinite;
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+}
+@keyframes composer-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1.5px color-mix(in srgb, var(--accent) 85%, transparent),
+      0 0 18px color-mix(in srgb, var(--accent) 40%, transparent),
+      0 0 46px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px var(--accent),
+      0 0 30px color-mix(in srgb, var(--accent) 55%, transparent),
+      0 0 72px color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+}
 
 .code-status-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  max-width: min(1200px, 100%);
-  margin: 0 auto;
-  padding: 6px 16px 0;
+  min-width: 0;
+  padding: 4px 8px;
   background: none;
   border: 0;
   font: inherit;
@@ -16975,8 +17202,6 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
   cursor: pointer;
   color: var(--text-3);
 }
-/* display:flex above outranks the UA [hidden] rule — without this the bar's
-   caret floats over every NON-center anchor mode too. */
 .code-status-line[hidden] { display: none; }
 .code-status-line:hover { color: var(--text); }
 .code-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -16993,19 +17218,20 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .code-root[data-anchor="center"].peeking > .code-agent > .code-thread {
   display: block;
   position: absolute;
-  bottom: 100%;
+  bottom: calc(100% + 10px);
   left: 50%;
   transform: translateX(-50%);
-  width: min(1200px, 100%);
+  width: 100%;
   /* The caret shows the FULL agent thread (scrollable), not just the last few
-     messages — the collapsed bar is a one-line window onto the whole conversation. */
-  max-height: min(80vh, 900px);
+     messages — the bar is a one-line window onto the whole conversation.
+     Opening it never closes a panel: it is an OVERLAY dialog. */
+  max-height: min(76vh, 860px);
   padding: 12px 20px;
   overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
   z-index: 2;
 }
 /* Webview compositing beats every z-index (see the note at .wb-app-layer), so
@@ -17013,21 +17239,6 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
    modal path already uses. Deliberate trade-off: app panels blank while
    peeking. */
 body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidden !important; }
-
-.code-anchor-wrap { position: relative; display: inline-flex; }
-/* Solid surface — the menu had ONLY position set, so it rendered transparent and
-   the thread bled through. Match the standard drop-up chrome. */
-.code-anchor-menu {
-  position: absolute; right: 0; top: calc(100% + 6px); min-width: 232px; z-index: 40;
-  background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  padding: 5px;
-}
-/* Docked at the BOTTOM, the menu must open UPWARD (a downward menu would fall
-   off the bottom edge, behind the app) and sit above everything on screen. */
-.code-root[data-anchor="center"] .code-anchor-menu { top: auto; bottom: calc(100% + 6px); z-index: 200; }
 
 /* ── Transcript panel (the "thread" workbench slot) ─────────────────────────
    Hosts the LIVE #code-thread (moved, never cloned). Sizing/spacing only —
@@ -17037,33 +17248,6 @@ body[data-glyphh-anchor="center"].peek-open #code-wb-applayer { visibility: hidd
 /* Peeking while the panel owns the thread flashes the panel instead (the
    thread stays put). One accent outline, briefly. */
 .ws-rail-slot.ws-thread-flash { outline: 2px solid var(--accent); outline-offset: -2px; }
-
-/* ── Collapsed-bar mini trays (Apps + Workspaces chips → drop-up grids) ─────
-   The chips only exist in centre-anchored (collapsed) mode, where the left
-   rail is out of reach. Sizes/spacing only — chips are stock .code-chip and
-   the tiles keep .app-rail-tile's own colors. */
-.code-mini-trays { display: none; }
-.code-root[data-anchor="center"] .code-mini-trays { display: flex; align-items: center; gap: 4px; }
-.code-mini-tray {
-  display: flex; flex-direction: column;
-  width: 296px; max-height: min(52vh, 460px);
-  padding: 8px 0 4px;
-  background: var(--surface);
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  z-index: 1000;
-  overflow: hidden;
-}
-.code-mini-tray .app-rail-grid {
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-  gap: 4px;
-  padding: 2px 8px 8px;
-}
-/* Scoped SIZE override — a popover tile is a touch tighter than the rail's. */
-.code-mini-tray .app-rail-tile { padding: 6px 2px 5px; gap: 4px; }
-.code-mini-tray .app-rail-tile .tile-icon { width: 26px; height: 26px; }
-.code-mini-tray .app-rail-tile .tile-name { font-size: 10px; }
 
 /* ── gPoint — Glyphh power points ─────────────────────────────────────────
    Library (cards) → reader (slide rail + stage) → presenter (whole-app

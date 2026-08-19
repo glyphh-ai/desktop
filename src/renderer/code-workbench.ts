@@ -26,10 +26,6 @@ import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
-import * as THREE from "three";
-// anchorMode() reads the live global anchor (body[data-glyphh-anchor]) — used to keep
-// a DOCKED agent out of layout cards/seats so the dock is permanent.
-import { anchorMode, applyAnchor } from "./help/code-anchor.js";
 import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
 import { initGDocs, type GDocPanel } from "./wb-gdoc.js";
 import { initGDrive, type GDrivePanel } from "./wb-drive.js";
@@ -258,7 +254,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   files:    { title: "Files",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
   terminal: { title: "Terminal", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
   diff:     { title: "Diff",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
-  preview:  { title: "Browser",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
+  preview:  { title: "Browser",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5" style="fill:#0ea5e9;stroke:none"/><path d="M2.8 12h18.4" style="fill:none;stroke:#ffffff;stroke-width:1.7"/><path d="M12 2.7c3.3 2.5 3.3 16.1 0 18.6M12 2.7c-3.3 2.5-3.3 16.1 0 18.6" style="fill:none;stroke:#e0f2fe;stroke-width:1.5"/><path d="M4.3 7.6c2.3-1.2 13.1-1.2 15.4 0M4.3 16.4c2.3 1.2 13.1 1.2 15.4 0" style="fill:none;stroke:#bae6fd;stroke-width:1.5"/></svg>` },
   monaco:   { title: "Editor",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
   echo:     { title: "Echo",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
   // ONE agent, ONE identity: the rails seat carries the same user-facing name
@@ -281,6 +277,23 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   gdoc:     { title: "Docs",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
   gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#8c3bf2;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
 };
+
+// ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
+// language as the office family (VIEW_META's gsheet/gdoc/gpoint set):
+// FULL-BLEED object silhouettes in saturated fills with white/tinted
+// details — never a glyph trapped in a uniform colored square. Sections
+// open as wall cards via __wbOpenSection; tools (tasks, preview) go
+// through __wbOpenTool. ──
+const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
+  { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
+  { key: "marketplace", title: "Marketplace",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2 4.6 3.5h14.8L21 8.2z" style="fill:#f97316;stroke:none"/><path d="M3 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M6.6 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M10.2 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M13.8 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M17.4 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M4.2 11.2h15.6v7.8a1.5 1.5 0 0 1-1.5 1.5H5.7a1.5 1.5 0 0 1-1.5-1.5z" style="fill:#fb923c;stroke:none"/><rect x="13.4" y="14" width="3.6" height="6.5" rx="0.7" style="fill:#7c2d12;stroke:none"/><rect x="6.6" y="14" width="4" height="3.4" rx="0.7" style="fill:#ffedd5;stroke:none"/></svg>` },
+  { key: "connections", title: "Connections",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7" style="fill:none;stroke:#0e7490;stroke-width:2.6"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7" style="fill:none;stroke:#06b6d4;stroke-width:2.6"/></svg>` },
+  { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
+  { key: "tasks",       title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
+  { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
+  { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
+  { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
+];
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -1371,50 +1384,17 @@ async function init(): Promise<void> {
    */
   function openSectionInWorkbench(section: string): void {
     const loadSection = (window as unknown as { __wbSectionLoad?: (s: string) => void }).__wbSectionLoad;
-    if (section === "agent") {
-      // DOCKED anchor: dock the agent (`.code-root`'s direct child) — never the wall.
-      if (anchorMode() !== "rail") {
-        renderRails();
-        applyAnchor();
-        return;
-      }
-      // The Glyphh mark is the UNIVERSAL CHAT ICON: the current layout
-      // clears (memory saved) and the chat loads alone.
-      openEchoSurface();
-      echoCtl?.openChat();
-      return;
-    }
-    if (section === "code" || section === "workspace") {
-      // Back to the working surface: section panels close, the workspace
-      // stays. "code" additionally guarantees the agent panel exists;
-      // "workspace" is the neutral flip used before app/layout opens (the
-      // incoming panels define the view — no uninvited agent).
+    if (section === "agent" || section === "code" || section === "workspace") {
+      // The agent is the PERMANENT bottom composer — there is no agent panel
+      // to open or dock anymore. "agent" just focuses the input; "code"/
+      // "workspace" flip back to the working surface (section slots close,
+      // the workspace stays — no uninvited anything).
       let changed = false;
       for (let i = rails.length - 1; i >= 0; i--) {
         const kept = rails[i].slots.filter((sl) => sl.view !== "section");
         if (kept.length !== rails[i].slots.length) { rails[i].slots = kept; changed = true; }
         if (!rails[i].slots.length) rails.splice(i, 1);
       }
-      // DOCKED anchor (center/left/right): the agent must live as `.code-root`'s
-      // DIRECT CHILD — the ONLY DOM position the dock CSS (`.code-root[data-anchor]
-      // > .code-agent`) can style. applyAnchor's __wbParkAgent re-homes it there
-      // (out of any Echo card) and the overlay reconciler hides its holder. NEVER
-      // open the Echo wall when docked.
-      if (section === "code" && anchorMode() !== "rail") {
-        renderRails();
-        applyAnchor();
-        return;
-      }
-      if (section === "code" && echoCtl) {
-        // Parity with the standard-mode flip below (section slots close):
-        // PAGE cards give way — a dashboard seed prompt lands the user in
-        // the chat, the glyphh agent by itself, not behind the Home card.
-        for (const { slug } of echoCtl.list()) if (slug.startsWith("page:")) echoCtl.close(slug);
-        openEchoSurface();
-        echoCtl.openAgent();
-        return;
-      }
-      if (section === "code" && !codingHosted()) { openEchoSurface(); echoCtl?.openAgent(); return; }
       // NOTHING changed → NOTHING re-renders. Every agent panel command runs
       // this flip first; an unconditional renderRails rebuilt Echo (and every
       // panel body) per command — open two apps, keep only the last card.
@@ -1422,6 +1402,7 @@ async function init(): Promise<void> {
         renderRails();
         saveLayout();
       }
+      if (section === "agent") (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
       return;
     }
     // PAGES open as Echo cards — Echo is the only surface.
@@ -1754,8 +1735,8 @@ async function init(): Promise<void> {
       try {
         renderEchoIntoSlot(body, wrap);
       } catch (err) {
-        console.error("echo wall render failed — degrading to the 2D fallback", err);
-        try { body.classList.add("ws-echo-body", "echo-nogl"); renderEchoFallback(body, wrap); } catch { /* keep the workbench alive no matter what */ }
+        console.error("echo launcher render failed", err);
+        body.classList.add("ws-echo-body", "echo-nogl");
       }
     }
     else if (slot.view === "section") renderSectionIntoSlot(body, slot);
@@ -1983,23 +1964,12 @@ async function init(): Promise<void> {
    * streamed in as they load. View controls: drag pans, wheel + ± zooms,
    * ⟲ resets. That's it — ordering via layouts comes later.
    */
-  function renderEchoFallback(body: HTMLElement, wrap: HTMLElement): void {
-    wrap.dataset.view = "echo";
-    const cards = body.querySelector<HTMLElement>(".echo-cards");
-    if (cards) cards.classList.add("echo-cards-2d");
-  }
-
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
-      <div class="echo-stage"></div>
+      <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div></div>
       <div class="echo-topbar echo-topbar-stacked">
-        <div class="echo-search-wrap">
-          <svg class="echo-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input class="echo-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" />
-        </div>
-        <button class="ws-icon-btn echo-drip-btn" title="Drips"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></button>
-        <div class="echo-drip-pop hidden"></div>
+        <div class="echo-dock">${DOCK_ITEMS.map((d) => `<button class="echo-dock-btn" data-dock="${d.key}" title="${d.title}" type="button">${d.icon}</button>`).join("")}</div>
       </div>
       <div class="echo-veil"></div>
       <div class="echo-layout-bar hidden">
@@ -2012,93 +1982,69 @@ async function init(): Promise<void> {
       <div class="echo-cards"></div>
       <div class="echo-zoom">
         <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌃⌥)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
-        <button class="ws-icon-btn echo-z-in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <button class="ws-icon-btn echo-z-out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
         <button class="ws-icon-btn echo-z-reset" title="Close all panels + reset the view"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
       </div>`;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
     wrap.dataset.view = "echo";
 
-    // ── Scene: a cylindrical wall of tile planes, camera inside ──
-    const R = 1600;
-    const TILE_W = 230, TILE_H = TILE_W * (94 / 104), COL_ARC = (TILE_W + 10) / R, ROW_H = TILE_H + 16;
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, 1, 1, 8000);
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch (err) {
-      // WebGL context unavailable (headless, GPU-blocked, too many contexts) —
-      // the 3D wall degrades to the flat 2D card fallback instead of crashing
-      // the whole workbench render (which blanked the page + threw the overlay).
-      console.warn("echo wall: WebGL unavailable, using the 2D fallback", err);
-      body.classList.add("echo-nogl");
-      renderEchoFallback(body, wrap);
-      return;
-    }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(0x000000, 0);
-    stage.appendChild(renderer.domElement);
+    // ── FLAT LAUNCHER (his rule, 2026-08-18: "this should feel like a damn
+    // iPhone") — no WebGL, no camera. Pages of dock-sized icons in a
+    // scroll-snap CAROUSEL with page dots; a set number of icons per page;
+    // icons drag to reorder and TRADE between the dock and the pages (never
+    // deleted from here). ──
+    const pagesEl = stage.querySelector<HTMLElement>(".echo-pages")!;
+    const dotsEl = stage.querySelector<HTMLElement>(".echo-page-dots")!;
+    // Page ARROWS — either side of the icon lists.
+    const mkArrow = (dir: -1 | 1): HTMLButtonElement => {
+      const a = document.createElement("button");
+      a.type = "button";
+      a.className = "echo-page-arrow " + (dir < 0 ? "prev" : "next");
+      a.title = dir < 0 ? "Previous page" : "Next page";
+      a.innerHTML = dir < 0
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
+      a.addEventListener("click", () => scrollToPage(pageIndex + dir));
+      stage.appendChild(a);
+      return a;
+    };
+    const prevArrow = mkArrow(-1);
+    const nextArrow = mkArrow(1);
+    /** Dots ride just UNDER the icon grid; arrows center on it. */
+    const positionPageChrome = (): void => {
+      const grid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
+      const pageCount = pagesEl.children.length;
+      if (!grid) { dotsEl.classList.add("hidden"); prevArrow.style.display = "none"; nextArrow.style.display = "none"; return; }
+      const sr = stage.getBoundingClientRect();
+      // Measure the LAST ICON, not the grid box — the grid's bottom padding
+      // pushed the dots halfway down the page.
+      const icons = grid.querySelectorAll<HTMLElement>(".echo-app-btn");
+      const lastIcon = icons.length ? icons[icons.length - 1] : null;
+      const g = (lastIcon ?? grid).getBoundingClientRect();
+      dotsEl.style.top = `${Math.round(g.bottom - sr.top + 10)}px`;
+      dotsEl.style.bottom = "auto";
+      const mid = Math.round(g.top - sr.top + g.height / 2 - 17);
+      prevArrow.style.top = `${mid}px`;
+      nextArrow.style.top = `${mid}px`;
+      const many = pageCount > 1;
+      prevArrow.style.display = many && pageIndex > 0 ? "" : "none";
+      nextArrow.style.display = many && pageIndex < pageCount - 1 ? "" : "none";
+    };
+    const chromeRo = new ResizeObserver(() => positionPageChrome());
+    chromeRo.observe(stage);
+    /** Icons per page — the fixed "set number" (8 × 7, iPhone-style). */
+    const PER_PAGE = 56;
 
-    let dragEntry: TileEntry | null = null;
-    /** The tile under the cursor — drawTile rings it in the theme highlight. */
-    let hoverEntry: TileEntry | null = null;
-    const HOME = { yaw: 0, yOff: 0, dist: -200 };
-    let yaw = HOME.yaw, yOff = HOME.yOff, dist = HOME.dist;
-    let maxYaw = 1.2;
-    let dirty = true;
-    const applyCamera = (): void => {
-      yaw = Math.max(-maxYaw, Math.min(maxYaw, yaw));
-      yOff = Math.max(-560, Math.min(560, yOff));
-      dist = Math.max(-(R - 520), Math.min(480, dist));
-      camera.position.set(0, yOff, dist);
-      camera.rotation.set(0, yaw, 0);
-      dirty = true;
-    };
-    let userMoved = false;
-    // bound to fitExtents once the wall exists (the wall data can land
-    // before the first ResizeObserver tick, when aspect is still default)
-    let refit: (() => void) | null = null;
-    let relayout: (() => void) | null = null;
-    const resize = (): void => {
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
-      if (refit && !userMoved) refit();
-      relayout?.();
-      dirty = true;
-    };
-    const ro = new ResizeObserver(resize);
-    ro.observe(stage);
-    resize();
-    applyCamera();
-    let jiggleT = 0;
-    const tick = (): void => {
-      if (!body.isConnected) return;   // teardown observer handles disposal
-      if (editMode) {
-        // every tile shakes on its own phase — the wall reads as "editable"
-        jiggleT += 0.16;
-        entries.forEach((e, i) => {
-          if (!e.mesh || e === dragEntry) return;
-          e.mesh.rotation.z = Math.sin(jiggleT + i * 1.7) * 0.028;
-        });
-        dirty = true;
-      }
-      if (dirty) { renderer.render(scene, camera); dirty = false; }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-
-    // ── Tile cards: the command center's tiles, verbatim — 56px icon
+        // ── Tile cards: the command center's tiles, verbatim — 56px icon
     // square (r14, --surface-3), 9px icon inset, 6px gap, 11px --text-2
     // label; layout tiles are the CC 2×2 mini-stack of the layout's own
     // app icons. Drawn at 4× and colored from the LIVE theme variables,
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
-    interface TileEntry { tile: EchoTile; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; img: HTMLImageElement | null; mesh?: THREE.Mesh; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+      /** Edge-driven: this card owns its column — nothing stacks under it. */
+      flowSolo?: boolean;
       /** WEB: the card's streamed-panel handle. Card teardown must dispose it
        *  or the desktop keeps casting to a removed element. */
       streamed?: StreamedPanelHandle;
@@ -2109,329 +2055,345 @@ async function init(): Promise<void> {
       layoutId?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
-    const themeColors = (): { surface2: string; surface3: string; text2: string; text3: string; accent: string; highlight: string; font: string } => {
-      const css = getComputedStyle(document.documentElement);
-      const v = (name: string, fb: string): string => css.getPropertyValue(name).trim() || fb;
-      return {
-        surface2: v("--surface-2", "#141414"),
-        surface3: v("--surface-3", "#1a1a1f"),
-        text2: v("--text-2", "#adbac7"),
-        text3: v("--text-3", "#7d8590"),
-        accent: v("--accent", "#f59e0b"),
-        // Hover ring: a theme may name one (--echo-tile-highlight); otherwise
-        // the brightest ink — white on the default theme.
-        highlight: v("--echo-tile-highlight", v("--text", "#ffffff")),
-        font: v("--font-sans", "-apple-system, system-ui, sans-serif"),
-      };
-    };
-    let theme = themeColors();
-    // iOS-style edit mode: hold a tile and the wall starts jiggling, each
-    // removable tile wearing a red ✕ in its upper-left corner.
-    let editMode = false;
-    const BADGE_R = 9;
-    const removable = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || (t.kind === "layout" && !!t.layoutName);
-    const rr = (c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void => {
-      c.beginPath();
-      c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
-      c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
-    };
-    const drawContain = (c: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, box: number, pad: number): void => {
-      const inner = box - pad * 2;
-      const s = Math.min(inner / (img.naturalWidth || inner), inner / (img.naturalHeight || inner));
-      const w = (img.naturalWidth || inner) * s, h = (img.naturalHeight || inner) * s;
-      c.drawImage(img, x + (box - w) / 2, y + (box - h) / 2, w, h);
-    };
-    const drawTile = (e: TileEntry): void => {
-      e.canvas.width = TILE_PX_W * TILE_SCALE; e.canvas.height = TILE_PX_H * TILE_SCALE;
-      const c = e.canvas.getContext("2d")!;
-      c.scale(TILE_SCALE, TILE_SCALE);
-      c.clearRect(0, 0, TILE_PX_W, TILE_PX_H);
-      const ix = (TILE_PX_W - 56) / 2, iy = 10;
-      rr(c, ix, iy, 56, 56, 14);
-      c.fillStyle = theme.surface3;
-      c.fill();
-      if (e.open) {
-        rr(c, ix - 1.5, iy - 1.5, 59, 59, 15.5);
-        c.strokeStyle = theme.accent;
-        c.lineWidth = 1.5;
-        c.stroke();
+    // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
+    // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
+    const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const iconSig = (t: EchoTile): string => `${t.iconUrl || ""}|${(t.glyphSvg || "").length}|${(t.cells || []).length}`;
+    const iconInner = (t: EchoTile): string => {
+      if (t.kind === "layout") {
+        const cells = (t.cells || []).slice(0, 4);
+        if (!cells.length) return `<span class="echo-app-fallback">▦</span>`;
+        return `<span class="echo-app-mini">` + cells.map((cl) =>
+          cl.glyphSvg ? `<span class="mini">${cl.glyphSvg}</span>`
+            : cl.iconUrl ? `<span class="mini"><img data-icon-src="${escAttr(cl.iconUrl)}" alt="" draggable="false"/></span>`
+              : `<span class="mini"><i>${escAttr(cl.initial || "?")}</i></span>`).join("") + `</span>`;
       }
-      if (e === hoverEntry) {
-        // hover ring — the theme's highlight ink (white on default)
-        rr(c, ix - 1.5, iy - 1.5, 59, 59, 15.5);
-        c.strokeStyle = theme.highlight;
-        c.lineWidth = 1.5;
-        c.stroke();
-      }
-      if (e.tile.kind === "layout") {
-        const cells = e.tile.cells || [];
-        if (!cells.length) {
-          c.fillStyle = theme.text2;
-          c.font = `600 16px ${theme.font}`;
-          c.textAlign = "center"; c.textBaseline = "middle";
-          c.fillText("▦", TILE_PX_W / 2, iy + 28);
-        } else {
-          // .tile-icon.tile-layout — 3px inset, 1px gap, 2 columns,
-          // each .mini a --surface-2 rounded cell with the app's icon
-          const cellW = (56 - 6 - 1) / 2;
-          const rowsN = Math.ceil(cells.length / 2);
-          const cellH = (50 - (rowsN - 1)) / rowsN;
-          cells.forEach((cell, i) => {
-            const cx = ix + 3 + (i % 2) * (cellW + 1);
-            const cy = iy + 3 + Math.floor(i / 2) * (cellH + 1);
-            rr(c, cx, cy, cellW, cellH, 3);
-            c.fillStyle = theme.surface2;
-            c.fill();
-            if (cell.img && cell.glyphSvg) {
-              const g = Math.min(cellW, cellH) * 0.64;
-              c.drawImage(cell.img, cx + (cellW - g) / 2, cy + (cellH - g) / 2, g, g);
-            } else if (cell.img) {
-              drawContain(c, cell.img, cx + (cellW - Math.min(cellW, cellH)) / 2, cy, Math.min(cellW, cellH), 2);
-            } else {
-              c.fillStyle = theme.text3;
-              c.font = `600 8px ${theme.font}`;
-              c.textAlign = "center"; c.textBaseline = "middle";
-              c.fillText(cell.initial, cx + cellW / 2, cy + cellH / 2);
-            }
-          });
-        }
-      } else if (e.img && e.tile.glyphSvg) {
-        // .nav-glyph svg — 64% of the box, centered, --text-2 ink
-        const g = 56 * 0.64;
-        c.drawImage(e.img, ix + (56 - g) / 2, iy + (56 - g) / 2, g, g);
-      } else if (e.img) {
-        // img — object-fit: contain inside a 9px inset
-        drawContain(c, e.img, ix, iy, 56, 9);
-      } else {
-        // .tile-initial — 16px/600, --text-2
-        c.fillStyle = theme.text2;
-        c.font = `600 16px ${theme.font}`;
-        c.textAlign = "center"; c.textBaseline = "middle";
-        c.fillText((e.tile.name || "?").charAt(0).toUpperCase(), TILE_PX_W / 2, iy + 28);
-      }
-      if (e.tile.kind === "layout") {
-        // Space badge — the rail tab's own glyph in a chip at the icon's
-        // upper-right, so a wall of layouts reads Chat/Work/Code at a glance.
-        const explicit = ((): boolean => {
-          const s = e.tile.layoutRow?.space;
-          return s === "chat" || s === "cowork" || s === "code";
-        })();
-        const paths = explicit ? SPACE_GLYPHS[layoutSpace(e.tile.layoutRow)] : AUTO_GLYPH;
-        const bs = 18, bx = ix + 56 - bs / 2 - 1, by = iy - 1;
-        rr(c, bx, by, bs, bs, 5);
-        c.fillStyle = theme.surface2;
-        c.fill();
-        c.strokeStyle = theme.text3;
-        c.lineWidth = 1;
-        c.stroke();
-        c.save();
-        c.translate(bx + 3, by + 3);
-        c.scale(12 / 24, 12 / 24);
-        c.strokeStyle = theme.text2;
-        c.lineWidth = 2.4;
-        c.lineCap = "round";
-        c.lineJoin = "round";
-        for (const d of paths) c.stroke(new Path2D(d));
-        c.restore();
-      }
-      if (editMode && removable(e.tile)) {
-        // the delete badge — red disc + white ✕, upper-left of the icon
-        const bx = ix + 1, by = iy + 1;
-        c.beginPath();
-        c.arc(bx, by, BADGE_R, 0, Math.PI * 2);
-        c.fillStyle = "#e5484d";
-        c.fill();
-        c.strokeStyle = "#fff";
-        c.lineWidth = 2;
-        c.lineCap = "round";
-        c.beginPath();
-        c.moveTo(bx - 3.6, by - 3.6); c.lineTo(bx + 3.6, by + 3.6);
-        c.moveTo(bx + 3.6, by - 3.6); c.lineTo(bx - 3.6, by + 3.6);
-        c.stroke();
-      }
-      // .tile-name — 11px, --text-2, ellipsized to the tile width
-      c.fillStyle = theme.text2;
-      c.font = `400 11px ${theme.font}`;
-      c.textAlign = "center"; c.textBaseline = "middle";
-      let label = e.tile.name;
-      while (label.length > 2 && c.measureText(label + "…").width > 96) label = label.slice(0, -1);
-      c.fillText(label === e.tile.name ? label : label + "…", TILE_PX_W / 2, iy + 56 + 6 + 7);
-      e.tex.needsUpdate = true;
-      dirty = true;
+      if (t.glyphSvg) return t.glyphSvg;
+      if (t.iconUrl) return `<img data-icon-src="${escAttr(t.iconUrl)}" alt="" draggable="false"/><span class="echo-app-fallback" style="display:none">${escAttr((t.name || "?").charAt(0).toUpperCase())}</span>`;
+      return `<span class="echo-app-fallback">${escAttr((t.name || "?").charAt(0).toUpperCase())}</span>`;
     };
-    const loadImage = (src: string): Promise<HTMLImageElement | null> =>
-      new Promise((res) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";   // tainted images can't feed WebGL
-        img.onload = () => res(img);
-        img.onerror = () => res(null);
-        img.src = src;
-      });
-    const svgToDataUrl = (svg: string, ink: string): string => {
-      // rasterizable: xmlns (inline SVG omits it, images REQUIRE it),
-      // explicit size, the theme's ink instead of currentColor
-      const sized = svg.replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" ')
-        .replace(/currentColor/g, ink);
-      return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(sized)));
-    };
-    // Cross-origin icons (favicons) arrive as data URLs via the main process —
-    // a tainted <img> can't feed a WebGL texture.
+    // ── Icon HYDRATION — remote favicons ride the main process on desktop
+    // (webIconFetch → data: URL, exactly like the old wall textures); the web
+    // loads our CORS-open resolver directly. Failures fall to the letter. ──
     const iconYo = (window as unknown as { glyphh?: { webIconFetch?: (u: string) => Promise<string> } }).glyphh;
-    const resolveIconSrc = (src: string): Promise<string> => {
-      if (!/^https?:/i.test(src)) return Promise.resolve(src);
-      // DESKTOP: bytes ride the main process (no CORS there) → data: URL.
-      // WEB: webIconFetch is a NATIVE STUB that returns nothing — every wall
-      // tile silently fell to its letter. Our resolver serves CORS `*`, so the
-      // web loads the URL DIRECTLY and the texture stays untainted.
-      if (isWebTarget()) return Promise.resolve(src);
-      return iconYo?.webIconFetch?.(src) ?? Promise.resolve("");
-    };
-    const loadOne = (src: string, assign: (img: HTMLImageElement) => void, e: TileEntry, attempt = 0): void => {
-      if (!src) return;
-      void resolveIconSrc(src).then((u) => (u ? loadImage(u) : null)).then((img) => {
-        if (!body.isConnected) return;
-        if (!img) {
-          // NEVER one-shot a remote icon: a cold resolver cache / mid-deploy
-          // miss left the tile a letter FOREVER (and made two surfaces show
-          // different walls purely by when they loaded). Two spaced retries
-          // converge every surface to the same answer without a manual
-          // close/reopen.
-          if (attempt < 2 && /^https?:/i.test(src)) {
-            setTimeout(() => loadOne(src, assign, e, attempt + 1), attempt === 0 ? 4000 : 15000);
-          }
-          return;
-        }
-        assign(img);
-        drawTile(e);
+    const iconSrcCache = new Map<string, string>();
+    const hydrateIcons = (root: HTMLElement): void => {
+      root.querySelectorAll<HTMLImageElement>("img[data-icon-src]").forEach((img) => {
+        const src = img.dataset.iconSrc || "";
+        img.removeAttribute("data-icon-src");
+        img.addEventListener("error", () => {
+          img.style.display = "none";
+          const fb = img.nextElementSibling as HTMLElement | null;
+          if (fb?.classList.contains("echo-app-fallback")) fb.style.display = "";
+        }, { once: true });
+        if (!src) { img.dispatchEvent(new Event("error")); return; }
+        // WEB: request in CORS mode — the resolver serves ACAO `*`, and
+        // Cross-Origin-Resource-Policy only blocks NO-CORS embedding, so the
+        // crossorigin attribute is what lets the browser render the bytes.
+        if (isWebTarget() && /^https?:/i.test(src)) img.crossOrigin = "anonymous";
+        const direct = !/^https?:/i.test(src) || isWebTarget();
+        if (direct) { img.src = src; return; }
+        const cached = iconSrcCache.get(src);
+        if (cached) { img.src = cached; return; }
+        void (iconYo?.webIconFetch?.(src) ?? Promise.resolve("")).then((u) => {
+          const finalSrc = u || src;   // resolver miss → try the URL directly
+          iconSrcCache.set(src, finalSrc);
+          if (img.isConnected) img.src = finalSrc;
+        }).catch(() => { if (img.isConnected) img.src = src; });
       });
     };
-    const loadEntryIcon = (e: TileEntry): void => {
-      if (e.tile.cells) {
-        for (const cell of e.tile.cells) {
-          loadOne(cell.glyphSvg ? svgToDataUrl(cell.glyphSvg, theme.text2) : cell.iconUrl || "", (img) => { cell.img = img; }, e);
-        }
-        return;
-      }
-      loadOne(e.tile.glyphSvg ? svgToDataUrl(e.tile.glyphSvg, theme.text2) : e.tile.iconUrl || "", (img) => { e.img = img; }, e);
+    /** (Re)paint one icon — the DOM successor of the old canvas drawTile;
+     *  same name so every call site still works. */
+    const drawTile = (e: TileEntry): void => {
+      const el = e.iconEl;
+      if (!el) return;
+      el.classList.toggle("open", !!e.open);
+      const ic = el.querySelector<HTMLElement>(".echo-app-ic");
+      if (ic && ic.dataset.sig !== iconSig(e.tile)) { ic.innerHTML = iconInner(e.tile); ic.dataset.sig = iconSig(e.tile); hydrateIcons(ic); }
+      const nm = el.querySelector<HTMLElement>(".echo-app-name");
+      if (nm && nm.textContent !== e.tile.name) nm.textContent = e.tile.name;
+      el.title = e.tile.name;
     };
-    // Theme switches re-ink every tile (glyphs re-rasterize in the new ink).
-    const themeObs = new MutationObserver(() => {
-      const next = themeColors();
-      if (next.surface3 === theme.surface3 && next.text2 === theme.text2 && next.surface2 === theme.surface2) return;
-      theme = next;
-      for (const e of entries) {
-        drawTile(e);
-        if (e.tile.glyphSvg || e.tile.cells?.some((cl) => cl.glyphSvg)) loadEntryIcon(e);
-      }
-    });
-    themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-
-    const group = new THREE.Group();
-    scene.add(group);
-    let wallCols = 1, wallRows = 1;
-    /** Zoom to extents: the camera distance where the WHOLE wall fits.
-     *  The wall is CYLINDRICAL and the camera is inside the cylinder, so
-     *  the edge columns sit at R·sinθ across and only R·cosθ−(R−D) deep —
-     *  a flat-chord fit puts them outside the frustum. Solve the angular
-     *  constraint instead: D ≥ R·sinθ/tan(hFov) + R(1−cosθ). */
-    const fitExtents = (): void => {
-      const half = (wallCols * COL_ARC) / 2;
-      const wallH = wallRows * ROW_H;
-      const tanV = Math.tan((camera.fov * Math.PI) / 360);
-      const tanH = tanV * camera.aspect;
-      const Dh = (R * Math.sin(half)) / tanH + R * (1 - Math.cos(half));
-      const Dv = wallH / 2 / tanV;
-      const D = Math.max(Dv, Dh) * 1.08;
-      HOME.dist = D - R;
-      ({ yaw, yOff, dist } = { ...HOME });
-      applyCamera();
+    /** The key an icon orders/trades under. Tools carry tool:<view>; apps and
+     *  layouts their orderKey; nav slots traded out of the dock dock:<key>. */
+    const keyOf = (t: EchoTile): string | null => t.orderKey ?? (t.toolView ? `tool:${t.toolView}` : null);
+    const entriesByKey = (): Map<string, TileEntry> => {
+      const m = new Map<string, TileEntry>();
+      for (const e of entries) { const k = keyOf(e.tile); if (k) m.set(k, e); }
+      return m;
     };
-    /** The wall reads top to bottom: the DOCK (always the same row), then
-     *  the apps, then the layouts, and the WORKSPACE panels on the bottom
-     *  row. Each band wraps at 10 and starts on a fresh row, LEFT-JUSTIFIED
-     *  against a common edge — a short row (or a wrapped tail) lines up with
-     *  the rows above it instead of floating centred. */
-    const WALL_WIDTH = 10;
-    const banded = (bands: EchoTile[][]): EchoTile[][] => {
-      const rows: EchoTile[][] = [];
-      for (const band of bands) {
-        for (let i = 0; i < band.length; i += WALL_WIDTH) rows.push(band.slice(i, i + WALL_WIDTH));
-      }
-      return rows.length ? rows : [[]];
+    /** A nav DOCK slot rendered as a PAGE icon (traded out of the dock). */
+    const navTileFor = (key: string): EchoTile | null => {
+      const item = DOCK_ITEMS.find((d) => d.key === key);
+      if (!item) return null;
+      return { name: item.title, slug: `dock:${item.key}`, orderKey: `dock:${item.key}`, glyphSvg: item.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, kind: "tool", navKey: item.key };
     };
-    /** The wall's live bands — dock / apps+layouts / workspace. Dragging a
-     *  tile mutates these and re-runs positionWall(); nothing is rebuilt, so
-     *  open cards keep pointing at their tile. */
-    let wallBands: TileEntry[][] = [];
-    /** EVERY space sees the full wall (apps + all layouts) — a layout
-     *  carries its own space (badge on the tile) and opening one activates
-     *  it, so there is nothing to hide per tab anymore. */
-    const spaceHidden = (_t: EchoTile): boolean => false;
-    const bandRows = (): TileEntry[][] => {
-      const rows: TileEntry[][] = [];
-      for (const band of wallBands) {
-        const visible = band.filter((e) => !spaceHidden(e.tile));
-        for (let i = 0; i < visible.length; i += WALL_WIDTH) rows.push(visible.slice(i, i + WALL_WIDTH));
-      }
-      return rows.length ? rows : [[]];
-    };
-    const positionWall = (): void => {
-      for (const band of wallBands) for (const e of band) {
-        if (e.mesh) e.mesh.visible = !spaceHidden(e.tile);
-      }
-      const rows = bandRows();
-      wallCols = Math.max(1, ...rows.map((r) => r.length));
-      wallRows = rows.length;
-      maxYaw = (wallCols * COL_ARC) / 2 + 0.35;
-      rows.forEach((cells, row) => cells.forEach((e, col) => {
-        if (!e.mesh) return;
-        // every row starts at the SAME left edge (the widest row sets it)
-        const theta = (col - (wallCols - 1) / 2) * COL_ARC;
-        const y = ((wallRows - 1) / 2 - row) * ROW_H;
-        e.mesh.position.set(R * Math.sin(theta), y, -R * Math.cos(theta));
-        e.mesh.rotation.set(0, -theta, 0);
-        e.mesh.scale.set(1, 1, 1);
-      }));
-      dirty = true;
-    };
-    /** Everything one tile needs to exist on the wall. Extracted so a tile
-     *  can be created AFTER the initial build — a layout made while the wall
-     *  is mounted has to be able to join it. */
+    /** ONE ordered list backs the pages. wallBands stays as its [single] band
+     *  so the catalog-refresh path needs no rewrite. */
+    let wallBands: TileEntry[][] = [[]];
+    /** The dock's key order (nav keys + traded page-icon keys) — authoritative
+     *  membership; persisted as echoDockOrder. Null until the pref loads. */
+    let dockKeys: string[] = DOCK_ITEMS.map((d) => d.key);
+    let pageIndex = 0;
     const makeTileEntry = (t: EchoTile): TileEntry => {
-      const canvas = document.createElement("canvas");
-      const tex = new THREE.CanvasTexture(canvas);
-      tex.colorSpace = THREE.SRGBColorSpace;
-      const entry: TileEntry = { tile: t, canvas, tex, img: null };
-      entries.push(entry);
-      drawTile(entry);
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(TILE_W, TILE_H),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
-      );
-      group.add(mesh);
-      entry.mesh = mesh;
-      loadEntryIcon(entry);
-      return entry;
+      const e: TileEntry = { tile: t, img: null };
+      entries.push(e);
+      return e;
     };
-    /** Take a tile off the wall for good (a layout that was deleted). */
+    /** Take a tile off the launcher for good (a deleted app/layout). */
     const dropTileEntry = (entry: TileEntry): void => {
-      if (entry.mesh) {
-        group.remove(entry.mesh);
-        entry.mesh.geometry.dispose();
-        (entry.mesh.material as THREE.MeshBasicMaterial).dispose();
-        entry.mesh = undefined;
-      }
-      entry.tex.dispose();
       const i = entries.indexOf(entry);
       if (i >= 0) entries.splice(i, 1);
       for (const band of wallBands) {
         const j = band.indexOf(entry);
         if (j >= 0) band.splice(j, 1);
       }
+      renderPages();
     };
-    /** The wall tile for a layout: up to 4 unique panels as mini icons.
-     *  Shared by the first build and by layouts that appear later. */
-    const layoutTileOf = (layoutRow: LayoutRow): EchoTile => {
+    const persistPages = (): void => {
+      const keys = (wallBands[0] ?? []).map((x) => keyOf(x.tile)).filter((k): k is string => !!k);
+      void yoApi?.setPreference?.("ccIconOrder", keys);
+      window.dispatchEvent(new CustomEvent("glyphh:cc-order-changed", { detail: keys }));
+    };
+    const persistDock = (): void => { void yoApi?.setPreference?.("echoDockOrder", dockKeys); };
+    // ── EDIT MODE (press-and-hold, iPhone-style): the icons wiggle, apps and
+    // layouts wear a ✕ (delete after the standard confirm); everything else
+    // just moves. Click empty space or Esc to leave. ──
+    let iconEditMode = false;
+    const setIconEdit = (on: boolean): void => {
+      if (iconEditMode === on) return;
+      iconEditMode = on;
+      pagesEl.classList.toggle("echo-edit", on);
+    };
+    document.addEventListener("keydown", (ev) => {
+      if (!body.isConnected) return;
+      if (ev.key === "Escape" && iconEditMode) { ev.stopPropagation(); setIconEdit(false); }
+    }, true);
+    const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || (t.kind === "layout" && !!t.layoutName);
+    /** Delete what an icon stands for — the app or the layout — after the
+     *  standard confirm, then drop it off the launcher (and the saved order). */
+    const deleteTileEntry = (e: TileEntry): void => {
+      const t = e.tile;
+      if (!removableTile(t)) return;
+      void (async () => {
+        const ok = await appConfirm({
+          title: `Delete "${t.name}"?`,
+          body: t.kind === "layout"
+            ? "The workspace is removed from your library."
+            : "The app is removed from your library on every device.",
+          confirmLabel: "Delete",
+          danger: true,
+        });
+        if (!ok) return;
+        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).glyphh;
+        try {
+          if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
+          else if (t.appId) {
+            const res = await yo?.panelAppsDelete?.(t.appId);
+            if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }
+          }
+        } catch (err) {
+          console.warn(`[echo] delete "${t.name}" failed:`, err);
+          return;
+        }
+        const k = keyOf(t);
+        if (k) dockKeys = dockKeys.filter((x) => x !== k);
+        dropTileEntry(e);
+        persistPages();
+        persistDock();
+      })();
+    };
+    // ── Drag: reorder within the pages, and TRADE between dock and pages.
+    // Nothing here deletes by dropping — a drop outside any target snaps back. ──
+    let dragIconKey: string | null = null;
+    const wireIconDrag = (el: HTMLElement, key: string | null): void => {
+      if (!key) return;   // the fixed Home tile never moves
+      el.draggable = true;
+      el.addEventListener("dragstart", (ev) => {
+        dragIconKey = key;
+        applyDockZoomAt(null);
+        el.classList.add("dock-dragging");
+        ev.dataTransfer?.setData("text/plain", key);
+        if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+      });
+      el.addEventListener("dragend", () => { el.classList.remove("dock-dragging"); dragIconKey = null; });
+    };
+    /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
+    const moveKeyToPage = (key: string, at: TileEntry | null): void => {
+      const band = wallBands[0]!;
+      let entry = entriesByKey().get(key) ?? null;
+      if (!entry) {
+        const t = navTileFor(key) ?? navTileFor(key.replace(/^dock:/, ""));
+        if (!t) return;
+        const existing = entriesByKey().get(keyOf(t) || "");
+        entry = existing ?? makeTileEntry(t);
+      }
+      const k = keyOf(entry.tile);
+      dockKeys = dockKeys.filter((x) => x !== key && x !== k);
+      const cur = band.indexOf(entry);
+      if (cur >= 0) band.splice(cur, 1);
+      const idx = at ? band.indexOf(at) : -1;
+      band.splice(idx < 0 ? band.length : idx, 0, entry);
+      renderPages();
+      persistPages();
+      persistDock();
+    };
+    /** Land a dragged key IN THE DOCK before (optionally) a target key. */
+    const moveKeyToDock = (key: string, beforeKey: string | null): void => {
+      const navKey = key.startsWith("dock:") ? key.slice(5) : key;
+      const dockKey = DOCK_ITEMS.some((d) => d.key === navKey) ? navKey : key;
+      dockKeys = dockKeys.filter((x) => x !== dockKey);
+      const at = beforeKey ? dockKeys.indexOf(beforeKey) : -1;
+      dockKeys.splice(at < 0 ? dockKeys.length : at, 0, dockKey);
+      // a page icon entering the dock leaves the pages
+      const band = wallBands[0] ?? [];
+      const entry = entriesByKey().get(key);
+      if (entry) {
+        const i = band.indexOf(entry);
+        if (i >= 0) band.splice(i, 1);
+      }
+      renderPages();
+      persistPages();
+      persistDock();
+    };
+    /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
+     *  icons render as dock slots. Click routing is delegated (topbar). */
+    const reconcileDock = (): void => {
+      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      if (!dockEl) return;
+      const byKey = entriesByKey();
+      const have = new Map<string, HTMLElement>();
+      for (const c of Array.from(dockEl.children) as HTMLElement[]) {
+        const k = c.dataset.dock;
+        if (k) have.set(k, c);
+      }
+      for (const [k, el] of have) if (!dockKeys.includes(k)) el.remove();
+      let prev: HTMLElement | null = null;
+      for (const k of dockKeys) {
+        let el = have.get(k) ?? null;
+        if (!el) {
+          const item = DOCK_ITEMS.find((d) => d.key === k);
+          const entry = item ? null : byKey.get(k);
+          if (!item && !entry) continue;
+          const mk = document.createElement("button");
+          mk.type = "button";
+          el = mk;
+          el.className = "echo-dock-btn";
+          el.dataset.dock = k;
+          el.title = item ? item.title : entry!.tile.name;
+          el.innerHTML = item ? item.icon : iconInner(entry!.tile);
+          hydrateIcons(el);
+          wireIconDrag(el, k);
+          el.addEventListener("dragover", (ev) => { if (dragIconKey && dragIconKey !== k) ev.preventDefault(); });
+          el.addEventListener("drop", (ev) => {
+            ev.preventDefault(); ev.stopPropagation();
+            if (dragIconKey && dragIconKey !== k) moveKeyToDock(dragIconKey, k);
+          });
+        }
+        if (prev) prev.after(el);
+        else dockEl.prepend(el);
+        prev = el;
+      }
+    };
+    // ── The pages: chunk the list, render icon grids, dots, snap scroll. ──
+    const renderPages = (): void => {
+      const list = (wallBands[0] ?? []).filter((e) => { const k = keyOf(e.tile); return !k || !dockKeys.includes(k); });
+      const pages: TileEntry[][] = [];
+      for (let i = 0; i < list.length; i += PER_PAGE) pages.push(list.slice(i, i + PER_PAGE));
+      if (!pages.length) pages.push([]);
+      pagesEl.innerHTML = "";
+      pages.forEach((page) => {
+        const p = document.createElement("div");
+        p.className = "echo-page";
+        const grid = document.createElement("div");
+        grid.className = "echo-page-grid";
+        p.appendChild(grid);
+        for (const e of page) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "echo-app-btn" + (removableTile(e.tile) ? " removable" : "");
+          btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
+          if (removableTile(e.tile)) {
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "echo-app-del";
+            del.title = `Delete ${e.tile.name}`;
+            del.textContent = "✕";
+            del.addEventListener("click", (ev) => { ev.stopPropagation(); deleteTileEntry(e); });
+            btn.appendChild(del);
+          }
+          e.iconEl = btn;
+          drawTile(e);
+          // press-and-hold arms EDIT MODE (the wiggle); a normal click opens.
+          let holdTimer = 0;
+          btn.addEventListener("pointerdown", (ev) => {
+            if (ev.button !== 0) return;
+            window.clearTimeout(holdTimer);
+            holdTimer = window.setTimeout(() => setIconEdit(true), 520);
+          });
+          for (const evName of ["pointerup", "pointerleave", "pointercancel", "dragstart"] as const) {
+            btn.addEventListener(evName, () => window.clearTimeout(holdTimer));
+          }
+          btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            if (iconEditMode) return;   // edit mode: clicks arrange, never open
+            let entry = e;
+            // Terminal and Browser are MULTI-INSTANCE: every click mints a new
+            // card (a fresh entry keyed off the same icon, so the zoom still
+            // starts from it).
+            if (entry.tile.toolView === "terminal" || entry.tile.toolView === "preview") {
+              entry = { tile: { ...entry.tile }, iconEl: entry.iconEl, img: null };
+            }
+            activateTile(entry);
+          });
+          wireIconDrag(btn, e.tile.sticky ? null : keyOf(e.tile));
+          btn.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
+          btn.addEventListener("drop", (ev) => {
+            ev.preventDefault(); ev.stopPropagation();
+            if (dragIconKey && dragIconKey !== keyOf(e.tile)) moveKeyToPage(dragIconKey, e);
+          });
+          grid.appendChild(btn);
+        }
+        p.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
+        p.addEventListener("drop", (ev) => {
+          ev.preventDefault();
+          if (dragIconKey) moveKeyToPage(dragIconKey, null);
+        });
+        p.addEventListener("click", (ev) => {
+          if (iconEditMode && ev.target === p) setIconEdit(false);
+        });
+        pagesEl.appendChild(p);
+      });
+      dotsEl.innerHTML = "";
+      pages.forEach((_pg, i) => {
+        const d = document.createElement("button");
+        d.type = "button";
+        d.className = "echo-page-dot" + (i === pageIndex ? " active" : "");
+        d.title = `Page ${i + 1}`;
+        d.addEventListener("click", () => scrollToPage(i));
+        dotsEl.appendChild(d);
+      });
+      dotsEl.classList.toggle("hidden", pages.length < 2);
+      requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
+      reconcileDock();
+    };
+    const scrollToPage = (i: number, smooth = true): void => {
+      pageIndex = Math.max(0, Math.min(i, Math.max(0, pagesEl.children.length - 1)));
+      pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth ? "smooth" : "auto" });
+      Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
+      positionPageChrome();
+    };
+    pagesEl.addEventListener("scroll", () => {
+      const i = Math.round(pagesEl.scrollLeft / Math.max(1, pagesEl.clientWidth));
+      if (i !== pageIndex) {
+        pageIndex = i;
+        Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
+        positionPageChrome();
+      }
+    });
+    /** All positionWall callers re-render the pages now. */
+    const positionWall = (): void => renderPages();
+        const layoutTileOf = (layoutRow: LayoutRow): EchoTile => {
       const seenIds = new Set<string>();
       const ids = (layoutRow.splits ?? [])
         .map((cell) => cell.panelId)
@@ -2478,10 +2440,8 @@ async function init(): Promise<void> {
     const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
       a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
     const buildWall = (bands: EchoTile[][]): void => {
-      wallBands = bands.map((band) => band.map((t) => makeTileEntry(t)));
-      positionWall();
-      refit = fitExtents;
-      fitExtents();   // open on the whole wall
+      wallBands = [bands.flat().map((t) => makeTileEntry(t))];
+      renderPages();
     };
 
     // ── The wall's content: the command center's APPS, in its order —
@@ -2503,7 +2463,8 @@ async function init(): Promise<void> {
       // Read the saved wall state HERE, atomically at boot, before the agent
       // card or anything else can schedule a save that overwrites it.
       yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
-    ]).then(([rows, layouts, orderPref, savedWall]) => {
+      yoApi?.getPreference?.("echoDockOrder", null) ?? null,
+    ]).then(([rows, layouts, orderPref, savedWall, dockPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       const appsAll = (rows || []).filter(wallAppRow);
@@ -2611,11 +2572,30 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gband",
       };
-      const midBand = [glyphhTile, browserTile, slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
-      buildWall([midBand]);
+      // Tools carry stable keys so they can be reordered/traded like apps.
+      const toolTiles = [browserTile, slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile]
+        .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
+      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      // The dock pref decides membership (nav slots + traded icons)…
+      if (Array.isArray(dockPref)) dockKeys = dockPref.map(String);
+      // …and ccIconOrder decides the PAGE order across every keyed tile,
+      // materializing nav slots that were traded onto the pages (dock:*).
+      const byK = new Map<string, EchoTile>();
+      for (const t of canonical) { const k = t.orderKey; if (k) byK.set(k, t); }
+      const savedPageOrder = Array.isArray(orderPref) ? orderPref.map(String) : [];
+      const pageTiles: EchoTile[] = [];
+      const seenK = new Set<string>();
+      for (const k of savedPageOrder) {
+        const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
+        if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;
+        seenK.add(t.orderKey);
+        pageTiles.push(t);
+      }
+      const rest = canonical.filter((t) => !t.orderKey || !seenK.has(t.orderKey));
+      buildWall([[glyphhTile, ...pageTiles, ...rest]]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
-    }).catch(() => buildWall([]));
+    }).catch(() => buildWall([[]]));
 
     // ── Wall-state persistence (save + restore) ──────────────────────────────
     // Serialize the OPEN arrangement: a layout by name, else the ad-hoc app/tool/
@@ -2644,23 +2624,14 @@ async function init(): Promise<void> {
         try { void yoApi?.setPreference?.(WALL_STATE_PREF, serializeWall()); } catch { /* pref unavailable */ }
       }, 400);
     }
-    function restoreWallOnce(layouts: LayoutRow[], saved: WallState | null): void {
+    function restoreWallOnce(_layouts: LayoutRow[], _saved: WallState | null): void {
       if (wallRestored) return;
+      // BOOT IS THE BARE COMMAND CENTER, and that is it (his rule,
+      // 2026-08-18): the saved wall state is NOT replayed — no cards, no
+      // layout, no agent come back on launch. The pref keeps being written
+      // (scheduleWallSave is gated on this flag) so replay can be re-enabled
+      // as an opt-in later without a data gap.
       wallRestored = true;   // arm saves + block a second restore on remount
-      try {
-        if (!saved || !echoCtl) return;
-        if (saved.layout) {
-          const key = saved.layout.toLowerCase();
-          const layout = layouts.find((l) => (l.name || "").toLowerCase() === key);
-          if (layout) echoCtl.openLayout(layout);
-          return;
-        }
-        for (const c of saved.cards || []) {
-          if (c.kind === "section" && c.section) echoCtl.openSection(c.section);
-          else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
-          else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
-        }
-      } catch { /* corrupt/unavailable state — ignore */ }
     }
 
     // The wall outlives the Layouts page (echo stays mounted behind
@@ -2734,7 +2705,6 @@ async function init(): Promise<void> {
           }
         }
         if (shifted) positionWall();
-        dirty = true;
       }).catch(() => { /* next visit refetches */ });
     };
     document.addEventListener("glyphh:apps-changed", onCatalogChanged);
@@ -2744,6 +2714,119 @@ async function init(): Promise<void> {
     // (and pannable) beneath; close zooms it back to its spot. ──
     const cardsLayer = body.querySelector<HTMLElement>(".echo-cards")!;
     const openList: TileEntry[] = [];
+    // ── DOCK AUTO-HIDE (Appearance page, SDK-persisted pref, default ON):
+    // the dock stays hidden until the mouse reaches the top of the page —
+    // macOS-dock style. The hotzone catches the hover; the peek class slides
+    // the dock in OVER whatever is open (no relayout on hover). ──
+    // The blur veil UNDER the revealed dock — content beneath it goes soft
+    // while the dock is peeked. Pointer-transparent; pure backdrop-filter.
+    const dockVeil = document.createElement("div");
+    dockVeil.className = "echo-dock-blurveil";
+    body.appendChild(dockVeil);
+    // ── DOCK MAGNIFICATION — a SUBTLE ARCHED zoom rippling under the cursor
+    // (default 20%). Slots are RE-LAID OUT with their scaled widths, so
+    // neighbours push apart and never overlap; a slight downward arc follows
+    // the gaussian. Strength: the Appearance slider (echoDockZoom, 1 = off). ──
+    let dockZoom = 1.2;
+    let dockZoomRaf = 0;
+    const applyDockZoomAt = (clientX: number | null): void => {
+      dockZoomRaf = 0;
+      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      if (!dockEl) return;
+      const kids = Array.from(dockEl.children) as HTMLElement[];
+      if (!kids.length) return;
+      if (clientX == null || dockZoom <= 1.001) {
+        for (const c of kids) { if (c.style.transform) c.style.transform = ""; }
+        return;
+      }
+      const dockRect = dockEl.getBoundingClientRect();
+      const gap = parseFloat(getComputedStyle(dockEl).columnGap || "16") || 16;
+      // Base geometry ACCUMULATED from widths (transform-immune) — never from
+      // live rects, which move with the transforms and fed the jitter.
+      const widths0 = kids.map((c) => c.offsetWidth);
+      const lefts0: number[] = [];
+      { let acc = 0; for (const w0 of widths0) { lefts0.push(acc); acc += w0 + gap; } }
+      const sigma = 120;
+      const scales = kids.map((_c, i) => {
+        const center = dockRect.left + lefts0[i]! + widths0[i]! / 2;
+        const d = Math.abs(clientX - center);
+        return 1 + (dockZoom - 1) * Math.exp(-(d * d) / (2 * sigma * sigma));
+      });
+      // Re-layout with the scaled widths, centered against the base row —
+      // this is what keeps the slots from ever overlapping.
+      const widths = widths0.map((w0, i) => w0 * scales[i]!);
+      const total = widths.reduce((a, w) => a + w, 0) + gap * (kids.length - 1);
+      const baseTotal = lefts0[lefts0.length - 1]! + widths0[widths0.length - 1]! - lefts0[0]!;
+      let x = lefts0[0]! + baseTotal / 2 - total / 2;
+      kids.forEach((c, i) => {
+        const cx = x + widths[i]! / 2;
+        const tx = cx - (lefts0[i]! + widths0[i]! / 2);
+        const ty = (scales[i]! - 1) * widths0[i]! * 0.18;   // the arc — a gentle dip
+        const t = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${scales[i]!.toFixed(3)})`;
+        if (c.style.transform !== t) c.style.transform = t;
+        x += widths[i]! + gap;
+      });
+    };
+    const queueDockZoom = (clientX: number | null): void => {
+      if (dockZoomRaf) return;
+      dockZoomRaf = requestAnimationFrame(() => applyDockZoomAt(clientX));
+    };
+    // ONE deterministic pointer check drives BOTH the peek and the zoom.
+    // The old mouseenter/mouseleave pairs BOUNCED while the dock slid (the
+    // slide moves the boundary under a still cursor — enter, leave, enter…),
+    // which is exactly the "jumps like crazy" jitter. A single y-threshold
+    // cannot bounce: the reveal threshold (26px) and the keep-open threshold
+    // (the dock's live bottom edge) are evaluated fresh per move. Any active
+    // drag (card reorder, divider, icon DnD) suspends both effects.
+    let dockPeekTimer = 0;
+    body.addEventListener("mousemove", (ev) => {
+      const dragging = dragIconKey != null
+        || document.body.classList.contains("wb-mouse-drag")
+        || document.body.classList.contains("echo-drag");
+      const autoHide = document.body.classList.contains("echo-dock-autohide");
+      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      if (autoHide && !dragging) {
+        const peeked = document.body.classList.contains("echo-dock-peek");
+        // The reveal zone hangs off the ECHO SURFACE's top edge — client 0 is
+        // the OS titlebar, which never delivers mouse events here (that dead
+        // 26px band was "the dock is not loading"). THIN on purpose: panel
+        // headers live just 7px down, and a fat zone stole their drag grabs.
+        const surfaceTop = body.getBoundingClientRect().top;
+        let keepBelow = surfaceTop + 10;
+        if (peeked && bar) {
+          const r = bar.getBoundingClientRect();
+          if (r.height > 0 && r.bottom > surfaceTop) keepBelow = Math.max(keepBelow, r.bottom + 12);
+        }
+        const want = ev.clientY <= keepBelow;
+        window.clearTimeout(dockPeekTimer);
+        if (want) document.body.classList.add("echo-dock-peek");
+        else if (peeked) dockPeekTimer = window.setTimeout(() => document.body.classList.remove("echo-dock-peek"), 180);
+      }
+      if (dragging) { queueDockZoom(null); return; }
+      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      if (!dockEl) return;
+      const r = dockEl.getBoundingClientRect();
+      const near = r.width > 0 && r.bottom > 0 && ev.clientY >= r.top - 26 && ev.clientY <= r.bottom + 26;
+      queueDockZoom(near ? ev.clientX : null);
+    });
+    body.addEventListener("mouseleave", () => { queueDockZoom(null); });
+    const readAutoHide = (): void => {
+      void Promise.all([
+        yoApi?.getPreference?.("echoAutoHideDock", true) ?? true,
+        yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
+      ]).then(([d, z]) => {
+        document.body.classList.toggle("echo-dock-autohide", d !== false);
+        const zn = Number(z);
+        dockZoom = Number.isFinite(zn) ? Math.max(1, Math.min(2, zn)) : 1.2;
+        layoutCards();
+      });
+    };
+    readAutoHide();
+    const onAutoHideChanged = (): void => {
+      if (!body.isConnected) { document.removeEventListener("glyphh:echo-autohide-changed", onAutoHideChanged); return; }
+      readAutoHide();
+    };
+    document.addEventListener("glyphh:echo-autohide-changed", onAutoHideChanged);
     // A layout opened in Echo pins its GRID: cards sit at the layout's own
     // col/row geometry until a card outside the grid appears (then the flow
     // layout takes back over).
@@ -2757,10 +2840,6 @@ async function init(): Promise<void> {
     // The layout whose cards are on stage — dragged/resized card geometry is
     // remembered under its name and restored on the next open.
     let echoLayoutName: string | null = null;
-    // When a layout that CONTAINS an agent cell opens, the layout WINS the anchor
-    // battle: the docked agent un-anchors so it can mount as the layout's cell. We
-    // stash the dock here and restore it when the layout is removed / the wall resets.
-    let anchorBeforeLayout: ReturnType<typeof anchorMode> | null = null;
     // B1/B2: the id shared by every card the CURRENT layout open fanned out.
     // Minted per open in openLayoutInEchoArranged; stamped onto each entry so a
     // card knows it belongs to a layout (hide its X) and the layout bar can tear
@@ -2860,7 +2939,6 @@ async function init(): Promise<void> {
       cardsLayer.classList.toggle("echo-shadow", on);
       shadowBtn.classList.toggle("active", shadowPinned);
       // the header's command-center eye mirrors the pin state
-      document.getElementById("code-cc-btn")?.classList.toggle("active", shadowPinned);
       syncWallVisibility();
     };
     shadowBtn.addEventListener("click", () => {
@@ -2902,12 +2980,31 @@ async function init(): Promise<void> {
         // that can't be captured (synthetic, stale id) still drags fine via
         // the head listeners + the body.echo-drag pointer-events guard.
         try { head.setPointerCapture(ev.pointerId); } catch { /* uncapturable */ }
+        let lastSwapAt = 0;
+        let lastSwapX = 0, lastSwapY = 0;
+        let edgeIntent: "left" | "right" | null = null;
+        const setEdgeIntent = (next: "left" | "right" | null): void => {
+          if (edgeIntent === next) return;
+          edgeIntent = next;
+          stage.classList.toggle("echo-edge-left", next === "left");
+          stage.classList.toggle("echo-edge-right", next === "right");
+        };
         const move = (mv: PointerEvent): void => {
           if (!dragging) {
             if (Math.hypot(mv.clientX - startX, mv.clientY - startY) < 6) return;
             dragging = true;
             card.classList.add("echo-card-dragging");
             document.body.classList.add("echo-drag");
+          }
+          // DRIVE TO A SIDE: holding the drag inside the band's left/right
+          // edge parks the card as its own flanking column on release.
+          {
+            const band = buildBand();
+            const sr = stage.getBoundingClientRect();
+            const x = mv.clientX - sr.left;
+            const inBandY = mv.clientY - sr.top >= band.top && mv.clientY - sr.top <= band.top + band.height;
+            setEdgeIntent(!inBandY ? null : x <= band.left + 44 ? "left" : x >= band.left + band.width - 44 ? "right" : null);
+            if (edgeIntent) return;   // edge wins — no reorder while flanking
           }
           const over = document.elementsFromPoint(mv.clientX, mv.clientY)
             .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
@@ -2917,6 +3014,33 @@ async function init(): Promise<void> {
           const from = openList.indexOf(e);
           const to = openList.indexOf(target);
           if (from < 0 || to < 0 || from === to) return;
+          // HYSTERESIS — the flip-flop killer. Right at a boundary, a swap
+          // re-lays the cards so the OTHER one lands back under the cursor
+          // and the next move swaps straight back (the "jerky panel"). Two
+          // guards: (1) the pointer must be PAST the target's midpoint in
+          // the direction of travel (dragged card → target), on the dominant
+          // axis; (2) a short cooldown after each swap unless the pointer
+          // has genuinely moved on.
+          const now = performance.now();
+          if (now - lastSwapAt < 160 && Math.hypot(mv.clientX - lastSwapX, mv.clientY - lastSwapY) < 14) return;
+          const tr = over.getBoundingClientRect();
+          const cr = card.getBoundingClientRect();
+          const dx = (tr.left + tr.width / 2) - (cr.left + cr.width / 2);
+          const dy = (tr.top + tr.height / 2) - (cr.top + cr.height / 2);
+          if (Math.abs(dx) >= Math.abs(dy)) {
+            const midX = tr.left + tr.width / 2;
+            if (dx > 0 && mv.clientX <= midX) return;
+            if (dx < 0 && mv.clientX >= midX) return;
+          } else {
+            const midY = tr.top + tr.height / 2;
+            if (dy > 0 && mv.clientY <= midY) return;
+            if (dy < 0 && mv.clientY >= midY) return;
+          }
+          lastSwapAt = now;
+          lastSwapX = mv.clientX;
+          lastSwapY = mv.clientY;
+          // Re-stacking by hand releases an edge-driven column claim.
+          e.flowSolo = undefined;
           openList.splice(from, 1);
           openList.splice(to, 0, e);
           layoutCards();
@@ -2925,6 +3049,21 @@ async function init(): Promise<void> {
           head.removeEventListener("pointermove", move);
           try { head.releasePointerCapture(ev.pointerId); } catch { /* already released */ }
           if (dragging) {
+            // Edge release: the card becomes the FIRST (left) or LAST (right)
+            // flow position — with the breadth-first fill that is its own
+            // side-by-side column next to the rest.
+            if (edgeIntent) {
+              const from = openList.indexOf(e);
+              if (from >= 0) {
+                openList.splice(from, 1);
+                if (edgeIntent === "left") openList.unshift(e);
+                else openList.push(e);
+                // Driven to a side: the card owns its column now — it sits
+                // NEXT TO the others until deliberately re-stacked.
+                e.flowSolo = true;
+              }
+            }
+            setEdgeIntent(null);
             card.classList.remove("echo-card-dragging");
             document.body.classList.remove("echo-drag");
             layoutCards();
@@ -2941,18 +3080,14 @@ async function init(): Promise<void> {
       el.style.width = `${Math.round(r.width)}px`;
       el.style.height = `${Math.round(r.height)}px`;
     };
-    /** The tile's CURRENT on-screen rect (projected through the camera). */
-    const projectRect = (mesh: THREE.Mesh): { left: number; top: number; width: number; height: number } => {
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      mesh.updateWorldMatrix(true, false);
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const [cx, cy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as Array<[number, number]>) {
-        const v = new THREE.Vector3((cx * TILE_W) / 2, (cy * TILE_H) / 2, 0).applyMatrix4(mesh.matrixWorld).project(camera);
-        const px = ((v.x + 1) / 2) * w, py = ((1 - v.y) / 2) * h;
-        minX = Math.min(minX, px); minY = Math.min(minY, py);
-        maxX = Math.max(maxX, px); maxY = Math.max(maxY, py);
-      }
-      return { left: minX, top: minY, width: Math.max(24, maxX - minX), height: Math.max(24, maxY - minY) };
+    /** The icon's CURRENT on-screen rect (stage-relative) — the zoom origin. */
+    const iconRect = (e: TileEntry): { left: number; top: number; width: number; height: number } | null => {
+      const el = e.iconEl;
+      if (!el || !el.isConnected) return null;
+      const r = el.getBoundingClientRect();
+      const sr = stage.getBoundingClientRect();
+      if (r.width < 4) return null;
+      return { left: r.left - sr.left, top: r.top - sr.top, width: r.width, height: r.height };
     };
     /** Slot rects: up to 3 across, wrapping, anchored near the top — the
      *  wall's lower rows peek out beneath. */
@@ -2969,12 +3104,17 @@ async function init(): Promise<void> {
      *  opens BESIDE it, never squeezed beneath. No re-sorting, no column-first
      *  preference — order stays exactly as it was. */
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
+      // ORIGINAL depth-first fill (his rule): full → stack UNDER (halves) →
+      // new column RIGHT → under it, and so on — two to a column, open
+      // order. The agent keeps its own column, and so does any card the
+      // user DROVE to a side (flowSolo — the edge-drop gesture): nothing
+      // ever stacks under those.
       const cols: TileEntry[][] = [];
       for (const e of cards) {
-        const isAgent = e.tile.kind === "agent";
-        const target = isAgent
+        const solo = e.tile.kind === "agent" || e.flowSolo === true;
+        const target = solo
           ? undefined
-          : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent"));
+          : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent" || c.flowSolo === true));
         if (target) target.push(e);
         else cols.push([e]);
       }
@@ -2996,20 +3136,53 @@ async function init(): Promise<void> {
     };
     const normFr = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
     const preFr = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
+    /** The BUILD BAND — the only region open cards may occupy: below the
+     *  wall's top bar (dock + search) and above the floating composer, with
+     *  side margins. Cards NEVER overlap either. Stage-relative pixels,
+     *  measured live so a taller composer (chips, notes) pushes the band up. */
+    const buildBand = (): { left: number; top: number; width: number; height: number } => {
+      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
+      const stageR = stage.getBoundingClientRect();
+      // The band's outer margins MATCH the 7px inter-panel gap — panels sit
+      // as close to the edges as they sit to each other.
+      const margin = 7;
+      let top = margin;
+      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      if (bar && !document.body.classList.contains("echo-dock-autohide")) {
+        const r = bar.getBoundingClientRect();
+        if (r.height > 0) top = Math.max(top, r.bottom - stageR.top + margin);
+      }
+      let bottom = h - margin;
+      const agent = document.querySelector<HTMLElement>('.code-root[data-anchor="center"] > .code-agent');
+      if (agent) {
+        const r = agent.getBoundingClientRect();
+        if (r.height > 0) bottom = Math.min(bottom, r.top - stageR.top - margin);
+      }
+      // Degenerate windows (tiny stage, mid-boot measures) — keep a usable box.
+      if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
+      const side = 7;
+      return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
+    };
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
-      // EDGE-TO-EDGE like the layout grid: seams only BETWEEN cards.
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 7;
+      // CENTER-SCREEN BUILD PATTERN inside the band: the first app opens as a
+      // comfortable centered card; more apps BUILD outward (the existing
+      // column flow), the block staying centered and never touching the top
+      // bar above or the composer below. Proportional seam drags still apply.
+      const band = buildBand();
+      const gap = 7;
       const cols = flowColumns(cards);
       syncFlowFracs(cols);
       const cwFr = normFr(flowColFr);
-      const availW = w - gap * (cols.length - 1);
+      // FULL band, edge to edge: one app takes the whole width AND height,
+      // then the stack splits the same space — nothing wasted.
+      const availW = band.width - gap * (cols.length - 1);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
-      let x = 0;
+      let x = band.left;
       cols.forEach((col, ci) => {
         const colW = availW * cwFr[ci];
         const rhFr = normFr(flowRowFr.get(ci) ?? col.map(() => 1));
-        const availH = h - gap * (col.length - 1);
-        let y = 0;
+        const availH = band.height - gap * (col.length - 1);
+        let y = band.top;
         col.forEach((e, ri) => {
           const cellH = availH * rhFr[ri];
           out.set(e, { left: x, top: y, width: Math.max(160, colW), height: Math.max(110, cellH) });
@@ -3023,11 +3196,12 @@ async function init(): Promise<void> {
     const gridRects = (): Map<TileEntry, { left: number; top: number; width: number; height: number }> | null => {
       if (!echoGrid) return null;
       if (!echoGrid.cells.length) { echoGrid = null; return null; }
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      // EDGE-TO-EDGE: the layout fills the stage completely — 7px seams
-      // live only BETWEEN panels; cells touching an edge touch the edge.
+      // The grid fills the BUILD BAND (never the top bar above or the
+      // composer below) — 7px seams live only BETWEEN panels; cells touching
+      // a band edge touch the band edge.
+      const band = buildBand();
       const gap = 7;
-      const W = w, H = h;
+      const W = band.width, H = band.height;
       const norm = (a: number[]): number[] => {
         const sum = a.reduce((x, y) => x + y, 0) || 1;
         return a.map((v) => v / sum);
@@ -3038,131 +3212,77 @@ async function init(): Promise<void> {
       for (const c of echoGrid.cells) {
         // vertical geometry from the ANCHOR column's own fractions
         const rh = norm(echoGrid.rowFracs[c.col] ?? echoGrid.rowFracs[0] ?? [1]);
-        const left = pre(cw, c.col) * W + (c.col === 0 ? 0 : gap / 2);
-        const right = pre(cw, c.col + c.colSpan) * W - (c.col + c.colSpan >= cw.length ? 0 : gap / 2);
-        const top = pre(rh, c.row) * H + (c.row === 0 ? 0 : gap / 2);
-        const bottom = pre(rh, c.row + c.rowSpan) * H - (c.row + c.rowSpan >= rh.length ? 0 : gap / 2);
+        const left = band.left + pre(cw, c.col) * W + (c.col === 0 ? 0 : gap / 2);
+        const right = band.left + pre(cw, c.col + c.colSpan) * W - (c.col + c.colSpan >= cw.length ? 0 : gap / 2);
+        const top = band.top + pre(rh, c.row) * H + (c.row === 0 ? 0 : gap / 2);
+        const bottom = band.top + pre(rh, c.row + c.rowSpan) * H - (c.row + c.rowSpan >= rh.length ? 0 : gap / 2);
         out.set(c.entry, { left, top, width: Math.max(120, right - left), height: Math.max(90, bottom - top) });
       }
       return out;
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
-     *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. The
-     *  top bar (search + drips) is a WALL control and follows it. */
+     *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
     const syncWallVisibility = (): void => {
-      const canvas = stage.querySelector<HTMLElement>("canvas");
-      if (!canvas) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
-      // ANY open panel retires the wall completely — a translucent veil left
-      // it ghosting through behind flow cards. The ⌃⌥ / eye peek still lifts.
+      // ANY open panel retires the launcher pages — the ⌃⌥ / eye peek lifts.
       const cardsUp = openList.some((e) => e.card);
       const shadowOn = cardsLayer.classList.contains("echo-shadow");
       const hidden = (layoutUp || cardsUp) && !shadowOn;
-      canvas.style.visibility = hidden ? "hidden" : "";
-      // visibility:hidden blanks the wall but the raycaster lives on `stage`
-      // (mousedown/move/wheel), so a hidden wall stayed CLICKABLE behind the
-      // cards — the user hit tiles by accident. Retire its pointer events too.
-      stage.style.pointerEvents = hidden ? "none" : "";
-      // The Chat/Work/Code space tabs were removed — every session is one type
-    // (the most-capable Code toolset), so the wall no longer switches spaces.
-    const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (bar) bar.style.visibility = hidden ? "hidden" : "";
+      pagesEl.style.visibility = hidden ? "hidden" : "";
+      dotsEl.style.visibility = hidden ? "hidden" : "";
+      body.querySelectorAll<HTMLElement>(".echo-page-arrow").forEach((a) => { a.style.visibility = hidden ? "hidden" : ""; });
+      pagesEl.style.pointerEvents = hidden ? "none" : "";
+      // The TOP BAR (the dock) STAYS VISIBLE with cards open — cards build
+      // in the band BELOW it now, so hiding it just lost navigation.
+      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      if (bar) bar.style.visibility = "";
+      // The command (wall) button in the bottom-right zoom cluster only makes
+      // sense while panels COVER the wall — with the command center already
+      // showing it has nothing to reveal, so it hides.
+      const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn");
+      if (shadowBtn) shadowBtn.style.display = (layoutUp || cardsUp) ? "" : "none";
     };
-    // ── Top bar: search filters the WALL live (dim the rest, Enter opens
-    // the best match, Esc clears); the droplet opens the Drips panel. ──
+    // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
+    // page). The search bar is gone; drips moved onto the composer card
+    // (help/code.ts wires the picker there, opening upward). ──
     {
-      const searchEl = body.querySelector<HTMLInputElement>(".echo-search")!;
-      const matchesOf = (q: string): TileEntry[] =>
-        entries.filter((x) => x.mesh?.visible && ((x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q)));
-      const paintFilter = (): void => {
-        const q = searchEl.value.trim().toLowerCase();
-        for (const x of entries) {
-          if (!x.mesh) continue;
-          const m = x.mesh.material as THREE.MeshBasicMaterial;
-          const hit = !q || (x.tile.name || "").toLowerCase().includes(q) || (x.tile.slug || "").toLowerCase().includes(q);
-          m.transparent = true;
-          m.opacity = hit ? 1 : 0.12;
-        }
-      };
-      searchEl.addEventListener("input", paintFilter);
-      searchEl.addEventListener("keydown", (ev) => {
-        ev.stopPropagation();   // the wall's Esc/edit keys stay out of typing
-        const q = searchEl.value.trim().toLowerCase();
-        if (ev.key === "Escape") {
-          searchEl.value = "";
-          paintFilter();
-          searchEl.blur();
-        } else if (ev.key === "Enter" && q) {
-          const pool = matchesOf(q);
-          const best = pool.find((x) => (x.tile.name || "").toLowerCase().startsWith(q)) ?? pool[0];
-          if (best) {
-            searchEl.value = "";
-            paintFilter();
-            activateTile(best);
-          }
-        }
-      });
-      // The droplet opens the DRIP PICKER as a popup right here — builtin
-      // effects + the user's saved drips; a tile plays its recipe.
-      const dripPop = body.querySelector<HTMLElement>(".echo-drip-pop")!;
-      const dripBtn = body.querySelector<HTMLElement>(".echo-drip-btn")!;
-      const DRIP_EMOJI: Record<string, string> = {
-        fireworks: "🎆", hearts: "💖", confetti: "🎉", stars: "⭐", rain: "🌧️",
-        bubbles: "🫧", sparkle: "✨", spiral: "🌀", emoji: "😀", wave: "🌊",
-        thumbsup: "👍", peace: "✌️", cat: "🐱", snow: "❄️",
-        matrix: "🟩", aurora: "🌌", nebula: "💜", plasma: "🔮", fireflies: "🪲", starfield: "🌠",
-      };
-      const closeDripPop = (): void => dripPop.classList.add("hidden");
-      const openDripPop = async (): Promise<void> => {
-        type BuiltinFx = { name: string; kind: "one-shot" | "loop" };
-        const yoD = (window as unknown as { glyphh?: { dripsBuiltinEffects?: () => Promise<Array<BuiltinFx | string>>; dripsList?: () => Promise<Array<{ name: string; recipe: string }>>; dripsPreview?: (recipe: string) => Promise<unknown> } }).glyphh;
-        const [builtinsRaw, customsRaw] = await Promise.all([
-          yoD?.dripsBuiltinEffects?.().catch(() => [] as Array<BuiltinFx | string>) ?? [],
-          yoD?.dripsList?.().catch(() => [] as Array<{ name: string; recipe: string }>) ?? [],
-        ]);
-        // Standard effects (one-shots then loops, the IPC's order); tolerate the
-        // legacy string[] shape from a stale bridge. Each previews by NAME — a
-        // loop effect's preview is its bounded one-shot doc.
-        const builtins: BuiltinFx[] = (builtinsRaw || []).map((b) =>
-          typeof b === "string" ? { name: b, kind: "one-shot" as const } : b);
-        const customs = customsRaw || [];
-        dripPop.innerHTML = "";
-        const tile = (name: string, recipe: string, emoji: string): void => {
-          const b = document.createElement("button");
-          b.type = "button";
-          b.className = "echo-drip-tile";
-          b.innerHTML = `<span class="edt-ic"></span><span class="edt-nm"></span>`;
-          b.querySelector(".edt-ic")!.textContent = emoji;
-          b.querySelector(".edt-nm")!.textContent = name;
-          b.addEventListener("click", (e2) => { e2.stopPropagation(); void yoD?.dripsPreview?.(recipe); closeDripPop(); });
-          dripPop.appendChild(b);
-        };
-        for (const fx of builtins) tile(fx.name, fx.name, DRIP_EMOJI[fx.name] || (fx.kind === "loop" ? "♾️" : "🎨"));
-        for (const c of customs) tile(c.name, c.recipe, "💧");
-        if (!dripPop.childElementCount) {
-          const empty = document.createElement("div");
-          empty.className = "echo-drip-empty";
-          empty.textContent = "No drips yet";
-          dripPop.appendChild(empty);
-        }
-        dripPop.classList.remove("hidden");
-      };
-      dripBtn.addEventListener("click", (ev) => {
+      // The DOCK — nav slots + any icons TRADED in from the pages. Sections
+      // open as wall cards; Scheduled Tasks and Browser are workbench tools;
+      // Settings is the SETTINGS MODAL (navigation.ts owns it — bridged);
+      // traded icons open exactly like their page selves. Slots can NEVER be
+      // deleted — only MOVED (dock ⇄ pages); membership + order persist
+      // (echoDockOrder, owned by the launcher's reconcileDock).
+      const dockEl = body.querySelector<HTMLElement>(".echo-dock")!;
+      for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
+      dockEl.addEventListener("click", (ev) => {
+        const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");
+        if (!b || !dockEl.contains(b)) return;
         ev.stopPropagation();
-        if (!dripPop.classList.contains("hidden")) { closeDripPop(); return; }
-        void openDripPop();
+        const key = b.dataset.dock || "";
+        if (DOCK_ITEMS.some((d) => d.key === key)) {
+          const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void };
+          if (key === "settings") w.__glyphhOpenSettings?.();
+          else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
+          else if (key) w.__wbOpenSection?.(key);
+          return;
+        }
+        const entry = entriesByKey().get(key);
+        if (entry) activateTile(entry);
       });
-      // THE global drips opener — the typed `.dip` watcher (help/dip-watch.ts)
-      // lands here from anywhere in the app. Re-published on every Echo mount
-      // so it always points at the LIVE pop.
-      (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips = () => { void openDripPop(); };
-      document.addEventListener("click", (ev) => {
-        if (!dripPop.classList.contains("hidden") && !dripPop.contains(ev.target as Node)) closeDripPop();
+      dockEl.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => {
+        b.addEventListener("dragover", (ev) => { if (dragIconKey && dragIconKey !== b.dataset.dock) ev.preventDefault(); });
+        b.addEventListener("drop", (ev) => {
+          ev.preventDefault(); ev.stopPropagation();
+          if (dragIconKey && dragIconKey !== b.dataset.dock) moveKeyToDock(dragIconKey, b.dataset.dock || null);
+        });
       });
-      document.addEventListener("keydown", (ev) => {
-        if (ev.key === "Escape" && !dripPop.classList.contains("hidden")) closeDripPop();
+      dockEl.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
+      dockEl.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        if (dragIconKey) moveKeyToDock(dragIconKey, null);
       });
     }
+    // B1: the layout bar — one control that closes the whole layout.    }
     // B1: the layout bar — one control that closes the whole layout. Shown only
     // while a layout's cards are on stage (any open card carries a layoutId).
     // Defined ABOVE layoutCards so there is no forward reference.
@@ -3185,8 +3305,15 @@ async function init(): Promise<void> {
     };
     const layoutCards = (): void => {
       const n = openList.length;
+      // COMPOSER VISIBILITY FIRST — the band measures the composer live, so
+      // this must land BEFORE any rect math. A layout HOSTING the agent
+      // removes the center composer (its cells then get the full height —
+      // "full screen"); without an agent cell the composer stays and the
+      // layout opens in the band ABOVE it. Toggling this after the rects
+      // (the old order) painted each state with the other's geometry.
+      const agentInLayout = openList.some((e) => e.layoutId != null && e.tile.kind === "agent");
+      document.body.classList.toggle("echo-agent-in-layout", agentInLayout);
       if (!n) { paintDividers(false); syncWallVisibility(); paintLayoutBar(); return; }   // no panels ⇒ no seams
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const grid = gridRects();
       const flow = flowRects(openList.filter((e) => !(grid && grid.has(e))));
       openList.forEach((e) => {
@@ -3196,7 +3323,9 @@ async function init(): Promise<void> {
         // via the layout bar (B1). A standalone app (no layoutId) keeps its X.
         e.card.classList.toggle("echo-card-in-layout", e.layoutId != null);
         if (e.card.classList.contains("expanded")) {
-          setRect(e.card, { left: 0, top: 0, width: w, height: h });
+          // Expanded = the whole BAND, never the whole stage — the top bar
+          // and the composer stay clear.
+          setRect(e.card, buildBand());
           return;
         }
         const r = grid?.get(e) ?? flow.get(e);
@@ -3212,7 +3341,6 @@ async function init(): Promise<void> {
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
     };
-    relayout = layoutCards;
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
      *  handles): dragging one reshapes the layout by shifting the fraction
      *  between the two neighbors, and the shape is remembered. */
@@ -3222,9 +3350,9 @@ async function init(): Promise<void> {
     const paintDividers = (on: boolean): void => {
       dividerLayer.innerHTML = "";
       if (!on || !echoGrid) return;
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
-      // MUST match gridRects: edge-to-edge, no outer margin
-      const x0 = 0, y0 = 0, W = w, H = h;
+      // MUST match gridRects: the grid lives in the BUILD BAND.
+      const band = buildBand();
+      const x0 = band.left, y0 = band.top, W = band.width, H = band.height;
       const norm = (a: number[]): number[] => { const t = a.reduce((x, y) => x + y, 0) || 1; return a.map((v) => v / t); };
       const cw = norm(echoGrid.colWidths);
       const pre = (a: number[], i: number): number => a.slice(0, i).reduce((x, y) => x + y, 0);
@@ -3303,11 +3431,15 @@ async function init(): Promise<void> {
     const paintFlowDividers = (cards: TileEntry[] | null): void => {
       dividerLayer.innerHTML = "";
       if (!cards || cards.length < 2) return;
-      const w = stage.clientWidth || 1, h = stage.clientHeight || 1, gap = 7;
+      // MUST mirror flowRects EXACTLY — the seams sit in the gaps between
+      // the band-placed cards, not in stage coordinates.
+      const band = buildBand();
+      const gap = 7;
       const cols = flowColumns(cards);
       syncFlowFracs(cols);
       const cwFr = normFr(flowColFr);
-      const availW = w - gap * (cols.length - 1);
+      const availW = band.width - gap * (cols.length - 1);
+      const w = band.width, h = band.height;
       const wireFlow = (el: HTMLElement, horiz: boolean, idx: number, colIdx: number): void => {
         el.addEventListener("mousedown", (ev) => {
           ev.preventDefault();
@@ -3337,21 +3469,21 @@ async function init(): Promise<void> {
           document.addEventListener("mouseup", onUp);
         });
       };
-      let x = 0;
+      let x = band.left;
       cols.forEach((col, ci) => {
         const colW = availW * cwFr[ci];
         if (ci > 0) {
           const el = document.createElement("div");
           el.className = "echo-div echo-div-v";
           el.style.left = `${x - gap + (gap - 8) / 2}px`;
-          el.style.top = "0px";
+          el.style.top = `${band.top}px`;
           el.style.height = `${h}px`;
           wireFlow(el, false, ci, 0);
           dividerLayer.appendChild(el);
         }
         const rhFr = normFr(flowRowFr.get(ci) ?? col.map(() => 1));
         const availH = h - gap * (col.length - 1);
-        let y = 0;
+        let y = band.top;
         col.forEach((_e, ri) => {
           const cellH = availH * rhFr[ri];
           if (ri > 0) {
@@ -3418,7 +3550,7 @@ async function init(): Promise<void> {
       if (e.tile.slug && card.querySelector("webview")) rpaYo().rpaUnregister?.(e.tile.slug);
       notifyOpenApps();
       // zoom BACK to the tile's spot (wherever the camera has it now)
-      setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());
+      setRect(card, iconRect(e) ?? centerRect());
       card.classList.remove("placed");
       card.style.pointerEvents = "none";
       const toolSlot = e.toolSlot;
@@ -3480,8 +3612,6 @@ async function init(): Promise<void> {
         echoActiveLayout = null;
         activeLayoutId = null;
         setShadow(false, false);
-        userMoved = false;
-        refit?.();
       }
       layoutCards();
     };
@@ -3645,7 +3775,7 @@ async function init(): Promise<void> {
         document.addEventListener("mouseup", onUp);
       });
       setShadow(false, false);
-      setRect(card, e.mesh ? projectRect(e.mesh) : centerRect());   // start AT the tile
+      setRect(card, iconRect(e) ?? centerRect());   // start AT the tile
       cardsLayer.appendChild(card);
       e.card = card;
       e.open = true;
@@ -3681,33 +3811,32 @@ async function init(): Promise<void> {
     /** Every agent adoption first sends the composer HOME — the Home page
      *  may be holding the footer (adoptComposer), and adopting the agent
      *  without it would show a chat with no input. */
+    /** The agent is the bottom composer by default — no card, no seat. The
+     *  old "open the agent" paths land here: make sure a session is live and
+     *  focus the input. Returns null (there is no tile entry to place). */
     const openAgentCard = (): TileEntry | null => {
       (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
-      return openAgentCard0();
+      ensureAgentSession();
+      (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
+      return null;
     };
-    const openAgentCard0 = (): TileEntry | null => {
-      // Already on screen (a coding panel, or its card): make sure it has a
-      // session and surface it — never a dead-end click.
-      if (codingHosted()) { ensureAgentSession(); return null; }
+    /** A LAYOUT's agent cell (his rule, 2026-08-18): the layout OWNS the
+     *  agent — it mounts as a PANEL (an echo card holding a placeholder the
+     *  overlay follows) and the CENTER composer leaves the screen while this
+     *  layout is live (paintLayoutBar toggles the class). Closing the layout
+     *  — or an app open that clears it (a PINNED cell captures those clicks,
+     *  so pinned layouts hold on) — parks the agent home and the composer
+     *  returns. */
+    const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
       if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }
       const entry = adHoc({ name: "Glyphh", slug: "glyphh-agent", kind: "agent" });
       const card = openShell(entry);
       if (!card) return null;
       card.classList.add("echo-agent-card");
-      // A DOCKED agent (global anchor) is PERMANENT — never host it as a card
-      // (the dock is its home). Only the in-workspace `rail` anchor hosts the
-      // agent as a card/seat: the body holds a PLACEHOLDER the overlay follows,
-      // never the agent node itself.
-      if (anchorMode() === "rail") {
-        card.querySelector<HTMLElement>(".echo-card-body")!.innerHTML =
-          `<div class="ws-agent-placeholder" data-agent-host="echo"></div>`;
-        scheduleAgentSync();
-      }
-      // The agent NEVER lands on an empty state: use the session that's up,
-      // else the most recent one, else start a fresh session. (Adoption runs
-      // FIRST so newChat's ensureCodeSection sees the hosted agent and
-      // doesn't bounce the surface.)
+      card.querySelector<HTMLElement>(".echo-card-body")!.innerHTML =
+        `<div class="ws-agent-placeholder" data-agent-host="echo"></div>`;
+      scheduleAgentSync();
       ensureAgentSession();
       return entry;
     };
@@ -3793,35 +3922,9 @@ async function init(): Promise<void> {
         } catch { mem = null; }
         const seenKeys = new Map<string, number>();
         const cells = [...layout.splits].sort((a, b) => (a.row - b.row) || (a.col - b.col));
-        // LAYOUT WINS the anchor battle: if this layout has an agent cell and the
-        // agent is currently docked, un-anchor it (NOT persisted — the saved dock
-        // pref is untouched) so the singleton mounts INTO the layout's cell. Remember
-        // the dock so resetEcho can put it back. A layout with NO agent cell hands
-        // the dock straight back (e.g. switching layouts).
-        const layoutHasAgent = cells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
-        // HIS RULE: switching FROM a live layout clears the WHOLE surface,
-        // the visible agent included. A rails-seated agent's coding slot
-        // closes either way — with an agent cell the incoming layout
-        // re-seats the singleton itself (openAgentCard's codingHosted check
-        // must not see the old seat and leave the agent stranded beside the
-        // grid); without one the agent stays parked home, hidden.
+        // (The anchor battle is GONE with the anchor system — the center
+        // agent stays on screen through a layout; agent cells are skipped.)
         if (wasInLayout && codingHosted()) closeAllOfView("coding");
-        if (layoutHasAgent) {
-          if (anchorMode() !== "rail") { anchorBeforeLayout = anchorMode(); applyAnchor("rail"); }
-        } else if (wasInLayout) {
-          // Full clear, agent included: a DOCKED agent dismisses — "none"
-          // hides the direct-child singleton (the dock CSS — never an
-          // orphan) and persists nothing (the saved pref re-docks at next
-          // boot) — instead of being handed back beside the incoming layout.
-          // The borrow note drops too, so this layout's own reset doesn't
-          // resurrect the dock. (The echo slot's rail is still up, so the
-          // "none" degrade guard doesn't fire.)
-          anchorBeforeLayout = null;
-          if (anchorMode() !== "rail" && anchorMode() !== "none") applyAnchor("none");
-        } else if (anchorBeforeLayout) {
-          applyAnchor(anchorBeforeLayout);
-          anchorBeforeLayout = null;
-        }
         const gridCells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> = [];
         for (const cell of cells) {
           const id = (cell.panelId || "").trim().toLowerCase();
@@ -3835,9 +3938,10 @@ async function init(): Promise<void> {
           let entry: TileEntry | null = null;
           if (id.startsWith("tool:")) {
             const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
-            // The agent cell always mounts now: a docked agent was un-anchored above
-            // so the layout owns it (layout wins), and `rail` hosts it as before.
-            if (v === "coding") entry = openAgentCard();
+            // The agent cell mounts the agent as a PANEL — the layout owns
+            // it, and the center composer steps off screen until the layout
+            // lets go.
+            if (v === "coding") entry = openAgentPanel();
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound" || v === "gband") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
@@ -4213,70 +4317,14 @@ async function init(): Promise<void> {
      *  stay in the persisted wall pref (resurrecting at next boot) and its
      *  cards would die without parking; the reset closes them properly,
      *  saves the layout's memory, and persists the now-empty wall. */
-    const agentVisibleOutsideWall = (): boolean => {
-      if (anchorMode() !== "rail") return true;   // docked — always on screen
-      // A rails coding seat (the overlay follows it). An Echo agent CARD is not
-      // a coding rail slot, so it correctly does NOT count.
-      return codingHosted();
-    };
-    /** THE OPEN RULE (his rule, both tiles + ctl.openApp's front door): the
-     *  agent is NOT visible outside the wall → the command center closes and
-     *  the agent opens INTO THE NEXT WORKSPACE SLOT — the same rails coding
-     *  seat every other host uses (placeSlot → renderCodingIntoSlot writes the
-     *  placeholder the overlay follows), never a fresh Echo card. ORDER IS
-     *  LOAD-BEARING: the wall closes FIRST, in the return rule's leak-safe order
-     *  (resetEcho closes cards properly and persists the empty wall;
-     *  closeEchoSurface then drops the echo slot). placeSlot while Echo still
-     *  owned the workspace was the historic agent-dump bug. codingHosted()
-     *  guards the double-place. */
-    const hostAgentInNextSlot = (): void => {
-      // The HOME landing may hold the live composer — reclaim it BEFORE the
-      // seat renders, so the coding slot's agent never shows with no input.
-      (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
-      resetEcho();
-      closeEchoSurface();
-      if (!codingHosted()) placeSlot(makeSlot("coding"));
-    };
-    /** THE GLYPHH CLICK (his rule, verbatim): the glyphh icon does EXACTLY
-     *  what the sidebar ＋ New Session does, in all situations — the SAME
-     *  function (`__glyphhNewSession` → newSessionInPlace), never copied
-     *  logic, so the two entries cannot drift. ONE exception: a LIVE LAYOUT
-     *  clears completely — cards (memory saved by the reset), wall, seat —
-     *  and the fresh agent session comes up ALONE. Every glyphh entry lands
-     *  here: the wall's fixed GLYPHH tile, the agent tile (one identity —
-     *  "Glyphh"), and ctl.openApp's front door. */
-    const activateGlyphh = (self?: TileEntry): void => {
-      const newSession = (): void => {
-        (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-      };
-      const layoutLive = activeLayoutId != null || echoLayoutName != null || openList.some((x) => x !== self && x.layoutId != null);
-      if (!openingLayout && layoutLive) {
-        // THE ONE EXCEPTION: in a layout, the glyphh click closes the layout
-        // and a FRESH agent session comes up completely by itself. The clear
-        // runs in the leak-safe order (resetEcho closes cards properly — an
-        // Echo-hosted agent survives via the forced park — and persists the
-        // empty wall; closeEchoSurface drops the echo slot; then the seat).
-        // A VISIBLE dock is the agent's home — clear the surface and let
-        // newSessionInPlace re-assert the dock; never steal it into a seat.
-        if (anchorMode() !== "rail" && anchorMode() !== "none") {
-          (window as unknown as { __adoptComposerHome?: () => void }).__adoptComposerHome?.();
-          resetEcho();
-          closeEchoSurface();
-          if (codingHosted()) closeAllOfView("coding");
-        } else {
-          hostAgentInNextSlot();
-        }
-        newSession();
-        return;
-      }
-      // No layout: EXACTLY the ＋ New Session path. Picking the tile dismisses
-      // the wall (agent already visible outside it); an unseated agent seats
-      // FIRST — newSessionInPlace's hosted check (and newChat's
-      // ensureCodeSection) must SEE the seated agent, the same
-      // adoption-before-session order openAgentCard keeps.
-      if (agentVisibleOutsideWall()) { resetEcho(); closeEchoSurface(); }
-      else hostAgentInNextSlot();
-      newSession();
+    /** THE GLYPHH CLICK (his rule, 2026-08-18): the glyphh icon does EXACTLY
+     *  what ＋ New Session does, in all situations — the SAME function
+     *  (`__glyphhNewSession` → newSessionInPlace), never copied logic. The
+     *  new-session posture is ONE thing now: everything on screen closes and
+     *  the agent comes up alone as a regular Echo panel (title + ✕) — see
+     *  __wbNewSessionPanel. No layout exception, no seat-hosting branch. */
+    const activateGlyphh = (_self?: TileEntry): void => {
+      (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
     };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
@@ -4291,36 +4339,15 @@ async function init(): Promise<void> {
         // fanning out its own cells, and a pin never retargets itself)
         const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
-        // B3, HARDENED (his rule): a LAYOUT is live and there is NO pinned
-        // slot → the app open clears the ENTIRE surface — the layout's cards
-        // (memory saved by the reset, so "last" resumes), the wall itself,
-        // AND the agent, rails-seated OR docked — and the app opens ALONE as
-        // a workspace panel via the canonical non-echo app slot (placeSlot →
-        // renderAppIntoSlot), never as a card on a wall the user just left.
-        // ORDER is hostAgentInNextSlot's leak-safe order: resetEcho closes
-        // cards properly (an Echo-hosted agent survives via the forced park)
-        // and persists the now-empty wall; closeEchoSurface drops the echo
-        // slot; the coding slot closes (renderRails parks the singleton
-        // home, where the rail default hides it); THEN the app slot lands —
-        // applyAnchor("none") must run AFTER it, since with no rail up it
-        // degrades to "rail". Without a layout, apps ACCUMULATE into the
-        // next flow slot exactly as before. This is THE rule for every open
-        // path: the wall tile click lands here directly, and ctl.openApp /
-        // openAppCard / the agent's open_app all route through this same
-        // function. NEVER during a layout fan-out (openingLayout guards the
-        // cells this same function builds).
+        // B3 (his rule, 2026-08-18): a LAYOUT is live and there is NO pinned
+        // slot → the click RESETS TO THE DEFAULT VIEW — the layout clears
+        // (memory saved by the reset, so "last" resumes), the composer
+        // returns — and the app opens as a normal centered card in the build
+        // band. Every single time. Without a layout, apps ACCUMULATE into
+        // the build pattern as before. NEVER during a layout fan-out
+        // (openingLayout guards the cells this same function builds).
         const layoutLive = activeLayoutId != null || echoLayoutName != null || openList.some((x) => x !== e && x.layoutId != null);
-        if (!openingLayout && layoutLive) {
-          resetEcho();
-          closeEchoSurface();
-          if (codingHosted()) closeAllOfView("coding");
-          placeSlot({ id: nextSlotId++, view: "app", slug: (t.slug || t.name).toLowerCase(), name: t.name, url: t.url || "", glyphh: t.glyphh, urlBarHidden: urlBarHiddenDefault() });
-          // A DOCKED agent dismisses cleanly: "none" hides the direct-child
-          // singleton (the dock CSS — never an orphan) and persists nothing,
-          // so the saved anchor pref re-docks it at next boot.
-          if (anchorMode() !== "rail" && anchorMode() !== "none") applyAnchor("none");
-          return;
-        }
+        if (!openingLayout && layoutLive) resetEcho();
         const card = openShell(e);
         if (!card) return;
         mountAppIntoCard(e, card);
@@ -4393,11 +4420,7 @@ async function init(): Promise<void> {
       const key = slug.trim().toLowerCase();
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
     };
-    const adHoc = (tile: EchoTile): TileEntry => {
-      const canvas = document.createElement("canvas");
-      const tex = new THREE.CanvasTexture(canvas);
-      return { tile, canvas, tex, img: null };
-    };
+    const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
     /** "Here it is" — surface a card the user just aimed at. Landing in an
      *  EXISTING card (a pinned slot, an already-open app) has to leave
      *  shadow mode just like opening a new one does, or the app they picked
@@ -4479,10 +4502,10 @@ async function init(): Promise<void> {
         if (x) closeCard(x, { keepSession: true });
       },
       openChat: () => {
-        // THE universal chat icon: whatever layout is up clears (its memory
-        // is saved by the reset) and the chat loads alone. Already alone →
-        // no reset, no flicker.
-        if (!(openList.length === 1 && openList[0]!.tile.kind === "agent")) resetEcho();
+        // THE universal chat move: whatever layout is up clears (its memory
+        // is saved by the reset) and the permanent bottom composer gets the
+        // focus — there is no agent card to open.
+        if (openList.length) resetEcho();
         void openAgentCard();
       },
       reset: () => resetEcho(),
@@ -4566,327 +4589,9 @@ async function init(): Promise<void> {
     echoCtl = ctl;
     notifyOpenApps();
 
-    const ray = new THREE.Raycaster();
-    const pick = (ev: MouseEvent): TileEntry | null => {
-      const r = stage.getBoundingClientRect();
-      const nd = new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -(((ev.clientY - r.top) / r.height) * 2 - 1));
-      ray.setFromCamera(nd, camera);
-      const hit = ray.intersectObjects(group.children, false).find((h) => h.object.visible)?.object;
-      return hit ? entries.find((e) => e.mesh === hit) ?? null : null;
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (!body.isConnected) { document.removeEventListener("keydown", onKey, true); return; }
-      // Esc leaves edit mode first — the wall stops jiggling.
-      if (e.key === "Escape" && editMode) {
-        e.stopPropagation();
-        e.preventDefault();
-        setEditMode(false);
-        return;
-      }
-      if (e.key === "Escape" && editMode) {
-        e.stopPropagation();
-        e.preventDefault();
-        setEditMode(false);
-        return;
-      }
-      if (!openList.length) return;
-      // SHADOW MODE — HOLD ⌃⌥ (Control+Option, one left hand): the open
-      // apps fade to ghosts and stop taking input so the wall behind is
-      // visible and clickable; release the keys (or Esc) and the cards come
-      // back. Clicking a tile while holding opens it. (⌘⇧ was retired: it
-      // prefixes half the app's shortcuts, so ⌘⇧P etc. flashed the veil.)
-      if ((e.key === "Control" || e.key === "Alt") && e.ctrlKey && e.altKey) {
-        cardsLayer.classList.add("echo-shadow");
-        syncWallVisibility();
-        return;
-      }
-      if (e.key !== "Escape") return;
-      // Esc handles the NON-destructive states only: shadow off, expanded
-      // back down. It no longer closes panels — Esc is real input to what's
-      // inside them (the CLI uses it to stop the agent), and eating it
-      // closed the very terminal the user was typing in. Close is the ✕ or
-      // ⌘W (the app menu's Close routes here before falling back to the
-      // window).
-      if (cardsLayer.classList.contains("echo-shadow")) {
-        e.stopPropagation();
-        e.preventDefault();
-        setShadow(false, false);
-        return;
-      }
-      const expanded = openList.find((x) => x.card?.classList.contains("expanded"));
-      if (expanded?.card) {
-        e.stopPropagation();
-        e.preventDefault();
-        collapseCard(expanded.card);
-        layoutCards();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    const onKeyUp = (e: KeyboardEvent): void => {
-      if (!body.isConnected) { document.removeEventListener("keyup", onKeyUp, true); return; }
-      if ((e.key === "Control" || e.key === "Alt") && !shadowPinned) { cardsLayer.classList.remove("echo-shadow"); syncWallVisibility(); }
-    };
-    document.addEventListener("keyup", onKeyUp, true);
-    // the rail's space tabs re-scope the wall live
-    const onSpaceChange = (): void => {
-      if (!body.isConnected) { window.removeEventListener("rail-space-changed", onSpaceChange); return; }
-      positionWall();
-    };
-    window.addEventListener("rail-space-changed", onSpaceChange);
-
-    // ── Pan (drag) + zoom (wheel / buttons); a still click opens the tile ──
-    const overUi = (t: EventTarget | null): boolean =>
-      t instanceof Element && !!t.closest(".echo-zoom, .echo-card");
-    stage.addEventListener("wheel", (e) => {
-      if (overUi(e.target)) return;
-      e.preventDefault();
-      userMoved = true;
-      dist += e.deltaY * 1.6;
-      applyCamera();
-    }, { passive: false });
-    /** Hold a tile and drag it: the icon follows the cursor along the wall,
-     *  the nearest tile marks the drop, and the new order is REMEMBERED —
-     *  the same gesture (and the same prefs) as the old command center.
-     *  The dock row and the apps/layouts band reorder; the workspace band
-     *  at the bottom is fixed. */
-    // ONE draggable band now (apps + layouts) — the old dock/tools bands are
-    // gone, and ccDock with them.
-    const MID_BAND = 0;
-    const bandOf = (e: TileEntry): number => wallBands.findIndex((b) => b.includes(e));
-    const draggableBand = (i: number): boolean => i === MID_BAND;
-    /** Glyphh owns the first slot — it never moves and nothing lands on it
-     *  (the command center locked it the same way). */
-    // The fixed GLYPHH tile is not draggable — it holds first place. (It also
-    // carries no orderKey, so it can never enter the persisted order.)
-    const movable = (e: TileEntry): boolean =>
-      e.tile.kind !== "agent" && e.tile.slug !== "glyphh-home" && draggableBand(bandOf(e));
-    const setEditMode = (on: boolean): void => {
-      if (editMode === on) return;
-      editMode = on;
-      for (const e of entries) {
-        drawTile(e);                       // paints (or clears) the ✕ badge
-        if (!on && e.mesh) e.mesh.rotation.z = 0;
-      }
-      dirty = true;
-    };
-    /** Delete what a tile stands for — the app or the layout — after the
-     *  standard confirm, then drop it off the wall. */
-    const deleteTile = (e: TileEntry): void => {
-      const t = e.tile;
-      if (!removable(t)) return;
-      void (async () => {
-        const ok = await appConfirm({
-          title: `Delete "${t.name}"?`,
-          body: t.kind === "layout"
-            ? "The workspace is removed from your library."
-            : "The app is removed from your library on every device.",
-          confirmLabel: "Delete",
-          danger: true,
-        });
-        if (!ok) return;
-        const yo = (window as unknown as { glyphh?: { panelAppsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; layoutsDelete?: (n: string) => Promise<boolean> } }).glyphh;
-        try {
-          if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
-          else if (t.appId) {
-            const res = await yo?.panelAppsDelete?.(t.appId);
-            if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }
-          }
-        } catch (err) {
-          console.warn(`[echo] delete "${t.name}" failed:`, err);
-          return;
-        }
-        const band = bandOf(e);
-        if (band >= 0) {
-          wallBands[band] = wallBands[band].filter((x) => x !== e);
-          persistOrder(band);
-        }
-        const gi = entries.indexOf(e);
-        if (gi >= 0) entries.splice(gi, 1);
-        if (e.mesh) {
-          group.remove(e.mesh);
-          e.mesh.geometry.dispose();
-          const m = e.mesh.material as THREE.MeshBasicMaterial;
-          m.map?.dispose();
-          m.dispose();
-          e.mesh = undefined;
-        }
-        positionWall();
-      })();
-    };
-    /** Did this click land on a tile's ✕ badge? (world hit → tile canvas) */
-    const hitBadge = (e: TileEntry, point: THREE.Vector3): boolean => {
-      if (!editMode || !e.mesh || !removable(e.tile)) return false;
-      const local = e.mesh.worldToLocal(point.clone());
-      const u = ((local.x + TILE_W / 2) / TILE_W) * TILE_PX_W;
-      const v = ((TILE_H / 2 - local.y) / TILE_H) * TILE_PX_H;
-      const bx = (TILE_PX_W - 56) / 2 + 1, by = 11;
-      return Math.hypot(u - bx, v - by) <= BADGE_R + 5;
-    };
-    const persistOrder = (band: number): void => {
-      const yo = (window as unknown as { glyphh?: { setPreference?: (k: string, v: unknown) => Promise<unknown> } }).glyphh;
-      const keys = (wallBands[band] ?? []).map((x) => x.tile.orderKey).filter((k): k is string => !!k);
-      if (band === MID_BAND) {
-        void yo?.setPreference?.("ccIconOrder", keys);
-        // the LEFT RAIL mirrors this order — tell it to repaint now
-        window.dispatchEvent(new CustomEvent("glyphh:cc-order-changed", { detail: keys }));
-      }
-    };
-    // an invisible cylinder at the wall's radius — the drag rides its surface
-    const dragSurface = new THREE.Mesh(
-      new THREE.CylinderGeometry(R, R, 20000, 48, 1, true),
-      new THREE.MeshBasicMaterial({ visible: false, side: THREE.BackSide }),
-    );
-    scene.add(dragSurface);
-    const wallPoint = (ev: MouseEvent): THREE.Vector3 | null => {
-      const rc = stage.getBoundingClientRect();
-      ray.setFromCamera(new THREE.Vector2(((ev.clientX - rc.left) / rc.width) * 2 - 1, -(((ev.clientY - rc.top) / rc.height) * 2 - 1)), camera);
-      return ray.intersectObject(dragSurface, false)[0]?.point ?? null;
-    };
-    let dropTarget: TileEntry | null = null;
-    let dwellTimer = 0;
-    let reordered = false;   // a dwell already moved it — the drop is a no-op
-    const markDrop = (next: TileEntry | null): void => {
-      if (dropTarget === next) return;
-      if (dropTarget?.mesh) dropTarget.mesh.scale.set(1, 1, 1);
-      dropTarget = next;
-      if (dropTarget?.mesh) dropTarget.mesh.scale.set(0.86, 0.86, 1);
-      dirty = true;
-    };
-    const endWallDrag = (): void => {
-      if (!dragEntry) return;
-      window.clearTimeout(dwellTimer);
-      const from = bandOf(dragEntry);
-      const to = dropTarget ? bandOf(dropTarget) : -1;
-      if (reordered && !dropTarget) {
-        persistOrder(from);
-      } else if (dropTarget && dropTarget !== dragEntry && movable(dragEntry) && movable(dropTarget)) {
-        const fromIdx = wallBands[from].indexOf(dragEntry);
-        wallBands[from].splice(fromIdx, 1);
-        const at = wallBands[to].indexOf(dropTarget);
-        wallBands[to].splice(at < 0 ? wallBands[to].length : at, 0, dragEntry);
-        persistOrder(from);
-        if (to !== from) persistOrder(to);
-      }
-      markDrop(null);
-      dragEntry.mesh?.scale.set(1, 1, 1);
-      dragEntry = null;
-      reordered = false;
-      positionWall();
-    };
-
-    // Hover highlight — ring the tile under the cursor in the theme's
-    // highlight ink (white by default) and show a pointer. Suppressed while
-    // a reorder drag is riding the cursor.
-    const setHover = (next: TileEntry | null): void => {
-      if (next === hoverEntry) return;
-      const prev = hoverEntry;
-      hoverEntry = next;
-      if (prev) drawTile(prev);
-      if (next) drawTile(next);
-      stage.style.cursor = next ? "pointer" : "";
-    };
-    stage.addEventListener("mousemove", (e) => {
-      if (dragEntry) { setHover(null); return; }
-      setHover(overUi(e.target) ? null : pick(e));
-    });
-    stage.addEventListener("mouseleave", () => setHover(null));
-
-    stage.addEventListener("mousedown", (e) => {
-      if (e.button !== 0 || overUi(e.target)) return;
-      const sx = e.clientX, sy = e.clientY, syaw = yaw, syOff = yOff;
-      let moved = false;
-      // press-and-hold a tile arms the reorder drag (a plain drag still pans)
-      const held = pick(e);
-      let holdArmed = false;
-      const holdTimer = window.setTimeout(() => {
-        if (moved || !held || !movable(held)) return;
-        holdArmed = true;
-        setEditMode(true);          // the whole wall starts jiggling
-        dragEntry = held;
-        held.mesh!.rotation.z = 0;
-        held.mesh?.scale.set(1.14, 1.14, 1);
-        dirty = true;
-      }, 220);
-      const onMove = (ev: MouseEvent): void => {
-        if (dragEntry) {
-          // carry the tile along the wall + mark the nearest neighbour
-          const p = wallPoint(ev);
-          if (p && dragEntry.mesh) {
-            const theta = Math.atan2(p.x, -p.z);
-            dragEntry.mesh.position.set((R - 90) * Math.sin(theta), p.y, -(R - 90) * Math.cos(theta));
-            dragEntry.mesh.rotation.set(0, -theta, 0);
-            let best: TileEntry | null = null, bestD = Infinity;
-            for (const other of entries) {
-              if (other === dragEntry || !other.mesh || !movable(other)) continue;
-              const d = other.mesh.position.distanceTo(dragEntry.mesh.position);
-              if (d < bestD) { bestD = d; best = other; }
-            }
-            const next = bestD < TILE_W * 1.6 ? best : null;
-            if (next !== dropTarget) {
-              markDrop(next);
-              // linger over a neighbour and the wall reflows around you
-              window.clearTimeout(dwellTimer);
-              if (next) {
-                dwellTimer = window.setTimeout(() => {
-                  if (!dragEntry || !dropTarget) return;
-                  const from = bandOf(dragEntry), to = bandOf(dropTarget);
-                  if (!movable(dragEntry) || !movable(dropTarget) || from < 0 || to < 0) return;
-                  wallBands[from].splice(wallBands[from].indexOf(dragEntry), 1);
-                  const at = wallBands[to].indexOf(dropTarget);
-                  wallBands[to].splice(at < 0 ? wallBands[to].length : at, 0, dragEntry);
-                  const carried = dragEntry;
-                  positionWall();                    // the others slide over
-                  carried.mesh?.scale.set(1.14, 1.14, 1);
-                  markDrop(null);
-                  reordered = true;
-                }, 600);
-              }
-            }
-            dirty = true;
-          }
-          return;
-        }
-        if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) moved = true;
-        if (!moved || holdArmed) return;
-        userMoved = true;
-        yaw = syaw + (ev.clientX - sx) * 0.0022;
-        yOff = syOff + (ev.clientY - sy) * 1.4;
-        applyCamera();
-      };
-      const onUp = (ev: MouseEvent): void => {
-        window.clearTimeout(holdTimer);
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        if (dragEntry) { endWallDrag(); return; }
-        if (moved) return;
-        // in edit mode the ✕ deletes, and a click anywhere else leaves it
-        if (editMode) {
-          const rcp = stage.getBoundingClientRect();
-          ray.setFromCamera(new THREE.Vector2(((ev.clientX - rcp.left) / rcp.width) * 2 - 1, -(((ev.clientY - rcp.top) / rcp.height) * 2 - 1)), camera);
-          const hit = ray.intersectObjects(group.children, false)[0];
-          const hitEntry = hit ? entries.find((x) => x.mesh === hit.object) : null;
-          if (hitEntry && hitBadge(hitEntry, hit!.point)) { deleteTile(hitEntry); return; }
-          setEditMode(false);
-          return;
-        }
-        let entry = pick(ev);
-        if (!entry) return;
-        // Terminal and Browser are MULTI-INSTANCE: every click mints a new
-        // card (a fresh entry keyed off the same wall tile, so the zoom
-        // still starts from the tile).
-        if (entry.tile.toolView === "terminal" || entry.tile.toolView === "preview") {
-          const canvas = document.createElement("canvas");
-          const tex = new THREE.CanvasTexture(canvas);
-          entry = { tile: { ...entry.tile }, canvas, tex, img: null, mesh: entry.mesh };
-        }
-        activateTile(entry);
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
-    body.querySelector(".echo-z-in")!.addEventListener("click", () => { userMoved = true; dist -= 280; applyCamera(); });
-    body.querySelector(".echo-z-out")!.addEventListener("click", () => { userMoved = true; dist += 280; applyCamera(); });
-    // RESET = back to the bare wall: every panel closes (the layout lets go
+    // (The 3D pick/pan/edit machinery is GONE — flat icons handle their own
+    // clicks and HTML5 drags; the dock/pages trade instead of deleting.)
+        // RESET = back to the bare wall: every panel closes (the layout lets go
     // too), shadow clears, and the camera re-fits. The rail's reset buttons
     // call the same thing through echoCtl.reset.
     const resetEcho = (): void => {
@@ -4898,20 +4603,14 @@ async function init(): Promise<void> {
       echoActiveLayout = null;
       activeLayoutId = null;
       setShadow(false, false);
-      userMoved = false;
-      refit?.();
-      // The layout that borrowed the dock is gone — give the anchor back.
-      if (anchorBeforeLayout) { applyAnchor(anchorBeforeLayout); anchorBeforeLayout = null; }
       scheduleWallSave();   // the wall was cleared — persist the empty state
     };
     body.querySelector(".echo-z-reset")!.addEventListener("click", resetEcho);
 
-    // Teardown: free the GL context and every tile's geometry/texture.
+    // Teardown: release parked terminals + our controller registration.
     const obs = new MutationObserver(() => {
       if (body.isConnected) return;
       obs.disconnect();
-      ro.disconnect();
-      themeObs.disconnect();
       // Parked terminals live in THIS surface's closure — if the surface
       // itself goes, their ptys have no way back and must not linger.
       for (const slot of parkedTerms.values()) {
@@ -4925,17 +4624,6 @@ async function init(): Promise<void> {
         echoActiveLayout = null;
         notifyOpenApps();
       }
-      for (const root of [group, dragSurface]) {
-        root.traverse((o) => {
-          if (o instanceof THREE.Mesh) {
-            o.geometry.dispose();
-            const m = o.material as THREE.MeshBasicMaterial;
-            m.map?.dispose();
-            m.dispose();
-          }
-        });
-      }
-      renderer.dispose();
     });
     obs.observe(document.getElementById("code-wb-rails") ?? document.body, { childList: true, subtree: true });
   }
@@ -5047,10 +4735,14 @@ async function init(): Promise<void> {
    *  anchor is a dock (or nothing hosts the agent) the loop parks the agent home
    *  and stops; a fresh placeholder re-arms it via `scheduleAgentSync`. */
   function syncAgentView(): void {
+    // TWO homes, no docking: a LAYOUT's agent cell hosts a placeholder the
+    // overlay follows (the full agent — head, thread, composer — rides in
+    // the holder over the cell); with no placeholder the agent parks home as
+    // `.code-root`'s direct child, where the center CSS renders it as the
+    // bottom composer (or hides it while a layout is live).
     ensureAgentLayer();
     const agent = document.querySelector<HTMLElement>(".code-agent");
-    const docked = anchorMode() !== "rail";
-    const ph = docked ? null : activeAgentPlaceholder();
+    const ph = activeAgentPlaceholder();
     if (agent && ph && agentHolder) {
       if (agent.parentElement !== agentHolder) agentHolder.appendChild(agent);
       const rect = ph.getBoundingClientRect();
@@ -5062,7 +4754,7 @@ async function init(): Promise<void> {
       agentSyncRaf = requestAnimationFrame(syncAgentView);
     } else {
       if (agentHolder) agentHolder.style.display = "none";
-      parkAgentHome();   // dock CSS shows it; the rail default hides it
+      parkAgentHome();
       agentSyncRaf = 0;
     }
   }
@@ -8222,14 +7914,12 @@ async function init(): Promise<void> {
   // that math — the anchor module asks for a reflow rather than duplicating it.
   (wbApp as { __wbReflow?: () => void }).__wbReflow = () => { applyResponsiveWidths(); };
   // Re-home the agent to `.code-root`'s direct child — the ONLY DOM spot the
-  // dock CSS (`.code-root[data-anchor] > .code-agent`) can style. applyAnchor()
-  // calls this whenever the anchor is a dock mode, so PICKING the dock lands the
-  // agent in its flex home; the overlay reconciler sees a non-`rail` anchor and
-  // parks it there (and hides the overlay holder). Lightweight (no render).
+  // bottom-composer CSS (`.code-root[data-anchor="center"] > .code-agent`)
+  // can style. applyAnchor() calls this at boot. Lightweight (no render).
   (wbApp as { __wbParkAgent?: () => void }).__wbParkAgent = () => {
     parkAgentHome();
-    // Docked → any Echo agent card is now a placeholder husk. Close it
-    // (session stays alive) so a docked agent isn't shadowed by a blank panel.
+    // Any stale Echo agent card is a placeholder husk — close it (session
+    // stays alive) so the composer isn't shadowed by a blank panel.
     echoCtl?.detachAgent();
     scheduleAgentSync();
   };
@@ -8337,6 +8027,23 @@ async function init(): Promise<void> {
   (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset = () => {
     openEchoSurface();
     echoCtl?.reset();
+  };
+  // THE NEW-SESSION POSTURE (his rule, 2026-08-18): everything that is
+  // showing closes — every non-echo rails slot (seats, app panels) and every
+  // Echo card/layout — leaving the bare wall and the permanent bottom
+  // composer, focused and empty. newSessionInPlace calls this after it
+  // empties the thread state.
+  (window as unknown as { __wbNewSessionPanel?: () => void }).__wbNewSessionPanel = () => {
+    const ids = rails.flatMap((r) => r.slots.filter((s) => s.view !== "echo").map((s) => s.id));
+    for (const id of ids) closeSlot(id);
+    openEchoSurface();
+    let tries = 0;
+    const go = (): void => {
+      if (!echoCtl) { if (tries++ < 40) requestAnimationFrame(go); return; }
+      echoCtl.reset();
+      echoCtl.openChat();   // → focuses the bottom composer
+    };
+    go();
   };
   // (__wbCloseAllForNewSession is gone with newSessionLanding — the ONE
   // new-session path is newSessionInPlace via __glyphhNewSession, and the
