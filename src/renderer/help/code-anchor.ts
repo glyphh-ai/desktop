@@ -57,9 +57,38 @@ export function applyAnchor(): void {
 
 export function isPeeking(): boolean { return root()?.classList.contains("peeking") ?? false; }
 
+/**
+ * Size + place the open panel CONNECTED to the input (his rule, 2026-08-19):
+ * exactly the pill's width, and pulled DOWN so its bottom edge tucks BEHIND
+ * the input card (the card sits at a higher z, so the panel reads as growing
+ * out of it). The card's width moves with the side band, so this measures at
+ * open time and on resize instead of hardcoding the geometry in CSS.
+ */
+function fitPeek(): void {
+  const agent = root()?.querySelector<HTMLElement>(".code-agent");
+  // Align to the OUTER fused pill (.code-pill-row) — the panel must sit
+  // EXACTLY over the shape it connects to, edge for edge.
+  const card = agent?.querySelector<HTMLElement>(".code-pill-row")
+    ?? agent?.querySelector<HTMLElement>(".code-input-card");
+  const thread = byId("code-thread");
+  if (!agent || !card || !thread) return;
+  const a = agent.getBoundingClientRect();
+  const c = card.getBoundingClientRect();
+  thread.style.left = `${Math.round(c.left - a.left)}px`;
+  thread.style.width = `${Math.round(c.width)}px`;
+  thread.style.transform = "none";                                  // beats the CSS centering fallback
+  thread.style.bottom = `${Math.round(a.bottom - c.bottom + 8)}px`; // bottom edge BEHIND the pill
+  thread.style.paddingBottom = `${Math.round(c.height + 10)}px`;    // content clears the overlapping pill
+}
+const refitPeek = (): void => { if (isPeeking()) fitPeek(); };
+window.addEventListener("resize", refitPeek);
+
 export function closePeek(): void {
   root()?.classList.remove("peeking");
   document.body.classList.remove("peek-open");
+  // Drop the measured geometry so the closed thread returns to its CSS state.
+  const thread = byId("code-thread");
+  if (thread) { thread.style.left = ""; thread.style.width = ""; thread.style.transform = ""; thread.style.bottom = ""; thread.style.paddingBottom = ""; }
 }
 
 export function togglePeek(): void {
@@ -74,9 +103,12 @@ export function togglePeek(): void {
   const open = el.classList.toggle("peeking");
   document.body.classList.toggle("peek-open", open);
   if (open) {
+    fitPeek();
     const thread = byId("code-thread");
     if (thread) thread.scrollTop = thread.scrollHeight;
     byId("code-status-line")?.classList.remove("has-unread");
+  } else {
+    closePeek();   // one close path: also clears the measured geometry
   }
 }
 

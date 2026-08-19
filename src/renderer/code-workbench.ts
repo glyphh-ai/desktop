@@ -1985,10 +1985,7 @@ async function init(): Promise<void> {
         </button>
       </div>
       <div class="echo-cards"></div>
-      <div class="echo-zoom">
-        <button class="ws-icon-btn echo-z-reset" title="Reset — close every panel, back to the command center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg></button>
-        <button class="ws-icon-btn echo-shadow-btn" title="Show the wall (hold ⌃⌥)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></button>
-      </div>`;
+`;
     const stage = body.querySelector<HTMLElement>(".echo-stage")!;
     wrap.dataset.view = "echo";
 
@@ -3135,33 +3132,41 @@ async function init(): Promise<void> {
       };
       try { localStorage.setItem(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
     };
-    // Shadow can be HELD (⌃⌥) or PINNED (the eye button) — a pin survives
-    // modifier keyups; opening/closing the last card or Esc clears both.
-    const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn")!;
+    // Shadow can be HELD (⌃⌥) or PINNED (the composer band's CC button) — a
+    // pin survives modifier keyups; opening/closing the last card or Esc
+    // clears both. The pin state rides a BODY class so the composer band's
+    // button (help/code.ts DOM, a different layer) can mirror it.
     let shadowPinned = false;
     const setShadow = (on: boolean, pin: boolean): void => {
       shadowPinned = on && pin;
       cardsLayer.classList.toggle("echo-shadow", on);
-      shadowBtn.classList.toggle("active", shadowPinned);
+      document.body.classList.toggle("echo-cc-pinned", shadowPinned);
       // Pull focus out of any app webview so Esc reaches the document —
       // without this, Esc "didn't work" whenever an app had keyboard focus.
       if (on) {
         (document.activeElement as HTMLElement | null)?.blur?.();
         stage.focus?.();
       }
-      // the header's command-center eye mirrors the pin state
       syncWallVisibility();
     };
-    shadowBtn.addEventListener("click", () => {
-      if (!openList.length) return;
-      setShadow(!shadowPinned, !shadowPinned);
-    });
-    // The HEADER's command-center button (beside the rail toggle) is the same
-    // eye: it pin-toggles the shadow so the wall shows over the open cards.
+    // The composer band's command-center button (help/code.ts) is the eye: it
+    // pin-toggles the shadow so the wall shows over the open cards.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
       if (!openList.length) return;
       setShadow(!shadowPinned, !shadowPinned);
     };
+    // ESC closes the lifted command center when apps/a layout are open behind
+    // it (his rule, 2026-08-19). Deliberately DEFERS to more local Escapes:
+    // an open peek, menu, or icon-edit mode eats the key first.
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape" || !body.isConnected) return;
+      if (!cardsLayer.classList.contains("echo-shadow") || !openList.length) return;
+      if (document.body.classList.contains("peek-open")) return;
+      if (document.querySelector(".ws-tab-ctx-menu")) return;
+      if (iconEditMode) return;
+      ev.stopPropagation();
+      setShadow(false, false);
+    }, true);
     const EXPAND_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const COLLAPSE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
     const collapseCard = (card: HTMLElement): void => {
@@ -3364,8 +3369,10 @@ async function init(): Promise<void> {
         if (r.height > 0) top = Math.max(top, r.bottom - stageR.top + margin);
       }
       let bottom = h - margin;
+      // Over open cards the agent is TUCKED (overlay, no reserved height); on
+      // the visible command center it is seated and keeps its room.
       const agent = document.querySelector<HTMLElement>('.code-root[data-anchor="center"] > .code-agent');
-      if (agent) {
+      if (agent && !document.body.classList.contains("echo-wall-covered")) {
         const r = agent.getBoundingClientRect();
         if (r.height > 0) bottom = Math.min(bottom, r.top - stageR.top - margin);
       }
@@ -3450,18 +3457,15 @@ async function init(): Promise<void> {
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
       const autoHideOn = document.body.classList.contains("echo-dock-autohide");
       if (bar) bar.style.visibility = (!hidden || !autoHideOn) ? "" : "hidden";
-      // The command (wall) button in the bottom-right zoom cluster only makes
-      // sense while panels COVER the wall — with the command center already
-      // showing it has nothing to reveal, so it hides.
-      // The CC (wall) button shows only over LOOSE cards — a live LAYOUT
-      // owns the surface (no dock, no wall reveal), so it hides there.
-      const shadowBtn = body.querySelector<HTMLElement>(".echo-shadow-btn");
-      if (shadowBtn) shadowBtn.style.display = (cardsUp && !layoutUp) ? "" : "none";
-      // RESET rides with the CC button (his rule, 2026-08-19): visible over
-      // loose cards, hidden while a LAYOUT owns the surface — the layout bar's
-      // own close is the exit there.
-      const resetBtn = body.querySelector<HTMLElement>(".echo-z-reset");
-      if (resetBtn) resetBtn.style.display = (cardsUp && !layoutUp) ? "" : "none";
+      // The CC + reset buttons live in the COMPOSER'S side band now (help/
+      // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
+      // live LAYOUT owns the surface (no dock, no wall reveal) and the layout
+      // bar's own close is the exit there.
+      document.body.classList.toggle("echo-cc-needed", cardsUp && !layoutUp);
+      // The composer NEVER hides while the echo panel is showing (his rule,
+      // 2026-08-19) — it tucks to the page bottom ONLY when cards fully cover
+      // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
+      document.body.classList.toggle("echo-wall-covered", hidden && !layoutUp);
     };
     // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
     // page). The search bar is gone; drips moved onto the composer card
@@ -4844,7 +4848,9 @@ async function init(): Promise<void> {
       setShadow(false, false);
       scheduleWallSave();   // the wall was cleared — persist the empty state
     };
-    body.querySelector(".echo-z-reset")!.addEventListener("click", resetEcho);
+    // The composer band's reset button (help/code.ts DOM) — close every
+    // panel, back to the bare command center.
+    (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset = resetEcho;
 
     // Teardown: release parked terminals + our controller registration.
     const obs = new MutationObserver(() => {
@@ -4982,8 +4988,9 @@ async function init(): Promise<void> {
     ensureAgentLayer();
     const agent = document.querySelector<HTMLElement>(".code-agent");
     const ph = activeAgentPlaceholder();
+    const seatMic = (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic;
     if (agent && ph && agentHolder) {
-      if (agent.parentElement !== agentHolder) agentHolder.appendChild(agent);
+      if (agent.parentElement !== agentHolder) { agentHolder.appendChild(agent); seatMic?.(); }
       const rect = ph.getBoundingClientRect();
       agentHolder.style.display = "";
       agentHolder.style.left = `${Math.round(rect.left)}px`;
@@ -4994,6 +5001,7 @@ async function init(): Promise<void> {
     } else {
       if (agentHolder) agentHolder.style.display = "none";
       parkAgentHome();
+      seatMic?.();
       agentSyncRaf = 0;
     }
   }

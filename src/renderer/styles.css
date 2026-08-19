@@ -13579,15 +13579,6 @@ select:focus {
 .code-chip.code-mic-chip.transcribing { opacity: 0.55; }
 @keyframes code-mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); } }
 /* The caret that opens the mic device/mode drop-up — a slim sibling of the chip. */
-.code-chip.code-mic-caret {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 3px;
-  margin-left: -2px;
-  color: var(--text-3);
-}
-.code-chip.code-mic-caret:hover { color: var(--text); }
 /* Mic drop-up extras: a divider + the "Hold to record" toggle row. */
 .code-drop-sep { height: 1px; background: var(--border-2); margin: 6px 0; }
 .code-drop-item.code-drop-toggle { justify-content: space-between; gap: 10px; }
@@ -16105,17 +16096,6 @@ body.code-dragging webview { pointer-events: none !important; }
 .echo-stage canvas { display: block; }
 
 /* Zoom controls, bottom-right over the scene. */
-.echo-zoom {
-  position: absolute; right: 14px; bottom: 14px; z-index: 40;
-  display: flex; flex-direction: column; gap: 6px;
-}
-.echo-zoom .ws-icon-btn {
-  width: 30px; height: 30px; border-radius: 8px; color: var(--text-2);
-  border: 1px solid var(--border-2);
-  background: var(--surface-2);
-}
-.echo-zoom .ws-icon-btn:hover { color: var(--text); background: var(--hover); }
-.echo-zoom .ws-icon-btn.active { color: var(--accent); border-color: var(--accent); }
 /* Keep only the command icon (.echo-shadow-btn = "show the wall"); hide the
    zoom in/out/reset trio. The elements STAY in the DOM so their click handlers
    (bound later via querySelector(...)!.addEventListener) don't null-throw. */
@@ -16139,7 +16119,6 @@ body.code-dragging webview { pointer-events: none !important; }
   cursor: pointer;
 }
 .code-gate-note:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); }
-.echo-zoom svg { width: 15px; height: 15px; }
 
 /* The VEIL — with cards open the wall fades back behind a slightly darker
    wash (the old layout-manager feel); ⌘⇧ / the eye lifts it. */
@@ -16287,10 +16266,6 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* ── DOCK AUTO-HIDE: hidden until the top edge is hovered ── */
 /* MAGNIFICATION — a super smooth follow on every slot (JS sets the scale). */
 /* The command-center (wall) button + the RESET above it — equal peers. */
-.echo-zoom .ws-icon-btn.echo-shadow-btn,
-.echo-zoom .ws-icon-btn.echo-z-reset { width: 46px; height: 46px; }
-.echo-zoom .ws-icon-btn.echo-shadow-btn svg,
-.echo-zoom .ws-icon-btn.echo-z-reset svg { width: 26px; height: 26px; }
 
 .echo-dock-btn { transform-origin: top center; transition: transform 0.2s cubic-bezier(0.25, 0.9, 0.3, 1), box-shadow 0.12s ease; will-change: transform; }
 .echo-app-btn {
@@ -16513,6 +16488,21 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   max-width: 70%;
 }
 .echo-layout-bar.hidden { display: none; }
+/* AUTO-HIDE while a layout shows (his rule, 2026-08-19): the bar tucks up
+   into the header leaving a sliver; hovering the top edge slides it down. */
+.echo-layout-bar:not(.hidden) {
+  transition: transform 0.22s ease, opacity 0.22s ease;
+  transform: translate(-50%, calc(-100% + 8px));
+  opacity: 0.35;
+}
+.echo-layout-bar:not(.hidden):hover,
+.echo-layout-bar:not(.hidden):focus-within {
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+.glyphh-web .echo-layout-bar:not(.hidden) { transform: translate(-50%, calc(-100% + 8px)) !important; }
+.glyphh-web .echo-layout-bar:not(.hidden):hover,
+.glyphh-web .echo-layout-bar:not(.hidden):focus-within { transform: translateX(-50%) !important; }
 .echo-layout-bar-name {
   font-size: 12px; font-weight: 600; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -17132,6 +17122,13 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-input-card {
   display: flex;
   flex-direction: column;
+  /* Above the peek thread (z 2): the backdrop-filter makes this card a
+     stacking context, so every chip drop-up inside is layered at the CARD's
+     level — without this the open thread painted over the model/loop/
+     permission menus (his screenshot, 2026-08-19). The card and thread never
+     overlap; only the upward-growing menus do. */
+  position: relative;
+  z-index: 3;
   padding: 4px 10px 8px;
   border: 1px solid var(--border);
   border-radius: 17px;
@@ -17165,11 +17162,12 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-agent-toprow { display: flex; align-items: center; gap: 2px; padding: 0 6px 4px; }
 .code-agent-toprow .code-status-line { flex: 1; width: auto; }
 
-/* TYPING GLOW — the theme's accent breathing around the input card while
-   keys land. Pure var(--accent) mixes, so every theme owns its own halo. */
-.code-composer.typing-glow .code-input-card {
+/* TYPING GLOW — the theme's accent breathing around the OUTER ring while
+   keys land (the inner cap stays quiet). Pure var(--accent) mixes, so every
+   theme owns its own halo. The holder-hosted agent (no pill row) keeps the
+   glow on its card via the .ws-agent-holder rule. */
+.code-root[data-anchor="center"] > .code-agent .code-composer.typing-glow .code-pill-row {
   animation: composer-glow 1.6s ease-in-out infinite;
-  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
 }
 @keyframes composer-glow {
   0%, 100% {
@@ -17202,10 +17200,224 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 .code-status-line[hidden] { display: none; }
 .code-status-line:hover { color: var(--text); }
 .code-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.code-status-line .code-peek-caret { flex-shrink: 0; opacity: 0.7; }
 .code-status-line.is-running { color: var(--text); }
 .code-status-line.is-blocked { border-left: 2px solid var(--accent); padding-left: 14px; }
-.code-status-line.has-unread .code-peek-caret { opacity: 1; color: var(--accent); }
+
+/* ── Agent OVERLAY + AUTO-HIDE over open apps (his rule, 2026-08-19) ─────────
+   With loose app cards open (anything but the bare command center or a
+   layout — exactly body.echo-cc-needed), the composer rides ON TOP of the
+   web content and HIDES at the page bottom: a 16px sliver stays hoverable,
+   and hovering (or keyboard focus, or the open thread panel) slides it up
+   over the apps. The workbench's buildBand skips the composer in this state,
+   so the cards take the full height beneath it. */
+.code-root[data-anchor="center"] > .code-agent { transition: transform 0.24s ease; }
+/* NEVER hidden while the echo panel shows (his rule, 2026-08-19): the
+   composer tucks to the page bottom ONLY when cards fully cover the wall
+   (body.echo-wall-covered, workbench-driven). BOTH states keep the
+   translateX(-50%) centering — the base positioning is left:50% + translateX,
+   so a Y-only transform here shoved it hard right. */
+body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent {
+  transform: translate(-50%, calc(100% - 16px));
+}
+body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:hover,
+body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:focus-within,
+body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent {
+  transform: translateX(-50%);
+}
+/* Tucked: the agent-output row (status line) hides with it — only the
+   grabber marks the sliver; summoning brings the row back. */
+body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within) .code-agent-toprow {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent .code-agent-toprow { opacity: 1; }
+/* The grabber — a small bar marking the hidden composer's hover sliver. */
+body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within)::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-3) 60%, transparent);
+}
+
+/* ── The PILL composer (his reference, 2026-08-19: the Gemini bar) ──────────
+   Center-anchored only: the card collapses to ONE row — [+] input [mic] [⏎] —
+   wearing a multicolor gradient ring, with a SIDE BAND to the right of the
+   enter button holding the options caret (expands the full controls) and the
+   command-center / reset buttons when panels cover the wall. The holder-hosted
+   agent (layout cells) keeps the full arrangement. */
+/* TWO EQUAL PILLS (his mock, 2026-08-19): the button pill is the SAME size
+   as the input pill, sits UNDER it, shifted right. The gradient ring lives on
+   the OUTSIDE of the composite silhouette only; the input's own cap — the
+   INTERNAL ring — is a thin gray/white line. */
+.code-root[data-anchor="center"] > .code-agent .code-pill-row {
+  position: relative;
+  z-index: 3;   /* above the connected peek panel (z 2) — it tucks BEHIND */
+  display: flex;
+  align-items: stretch;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  /* The glow rides the THEME's shadow token — light themes carry a much
+     softer value than the old hardcoded dark rgba. */
+  box-shadow: 0 8px 26px var(--shadow);
+}
+.code-root[data-anchor="center"] > .code-agent .code-pill-row:has(.code-input-card.options-open) { border-radius: 24px; }
+.code-root[data-anchor="center"] > .code-agent .code-pill-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--accent) 82%, #4c8dff),
+    #4285f4 30%, #2bbf8f 62%, #f2a83c 94%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 4;   /* the outer ring rides over BOTH pills */
+}
+.code-root[data-anchor="center"] > .code-agent .code-input-card {
+  position: relative;
+  z-index: 2;   /* the input pill sits ON TOP of the button pill */
+  flex: 1;
+  min-width: 0;
+  /* The INTERNAL ring: thin, gray-white — the gradient belongs to the
+     composite's outside edge only (the row's ring). */
+  /* Theme-robust internal ring: white-mixed vanished on light themes once
+     the shadow stopped faking the seam — mix toward the theme's INK instead. */
+  border: 1px solid color-mix(in srgb, var(--text) 26%, var(--border));
+  border-radius: 999px;
+  padding: 5px 8px;
+  /* ONE surface for both sections: the row paints it — the card adds no fill,
+     no blur, and NO shadow of its own (it cast a stripe onto the band). */
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+/* Expanded: the inner ring drops (borderless card inside the outer ring),
+   and the side band STAYS PUT — pinned to the bottom at its collapsed height
+   instead of stretching up with the card. */
+.code-root[data-anchor="center"] > .code-agent .code-input-card.options-open {
+  border-radius: 22px;
+  border-color: transparent;
+}
+.code-root[data-anchor="center"] > .code-agent .code-pill-row:has(.code-input-card.options-open) .code-side-band {
+  align-self: flex-end;
+  min-height: 46px;
+}
+/* Collapsed (default): just the input row. The caret in the side band brings
+   the source row + the chip bar back. */
+.code-root[data-anchor="center"] > .code-agent .code-input-card:not(.options-open) .code-source-slot,
+.code-root[data-anchor="center"] > .code-agent .code-input-card:not(.options-open) .code-composer-bar { display: none; }
+/* The input goes BARE inside the pill — the card is the surface. */
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap {
+  align-items: center;
+  gap: 2px;
+  padding-right: 38px;   /* clears the absolute send button */
+}
+/* Docked (layout-hosted) agent: the mic rides BESIDE the ⏎ on the bottom
+   line, never stacked over/under it. */
+.ws-agent-holder .code-input-wrap { align-items: flex-end; padding-right: 38px; }
+.ws-agent-holder .code-input-wrap #code-mic-wrap { align-self: flex-end; margin-bottom: 3px; }
+.ws-agent-holder .code-input-wrap .code-mic-chip { border: none; background: transparent; }
+
+/* Pushes the drips/recents/+/⋮ cluster to the source row's RIGHT end. */
+.code-source-slot .code-source-spacer { flex: 1; min-width: 8px; }
+
+/* The ⏎ sits a tad lower in the pill. */
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-send { bottom: 4px; }
+/* The mic (+ its caret) rides the BOTTOM line with the ⏎/stop button no
+   matter how tall the input grows — never centered up the expanded card. */
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap #code-mic-wrap {
+  align-self: flex-end;
+  margin-bottom: 3px;   /* optically level with the absolute ⏎ (bottom 4px) */
+}
+.code-root[data-anchor="center"] > .code-agent .code-input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  min-height: 34px;
+  padding: 8px 6px;
+}
+.code-root[data-anchor="center"] > .code-agent .code-input:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+/* + and mic ride IN the row as bare round glyphs. */
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-plus-chip {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 19px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-mic-chip {
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+}
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-mic-chip svg {
+  width: 17px;
+  height: 17px;
+}
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-plus-chip:hover,
+.code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-mic-chip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+/* The side band — ANOTHER input circle (his sketch, 2026-08-19:
+   "} ^ ⌘ ↺ )") to the right of the main one: same translucent surface, same
+   gradient ring as the input pill, holding caret / command-center / reset. */
+.code-side-band { display: none; }
+.code-root[data-anchor="center"] > .code-agent .code-side-band {
+  position: relative;
+  z-index: 1;            /* UNDER the input pill */
+  display: flex;
+  align-items: center;
+  align-self: stretch;   /* EXACTLY the input pill's height */
+  gap: 2px;
+  /* Tucked under the input's cap; the left padding clears the overlap so the
+     buttons live in the visible tail. */
+  margin-left: -34px;
+  padding: 5px 10px 5px 42px;
+}
+.code-side-band .ws-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  padding: 0;
+}
+.code-side-band .ws-icon-btn:hover { background: var(--hover); color: var(--text); }
+#code-opts-caret svg { transition: transform 0.18s ease; }
+.code-agent:has(.code-input-card.options-open) #code-opts-caret svg { transform: rotate(180deg); }
+/* CC + reset only while panels cover the wall (the workbench flips the class). */
+#code-cc-open, #code-reset-open { display: none; }
+body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-cc-open,
+body.echo-cc-needed .code-root[data-anchor="center"] > .code-agent #code-reset-open { display: flex; }
+body.echo-cc-pinned #code-cc-open { color: var(--accent); }
 
 /* ── Peek ───────────────────────────────────────────────────────────────────
    Repositions the LIVE thread rather than copying it: renderThread() wipes
@@ -17218,21 +17430,40 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
   opacity: var(--echo-agent-opacity, 1);
   display: block;
   position: absolute;
-  bottom: calc(100% + 10px);
+  /* GEOMETRY IS MEASURED at open time (code-anchor fitPeek): exactly the
+     pill's width, bottom edge tucked BEHIND the input card. These are the
+     fallbacks for the first frame only. */
+  bottom: calc(100% + 2px);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  /* The caret shows the FULL agent thread (scrollable), not just the last few
-     messages — the bar is a one-line window onto the whole conversation.
-     Opening it never closes a panel: it is an OVERLAY dialog. */
+  /* Clicking the status text opens the FULL agent thread (scrollable), not
+     just the last few messages — the bar is a one-line window onto the whole
+     conversation. Opening it never closes a panel: it is an OVERLAY dialog. */
   max-height: min(76vh, 860px);
   padding: 12px 20px;
   overflow-y: auto;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  /* The pill's gradient ring, worn by the panel too: two-layer background —
+     opaque fill in the padding box, the ribbon in the border band. Backgrounds
+     paint the element's box, not its scrolled content, so the ring holds while
+     the thread scrolls. */
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--bg), var(--bg)) padding-box,
+    linear-gradient(100deg,
+      color-mix(in srgb, var(--accent) 82%, #4c8dff),
+      #4285f4 30%, #2bbf8f 62%, #f2a83c 94%) border-box;
+  /* Rounded crown; the feet are hidden behind the pill it connects to. */
+  border-radius: 20px 20px 12px 12px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
-  z-index: 2;
+  z-index: 2;   /* UNDER the input card (z 3) — the pill overlaps the panel's foot */
+  animation: peek-connect 0.22s ease;
+}
+/* The panel emerges FROM the input: it rises the last few px into place.
+   Only `from` is declared so opacity settles to the rule's own value (the
+   Echo Agent transparency slider), not a hardcoded 1. */
+@keyframes peek-connect {
+  from { opacity: 0; margin-bottom: -12px; }
 }
 /* Webview compositing beats every z-index (see the note at .wb-app-layer), so
    an open app panel would paint straight over the peek. Same escape hatch the

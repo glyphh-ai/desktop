@@ -17,7 +17,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
-import { initVoiceMic, renderMicMenu, onTurnComplete, briefSteer } from "./voice-mic.js";
+import { initVoiceMic, onTurnComplete, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
@@ -725,24 +725,8 @@ function initComposerControls(): void {
     cpop.classList.toggle("hidden");
     if (opening) { openChipDropUp(cpop); void renderCtxPop(); }
   });
-  // Mic device/mode drop-up — opened by the caret next to the mic chip.
-  const micWrap = el("code-mic-wrap");
-  if (micWrap) {
-    const mpop = document.createElement("div");
-    mpop.id = "code-mic-menu";
-    mpop.className = "code-drop-up hidden";
-    micWrap.appendChild(mpop);
-    el("code-mic-caret")?.addEventListener("click", (e) => {
-      e.stopPropagation();
-      el("code-mode-menu")?.classList.add("hidden");
-      el("code-effort-pop")?.classList.add("hidden");
-      el("code-model-menu")?.classList.add("hidden");
-      el("code-ctx-pop")?.classList.add("hidden");
-      const opening = mpop.classList.contains("hidden");
-      mpop.classList.toggle("hidden");
-      if (opening) void renderMicMenu(mpop).then(() => { if (!mpop.classList.contains("hidden")) openChipDropUp(mpop); });
-    });
-  }
+  // (The mic's device/mode drop-up is GONE — Settings › Voice owns the
+  // config; the composer keeps just the mic button.)
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });
@@ -753,7 +737,6 @@ function initComposerControls(): void {
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
-    if (micWrap && !micWrap.contains(t)) el("code-mic-menu")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
     if (plusWrap && !plusWrap.contains(t)) el("code-plus-menu")?.classList.add("hidden");
     // Source-family drops (source/folder/git/+) fall to an outside click too —
@@ -3034,7 +3017,18 @@ function autoGrow(ta: HTMLTextAreaElement): void {
   // wraps into a tower and the height sticks tall after the card widens.
   if (ta.clientWidth < 60) return;
   ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+  const h = Math.min(ta.scrollHeight, 220);
+  ta.style.height = h + "px";
+  // PAST ONE LINE the pill MUST become the expanded input (his rule,
+  // 2026-08-19) — a multi-line capsule at 999px radius is a blimp. The
+  // auto-open is tracked separately so shrinking back to one line only
+  // collapses what IT opened, never a caret-opened card.
+  const card = ta.closest(".code-input-card");
+  if (!card) return;
+  const tall = h > 44;
+  if (tall && !card.classList.contains("options-open")) card.classList.add("options-open", "auto-open");
+  else if (!tall && card.classList.contains("auto-open")) card.classList.remove("options-open", "auto-open");
+  (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic?.();
 }
 /** Recompute the composer height whenever its WIDTH changes — card
  *  entrances, adoptions, and layout switches all resize it after the last
@@ -4817,6 +4811,51 @@ export function initCode(): void {
   // (The chrome-cluster command button is GONE — ⌘⇧Space / ⌘. open the
   // command center; the wall's own eye button pins the shadow.)
   el("code-send")?.addEventListener("click", send);
+  // The PILL composer's side band (his reference, 2026-08-19): the caret
+  // expands the full controls (source row + chip bar) above/below the input;
+  // CC pins the wall over open cards; reset clears back to the command
+  // center. The latter two only show while panels cover the wall (the
+  // workbench drives body.echo-cc-needed).
+  // The mic has TWO seats (his rule, 2026-08-19): the collapsed PILL keeps it
+  // in the input row beside the ⏎; DOCKED or EXPANDED it sits in the chip
+  // bar's bottom-left, right of the permission chip. appendChild moves keep
+  // listeners. The workbench calls this global after re-homing the agent.
+  const seatMic = (): void => {
+    const mic = el("code-mic-wrap");
+    const agent = document.querySelector(".code-agent");
+    if (!mic || !agent) return;
+    const docked = !!agent.closest(".ws-agent-holder");
+    const expanded = !!agent.querySelector(".code-input-card.options-open");
+    if (docked || expanded) {
+      const mode = el("code-mode-wrap");
+      if (mode && mic.previousElementSibling !== mode) mode.after(mic);
+    } else {
+      const wrap = agent.querySelector(".code-input-wrap");
+      const wave = el("code-rec-wave");
+      if (wrap && wave && mic.parentElement !== wrap) wrap.insertBefore(mic, wave);
+    }
+  };
+  (window as unknown as { __glyphhSeatMic?: () => void }).__glyphhSeatMic = seatMic;
+  seatMic();
+  el("code-opts-caret")?.addEventListener("click", (ev) => {
+    const composer = (ev.currentTarget as HTMLElement).closest(".code-composer");
+    const card = composer?.querySelector(".code-input-card");
+    if (!card) return;
+    // A MULTI-LINE draft can't be minimized (his rule, 2026-08-19): the
+    // collapsed pill is a one-line shape. The caret goes inert until the
+    // input is back under two lines; auto-grow re-expands regardless.
+    const ta = composer?.querySelector<HTMLTextAreaElement>("#code-input");
+    if (card.classList.contains("options-open") && ta && ta.clientHeight > 44) return;
+    card.classList.toggle("options-open");
+    card.classList.remove("auto-open");   // the user took over from auto-grow
+    seatMic();
+  });
+  el("code-cc-open")?.addEventListener("click", () => {
+    (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
+  });
+  el("code-reset-open")?.addEventListener("click", () => {
+    (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
+  });
   // Command-center icon size (Appearance slider) — the CSS var the launcher
   // squares read. Settings applies it live; this seeds it at boot.
   void window.glyphh.getPreference?.("echoIconSize", 76).then((v) => {
@@ -5084,9 +5123,12 @@ export function initCode(): void {
       refreshCtxMeter();
       repaintSourceUi();
       void checkWorkdirGate();
-    } else if (c) {
+    } else {
+      // No session (or an empty one) restored → the panel holds the SAME
+      // new-session welcome the + button paints; opening it at boot must
+      // never show a bare strip.
       currentId = "";
-      renderThread();   // no current session → the fresh landing (greeting)
+      renderThread();
     }
     renderHistory();
   })();
