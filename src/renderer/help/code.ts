@@ -17,7 +17,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
-import { initVoiceMic, onTurnComplete, briefSteer } from "./voice-mic.js";
+import { initVoiceMic, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
@@ -974,6 +974,10 @@ function observeIfRunning(chat: CodeChat): void {
         const r = liveRuns.get(chatId);
         if (!r) return;
         r.text += delta;
+        // Hands-free voice: the FIRST line speaks as soon as it completes —
+        // "I'm working" — the rest waits for the settled turn. No-op outside
+        // an awaiting hands-free session; fires at most once per turn.
+        if (chatId === currentId) maybeSpeakFirstLine(r.text);
         queueStreamPaint(chatId);
       },
       // The owning surface flipped the mode mid-run — adopt it so our chip agrees.
@@ -3391,6 +3395,10 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
         const r = liveRuns.get(chatId);
         if (!r) return;
         r.text += delta;
+        // Hands-free voice: the FIRST line speaks as soon as it completes —
+        // "I'm working" — the rest waits for the settled turn. No-op outside
+        // an awaiting hands-free session; fires at most once per turn.
+        if (chatId === currentId) maybeSpeakFirstLine(r.text);
         queueStreamPaint(chatId);
       },
       // A parked pod frame lands in the SAME ask dock a local run uses — the

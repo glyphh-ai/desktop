@@ -479,6 +479,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.
   webIconFetch: (url: string) => ipcRenderer.invoke("web-icon-fetch", url) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
+  appsDefaults: () => ipcRenderer.invoke("apps-defaults") as Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,

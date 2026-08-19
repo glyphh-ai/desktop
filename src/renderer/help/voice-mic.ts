@@ -257,6 +257,7 @@ async function transcribe(model: string): Promise<void> {
   if (text.trim()) {
     insertTranscript(text);
     awaitingReply = true;
+    resetEarlySpeech();
     cue("submit");
     el("code-send")?.click();          // fire the turn; reply → onTurnComplete
   } else if (handsFree) {
@@ -264,11 +265,40 @@ async function transcribe(model: string): Promise<void> {
   }
 }
 
-/** Called from finishRun when a reply lands: speak it (if autoplay), then, in a
- *  hands-free session, start listening again for the next thing the user says. */
+// ── Early first-line speech (hands-free): a long turn says its FIRST line as
+// soon as it streams in — "I'm working" — then the rest waits for the end. ──
+let earlyLine = "";
+let earlyFired = false;
+/** Reset per turn — called when a hands-free utterance submits. */
+export function resetEarlySpeech(): void { earlyLine = ""; earlyFired = false; }
+/** Feed the streaming text; fires AT MOST once per turn, hands-free only. */
+export function maybeSpeakFirstLine(sofar: string): void {
+  if (earlyFired || !handsFree || !awaitingReply) return;
+  const t = sofar.trimStart();
+  // A complete first sentence (10–240 chars) or a finished first line.
+  const m = /^([\s\S]{10,240}?[.!?])(?:\s|$)/.exec(t) ?? /^(.{10,240})\n/.exec(t);
+  const line = (m?.[1] ?? "").trim();
+  if (!line) return;
+  earlyFired = true;
+  earlyLine = line;
+  void (async () => {
+    const p = await voicePref();
+    if (p.outputModel && p.autoplay) await playReplyTTS(line, p);
+  })();
+}
+
+/** Called from finishRun when a reply lands: speak it (if autoplay) — minus
+ *  the first line when it was already spoken early — then, in a hands-free
+ *  session, start listening again for the next thing the user says. */
 export async function onTurnComplete(text: string): Promise<void> {
   const p = await voicePref();
-  await playReplyTTS(text, p);
+  let say = text;
+  if (earlyLine) {
+    const t = say.trimStart();
+    if (t.startsWith(earlyLine)) say = t.slice(earlyLine.length).trimStart();
+  }
+  resetEarlySpeech();
+  if (say) await playReplyTTS(say, p);
   if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
 }
 
