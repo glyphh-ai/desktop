@@ -1999,6 +1999,9 @@ async function init(): Promise<void> {
         <button class="ws-icon-btn echo-layout-cc" type="button" title="Show the command center (hold ⌃⌥)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         </button>
+        <button class="ws-icon-btn echo-layout-save hidden" type="button" title="Save this arrangement as a workspace…">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        </button>
       </div>
       <div class="echo-cards"></div>
 `;
@@ -3851,6 +3854,11 @@ async function init(): Promise<void> {
       .addEventListener("click", () => {
         (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
       });
+    // SAVE AS WORKSPACE (his rule, 2026-08-20): loose panels only — a layout
+    // already IS a saved workspace. Basics modal: name, loop, its model
+    // slots, session mode.
+    layoutBar.querySelector<HTMLElement>(".echo-layout-save")!
+      .addEventListener("click", () => { void openSaveWorkspaceModal(); });
     let layoutBarIntro = 0;
     const paintLayoutBar = (): void => {
       // THE WORKSPACE BAR is on EVERY page except the bare command center
@@ -3864,6 +3872,7 @@ async function init(): Promise<void> {
       document.body.classList.toggle("echo-layout-active", inLayout);
       const wasHidden = layoutBar.classList.contains("hidden");
       layoutBar.classList.toggle("hidden", !show);
+      layoutBar.querySelector(".echo-layout-save")?.classList.toggle("hidden", inLayout);
       if (inLayout) layoutBarName.textContent = echoLayoutName || "Workspace";
       else if (cards.length > 4) layoutBarName.textContent = "Multi";
       else layoutBarName.textContent = cards.map((e) => e.tile.name).join(" · ");
@@ -4935,6 +4944,125 @@ async function init(): Promise<void> {
       }
       void openAgentPanel();
     };
+    /** SAVE AS WORKSPACE — the basics only (his rule, 2026-08-20): name,
+     *  loop + its model slots, session mode. The grid is derived from the
+     *  CARDS ON STAGE (the flow's own columns), so what you see is what
+     *  saves; the full editor on the Layouts page remains for everything
+     *  else (folder, per-cell config, spans). */
+    async function openSaveWorkspaceModal(): Promise<void> {
+      const cards = openList.filter((e) => e.card && e.tile.slug !== "glyphh-home");
+      if (!cards.length) return;
+      const yo = window.glyphh as unknown as {
+        loopsList?: () => Promise<{ ok?: boolean; loops?: Array<{ id: string; name: string }> }>;
+        loopRoles?: (loop: string) => Promise<{ ok?: boolean; roles?: Array<{ name: string; label: string; modelId: string | null; choices: Array<{ id: string; name: string }> }> }>;
+        layoutsSaveGrid?: (g: Record<string, unknown>) => Promise<boolean | { error?: string }>;
+        getPreference?: (k: string, d?: unknown) => Promise<unknown>;
+      };
+      const [loopsRes, prefLoop] = await Promise.all([
+        yo.loopsList?.().catch(() => null) ?? null,
+        yo.getPreference?.("glyphhLoop", "default").catch(() => "default") ?? "default",
+      ]);
+      const loops = loopsRes?.loops ?? [];
+      document.querySelector(".echo-savews-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "echo-folder-overlay echo-savews-overlay";
+      const card = document.createElement("div");
+      card.className = "echo-folder-card echo-savews-card";
+      overlay.appendChild(card);
+      const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey, true); };
+      const onKey = (ev: KeyboardEvent): void => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+      document.addEventListener("keydown", onKey, true);
+      overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
+      card.innerHTML = `
+        <div class="echo-folder-head"><span class="echo-savews-title">Save as workspace</span>
+          <button class="echo-folder-close" type="button" title="Close">✕</button></div>
+        <div class="echo-savews-form">
+          <label>Name</label>
+          <input class="echo-savews-name" type="text" maxlength="60" placeholder="Morning triage" />
+          <label>Loop</label>
+          <select class="echo-savews-loop"></select>
+          <div class="echo-savews-roles"></div>
+          <label>Session</label>
+          <select class="echo-savews-session">
+            <option value="keep">Keep the current session</option>
+            <option value="new">Start a new session</option>
+            <option value="last">Resume this workspace's last session</option>
+          </select>
+          <div class="echo-savews-err hidden"></div>
+        </div>
+        <div class="echo-savews-foot">
+          <button class="echo-savews-cancel" type="button">Cancel</button>
+          <button class="echo-savews-go" type="button">Save workspace</button>
+        </div>`;
+      card.querySelector(".echo-folder-close")?.addEventListener("click", close);
+      card.querySelector(".echo-savews-cancel")?.addEventListener("click", close);
+      const nameEl = card.querySelector<HTMLInputElement>(".echo-savews-name")!;
+      const loopEl = card.querySelector<HTMLSelectElement>(".echo-savews-loop")!;
+      const rolesEl = card.querySelector<HTMLElement>(".echo-savews-roles")!;
+      const errEl = card.querySelector<HTMLElement>(".echo-savews-err")!;
+      nameEl.addEventListener("keydown", (ev) => ev.stopPropagation());
+      const defaultLoop = String(prefLoop || "default");
+      loopEl.innerHTML = (loops.length ? loops : [{ id: "default", name: "Default" }])
+        .map((l) => `<option value="${l.id}"${l.id === defaultLoop ? " selected" : ""}>${l.name}</option>`).join("");
+      // The chosen loop's MODEL SLOTS — a dropdown per role, seeded with the
+      // resolved pick ("Auto" leaves the slot to its default).
+      const paintRoles = async (): Promise<void> => {
+        rolesEl.innerHTML = "";
+        const r = await yo.loopRoles?.(loopEl.value).catch(() => null);
+        for (const role of r?.roles ?? []) {
+          const label = document.createElement("label");
+          label.textContent = role.label || role.name;
+          const sel = document.createElement("select");
+          sel.dataset.role = role.name;
+          sel.innerHTML = `<option value="">Auto</option>` + role.choices
+            .map((c) => `<option value="${c.id}"${c.id === role.modelId ? " selected" : ""}>${c.name || c.id}</option>`).join("");
+          rolesEl.append(label, sel);
+        }
+      };
+      loopEl.addEventListener("change", () => { void paintRoles(); });
+      void paintRoles();
+      card.querySelector(".echo-savews-go")?.addEventListener("click", () => {
+        void (async () => {
+          const name = nameEl.value.trim();
+          if (!name) { errEl.textContent = "A name is required."; errEl.classList.remove("hidden"); nameEl.focus(); return; }
+          // The stage's own columns become the grid — what you see is what saves.
+          const cols = flowColumns(cards);
+          const rows = Math.max(1, ...cols.map((c) => c.length));
+          const cells = cols.flatMap((col, ci) => col.map((e, ri) => {
+            const t = e.tile;
+            const panelId = t.kind === "agent" ? "tool:coding" : t.kind === "tool" && t.toolView ? `tool:${t.toolView}` : (t.slug || "");
+            return {
+              panelId, col: ci, row: ri, colSpan: 1,
+              // A lone card in a taller grid stretches its column.
+              rowSpan: col.length < rows && ri === col.length - 1 ? rows - col.length + 1 : 1,
+              ...(t.kind === "tool" && t.toolView === "preview" && t.url ? { config: { url: t.url } } : {}),
+            };
+          })).filter((c) => c.panelId);
+          const modelSelections: Record<string, string> = {};
+          rolesEl.querySelectorAll<HTMLSelectElement>("select").forEach((sel) => {
+            if (sel.value && sel.dataset.role) modelSelections[sel.dataset.role] = sel.value;
+          });
+          const session = card.querySelector<HTMLSelectElement>(".echo-savews-session")!.value;
+          const res = await yo.layoutsSaveGrid?.({
+            name, cols: cols.length, rows, cells,
+            folderMode: "single", target: "glyphh",
+            loop: loopEl.value || null,
+            ...(Object.keys(modelSelections).length ? { modelSelections } : {}),
+            ...(session === "new" || session === "last" ? { sessionMode: session } : {}),
+          });
+          if (res !== true) {
+            errEl.textContent = (res as { error?: string })?.error || "Couldn't save the workspace.";
+            errEl.classList.remove("hidden");
+            return;
+          }
+          close();
+          // The wall's layout tiles refresh on this (same signal an app edit fires).
+          document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));
+        })();
+      });
+      document.body.appendChild(overlay);
+      nameEl.focus();
+    }
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
