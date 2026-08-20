@@ -3740,10 +3740,12 @@ async function init(): Promise<void> {
       // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
       // (The 2026-08-20 lingering tuck was reverted with the flow layout —
       // "move back to before the changes this morning".)
-      // THE LOCK (his rule, 2026-08-20): a locked agent never tucks — panels
-      // open under it. A layout loading its own agent still owns the surface
-      // (layoutUp already exempts the tuck).
-      const covered = hidden && !layoutUp && !document.body.classList.contains("echo-agent-locked");
+      // THE LOCK does NOT change this computation (his correction, 2026-08-20:
+      // "i don't want a space reserved — just leave it floating and open"):
+      // covered proceeds as ever, cards take the FULL band, and the lock's
+      // CSS pin (body.echo-agent-locked, !important) simply overrides the
+      // tuck transform so the agent floats OVER the cards instead of hiding.
+      const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
