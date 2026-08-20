@@ -590,6 +590,43 @@ export function buildContract(client, deps) {
 
     // ── Library grids (LibraryClient: layouts / drips) ────────────────────────────
     layoutsList: read(() => client.layouts.list(), toLegacyLayouts, EMPTY.list),
+    // CREATE/EDIT/DELETE workspaces on web (his rule, 2026-08-20: the web has
+    // the SAME tooling as the desktop minus the file-system tools). Mirrors
+    // the desktop layout-manager's server body exactly — one record shape,
+    // every surface reads it.
+    layoutsSaveGrid: async (grid) => {
+      try {
+        const body = {
+          name: grid.name,
+          cols: grid.cols,
+          rows: grid.rows,
+          cells: (grid.cells || []).map((c) => ({
+            panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan,
+            sticky: c.sticky, ...(c.config ? { config: c.config } : {}),
+          })),
+          folderMode: grid.folderMode ?? 'single',
+          target: grid.target ?? 'glyphh',
+          ...(grid.loop ? { loop: grid.loop } : {}),
+          ...(grid.modelSelections && Object.keys(grid.modelSelections).length ? { modelSelections: grid.modelSelections } : {}),
+          ...(grid.sessionMode && grid.sessionMode !== 'keep' ? { sessionMode: grid.sessionMode } : {}),
+          ...(grid.folder ? { folder: grid.folder } : {}),
+          ...(grid.space === 'chat' || grid.space === 'cowork' || grid.space === 'code' ? { space: grid.space } : {}),
+        };
+        const existing = (await client.layouts.list()).find((it) => it.name === grid.name);
+        await client.layouts.save({ name: grid.name, data: body, ...(existing ? { id: existing.id } : {}) });
+        return true;
+      } catch (err) {
+        return { error: err?.message || String(err) };
+      }
+    },
+    layoutsDelete: async (name) => {
+      try {
+        const hit = (await client.layouts.list()).find((it) => it.name === name);
+        if (!hit) return false;
+        await client.layouts.delete(hit.id);
+        return true;
+      } catch { return false; }
+    },
     dripsList: read(() => client.drips.list(), toLegacyDrips, EMPTY.list),
     // The standard effects are code, not a cloud read — same catalog as the
     // desktop IPC (one-shots then loops, 'timme' hidden). Fresh objects so a

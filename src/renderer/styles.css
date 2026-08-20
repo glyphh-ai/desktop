@@ -19027,7 +19027,9 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   width: min(560px, 92vw);
   max-height: 78vh;
   display: flex; flex-direction: column;
-  background: var(--surface-2); border: 1px solid var(--border-3);
+  /* A shade darker than the standard card (his call, 2026-08-20) — still the
+     theme's surface, mixed down so the open folder reads as its own well. */
+  background: color-mix(in srgb, var(--surface-2) 78%, black); border: 1px solid var(--border-3);
   border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
   padding: 14px 18px 18px;
 }
