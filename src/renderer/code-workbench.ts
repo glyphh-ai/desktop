@@ -1999,9 +1999,6 @@ async function init(): Promise<void> {
         <button class="ws-icon-btn echo-layout-cc" type="button" title="Show the command center (hold ⌃⌥)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         </button>
-        <button class="ws-icon-btn echo-layout-reset" type="button" title="Reset — close every panel, back to the command center">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
-        </button>
       </div>
       <div class="echo-cards"></div>
 `;
@@ -3847,13 +3844,13 @@ async function init(): Promise<void> {
         else resetEcho();   // loose panels: close everything, back to the CC
       });
     // Command center + reset ride the layout bar too (his rule, 2026-08-19):
-    // right of the close — CC first (lift the wall over the layout), reset last.
+    // right of the close — just the CC (lift the wall over the layout). The
+    // RESET moved to the agent panel alone (his rule, 2026-08-20), behind a
+    // confirm — two resets was one too many, and this one fired bare.
     layoutBar.querySelector<HTMLElement>(".echo-layout-cc")!
       .addEventListener("click", () => {
         (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
       });
-    layoutBar.querySelector<HTMLElement>(".echo-layout-reset")!
-      .addEventListener("click", () => resetEcho());
     let layoutBarIntro = 0;
     const paintLayoutBar = (): void => {
       // THE WORKSPACE BAR is on EVERY page except the bare command center

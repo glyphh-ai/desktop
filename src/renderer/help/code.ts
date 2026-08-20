@@ -5024,7 +5024,15 @@ export function initCode(): void {
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
   });
   el("code-reset-open")?.addEventListener("click", () => {
-    (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
+    // Destructive-ish (every open panel closes) — the standard confirm first.
+    void confirmAction({
+      title: "Reset the workspace?",
+      body: "Every open panel closes and you're back at the command center. Sessions and their work are untouched.",
+      confirmLabel: "Reset",
+      danger: true,
+    }).then((ok) => {
+      if (ok) (window as unknown as { __wbEchoReset?: () => void }).__wbEchoReset?.();
+    });
   });
   // Command-center icon size (Appearance slider) — the CSS var the launcher
   // squares read. Settings applies it live; this seeds it at boot.
