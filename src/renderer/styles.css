@@ -19012,3 +19012,58 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .mkt-dev-row-link { cursor: pointer; border-radius: 8px; }
 .mkt-dev-row-link:hover { background: var(--hover); }
 .mkt-dev-row-link:hover b { color: var(--accent-light); text-decoration: underline; }
+
+/* ── Echo FOLDERS (2026-08-20): wall groups for app + layout icons ───────── */
+.echo-folder-glyph svg { width: 26px; height: 26px; opacity: 0.75; }
+.echo-folder-mini { background: color-mix(in srgb, var(--surface-3) 70%, transparent); border-radius: 12px; }
+.echo-folder-overlay {
+  position: fixed; inset: 0; z-index: 640;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.echo-folder-card {
+  width: min(560px, 92vw);
+  max-height: 78vh;
+  display: flex; flex-direction: column;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  padding: 14px 16px 16px;
+}
+.echo-folder-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.echo-folder-name {
+  flex: 1; min-width: 0;
+  background: none; border: none; outline: none;
+  color: var(--text); font-size: 15px; font-weight: 600;
+  padding: 4px 6px; border-radius: 8px;
+}
+.echo-folder-name:hover, .echo-folder-name:focus { background: var(--surface-3); }
+.echo-folder-close {
+  width: 26px; height: 26px; border: none; border-radius: 50%;
+  background: var(--surface-3); color: var(--text-2); cursor: pointer;
+}
+.echo-folder-close:hover { background: var(--hover); color: var(--text); }
+.echo-folder-delete {
+  border: none; border-radius: 999px; padding: 5px 12px; cursor: pointer;
+  background: var(--surface-3); color: var(--text-2); font-size: 12px;
+}
+.echo-folder-delete:hover { background: var(--danger, #e5484d); color: #fff; }
+.echo-folder-grid {
+  flex: 1; min-height: 120px; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  align-content: start;
+}
+.echo-folder-item { width: auto; }
+.echo-folder-empty {
+  grid-column: 1 / -1; padding: 28px 12px; text-align: center;
+  color: var(--text-3); font-size: 12.5px;
+}
+.echo-folder-pager {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin-top: 10px; color: var(--text-2); font-size: 12px;
+}
+.echo-folder-pager button {
+  width: 26px; height: 26px; border: none; border-radius: 50%;
+  background: var(--surface-3); color: var(--text-2); cursor: pointer;
+}
+.echo-folder-pager button:disabled { opacity: 0.4; cursor: default; }
+.echo-folder-pager button:not(:disabled):hover { background: var(--hover); color: var(--text); }

@@ -2102,7 +2102,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
@@ -2119,8 +2119,17 @@ async function init(): Promise<void> {
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-    const iconSig = (t: EchoTile): string => `${t.iconUrl || ""}|${(t.glyphSvg || "").length}|${(t.cells || []).length}`;
+    const iconSig = (t: EchoTile): string => `${t.iconUrl || ""}|${(t.glyphSvg || "").length}|${(t.cells || []).length}|${t.kind === "folder" ? (folders.find((f) => f.id === t.folderId)?.keys.join(",") ?? "") : ""}`;
+    const FOLDER_GLYPH = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6a2 2 0 0 1 2-2h4.2a2 2 0 0 1 1.6.8L12 6.4h7a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>`;
     const iconInner = (t: EchoTile): string => {
+      if (t.kind === "folder") {
+        const cells = (t.cells || []).slice(0, 4);
+        if (!cells.length) return `<span class="echo-app-fallback echo-folder-glyph">${FOLDER_GLYPH}</span>`;
+        return `<span class="echo-app-mini echo-folder-mini">` + cells.map((cl) =>
+          cl.glyphSvg ? `<span class="mini">${cl.glyphSvg}</span>`
+            : cl.iconUrl ? `<span class="mini"><img data-icon-src="${escAttr(cl.iconUrl)}" alt="" draggable="false"/></span>`
+              : `<span class="mini"><i>${escAttr(cl.initial || "?")}</i></span>`).join("") + `</span>`;
+      }
       if (t.kind === "layout") {
         const cells = (t.cells || []).slice(0, 4);
         if (!cells.length) return `<span class="echo-app-fallback">▦</span>`;
@@ -2221,6 +2230,95 @@ async function init(): Promise<void> {
       window.dispatchEvent(new CustomEvent("glyphh:cc-order-changed", { detail: keys }));
     };
     const persistDock = (): void => { void yoApi?.setPreference?.("echoDockOrder", dockKeys); };
+    // ── FOLDERS (his rule, 2026-08-20): wall groups holding app + layout
+    // icons. Drag an icon onto a folder tile to file it; the folder opens a
+    // paginated modal (12/page); drag an icon onto the modal's backdrop to
+    // take it back out; an EMPTY folder deletes via the standard confirm. ──
+    interface WallFolder { id: string; name: string; keys: string[] }
+    let folders: WallFolder[] = [];
+    /** Every tile the wall knows, keyed — foldered members live here even
+     *  while they are off the band (the modal renders from this). */
+    let wallCatalog = new Map<string, EchoTile>();
+    const persistFolders = (): void => { void yoApi?.setPreference?.("echoFolders", folders); };
+    const folderedKeys = (): Set<string> => new Set(folders.flatMap((f) => f.keys));
+    const folderCells = (f: WallFolder): EchoCell[] =>
+      f.keys.slice(0, 4).map((k) => {
+        const t = wallCatalog.get(k);
+        return {
+          iconUrl: t?.iconUrl || undefined,
+          glyphSvg: t?.glyphSvg || undefined,
+          initial: (t?.name || "?").charAt(0).toUpperCase(),
+          img: null,
+        };
+      });
+    const folderTileOf = (f: WallFolder): EchoTile =>
+      ({ name: f.name, slug: `folder:${f.id}`, orderKey: `folder:${f.id}`, kind: "folder", folderId: f.id, cells: folderCells(f) });
+    /** Repaint every folder tile's mini grid + name after membership changes. */
+    const refreshFolderTiles = (): void => {
+      for (const e of entries) {
+        if (e.tile.kind !== "folder" || !e.tile.folderId) continue;
+        const f = folders.find((x) => x.id === e.tile.folderId);
+        if (!f) continue;
+        e.tile.cells = folderCells(f);
+        e.tile.name = f.name;
+        drawTile(e);
+      }
+    };
+    const addToFolder = (key: string, folderId: string): void => {
+      const f = folders.find((x) => x.id === folderId);
+      if (!f || key.startsWith("folder:") || f.keys.includes(key)) return;
+      // The filed tile leaves the band (its EchoTile stays in the catalog).
+      const entry = entriesByKey().get(key);
+      if (entry) {
+        const t = entry.tile;
+        if (keyOf(t)) wallCatalog.set(keyOf(t)!, t);
+        const band = wallBands[0] ?? [];
+        const i = band.indexOf(entry);
+        if (i >= 0) band.splice(i, 1);
+      }
+      f.keys.push(key);
+      persistFolders();
+      renderPages();
+      persistPages();
+      refreshFolderTiles();
+    };
+    const removeFromFolder = (key: string, folderId: string): void => {
+      const f = folders.find((x) => x.id === folderId);
+      if (!f) return;
+      const i = f.keys.indexOf(key);
+      if (i < 0) return;
+      f.keys.splice(i, 1);
+      persistFolders();
+      moveKeyToPage(key, null);   // back onto the pages (renders + persists)
+      refreshFolderTiles();
+    };
+    const deleteFolder = (folderId: string): void => {
+      const f = folders.find((x) => x.id === folderId);
+      if (!f || f.keys.length) return;   // only empty folders delete
+      folders = folders.filter((x) => x.id !== folderId);
+      persistFolders();
+      const band = wallBands[0] ?? [];
+      const entry = entriesByKey().get(`folder:${folderId}`);
+      if (entry) {
+        const i = band.indexOf(entry);
+        if (i >= 0) band.splice(i, 1);
+      }
+      renderPages();
+      persistPages();
+    };
+    const createFolderWith = (e: TileEntry): void => {
+      const key = keyOf(e.tile);
+      if (!key || key.startsWith("folder:")) return;
+      const f: WallFolder = { id: `f${Date.now().toString(36)}`, name: "Folder", keys: [] };
+      folders.push(f);
+      // The folder tile takes the member's spot on the band.
+      const band = wallBands[0] ?? [];
+      const at = band.indexOf(e);
+      const entry = makeTileEntry(folderTileOf(f));
+      band.splice(at < 0 ? band.length : at, 0, entry);
+      persistFolders();
+      addToFolder(key, f.id);   // renders + persists
+    };
     // ── EDIT MODE (press-and-hold, iPhone-style): the icons wiggle, apps and
     // layouts wear a ✕ (delete after the standard confirm); everything else
     // just moves. Click empty space or Esc to leave. ──
@@ -2300,7 +2398,9 @@ async function init(): Promise<void> {
       const band = wallBands[0]!;
       let entry = entriesByKey().get(key) ?? null;
       if (!entry) {
-        const t = navTileFor(key) ?? navTileFor(key.replace(/^dock:/, ""));
+        // A key coming OUT OF A FOLDER has no band entry — its tile waited in
+        // the catalog; nav keys materialize as before.
+        const t = wallCatalog.get(key) ?? navTileFor(key) ?? navTileFor(key.replace(/^dock:/, ""));
         if (!t) return;
         const existing = entriesByKey().get(keyOf(t) || "");
         entry = existing ?? makeTileEntry(t);
@@ -2425,6 +2525,21 @@ async function init(): Promise<void> {
     const tileMenuItems = (e: TileEntry): Array<{ label: string; onPick: () => void; danger?: boolean }> => {
       const t = e.tile;
       const items: Array<{ label: string; onPick: () => void; danger?: boolean }> = [];
+      if (t.kind === "folder" && t.folderId) {
+        const f = folders.find((x) => x.id === t.folderId);
+        items.push({ label: "Open folder", onPick: () => openFolderModal(t.folderId!) });
+        if (f && !f.keys.length) {
+          items.push({ label: "Delete folder", danger: true, onPick: () => {
+            void (window as unknown as { __appConfirm?: (o: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean> })
+              .__appConfirm?.({ title: `Delete "${f.name}"?`, body: "The folder is empty — nothing else is removed.", confirmLabel: "Delete", danger: true })
+              .then((ok) => { if (ok) deleteFolder(t.folderId!); });
+          } });
+        }
+        return items;
+      }
+      if (keyOf(t) && !t.sticky && t.kind !== "agent") {
+        items.push({ label: "Move to new folder", onPick: () => createFolderWith(e) });
+      }
       const w = window as unknown as { __glyphhEditApp?: (id: string) => void; __glyphhEditLayout?: (n: string) => void };
       if (t.kind === "app" && t.appId && !t.navApp && !t.navKey) {
         items.push({ label: "Edit", onPick: () => w.__glyphhEditApp?.(t.appId!) });
@@ -2513,7 +2628,14 @@ async function init(): Promise<void> {
           btn.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
           btn.addEventListener("drop", (ev) => {
             ev.preventDefault(); ev.stopPropagation();
-            if (dragIconKey && dragIconKey !== keyOf(e.tile)) moveKeyToPage(dragIconKey, e);
+            if (!dragIconKey || dragIconKey === keyOf(e.tile)) return;
+            // Dropping ON a folder files the icon inside it (folders never
+            // nest); every other target is a reorder, exactly as before.
+            if (e.tile.kind === "folder" && e.tile.folderId && !dragIconKey.startsWith("folder:")) {
+              addToFolder(dragIconKey, e.tile.folderId);
+              return;
+            }
+            moveKeyToPage(dragIconKey, e);
           });
           grid.appendChild(btn);
         }
@@ -2744,7 +2866,8 @@ async function init(): Promise<void> {
       yoApi?.getPreference?.("echoDockOrder", null) ?? null,
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
-    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref]) => {
+      yoApi?.getPreference?.("echoFolders", []) ?? [],
+    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       // The HOUSE DEFAULTS (the glyphh launcher set) join the org's own rows —
@@ -2890,16 +3013,27 @@ async function init(): Promise<void> {
       // materializing nav slots that were traded onto the pages (dock:*).
       const byK = new Map<string, EchoTile>();
       for (const t of canonical) { const k = t.orderKey; if (k) byK.set(k, t); }
+      // FOLDERS: adopt the saved set, catalog EVERY keyed tile (foldered
+      // members render from the catalog, not the band), add folder tiles to
+      // the orderable pool, and keep filed members off the pages.
+      folders = (Array.isArray(folderPref) ? folderPref : [])
+        .filter((f): f is WallFolder => !!f && typeof f === "object" && typeof (f as WallFolder).id === "string")
+        .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(String) : [] }));
+      wallCatalog = new Map(byK);
+      const filed = folderedKeys();
+      for (const f of folders) byK.set(`folder:${f.id}`, folderTileOf(f));
       const savedPageOrder = Array.isArray(orderPref) ? orderPref.map(String) : [];
       const pageTiles: EchoTile[] = [];
       const seenK = new Set<string>();
       for (const k of savedPageOrder) {
+        if (filed.has(k)) continue;   // lives inside a folder, not on the pages
         const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
         if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;
         seenK.add(t.orderKey);
         pageTiles.push(t);
       }
-      const rest = canonical.filter((t) => !t.orderKey || !seenK.has(t.orderKey));
+      const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
+        .concat(canonical.filter((t) => !t.orderKey));
       buildWall([[...pageTiles, ...rest]]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
@@ -4762,8 +4896,130 @@ async function init(): Promise<void> {
       }
       void openAgentPanel();
     };
+    /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
+     *  member like its wall self; drag a member onto the BACKDROP to move it
+     *  back out; the title renames in place; an empty folder offers Delete
+     *  (standard confirm). */
+    const FOLDER_PAGE_SIZE = 12;
+    function openFolderModal(folderId: string): void {
+      const f = folders.find((x) => x.id === folderId);
+      if (!f) return;
+      document.querySelector(".echo-folder-overlay")?.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "echo-folder-overlay";
+      const card = document.createElement("div");
+      card.className = "echo-folder-card";
+      overlay.appendChild(card);
+      let page = 0;
+      const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey, true); };
+      const onKey = (ev: KeyboardEvent): void => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+      document.addEventListener("keydown", onKey, true);
+      overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
+      // Backdrop = OUT: dropping a member here returns it to the pages.
+      overlay.addEventListener("dragover", (ev) => { if (dragIconKey && ev.target === overlay) ev.preventDefault(); });
+      overlay.addEventListener("drop", (ev) => {
+        if (ev.target !== overlay) return;
+        ev.preventDefault();
+        if (dragIconKey && f.keys.includes(dragIconKey)) { removeFromFolder(dragIconKey, f.id); paint(); }
+      });
+      const paint = (): void => {
+        const pages = Math.max(1, Math.ceil(f.keys.length / FOLDER_PAGE_SIZE));
+        if (page >= pages) page = pages - 1;
+        const slice = f.keys.slice(page * FOLDER_PAGE_SIZE, (page + 1) * FOLDER_PAGE_SIZE);
+        card.innerHTML = "";
+        const head = document.createElement("div");
+        head.className = "echo-folder-head";
+        const title = document.createElement("input");
+        title.className = "echo-folder-name";
+        title.value = f.name;
+        title.maxLength = 40;
+        title.addEventListener("change", () => {
+          f.name = title.value.trim() || "Folder";
+          title.value = f.name;
+          persistFolders();
+          refreshFolderTiles();
+        });
+        title.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") title.blur(); });
+        head.appendChild(title);
+        if (!f.keys.length) {
+          const del = document.createElement("button");
+          del.className = "echo-folder-delete";
+          del.type = "button";
+          del.textContent = "Delete folder";
+          del.addEventListener("click", () => {
+            void (window as unknown as { __appConfirm?: (o: { title: string; body?: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean> })
+              .__appConfirm?.({ title: `Delete "${f.name}"?`, body: "The folder is empty — nothing else is removed.", confirmLabel: "Delete", danger: true })
+              .then((ok) => { if (ok) { deleteFolder(f.id); close(); } });
+          });
+          head.appendChild(del);
+        }
+        const x = document.createElement("button");
+        x.className = "echo-folder-close";
+        x.type = "button";
+        x.title = "Close";
+        x.textContent = "✕";
+        x.addEventListener("click", close);
+        head.appendChild(x);
+        card.appendChild(head);
+        const grid = document.createElement("div");
+        grid.className = "echo-folder-grid";
+        card.appendChild(grid);
+        if (!slice.length) {
+          const empty = document.createElement("div");
+          empty.className = "echo-folder-empty";
+          empty.textContent = "Empty — drag apps or workspaces onto the folder's icon to file them.";
+          grid.appendChild(empty);
+        }
+        for (const key of slice) {
+          const t = wallCatalog.get(key);
+          const btn = document.createElement("button");
+          btn.className = "echo-app-btn echo-folder-item";
+          btn.type = "button";
+          btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
+          const ic = btn.querySelector<HTMLElement>(".echo-app-ic");
+          const nm = btn.querySelector<HTMLElement>(".echo-app-name");
+          if (t) {
+            if (ic) { ic.innerHTML = iconInner(t); hydrateIcons(ic); }
+            if (nm) nm.textContent = t.name;
+            btn.title = t.name;
+            btn.addEventListener("click", () => { close(); activateTile(makeTileEntry(t)); });
+          } else {
+            // The member's app/layout no longer exists — show the honest
+            // remains; dragging it out (or clicking) clears the dead key.
+            if (ic) ic.innerHTML = `<span class="echo-app-fallback">?</span>`;
+            if (nm) nm.textContent = key.split(":").slice(1).join(":") || key;
+            btn.addEventListener("click", () => { removeFromFolder(key, f.id); paint(); });
+          }
+          btn.draggable = true;
+          btn.addEventListener("dragstart", (ev) => {
+            dragIconKey = key;
+            ev.dataTransfer?.setData("text/plain", key);
+            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+          });
+          btn.addEventListener("dragend", () => { dragIconKey = null; });
+          grid.appendChild(btn);
+        }
+        if (pages > 1) {
+          const pager = document.createElement("div");
+          pager.className = "echo-folder-pager";
+          const prev = document.createElement("button");
+          prev.type = "button"; prev.textContent = "‹"; prev.disabled = page === 0;
+          prev.addEventListener("click", () => { page = Math.max(0, page - 1); paint(); });
+          const label = document.createElement("span");
+          label.textContent = `${page + 1} / ${pages}`;
+          const next = document.createElement("button");
+          next.type = "button"; next.textContent = "›"; next.disabled = page >= pages - 1;
+          next.addEventListener("click", () => { page = Math.min(pages - 1, page + 1); paint(); });
+          pager.append(prev, label, next);
+          card.appendChild(pager);
+        }
+      };
+      paint();
+      document.body.appendChild(overlay);
+    }
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
+      if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
