@@ -30,6 +30,10 @@
 export type Source =
   | { kind: "cloud-new" }
   | { kind: "cloud-repo"; repo: string }
+  /** An EXISTING cloud workspace (his ask, 2026-08-19): `space` is the thread
+   *  id that keyed the pod workspace — the run + the fs panels scope to it,
+   *  so a new session re-enters the same folder. `label` is display only. */
+  | { kind: "cloud-space"; space: string; label?: string }
   | { kind: "local"; path: string; machineId?: string };
 
 // ── SDK / bridge handles (both targets) ──────────────────────────────────
@@ -76,12 +80,16 @@ export function sourceLabel(source: Source, sessionId?: string | null, machineNa
     // Cloud labels are reserved for remote runs.
     return machineName || (isWeb() ? "Desktop" : "This machine");
   }
-  const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo) : "workspace";
+  const folder = source.kind === "cloud-repo" && source.repo ? lastSeg(source.repo)
+    : source.kind === "cloud-space" ? (source.label || `space ${shortId(source.space)}`)
+    : "workspace";
   const id = shortId(sessionId);
   if (id) return `Fly · ${id} · ${folder}`;
-  // Plain "Cloud" with no session yet — the repo, when there is one, is the
-  // only thing worth qualifying it with.
-  return source.kind === "cloud-repo" && source.repo ? `Cloud · ${lastSeg(source.repo)}` : "Cloud";
+  // Plain "Cloud" with no session yet — the repo or space, when there is one,
+  // is the only thing worth qualifying it with.
+  if (source.kind === "cloud-repo" && source.repo) return `Cloud · ${lastSeg(source.repo)}`;
+  if (source.kind === "cloud-space") return `Cloud · ${folder}`;
+  return "Cloud";
 }
 
 
@@ -523,6 +531,26 @@ function renderRoot(
     if (reach.cloud === false) markUnreachable(np, "Can't reach the cloud runtime right now");
   });
 
+  // ── Your existing cloud SPACES — pick one to open a session back INSIDE
+  // that workspace. Labeled by the session that made it when we still have
+  // it, else by what's in the folder (an orphaned space stays reachable).
+  const spacesHost = document.createElement("div");
+  menu.appendChild(spacesHost);
+  void listSpaces().then((spaces) => {
+    if (!spaces.length) return;
+    spacesHost.insertAdjacentHTML("beforeend", `<div class="ws-sec-label">Your spaces</div>`);
+    const titleFor = (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor;
+    for (const sp of spaces.slice(0, 8)) {
+      const label = (titleFor?.(sp.id) || "").trim() || (sp.top.length ? sp.top.join(" · ") : `space ${shortId(sp.id)}`);
+      const when = sp.updatedAt ? new Date(sp.updatedAt).toLocaleDateString() : "";
+      const sel = s.kind === "cloud-space" && s.space === sp.id;
+      const row = drillItem(label, when ? `Cloud workspace · ${when}` : "Cloud workspace", sel ? CHECK : "");
+      if (sel) row.classList.add("selected");
+      row.addEventListener("click", () => pick({ kind: "cloud-space", space: sp.id, label }));
+      spacesHost.appendChild(row);
+    }
+  }).catch(() => { /* runtime unreachable — the section simply doesn't render */ });
+
   menu.insertAdjacentHTML("beforeend", `<div class="ws-sec-label">Connected machines</div>`);
   const machinesHost = document.createElement("div");
   machinesHost.insertAdjacentHTML("beforeend", `<div class="drop-empty">Checking your machines…</div>`);
@@ -562,6 +590,21 @@ function renderRoot(
       machinesHost.appendChild(row);
     });
   });
+}
+
+/** The caller's existing cloud workspaces. Web reaches the SDK's harness
+ *  surface directly; desktop asks the main process (cloud-spaces-list). */
+async function listSpaces(): Promise<Array<{ id: string; updatedAt: number; top: string[] }>> {
+  try {
+    if (isWeb()) {
+      const h = (sdk() as { harnessViaApi?: () => { fsSpaces: () => Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }> } })?.harnessViaApi;
+      if (!h) return [];
+      return (await h().fsSpaces()).spaces ?? [];
+    }
+    const g = (window as unknown as { glyphh?: { cloudSpacesList?: () => Promise<{ spaces?: Array<{ id: string; updatedAt: number; top: string[] }> }> } }).glyphh;
+    if (typeof g?.cloudSpacesList !== "function") return [];
+    return (await g.cloudSpacesList())?.spaces ?? [];
+  } catch { return []; }
 }
 
 /** Connected machines: the SDK attach surface (web), or the local desktop

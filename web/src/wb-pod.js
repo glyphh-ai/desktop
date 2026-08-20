@@ -53,8 +53,11 @@ export function noteSessionsSnapshot(chats, currentId) {
   const id = String(currentId || '');
   const c = Array.isArray(chats) ? chats.find((x) => x && x.id === id) : null;
   const cloud = !!(c && c.source && c.source.kind !== 'local');
-  if (id === locus.chatId && cloud === locus.cloud) return;
-  locus = { chatId: id, cloud };
+  // A cloud-space session re-enters an EXISTING workspace: the fs scope is
+  // the space's original thread id (remote-run threads the run identically).
+  const scope = cloud ? String((c.source && c.source.space) || id) : '';
+  if (id === locus.chatId && cloud === locus.cloud && scope === locus.scope) return;
+  locus = { chatId: id, cloud, scope };
   try {
     window.dispatchEvent(new CustomEvent('glyphh:wb-locus-changed', { detail: { ...locus } }));
   } catch { /* bare test stubs — the selector reads wbLocus() lazily anyway */ }
@@ -62,7 +65,7 @@ export function noteSessionsSnapshot(chats, currentId) {
 
 // ── The pod wb ───────────────────────────────────────────────────────────────
 
-export function createWbPod({ client, isAuthenticated, getScope = () => (locus.cloud ? locus.chatId : '') }) {
+export function createWbPod({ client, isAuthenticated, getScope = () => (locus.cloud ? (locus.scope || locus.chatId) : '') }) {
   let harness = null;
   const pod = () => {
     if (!harness) {

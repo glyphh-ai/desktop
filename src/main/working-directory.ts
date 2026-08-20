@@ -474,6 +474,9 @@ export function registerWorkingDirectoryIpc(deps: {
 
   // Lightweight git probe used by folder-bound app chrome (Agent app etc.)
   // to surface the current branch when the working folder is a git repo.
+  // The caller's existing cloud workspaces — the source chip's space browser.
+  ipcMain.handle("cloud-spaces-list", () => cloudFs.cloudListSpaces());
+
   ipcMain.handle("files:git-info", (_e, root: string) =>
     cloudFs.cloudFsActive() ? cloudFs.cloudGitInfo() : gitInfoForDir(root));
 

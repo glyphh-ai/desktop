@@ -1321,6 +1321,10 @@ function syncSpaceAttrs(): void {
 // The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
 // pod yet — quiet empty state) apart from a desktop source that's offline.
 (window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
+  // Space labels: the source chip's "Your spaces" list names a workspace by
+  // the session that made it, when that session still exists here.
+  (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor = (id: string) =>
+    chats.find((c) => c.id === id || (c.source as { space?: string } | undefined)?.space === id)?.title || "";
 
 function newChat(): void {
   // Every session is a Code session (the most-capable toolset). The mode field
@@ -2292,6 +2296,7 @@ function sameSource(a?: Source, b?: Source): boolean {
   if (!a || !b) return a === b;
   if (a.kind !== b.kind) return false;
   if (a.kind === "cloud-repo" && b.kind === "cloud-repo") return a.repo === b.repo;
+  if (a.kind === "cloud-space" && b.kind === "cloud-space") return a.space === b.space;
   if (a.kind === "local" && b.kind === "local") return a.path === b.path && (a.machineId ?? "") === (b.machineId ?? "");
   return true; // cloud-new === cloud-new
 }

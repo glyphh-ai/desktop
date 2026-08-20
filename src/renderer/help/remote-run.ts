@@ -435,13 +435,19 @@ export async function runRemoteTurn(
   // the agent and instructs clone-if-absent, so "clone the repo" needs no
   // follow-up question.
   const repo = chat.source?.kind === "cloud-repo" ? String((chat.source as { repo?: string }).repo || "") : "";
+  // A cloud-space session RE-ENTERS an existing workspace: the run threads on
+  // the space's original id so the pod resolves the same folder the space was
+  // born with (and the fs panels scope identically — cloud-fs-router/wb-pod).
+  const threadId = chat.source?.kind === "cloud-space"
+    ? String((chat.source as { space?: string }).space || chat.id)
+    : chat.id;
 
   let run: HarnessRunHandle;
   try {
     run = client.run({
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
       prompt,
-      threadId: chat.id, // stable chat id → transcript + memory scope
+      threadId, // stable id → transcript + memory + WORKSPACE scope
       mode: modeFor(chat),
       ...(workdir ? { workdir } : {}),
       ...(repo ? { repo } : {}),

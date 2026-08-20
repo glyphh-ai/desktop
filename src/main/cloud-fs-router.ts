@@ -77,7 +77,10 @@ export async function cloudRootOr(fallback: string): Promise<string> {
 export function noteSessionsSnapshot(chats: StoredChat[], currentId: string): void {
   const c = chats.find((x) => x.id === currentId);
   const nextCloud = !!(c && c.source && c.source.kind !== "local");
-  const nextId = nextCloud ? currentId : "";
+  // A cloud-space session re-enters an EXISTING workspace: the fs scope is
+  // the space's original thread id, not this chat's (remote-run threads the
+  // run the same way, so panels and turns stay on one folder).
+  const nextId = nextCloud ? ((c!.source as { space?: string }).space || currentId) : "";
   if (nextCloud === cloud && nextId === chatId) return;
   cloud = nextCloud;
   chatId = nextId;
@@ -182,6 +185,11 @@ export async function cloudGitDiff(): Promise<{ text: string; error?: string }> 
   } catch (err) {
     return { text: "", error: msg(err) };
   }
+}
+
+/** The caller's existing cloud workspaces — the source chip's space browser. */
+export async function cloudListSpaces(): Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }> {
+  try { return await harness().fsSpaces(); } catch { return { spaces: [] }; }
 }
 
 /** mkdir/delete/rename/preview have no pod-side routes yet — same honest

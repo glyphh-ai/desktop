@@ -433,84 +433,6 @@ function renderAppsList() {
 }
 
 // ── Work panels (built-in) ───────────────────────────────
-// The ten built-in panels — Office (Slides/Docs/Sheets/Drive), Design,
-// Memory, and Media (Image/Video/Sounds/Band) — sit FIRST in the one Apps
-// grid as fixed "work panel" cards (static markup in sections/apps.html
-// #apps-grid). They are not org apps: no editor, no delete, and the
-// agent/IPC layers refuse their slugs outright. A single click opens the
-// panel through its workbench bridge.
-const WORKPANEL_OPENERS: Record<string, () => void> = {
-  gpoint: () => openWorkPanelInWorkbench("__wbOpenGPoint"),
-  gdoc: () => openWorkPanelInWorkbench("__wbOpenGDoc"),
-  gsheet: () => openWorkPanelInWorkbench("__wbOpenGSheet"),
-  gdrive: () => openWorkPanelInWorkbench("__wbOpenGDrive"),
-  gdesign: () => openWorkPanelInWorkbench("__wbOpenDesign"),
-  gmemory: () => openWorkPanelInWorkbench("__wbOpenMemory"),
-  gimage: () => openWorkPanelInWorkbench("__wbOpenMedia", "gimage"),
-  gvideo: () => openWorkPanelInWorkbench("__wbOpenMedia", "gvideo"),
-  gsound: () => openWorkPanelInWorkbench("__wbOpenMedia", "gsound"),
-  gband: () => openWorkPanelInWorkbench("__wbOpenMedia", "gband"),
-};
-
-/** One-liners for the builtin work panels — the read-only detail's body copy. */
-const WORKPANEL_META: Record<string, { name: string; desc: string }> = {
-  gpoint: { name: "Slides", desc: "Agent-built presentations — decks live in Drive and open as a panel." },
-  gdoc: { name: "Docs", desc: "Agent-written documents with structured blocks and design-system styling." },
-  gsheet: { name: "Sheets", desc: "Workbooks with charts, styles, and rich agent tools." },
-  gdrive: { name: "Drive", desc: "Every Office file in folders, plus the read-only Library of your app data." },
-  gdesign: { name: "Design", desc: "The org's design systems — colors, type, imagery, and the mockup canvas." },
-  gmemory: { name: "Memory", desc: "Your stored facts and the semantic space, visualized." },
-  gimage: { name: "Image", desc: "Generated and uploaded images — the org media library's image shelf." },
-  gvideo: { name: "Video", desc: "Clips, recordings, and renders from the media pipeline." },
-  gsound: { name: "Sounds", desc: "Music, sound effects, and speech — generated and edited." },
-  gband: { name: "Band", desc: "Songs, artists, instruments, and music video — the studio." },
-};
-
-/** Which work panel the detail screen is showing (null = a normal app). */
-let workPanelDetail: string | null = null;
-
-/** The Apps page is for EDITING/INSTALLING — a work-panel card opens this
- *  read-only detail (opening the actual panel lives on the detail's Open
- *  button, the rails, and the command center). Builtins are immutable, so
- *  every tab dies and only the heading + description + Open remain. */
-function openWorkPanelDetail(slug: string): void {
-  const meta = WORKPANEL_META[slug];
-  if (!meta) return;
-  workPanelDetail = slug;
-  document.getElementById("apps-list")?.classList.add("hidden");
-  document.getElementById("app-detail")?.classList.remove("hidden");
-  document.querySelectorAll<HTMLElement>(".app-detail-tab").forEach((el) => el.classList.add("hidden"));
-  document.querySelectorAll<HTMLElement>(".app-detail-pane").forEach((el) => el.classList.add("hidden"));
-  const heading = document.getElementById("app-detail-heading");
-  if (heading) { heading.textContent = meta.name; heading.classList.remove("hidden"); }
-  const head = document.getElementById("app-detail-head");
-  if (head) {
-    head.textContent = "";
-    const icon = document.querySelector(`#apps-grid .app-card[data-workpanel="${slug}"] .app-card-icon`)?.cloneNode(true);
-    if (icon) head.appendChild(icon);
-    const info = document.createElement("div");
-    const kind = document.createElement("div");
-    kind.className = "app-card-id";
-    kind.textContent = "Work panel — built in";
-    const desc = document.createElement("p");
-    desc.textContent = meta.desc;
-    info.append(kind, desc);
-    head.appendChild(info);
-  }
-  document.getElementById("app-detail-open")?.classList.remove("hidden");
-}
-
-/** Wire the static work-panel cards (once, at boot). Cards open the DETAIL
- *  (the Apps page edits/installs; the rails + command center open apps) —
- *  the detail's "Open app" button is what launches the panel. */
-function initWorkPanels(): void {
-  document.querySelectorAll<HTMLElement>("#apps-grid .app-card[data-workpanel]").forEach((card) => {
-    card.addEventListener("click", () => {
-      const slug = card.dataset.workpanel || "";
-      if (WORKPANEL_META[slug]) openWorkPanelDetail(slug);
-    });
-  });
-}
 
 /** "Required connections" block on the app editor — one row per connector the
  *  installed app's manifest declares, with live connected/not-connected status.
@@ -1862,7 +1784,6 @@ function getPreviewWebContentsId(): number | undefined {
 }
 
 function closeAppDetail() {
-  workPanelDetail = null;
   // Drop any glyphh capability grant on the reused preview webContents.
   void window.glyphh.glyphhAppPreviewClear?.(getPreviewWebContentsId());
   appPreview.src = "about:blank";
@@ -1902,7 +1823,6 @@ function initApps() {
   initMcpTab();
   initReleasesTab();
   initMarketplaceTab();
-  initWorkPanels();
 
   // Echo tile menu bridge: "Edit" on a command-center app tile opens the
   // Apps section straight onto that app's edit screen.
@@ -2104,13 +2024,6 @@ function initApps() {
   // in a panel — it keeps the OS launch, closing the modal only on success so
   // a launch error stays visible inline.
   document.getElementById("app-detail-open")?.addEventListener("click", async () => {
-    // A work-panel detail's Open launches the panel — this is the ONE place
-    // the Apps page opens a builtin (cards open the detail, not the app).
-    if (workPanelDetail) {
-      const open = WORKPANEL_OPENERS[workPanelDetail];
-      if (open) { closeSettingsModal(); open(); }
-      return;
-    }
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
     // A suspended marketplace app has no open action (M7: lapse = unrouted).

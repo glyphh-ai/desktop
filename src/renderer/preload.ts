@@ -621,6 +621,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
   billingTopup: (credits: number, embedded?: boolean) =>
     ipcRenderer.invoke("billing-topup", credits, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
+  cloudSpacesList: () =>
+    ipcRenderer.invoke("cloud-spaces-list") as Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }>,
   billingConfig: () =>
     ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,

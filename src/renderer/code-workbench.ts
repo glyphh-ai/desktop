@@ -4673,14 +4673,19 @@ async function init(): Promise<void> {
      *  stay in the persisted wall pref (resurrecting at next boot) and its
      *  cards would die without parking; the reset closes them properly,
      *  saves the layout's memory, and persists the now-empty wall. */
-    /** THE GLYPHH CLICK (his rule, 2026-08-18): the glyphh icon does EXACTLY
-     *  what ＋ New Session does, in all situations — the SAME function
-     *  (`__glyphhNewSession` → newSessionInPlace), never copied logic. The
-     *  new-session posture is ONE thing now: everything on screen closes and
-     *  the agent comes up alone as a regular Echo panel (title + ✕) — see
-     *  __wbNewSessionPanel. No layout exception, no seat-hosting branch. */
+    /** THE GLYPHH CLICK (his rule, 2026-08-19, supersedes the 2026-08-18
+     *  new-session tie): the mark OPENS THE AGENT — full screen when the wall
+     *  is bare, into the next slot beside whatever is open — and never
+     *  doubles an agent a live layout already shows (that click just focuses
+     *  the composer). New sessions live on ＋ alone now. */
     const activateGlyphh = (_self?: TileEntry): void => {
-      (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+      const inLayout = openList.some((x) => x.layoutId != null);
+      const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
+      if (inLayout && agentShowing) {
+        (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
+        return;
+      }
+      void openAgentPanel();
     };
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
