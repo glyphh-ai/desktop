@@ -19096,3 +19096,20 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 .echo-cc-close:hover { background: var(--hover); color: var(--text); }
 .echo-cc-close.hidden { display: none; }
+
+
+/* ── THE LOCK IS ABSOLUTE (his bug, 2026-08-20: "still auto-hiding with the
+   lock on") — the agent has SEVERAL hide mechanisms (the covered tuck, the
+   fullscreen-card hide); the lock beats them ALL at the paint level. The one
+   exception stays: a layout hosting its own agent (echo-agent-in-layout uses
+   display:none, which these rules deliberately don't touch). */
+body.echo-agent-locked .code-root[data-anchor="center"] > .code-agent {
+  transform: translate(-50%, 0) !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+body.echo-agent-locked #code-agent-layer {
+  visibility: visible !important;
+  /* Over every card, fullscreen included (cards live well below 400). */
+  z-index: 460;
+}

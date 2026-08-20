@@ -5068,6 +5068,8 @@ export function initCode(): void {
       const on = !document.body.classList.contains("echo-agent-locked");
       paintLock(on);
       void window.glyphh.setPreference?.("echoAgentLock", on);
+      // The workbench recomputes the tuck + band NOW — not on the next open.
+      window.dispatchEvent(new CustomEvent("glyphh:agent-lock-changed"));
     });
   }
   // Voice input — the mic chip + hands-free convo mode + start/stop cues.

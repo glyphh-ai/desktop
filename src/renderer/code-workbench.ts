@@ -3761,6 +3761,8 @@ async function init(): Promise<void> {
           && !active.isContentEditable) active.blur();
       }
     };
+    // The lock flipped mid-session: recompute the tuck + card band right away.
+    window.addEventListener("glyphh:agent-lock-changed", () => { syncWallVisibility(); layoutCards(); });
     // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
     // page). The search bar is gone; drips moved onto the composer card
     // (help/code.ts wires the picker there, opening upward). ──
