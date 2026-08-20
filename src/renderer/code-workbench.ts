@@ -3390,9 +3390,26 @@ async function init(): Promise<void> {
     // clears both. The pin state rides a BODY class so the composer band's
     // button (help/code.ts DOM, a different layer) can mirror it.
     let shadowPinned = false;
+    // The CC's CLOSE (✕, top right — his rule 2026-08-20): visible whenever
+    // the lifted command center sits over open panels; does exactly what Esc
+    // does there — drop the wall back behind the cards.
+    let ccCloseBtn: HTMLButtonElement | null = null;
+    const syncCcClose = (on: boolean): void => {
+      if (!ccCloseBtn) {
+        ccCloseBtn = document.createElement("button");
+        ccCloseBtn.className = "echo-cc-close hidden";
+        ccCloseBtn.type = "button";
+        ccCloseBtn.title = "Close the command center (Esc)";
+        ccCloseBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+        ccCloseBtn.addEventListener("click", () => setShadow(false, false));
+        stage.appendChild(ccCloseBtn);
+      }
+      ccCloseBtn.classList.toggle("hidden", !(on && openList.length > 0));
+    };
     const setShadow = (on: boolean, pin: boolean): void => {
       shadowPinned = on && pin;
       cardsLayer.classList.toggle("echo-shadow", on);
+      syncCcClose(on);
       document.body.classList.toggle("echo-cc-pinned", shadowPinned);
       // Body mirror for layers OUTSIDE the workbench DOM: the layout-docked
       // agent holder rides a body-level layer (z 118) that would paint OVER
@@ -3723,7 +3740,10 @@ async function init(): Promise<void> {
       // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
       // (The 2026-08-20 lingering tuck was reverted with the flow layout —
       // "move back to before the changes this morning".)
-      const covered = hidden && !layoutUp;
+      // THE LOCK (his rule, 2026-08-20): a locked agent never tucks — panels
+      // open under it. A layout loading its own agent still owns the surface
+      // (layoutUp already exempts the tuck).
+      const covered = hidden && !layoutUp && !document.body.classList.contains("echo-agent-locked");
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)

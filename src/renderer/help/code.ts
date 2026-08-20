@@ -5044,6 +5044,32 @@ export function initCode(): void {
     const n = Number(v);
     document.documentElement.style.setProperty("--echo-agent-opacity", String(Number.isFinite(n) ? Math.max(0.25, Math.min(1, n)) : 0.92));
   });
+  // TEXT transparency + max panel height (independent of the panel fade).
+  void window.glyphh.getPreference?.("echoAgentTextOpacity", 1).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--echo-agent-text-opacity", String(Number.isFinite(n) ? Math.max(0.25, Math.min(1, n)) : 1));
+  });
+  void window.glyphh.getPreference?.("echoAgentMaxH", 76).then((v) => {
+    const n = Number(v);
+    document.documentElement.style.setProperty("--echo-agent-max-h", `${Number.isFinite(n) ? Math.max(30, Math.min(95, n)) : 76}vh`);
+  });
+  // ── THE LOCK (left of the drips droplet, his rule 2026-08-20): checked →
+  // the agent stays up no matter what opens — the covered-tuck skips it.
+  // A LAYOUT loading its own agent still wins (the layout owns the surface).
+  {
+    const lock = el("code-agent-lock");
+    const paintLock = (on: boolean): void => {
+      document.body.classList.toggle("echo-agent-locked", on);
+      lock?.classList.toggle("active", on);
+      if (lock) lock.title = on ? "Agent locked up — click to unlock" : "Lock the agent up (stays visible over open panels)";
+    };
+    void window.glyphh.getPreference?.("echoAgentLock", false).then((v) => paintLock(v === true));
+    lock?.addEventListener("click", () => {
+      const on = !document.body.classList.contains("echo-agent-locked");
+      paintLock(on);
+      void window.glyphh.setPreference?.("echoAgentLock", on);
+    });
+  }
   // Voice input — the mic chip + hands-free convo mode + start/stop cues.
   // (This call was lost in the cc-button removal; without it the chip is
   // wired to NOTHING — "the record button isn't turning on".)

@@ -17593,7 +17593,7 @@ body.echo-cc-pinned #code-cc-open { color: var(--accent); }
   /* Clicking the status text opens the FULL agent thread (scrollable), not
      just the last few messages — the bar is a one-line window onto the whole
      conversation. Opening it never closes a panel: it is an OVERLAY dialog. */
-  max-height: min(76vh, 860px);
+  max-height: min(var(--echo-agent-max-h, 76vh), 860px);
   padding: 12px 20px;
   overflow-y: auto;
   /* The pill's gradient ring, worn by the panel too: two-layer background —
@@ -19073,3 +19073,26 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 }
 .echo-folder-pager button:disabled { opacity: 0.4; cursor: default; }
 .echo-folder-pager button:not(:disabled):hover { background: var(--hover); color: var(--text); }
+
+
+/* ── Echo Agent: independent TEXT fade + lock + CC close (2026-08-20) ────── */
+/* Text fades on its own slider, multiplying the panel fade — glassy panel
+   with solid words, or both faded, each its own knob. */
+.code-root[data-anchor="center"].peeking > .code-agent > .code-thread .code-msg {
+  opacity: var(--echo-agent-text-opacity, 1);
+}
+#code-agent-lock.active { color: var(--accent, #8c3bf2); }
+.echo-cc-close {
+  position: absolute;
+  top: 14px; right: 16px;
+  z-index: 420;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.echo-cc-close:hover { background: var(--hover); color: var(--text); }
+.echo-cc-close.hidden { display: none; }

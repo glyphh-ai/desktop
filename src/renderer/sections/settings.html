@@ -336,6 +336,18 @@
                     <input type="range" id="settings-echo-agent-opacity" min="0.25" max="1" step="0.05" />
                     <span id="settings-echo-agent-opacity-val" class="settings-hint"></span>
                   </div>
+                  <!-- TEXT fades independently of the panel (his rule,
+                       2026-08-20) — glassy panel, solid words, or both faded. -->
+                  <label class="settings-label">Text transparency</label>
+                  <div class="settings-inline">
+                    <input type="range" id="settings-echo-agent-text-opacity" min="0.25" max="1" step="0.05" />
+                    <span id="settings-echo-agent-text-opacity-val" class="settings-hint"></span>
+                  </div>
+                  <label class="settings-label">Max panel height</label>
+                  <div class="settings-inline">
+                    <input type="range" id="settings-echo-agent-max-h" min="30" max="95" step="5" />
+                    <span id="settings-echo-agent-max-h-val" class="settings-hint"></span>
+                  </div>
                 </div>
 
                 <h3 class="settings-subheading">Browser</h3>

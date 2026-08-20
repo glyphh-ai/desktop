@@ -364,6 +364,36 @@ function initSettings() {
       void window.glyphh.setPreference("echoAgentOpacity", Number(o.value));
     });
   }
+  // TEXT transparency — its own var, independent of the panel's.
+  {
+    const t = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
+    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
+    const paint = (): void => {
+      if (!t) return;
+      document.documentElement.style.setProperty("--echo-agent-text-opacity", t.value);
+      if (tv) tv.textContent = `${Math.round(Number(t.value) * 100)}%`;
+    };
+    t?.addEventListener("input", paint);
+    t?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentTextOpacity", Number(t.value));
+    });
+  }
+  // Max panel height (vh) — how tall the agent panel may grow.
+  {
+    const m = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
+    const mv = document.getElementById("settings-echo-agent-max-h-val");
+    const paint = (): void => {
+      if (!m) return;
+      document.documentElement.style.setProperty("--echo-agent-max-h", `${m.value}vh`);
+      if (mv) mv.textContent = `${m.value}%`;
+    };
+    m?.addEventListener("input", paint);
+    m?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentMaxH", Number(m.value));
+    });
+  }
 
   // Command center: icon size (live CSS var) + apps per page (the launcher
   // re-reads on the event and re-chunks its pages).
@@ -556,6 +586,20 @@ async function loadSettings() {
   // Dock auto-hide — defaults ON; zoom defaults 20%.
   const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
   if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
+  const agTx = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
+  if (agTx) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentTextOpacity", 1));
+    agTx.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 1);
+    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
+    if (tv) tv.textContent = `${Math.round(Number(agTx.value) * 100)}%`;
+  }
+  const agMh = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
+  if (agMh) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentMaxH", 76));
+    agMh.value = String(Number.isFinite(raw) ? Math.max(30, Math.min(95, raw)) : 76);
+    const mv = document.getElementById("settings-echo-agent-max-h-val");
+    if (mv) mv.textContent = `${agMh.value}%`;
+  }
   const agOp = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
   if (agOp) {
     const raw = Number(await window.glyphh.getPreference("echoAgentOpacity", 0.92));
