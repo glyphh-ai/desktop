@@ -19055,7 +19055,9 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   flex: 1; min-height: 120px; overflow-y: auto;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
   align-content: start;
+  padding-top: 8px;   /* the top row sits down a tad off the header */
 }
+.echo-folder-item.selected { outline: 2px solid var(--accent, #8c3bf2); outline-offset: 2px; border-radius: 14px; }
 .echo-folder-item { width: auto; }
 .echo-folder-empty {
   grid-column: 1 / -1; padding: 28px 12px; text-align: center;

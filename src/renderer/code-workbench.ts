@@ -2379,6 +2379,8 @@ async function init(): Promise<void> {
     // ── Drag: reorder within the pages, and TRADE between dock and pages.
     // Nothing here deletes by dropping — a drop outside any target snaps back. ──
     let dragIconKey: string | null = null;
+    /** The keys riding a group drag (a L→R selection dragged by any member). */
+    let dragGroupKeys: string[] | null = null;
     const wireIconDrag = (el: HTMLElement, key: string | null): void => {
       if (!key) return;   // the fixed Home tile never moves
       el.draggable = true;
@@ -2386,12 +2388,15 @@ async function init(): Promise<void> {
         // ⇧/⌃/⌘ presses belong to multi-select, never a move.
         if (ev.shiftKey || ev.ctrlKey || ev.metaKey) { ev.preventDefault(); return; }
         dragIconKey = key;
+        // Dragging a SELECTED icon moves the whole selection (folder filing).
+        const selKeys = [...multiSel].map((x) => keyOf(x.tile)).filter((k): k is string => !!k);
+        dragGroupKeys = selKeys.includes(key) && selKeys.length > 1 ? selKeys : null;
         applyDockZoomAt(null);
         el.classList.add("dock-dragging");
         ev.dataTransfer?.setData("text/plain", key);
         if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
       });
-      el.addEventListener("dragend", () => { el.classList.remove("dock-dragging"); dragIconKey = null; });
+      el.addEventListener("dragend", () => { el.classList.remove("dock-dragging"); dragIconKey = null; dragGroupKeys = null; });
     };
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
     const moveKeyToPage = (key: string, at: TileEntry | null): void => {
@@ -2632,7 +2637,9 @@ async function init(): Promise<void> {
             // Dropping ON a folder files the icon inside it (folders never
             // nest); every other target is a reorder, exactly as before.
             if (e.tile.kind === "folder" && e.tile.folderId && !dragIconKey.startsWith("folder:")) {
-              addToFolder(dragIconKey, e.tile.folderId);
+              const group = dragGroupKeys ?? [dragIconKey];
+              for (const k of group) if (!k.startsWith("folder:")) addToFolder(k, e.tile.folderId!);
+              clearSel();
               return;
             }
             moveKeyToPage(dragIconKey, e);
@@ -2739,7 +2746,9 @@ async function init(): Promise<void> {
       const sx = ev.clientX, sy = ev.clientY;
       let live = false;
       const iconRects = entries.filter(selectable).map((e) => ({ e, r: e.iconEl!.getBoundingClientRect() }));
+      let lastX = sx;
       const move = (mv: PointerEvent): void => {
+        lastX = mv.clientX;
         if (!live && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 6) return;
         if (!live) {
           live = true;
@@ -2776,12 +2785,21 @@ async function init(): Promise<void> {
         if (live) {
           suppressNextIconClick = true;
           setTimeout(() => { suppressNextIconClick = false; }, 0);
-          if (multiSel.size) openSelected();
-          else clearSel();
+          if (!multiSel.size) { clearSel(); return; }
+          // DIRECTION IS THE VERB (his rule, 2026-08-20): sweeping RIGHT→LEFT
+          // opens the selection (the original gesture); LEFT→RIGHT only
+          // SELECTS — the group stays highlighted so it can be dragged into
+          // a folder in one move. Click empty space (or Esc) to clear.
+          if (lastX < sx) openSelected();
+          else paintSel();
         }
       };
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);
+    });
+    // An empty-space click (no band) drops a lingering selection.
+    pagesEl.addEventListener("click", (ev) => {
+      if (!(ev.target as HTMLElement).closest(".echo-app-btn") && multiSel.size && !suppressNextIconClick) clearSel();
     });
         const layoutTileOf = (layoutRow: LayoutRow): EchoTile => {
       const seenIds = new Set<string>();
@@ -4920,7 +4938,8 @@ async function init(): Promise<void> {
       overlay.addEventListener("drop", (ev) => {
         if (ev.target !== overlay) return;
         ev.preventDefault();
-        if (dragIconKey && f.keys.includes(dragIconKey)) { removeFromFolder(dragIconKey, f.id); paint(); }
+        const group = (dragGroupKeys ?? (dragIconKey ? [dragIconKey] : [])).filter((k) => f.keys.includes(k));
+        if (group.length) { for (const k of group) removeFromFolder(k, f.id); paint(); }
       });
       const paint = (): void => {
         const pages = Math.max(1, Math.ceil(f.keys.length / FOLDER_PAGE_SIZE));
@@ -4964,6 +4983,62 @@ async function init(): Promise<void> {
         const grid = document.createElement("div");
         grid.className = "echo-folder-grid";
         card.appendChild(grid);
+        // SAME direction verbs as the wall: sweep LEFT→RIGHT on the grid
+        // background to SELECT a group (drag any member to the backdrop to
+        // move them all out), RIGHT→LEFT to open the selection.
+        const modalSel = new Set<string>();
+        const paintModalSel = (): void => {
+          grid.querySelectorAll<HTMLElement>(".echo-folder-item").forEach((b) => {
+            b.classList.toggle("selected", modalSel.has(b.dataset.key || ""));
+          });
+        };
+        grid.addEventListener("pointerdown", (ev) => {
+          if (ev.button !== 0 || (ev.target as HTMLElement).closest(".echo-folder-item")) return;
+          const sx = ev.clientX, sy = ev.clientY;
+          let lastX = sx;
+          let live = false;
+          let band: HTMLDivElement | null = null;
+          const rects = [...grid.querySelectorAll<HTMLElement>(".echo-folder-item")]
+            .map((b) => ({ key: b.dataset.key || "", r: b.getBoundingClientRect() }));
+          const move = (mv: PointerEvent): void => {
+            lastX = mv.clientX;
+            if (!live && Math.hypot(mv.clientX - sx, mv.clientY - sy) < 6) return;
+            if (!live) {
+              live = true;
+              band = document.createElement("div");
+              band.className = "echo-marquee";
+              band.style.position = "fixed";
+              document.body.appendChild(band);
+            }
+            const L = Math.min(sx, mv.clientX), T = Math.min(sy, mv.clientY);
+            const W = Math.abs(mv.clientX - sx), H = Math.abs(mv.clientY - sy);
+            band!.style.left = `${L}px`; band!.style.top = `${T}px`;
+            band!.style.width = `${W}px`; band!.style.height = `${H}px`;
+            modalSel.clear();
+            for (const { key, r } of rects) {
+              if (key && !(r.right < L || r.left > L + W || r.bottom < T || r.top > T + H)) modalSel.add(key);
+            }
+            paintModalSel();
+          };
+          const up = (): void => {
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", up);
+            band?.remove();
+            if (!live) return;
+            if (!modalSel.size) { paintModalSel(); return; }
+            if (lastX < sx) {
+              // R→L: open every selected member, like the wall.
+              const picks = [...modalSel];
+              modalSel.clear();
+              close();
+              for (const k of picks) { const t = wallCatalog.get(k); if (t) activateTile(makeTileEntry(t)); }
+            } else {
+              paintModalSel();   // L→R: hold the selection for the drag out
+            }
+          };
+          document.addEventListener("pointermove", move);
+          document.addEventListener("pointerup", up);
+        });
         if (!slice.length) {
           const empty = document.createElement("div");
           empty.className = "echo-folder-empty";
@@ -4975,6 +5050,7 @@ async function init(): Promise<void> {
           const btn = document.createElement("button");
           btn.className = "echo-app-btn echo-folder-item";
           btn.type = "button";
+          btn.dataset.key = key;
           btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
           const ic = btn.querySelector<HTMLElement>(".echo-app-ic");
           const nm = btn.querySelector<HTMLElement>(".echo-app-name");
@@ -4993,10 +5069,12 @@ async function init(): Promise<void> {
           btn.draggable = true;
           btn.addEventListener("dragstart", (ev) => {
             dragIconKey = key;
+            // A selected member drags the whole selection out together.
+            dragGroupKeys = modalSel.has(key) && modalSel.size > 1 ? [...modalSel] : null;
             ev.dataTransfer?.setData("text/plain", key);
             if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
           });
-          btn.addEventListener("dragend", () => { dragIconKey = null; });
+          btn.addEventListener("dragend", () => { dragIconKey = null; dragGroupKeys = null; });
           grid.appendChild(btn);
         }
         if (pages > 1) {

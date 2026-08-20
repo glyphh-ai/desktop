@@ -514,10 +514,63 @@ export function buildContract(client, deps) {
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
-    // EXPLICIT STUB (rule 3): the connector OAuth flow runs through desktop
-    // main-process windows; the web surface points the user there instead of
-    // crashing the catalog card.
-    connectorsConnect: async () => ({ ok: false, error: "Connect from the desktop app" }),
+    // The connector OAuth flow, WEB-NATIVE (his rule, 2026-08-20: same tooling
+    // as the desktop minus fs): Pipedream Connect is a browser flow by nature —
+    // open the popup FIRST (inside the click's gesture budget, before any
+    // fetch, or the browser blocks it), point it at the connect link, then
+    // poll the personal list until the new account lands.
+    connectorsConnect: async (appSlug) => {
+      const popup = window.open('about:blank', '_blank', 'popup,width=520,height=720');
+      if (!popup) return { ok: false, error: 'Popup blocked — allow popups for this site' };
+      try {
+        const before = new Set((await client.connections.personalList().catch(() => [])).map((c) => c.id));
+        const session = await client.connections.personalConnect(appSlug);
+        if (!session?.connectUrl) { popup.close(); return { ok: false, error: 'Failed to get connect token' }; }
+        popup.location = session.connectUrl;
+        const landed = async () => {
+          const now = await client.connections.personalList().catch(() => []);
+          return now.some((c) => !before.has(c.id));
+        };
+        for (let i = 0; i < 150; i++) {                     // <= 5 minutes
+          await new Promise((r) => setTimeout(r, 2000));
+          if (await landed()) { try { popup.close(); } catch (e) { /* gone */ } return { ok: true }; }
+          if (popup.closed) {
+            // Grace polls: the OAuth finished as the window closed and the
+            // account sync can trail it by a few seconds.
+            for (let j = 0; j < 5; j++) {
+              await new Promise((r) => setTimeout(r, 1500));
+              if (await landed()) return { ok: true };
+            }
+            return { ok: false, error: 'The connect window closed before finishing' };
+          }
+        }
+        return { ok: false, error: 'Timed out waiting for the connection' };
+      } catch (err) {
+        try { popup.close(); } catch (e) { /* gone */ }
+        return { ok: false, error: err?.message || String(err) };
+      }
+    },
+    // Manage connections on web — same seams the desktop IPC rides.
+    connectionDisconnect: async (id) => {
+      try { await client.connections.personalDisconnect(id); return { ok: true }; }
+      catch (e1) {
+        try { await client.connections.pipedreamDisconnect(id); return { ok: true }; }
+        catch (err) { return { ok: false, error: err?.message || String(err) }; }
+      }
+    },
+    connectionToolsSet: async (slug, tools) => {
+      try { await client.connections.setPersonalConnectionTools(slug, tools); return { ok: true }; }
+      catch (e1) {
+        try { await client.connections.setOrgConnectionTools(slug, tools); return { ok: true }; }
+        catch (err) { return { ok: false, error: err?.message || String(err) }; }
+      }
+    },
+    mcpConnectionsCatalog: async () => {
+      try {
+        const list = await client.connections.orgMcpList();
+        return { ok: true, connections: list ?? [] };
+      } catch (e) { return { ok: false, connections: [] }; }
+    },
     mcpConnectionsList: read(
       async () => {
         const [personal, org] = await Promise.all([
