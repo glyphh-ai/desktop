@@ -15,3 +15,4 @@ native/mac-window-helper/build/
 .sdk-vendor/
 .sdk-src/
 vendor/
+.DS_Store
