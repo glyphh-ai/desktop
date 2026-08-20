@@ -423,6 +423,26 @@ function initSettings() {
     });
   }
 
+  // Interface sound volume (his ask, 2026-08-19) — pref uiSoundVolume 0..1,
+  // server-backed like every pref (/api/me/prefs → db). Live: dragging updates
+  // the running volume at once and plays a sample tick so the level is
+  // audible while choosing it.
+  {
+    const z = document.getElementById("general-ui-sound") as HTMLInputElement | null;
+    const zv = document.getElementById("general-ui-sound-val");
+    const paint = (): void => { if (z && zv) zv.textContent = Number(z.value) <= 0 ? "Off" : `${z.value}%`; };
+    const w = window as unknown as { __uiSoundSetVolume?: (v: number) => void; __uiSound?: (k: "tick" | "focus") => void };
+    z?.addEventListener("input", () => {
+      paint();
+      w.__uiSoundSetVolume?.(Number(z.value) / 100);
+      w.__uiSound?.("tick");
+    });
+    z?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("uiSoundVolume", Number(z.value) / 100);
+    });
+  }
+
   // WEB on a TOUCH device (tablet / iPad-as-Mac): the door back to the mobile
   // app — the twin of mobile's Appearance → "Desktop site" toggle. Flipping it
   // clears the glyphh_force_desktop escape hatch (which is what keeps a tablet
@@ -563,6 +583,14 @@ async function loadSettings() {
     iconZoom.value = String(Number.isFinite(raw) ? Math.max(1, Math.min(1.5, raw)) : 1.08);
     const zv = document.getElementById("settings-icon-zoom-val");
     if (zv) zv.textContent = Number(iconZoom.value) <= 1 ? "Off" : `${Math.round((Number(iconZoom.value) - 1) * 100)}%`;
+  }
+  const snd = document.getElementById("general-ui-sound") as HTMLInputElement | null;
+  if (snd) {
+    const raw = Number(await window.glyphh.getPreference("uiSoundVolume", 0.3));
+    const v = Number.isFinite(raw) ? Math.max(0, Math.min(1, raw)) : 0.3;
+    snd.value = String(Math.round(v * 100));
+    const zv = document.getElementById("general-ui-sound-val");
+    if (zv) zv.textContent = v <= 0 ? "Off" : `${Math.round(v * 100)}%`;
   }
   const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
   if (zoom) {

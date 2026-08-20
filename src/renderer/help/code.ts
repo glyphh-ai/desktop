@@ -29,6 +29,7 @@ import {
   type RemoteChat, type AttachHandle,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
+import { uiSound } from "./ui-sounds.js";
 import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
@@ -1645,11 +1646,21 @@ function renderHistory(): void {
   // nothing must keep its own box on screen to be cleared.
   paintRecentsSearch(chats.length);
 
+  // SORT (his rule, 2026-08-19): pinned first, then most recently TOUCHED
+  // down. Touched = the LWW stamp when present, else the last message, else
+  // birth — array order alone went stale the moment an old session got a new
+  // message without moving.
+  const touchedAt = (c: CodeChat): number => {
+    const stamp = (c as { updatedAt?: number }).updatedAt ?? 0;
+    const lastMsg = c.messages.length ? c.messages[c.messages.length - 1]!.at : 0;
+    return Math.max(stamp, lastMsg, c.createdAt);
+  };
+  const byTouch = (a: CodeChat, b: CodeChat): number => touchedAt(b) - touchedAt(a);
   // Pinned sessions leave their normal group and sit at the top under one
   // heading. Nothing pinned, no heading: an empty "Pinned" would be a permanent
   // reminder of a feature you aren't using.
-  const pinned = visible.filter((c) => c.pinned);
-  const rest = visible.filter((c) => !c.pinned);
+  const pinned = visible.filter((c) => c.pinned).sort(byTouch);
+  const rest = visible.filter((c) => !c.pinned).sort(byTouch);
   if (pinned.length) {
     list.appendChild(recentsHead("Pinned", "Pinned sessions"));
     for (const c of pinned) list.appendChild(historyRow(c));
@@ -2979,6 +2990,12 @@ function wireComposerAttachments(): void {
     });
   }
   input()?.addEventListener("paste", (e) => { void handleComposerPaste(e); });
+  // TINY FOCUS SOUND (his ask, 2026-08-19): a soft low thunk when the mouse
+  // clicks INTO the input — only on entry (already-focused clicks stay
+  // silent), and only for pointer clicks, never keyboard/programmatic focus.
+  input()?.addEventListener("mousedown", (e) => {
+    if (document.activeElement !== e.currentTarget) uiSound("focus");
+  });
   const comp = document.querySelector<HTMLElement>(".code-composer");
   if (!comp) return;
   comp.addEventListener("dragover", (e) => { e.preventDefault(); comp.classList.add("dropping"); });

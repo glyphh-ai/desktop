@@ -2015,6 +2015,17 @@ async function init(): Promise<void> {
     // deleted from here). ──
     const pagesEl = stage.querySelector<HTMLElement>(".echo-pages")!;
     const dotsEl = stage.querySelector<HTMLElement>(".echo-page-dots")!;
+    // TINY HOVER TICK (his ask, 2026-08-19): sweeping the cursor over apps on
+    // the command center clicks softly. Delegated on the whole wall body so
+    // page tiles AND dock slots share it; entering a button fires once
+    // (relatedTarget guard), and ui-sounds.ts floors burst rate.
+    body.addEventListener("mouseover", (ev) => {
+      const btn = (ev.target as HTMLElement | null)?.closest?.(".echo-app-btn, .echo-dock-btn");
+      if (!btn) return;
+      const from = (ev as MouseEvent).relatedTarget as HTMLElement | null;
+      if (from && from.closest(".echo-app-btn, .echo-dock-btn") === btn) return;
+      (window as unknown as { __uiSound?: (k: "tick" | "focus") => void }).__uiSound?.("tick");
+    });
     // Page ARROWS — either side of the icon lists.
     const mkArrow = (dir: -1 | 1): HTMLButtonElement => {
       const a = document.createElement("button");
@@ -3615,6 +3626,9 @@ async function init(): Promise<void> {
       const inLayout = openList.some((e) => e.layoutId != null);
       const cards = openList.filter((e) => e.card && e.tile.kind !== "agent");
       const show = inLayout || cards.length > 0;
+      // Outer scopes (e.g. __wbNewSessionPanel) need layout-ness without
+      // reaching into this closure — stamp it on the body.
+      document.body.classList.toggle("echo-layout-active", inLayout);
       const wasHidden = layoutBar.classList.contains("hidden");
       layoutBar.classList.toggle("hidden", !show);
       if (inLayout) layoutBarName.textContent = echoLayoutName || "Workspace";
@@ -7572,6 +7586,14 @@ async function init(): Promise<void> {
     };
   }
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
+    // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
+    // pod has no pty surface. Say so honestly instead of opening a local shell
+    // that silently works on the WRONG filesystem.
+    const src = (window as unknown as { __glyphhActiveSource?: () => { kind?: string } | null }).__glyphhActiveSource?.();
+    if (src && src.kind && src.kind !== "local") {
+      body.innerHTML = `<div class="ws-term-cloud-note">Terminal isn't available for cloud sessions — ask the agent to run commands in its workspace instead.</div>`;
+      return;
+    }
     body.innerHTML = `
       <div class="ws-terminal">
         <div class="ws-terminal-tabs"></div>
@@ -8455,6 +8477,14 @@ async function init(): Promise<void> {
   // composer, focused and empty. newSessionInPlace calls this after it
   // empties the thread state.
   (window as unknown as { __wbNewSessionPanel?: () => void }).__wbNewSessionPanel = () => {
+    // IN A LAYOUT (his rule, 2026-08-19, supersedes the no-exception posture):
+    // ＋ starts the new session IN PLACE — the layout and every panel stay
+    // exactly as they are; the thread state was already emptied upstream and
+    // the docked agent repaints to the welcome. Only focus moves.
+    if (document.body.classList.contains("echo-layout-active")) {
+      document.getElementById("code-input")?.focus();
+      return;
+    }
     const ids = rails.flatMap((r) => r.slots.filter((s) => s.view !== "echo").map((s) => s.id));
     for (const id of ids) closeSlot(id);
     openEchoSurface();

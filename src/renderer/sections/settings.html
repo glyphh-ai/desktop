@@ -45,6 +45,15 @@
                   <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Your session's memory lives in your org's regional stator — the memory plane sessions recall from. When a conversation outgrows its context window it's compacted: folded into a summary the session carries forward. This guidance is advisory to that compaction, automatic and manual alike; changes save on their own.</span>
                 </div>
 
+                <div class="settings-form">
+                  <label class="settings-label">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></label>
+                  <div class="settings-inline">
+                    <input type="range" id="general-ui-sound" min="0" max="100" step="5" />
+                    <span id="general-ui-sound-val" class="settings-hint"></span>
+                  </div>
+                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">The tiny hover and click sounds. Zero turns them off.</span>
+                </div>
+
                 <!-- Sessions — the org's regional runtime + stator (moved in from
                      the retired Runtime tab). Read for any member; chooseInfra is
                      org_admin. The group is admin-gated like its nav item was

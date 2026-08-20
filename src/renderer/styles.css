@@ -15247,16 +15247,16 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* View-toggles overflow: a few visible, the rest behind ⋮ */
 .code-view-more-wrap { position: relative; display: inline-flex; }
 .code-view-more-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
+  /* ALWAYS opens UPWARD (his rule, 2026-08-19): the source row lives at the
+     top right of the composer, which itself sits at the bottom of the screen
+     — a downward menu falls over the input or off the bottom edge. */
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 200;
   min-width: 150px; padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border-2);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
-/* Docked at the BOTTOM the three-dots menu must open UPWARD (a downward menu
-   falls off the bottom edge behind the app). */
-.code-root[data-anchor="center"] .code-view-more-menu { top: auto; bottom: calc(100% + 6px); z-index: 200; }
 .code-view-more-menu .code-view-menu-item {
   /* The base .code-view-btn is a centered 28px square — undo that here or
      every row centers icon+label as a group and the icons zig-zag. */
@@ -16391,8 +16391,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    highlight ink). */
 .echo-dock {
   display: flex; align-items: center;
-  gap: clamp(6px, 1.2vw, 16px);
+  gap: clamp(9px, 1.6vw, 20px);   /* a touch more air between slots */
   max-width: calc(100vw - 32px);
+  margin-top: 10px;               /* and a tad more drop below the dock line */
 }
 /* Slots SHRINK to fit the page: fluid between 46px and 76px squares (the
    glyphs ride along), so the dock always fits the window on one row. */
@@ -17810,6 +17811,10 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
   font: inherit; font-size: 12px; outline: none;
 }
 /* Drive drag-and-drop: the dragged card dims; a hovered folder target rings. */
+.ws-term-cloud-note {
+  display: flex; align-items: center; justify-content: center; height: 100%;
+  padding: 24px; text-align: center; color: var(--text-3); font-size: 13px;
+}
 .gdrive-dragging { opacity: 0.45; }
 .gdrive-droptarget { box-shadow: 0 0 0 2px var(--accent) !important; border-radius: 10px; }
 

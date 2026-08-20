@@ -191,21 +191,34 @@ export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug:
   const archive = zip.toBuffer();
 
   const client = getClient();
-  // Ensure the owned app entry exists (first deploy). A slug already owned by
-  // this org just conflicts here — fine; a foreign-owned slug fails at release.
-  try { await client.apps.createEntry({ kind: "glyphh", slug, name: manifest.name }); }
-  catch { /* already registered — proceed to cut a release */ }
+  // THE APP ID IS THE IDENTITY (his rule, 2026-08-19): create the entry and
+  // address the whole release/deploy chain by the returned GLOBALLY UNIQUE id
+  // — the server may mint the slug away from the manifest's (collisions across
+  // orgs), and slug-addressing after that targets someone else's app or 404s.
+  let appRef = "";
+  let liveSlug = slug;
+  try {
+    const entry = await client.apps.createEntry({ kind: "glyphh", slug, name: manifest.name });
+    appRef = entry.id;
+    liveSlug = entry.slug || slug;
+  } catch {
+    // Already registered — find OUR app (never a foreign one) and use its id.
+    const mine = await client.apps.mine().catch(() => [] as Array<{ id?: string; slug: string }>);
+    const own = mine.find((a) => a.slug === slug);
+    if (own?.id) appRef = own.id;
+  }
+  const ref = appRef || slug;   // old servers: slug keeps working
 
-  const existing = await client.apps.releases(slug).catch(() => [] as { version: string }[]);
+  const existing = await client.apps.releases(ref).catch(() => [] as { version: string }[]);
   const version = nextFreeVersion(existing.map((r) => r.version), manifest.version ?? "1.0.0");
-  const release = await client.apps.createRelease(slug, { version });
-  const outcome = await client.apps.uploadSource(slug, release.id, new Uint8Array(archive));
+  const release = await client.apps.createRelease(ref, { version });
+  const outcome = await client.apps.uploadSource(ref, release.id, new Uint8Array(archive));
   if (outcome.status !== "ready") {
-    return { slug, version, status: outcome.status, error: outcome.error ?? undefined };
+    return { slug: liveSlug, version, status: outcome.status, error: outcome.error ?? undefined };
   }
   // Deploy EXACTLY the release we just built + uploaded — pinned by id, so a
   // stale "newest ready" (e.g. an old release whose source has since been
   // lost from storage) can never be what actually ships.
-  const dep = await client.hosting.deploy({ appSlug: slug, releaseId: release.id });
-  return { slug, version, status: "ready", url: dep.url ?? undefined };
+  const dep = await client.hosting.deploy({ appSlug: ref, releaseId: release.id });
+  return { slug: liveSlug, version, status: "ready", url: dep.url ?? undefined };
 }

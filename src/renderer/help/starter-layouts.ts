@@ -30,7 +30,7 @@ const TEMPLATES: Record<"dev" | "email" | "research", Template> = {
     name: "Dev", cols: 3, rows: 2,
     build: () => [
       cell("tool:files", 0, 0), cell("tool:diff", 0, 1),
-      cell("tool:monaco", 1, 0), cell("tool:terminal", 1, 1),
+      cell("tool:monaco", 1, 0), cell("tool:releases", 1, 1),
       cell("tool:coding", 2, 0, 2),
     ],
   },

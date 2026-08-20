@@ -148,6 +148,12 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
       getClient().apps.defaults().catch(() => []),
     ]);
     const mineRows = mine.map(toRow);
+    // THE GLYPHH ORG CASE (his rule, 2026-08-19): in the org that OWNS the
+    // house defaults, those canonical rows come back from mine() as ordinary
+    // owned rows — mark them system so the Apps page (user-built/installed
+    // only) hides them there too; the command center still shows system rows.
+    const defSlugs = new Set(houseDefaults.map((d) => d.slug.toLowerCase()));
+    for (const r of mineRows) if (defSlugs.has(r.slug.toLowerCase())) r.system = true;
     const taken = new Set(mineRows.map((r) => r.slug.toLowerCase()));
     const defaultRows: OrgAppRow[] = houseDefaults
       .filter((d) => !!d.url && !taken.has(d.slug.toLowerCase()))
