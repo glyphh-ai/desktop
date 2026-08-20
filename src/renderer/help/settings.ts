@@ -596,7 +596,7 @@ async function loadSettings() {
   const agMh = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
   if (agMh) {
     const raw = Number(await window.glyphh.getPreference("echoAgentMaxH", 76));
-    agMh.value = String(Number.isFinite(raw) ? Math.max(30, Math.min(95, raw)) : 76);
+    agMh.value = String(Number.isFinite(raw) ? Math.max(20, Math.min(100, raw)) : 76);
     const mv = document.getElementById("settings-echo-agent-max-h-val");
     if (mv) mv.textContent = `${agMh.value}%`;
   }

@@ -5051,7 +5051,7 @@ export function initCode(): void {
   });
   void window.glyphh.getPreference?.("echoAgentMaxH", 76).then((v) => {
     const n = Number(v);
-    document.documentElement.style.setProperty("--echo-agent-max-h", `${Number.isFinite(n) ? Math.max(30, Math.min(95, n)) : 76}vh`);
+    document.documentElement.style.setProperty("--echo-agent-max-h", `${Number.isFinite(n) ? Math.max(20, Math.min(100, n)) : 76}vh`);
   });
   // ── THE LOCK (left of the drips droplet, his rule 2026-08-20): checked →
   // the agent stays up no matter what opens — the covered-tuck skips it.
@@ -5071,6 +5071,112 @@ export function initCode(): void {
       // The workbench recomputes the tuck + band NOW — not on the next open.
       window.dispatchEvent(new CustomEvent("glyphh:agent-lock-changed"));
     });
+  }
+  // ── DRAG GEOMETRY (his rule, 2026-08-20): the top row drags the whole
+  // panel LEFT/RIGHT (X only, never Y); the input card's side edges drag its
+  // WIDTH; a grip on the thread's top edge drags its height DOWN. All three
+  // persist per user and ride CSS vars the centered-agent rules read. ──
+  {
+    const rootEl = document.documentElement;
+    const setX = (px: number): number => {
+      const lim = Math.max(0, window.innerWidth / 2 - 220);
+      const v = Math.max(-lim, Math.min(lim, px));
+      rootEl.style.setProperty("--echo-agent-x", `${Math.round(v)}px`);
+      return v;
+    };
+    const setW = (px: number): number => {
+      const v = Math.max(360, Math.min(1600, px));
+      rootEl.style.setProperty("--echo-agent-w", `${Math.round(v)}px`);
+      return v;
+    };
+    void window.glyphh.getPreference?.("echoAgentX", 0).then((v) => { const n = Number(v); if (Number.isFinite(n) && n) setX(n); });
+    void window.glyphh.getPreference?.("echoAgentW", 920).then((v) => { const n = Number(v); if (Number.isFinite(n) && n !== 920) setW(n); });
+
+    // X-drag on the top row's empty surface (buttons/inputs keep their clicks).
+    const toprow = document.querySelector<HTMLElement>(".code-agent-toprow");
+    toprow?.addEventListener("pointerdown", (ev) => {
+      if (ev.button !== 0) return;
+      const t = ev.target as HTMLElement;
+      if (t.closest("button, input, textarea, select, a, [contenteditable]")) return;
+      ev.preventDefault();
+      const startX = ev.clientX;
+      const base = parseFloat(getComputedStyle(rootEl).getPropertyValue("--echo-agent-x")) || 0;
+      let last = base;
+      const move = (mv: PointerEvent): void => { last = setX(base + (mv.clientX - startX)); };
+      const up = (): void => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        void window.glyphh.setPreference?.("echoAgentX", Math.round(last));
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up);
+    });
+
+    // WIDTH edges on the input card. Centered geometry → symmetric resize
+    // (2× the edge's travel), the panel's center staying put.
+    const card = document.querySelector<HTMLElement>(".code-input-card");
+    if (card) {
+      for (const side of ["left", "right"] as const) {
+        const edge = document.createElement("div");
+        edge.className = `code-agent-edge ${side}`;
+        edge.addEventListener("pointerdown", (ev) => {
+          if (ev.button !== 0) return;
+          ev.preventDefault(); ev.stopPropagation();
+          const startX = ev.clientX;
+          const base = parseFloat(getComputedStyle(rootEl).getPropertyValue("--echo-agent-w")) || 920;
+          let last = base;
+          const move = (mv: PointerEvent): void => {
+            const dx = mv.clientX - startX;
+            last = setW(base + (side === "right" ? dx : -dx) * 2);
+          };
+          const up = (): void => {
+            document.removeEventListener("pointermove", move);
+            document.removeEventListener("pointerup", up);
+            void window.glyphh.setPreference?.("echoAgentW", Math.round(last));
+          };
+          document.addEventListener("pointermove", move);
+          document.addEventListener("pointerup", up);
+        });
+        card.appendChild(edge);
+      }
+    }
+
+    // HEIGHT grip riding the thread's top edge (the thread's own innerHTML is
+    // wiped every repaint, so the grip lives on the AGENT and tracks the
+    // thread's rect via a ResizeObserver).
+    const agent = document.querySelector<HTMLElement>(".code-root > .code-agent");
+    const threadEl = el<HTMLDivElement>("code-thread");
+    if (agent && threadEl) {
+      const grip = document.createElement("div");
+      grip.className = "code-thread-grip";
+      agent.appendChild(grip);
+      const place = (): void => {
+        const h = threadEl.getBoundingClientRect().height;
+        grip.style.bottom = `calc(100% + ${Math.max(0, Math.round(h)) + 2}px)`;
+      };
+      new ResizeObserver(place).observe(threadEl);
+      place();
+      grip.addEventListener("pointerdown", (ev) => {
+        if (ev.button !== 0) return;
+        ev.preventDefault(); ev.stopPropagation();
+        const startY = ev.clientY;
+        const baseH = threadEl.getBoundingClientRect().height;
+        let lastVh = 0;
+        const move = (mv: PointerEvent): void => {
+          // Dragging DOWN shrinks; UP grows — capped 20..100vh.
+          const px = Math.max(120, baseH - (mv.clientY - startY));
+          lastVh = Math.max(20, Math.min(100, (px / window.innerHeight) * 100));
+          rootEl.style.setProperty("--echo-agent-max-h", `${lastVh}vh`);
+        };
+        const up = (): void => {
+          document.removeEventListener("pointermove", move);
+          document.removeEventListener("pointerup", up);
+          if (lastVh) void window.glyphh.setPreference?.("echoAgentMaxH", Math.round(lastVh));
+        };
+        document.addEventListener("pointermove", move);
+        document.addEventListener("pointerup", up);
+      });
+    }
   }
   // Voice input — the mic chip + hands-free convo mode + start/stop cues.
   // (This call was lost in the cc-button removal; without it the chip is
