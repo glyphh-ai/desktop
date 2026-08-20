@@ -19017,19 +19017,21 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .echo-folder-glyph svg { width: 26px; height: 26px; opacity: 0.75; }
 .echo-folder-mini { background: color-mix(in srgb, var(--surface-3) 70%, transparent); border-radius: 12px; }
 .echo-folder-overlay {
-  position: fixed; inset: 0; z-index: 640;
-  background: rgba(0, 0, 0, 0.45);
+  position: fixed; inset: 0; z-index: 9600;
+  /* SAME dialog skeleton as every other modal (his rule, 2026-08-20: the
+     panel matches the rest of the app; themes own these tokens). */
+  background: var(--overlay-bg);
   display: flex; align-items: center; justify-content: center;
 }
 .echo-folder-card {
   width: min(560px, 92vw);
   max-height: 78vh;
   display: flex; flex-direction: column;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 16px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
-  padding: 14px 16px 16px;
+  background: var(--surface-2); border: 1px solid var(--border-3);
+  border-radius: 12px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  padding: 14px 18px 18px;
 }
-.echo-folder-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.echo-folder-head { display: flex; align-items: center; gap: 10px; margin-bottom: 26px; }
 .echo-folder-name {
   flex: 1; min-width: 0;
   background: none; border: none; outline: none;
