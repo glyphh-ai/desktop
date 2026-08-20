@@ -82,6 +82,14 @@ function fitPeek(): void {
 }
 const refitPeek = (): void => { if (isPeeking()) fitPeek(); };
 window.addEventListener("resize", refitPeek);
+// LIVE GEOMETRY (his rule, 2026-08-20): the feed panel resizes WITH the
+// input — width/X drags fire this event, and a ResizeObserver on the card
+// catches growth the drags don't (chips, autoGrow).
+window.addEventListener("glyphh:agent-geometry", refitPeek);
+{
+  const card = root()?.querySelector<HTMLElement>(".code-input-card");
+  if (card) new ResizeObserver(refitPeek).observe(card);
+}
 
 export function closePeek(): void {
   root()?.classList.remove("peeking");

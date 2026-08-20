@@ -5102,15 +5102,19 @@ export function initCode(): void {
 
     // X-drag on the top row's empty surface (buttons/inputs keep their clicks).
     const toprow = document.querySelector<HTMLElement>(".code-agent-toprow");
+    const geometryLocked = (): boolean => document.body.classList.contains("echo-agent-locked");
     toprow?.addEventListener("pointerdown", (ev) => {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || geometryLocked()) return;
       const t = ev.target as HTMLElement;
       if (t.closest("button, input, textarea, select, a, [contenteditable]")) return;
       ev.preventDefault();
       const startX = ev.clientX;
       const base = parseFloat(getComputedStyle(rootEl).getPropertyValue("--echo-agent-x")) || 0;
       let last = base;
-      const move = (mv: PointerEvent): void => { last = setX(base + (mv.clientX - startX)); };
+      const move = (mv: PointerEvent): void => {
+        last = setX(base + (mv.clientX - startX));
+        window.dispatchEvent(new CustomEvent("glyphh:agent-geometry"));
+      };
       const up = (): void => {
         document.removeEventListener("pointermove", move);
         document.removeEventListener("pointerup", up);
@@ -5128,7 +5132,7 @@ export function initCode(): void {
         const edge = document.createElement("div");
         edge.className = `code-agent-edge ${side}`;
         edge.addEventListener("pointerdown", (ev) => {
-          if (ev.button !== 0) return;
+          if (ev.button !== 0 || geometryLocked()) return;
           ev.preventDefault(); ev.stopPropagation();
           const startX = ev.clientX;
           const base = parseFloat(getComputedStyle(rootEl).getPropertyValue("--echo-agent-w")) || 920;
@@ -5136,6 +5140,7 @@ export function initCode(): void {
           const move = (mv: PointerEvent): void => {
             const dx = mv.clientX - startX;
             last = setW(base + (side === "right" ? dx : -dx) * 2);
+            window.dispatchEvent(new CustomEvent("glyphh:agent-geometry"));
           };
           const up = (): void => {
             document.removeEventListener("pointermove", move);
@@ -5165,7 +5170,7 @@ export function initCode(): void {
       new ResizeObserver(place).observe(threadEl);
       place();
       grip.addEventListener("pointerdown", (ev) => {
-        if (ev.button !== 0) return;
+        if (ev.button !== 0 || geometryLocked()) return;
         ev.preventDefault(); ev.stopPropagation();
         const startY = ev.clientY;
         const baseH = threadEl.getBoundingClientRect().height;
