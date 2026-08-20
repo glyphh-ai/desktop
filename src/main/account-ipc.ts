@@ -87,6 +87,17 @@ export function registerAccountIpc(): void {
 
   // ── Organization ────────────────────────────────────────────────────────
   ipcMain.handle("account-org-get", () => getClient().org.get());
+  ipcMain.handle("org-app-blocks", () => getClient().org.appBlocks());
+  ipcMain.handle("org-app-block-set", async (_e, ref: string, blocked: boolean) => {
+    try {
+      const r = blocked ? await getClient().org.blockApp(String(ref)) : await getClient().org.unblockApp(String(ref));
+      return { ok: true as const, blocked: r.blocked, slug: r.slug };
+    } catch (err) { return fail(err); }
+  });
+  ipcMain.handle("account-org-image", async (_e, bytes: ArrayBuffer) => {
+    try { return { ok: true as const, media: await getClient().org.uploadImage(new Uint8Array(bytes)) }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("account-org-update", async (_e, patch: OrgUpdate) => {
     try { return { ok: true as const, org: await getClient().org.update(patch) }; }
     catch (err) { return fail(err); }

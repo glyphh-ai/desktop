@@ -1,3 +1,4 @@
+import { openAppInWorkbench } from "./code.js";
 /**
  * marketplace.ts — the Marketplace SECTION SHELL: the storefront (search,
  * categories, sort, cards) and the listing DETAIL page (gallery, video,
@@ -14,6 +15,7 @@
  * honestly from the listing alone and upgrades in place.
  */
 
+import { fixMediaUrl } from "./marketplace-dev.js";
 import { confirmAction, promptAction } from "./shared.js";
 import { primeConnectedIcons } from "./app-icon.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -151,6 +153,7 @@ function mktCard(l: MktListing, variant: "grid" | "row"): HTMLElement {
           ${ratingLine(l.slug)}
           <span class="mkt-dot">•</span>
           <span class="mkt-price">${mktPriceLabel(l.pricing)}</span>
+          ${l.kind !== "workpanel" && typeof l.installs === "number" ? `<span class="mkt-dot">•</span><span class="mkt-installs-count">${l.installs.toLocaleString()} install${l.installs === 1 ? "" : "s"}</span>` : ""}
           ${installedSlugs.has(l.slug) ? `<span class="mkt-dot">•</span><span class="mkt-installed">Installed</span>` : ""}
         </div>
       </div>
@@ -181,14 +184,18 @@ export async function loadMarketplace(): Promise<void> {
     return;
   }
   renderMktStorefront();
-  hydrateDetails();
+  hydrateDetails(true);
 }
 
 /** Fetch each listing's detail (icon / tagline / stars / category / developer)
- *  with a small concurrency cap, re-rendering as batches land. */
-function hydrateDetails(): void {
+ *  with a small concurrency cap, re-rendering as batches land.
+ *  `revalidate` refetches EVERY row (his report, 2026-08-20: the marketplace
+ *  didn't update — cached details froze icons/ratings/status at first sight):
+ *  cached entries still paint instantly, then fresh data re-renders over them
+ *  as it lands. Stale-while-revalidate, no flash. */
+function hydrateDetails(revalidate = false): void {
   const epoch = ++hydrateEpoch;
-  const missing = mktRows.filter((l) => !detailCache.has(l.slug)).map((l) => l.slug);
+  const missing = (revalidate ? mktRows : mktRows.filter((l) => !detailCache.has(l.slug))).map((l) => l.slug);
   if (!missing.length) return;
   let inFlight = 0, landedSinceRender = 0;
   const queue = [...missing];
@@ -461,7 +468,7 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
 
   // The description is markdown — render it, don't escape it into raw syntax.
   const descHtml = (l.body || d.description) ? formatMarkdown(l.body || d.description || "") : "";
-  const videoHtml = mktVideoEmbed(l.videoUrl);
+  const videoHtml = "";   // the demo video lives IN the gallery strip now
   const reqConnHtml = requiredConnsHtml(d.requiredConnections);
 
   // ── CTA: install / uninstall, with the credit price on the button. ─────────
@@ -470,16 +477,20 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
   const installLabel = priced ? `Install — ${d.pricing.effectiveMonthlyCredits} credits/mo` : "Install — Free";
   const cta = d.suspended
     ? `<button class="action-btn" disabled>Suspended</button>`
-    : installed
-      ? `<button class="action-btn mkt-dt-uninstall" type="button">Uninstall</button>`
+    : (d as { blockedForOrg?: boolean }).blockedForOrg
+      ? `<button class="action-btn" disabled title="Your organization's administrator has blocked this app.">Blocked by your organization</button>`
+      : d.owned
+      ? `<button class="action-btn" disabled title="Publishers can't install their own app — it's already yours.">Your listing</button>`
+      : installed
+      ? `<button class="action-btn primary mkt-dt-open" type="button">Open app</button>
+         <button class="action-btn mkt-dt-uninstall" type="button">Uninstall</button>`
       : `<button class="action-btn primary mkt-dt-install" type="button">${escMkt(installLabel)}</button>`;
-  const ctaNote = isWorkpanel
-    ? (IS_WEB
-      ? "Work panels install locally on your desktop — open the Glyphh desktop app to finish the install."
-      : "A work panel installs locally on this machine and opens beside your agent.")
-    : priced
-      ? `Charges the first month (${d.pricing.effectiveMonthlyCredits} credits) now, then monthly.`
-      : "Free to install";
+  // Workpanels read EXACTLY like every other app (his rule, 2026-08-20) --
+  // no special explainer under the button.
+  void isWorkpanel;
+  const ctaNote = priced
+    ? `Charges the first month (${d.pricing.effectiveMonthlyCredits} credits) now, then monthly.`
+    : "Free to install";
 
   // ── Developer card (side) — support falls to the developer, never Glyphh. ──
   const dev = d.developer;
@@ -516,12 +527,40 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
       <button class="action-btn ${d.suspended ? "" : "danger"} mkt-admin-suspend-btn" type="button">${d.suspended ? "Unsuspend" : "Suspend listing"}</button>
     </div>` : "";
 
-  const gallery = l.screenshots.length ? `
+  // ONE MEDIA STRIP (his rule, 2026-08-20): the demo video leads — a trailer
+  // sells before stills do (the store convention) — then the screenshots.
+  const uploadedVideo = !!l.videoUrl && (l.videoUrl.startsWith("/") || l.videoUrl.includes("/api/apps/"));
+  const linkEmbed = ((): string => {
+    if (!l.videoUrl || uploadedVideo) return "";
+    try {
+      const u = new URL(l.videoUrl);
+      const host = u.hostname.replace(/^www\./, "");
+      if (host === "youtu.be") return `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
+      if (host.endsWith("youtube.com")) { const v = u.searchParams.get("v"); return v ? `https://www.youtube.com/embed/${v}` : ""; }
+      if (host.endsWith("vimeo.com")) { const id = u.pathname.split("/").filter(Boolean).pop(); return id ? `https://player.vimeo.com/video/${id}` : ""; }
+    } catch { /* not embeddable */ }
+    return "";
+  })();
+  const hasVideoSlide = uploadedVideo || !!linkEmbed;
+  const videoMainHtml = uploadedVideo
+    ? `<video class="mkt-gallery-video" src="${escMkt(fixMediaUrl(l.videoUrl))}" controls preload="metadata"></video>`
+    : linkEmbed ? `<div class="mkt-video"><iframe src="${escMkt(linkEmbed)}" allow="fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>` : "";
+  const gallery = (l.screenshots.length || hasVideoSlide) ? `
     <section class="mkt-dt-section mkt-gallery">
-      <div class="mkt-gallery-main"><img id="mkt-shot-main" src="${escMkt(l.screenshots[0]!.url)}" alt="" /></div>
-      <div class="mkt-gallery-caption" id="mkt-shot-caption">${escMkt(l.screenshots[0]!.caption || "")}</div>
+      <div class="mkt-gallery-main" id="mkt-gallery-main">${hasVideoSlide ? videoMainHtml : `<img id="mkt-shot-main" src="${escMkt(fixMediaUrl(l.screenshots[0]?.url))}" alt="" />`}</div>
+      <div class="mkt-gallery-caption" id="mkt-shot-caption">${hasVideoSlide ? "" : escMkt(l.screenshots[0]?.caption || "")}</div>
       <div class="mkt-gallery-thumbs">
-        ${l.screenshots.map((s, i) => `<button class="mkt-thumb${i === 0 ? " active" : ""}" data-i="${i}"><img src="${escMkt(s.url)}" alt="" /></button>`).join("")}
+        ${hasVideoSlide ? ((): string => {
+          // A REAL thumbnail for the video tile (his bug, 2026-08-20):
+          // uploaded → the file's own first frame; YouTube → the poster JPEG;
+          // anything else → the dark branded tile.
+          const ytId = linkEmbed.includes("youtube.com/embed/") ? linkEmbed.split("/embed/")[1] : "";
+          const inner = uploadedVideo
+            ? `<video src="${escMkt(fixMediaUrl(l.videoUrl))}#t=0.5" preload="metadata" muted playsinline></video>`
+            : ytId ? `<img src="https://i.ytimg.com/vi/${escMkt(ytId)}/hqdefault.jpg" alt="" />` : "";
+          return `<button class="mkt-thumb mkt-thumb-video active" data-video="1" title="Demo video">${inner}<span class="mkt-thumb-play">▶</span></button>`;
+        })() : ""}
+        ${l.screenshots.map((s, i) => `<button class="mkt-thumb${!hasVideoSlide && i === 0 ? " active" : ""}" data-i="${i}"><img src="${escMkt(fixMediaUrl(s.url))}" alt="" /></button>`).join("")}
       </div>
     </section>` : "";
 
@@ -630,17 +669,27 @@ function wireMktDetail(d: MktDetail, installed: boolean): void {
     });
   });
 
-  // Gallery thumbs.
-  const mainImg = mktDetailEl.querySelector("#mkt-shot-main") as HTMLImageElement | null;
-  const cap = mktDetailEl.querySelector("#mkt-shot-caption") as HTMLElement | null;
-  for (const t of Array.from(mktDetailEl.querySelectorAll<HTMLButtonElement>(".mkt-thumb"))) {
-    t.addEventListener("click", () => {
-      const s = d.listing.screenshots[Number(t.dataset.i)];
-      if (!s || !mainImg) return;
-      mainImg.src = s.url;
-      if (cap) cap.textContent = s.caption;
-      mktDetailEl.querySelectorAll(".mkt-thumb").forEach((x) => x.classList.toggle("active", x === t));
-    });
+  // Gallery thumbs — the video slide and the screenshots share one strip.
+  {
+    const main = mktDetailEl.querySelector("#mkt-gallery-main") as HTMLElement | null;
+    const cap = mktDetailEl.querySelector("#mkt-shot-caption") as HTMLElement | null;
+    const videoHtmlSlide = main?.innerHTML ?? "";   // painted first when a video exists
+    for (const t of Array.from(mktDetailEl.querySelectorAll<HTMLButtonElement>(".mkt-thumb"))) {
+      t.addEventListener("click", () => {
+        if (!main) return;
+        if (t.dataset.video) {
+          main.innerHTML = videoHtmlSlide;
+          if (cap) cap.textContent = "";
+        } else {
+          const s2 = d.listing.screenshots[Number(t.dataset.i)];
+          if (!s2) return;
+          main.innerHTML = `<img id="mkt-shot-main" alt="" />`;
+          (main.querySelector("img") as HTMLImageElement).src = fixMediaUrl(s2.url);
+          if (cap) cap.textContent = s2.caption;
+        }
+        mktDetailEl.querySelectorAll(".mkt-thumb").forEach((x) => x.classList.toggle("active", x === t));
+      });
+    }
   }
 
   // Install — a priced app charges its first month NOW, so it always confirms.
@@ -672,6 +721,16 @@ function wireMktDetail(d: MktDetail, installed: boolean): void {
   });
 
   // Uninstall — entitlement + membership end; the modal is the app's confirm.
+  // Open the installed app (his rule, 2026-08-20): workpanels open their
+  // view; everything else mounts as a workbench panel by slug.
+  mktDetailEl.querySelector(".mkt-dt-open")?.addEventListener("click", () => {
+    if (d.kind === "workpanel") {
+      (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(d.slug);
+      return;
+    }
+    // Installed = a PANEL app to this user: chromeless, no hosted URL shown.
+    openAppInWorkbench({ slug: d.slug, name: d.listing.title || d.name, glyphh: d.kind === "glyphh", workbench: true });
+  });
   const uninstallEl = mktDetailEl.querySelector(".mkt-dt-uninstall") as HTMLButtonElement | null;
   uninstallEl?.addEventListener("click", async () => {
     const confirmed = await confirmAction({
@@ -698,6 +757,8 @@ function wireMktDetail(d: MktDetail, installed: boolean): void {
   const dev = d.developer;
   if (dev) {
     mktDetailEl.querySelector(".mkt-dev-profile-btn")?.addEventListener("click", () => void openMktDeveloper(dev.handle));
+    // The developer's NAME/avatar row is a link too (his rule, 2026-08-20).
+    mktDetailEl.querySelector(".mkt-dev-row-link")?.addEventListener("click", () => void openMktDeveloper(dev.handle));
     void mkt.devGet(dev.handle).then((full) => {
       const rollup = mktDetailEl.querySelector("#mkt-dev-rollup");
       if (!rollup) return;

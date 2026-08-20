@@ -1,45 +1,25 @@
 /**
- * settings-developer.ts — Settings → Developer: the M7 developer program.
+ * marketplace-program.ts — the developer PROGRAM panes of the Marketplace →
+ * Developer console (moved here whole from the retired Settings → Developer
+ * page, 2026-08-20):
  *
- * TWO TABS on the app's real tab strip (app-detail-tabs), matching the Usage
- * page's look (dash-card stat grid + lib-table rows) and the Apps → New form
- * grammar (settings-label/input/hint, inline `.invalid` + settings-error
- * validation — never a top banner for field validation):
+ *   • Developer Agreement pane — the hosted agreement (opened in the app's own
+ *     browser panel), the current version, the consent checkbox that commits
+ *     on check (program enrollment), and the program status chip.
+ *   • Payouts pane — EARNINGS as usage-style stat cards (Gross / Net / Unpaid /
+ *     Paid out) with the payout history table, then the PAYOUT CONNECTION:
+ *     Stripe Connect onboarding state, the manual account-id fallback and the
+ *     payout threshold. All autosaving, field validation inline.
  *
- *   • Developer — the org/personal PROFILE form at the very top (REUSING the
- *     marketplace console's renderDeveloperProfiles), then EARNINGS as
- *     usage-style stat cards (Gross / Net / Unpaid / Paid out) with the payout
- *     history table below them, then the PAYOUT CONNECTION block: Stripe
- *     Connect onboarding state (connect / verifying / ready / restricted, all
- *     read off the program state; readiness is webhook-driven server-side so a
- *     re-read is the whole refresh), the manual account-id fallback and the
- *     payout threshold. Connect/Resume open the hosted onboarding in the app's
- *     own browser panel — never an external browser.
- *   • Developer Agreement — the legal/consent area alone: the hosted agreement
- *     (opened in the app's own browser panel), the current version, the
- *     consent checkbox that commits on check (program enrollment) like any
- *     other settings toggle, and the program status chip. Enrolled orgs see
- *     their accepted version/date and a re-consent prompt when the server
- *     reports a newer version.
- *
- * The program is HANDLE-scoped (contract DeveloperProgram): a PROFILE holds
- * enrollment/consent/payout, so the panel resolves the caller's profile first
- * (org over personal — the publisher gate's profile for org apps). mktProgram
- * still resolves null when the SDK bundle in front of us predates the surface
- * — this panel then renders an honest "coming online" state.
- *
- * The #dev-program-error banner is reserved for GENUINE action failures (a
- * load that couldn't reach the server, a real commit the server refused).
- * Field validation reports inline on the field and never sends the request —
- * the server's "invalid request body" must never be reachable from typing.
+ * The program is HANDLE-scoped (contract DeveloperProgram): the panel resolves
+ * the caller's profile first (org over personal). The #dev-program-error
+ * banner is reserved for GENUINE action failures.
  */
 
 import {
   mkt, mktProgram, escMkt, mktDate, mktCreditsFromMicro, mktErrorText, mktNoticeHtml,
   type MktProgramState, type MktEarningsPage, type MktPayout,
 } from "./marketplace-data.js";
-import { renderDeveloperProfiles, openMktDeveloper } from "./marketplace-dev.js";
-import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { openHostedPage } from "./settings-api.js";
 import { openUrlInWorkbench } from "./code.js";
 
@@ -79,54 +59,60 @@ function fieldError(input: HTMLInputElement, errEl: HTMLElement | null, msg: str
 // Stale-load guard — the panel refetches on every show and after every write.
 let loadEpoch = 0;
 
-export function initDeveloperPanel(): void {
-  // The two-tab strip — the same app-detail-tabs idiom the app editors use.
-  const panes: Record<string, string> = { main: "dev-tab-main", agreement: "dev-tab-agreement" };
-  document.querySelectorAll<HTMLButtonElement>("#dev-tabs .app-detail-tab").forEach((b) => {
-    b.addEventListener("click", () => {
-      document.querySelectorAll("#dev-tabs .app-detail-tab").forEach((t) => t.classList.toggle("active", t === b));
-      for (const [tab, paneId] of Object.entries(panes)) {
-        document.getElementById(paneId)?.classList.toggle("hidden", tab !== b.dataset.devtab);
-      }
-    });
-  });
+/** The two panes' MARKUP — the console injects these into its Agreement and
+ *  Payouts tabs (ids unchanged from the retired settings panel). */
+export function programPanesHtml(): { agreement: string; payouts: string } {
+  return {
+    agreement: `
+      <h3 class="settings-subheading" style="margin-top:18px;">Developer Agreement <span id="dev-legal-status" class="set-save-state"></span></h3>
+      <div class="acct-section">
+        <p class="settings-hint" style="margin:0;">Publishing means agreeing to the developer agreement: sandbox rules, no data exfiltration beyond declared capabilities, payout terms, support falls to you.</p>
+        <a id="dev-agreement-link" href="${AGREEMENT_URL}">Read the developer agreement ↗</a>
+        <div id="dev-legal-body"></div>
+      </div>
+      <h3 class="settings-subheading">Program status</h3>
+      <div class="acct-section">
+        <div class="dev-status-row">
+          <span id="dev-status-chip" class="mkt-review-chip">—</span>
+          <span id="dev-status-explain" class="settings-hint" style="margin:0;flex:1;"></span>
+        </div>
+      </div>`,
+    payouts: `
+      <h3 class="settings-subheading" style="margin-top:18px;">Earnings
+        <button id="dev-payout-refresh" class="acct-chip-refresh" title="Refresh earnings and payout status" aria-label="Refresh earnings and payout status">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+        </button>
+        <span id="dev-payout-status" class="set-save-state"></span></h3>
+      <div class="acct-section">
+        <p class="settings-hint" style="margin:0;">What your apps have earned on the marketplace. Purchased or granted credits are never redeemable for cash — only earned revenue is payable, through this program.</p>
+        <div id="dev-earnings-body"></div>
+      </div>
+      <h3 class="settings-subheading">Payout connection</h3>
+      <div class="acct-section">
+        <p class="settings-hint" style="margin:0;">Earned marketplace revenue pays out monthly via Stripe Connect. Stripe collects your details on their hosted page; they never touch Glyphh.</p>
+        <div id="dev-payout-body"></div>
+      </div>`,
+  };
+}
 
-  // The agreement is a hosted legal page but it never leaves the app: the
-  // same in-app hand-off the billing pages use (a workbench browser panel on
-  // desktop, a tab on web) — the settings modal closes so the panel is seen.
+export function initProgramPanes(): void {
+  // The agreement is a hosted legal page but it never leaves the app — the
+  // same in-app hand-off the billing pages use (a workbench browser panel).
   document.getElementById("dev-agreement-link")?.addEventListener("click", (e) => {
     e.preventDefault();
-    closeSettingsModal();
     openHostedPage("Developer agreement", AGREEMENT_URL, openUrlInWorkbench);
   });
-
-  // Earnings-heading refresh: readiness flips server-side (Stripe's webhook),
-  // so "check again" is just a fresh program read — the same full-panel reload
-  // every write already does. The spin stops when the newest load lands.
+  // Earnings refresh: readiness flips server-side (Stripe's webhook), so
+  // "check again" is just a fresh program read.
   document.getElementById("dev-payout-refresh")?.addEventListener("click", () => {
     document.getElementById("dev-payout-refresh")?.classList.add("spinning");
-    void loadDeveloperPanel();
+    void loadProgramPanes();
   });
 }
 
-export async function loadDeveloperPanel(): Promise<void> {
+export async function loadProgramPanes(): Promise<void> {
   const epoch = ++loadEpoch;
   document.getElementById("dev-program-error")?.classList.add("hidden");
-
-  // Profile — the shared M2 section (create/edit, avatar, view page), at the
-  // very top of the Developer tab.
-  const profilesHost = document.getElementById("dev-profiles-host");
-  if (profilesHost) {
-    void renderDeveloperProfiles(profilesHost, {
-      onChange: () => void loadDeveloperPanel(),
-      onView: (handle) => {
-        // The public profile is a marketplace page — leave Settings for it.
-        closeSettingsModal();
-        gotoSection("marketplace");
-        void openMktDeveloper(handle);
-      },
-    });
-  }
 
   // The program is HANDLE-scoped — resolve the caller's profile first (org
   // over personal: the publisher gate reads the org profile for org apps).
@@ -137,7 +123,9 @@ export async function loadDeveloperPanel(): Promise<void> {
   let failed = false;
   try {
     const me = await mkt.devMe();
-    handle = me.org?.handle ?? me.personal?.handle ?? null;
+    // PERSONAL FIRST (his decision, 2026-08-20): publishing keys on YOUR
+    // profile; the org profile returns with domain verification.
+    handle = me.personal?.handle ?? me.org?.handle ?? null;
     if (handle) state = await mktProgram.state(handle);
   } catch (err) { failed = true; showError(mktErrorText(err)); }
   if (epoch !== loadEpoch) return;
@@ -245,7 +233,7 @@ function renderLegal(state: MktProgramState | null, failed: boolean, handle: str
     const res = await mktProgram.enroll(handle, currentVersion);
     if (res.ok) {
       chip("dev-legal-status", reconsent ? "Consent recorded" : "Enrolled", "success");
-      void loadDeveloperPanel();
+      void loadProgramPanes();
       return;
     }
     check.checked = false;
@@ -398,7 +386,6 @@ async function renderMoney(state: MktProgramState | null, failed: boolean, epoch
       return;
     }
     chip("dev-payout-status", "");
-    closeSettingsModal();
     if (!openHostedPage("Stripe onboarding", res.data, openUrlInWorkbench)) {
       chip("dev-payout-status", "Stripe sent a malformed link", "error");
     }
@@ -453,7 +440,7 @@ async function renderMoney(state: MktProgramState | null, failed: boolean, epoch
     chip("dev-payout-status", "Saved", "success");
     // A (dis)connected account changes the connection row (a manual id parks
     // at 'pending' until the webhook confirms) — repaint off the fresh read.
-    if (accountChanged) void loadDeveloperPanel();
+    if (accountChanged) void loadProgramPanes();
   };
   // The account id commits on blur ONLY — a debounce mid-paste would ship a
   // half-typed id (valid-looking prefixes exist). It still validates live.

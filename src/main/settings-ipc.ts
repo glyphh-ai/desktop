@@ -133,7 +133,18 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     // previous user's name while signed out (and, before the home-view send
     // existed, for the whole next login too).
     deps.broadcastAccountUpdated?.(null);
-    mainWindow?.webContents.send("show-onboarding");
+    // FULL RENDERER RELOAD (his bug, 2026-08-20: logging back in as another
+    // user still showed the prior user's sessions). The renderer holds the
+    // whole session surface in memory — chats, caches, live pollers (the
+    // dead-token glyphh-threads-list spam after sign-out) — and no broadcast
+    // reliably reaches every module. Reload boots it pristine; the signed-out
+    // boot path lands on onboarding by itself. The app-origin localStorage
+    // goes too ("logout must wipe local leak") — webview site sessions live
+    // in their own persist:yo partition and are untouched.
+    try {
+      void mainWindow?.webContents.session.clearStorageData({ storages: ["localstorage"] }).catch(() => { /* best-effort */ });
+    } catch { /* best-effort */ }
+    mainWindow?.webContents.reload();
   });
 
   ipcMain.handle("pick-directory", async () => {

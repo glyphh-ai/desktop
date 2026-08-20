@@ -684,6 +684,52 @@ async function loadWorkspaces(): Promise<void> {
   const rows = await via<Workspace[]>((c) => c.workspaces?.list?.(), "workspacesList");
   workspaces = rows || [];
   paintList();
+  void paintBlocks();
+}
+
+// ── Blocked marketplace apps (his rule, 2026-08-20): org-wide install bar ──
+
+type OrgBlock = { appId: string; slug: string; name: string };
+async function blocksTransport(): Promise<{ list: () => Promise<{ blocks: OrgBlock[] }>; set: (ref: string, blocked: boolean) => Promise<{ ok: boolean; error?: string }> }> {
+  const sdk = (window as unknown as { glyphhSdk?: { org?: { appBlocks?: () => Promise<{ blocks: OrgBlock[] }>; blockApp?: (r: string) => Promise<unknown>; unblockApp?: (r: string) => Promise<unknown> } } }).glyphhSdk?.org;
+  if (sdk?.appBlocks) {
+    return {
+      list: () => sdk.appBlocks!(),
+      set: async (ref, blocked) => {
+        try { await (blocked ? sdk.blockApp!(ref) : sdk.unblockApp!(ref)); return { ok: true }; }
+        catch (e) { return { ok: false, error: (e as Error).message }; }
+      },
+    };
+  }
+  const g = (window as unknown as { glyphh: { orgAppBlocks?: () => Promise<{ blocks: OrgBlock[] }>; orgAppBlockSet?: (r: string, b: boolean) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+  return {
+    list: async () => (typeof g.orgAppBlocks === "function" ? g.orgAppBlocks() : { blocks: [] }),
+    set: async (ref, blocked) => (typeof g.orgAppBlockSet === "function" ? g.orgAppBlockSet(ref, blocked) : { ok: false, error: "unsupported build" }),
+  };
+}
+
+async function paintBlocks(): Promise<void> {
+  const host = $("ws-blocks-list");
+  if (!host) return;
+  const t = await blocksTransport();
+  let blocks: OrgBlock[] = [];
+  try { blocks = (await t.list()).blocks; } catch { /* non-admin or offline — empty */ }
+  host.innerHTML = blocks.length
+    ? blocks.map((b) => `
+      <div class="mkt-admin-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px;">
+        <b>${b.name.replace(/</g, "&lt;")}</b> <span class="mkt-console-app-sub">${b.slug.replace(/</g, "&lt;")}</span>
+        <span style="flex:1;"></span>
+        <button class="action-btn ws-unblock" type="button" data-slug="${b.slug.replace(/"/g, "&quot;")}">Unblock</button>
+      </div>`).join("")
+    : `<div class="crud-empty">Nothing blocked — every listed marketplace app is installable.</div>`;
+  host.querySelectorAll<HTMLButtonElement>(".ws-unblock").forEach((b) => {
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const r = await t.set(b.dataset.slug!, false);
+      if (!r.ok) { b.disabled = false; return; }
+      void paintBlocks();
+    });
+  });
 }
 
 // ── Wiring ───────────────────────────────────────────────────────────────
@@ -693,6 +739,16 @@ export function initWorkspaces(): void {
   wired = true;
 
   $("ws-search")?.addEventListener("input", () => { wsPage = 0; paintList(); });
+  $("ws-block-btn")?.addEventListener("click", async () => {
+    const input = $("ws-block-ref") as HTMLInputElement | null;
+    const ref = input?.value.trim();
+    if (!ref) return;
+    const t = await blocksTransport();
+    const r = await t.set(ref, true);
+    const chip = $("ws-blocks-status");
+    if (chip) { chip.textContent = r.ok ? "Blocked" : (r.error || "Couldn't block"); chip.className = `set-save-state ${r.ok ? "success" : "error"}`; }
+    if (r.ok && input) { input.value = ""; void paintBlocks(); }
+  });
   $("ws-new-btn")?.addEventListener("click", () => { void createWorkspace(); });
   $("ws-new-name")?.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") void createWorkspace();

@@ -187,6 +187,18 @@ export async function cloudGitDiff(): Promise<{ text: string; error?: string }> 
   }
 }
 
+/** Browse a workspace BY EXPLICIT SCOPE — the folder chip's cloud picker
+ *  (works pre-locus: the scope is the space or the born chat, passed in). */
+export async function cloudBrowse(scope: string, dir?: string): Promise<{ root: string; path: string; entries: Array<{ name: string; path: string; kind: string }> } | null> {
+  try {
+    const h = harness();
+    const info = await h.fsInfo({ scope });
+    const path = dir || info.root;
+    const r = await h.fsList({ dir: path, scope });
+    return { root: info.root, path, entries: (r.entries ?? []).filter((e) => e.kind === "dir") };
+  } catch { return null; }
+}
+
 /** The caller's existing cloud workspaces — the source chip's space browser. */
 export async function cloudListSpaces(): Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }> {
   try { return await harness().fsSpaces(); } catch { return { spaces: [] }; }

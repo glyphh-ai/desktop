@@ -22,14 +22,15 @@ import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek } from "./code-anchor.js";
-import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
+import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
   APPROVAL_TIMEOUT_MS, ASK_TIMEOUT_MS,
-  type RemoteChat, type AttachHandle,
+  type RemoteChat, type AttachHandle, stopRunById,
 } from "./remote-run.js";
 import * as threadStore from "./thread-store.js";
 import { uiSound } from "./ui-sounds.js";
+import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
@@ -72,6 +73,15 @@ interface CodeChat {
   /** Server-side message count for a lazily-adopted thread whose bodies
    *  haven't been fetched yet (thread-store.ensureMessages fills them). */
   messageCount?: number;
+  /** THIS session's model bindings (slot name → model id) — stamped by the
+   *  layout that opened it or by a pick made while it was current. Sessions
+   *  run their bindings independently: changing the model here never touches
+   *  another session (his rule, 2026-08-20). Absent → the ambient loop pick. */
+  models?: Record<string, string>;
+  /** THIS session's agent LOOP (rotor id) — same per-session contract as
+   *  `models`: the workspace that opened it (or a pick made while current)
+   *  binds it; other sessions run their own loops untouched. */
+  loop?: string;
 }
 
 /** The spaces concept is collapsed: every session runs the most-capable Code
@@ -115,6 +125,14 @@ let loops: Array<{ id: string; name: string; description: string; builtIn?: bool
 ];
 let loopsCanBuild = false;
 let glyphhLoop = "default";
+/** A loop a LAYOUT asked for while no session existed — applied to the session
+ *  the next send creates (the pendingWorkdir contract). */
+let pendingLoop = "";
+/** The loop THIS session runs — its own binding first, then the layout's
+ *  pending ask, then the ambient pick. Every run/render seam reads this. */
+function activeLoop(): string {
+  return current()?.loop || pendingLoop || glyphhLoop;
+}
 // The DEVICE default mode — the last mode the user picked, seeded onto a NEW
 // session so a fresh chat opens in the mode they habitually use. Persisted as the
 // `glyphhMode` preference (kept for back-compat with older builds). The EFFECTIVE
@@ -168,7 +186,7 @@ function paintChips(): void {
   }
   const ec = el("code-effort-chip");
   if (ec) {
-    const lp = loops.find((x) => x.id === glyphhLoop) ?? loops[0];
+    const lp = loops.find((x) => x.id === activeLoop()) ?? loops[0];
     ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
     ec.title = lp?.description ?? "Which agent loop runs this session";
     ec.className = "code-chip";
@@ -227,6 +245,9 @@ function adoptSessionMode(chatId: string, mode: string): void {
 
 function setLoop(id: string): void {
   glyphhLoop = id;
+  // The pick binds to THIS session (ambient default for new ones stays too).
+  const c = current();
+  if (c) { c.loop = id; void saveStore(); } else pendingLoop = id;
   void window.glyphh.setPreference?.("glyphhLoop", id);
   paintChips();
   // A different loop declares different slots — the model chip and the meter
@@ -256,7 +277,10 @@ function modelContext(): "local" | "cloud" {
 /** Re-resolve the current loop's slots. Called on load, on every loop change,
  *  and on a local↔cloud source change — different context, different choices. */
 async function refreshModelList(force?: boolean): Promise<void> {
-  await picker.refreshRoles(glyphhLoop, force, modelContext());
+  await picker.refreshRoles(activeLoop(), force, modelContext());
+  // THIS session's own cast wins the display — the chip and menu show what
+  // this session will actually run, not the ambient loop pick.
+  picker.overlayRoleSelections(current()?.models ?? pendingModels);
   paintModelChip();
   refreshCtxMeter();
 }
@@ -264,7 +288,14 @@ async function refreshModelList(force?: boolean): Promise<void> {
 function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
-  picker.renderMenu(menu, glyphhLoop, () => {
+  picker.renderMenu(menu, activeLoop(), () => {
+    // The pick binds to THIS session (and stays the ambient default for new
+    // ones via the loop store the picker already wrote).
+    const c = current();
+    if (c) {
+      c.models = Object.fromEntries(picker.currentRoles().filter((r) => r.modelId).map((r) => [r.name, r.modelId!]));
+      void saveStore();
+    }
     paintModelChip();
     refreshCtxMeter();
   });
@@ -414,14 +445,14 @@ function renderLoopMenu(): void {
     }
     for (const l of shown) {
       const item = document.createElement("button");
-      item.className = "code-drop-item drop-item-2line loop-drop-item" + (l.id === glyphhLoop ? " selected" : "");
+      item.className = "code-drop-item drop-item-2line loop-drop-item" + (l.id === activeLoop() ? " selected" : "");
       item.type = "button";
       const main = document.createElement("div");
       main.className = "drop-main";
       const span = document.createElement("span");
       span.textContent = l.name;
       main.appendChild(span);
-      if (l.id === glyphhLoop) main.insertAdjacentHTML("beforeend", check);
+      if (l.id === activeLoop()) main.insertAdjacentHTML("beforeend", check);
 
       // ⓘ — the whole description opens IN THIS POPUP, behind a back arrow.
       if (l.description) {
@@ -1242,6 +1273,8 @@ function ensureCodeSection(): void {
     // The switched-to session's OWN source drives the chip/locus/run — and the
     // model set (a cloud session offers no on-device models).
     repaintSourceUi();
+    paintChips();        // the loop chip follows THIS session's binding
+    renderLoopMenu();
     void refreshModelList();
     broadcastTimeline(!!currentRun());
     // SURFACE THE AGENT: called from the + New Session screen's session column,
@@ -1283,6 +1316,26 @@ function ensureCodeSection(): void {
     c.workdir = dir;
     void saveStore();
   },
+  /** A LAYOUT's loop binds to the session it opens with — this session only. */
+  stampLoop: (loop: string): void => {
+    if (!loop) return;
+    const c = current();
+    if (!c) { pendingLoop = loop; }
+    else { c.loop = loop; void saveStore(); }
+    paintChips();
+    renderLoopMenu();
+    void refreshModelList();
+  },
+  /** A LAYOUT's model slots bind to the session it opens with — this session
+   *  only; other sessions keep running their own casts untouched. */
+  stampModels: (models: Record<string, string>): void => {
+    if (!models || !Object.keys(models).length) return;
+    const c = current();
+    if (!c) { pendingModels = { ...models }; return; }
+    c.models = { ...c.models, ...models };
+    void saveStore();
+    void refreshModelList();
+  },
 };
 
 // The @-mention summon ("@an-fable …") sets the model on the CURRENT loop's
@@ -1290,10 +1343,12 @@ function ensureCodeSection(): void {
 (window as unknown as { __agentUseModel?: (modelId: string) => Promise<boolean> }).__agentUseModel =
   async (modelId: string): Promise<boolean> => {
     try {
-      await picker.refreshRoles(glyphhLoop);
+      await picker.refreshRoles(activeLoop());
       const role = picker.currentRoles()[0];
       if (!role) return false;
-      await window.glyphh.loopRoleSet?.(glyphhLoop, role.name, modelId);
+      await window.glyphh.loopRoleSet?.(activeLoop(), role.name, modelId);
+      const c = current();
+      if (c) { c.models = { ...c.models, [role.name]: modelId }; void saveStore(); }
       await refreshModelList(true);
       return true;
     } catch { return false; }
@@ -1302,6 +1357,9 @@ function ensureCodeSection(): void {
 /** A folder a layout asked for while no session existed — applied to the
  *  session the next send creates. */
 let pendingWorkdir = "";
+/** Model bindings a LAYOUT asked for while no session existed — applied to
+ *  the session the next send creates (same lazy contract as pendingWorkdir). */
+let pendingModels: Record<string, string> | null = null;
 
 /** Keep body[data-session-space] in lockstep with the active space. The CSS for
  *  the chips row, the view toggles and the session kebab all key off it, and it
@@ -1331,6 +1389,8 @@ function newChat(): void {
   // is retained only for the pod/thread-store contract and is always "code".
   const c: CodeChat = { id: `c${Date.now().toString(36)}`, title: "New session", createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
   if (pendingWorkdir) { c.workdir = pendingWorkdir; pendingWorkdir = ""; }
+  if (pendingModels) { c.models = pendingModels; pendingModels = null; }
+  if (pendingLoop) { c.loop = pendingLoop; pendingLoop = ""; }
   // Stamp the pending source — a local source seeds the session's own workdir
   // so the run targets that folder.
   c.source = pendingSource;
@@ -1581,31 +1641,6 @@ const IC_RENAME = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" s
 const IC_PIN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`;
 const IC_TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
 
-/** Paint Rename / Pin / Delete into the workbench's "More" menu — the Code
- *  agent's ONE dropdown. Called by the workbench each time that menu opens, so
- *  the pin label and the target session are always current. */
-(window as unknown as { __paintSessionActions?: (host: HTMLElement) => void }).__paintSessionActions = (host) => {
-  host.querySelector(".code-view-session-actions")?.remove();
-  const c = current();
-  if (!host || !c) return;
-  const wrap = document.createElement("div");
-  wrap.className = "code-view-session-actions";
-  const mk = (label: string, danger: boolean, on: () => void): HTMLButtonElement => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "code-view-btn code-view-menu-item" + (danger ? " danger" : "");
-    b.innerHTML = `<span>${label}</span>`;
-    b.addEventListener("click", () => { host.classList.add("hidden"); on(); });
-    return b;
-  };
-  wrap.append(
-    mk("Rename", false, renameCurrentInline),
-    mk(c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
-    mk("Delete", true, () => { void deleteChat(c); }),
-  );
-  host.appendChild(wrap);
-};
-
 function openHeadKebab(anchor: HTMLElement): void {
   closeHeadKebab();
   const c = current();
@@ -1654,12 +1689,7 @@ function renderHistory(): void {
   // down. Touched = the LWW stamp when present, else the last message, else
   // birth — array order alone went stale the moment an old session got a new
   // message without moving.
-  const touchedAt = (c: CodeChat): number => {
-    const stamp = (c as { updatedAt?: number }).updatedAt ?? 0;
-    const lastMsg = c.messages.length ? c.messages[c.messages.length - 1]!.at : 0;
-    return Math.max(stamp, lastMsg, c.createdAt);
-  };
-  const byTouch = (a: CodeChat, b: CodeChat): number => touchedAt(b) - touchedAt(a);
+  const byTouch = byTouchDesc;
   // Pinned sessions leave their normal group and sit at the top under one
   // heading. Nothing pinned, no heading: an empty "Pinned" would be a permanent
   // reminder of a feature you aren't using.
@@ -1678,6 +1708,15 @@ function renderHistory(): void {
     for (const c of g.rows) list.appendChild(historyRow(c));
   }
 }
+
+/** Most-recently-touched ordering: the LWW stamp when present, else the last
+ *  message, else birth. Shared by the rail list and the recents popup. */
+function touchedAtOf(c: CodeChat): number {
+  const stamp = (c as { updatedAt?: number }).updatedAt ?? 0;
+  const lastMsg = c.messages.length ? c.messages[c.messages.length - 1]!.at : 0;
+  return Math.max(stamp, lastMsg, c.createdAt);
+}
+function byTouchDesc(a: CodeChat, b: CodeChat): number { return touchedAtOf(b) - touchedAtOf(a); }
 
 /** Where a session runs, as a grouping key. Anything not explicitly local is
  *  cloud — a session born before the source chip existed has no `source`. */
@@ -2431,6 +2470,7 @@ async function checkWorkdirGate(): Promise<void> {
 
 function initWorkdirGate(): void {
   void checkWorkdirGate();
+  initCloudFolderChips();
   initWebFolderChips();
 }
 
@@ -2640,10 +2680,9 @@ function paintSourceDependents(): void {
   homeChips();
   paintSourceReach();
   const cloud = activeSource().kind !== "local";
-  // A CLOUD source has no machine folder to browse and nowhere to put a new
-  // one — the folder chip and its + go away entirely rather than sitting there
-  // inert.
-  const FOLDER_CHIPS = new Set(["dash-wd-btn", "dash-wd-add", "code-workdir-btn", "code-workdir-add"]);
+  // A CLOUD source browses the POD workspace with the folder chip (his ask,
+  // 2026-08-20) — only the + (a machine mkdir) has nothing to do there.
+  const FOLDER_CHIPS = new Set(["dash-wd-add", "code-workdir-add"]);
   for (const [id, title] of Object.entries(CHIP_TITLES)) {
     const el2 = document.getElementById(id);
     if (!el2) continue;
@@ -2677,6 +2716,17 @@ function paintSourceDependents(): void {
   // both surfaces from the SOURCE, so a machine's cwd can't overwrite the pick.
   {
     const src = activeSource();
+    if (src.kind !== "local") {
+      const dir = (src as { dir?: string }).dir || "";
+      const leaf = dir ? (dir.split("/").filter(Boolean).pop() || dir) : "workspace";
+      for (const id of ["dash-wd-name", "code-workdir-name"]) {
+        const nameEl = document.getElementById(id);
+        if (nameEl) nameEl.textContent = leaf;
+      }
+      for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+        document.getElementById(id)?.setAttribute("title", dir ? `cloud workspace folder: ${dir}` : "Pick a folder in the cloud workspace");
+      }
+    }
     if (src.kind === "local" && src.path) {
       const leaf = src.path.replace(/\/+$/, "").split("/").filter(Boolean).pop() || src.path;
       for (const id of ["dash-wd-name", "code-workdir-name"]) {
@@ -2700,6 +2750,52 @@ function onWebTarget(): boolean {
  *  MACHINE folder browser over the attach relay (fs.list / fs.mkdir) — the
  *  native OS picker they trigger on desktop cannot exist in a browser. The
  *  pick stamps the SOURCE (session-scoped), never the machine's own cwd. */
+/** The workspace scope a cloud folder pick browses: an existing SPACE, else a
+ *  BORN session's thread (its workspace exists after the first send). */
+function cloudBrowseScope(): string | null {
+  const src = activeSource();
+  if (src.kind === "cloud-space") return src.space;
+  const c = current();
+  if (c && c.source && c.source.kind !== "local" && c.messages.length > 0) return c.id;
+  return null;
+}
+
+/** Stamp a picked cloud folder onto the live source: the current cloud
+ *  session's own source when there is one, else the pending pick. `""` means
+ *  the workspace root (clears the dir). */
+function setCloudDir(rel: string): void {
+  const dir = rel.replace(/^\/+|\/+$/g, "");
+  const c = current();
+  if (c && c.source && c.source.kind !== "local") {
+    (c.source as { dir?: string }).dir = dir || undefined;
+    void saveStore();
+  } else if (pendingSource.kind !== "local") {
+    (pendingSource as { dir?: string }).dir = dir || undefined;
+    void window.glyphh.setPreference?.(SOURCE_PREF, pendingSource);
+  }
+  repaintSourceUi();
+}
+
+/** CLOUD folder chips (both surfaces): a cloud source's folder chip browses
+ *  the pod workspace. Registered FIRST (capture) so the machine pickers below
+ *  and the desktop's native picker never fire for cloud sources. */
+function initCloudFolderChips(): void {
+  for (const id of ["dash-wd-btn", "code-workdir-btn"]) {
+    const chip = document.getElementById(id);
+    chip?.addEventListener("click", (e) => {
+      const src = activeSource();
+      if (src.kind === "local") return;   // machines keep their pickers
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      openCloudFolderBrowser(chip, {
+        scope: cloudBrowseScope(),
+        currentDir: (src as { dir?: string }).dir,
+        onPickDir: (rel) => setCloudDir(rel),
+      });
+    }, true);
+  }
+}
+
 function initWebFolderChips(): void {
   if (!onWebTarget()) return;
   const wire = (id: string, open: (anchor: HTMLElement, o: { getSource: typeof activeSource; onPick: typeof pickSource }) => void): void => {
@@ -3094,6 +3190,13 @@ function syncThinking(): void {
   setThinking(!!currentRun());
 }
 
+/** THIS session's bound model for the primary slot, or null (ambient pick). */
+function sessionModel(c: CodeChat | null | undefined): string | null {
+  if (!c?.models) return null;
+  const primary = picker.currentRoles()[0]?.name ?? "default";
+  return c.models[primary] ?? c.models["default"] ?? null;
+}
+
 function stopThinking(): void {
   // Abort the CURRENT chat's stream — main answers with glyphh-agent:done
   // { stopped: true } for that run; other sessions keep working.
@@ -3101,6 +3204,15 @@ function stopThinking(): void {
   // A REMOTE (web/cloud) turn has no main-side run — abort its own signal, which
   // fires runRemoteTurn's onStopped → finishRun(stopped) for this chat.
   remoteAborters.get(currentId)?.abort();
+  // OBSERVED run (his report, 2026-08-20: "stop is not stopping"): after a
+  // refresh — or on any surface that didn't launch the turn — this page holds
+  // no aborter, only the broker observer. Stop must still reach the executing
+  // pod: fire the cross-surface stop at the observed run's id. The pod's
+  // done{stopped} frame then settles the thread through the same stream.
+  if (!remoteAborters.has(currentId)) {
+    const observedRunId = observers.get(currentId)?.runId || liveRuns.get(currentId)?.runId;
+    if (observedRunId && !observedRunId.startsWith("r-remote-")) void stopRunById(observedRunId);
+  }
 }
 
 /** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
@@ -3318,7 +3430,7 @@ function send(): void {
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -3347,14 +3459,18 @@ const remoteAborters = new Map<string, AbortController>();
  *  pickable models per turn, mirroring desktop main's roverLast. */
 const remoteRoverLast = new Map<string, number>();
 function resolveRemoteTurnModel(): string | null {
+  // A session-bound model wins outright — five layouts, five casts, no
+  // cross-talk (his rule, 2026-08-20). Rover hopping applies only unbound.
+  const bound = sessionModel(current());
+  if (bound) return bound;
   const roles = picker.currentRoles();
   const primary = roles[0]?.modelId ?? null;
-  const type = (loops.find((l) => l.id === glyphhLoop) as { type?: string } | undefined)?.type;
+  const type = (loops.find((l) => l.id === activeLoop()) as { type?: string } | undefined)?.type;
   if (type === "rover") {
     const pool = [...new Set(roles.map((r) => r.modelId).filter((m): m is string => !!m))];
     if (pool.length > 0) {
-      const next = ((remoteRoverLast.get(glyphhLoop) ?? -1) + 1) % pool.length;
-      remoteRoverLast.set(glyphhLoop, next);
+      const next = ((remoteRoverLast.get(activeLoop()) ?? -1) + 1) % pool.length;
+      remoteRoverLast.set(activeLoop(), next);
       return pool[next] ?? primary;
     }
   }
@@ -3463,7 +3579,7 @@ function launchRemote(c: CodeChat, prompt: string, src: Source): void {
     // The permission mode is the SESSION's mode (per-session), so the pod's
     // own default (`auto`) never overrides a session left in Ask; a mid-run
     // flip is pushed separately via setRemotePermission.
-    { rotor: glyphhLoop, ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
+    { rotor: c.loop || activeLoop(), ...(remoteModel ? { model: remoteModel } : {}), permission: c.permission ?? defaultMode, signal: ac.signal },
   ).then((outcome) => {
     remoteAborters.delete(chatId);
     // An UNAVAILABLE stage is the honest "runtime not connected" state: the
@@ -4524,14 +4640,14 @@ export function openUrlInWorkbench(name: string, url: string): void {
  *  other out-of-workbench entry point. Same cold-safe mechanics as
  *  openUrlInWorkbench, but the caller passes the real slug and the glyphh
  *  flag (a glyphh app has no url until deployed; the workbench resolves it). */
-export function openAppInWorkbench(app: { slug: string; name: string; url?: string | null; glyphh?: boolean }): void {
+export function openAppInWorkbench(app: { slug: string; name: string; url?: string | null; glyphh?: boolean; workbench?: boolean }): void {
   showWorkspaceSurface();
   const w = window as unknown as {
     __initCodeWorkbench?: () => void;
-    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }, newPanel?: boolean) => void;
+    __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean; workbench?: boolean }, newPanel?: boolean) => void;
   };
   w.__initCodeWorkbench?.();
-  const ref = { slug: app.slug, name: app.name, url: app.url || "", glyphh: app.glyphh || undefined };
+  const ref = { slug: app.slug, name: app.name, url: app.url || "", glyphh: app.glyphh || undefined, workbench: app.workbench || undefined };
   let tries = 0;
   const open = (): void => {
     if (w.__wbOpenApp) { w.__wbOpenApp(ref); return; }
@@ -5024,16 +5140,40 @@ export function initCode(): void {
     if (!sess) return;
     const menu = document.createElement("div");
     menu.className = "code-drop wb-session-menu";
+    // SEARCH at the top (his ask, 2026-08-20) — lives OUTSIDE paint() so
+    // typing filters without rebuilding the input.
+    let menuQuery = "";
+    const searchWrap = document.createElement("div");
+    searchWrap.className = "wb-session-search";
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "loop-drop-search repo-drop-search";
+    search.placeholder = "Search sessions…";
+    search.spellcheck = false;
+    search.autocomplete = "off";
+    search.addEventListener("mousedown", (e) => e.stopPropagation());
+    searchWrap.appendChild(search);
+    menu.appendChild(searchWrap);
+    const listHost = document.createElement("div");
+    listHost.className = "wb-session-list";
+    menu.appendChild(listHost);
+    search.addEventListener("input", () => { menuQuery = search.value; paint(); });
     const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
     const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
     const paint = (): void => {
-      menu.innerHTML = "";
+      listHost.innerHTML = "";
       const cur = currentId;
-      // Pinned first (stable — recency holds within each group). One session
-      // type now, so every session is eligible.
-      const rows = [...chats]
-        .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).slice(0, 20);
-      for (const c of rows) {
+      // THE RAIL'S PARADIGM (his ask, 2026-08-20): Pinned first (only when
+      // any exist), then the locus groups — Cloud, then one per folder —
+      // each most-recently-touched down.
+      const q = menuQuery.trim().toLowerCase();
+      const visible = chats.filter((c) => !q || c.title.toLowerCase().includes(q));
+      const pinned = visible.filter((c) => c.pinned).sort(byTouchDesc);
+      const rest = visible.filter((c) => !c.pinned).sort(byTouchDesc);
+      const sections: Array<{ label: string; title: string; rows: CodeChat[] }> = [];
+      if (pinned.length) sections.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
+      for (const g of groupRecents(rest)) sections.push({ label: g.label, title: g.title, rows: g.rows });
+      const mkRow = (c: CodeChat): HTMLElement => {
         const row = document.createElement("div");
         row.className = "wb-session-row" + (c.id === cur ? " selected" : "");
         const title = document.createElement("button");
@@ -5080,13 +5220,17 @@ export function initCode(): void {
           })();
         });
         row.append(title, pin, del);
-        menu.appendChild(row);
+        return row;
+      };
+      for (const sec of sections) {
+        listHost.appendChild(recentsHead(sec.label, sec.title));
+        for (const c of sec.rows) listHost.appendChild(mkRow(c));
       }
-      if (!rows.length) {
+      if (!visible.length) {
         const empty = document.createElement("div");
         empty.className = "wb-session-empty";
-        empty.textContent = "No sessions yet.";
-        menu.appendChild(empty);
+        empty.textContent = q ? "No sessions match." : "No sessions yet.";
+        listHost.appendChild(empty);
       }
     };
     paint();
@@ -5098,6 +5242,7 @@ export function initCode(): void {
     };
     document.addEventListener("mousedown", dismiss, true);
   });
+  startNavBadges();
   wireComposerAttachments();
   initGlyphhAgentEvents();
   initWorkdirGate();

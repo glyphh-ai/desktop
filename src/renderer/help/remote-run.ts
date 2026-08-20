@@ -448,6 +448,8 @@ export async function runRemoteTurn(
       target: isLocal ? "desktop" : "cloud", // the one decision: your machine, or the cloud
       prompt,
       threadId, // stable id → transcript + memory + WORKSPACE scope
+      ...(chat.source && chat.source.kind !== "local" && (chat.source as { dir?: string }).dir
+        ? { subdir: String((chat.source as { dir?: string }).dir) } : {}),
       mode: modeFor(chat),
       ...(workdir ? { workdir } : {}),
       ...(repo ? { repo } : {}),
@@ -496,6 +498,22 @@ interface RunStreamResource {
 }
 
 export interface AttachHandle { readonly runId: string | null; stop(): void }
+
+/** Cross-surface STOP by run id — the seam stopThinking() uses when this page
+ *  holds no local run handle (the run was launched before a refresh, or on
+ *  another surface, and we are only OBSERVING it through the broker). Web goes
+ *  straight through the SDK front door; desktop rides a main-process IPC. */
+export async function stopRunById(runId: string): Promise<boolean> {
+  const c = sdk() as unknown as { harnessViaApi?: () => { stopRun?: (id: string) => Promise<void> } };
+  if (typeof c?.harnessViaApi === "function") {
+    try { await c.harnessViaApi().stopRun?.(runId); return true; } catch { return false; }
+  }
+  const ipc = (window as unknown as { glyphh?: { harnessStopRun?: (id: string) => Promise<{ ok?: boolean }> } }).glyphh;
+  if (typeof ipc?.harnessStopRun === "function") {
+    try { return (await ipc.harnessStopRun(runId))?.ok !== false; } catch { return false; }
+  }
+  return false;
+}
 
 // ── Desktop observer transport ────────────────────────────────────────────────
 // Web exposes the browser SDK (window.glyphhSdk) so the observer consumes the

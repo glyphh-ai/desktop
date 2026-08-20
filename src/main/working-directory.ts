@@ -476,6 +476,7 @@ export function registerWorkingDirectoryIpc(deps: {
   // to surface the current branch when the working folder is a git repo.
   // The caller's existing cloud workspaces — the source chip's space browser.
   ipcMain.handle("cloud-spaces-list", () => cloudFs.cloudListSpaces());
+  ipcMain.handle("cloud-fs-browse", (_e, scope: string, dir?: string) => cloudFs.cloudBrowse(String(scope || ""), dir));
 
   ipcMain.handle("files:git-info", (_e, root: string) =>
     cloudFs.cloudFsActive() ? cloudFs.cloudGitInfo() : gitInfoForDir(root));

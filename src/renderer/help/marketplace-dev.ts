@@ -15,7 +15,7 @@
  * renders the same machinery instead of duplicating it.
  */
 
-import { confirmAction, promptAction } from "./shared.js";
+import { confirmAction, promptAction, downscaleImage, paginate, renderPaginationBar } from "./shared.js";
 import {
   mkt, escMkt, mktStarRow, mktDate, mktDiscountActive, mktErrorText, mktNoticeHtml,
   type MktDetail, type MktDeveloper, type MktDeveloperPatch, type MktRelease,
@@ -25,6 +25,9 @@ import {
   showMktView, openMktDetail, mktCachedDetails, mktBrowseRows,
   mktReviewRow, mktReviewFormHtml, wireStarInput,
 } from "./marketplace.js";
+import { programPanesHtml, initProgramPanes, loadProgramPanes } from "./marketplace-program.js";
+import { MKT_CATEGORY_LABELS } from "./marketplace-data.js";
+import { mktProgram, mktCreditsFromMicro, type MktEarningRow } from "./marketplace-data.js";
 
 const devEl = (): HTMLElement => document.getElementById("mkt-dev")!;
 const consoleEl = (): HTMLElement => document.getElementById("mkt-console")!;
@@ -232,6 +235,18 @@ const RELEASE_CHIP: Record<MktReleaseReviewStatus, string> = {
   rejected: "Rejected",
 };
 
+/** The LISTING's pipeline state, derived from its releases: anything
+ *  submitted/in_review wins ("In review"), else a standing rejection shows
+ *  until a newer build is approved or resubmitted. Null = nothing to say. */
+export function listingReviewState(releases: MktRelease[]): { label: string; cls: string } | null {
+  if (releases.some((r) => r.reviewStatus === "submitted" || r.reviewStatus === "in_review")) {
+    return { label: "In review", cls: "in_review" };
+  }
+  const newest = releases[0];
+  if (newest && newest.reviewStatus === "rejected") return { label: "Changes requested", cls: "rejected" };
+  return null;
+}
+
 function releaseChip(r: MktRelease): string {
   return `<span class="mkt-review-chip ${r.reviewStatus}">${RELEASE_CHIP[r.reviewStatus] || r.reviewStatus}</span>`;
 }
@@ -355,57 +370,257 @@ function profileCreateHtml(scope: MktScope): string {
     </div>`;
 }
 
-/** One owned listing in the console — pricing editor + releases fold. */
+/** One owned listing — a compact ROW that opens the LISTING BUILDER page
+ *  (his rule, 2026-08-20: a full builder, not an expandable fold). */
 function consoleAppHtml(app: MktOrgApp, detail: MktDetail | null): string {
+  void detail;
   const l = app.listing;
-  const pricing = detail?.pricing ?? null;
   const listed = !!l?.listedAt;
-  const toLocal = (iso: string | null | undefined): string => {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
   return `
-    <div class="mkt-console-app" data-slug="${escMkt(app.slug)}">
-      <button class="mkt-console-app-head" type="button">
-        <span class="mkt-card-icon">${l?.iconUrl ? `<img src="${escMkt(l.iconUrl)}" alt="" />` : `<span class="mkt-card-initial">${escMkt((l?.title || app.name).charAt(0).toUpperCase())}</span>`}</span>
-        <span class="mkt-console-app-name">${escMkt(l?.title || app.name)}</span>
-        <span class="mkt-console-app-sub">${escMkt(app.slug)} · v${escMkt(app.version)}</span>
-        <span style="flex:1;"></span>
-        ${l?.ratingCount ? `<span class="mkt-rating"><b>${l.ratingAvg.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${l.ratingCount})</span></span>` : ""}
-        <span class="mkt-listed-chip ${listed ? "on" : ""}">${listed ? "Listed" : "Not listed"}</span>
-        <span class="mkt-console-chev">▾</span>
-      </button>
-      <div class="mkt-console-app-body hidden">
-        <div class="mkt-console-cols">
-          <div class="mkt-console-col">
-            <h5>Pricing — credits only</h5>
-            <label class="settings-label">Monthly credits <span style="color:var(--text-2);font-weight:400;">— 0 = free</span></label>
-            <input class="settings-input mc-price" type="number" min="0" step="1" value="${pricing ? pricing.monthlyCredits : 0}" />
-            <label class="settings-label">Discount % <span style="color:var(--text-2);font-weight:400;">— blank clears the discount</span></label>
-            <input class="settings-input mc-disc" type="number" min="1" max="100" step="1" value="${pricing?.discountPercent ?? ""}" />
-            <label class="settings-label">Discount window</label>
-            <div class="mkt-disc-window">
-              <input class="settings-input mc-disc-start" type="datetime-local" value="${escMkt(toLocal(pricing?.discountStartsAt))}" />
-              <span>→</span>
-              <input class="settings-input mc-disc-end" type="datetime-local" value="${escMkt(toLocal(pricing?.discountEndsAt))}" />
-            </div>
-            ${pricing && mktDiscountActive(pricing) ? `<p class="proxy-field-hint">Discount live now — installers pay ${pricing.effectiveMonthlyCredits} credits/mo.</p>` : ""}
-            <div class="settings-actions" style="margin-top:10px;display:flex;gap:8px;align-items:center;">
-              <span class="mc-price-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-              <button class="action-btn primary mc-price-save" type="button">Save pricing</button>
-            </div>
-            <p class="proxy-field-hint" style="margin-top:12px;">The listing copy and images are edited on the app itself — Apps → ${escMkt(app.name)} → Marketplace tab.</p>
-          </div>
-          <div class="mkt-console-col">
-            <h5>Releases — every update is re-reviewed before it ships</h5>
-            <div class="mc-releases"><div class="inline-empty">Loading…</div></div>
-          </div>
-        </div>
+    <button class="mkt-console-app mkt-console-approw" data-slug="${escMkt(app.slug)}" type="button">
+      <span class="mkt-card-icon">${l?.iconUrl ? `<img src="${escMkt(fixMediaUrl(l.iconUrl))}" alt="" />` : `<span class="mkt-card-initial">${escMkt((l?.title || app.name).charAt(0).toUpperCase())}</span>`}</span>
+      <span class="mkt-console-app-name">${escMkt(l?.title || app.name)}</span>
+      <span class="mkt-console-app-sub">${escMkt(app.slug)} · v${escMkt(app.version)}</span>
+      <span style="flex:1;"></span>
+      ${l?.ratingCount ? `<span class="mkt-rating"><b>${l.ratingAvg.toFixed(1)}</b> <span class="mkt-stars">★</span> <span class="mkt-rating-count">(${l.ratingCount})</span></span>` : ""}
+      <span class="mkt-review-slot" data-slug="${escMkt(app.slug)}"></span>
+      <span class="mkt-listed-chip ${listed ? "on" : ""}">${listed ? "Listed" : "Not listed"}</span>
+      <span class="mkt-console-chev">›</span>
+    </button>`;
+}
+
+/** The client's API origin — media URLs are PINNED to it (a server-config
+ *  publicUrl may be a tunnel; the origin the client already talks to is the
+ *  one it can load from). */
+function apiBase(): string {
+  const w = window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { apiUrl?: string } };
+  return (w.__GLYPHH_API_URL__ || w.glyphh?.apiUrl || "").replace(/\/$/, "");
+}
+/** Re-origin any listing media URL onto the client's API base; relative
+ *  paths (uploaded demo videos) resolve against it too. */
+export function fixMediaUrl(u: string | null | undefined): string {
+  if (!u) return "";
+  if (u.startsWith("/")) return `${apiBase()}${u}`;
+  const i = u.indexOf("/api/apps/");
+  const j = i === -1 ? u.indexOf("/api/marketplace/") : i;
+  return j > 0 ? `${apiBase()}${u.slice(j)}` : u;
+}
+
+/** One transport for the builder — web rides the SDK handle, desktop the IPC. */
+type ListingSdk = {
+  apps?: {
+    updateListing?: (slug: string, patch: Record<string, unknown>) => Promise<unknown>;
+    uploadMedia?: (slug: string, kind: "icon" | "screenshot" | "video", bytes: Uint8Array, caption?: string) => Promise<{ key: string }>;
+    removeMedia?: (slug: string, key: string) => Promise<void>;
+    list?: (slug: string) => Promise<unknown>;
+    unlist?: (slug: string) => Promise<unknown>;
+  };
+};
+type ListingIpc = {
+  appListingSet?: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
+  appListingImageAdd?: (slug: string, kind: "icon" | "screenshot" | "video") => Promise<{ ok: boolean; key?: string; error?: string }>;
+  appListingImageRemove?: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
+  appListingList?: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
+};
+const listingSdk = (): ListingSdk["apps"] | undefined => (window as unknown as { glyphhSdk?: ListingSdk }).glyphhSdk?.apps;
+const listingIpc = (): ListingIpc => (window as unknown as { glyphh: ListingIpc }).glyphh;
+const onWeb = (): boolean => !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+
+async function lbSetListing(slug: string, patch: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const sdk = listingSdk();
+    if (onWeb() && sdk?.updateListing) { await sdk.updateListing(slug, patch); return { ok: true }; }
+    return (await listingIpc().appListingSet?.(slug, patch)) ?? { ok: false, error: "unsupported build" };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+/** Web: an in-page file input (bytes via SDK). Desktop: the native picker IPC. */
+async function lbAddMedia(slug: string, kind: "icon" | "screenshot" | "video"): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const sdk = listingSdk();
+    if (onWeb() && sdk?.uploadMedia) {
+      // Screenshots multi-select (his rule, 2026-08-20); icon/video stay single.
+      const picked = await new Promise<File[]>((res) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = kind === "video" ? "video/mp4,video/webm" : "image/png,image/jpeg,image/webp,image/gif";
+        input.multiple = kind === "screenshot";
+        input.addEventListener("change", () => res(Array.from(input.files ?? [])));
+        input.click();
+      });
+      if (!picked.length) return { ok: false, error: "" };   // canceled — silent
+      const limit = kind === "video" ? 50 * 1024 * 1024 : kind === "icon" ? 512 * 1024 : 4 * 1024 * 1024;
+      for (const f of picked) {
+        const bytes = kind === "video"
+          ? new Uint8Array(await f.arrayBuffer())
+          : await downscaleImage(f, kind === "icon" ? 512 : 1600, kind === "icon" ? 480 * 1024 : 3_800_000);
+        if (bytes.byteLength > limit) return { ok: false, error: `"${f.name}" is over ${Math.round(limit / 1024 / 1024)}MB.` };
+        await sdk.uploadMedia(slug, kind, bytes);
+      }
+      return { ok: true };
+    }
+    return (await listingIpc().appListingImageAdd?.(slug, kind)) ?? { ok: false, error: "unsupported build" };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+async function lbRemoveMedia(slug: string, key: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const sdk = listingSdk();
+    if (onWeb() && sdk?.removeMedia) { await sdk.removeMedia(slug, key); return { ok: true }; }
+    return (await listingIpc().appListingImageRemove?.(slug, key)) ?? { ok: false, error: "unsupported build" };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+async function lbSetListed(slug: string, listed: boolean): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const sdk = listingSdk();
+    if (onWeb() && sdk?.list && sdk?.unlist) { await (listed ? sdk.list(slug) : sdk.unlist(slug)); return { ok: true }; }
+    return (await listingIpc().appListingList?.(slug, listed)) ?? { ok: false, error: "unsupported build" };
+  } catch (e) { return { ok: false, error: (e as Error).message }; }
+}
+
+/** The console's Home charts — destroyed before every repaint (Chart.js
+ *  instances leak canvases otherwise). */
+let mccCharts: Array<{ destroy(): void }> = [];
+const cssVar = (n: string): string => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/** Net-credits-by-day (last 30) + share-by-app, from the earnings ledger. */
+function paintHomeCharts(host: HTMLElement, rows: MktEarningRow[]): void {
+  for (const c of mccCharts) { try { c.destroy(); } catch { /* gone */ } }
+  mccCharts = [];
+  const ChartCtor = (window as unknown as { Chart?: new (ctx: CanvasRenderingContext2D, cfg: unknown) => { destroy(): void } }).Chart;
+  if (!ChartCtor) return;
+  const DAYS = 30;
+  const dayKeys: string[] = [];
+  const now = new Date();
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    dayKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  const perDay = new Map(dayKeys.map((k) => [k, 0]));
+  const perApp = new Map<string, number>();
+  for (const r of rows) {
+    const k = String(r.createdAt).slice(0, 10);
+    if (perDay.has(k)) perDay.set(k, perDay.get(k)! + r.netCreditsMicro);
+    perApp.set(r.appSlug, (perApp.get(r.appSlug) ?? 0) + r.netCreditsMicro);
+  }
+  const toCr = (micro: number): number => micro / 1_000_000;
+  const ink = cssVar("--text-3") || "#868686";
+  const grid = cssVar("--border") || "rgba(128,128,128,0.2)";
+  const accent = cssVar("--accent") || "#8c3bf2";
+
+  const barCtx = host.querySelector<HTMLCanvasElement>("#mcc-chart-days")?.getContext("2d");
+  if (barCtx) {
+    mccCharts.push(new ChartCtor(barCtx, {
+      type: "bar",
+      data: {
+        labels: dayKeys.map((k) => k.slice(5)),
+        datasets: [{ label: "Net credits", data: dayKeys.map((k) => toCr(perDay.get(k)!)), backgroundColor: accent, borderRadius: 3 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: ink, maxRotation: 0, autoSkip: true } },
+          y: { beginAtZero: true, grid: { color: grid }, ticks: { color: ink } },
+        },
+      },
+    }));
+  }
+  const byApp = [...perApp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const pieCtx = host.querySelector<HTMLCanvasElement>("#mcc-chart-apps")?.getContext("2d");
+  if (pieCtx && byApp.length) {
+    const palette = [accent, "#4285f4", "#2bbf8f", "#f2a83c", "#ec4899", "#38bdf8", "#a3e635", "#ef4444"];
+    mccCharts.push(new ChartCtor(pieCtx, {
+      type: "doughnut",
+      data: {
+        labels: byApp.map(([slug]) => slug),
+        datasets: [{ data: byApp.map(([, v]) => toCr(v)), backgroundColor: palette.slice(0, byApp.length), borderWidth: 0 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, cutout: "62%",
+        plugins: { legend: { position: "bottom", labels: { color: ink, boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle" } } },
+      },
+    }));
+  }
+}
+
+/** The HOME tab — usage-style stat cards, the two charts, then Your listings
+ *  under a search bar. */
+async function loadConsoleHome(el: HTMLElement, apps: MktOrgApp[], details: Map<string, MktDetail>): Promise<void> {
+  const host = el.querySelector<HTMLElement>("#mcc-home");
+  if (!host) return;
+  host.innerHTML = `
+    <div class="dash-grid" id="mcc-stats">
+      <div class="dash-card"><div class="dash-card-label">Gross</div><div class="dash-card-value">—</div><div class="dash-card-sub">earned credits</div></div>
+      <div class="dash-card"><div class="dash-card-label">Net</div><div class="dash-card-value">—</div><div class="dash-card-sub">after the store cut</div></div>
+      <div class="dash-card"><div class="dash-card-label">Unpaid</div><div class="dash-card-value">—</div><div class="dash-card-sub">awaiting payout</div></div>
+      <div class="dash-card"><div class="dash-card-label">Listings</div><div class="dash-card-value">${apps.length}</div><div class="dash-card-sub">${apps.filter((a) => !!a.listing?.listedAt).length} listed</div></div>
+    </div>
+    <div class="mcc-charts">
+      <div class="dash-card dash-card-wide">
+        <div class="dash-card-head"><div><div class="dash-card-label">Net earnings</div><div class="dash-card-sub">last 30 days</div></div></div>
+        <div class="mcc-chart-host"><canvas id="mcc-chart-days"></canvas></div>
       </div>
-    </div>`;
+      <div class="dash-card">
+        <div class="dash-card-head"><div><div class="dash-card-label">By app</div><div class="dash-card-sub">net share</div></div></div>
+        <div class="mcc-chart-host"><canvas id="mcc-chart-apps"></canvas></div>
+      </div>
+    </div>
+    <section class="mkt-dt-section">
+      <h3>Your listings</h3>
+      <input id="mcc-listing-search" class="settings-input" type="text" placeholder="Search your listings…" spellcheck="false" autocomplete="off" style="margin:0 0 12px;max-width:340px;" />
+      <div id="mcc-listings-host"></div>
+    </section>`;
+
+  // Listings: searched + PAGINATED (his rule, 2026-08-20) — 10 per page.
+  const LIST_PAGE = 10;
+  let listingQuery = "";
+  let listingPage = 1;
+  const paintListings = (): void => {
+    const lhost = host.querySelector<HTMLElement>("#mcc-listings-host");
+    if (!lhost) return;
+    const q = listingQuery.toLowerCase();
+    const filtered = apps.filter((a) => !q
+      || (a.listing?.title || a.name).toLowerCase().includes(q)
+      || a.slug.toLowerCase().includes(q));
+    if (!filtered.length) {
+      lhost.innerHTML = `<div class="mkt-empty-card">${apps.length ? "No listings match." : "No published apps yet — build a Glyphh app and list it from Apps → the app → Marketplace tab."}</div>`;
+      return;
+    }
+    const { items, state } = paginate(filtered, listingPage, LIST_PAGE);
+    lhost.innerHTML = `<div class="mkt-console-apps">${items.map((a) => consoleAppHtml(a, details.get(a.slug) ?? null)).join("")}</div>`;
+    if (state.totalPages > 1) {
+      lhost.appendChild(renderPaginationBar(state, (p) => { listingPage = p; paintListings(); }));
+    }
+    wireConsole(lhost);
+    // Review chips for the visible page.
+    void Promise.all(items.map(async (a) => {
+      try {
+        const st = listingReviewState((await mkt.releases(a.slug)).releases);
+        if (!st) return;
+        const slot = lhost.querySelector<HTMLElement>(`.mkt-review-slot[data-slug="${CSS.escape(a.slug)}"]`);
+        if (slot) slot.innerHTML = `<span class="mkt-review-chip ${st.cls}">${escMkt(st.label)}</span>`;
+      } catch { /* row stays plain */ }
+    }));
+  };
+  const search = host.querySelector<HTMLInputElement>("#mcc-listing-search");
+  search?.addEventListener("input", () => { listingQuery = search.value.trim(); listingPage = 1; paintListings(); });
+  paintListings();
+
+
+  // Money — the program's earnings feed the cards + charts; no profile or no
+  // program yet degrades to the zeros the markup already shows.
+  try {
+    const me = await mkt.devMe();
+    const handle = me.org?.handle ?? me.personal?.handle ?? null;
+    if (!handle) return;
+    const earnings = await mktProgram.earnings(handle);
+    if (!earnings) return;   // program surface not live on this SDK bundle
+    const t = earnings.totals;
+    const cards = host.querySelectorAll<HTMLElement>("#mcc-stats .dash-card-value");
+    if (cards[0]) cards[0].textContent = mktCreditsFromMicro(t.grossCreditsMicro);
+    if (cards[1]) cards[1].textContent = mktCreditsFromMicro(t.netCreditsMicro);
+    if (cards[2]) cards[2].textContent = mktCreditsFromMicro(t.unpaidNetCreditsMicro);
+    paintHomeCharts(host, earnings.earnings);
+  } catch { /* signed-out / program not live — the dashes stand */ }
 }
 
 export async function loadMktConsole(): Promise<void> {
@@ -416,7 +631,9 @@ export async function loadMktConsole(): Promise<void> {
 
   let apps: MktOrgApp[] = [];
   try {
-    apps = (await mkt.myApps()).apps.filter((a) => a.kind === "glyphh" && a.owned !== false);
+    // OWNED only (his rule, 2026-08-20): "Your listings" is what you BUILT —
+    // an installed marketplace app is someone else's listing.
+    apps = (await mkt.myApps()).apps.filter((a) => a.kind === "glyphh" && a.owned === true);
   } catch { /* the listings block renders its empty note */ }
   // Pricing prefills come from the marketplace detail (mine() carries none).
   const details = new Map<string, MktDetail>();
@@ -424,33 +641,52 @@ export async function loadMktConsole(): Promise<void> {
     try { details.set(a.slug, (await mkt.detail(a.slug)).detail); } catch { /* thin row */ }
   }));
 
+  const panes = programPanesHtml();
   el.innerHTML = `
     <button class="mkt-back">‹ Back to marketplace</button>
-    <nav class="mkt-crumbs">Marketplace<span class="sep">›</span><span class="cur">Developer console</span></nav>
     <h1 class="mkt-console-title">Developer console</h1>
     <p class="mkt-console-sub">Your marketplace identity, your listings, their pricing in credits, and the release review pipeline.</p>
+    <div id="dev-program-error" class="hidden"></div>
 
-    <section class="mkt-dt-section">
-      <h3>Developer profiles</h3>
-      <p class="settings-hint" style="margin:0 0 12px;">One profile per organization OR per person — apps you publish carry whichever profile your org uses.</p>
-      <div class="mc-profiles-host"><div class="crud-empty">Loading…</div></div>
-    </section>
+    <div class="app-detail-tabs" id="mcc-tabs">
+      <button class="app-detail-tab active" data-mcctab="home" type="button">Home</button>
+      <button class="app-detail-tab" data-mcctab="personal" type="button">Profile</button>
+      <button class="app-detail-tab" data-mcctab="agreement" type="button">Developer Agreement</button>
+      <button class="app-detail-tab" data-mcctab="payouts" type="button">Payouts</button>
+    </div>
+    <div id="mcc-home"><div class="crud-empty">Loading…</div></div>
+    <div id="mcc-personal" class="hidden"></div>
+    <div id="mcc-agreement" class="hidden">${panes.agreement}</div>
+    <div id="mcc-payouts" class="hidden">${panes.payouts}</div>`;
 
-    <section class="mkt-dt-section">
-      <h3>Your listings</h3>
-      ${apps.length
-        ? `<div class="mkt-console-apps">${apps.map((a) => consoleAppHtml(a, details.get(a.slug) ?? null)).join("")}</div>`
-        : `<div class="mkt-empty-card">No published apps yet — build a Glyphh app and list it from Apps → the app → Marketplace tab.</div>`}
-    </section>`;
+  el.querySelector(".mkt-back")?.addEventListener("click", () => showMktView("store"));
+  initProgramPanes();
 
-  const profilesHost = el.querySelector<HTMLElement>(".mc-profiles-host");
-  if (profilesHost) {
-    void renderDeveloperProfiles(profilesHost, {
-      onChange: () => void loadMktConsole(),
+  // Org profile pane parked until the verified-org tier (his decision, 2026-08-20).
+  const paneIds: Record<string, string> = { home: "mcc-home", personal: "mcc-personal", agreement: "mcc-agreement", payouts: "mcc-payouts" };
+  const loaded = new Set<string>(["home"]);
+  const profilePane = (scope: MktScope, id: string): void => {
+    const host = el.querySelector<HTMLElement>(`#${id}`);
+    if (!host) return;
+    void renderDeveloperProfiles(host, {
+      scope,
+      onChange: () => profilePane(scope, id),
       onView: (handle) => void openMktDeveloper(handle),
     });
-  }
-  wireConsole(el);
+  };
+  el.querySelectorAll<HTMLButtonElement>("#mcc-tabs .app-detail-tab").forEach((b) => {
+    b.addEventListener("click", () => {
+      const tab = b.dataset.mcctab!;
+      el.querySelectorAll("#mcc-tabs .app-detail-tab").forEach((t) => t.classList.toggle("active", t === b));
+      for (const [k, id] of Object.entries(paneIds)) el.querySelector(`#${id}`)?.classList.toggle("hidden", k !== tab);
+      if (loaded.has(tab)) return;
+      loaded.add(tab);
+      if (tab === "personal") profilePane("personal", "mcc-personal");
+      else if (tab === "agreement" || tab === "payouts") void loadProgramPanes();
+    });
+  });
+
+  void loadConsoleHome(el, apps, details);
 }
 
 /**
@@ -464,13 +700,18 @@ export async function loadMktConsole(): Promise<void> {
 export async function renderDeveloperProfiles(host: HTMLElement, opts: {
   onChange: () => void;
   onView: (handle: string) => void;
+  /** Fixed scope (the console's top-level Organization/Personal tabs own the
+   *  choice) — the pane renders WITHOUT its own tab strip. */
+  scope?: MktScope;
 }): Promise<void> {
   let me: { personal: MktDeveloper | null; org: MktDeveloper | null } = { personal: null, org: null };
   let meError = "";
   try { me = await mkt.devMe(); }
   catch (err) { meError = mktErrorText(err); }
-  // First paint lands on a tab that has a profile (org wins ties).
-  if (!mcScopePinned) mcScope = me.org || !me.personal ? "org" : "personal";
+  // First paint lands on a tab that has a profile (org wins ties). A fixed
+  // scope from the caller overrides both the heuristic and the pin.
+  if (opts.scope) { mcScope = opts.scope; }
+  else if (!mcScopePinned) mcScope = me.org || !me.personal ? "org" : "personal";
 
   let saveTimer = 0;
   let statusTimer = 0;
@@ -630,8 +871,10 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
       const f = file.files?.[0];
       file.value = "";
       if (!f) return;
-      if (f.size > 512 * 1024) { note(host, "That image is over 512 KB — pick a smaller one."); return; }
-      const bytes = new Uint8Array(await f.arrayBuffer());
+      // DOWNSCALE, never reject — a phone photo is MBs; the silent 512KB
+      // bounce read as "the upload doesn't work" (his bug, 2026-08-20).
+      const bytes = await downscaleImage(f);
+      if (bytes.byteLength > 512 * 1024) { note(host, "That image couldn't be shrunk under 512 KB — try a different one."); return; }
       const res = await mkt.devAvatar(dev.handle, bytes);
       if (res.ok) opts.onChange();
       else note(host, res.error);
@@ -652,13 +895,16 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
     // with the underline active treatment — not pill buttons. The autosave
     // chip rides the strip's right edge, standing in for the heading it sits
     // beside on other settings panels.
-    host.innerHTML = `
-      ${meError ? mktNoticeHtml(meError) : ""}
-      <div class="app-detail-tabs mc-tabs">
+    const strip = opts.scope
+      ? `<div class="mc-chip-row"><span class="set-save-state mc-save-state"></span></div>`
+      : `<div class="app-detail-tabs mc-tabs">
         <button class="app-detail-tab${mcScope === "org" ? " active" : ""}" data-scope="org" type="button">Organization</button>
         <button class="app-detail-tab${mcScope === "personal" ? " active" : ""}" data-scope="personal" type="button">Personal</button>
         <span class="set-save-state mc-save-state"></span>
-      </div>
+      </div>`;
+    host.innerHTML = `
+      ${meError ? mktNoticeHtml(meError) : ""}
+      ${strip}
       <div class="acct-section">
         ${dev ? profileEditorHtml(dev) : profileCreateHtml(mcScope)}
       </div>`;
@@ -669,52 +915,258 @@ export async function renderDeveloperProfiles(host: HTMLElement, opts: {
 }
 
 function wireConsole(el: HTMLElement): void {
-  el.querySelector(".mkt-back")?.addEventListener("click", () => showMktView("store"));
+  el.querySelectorAll<HTMLButtonElement>(".mkt-console-approw").forEach((row) => {
+    row.addEventListener("click", () => { void openListingBuilder(row.dataset.slug!); });
+  });
+}
 
-  // Listing folds: expand → load releases.
-  el.querySelectorAll<HTMLElement>(".mkt-console-app").forEach((card) => {
-    const head = card.querySelector<HTMLButtonElement>(".mkt-console-app-head")!;
-    const body = card.querySelector<HTMLElement>(".mkt-console-app-body")!;
-    const chev = card.querySelector<HTMLElement>(".mkt-console-chev")!;
-    const slug = card.dataset.slug!;
-    head.addEventListener("click", () => {
-      const open = !body.classList.toggle("hidden");
-      chev.textContent = open ? "▴" : "▾";
-      if (open && !body.dataset.loaded) {
-        body.dataset.loaded = "1";
-        void loadConsoleReleases(card, slug);
-      }
-    });
+/**
+ * THE LISTING BUILDER (his rule, 2026-08-20) — one full page per owned app:
+ * icon, screenshots, an UPLOADED demo video, the storefront copy, pricing in
+ * credits, links, the release pipeline, and the list/unlist act. Renders over
+ * the console view; ‹ returns to it. Copy autosaves debounced; everything
+ * else commits on its own control.
+ */
+export async function openListingBuilder(slug: string): Promise<void> {
+  showMktView("console");
+  const el = consoleEl();
+  el.innerHTML = `<button class="mkt-back">‹ Developer console</button><div class="crud-empty">Loading…</div>`;
+  el.querySelector(".mkt-back")?.addEventListener("click", () => void loadMktConsole());
 
-    // Pricing save.
-    card.querySelector<HTMLButtonElement>(".mc-price-save")?.addEventListener("click", async () => {
-      const num = (sel: string): number | null => {
-        const raw = (card.querySelector(sel) as HTMLInputElement | null)?.value.trim() ?? "";
-        return raw === "" ? null : Number(raw);
-      };
-      const iso = (sel: string): string | null => {
-        const raw = (card.querySelector(sel) as HTMLInputElement | null)?.value ?? "";
-        return raw ? new Date(raw).toISOString() : null;
-      };
-      const status = card.querySelector<HTMLElement>(".mc-price-status");
-      const monthly = num(".mc-price");
-      if (monthly == null || Number.isNaN(monthly) || monthly < 0) {
-        if (status) status.textContent = "Monthly credits must be 0 or more.";
-        return;
-      }
-      const disc = num(".mc-disc");
-      if (status) status.textContent = "Saving…";
-      const res = await mkt.setPricing(slug, {
-        monthlyCredits: Math.round(monthly),
-        // Blank % clears the whole discount (null on the wire).
-        discountPercent: disc == null || Number.isNaN(disc) ? null : Math.round(disc),
-        discountStartsAt: disc == null ? null : iso(".mc-disc-start"),
-        discountEndsAt: disc == null ? null : iso(".mc-disc-end"),
-      });
-      if (status) status.textContent = res.ok ? "Saved ✓" : "";
-      if (!res.ok) note(el, res.error);
+  let app: MktOrgApp | null = null;
+  let detail: MktDetail | null = null;
+  try {
+    app = (await mkt.myApps()).apps.find((a) => a.slug === slug && a.owned === true) ?? null;
+    if (app) detail = (await mkt.detail(slug)).detail;
+  } catch { /* renders the honest empty below */ }
+  if (!app) {
+    el.innerHTML = `<button class="mkt-back">‹ Developer console</button><div class="crud-empty">Couldn't load this listing.</div>`;
+    el.querySelector(".mkt-back")?.addEventListener("click", () => void loadMktConsole());
+    return;
+  }
+  const l = app.listing;
+  const pricing = detail?.pricing ?? null;
+  const listed = !!l?.listedAt;
+  const shots = detail?.listing.screenshots ?? l?.screenshots ?? [];
+  const videoUrl = detail?.listing.videoUrl ?? l?.videoUrl ?? null;
+  const isUploadedVideo = !!videoUrl && (videoUrl.startsWith("/") || videoUrl.includes("/api/apps/"));
+  const toLocal = (iso: string | null | undefined): string => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  el.innerHTML = `
+    <button class="mkt-back">‹ Developer console</button>
+    <div class="lb-head">
+      <div class="lb-icon">
+        ${l?.iconUrl ? `<img src="${escMkt(fixMediaUrl(l.iconUrl))}" alt="" />` : `<span class="mkt-card-initial">${escMkt((l?.title || app.name).charAt(0).toUpperCase())}</span>`}
+      </div>
+      <div class="lb-head-main">
+        <h1 class="mkt-console-title" style="margin:0;">${escMkt(l?.title || app.name)}</h1>
+        <p class="mkt-console-sub" style="margin:4px 0 0;">${escMkt(app.slug)} · v${escMkt(app.version)} <span class="mkt-listed-chip ${listed ? "on" : ""}" id="lb-listed-chip">${listed ? "Listed" : "Not listed"}</span></p>
+      </div>
+      <div class="lb-head-actions">
+        <span id="lb-status" class="set-save-state"></span>
+        <button id="lb-preview-btn" class="action-btn" type="button" title="The store page exactly as installers will see it">Preview listing</button>
+        <button id="lb-icon-btn" class="action-btn" type="button" title="512×512 square — smaller images are upscaled by the store card">Change icon…</button>
+        <button id="lb-list-btn" class="action-btn ${listed ? "" : "primary"}" type="button">${listed ? "Unlist from marketplace" : "List on marketplace"}</button>
+      </div>
+    </div>
+    ${detail?.suspended ? `<div class="mq-recs" style="border-color:#e5484d;"><b>This app is SUSPENDED by platform moderation.</b>${(detail as { suspendReason?: string | null }).suspendReason ? ` Reason: ${escMkt((detail as { suspendReason?: string | null }).suspendReason!)}` : ""} Contact support to resolve it.</div>` : ""}
+    <div id="lb-error" class="hidden"></div>
+
+    <section class="mkt-dt-section">
+      <h3>Storefront copy</h3>
+      <div class="acct-row">
+        <div class="acct-field"><label class="settings-label">Title</label><input id="lb-title" class="settings-input" value="${escMkt(l?.title || "")}" placeholder="${escMkt(app.name)}" spellcheck="false" /></div>
+        <div class="acct-field"><label class="settings-label">Category</label>
+          <select id="lb-category" class="settings-input">
+            <option value="">— pick a category —</option>
+            ${Object.entries(MKT_CATEGORY_LABELS).map(([v, label]) => `<option value="${escMkt(v)}"${(l?.category || "") === v ? " selected" : ""}>${escMkt(label)}</option>`).join("")}
+          </select></div>
+      </div>
+      <div class="acct-row">
+        <div class="acct-field acct-field-wide"><label class="settings-label">Tagline <span style="color:var(--text-3);font-weight:400;">— one line under the title, ≤140 chars</span></label><input id="lb-tagline" class="settings-input" maxlength="140" value="${escMkt(l?.tagline || "")}" /></div>
+      </div>
+      <div class="acct-row">
+        <div class="acct-field acct-field-wide"><label class="settings-label">Description <span style="color:var(--text-3);font-weight:400;">— markdown, the long-form store page</span></label><textarea id="lb-body" class="settings-input" rows="8" spellcheck="true">${escMkt(l?.body || "")}</textarea></div>
+      </div>
+      <p class="settings-hint" style="margin:6px 0 0;">Website and support come from your developer profile — one place to maintain them (Profile tab).</p>
+    </section>
+
+    <section class="mkt-dt-section">
+      <h3>Screenshots <button id="lb-shot-add" class="action-btn" type="button" style="margin-left:10px;">Add screenshot…</button></h3>
+      <div class="lb-shots" id="lb-shots">
+        ${shots.length ? shots.map((sc) => `
+          <div class="lb-shot" data-url="${escMkt(sc.url)}">
+            <img src="${escMkt(fixMediaUrl(sc.url))}" alt="" />
+            <button class="lb-shot-del" type="button" title="Remove">×</button>
+          </div>`).join("") : `<p class="settings-hint" style="margin:0;">None yet — 1280×800 or wider reads best. The first screenshot is the store card's hero.</p>`}
+      </div>
+    </section>
+
+    <section class="mkt-dt-section">
+      <h3>Demo video</h3>
+      <div id="lb-video-host">
+        ${videoUrl
+          ? (isUploadedVideo
+            ? `<video class="lb-video" src="${escMkt(fixMediaUrl(videoUrl))}" controls preload="metadata"></video>`
+            : `<p class="settings-hint" style="margin:0 0 8px;">Linked video: <a href="${escMkt(videoUrl)}" target="_blank" rel="noreferrer noopener">${escMkt(videoUrl)}</a></p>`)
+          : `<p class="settings-hint" style="margin:0 0 8px;">No demo yet — a 30–90s walkthrough sells the app better than any copy.</p>`}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+        <button id="lb-video-btn" class="action-btn" type="button" title="MP4 (H.264) or WebM, up to 50MB">${videoUrl ? "Replace video…" : "Upload video…"}</button>
+        ${videoUrl ? `<button id="lb-video-del" class="action-btn" type="button">Remove</button>` : ""}
+        <input id="lb-video-link" class="settings-input" style="max-width:340px;" placeholder="…or paste a YouTube/Vimeo link" value="${escMkt(!isUploadedVideo && videoUrl ? videoUrl : "")}" spellcheck="false" />
+      </div>
+    </section>
+
+    <section class="mkt-dt-section">
+      <h3>Pricing — credits only <span id="lb-price-status" class="set-save-state"></span></h3>
+      <div class="acct-row">
+        <div class="acct-field"><label class="settings-label">Monthly credits <span style="color:var(--text-3);font-weight:400;">— 0 = free</span></label><input id="lb-price" class="settings-input" type="number" min="0" step="1" value="${pricing ? pricing.monthlyCredits : 0}" /></div>
+        <div class="acct-field"><label class="settings-label">Discount % <span style="color:var(--text-3);font-weight:400;">— blank clears it</span></label><input id="lb-disc" class="settings-input" type="number" min="1" max="100" step="1" value="${pricing?.discountPercent ?? ""}" /></div>
+      </div>
+      <div class="acct-row">
+        <div class="acct-field acct-field-wide"><label class="settings-label">Discount window</label>
+          <div class="mkt-disc-window">
+            <input id="lb-disc-start" class="settings-input" type="datetime-local" value="${escMkt(toLocal(pricing?.discountStartsAt))}" />
+            <span>→</span>
+            <input id="lb-disc-end" class="settings-input" type="datetime-local" value="${escMkt(toLocal(pricing?.discountEndsAt))}" />
+          </div>
+        </div>
+      </div>
+      <button id="lb-price-save" class="action-btn primary" type="button">Save pricing</button>
+    </section>
+
+    <section class="mkt-dt-section">
+      <h3>Releases — every update is re-reviewed before it ships</h3>
+      <div class="mkt-console-app" data-slug="${escMkt(app.slug)}"><div class="mc-releases"><div class="inline-empty">Loading…</div></div></div>
+    </section>`;
+
+  el.querySelector(".mkt-back")?.addEventListener("click", () => void loadMktConsole());
+  const status = (msg: string, kind: "success" | "error" | "" = ""): void => {
+    const st = el.querySelector<HTMLElement>("#lb-status");
+    if (!st) return;
+    st.textContent = msg;
+    st.className = `set-save-state${kind ? ` ${kind}` : ""}`;
+    if (kind === "success") window.setTimeout(() => { if (st.textContent === msg) st.textContent = ""; }, 2500);
+  };
+  const fail2 = (msg: string): void => {
+    const e2 = el.querySelector<HTMLElement>("#lb-error");
+    if (!e2) return;
+    e2.innerHTML = mktNoticeHtml(msg);
+    e2.classList.remove("hidden");
+  };
+  const reload = (): void => { void openListingBuilder(slug); };
+
+  // Copy autosave — debounced, only changed fields, settings grammar.
+  const val = (id: string): string => (el.querySelector(`#${id}`) as HTMLInputElement | HTMLTextAreaElement | null)?.value.trim() ?? "";
+  const snapshot = { title: l?.title || "", tagline: l?.tagline || "", category: l?.category || "", body: l?.body || "", website: l?.website || "", supportEmail: l?.supportEmail || "" };
+  let copyTimer = 0;
+  const saveCopy = async (): Promise<void> => {
+    const patch: Record<string, unknown> = {};
+    for (const [field, id] of [["title", "lb-title"], ["tagline", "lb-tagline"], ["category", "lb-category"], ["body", "lb-body"]] as const) {
+      const v = val(id);
+      if (v !== snapshot[field]) patch[field] = v;
+    }
+    if (!Object.keys(patch).length) return;
+    status("Saving…");
+    const r = await lbSetListing(slug, patch);
+    if (!r.ok) { status("Not saved", "error"); if (r.error) fail2(r.error); return; }
+    Object.assign(snapshot, patch);
+    status("Saved", "success");
+  };
+  for (const id of ["lb-title", "lb-tagline", "lb-category", "lb-body"]) {
+    const f = el.querySelector(`#${id}`);
+    f?.addEventListener("input", () => { window.clearTimeout(copyTimer); copyTimer = window.setTimeout(() => void saveCopy(), 800); });
+    f?.addEventListener("change", () => { window.clearTimeout(copyTimer); void saveCopy(); });
+  }
+
+  // Media.
+  // PREVIEW (his rule, 2026-08-20): the marketplace detail page renders for
+  // its owner whether or not it is listed — exactly what installers will see.
+  el.querySelector("#lb-preview-btn")?.addEventListener("click", () => { void openMktDetail(slug); });
+  el.querySelector("#lb-icon-btn")?.addEventListener("click", async () => {
+    status("Uploading…");
+    const r = await lbAddMedia(slug, "icon");
+    if (r.ok) reload(); else { status("", ""); if (r.error) fail2(r.error); }
+  });
+  el.querySelector("#lb-shot-add")?.addEventListener("click", async () => {
+    status("Uploading…");
+    const r = await lbAddMedia(slug, "screenshot");
+    if (r.ok) reload(); else { status("", ""); if (r.error) fail2(r.error); }
+  });
+  el.querySelectorAll<HTMLButtonElement>(".lb-shot-del").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const url = (b.closest(".lb-shot") as HTMLElement).dataset.url || "";
+      const key = decodeURIComponent(url.split("/media/").pop() || "");
+      if (!key) return;
+      const sure = await confirmAction({ title: "Remove this screenshot?", body: "It disappears from the store page immediately.", confirmLabel: "Remove", danger: true });
+      if (!sure) return;
+      const r = await lbRemoveMedia(slug, key);
+      if (r.ok) reload(); else if (r.error) fail2(r.error);
     });
   });
+  el.querySelector("#lb-video-btn")?.addEventListener("click", async () => {
+    status("Uploading video…");
+    const r = await lbAddMedia(slug, "video");
+    if (r.ok) reload(); else { status("", ""); if (r.error) fail2(r.error); }
+  });
+  el.querySelector("#lb-video-del")?.addEventListener("click", async () => {
+    const r = await lbSetListing(slug, { videoUrl: null });
+    if (r.ok) reload(); else if (r.error) fail2(r.error);
+  });
+  el.querySelector("#lb-video-link")?.addEventListener("change", async (e2) => {
+    const v = (e2.currentTarget as HTMLInputElement).value.trim();
+    if (!v) return;
+    const r = await lbSetListing(slug, { videoUrl: v });
+    if (r.ok) reload(); else if (r.error) fail2(r.error);
+  });
+
+  // Pricing.
+  el.querySelector("#lb-price-save")?.addEventListener("click", async () => {
+    const num = (id: string): number | null => { const raw = val(id); return raw === "" ? null : Number(raw); };
+    const iso = (id: string): string | null => { const raw = (el.querySelector(`#${id}`) as HTMLInputElement | null)?.value ?? ""; return raw ? new Date(raw).toISOString() : null; };
+    const st = el.querySelector<HTMLElement>("#lb-price-status");
+    const monthly = num("lb-price");
+    if (monthly == null || Number.isNaN(monthly) || monthly < 0) { if (st) st.textContent = "Monthly credits must be 0 or more."; return; }
+    const disc = num("lb-disc");
+    if (st) st.textContent = "Saving…";
+    const r = await mkt.setPricing(slug, {
+      monthlyCredits: Math.round(monthly),
+      discountPercent: disc == null || Number.isNaN(disc) ? null : Math.round(disc),
+      discountStartsAt: disc == null ? null : iso("lb-disc-start"),
+      discountEndsAt: disc == null ? null : iso("lb-disc-end"),
+    });
+    if (st) st.textContent = r.ok ? "Saved ✓" : "";
+    if (!r.ok) fail2(r.error);
+  });
+
+  // List / unlist — the one public act; confirm the listing direction.
+  el.querySelector("#lb-list-btn")?.addEventListener("click", async () => {
+    const going = !listed;
+    const sure = await confirmAction(going
+      ? { title: "List this app on the marketplace?", body: "It becomes publicly browsable and installable (needs a tagline, category, and icon; releases still pass review).", confirmLabel: "List it" }
+      : { title: "Unlist this app?", body: "The store card disappears. Orgs that already installed it keep it.", confirmLabel: "Unlist", danger: true });
+    if (!sure) return;
+    const r = await lbSetListed(slug, going);
+    if (r.ok) reload(); else if (r.error) fail2(r.error);
+  });
+
+  // Releases — the same fold loader, hosted in the builder.
+  const relCard = el.querySelector<HTMLElement>(`.mkt-console-app[data-slug="${CSS.escape(slug)}"]`);
+  if (relCard) void loadConsoleReleases(relCard, slug);
+  // The header says where the listing stands in review.
+  void mkt.releases(slug).then((r) => {
+    const state = listingReviewState(r.releases);
+    if (!state) return;
+    el.querySelector("#lb-listed-chip")?.insertAdjacentHTML("afterend",
+      ` <span class="mkt-review-chip ${state.cls}">${escMkt(state.label)}</span>`);
+  }).catch(() => { /* header stays plain */ });
 }
 
 /** The releases fold — status + review-status chips + submit-for-review. */
@@ -745,6 +1197,14 @@ async function loadConsoleReleases(card: HTMLElement, slug: string): Promise<voi
           ${submittable ? `<button class="action-btn primary mc-submit-release" type="button" data-id="${escMkt(r.id)}">Submit for review</button>` : ""}
         </div>
         ${r.reviewStatus === "rejected" && r.reviewNotes ? `<div class="mkt-review-notes"><b>Reviewer:</b> ${escMkt(r.reviewNotes)}</div>` : ""}
+        ${r.reviewRecommendations ? `
+          <div class="mq-recs">
+            <div class="mq-recs-head"><b>Review recommendations:</b> ${escMkt(r.reviewRecommendations.summary)}</div>
+            <ul class="mq-recs-list">${r.reviewRecommendations.items.map((it) => `
+              <li><span class="mkt-review-chip ${it.severity === "critical" ? "rejected" : it.severity === "warning" ? "in_review" : ""}">${escMkt(it.severity)}</span> <b>${escMkt(it.area)}</b> — ${escMkt(it.note)}</li>`).join("")}
+            </ul>
+            <p class="settings-hint" style="margin:6px 0 0;">Fix, rebuild, and resubmit — every resubmission is re-reviewed (see the marketplace review policy).</p>
+          </div>` : ""}
       </div>`;
   }).join("");
 
@@ -752,15 +1212,42 @@ async function loadConsoleReleases(card: HTMLElement, slug: string): Promise<voi
     b.addEventListener("click", async () => {
       const r = releases.find((x) => x.id === b.dataset.id);
       if (!r) return;
-      const confirmed = await confirmAction({
-        title: `Submit ${r.version} for marketplace review?`,
-        body: "A platform reviewer rules on every release before it ships. Approval promotes it live; a rejection comes back with notes.",
-        confirmLabel: "Submit",
+      // ONE dialog, comment box inside it (his rule, 2026-08-20, third ask):
+      // self-contained DOM — no shared modal to depend on.
+      const submitted = await new Promise<string | null>((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.className = "confirm-overlay";
+        overlay.innerHTML = `
+          <div class="confirm-box" style="max-width:560px;width:min(560px,92vw);">
+            <div class="confirm-head"><h3>Submit ${escMkt(r.version)} for review?</h3></div>
+            <div class="confirm-body">
+              <p style="margin:0 0 12px;">A platform reviewer rules on every release before it ships. Approval promotes it live; a rejection comes back with notes.</p>
+              <label class="settings-label" style="display:block;margin:16px 0 8px;">Note to the reviewers <span style="color:var(--text-3);font-weight:400;">— optional: what changed, what to look at</span></label>
+              <textarea class="settings-input" rows="4" spellcheck="true" placeholder="Context for the reviewers…" style="width:100%;box-sizing:border-box;"></textarea>
+            </div>
+            <div class="confirm-foot">
+              <button class="action-btn" data-x="cancel" type="button">Cancel</button>
+              <button class="action-btn primary" data-x="go" type="button">Submit for review</button>
+            </div>
+          </div>`;
+        const done = (v: string | null): void => { overlay.remove(); resolve(v); };
+        overlay.addEventListener("mousedown", (ev) => { if (ev.target === overlay) done(null); });
+        overlay.querySelector('[data-x="cancel"]')!.addEventListener("click", () => done(null));
+        overlay.querySelector('[data-x="go"]')!.addEventListener("click", () =>
+          done((overlay.querySelector("textarea") as HTMLTextAreaElement).value.trim()));
+        document.body.appendChild(overlay);
+        (overlay.querySelector("textarea") as HTMLTextAreaElement).focus();
       });
-      if (!confirmed) return;
+      if (submitted === null) return;
       b.disabled = true;
-      const res = await mkt.submitRelease(slug, b.dataset.id!);
-      if (res.ok) { delete card.querySelector<HTMLElement>(".mkt-console-app-body")!.dataset.loaded; void loadConsoleReleases(card, slug); }
+      const res = await mkt.submitRelease(slug, b.dataset.id!, submitted || undefined);
+      if (res.ok) {
+        // The old fold tracked a loaded flag on its body; the BUILDER hosts
+        // the releases bare — clear the flag only where it exists.
+        const foldBody = card.querySelector<HTMLElement>(".mkt-console-app-body");
+        if (foldBody) delete foldBody.dataset.loaded;
+        void loadConsoleReleases(card, slug);
+      }
       else {
         b.disabled = false;
         const consoleHost = document.getElementById("mkt-console");

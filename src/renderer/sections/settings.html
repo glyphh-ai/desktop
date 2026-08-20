@@ -11,7 +11,6 @@
               <div class="settings-nav-group">Build</div>
               <button class="settings-nav-item" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
               <button class="settings-nav-item" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg><span>Skills</span></button>
-              <button class="settings-nav-item" data-sub="developer"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14.5" y1="4" x2="9.5" y2="20"/></svg><span>Developer</span></button>
               <div class="settings-nav-group">Organization</div>
               <button class="settings-nav-item hidden" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item hidden" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
@@ -221,70 +220,6 @@
                    The program/payout SDK surface ships separately;
                    settings-developer.ts renders a "coming online" state until
                    it lands. -->
-              <div class="settings-panel" data-sub="developer">
-                <h2>Developer</h2>
-                <p class="section-desc">Publish to the Glyphh Marketplace — your developer identity, your earnings, and how you get paid.</p>
-                <!-- Genuine ACTION failures only (the shared marketplace notice
-                     banner, mktNoticeHtml). Field validation never lands here —
-                     it reports inline on the field, Apps → New style. -->
-                <div id="dev-program-error" class="hidden"></div>
-
-                <div class="app-detail-tabs" id="dev-tabs">
-                  <button class="app-detail-tab active" data-devtab="main" type="button">Developer</button>
-                  <button class="app-detail-tab" data-devtab="agreement" type="button">Developer Agreement</button>
-                </div>
-
-                <!-- TAB 1 · Developer — profile, earnings, payout connection.
-                     No Save button anywhere: fields commit themselves and the
-                     set-save-state chips in the subheadings report it (the
-                     profile tabs carry their own chip). Same grammar as
-                     Account; stat cards + table match the Usage page. -->
-                <div id="dev-tab-main">
-                  <h3 class="settings-subheading" style="margin-top:18px;">Developer profile</h3>
-                  <div class="acct-section">
-                    <p class="settings-hint" style="margin:0;">One profile per organization OR per person — apps you publish carry whichever profile your org uses.</p>
-                    <div id="dev-profiles-host"><div class="crud-empty">Loading…</div></div>
-                  </div>
-
-                  <h3 class="settings-subheading">Earnings
-                    <!-- Re-reads the program: payout readiness is webhook-driven
-                         server-side, so a fresh read is all "check again" takes
-                         (same refresh grammar as the plan chip / credits balance). -->
-                    <button id="dev-payout-refresh" class="acct-chip-refresh" title="Refresh earnings and payout status" aria-label="Refresh earnings and payout status">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
-                    </button>
-                    <span id="dev-payout-status" class="set-save-state"></span></h3>
-                  <div class="acct-section">
-                    <p class="settings-hint" style="margin:0;">What your apps have earned on the marketplace. Purchased or granted credits are never redeemable for cash — only earned revenue is payable, through this program.</p>
-                    <div id="dev-earnings-body"></div>
-                  </div>
-
-                  <h3 class="settings-subheading">Payout connection</h3>
-                  <div class="acct-section">
-                    <p class="settings-hint" style="margin:0;">Earned marketplace revenue pays out monthly via Stripe Connect. Stripe collects your details on their hosted page; they never touch Glyphh.</p>
-                    <div id="dev-payout-body"></div>
-                  </div>
-                </div>
-
-                <!-- TAB 2 · Developer Agreement — the legal/consent area only. -->
-                <div id="dev-tab-agreement" class="hidden">
-                  <h3 class="settings-subheading" style="margin-top:18px;">Developer Agreement <span id="dev-legal-status" class="set-save-state"></span></h3>
-                  <div class="acct-section">
-                    <p class="settings-hint" style="margin:0;">Publishing means agreeing to the developer agreement: sandbox rules, no data exfiltration beyond declared capabilities, payout terms, support falls to you.</p>
-                    <a id="dev-agreement-link" href="https://glyphh.ai/developer-agreement">Read the developer agreement ↗</a>
-                    <div id="dev-legal-body"></div>
-                  </div>
-
-                  <h3 class="settings-subheading">Program status</h3>
-                  <div class="acct-section">
-                    <div class="dev-status-row">
-                      <span id="dev-status-chip" class="mkt-review-chip">—</span>
-                      <span id="dev-status-explain" class="settings-hint" style="margin:0;flex:1;"></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <div class="settings-panel" data-sub="appearance">
                 <h2>Appearance</h2>
                 <p class="section-desc">Customize the workspace interface.</p>
@@ -367,7 +302,7 @@
                   </label>
                   <label class="settings-label" style="margin-top:16px;">Dock zoom</label>
                   <div class="settings-inline">
-                    <input type="range" id="settings-dock-zoom" min="1" max="2" step="0.05" />
+                    <input type="range" id="settings-dock-zoom" min="1" max="1.5" step="0.05" />
                     <span id="settings-dock-zoom-val" class="settings-hint"></span>
                   </div>
                   <label class="settings-label" style="margin-top:16px;">Icon zoom</label>
@@ -723,6 +658,13 @@
                       <button id="ws-new-btn" class="action-btn primary" type="button">Create</button>
                     </div>
                     <div id="ws-list"></div>
+                    <h3 class="settings-subheading" style="margin-top:28px;">Blocked marketplace apps <span id="ws-blocks-status" class="set-save-state"></span></h3>
+                    <p class="settings-hint" style="margin:0 0 10px;">Apps on this list can't be installed by anyone in your organization — the listing stays visible, the install refuses.</p>
+                    <div class="crud-toolbar">
+                      <input id="ws-block-ref" type="text" class="settings-input settings-input-md" placeholder="App slug to block, e.g. hello-world" spellcheck="false" autocomplete="off" />
+                      <button id="ws-block-btn" class="action-btn" type="button">Block app</button>
+                    </div>
+                    <div id="ws-blocks-list"></div>
                   </div>
 
                   <!-- EDITOR — the inline-form standard (Skills/Loops): a
@@ -1059,6 +1001,22 @@
                         <div class="dash-card"><div class="dash-card-label">Plan</div><div class="dash-card-value" id="org-panel-tier">—</div><div class="dash-card-sub">current tier</div></div>
                       </div>
                       <div class="acct-section">
+                        <div class="acct-identity">
+                          <div class="acct-id-face">
+                            <div class="acct-avatar-slot">
+                              <span id="org-panel-initial" class="acct-initials">—</span>
+                              <img id="org-panel-image" class="acct-avatar hidden" alt="" />
+                            </div>
+                            <div class="acct-id-text">
+                              <div class="acct-name" id="org-panel-id-name">—</div>
+                              <div class="acct-email">Organization image — shows wherever your org identifies itself.</div>
+                            </div>
+                          </div>
+                          <div class="acct-id-actions">
+                            <button id="org-panel-image-pick" class="action-btn" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change image…</button>
+                            <input id="org-panel-image-file" type="file" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
+                          </div>
+                        </div>
                         <div class="acct-row">
                           <div class="acct-field acct-field-wide">
                             <label class="settings-label" for="org-panel-name">Organization name</label>

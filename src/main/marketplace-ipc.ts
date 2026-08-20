@@ -95,8 +95,8 @@ export function registerMarketplaceIpc(): void {
     catch (err) { return fail(err); }
   });
   ipcMain.handle("mkt-releases", async (_e, slug: string) => ({ releases: await getClient().apps.releases(String(slug)) }));
-  ipcMain.handle("mkt-release-submit", async (_e, slug: string, releaseId: string) => {
-    try { return { ok: true as const, release: await getClient().apps.submitRelease(String(slug), String(releaseId)) }; }
+  ipcMain.handle("mkt-release-submit", async (_e, slug: string, releaseId: string, note?: string) => {
+    try { return { ok: true as const, release: await getClient().apps.submitRelease(String(slug), String(releaseId), note) }; }
     catch (err) { return fail(err); }
   });
 
@@ -177,10 +177,12 @@ export function registerMarketplaceIpc(): void {
 
   // ── platform-admin queues (server enforces the role on every route) ───────
   ipcMain.handle("mkt-admin-queue", async () => ({ releases: await getClient().apps.reviewQueue() }));
-  ipcMain.handle("mkt-admin-review", async (_e, releaseId: string, action: "begin" | "approve" | "reject", notes?: string) => {
-    try { return { ok: true as const, release: await getClient().apps.reviewRelease(String(releaseId), action, notes) }; }
+  ipcMain.handle("mkt-admin-review", async (_e, releaseId: string, action: "begin" | "approve" | "reject", notes?: string, share?: boolean) => {
+    try { return { ok: true as const, release: await getClient().apps.reviewRelease(String(releaseId), action, notes, undefined, share === true) }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("mkt-admin-source-tree", (_e, releaseId: string) => getClient().apps.releaseSourceTree(String(releaseId)));
+  ipcMain.handle("mkt-admin-source-file", (_e, releaseId: string, path: string) => getClient().apps.releaseSourceFile(String(releaseId), String(path)));
   ipcMain.handle("mkt-admin-reports", async (_e, status?: "open" | "reviewing" | "resolved" | "dismissed") =>
     ({ reports: await getClient().apps.reports(status) }));
   ipcMain.handle("mkt-admin-report-resolve", async (_e, reportId: string, status: "reviewing" | "resolved" | "dismissed") => {
@@ -197,10 +199,11 @@ export function registerMarketplaceIpc(): void {
     try { return { ok: true as const, review: await getClient().marketplace.moderateDeveloperReview(String(reviewId), action) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("mkt-admin-suspend", async (_e, slug: string, suspend: boolean) => {
+  ipcMain.handle("mkt-admin-suspend", async (_e, slug: string, suspend: boolean, reason?: string) => {
     try {
-      const res = suspend ? await getClient().apps.suspend(String(slug)) : await getClient().apps.unsuspend(String(slug));
-      return { ok: true as const, suspended: res.suspended };
+      const r = suspend ? await getClient().apps.suspend(String(slug), reason) : await getClient().apps.unsuspend(String(slug));
+      return { ok: true as const, suspended: r.suspended };
     } catch (err) { return fail(err); }
   });
+  ipcMain.handle("mkt-admin-app-search", (_e, q: string) => getClient().apps.adminSearch(String(q || "")));
 }

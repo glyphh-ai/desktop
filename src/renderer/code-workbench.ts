@@ -656,7 +656,7 @@ async function init(): Promise<void> {
   type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
-  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
+  type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }> };
 
   function layoutKey(): string { return `workbench:layout:${cwd || "__nohome__"}`; }
   // The NAMED layout currently arranged in the workbench. While set, every
@@ -2015,6 +2015,20 @@ async function init(): Promise<void> {
     // deleted from here). ──
     const pagesEl = stage.querySelector<HTMLElement>(".echo-pages")!;
     const dotsEl = stage.querySelector<HTMLElement>(".echo-page-dots")!;
+    // NAV BADGES (his rule, 2026-08-20): red counts on Marketplace (pending
+    // review activity) and Settings (unread support replies). nav-badges.ts
+    // computes + broadcasts; this paints dock slots and page tiles.
+    window.addEventListener("glyphh:nav-badges", (ev) => {
+      const d = (ev as CustomEvent<{ marketplace: number; settings: number }>).detail;
+      if (!d) return;
+      for (const [key, n] of [["marketplace", d.marketplace], ["settings", d.settings]] as const) {
+        document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="${key}"], .echo-app-btn[data-nav="${key}"]`)
+          .forEach((el2) => {
+            if (n > 0) el2.dataset.badge = String(Math.min(99, n));
+            else delete el2.dataset.badge;
+          });
+      }
+    });
     // TINY HOVER TICK (his ask, 2026-08-19): sweeping the cursor over apps on
     // the command center clicks softly. Delegated on the whole wall body so
     // page tiles AND dock slots share it; entering a button fires once
@@ -2088,7 +2102,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent"; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
@@ -2101,7 +2115,7 @@ async function init(): Promise<void> {
        *  down as a group by closeLayoutGroup. */
       layoutId?: string }
     const entries: TileEntry[] = [];
-    let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null }> = [];
+    let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; iconUrl?: string | null }> = [];
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -2159,6 +2173,9 @@ async function init(): Promise<void> {
       if (ic && ic.dataset.sig !== iconSig(e.tile)) { ic.innerHTML = iconInner(e.tile); ic.dataset.sig = iconSig(e.tile); hydrateIcons(ic); }
       const nm = el.querySelector<HTMLElement>(".echo-app-name");
       if (nm && nm.textContent !== e.tile.name) nm.textContent = e.tile.name;
+      // App-health badge: unresolved required connections, red count like nav.
+      if (e.tile.issues) { el.dataset.badge = String(e.tile.issues); el.title = `${e.tile.name} — ${e.tile.issues} issue${e.tile.issues === 1 ? "" : "s"} to resolve`; return; }
+      if (!e.tile.navKey) delete el.dataset.badge;
       el.title = e.tile.name;
     };
     /** The key an icon orders/trades under. Tools carry tool:<view>; apps and
@@ -2450,6 +2467,7 @@ async function init(): Promise<void> {
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "echo-app-btn" + (removableTile(e.tile) ? " removable" : "");
+          if (e.tile.navKey) btn.dataset.nav = e.tile.navKey;
           btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
           if (removableTile(e.tile)) {
             const del = document.createElement("button");
@@ -2653,7 +2671,7 @@ async function init(): Promise<void> {
         const key = id.trim().toLowerCase();
         const app = echoRows.find((a) => a.id.toLowerCase() === key || (a.slug || "").toLowerCase() === key);
         if (app) {
-          const icon = { slug: app.slug || app.id, url: app.url || null, execPath: app.execPath || null, appArchetype: app.appArchetype || null, connection: null };
+          const icon = { slug: app.slug || app.id, url: app.url || null, execPath: app.execPath || null, appArchetype: app.appArchetype || null, connection: null, iconUrl: app.iconUrl || null };
           if (app.appArchetype === "glyphh-nav") {
             return { glyphSvg: appIconInner(icon, app.name, "x").match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined, initial: (app.name || "?").charAt(0).toUpperCase(), img: null };
           }
@@ -2673,17 +2691,24 @@ async function init(): Promise<void> {
     /** The wall tile for an APP row — shared by the first build and by apps
      *  that appear later (glyphh:apps-changed), so a Glyphh app the user
      *  creates mid-session joins the wall like a new layout does. */
-    const appTileOf = (a: { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; launchConfig?: Record<string, unknown> | null; connection?: { accountId?: string; pipedreamSlug: string } | null }): EchoTile => {
+    const appTileOf = (a: { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; launchConfig?: Record<string, unknown> | null; connection?: { accountId?: string; pipedreamSlug: string } | null; iconUrl?: string | null; requiredConnections?: { connected: boolean }[]; owned?: boolean }): EchoTile => {
       const slug = (a.slug || a.id).toLowerCase();
-      const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null };
+      const icon = { slug: a.slug || a.id, url: a.url || null, execPath: a.execPath || null, appArchetype: a.appArchetype || null, connection: a.connection || null, iconUrl: a.iconUrl || null };
+      // Unconnected required connections = ISSUES: the tile wears the same red
+      // count badge the nav icons use, one per connection to resolve.
+      const issues = (a.requiredConnections || []).filter((c) => !c.connected).length;
       return {
         name: a.name, slug, appId: a.id, url: a.url || undefined,
         // No id = a HOUSE DEFAULT (the glyphh launcher set, not a user row).
         houseDefault: !a.id || undefined,
         glyphh: a.appArchetype === "glyphh-app" || undefined,
-        // A WORKBENCH app is a chromeless panel — no address bar, ever.
-        workbench: (a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true || undefined,
+        // A WORKBENCH app is a chromeless panel — no address bar, ever. An app
+        // INSTALLED from the marketplace is one too (his rule, 2026-08-20):
+        // the installer gets a panel, never the hosted URL in their face.
+        workbench: (a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true
+          || (a.appArchetype === "glyphh-app" && a.owned === false) || undefined,
         iconUrl: appIconUrl(icon) || undefined, kind: "app",
+        issues: issues || undefined,
         orderKey: `app:${slug}`,
       };
     };
@@ -2700,7 +2725,7 @@ async function init(): Promise<void> {
     // dock first (same 10, backfilled defaults), then the saved grid
     // order, new items after — then the panel types. No Glyphh tile (the
     // agent is a workspace panel) and no layout tiles. ──
-    type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null };
+    type PanelRowLite = { slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; connection?: { accountId?: string; pipedreamSlug: string } | null; iconUrl?: string | null; requiredConnections?: { slug: string; actAs: string; connected: boolean }[]; owned?: boolean };
     type Yo = {
       panelAppsList?: () => Promise<PanelRowLite[]>;
       appsDefaults?: () => Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>;
@@ -2830,8 +2855,22 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gband",
       };
+      // The DEV workbench tools (his rule, 2026-08-20): the agent's ⋮ panel
+      // dropdown is gone — Files/Terminal/Editor/Diff/Plan/Releases live HERE
+      // as command-center tiles (themed currentColor glyphs), nowhere else.
+      const devToolTile = (view: "files" | "terminal" | "monaco" | "diff" | "plan" | "releases"): EchoTile => ({
+        name: VIEW_META[view]!.title,
+        slug: view,
+        // dev-glyph: these are plain OUTLINE marks — at the office tiles' 62%
+        // they read oversized, so CSS seats them smaller.
+        glyphSvg: (VIEW_META[view]!.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || "").replace('class="icon"', 'class="icon dev-glyph"') || undefined,
+        kind: "tool",
+        toolView: view,
+      });
       // Tools carry stable keys so they can be reordered/traded like apps.
-      const toolTiles = [browserTile, slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile]
+      void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
+      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile,
+        devToolTile("files"), devToolTile("terminal"), devToolTile("monaco"), devToolTile("diff"), devToolTile("plan"), devToolTile("releases")]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
       const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
@@ -3074,7 +3113,10 @@ async function init(): Promise<void> {
         document.body.classList.toggle("echo-dock-autohide", d !== false);
         document.body.classList.remove("echo-dock-peek");
         const zn = Number(z);
-        dockZoom = Number.isFinite(zn) ? Math.max(1, Math.min(2, zn)) : 1.2;
+        // CLAMPED at 1.5 (his rule, 2026-08-20): past that the arc outgrows
+        // any spacing the row can reserve. Old prefs saved up to 2 clamp down.
+        dockZoom = Number.isFinite(zn) ? Math.max(1, Math.min(1.5, zn)) : 1.2;
+        document.documentElement.style.setProperty("--dock-zoom", String(dockZoom));
         const ppn = Number(pp);
         const nextPp = Number.isFinite(ppn) ? Math.max(8, Math.min(120, ppn)) : 56;
         if (nextPp !== perPage) { perPage = nextPp; renderPages(); }
@@ -3380,17 +3422,11 @@ async function init(): Promise<void> {
      *  squeezed beneath it — and it keeps the LEFT column ("agent pinned
      *  left, grid to its right"), so an app opened before OR after the agent
      *  always lands to the agent's right, never over or left of it. */
-    /** ORIGINAL flow order, restored: cards fill columns in OPEN ORDER (two to
-     *  a column, then a new column) — the ONLY skip is the agent keeping its
-     *  column to itself, so when the agent is the sole panel the first app
-     *  opens BESIDE it, never squeezed beneath. No re-sorting, no column-first
-     *  preference — order stays exactly as it was. */
+    /** Depth-first flow, full band: cards fill columns in OPEN ORDER (two to
+     *  a column, then a new column right). The agent keeps its column to
+     *  itself, and so does any card the user drove to a side (flowSolo —
+     *  the edge-drop gesture): nothing ever stacks under those. */
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
-      // ORIGINAL depth-first fill (his rule): full → stack UNDER (halves) →
-      // new column RIGHT → under it, and so on — two to a column, open
-      // order. The agent keeps its own column, and so does any card the
-      // user DROVE to a side (flowSolo — the edge-drop gesture): nothing
-      // ever stacks under those.
       const cols: TileEntry[][] = [];
       for (const e of cards) {
         const solo = e.tile.kind === "agent" || e.flowSolo === true;
@@ -3457,8 +3493,10 @@ async function init(): Promise<void> {
       const cols = flowColumns(cards);
       syncFlowFracs(cols);
       const cwFr = normFr(flowColFr);
-      // FULL band, edge to edge: one app takes the whole width AND height,
-      // then the stack splits the same space — nothing wasted.
+      // FULL band, edge to edge (reverted to the morning-before behavior, his
+      // order 2026-08-20): one app takes the whole width AND height, the next
+      // stacks into the same space — nothing wasted, and the drag/resize
+      // gestures (flowSolo edge-drops, column/row fractions) own geometry.
       const availW = band.width - gap * (cols.length - 1);
       const out = new Map<TileEntry, { left: number; top: number; width: number; height: number }>();
       let x = band.left;
@@ -3531,6 +3569,8 @@ async function init(): Promise<void> {
       // The composer NEVER hides while the echo panel is showing (his rule,
       // 2026-08-19) — it tucks to the page bottom ONLY when cards fully cover
       // the wall. Lifting the wall (the CC button / ⌃⌥) reseats it.
+      // (The 2026-08-20 lingering tuck was reverted with the flow layout —
+      // "move back to before the changes this morning".)
       const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
@@ -3568,7 +3608,15 @@ async function init(): Promise<void> {
         const key = b.dataset.dock || "";
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-          if (key === "glyphh") { w.__glyphhNewSession?.(); return; }
+          if (key === "glyphh") {
+            // Same rule as the pages' mark (2026-08-19): OPEN the agent —
+            // never reset to a new session, never double a layout's agent.
+            const inLayout = openList.some((x) => x.layoutId != null);
+            const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
+            if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
+            void openAgentPanel();
+            return;
+          }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
@@ -3600,6 +3648,18 @@ async function init(): Promise<void> {
     // (#shell-drag-strip, the fixed 38px top bar) so it renders centered in the header,
     // not floating in the right-hand content page. It stays referenced by `layoutBar`.
     document.getElementById("shell-drag-strip")?.appendChild(layoutBar);
+    // JS-DRIVEN REVEAL (his bug, 2026-08-20, desktop-only): the tucked bar
+    // relied on CSS :hover — on the desktop, once a click focused a webview
+    // panel, the compositor stopped updating hover state over the drag strip
+    // and the bar became unrevealable. Host-level mousemove keeps firing, so
+    // the peek class drives the slide instead; the :hover rules stay as a
+    // harmless fallback. Near the top = peek on; well below = off (the gap
+    // between thresholds stops flutter at the boundary).
+    document.addEventListener("mousemove", (ev) => {
+      if (layoutBar.classList.contains("hidden")) return;
+      if (ev.clientY <= 46) layoutBar.classList.add("peek");
+      else if (ev.clientY > 120) layoutBar.classList.remove("peek");
+    }, { passive: true });
     // These live INSIDE layoutBar, which was just re-parented into the header —
     // query them from layoutBar, NOT body, or they come back null and the
     // addEventListener below throws, killing every handler bound after it
@@ -4400,10 +4460,17 @@ async function init(): Promise<void> {
         // the session that rode this layout (remembered on every session
         // change below), "keep" rides whatever is current.
         {
-          type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string): void };
+          type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir?(dir: string): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void };
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
           const space = activateLayoutSpace(layout);
           const mode = layout.sessionMode ?? "keep";
+          // The layout's MODEL SLOTS bind to ITS session (his rule, 2026-08-20):
+          // stamped after the session resolves below, so five open layouts run
+          // five independent casts — never through the shared loop store alone.
+          const stampLayoutModels = (): void => {
+            if (layout.loop) sess?.stampLoop?.(layout.loop);
+            if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
+          };
           if (sess && mode === "new") {
             sess.startNew();
           } else if (sess && mode === "last" && layout.name) {
@@ -4422,6 +4489,7 @@ async function init(): Promise<void> {
               sess.startNew();
             }
           }
+          stampLayoutModels();
           // the layout's folder rides the session, same as standard mode
           if (sess && layout.folder) sess.stampWorkdir?.(layout.folder);
         }
@@ -4467,6 +4535,10 @@ async function init(): Promise<void> {
           // streamed panels show. Same family of problem → the SAME card.
           if (!t.url) { body.appendChild(mountGlyphhAppWebState(t.name)); return; }
           const frame = document.createElement("iframe");
+          // SANDBOX GATE (app-runtime spec): scripts + own-origin fetches
+          // only — no popups, no top navigation, no escape into the host.
+          // (Content is cross-origin, so allow-same-origin can't unsandbox.)
+          frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
           // The SERVER owns the app's reachable address (prodUrl): the brand
           // origin in prod, the /hosted dev route locally. Hardcoding the
           // brand origin here iframed the edge's no-match page on dev.
@@ -4550,6 +4622,9 @@ async function init(): Promise<void> {
             if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
             void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
               if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", res.fileUrl);
+              // No local source (a marketplace-INSTALLED app lives on the
+              // developer's hosting, not this disk) → open the hosted build.
+              else if (!res?.ok && t.url) wv.setAttribute("src", t.url);
               else if (!res?.ok) wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
             });
           });
@@ -5289,6 +5364,8 @@ async function init(): Promise<void> {
     holder.className = "ws-app-holder entering";
     if (slot.url) {
       const frame = document.createElement("iframe");
+      // Same sandbox gate as the echo-card mount (app-runtime spec).
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
       frame.src = slot.url;
       frame.style.cssText = "flex:1 1 auto;min-height:0;width:100%;border:0;background:var(--bg-2)";
       holder.appendChild(frame);
@@ -7922,43 +7999,9 @@ async function init(): Promise<void> {
   // data-view — without this [data-view] guard it fell through to
   // placeView(undefined) → makeSlot's default "preview" slot, so every launcher
   // click also spawned a blank preview panel.
-  // ⋮ overflow for the less-used panel toggles.
-  const moreBtn = document.getElementById("code-view-more");
-  const moreMenu = document.getElementById("code-view-more-menu");
-  moreBtn?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    // Session actions (Rename / Pin / Delete) live in THIS menu on the Code
-    // agent — a second ⋯ beside it was pure duplication. code.ts owns the
-    // actions; it paints them into the menu's session section on open.
-    (window as unknown as { __paintSessionActions?: (host: HTMLElement) => void })
-      .__paintSessionActions?.(moreMenu as HTMLElement);
-    moreMenu?.classList.toggle("hidden");
-  });
-  document.addEventListener("click", (ev) => {
-    if (moreMenu && !moreMenu.classList.contains("hidden")
-        && !moreMenu.contains(ev.target as Node) && ev.target !== moreBtn) {
-      moreMenu.classList.add("hidden");
-    }
-  });
-
-  document.querySelectorAll<HTMLButtonElement>(".code-view-btn[data-view]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      // The header toggles cover every view except Monaco (spawned by the
-      // Files tree, never toggled directly).
-      const v = btn.dataset.view as Exclude<ViewKind, "app">;
-      // In Echo the toggle acts on the CARD, not on a rail slot. (thread is
-      // excluded like coding — Echo must never adopt the live transcript.)
-      if (echoCtl && v !== "echo" && v !== "coding" && v !== "thread") {
-        if (echoCtl.hasTool(v)) echoCtl.closeTool(v);
-        else echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband");
-        moreMenu?.classList.add("hidden");
-        return;
-      }
-      if (viewIsOpen(v)) closeAllOfView(v);
-      else placeView(v);
-      moreMenu?.classList.add("hidden");
-    });
-  });
+  // (The agent's ⋮ panel dropdown is GONE — his rule, 2026-08-20: the
+  // workbench tools live on the command center as tiles, nowhere else.
+  // Session actions live in the Recents list rows.)
 
   // ── Whole-workbench edge drag ── dragging the aside's left edge scales
   // every rail proportionally (the aside itself is width:auto).
@@ -8171,11 +8214,17 @@ async function init(): Promise<void> {
     // file — comes up rooted in the layout's folder, not the previous one.
     const applyFolderAndSession = (): void => {
       void (async () => {
-        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string): void };
+        type SessionsApi = { list(): Array<{ id: string }>; currentId(): string | null; switch(id: string): void; startNew(): void; stampWorkdir(dir: string): void; stampModels?(models: Record<string, string>): void; stampLoop?(loop: string): void };
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
-        const stamp = (): void => { if (layout.folder) sess?.stampWorkdir(layout.folder); };
+        const stamp = (): void => {
+          if (layout.folder) sess?.stampWorkdir(layout.folder);
+          // The layout's loop + model slots bind to the session it just
+          // resolved — this session only; others keep their own config.
+          if (layout.loop) sess?.stampLoop?.(layout.loop);
+          if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
+        };
         if (!sess || mode === "keep") { stamp(); return; }
         if (mode === "new") { sess.startNew(); stamp(); return; }
         let last: string | null = null;

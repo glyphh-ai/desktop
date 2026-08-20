@@ -835,20 +835,27 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   // The file dialog lives in main, so the renderer never handles a path or bytes:
   // it asks for "an icon", and gets back the stored key.
-  ipcMain.handle("app-listing-image-add", async (_e, slug: string, kind: "icon" | "screenshot") => {
+  ipcMain.handle("app-listing-image-add", async (_e, slug: string, kind: "icon" | "screenshot" | "video") => {
     const win = getMainWindow();
     if (!win || win.isDestroyed()) return { ok: false, error: "No window" };
     const picked = await dialog.showOpenDialog(win, {
-      title: kind === "icon" ? "Choose an app icon" : "Add a screenshot",
-      properties: ["openFile"],
-      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+      title: kind === "icon" ? "Choose an app icon" : kind === "video" ? "Add a demo video" : "Add screenshots",
+      // Screenshots take a BATCH (his rule, 2026-08-20); icon/video stay single.
+      properties: kind === "screenshot" ? ["openFile", "multiSelections"] : ["openFile"],
+      filters: kind === "video"
+        ? [{ name: "Videos", extensions: ["mp4", "webm"] }]
+        : [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
     });
-    if (picked.canceled || !picked.filePaths[0]) return { ok: false, error: "Canceled" };
+    if (picked.canceled || !picked.filePaths.length) return { ok: false, error: "Canceled" };
     try {
-      const bytes = fs.readFileSync(picked.filePaths[0]);
-      const stored = await getClient().apps.uploadMedia(slug, kind, new Uint8Array(bytes));
+      let lastKey = "";
+      for (const p of picked.filePaths) {
+        const bytes = fs.readFileSync(p);
+        const stored = await getClient().apps.uploadMedia(slug, kind, new Uint8Array(bytes));
+        lastKey = stored.key;
+      }
       invalidateOrgApps();
-      return { ok: true, key: stored.key };
+      return { ok: true, key: lastKey };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 

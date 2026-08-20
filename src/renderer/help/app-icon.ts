@@ -16,7 +16,22 @@ type IconApp = {
   execPath?: string | null;
   appArchetype?: string | null;
   connection?: { accountId?: string; pipedreamSlug: string } | null;
+  /** The app's OWN uploaded art (a marketplace listing icon) — wins over every
+   *  derived source: an installed Glyphh app's launch URL has no favicon. */
+  iconUrl?: string | null;
 };
+
+/** Re-origin a server media URL onto the client's API base (the marketplace's
+ *  fixMediaUrl pattern): the stored URL rides the server's configured
+ *  publicUrl, which in dev is a host this client may not reach. */
+function fixIconMediaUrl(u: string): string {
+  const w = window as unknown as { __GLYPHH_API_URL__?: string; glyphh?: { apiUrl?: string; serverUrl?: string } };
+  const base = (w.__GLYPHH_API_URL__ || w.glyphh?.apiUrl || w.glyphh?.serverUrl || "").replace(/\/$/, "");
+  if (!base) return u;
+  if (u.startsWith("/")) return `${base}${u}`;
+  const i = u.indexOf("/api/apps/");
+  return i > 0 ? `${base}${u.slice(i)}` : u;
+}
 
 // The built-in nav apps' glyphs, inlined so currentColor follows the theme
 // (white in dark, black in light — an <img> can't inherit). Drawn in the
@@ -124,6 +139,9 @@ export function appIconUrl(app: IconApp): string {
   // renderer page that uses this module). Nav apps never resolve a URL —
   // appIconInner inlines their glyph so it can follow the theme.
   if (app.slug === "glyphh") return "brand/glyphh-mark.png";
+  // Uploaded listing art is the app's REAL icon — every derived layer below
+  // is a guess for apps that never uploaded one.
+  if (app.iconUrl) return fixIconMediaUrl(app.iconUrl);
   const isInternal = app.url?.startsWith("yo://");
   // OUR resolver, not Google's favicon service: apple-touch quality, cached in
   // R2, served first-party (CORS `*`, so WebGL tiles stay untainted).

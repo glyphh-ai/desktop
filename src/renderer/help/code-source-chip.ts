@@ -28,12 +28,12 @@
  */
 
 export type Source =
-  | { kind: "cloud-new" }
-  | { kind: "cloud-repo"; repo: string }
+  | { kind: "cloud-new"; dir?: string }
+  | { kind: "cloud-repo"; repo: string; dir?: string }
   /** An EXISTING cloud workspace (his ask, 2026-08-19): `space` is the thread
    *  id that keyed the pod workspace — the run + the fs panels scope to it,
    *  so a new session re-enters the same folder. `label` is display only. */
-  | { kind: "cloud-space"; space: string; label?: string }
+  | { kind: "cloud-space"; space: string; label?: string; dir?: string }
   | { kind: "local"; path: string; machineId?: string };
 
 // ── SDK / bridge handles (both targets) ──────────────────────────────────
@@ -280,6 +280,109 @@ export function openMachineFolderBrowser(anchor: HTMLElement, opts: {
     if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
   };
   document.addEventListener("mousedown", away, true);
+}
+
+/** The CLOUD workspace folder browser (his ask, 2026-08-20): the folder chip
+ *  on a cloud source browses the POD workspace and picks a folder INSIDE it —
+ *  the run's `subdir`. Needs a scope (an existing space, or a born session's
+ *  thread); a cloud-new/repo source with no workspace yet gets the honest
+ *  "appears after the first message" note. */
+export function openCloudFolderBrowser(anchor: HTMLElement, opts: {
+  scope: string | null;
+  currentDir?: string;
+  onPickDir: (relDir: string) => void;
+}): void {
+  const wrap = anchor.parentElement || anchor;
+  wrap.querySelector(".ws-source-drop")?.remove();
+  closeAllDrops();
+  const menu = document.createElement("div");
+  menu.className = "code-drop-up ws-source-drop ws-drop-flex";
+  (wrap as HTMLElement).style.position ||= "relative";
+  wrap.appendChild(menu);
+  clampDropUp(menu, anchor);
+  clampDropX(menu, anchor);
+  const close = (): void => menu.remove();
+  const away = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { close(); document.removeEventListener("mousedown", away, true); }
+  };
+  document.addEventListener("mousedown", away, true);
+
+  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>Cloud workspace folder</span></div>`);
+  const body = document.createElement("div");
+  body.className = "ws-drop-body";
+  menu.appendChild(body);
+
+  if (!opts.scope) {
+    body.insertAdjacentHTML("beforeend",
+      `<div class="ws-note"><div class="ws-note-title">No workspace yet</div><div class="ws-note-body">This session's cloud workspace appears after its first message — send once, then pick a folder here.</div></div>`);
+    return;
+  }
+  body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Loading the workspace…</div>`);
+
+  const browse = async (dir?: string): Promise<{ root: string; path: string; entries: Array<{ name: string; path: string; kind: string }> } | null> => {
+    try {
+      if (isWeb()) {
+        const h = (sdk() as { harnessViaApi?: () => { fsInfo: (o: { scope?: string }) => Promise<{ root: string }>; fsList: (o: { dir?: string; scope?: string }) => Promise<{ entries: Array<{ name: string; path: string; kind: string }> }> } })?.harnessViaApi;
+        if (!h) return null;
+        const hc = h();
+        const info = await hc.fsInfo({ scope: opts.scope! });
+        const path = dir || info.root;
+        const r = await hc.fsList({ dir: path, scope: opts.scope! });
+        return { root: info.root, path, entries: (r.entries ?? []).filter((e) => e.kind === "dir") };
+      }
+      const g = (window as unknown as { glyphh?: { cloudFsBrowse?: (scope: string, dir?: string) => Promise<{ root: string; path: string; entries: Array<{ name: string; path: string; kind: string }> } | null> } }).glyphh;
+      if (typeof g?.cloudFsBrowse !== "function") return null;
+      return await g.cloudFsBrowse(opts.scope!, dir);
+    } catch { return null; }
+  };
+
+  const paint = (root: string, path: string, entries: Array<{ name: string; path: string }>): void => {
+    body.textContent = "";
+    const rel = path === root ? "" : path.startsWith(root) ? path.slice(root.length).replace(/^\/+/, "") : path;
+    const pathEl = document.createElement("div");
+    pathEl.className = "ws-path";
+    pathEl.title = path;
+    pathEl.textContent = rel ? `workspace/${rel}` : "workspace";
+    body.appendChild(pathEl);
+    const list = document.createElement("div");
+    list.className = "code-repo-drop-list ws-fs-list";
+    body.appendChild(list);
+    if (rel) {
+      const up = drillItem("‹ up", "", "");
+      up.classList.add("ws-fs-up");
+      const parent = path.replace(/\/[^/]+\/?$/, "");
+      up.addEventListener("click", () => { void walk(parent.length >= root.length ? parent : root); });
+      list.appendChild(up);
+    }
+    for (const e of entries) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "code-drop-item ws-fs-row";
+      row.innerHTML = `${FOLDER}<span class="drop-lines"><span></span></span>`;
+      (row.querySelector(".drop-lines span") as HTMLElement).textContent = e.name;
+      row.addEventListener("click", () => { void walk(e.path); });
+      list.appendChild(row);
+    }
+    if (!entries.length) list.insertAdjacentHTML("beforeend", `<div class="drop-empty">No sub-folders here.</div>`);
+    const use = document.createElement("button");
+    use.type = "button";
+    use.className = "action-btn primary ws-use-folder";
+    use.textContent = rel ? `Use “${rel.split("/").pop()}”` : "Use the workspace root";
+    use.addEventListener("click", () => { opts.onPickDir(rel); close(); });
+    body.appendChild(use);
+  };
+
+  const walk = async (dir?: string): Promise<void> => {
+    const r = await browse(dir);
+    if (!r) {
+      body.textContent = "";
+      body.insertAdjacentHTML("beforeend",
+        `<div class="ws-note"><div class="ws-note-title">Can't reach the workspace</div><div class="ws-note-body">The cloud runtime didn't answer — try again in a moment.</div></div>`);
+      return;
+    }
+    paint(r.root, r.path, r.entries);
+  };
+  void walk(opts.currentDir ? undefined : undefined).then(() => { /* first paint at root */ });
 }
 
 /** ONE picker at a time, anywhere: hide the composer pops, remove the

@@ -294,6 +294,9 @@ interface PanelApp {
   latestVersion?: string | null;
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
+  /** The listing's uploaded icon — the ONE icon source (same as the command
+   *  center): a hosted app's launch URL has no favicon to derive one from. */
+  iconUrl?: string | null;
   /** The marketplace listing — copy, images, rating, listed state. */
   listing?: {
     title: string; tagline: string | null; category: string | null; body: string | null;
@@ -310,7 +313,7 @@ function toPanelApp(a: {
   id: string; slug: string; name: string; system?: boolean; url: string | null;
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
-  access?: string; listing?: PanelApp["listing"];
+  access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
   owned?: boolean; latestVersion?: string | null;
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -320,7 +323,8 @@ function toPanelApp(a: {
   return {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
-    appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access, listing: a.listing,
+    appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
+    iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
     owned: a.owned, latestVersion: a.latestVersion, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
@@ -353,13 +357,15 @@ async function loadApps() {
     // Keep browser apps (have a url) and native apps (isBrowser === false).
     // Legacy rows have neither field set but always carry a url, so the url
     // check still covers them.
-    // Hide seeded system apps (Glyphh) — they aren't user-managed. The
-    // built-in WORKPANELS (Slides/Docs/Sheets/… — launchConfig.workbench)
-    // are launcher furniture, not installs: they stay on the command center
-    // and OUT of this list.
+    // Hide seeded system apps (Glyphh) — they aren't user-managed. Builtin
+    // WORKPANELS never reach this list (kind 'workpanel': no url, isBrowser
+    // true — the first filter drops them). A USER-BUILT workbench app
+    // (config.workbench === true on a glyphh app) is the user's own work and
+    // BELONGS here (his rule, 2026-08-19: the Apps page is what you built) —
+    // the old truthy workbench filter hid those too, leaving customs with no
+    // edit/delete surface at all.
     panelApps = apps
       .filter((a) => !a.system && (a.url || a.isBrowser === false))
-      .filter((a) => !(a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench)
       .map(toPanelApp);
   } catch { panelApps = []; }
   // The rail's Apps grid mirrors this list — tell it to refresh.
@@ -2032,7 +2038,8 @@ function initApps() {
     const glyphh = app.appArchetype === "glyphh-app";
     if (app.url || glyphh) {
       closeSettingsModal();
-      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: glyphh || undefined });
+      // A marketplace-installed app is a chromeless panel to the installer.
+      openAppInWorkbench({ slug: app.slug, name: app.name, url: app.url, glyphh: glyphh || undefined, workbench: (glyphh && app.owned === false) || undefined });
       return;
     }
     const r = await launchPanelApp(app);

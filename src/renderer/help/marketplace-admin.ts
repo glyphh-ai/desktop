@@ -20,7 +20,7 @@ import {
 import { showMktView, openMktDetail } from "./marketplace.js";
 import { openMktDeveloper } from "./marketplace-dev.js";
 
-type AdminTab = "queue" | "reports" | "reviews" | "dev-reviews";
+type AdminTab = "queue" | "apps" | "reports" | "reviews" | "dev-reviews";
 let adminTab: AdminTab = "queue";
 let reportFilter: "open" | "reviewing" | "resolved" | "dismissed" | undefined;
 
@@ -62,6 +62,7 @@ export async function loadMktAdmin(): Promise<void> {
     <div class="mkt-admin-tabs">
       <button class="mkt-scope${adminTab === "queue" ? " active" : ""}" data-atab="queue">Release queue</button>
       <button class="mkt-scope${adminTab === "reports" ? " active" : ""}" data-atab="reports">App reports</button>
+      <button class="mkt-scope${adminTab === "apps" ? " active" : ""}" data-atab="apps">Apps</button>
       <button class="mkt-scope${adminTab === "reviews" ? " active" : ""}" data-atab="reviews">Flagged reviews</button>
       <button class="mkt-scope${adminTab === "dev-reviews" ? " active" : ""}" data-atab="dev-reviews">Flagged developer reviews</button>
     </div>
@@ -89,6 +90,7 @@ async function loadAdminTab(): Promise<void> {
   try {
     if (adminTab === "queue") await renderQueue(body);
     else if (adminTab === "reports") await renderReports(body);
+    else if (adminTab === "apps") await renderAdminApps(body);
     else if (adminTab === "reviews") await renderFlagged(body, "app");
     else await renderFlagged(body, "dev");
   } catch (err) {
@@ -104,7 +106,8 @@ async function renderQueue(body: HTMLElement): Promise<void> {
     body.innerHTML = `<div class="crud-empty">The queue is clear — nothing waiting for review.</div>`;
     return;
   }
-  body.innerHTML = releases.map((r: MktQueueRelease) => `
+  body.innerHTML = `<input id="mq-search" class="settings-input" type="text" placeholder="Filter the queue — app, slug, version…" spellcheck="false" style="max-width:340px;margin:0 0 12px;" />` +
+    releases.map((r: MktQueueRelease) => `
     <div class="mkt-admin-row" data-id="${escMkt(r.id)}">
       <div class="mkt-admin-row-head">
         <button class="mkt-admin-app-link" type="button" data-slug="${escMkt(r.appSlug)}"><b>${escMkt(r.appName)}</b> <span class="mkt-console-app-sub">${escMkt(r.appSlug)}</span></button>
@@ -112,15 +115,101 @@ async function renderQueue(body: HTMLElement): Promise<void> {
         <span class="mkt-review-chip ${r.reviewStatus}">${r.reviewStatus === "in_review" ? "In review" : "Submitted"}</span>
         <span class="release-date">submitted ${escMkt(mktDate(r.submittedAt))}</span>
         <span style="flex:1;"></span>
+        <button class="action-btn mq-source" type="button" data-id="${escMkt(r.id)}">Source</button>
         ${r.reviewStatus === "submitted" ? `<button class="action-btn mq-begin" type="button" data-id="${escMkt(r.id)}">Begin review</button>` : ""}
         <button class="action-btn primary mq-approve" type="button" data-id="${escMkt(r.id)}">Approve</button>
         <button class="action-btn danger mq-reject" type="button" data-id="${escMkt(r.id)}">Reject…</button>
       </div>
-      ${r.notes ? `<div class="mkt-review-notes"><b>Author's notes:</b> ${escMkt(r.notes.slice(0, 400))}</div>` : ""}
+      ${r.submitNote ? `<div class="mkt-review-notes"><b>Note to reviewers:</b> ${escMkt(r.submitNote.slice(0, 600))}</div>` : ""}
+      ${r.notes ? `<div class="mkt-review-notes"><b>Release notes:</b> ${escMkt(r.notes.slice(0, 400))}</div>` : ""}
+      ${r.reviewRecommendations ? `
+        <div class="mq-recs">
+          <div class="mq-recs-head"><b>Review agent:</b> ${escMkt(r.reviewRecommendations.summary.slice(0, 600))}</div>
+          <ul class="mq-recs-list">${r.reviewRecommendations.items.map((it) => `
+            <li><span class="mkt-review-chip ${it.severity === "critical" ? "rejected" : it.severity === "warning" ? "in_review" : ""}">${escMkt(it.severity)}</span> <b>${escMkt(it.area)}</b> — ${escMkt(it.note)}</li>`).join("")}
+          </ul>
+          <button class="action-btn primary mq-acceptapprove" type="button" data-id="${escMkt(r.id)}">Accept & approve</button>
+          <button class="action-btn mq-sendback" type="button" data-id="${escMkt(r.id)}">Accept recommendations & send back…</button>
+        </div>` : ""}
+      <div class="mq-source-host hidden"></div>
     </div>`).join("");
 
+  // Queue filter (his rule, 2026-08-20).
+  body.querySelector<HTMLInputElement>("#mq-search")?.addEventListener("input", (e) => {
+    const q = (e.currentTarget as HTMLInputElement).value.trim().toLowerCase();
+    body.querySelectorAll<HTMLElement>(".mkt-admin-row").forEach((row) => {
+      row.classList.toggle("hidden", !!q && !row.textContent!.toLowerCase().includes(q));
+    });
+  });
   body.querySelectorAll<HTMLButtonElement>(".mkt-admin-app-link").forEach((b) => {
     b.addEventListener("click", () => void openMktDetail(b.dataset.slug!));
+  });
+  // SOURCE VIEWER (review policy): the submitted archive, tree + file pane.
+  body.querySelectorAll<HTMLButtonElement>(".mq-source").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const row = b.closest(".mkt-admin-row") as HTMLElement;
+      const host = row.querySelector<HTMLElement>(".mq-source-host")!;
+      if (!host.classList.toggle("hidden")) {
+        if (host.dataset.loaded) return;
+        host.dataset.loaded = "1";
+        host.innerHTML = `<div class="inline-empty">Loading the archive…</div>`;
+        try {
+          const { files } = await mkt.adminSourceTree(b.dataset.id!);
+          host.innerHTML = `
+            <div class="mq-src">
+              <div class="mq-src-tree">${files.map((f) => `<button class="mq-src-row" type="button" data-path="${escMkt(f.path)}"><span>${escMkt(f.path)}</span><i>${(f.size / 1024).toFixed(1)}k</i></button>`).join("") || `<div class="inline-empty">Empty archive.</div>`}</div>
+              <pre class="mq-src-view"><span class="inline-empty">Pick a file.</span></pre>
+            </div>`;
+          const view = host.querySelector<HTMLElement>(".mq-src-view")!;
+          host.querySelectorAll<HTMLButtonElement>(".mq-src-row").forEach((fb) => {
+            fb.addEventListener("click", async () => {
+              host.querySelectorAll(".mq-src-row").forEach((x) => x.classList.toggle("active", x === fb));
+              view.textContent = "Loading…";
+              try {
+                const f = await mkt.adminSourceFile(b.dataset.id!, fb.dataset.path!);
+                view.textContent = f.content;
+              } catch (e) { view.textContent = (e as Error).message; }
+            });
+          });
+        } catch (e) {
+          host.innerHTML = `<div class="inline-empty">${escMkt((e as Error).message)}</div>`;
+        }
+      }
+    });
+  });
+  // ACCEPT & APPROVE: promote live AND share the recommendations — advisory
+  // feedback riding the green light.
+  body.querySelectorAll<HTMLButtonElement>(".mq-acceptapprove").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const r = releases.find((x) => x.id === b.dataset.id);
+      const confirmed = await confirmAction({
+        title: `Approve ${r?.appName ?? "this release"} v${r?.version ?? ""} and share the recommendations?`,
+        body: "Approval promotes it LIVE, and the author also receives the review recommendations as advisory feedback.",
+        confirmLabel: "Approve & share",
+      });
+      if (!confirmed) return;
+      b.disabled = true;
+      const res = await mkt.adminReview(b.dataset.id!, "approve", undefined, true);
+      if (res.ok) void loadAdminTab();
+      else { b.disabled = false; note(res.error); }
+    });
+  });
+  // SEND-BACK: accept the agent's recommendations → reject + share, verbatim.
+  body.querySelectorAll<HTMLButtonElement>(".mq-sendback").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const r = releases.find((x) => x.id === b.dataset.id);
+      const notes = await promptAction(
+        "Send back with the agent's recommendations — the author sees them verbatim. Add a note of your own (optional).",
+        r?.reviewRecommendations?.summary ?? "",
+        "Anything to add…",
+        "Send back",
+      );
+      if (notes === null) return;
+      b.disabled = true;
+      const res = await mkt.adminReview(b.dataset.id!, "reject", (notes || r?.reviewRecommendations?.summary || "See the attached recommendations.").trim(), true);
+      if (res.ok) void loadAdminTab();
+      else { b.disabled = false; note(res.error); }
+    });
   });
   body.querySelectorAll<HTMLButtonElement>(".mq-begin").forEach((b) => {
     b.addEventListener("click", async () => {
@@ -153,6 +242,59 @@ async function renderQueue(body: HTMLElement): Promise<void> {
       const res = await mkt.adminReview(b.dataset.id!, "reject", notes.trim());
       if (res.ok) void loadAdminTab();
       else { b.disabled = false; note(res.error); }
+    });
+  });
+}
+
+// ── Admin app search: find ANY app; suspend (with a comment) / unsuspend ──
+
+async function renderAdminApps(body: HTMLElement, q = ""): Promise<void> {
+  const res = await mkt.adminAppSearch(q).catch(() => ({ apps: [] }));
+  body.innerHTML = `
+    <input id="ma-search" class="settings-input" type="text" placeholder="Search every app — name, slug, or publisher org…" value="${escMkt(q)}" spellcheck="false" style="max-width:380px;margin:0 0 12px;" />
+    ${res.apps.length ? res.apps.map((a) => `
+      <div class="mkt-admin-row" data-slug="${escMkt(a.slug)}">
+        <div class="mkt-admin-row-head">
+          <button class="mkt-admin-app-link" type="button" data-slug="${escMkt(a.slug)}"><b>${escMkt(a.name)}</b> <span class="mkt-console-app-sub">${escMkt(a.slug)}</span></button>
+          <span class="mkt-console-app-sub">${escMkt(a.publisherOrg || "—")} · ${a.installs} install${a.installs === 1 ? "" : "s"}</span>
+          <span class="mkt-listed-chip ${a.listed ? "on" : ""}">${a.listed ? "Listed" : "Not listed"}</span>
+          ${a.suspended ? `<span class="mkt-review-chip rejected">Suspended</span>` : ""}
+          <span style="flex:1;"></span>
+          ${a.suspended
+            ? `<button class="action-btn ma-unsuspend" type="button" data-slug="${escMkt(a.slug)}">Unsuspend</button>`
+            : `<button class="action-btn danger ma-suspend" type="button" data-slug="${escMkt(a.slug)}">Take offline…</button>`}
+        </div>
+        ${a.suspended && a.suspendReason ? `<div class="mkt-review-notes"><b>Suspension reason:</b> ${escMkt(a.suspendReason)}</div>` : ""}
+      </div>`).join("") : `<div class="crud-empty">${q ? "No apps match." : "Type to search every app on the platform."}</div>`}`;
+
+  let t = 0;
+  const search = body.querySelector<HTMLInputElement>("#ma-search")!;
+  search.addEventListener("input", () => {
+    window.clearTimeout(t);
+    t = window.setTimeout(() => { void renderAdminApps(body, search.value.trim()).then(() => body.querySelector<HTMLInputElement>("#ma-search")?.focus()); }, 350);
+  });
+  body.querySelectorAll<HTMLButtonElement>(".mkt-admin-app-link").forEach((b) => {
+    b.addEventListener("click", () => void openMktDetail(b.dataset.slug!));
+  });
+  // TAKE OFFLINE with a comment the developer reads on their listing.
+  body.querySelectorAll<HTMLButtonElement>(".ma-suspend").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const reason = await promptAction(
+        `Take ${b.dataset.slug} offline — the developer reads exactly this on their listing.`,
+        "", "Why it's coming down and what must change…", "Take offline");
+      if (!reason?.trim()) return;
+      b.disabled = true;
+      const r = await mkt.adminSuspend(b.dataset.slug!, true, reason.trim());
+      if (r.ok) void renderAdminApps(body, q);
+      else { b.disabled = false; note(r.error); }
+    });
+  });
+  body.querySelectorAll<HTMLButtonElement>(".ma-unsuspend").forEach((b) => {
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const r = await mkt.adminSuspend(b.dataset.slug!, false);
+      if (r.ok) void renderAdminApps(body, q);
+      else { b.disabled = false; note(r.error); }
     });
   });
 }

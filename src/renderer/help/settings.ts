@@ -595,7 +595,7 @@ async function loadSettings() {
   const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
   if (zoom) {
     const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
-    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(2, zRaw)) : 1.2);
+    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(1.5, zRaw)) : 1.2);
     const zv = document.getElementById("settings-dock-zoom-val");
     if (zv) zv.textContent = Number(zoom.value) <= 1 ? "Off" : `${Math.round((Number(zoom.value) - 1) * 100)}%`;
   }

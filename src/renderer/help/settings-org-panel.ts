@@ -1,3 +1,4 @@
+import { downscaleImage } from "./shared.js";
 /**
  * settings-org-panel.ts — Settings › Organization (standalone Admin panel).
  *
@@ -56,6 +57,20 @@ function paint(): void {
     const el = $(id) as HTMLInputElement | null;
     if (el && document.activeElement !== el) el.value = (a?.[key] as string | undefined) || "";
   }
+  // Identity: the org image (uploaded logo) with the initial underneath.
+  const img = $("org-panel-image") as HTMLImageElement | null;
+  const initial = $("org-panel-initial");
+  const idName = $("org-panel-id-name");
+  const imageUrl = (org as { imageUrl?: string | null } | null)?.imageUrl || "";
+  if (img) {
+    img.classList.toggle("hidden", !imageUrl);
+    if (imageUrl && img.src !== imageUrl) img.src = imageUrl;
+  }
+  if (initial) {
+    initial.textContent = (org?.name || "—").charAt(0).toUpperCase();
+    initial.classList.toggle("hidden", !!imageUrl);
+  }
+  if (idName) idName.textContent = org?.name || "—";
   const seats = $("org-panel-seats");
   const tier = $("org-panel-tier");
   if (seats) seats.textContent = org ? `${org.seatsUsed ?? "—"} / ${org.maxSeats ?? "—"}` : "—";
@@ -97,6 +112,34 @@ export function initOrgPanel(): void {
   wired = true;
   ($("org-panel-name") as HTMLInputElement | null)?.addEventListener("blur", (e) => {
     void save({ name: (e.target as HTMLInputElement).value.trim() });
+  });
+  // Org image upload — desktop rides the IPC; web goes straight to the SDK.
+  const pick = $("org-panel-image-pick") as HTMLButtonElement | null;
+  const file = $("org-panel-image-file") as HTMLInputElement | null;
+  pick?.addEventListener("click", () => file?.click());
+  file?.addEventListener("change", async () => {
+    const f = file.files?.[0];
+    file.value = "";
+    if (!f) return;
+    setError("");
+    // DOWNSCALE, never reject (his bug, 2026-08-20): a normal photo is MBs —
+    // bouncing it off the 512KB limit read as "nothing happened".
+    const scaled = await downscaleImage(f);
+    if (scaled.byteLength > 512 * 1024) { setError("That image couldn't be shrunk under 512 KB — try a different one."); return; }
+    const bytes = scaled.buffer.slice(scaled.byteOffset, scaled.byteOffset + scaled.byteLength) as ArrayBuffer;
+    const sdk = (window as unknown as { glyphhSdk?: { org?: { uploadImage?: (b: Uint8Array) => Promise<unknown> } } }).glyphhSdk;
+    try {
+      if (sdk?.org?.uploadImage) await sdk.org.uploadImage(scaled);
+      else {
+        const g = (window as unknown as { glyphh: { accountOrgImage?: (b: ArrayBuffer) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+        if (typeof g.accountOrgImage !== "function") { setError("This build can't upload an org image yet — update the app."); return; }
+        const r = await g.accountOrgImage(bytes);
+        if (!r?.ok) { setError(r?.error || "Couldn't upload the image."); return; }
+      }
+      org = await accountApi().org();
+      paint();
+      flashSaved();
+    } catch (e) { setError(`Couldn't upload the image — ${(e as Error).message}`); }
   });
   for (const [, id] of ADDR_FIELDS) {
     ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ address: readAddress() }));

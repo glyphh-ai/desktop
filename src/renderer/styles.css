@@ -3735,6 +3735,15 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
   height: auto;
   overflow: visible;
 }
+/* …but INSIDE a workbench section card the card body is the viewport — the
+   override above out-specified the card's scroller and froze the page (his
+   bug, 2026-08-20): vertical scroll comes back here. */
+.ws-section-body > .help-section[data-section="marketplace"].active {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  overflow-y: auto;
+}
 
 .help-section[data-section="apps"] #app-detail,
 .help-section[data-section="library"] #lib-detail,
@@ -11791,7 +11800,7 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 /* The app header — a SMALL, slightly transparent bar in the theme's surface
    color (the content shows through faintly; blur keeps text legible). */
 #shell-drag-strip {
-  position: fixed; top: 0; left: 0; right: 0; height: var(--titlebar-h); z-index: 200;
+  position: fixed; top: 0; left: 0; right: 0; height: var(--titlebar-h); z-index: 380;
   background: color-mix(in srgb, var(--surface-2) 72%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -12680,10 +12689,11 @@ select:focus {
   /* The brand ramp from the web hero (glyphh.ai → Desktop, .hs-canvas): violet at
      the bottom-left, peach at the top-right. One surface language across the site
      and the app, so the marketplace reads as the same product as the landing page. */
+  /* A tad darker (his call, 2026-08-20) so the white type carries. */
   background:
-    radial-gradient(90% 80% at 100% 0%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 55%),
-    radial-gradient(100% 90% at 0% 100%, rgba(124,58,237,.5) 0%, rgba(124,58,237,0) 62%),
-    linear-gradient(35deg, #a78bfa 0%, #c4a9f8 44%, #f5c1e0 100%);
+    radial-gradient(90% 80% at 100% 0%, rgba(255,255,255,.28) 0%, rgba(255,255,255,0) 55%),
+    radial-gradient(100% 90% at 0% 100%, rgba(109,40,217,.62) 0%, rgba(109,40,217,0) 62%),
+    linear-gradient(35deg, #8b5cf6 0%, #a678f0 44%, #e79cd0 100%);
   box-shadow: 0 18px 60px rgba(16,4,40,.45), inset 0 0 0 1px rgba(255,255,255,.35);
   /* Ink on a LIGHT ramp — the old banner was white-on-violet. */
   display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center;
@@ -12774,10 +12784,15 @@ select:focus {
 @keyframes mkt-spin { to { transform: rotate(360deg); } }
 .mkt-banner-inner { position: relative; max-width: 620px; }
 .mkt-banner-title {
-  font-size: 27px; font-weight: 780; color: #2c2735; margin: 0 0 8px;
+  /* WHITE, non-negotiable (2026-08-20): !important + text-fill so no theme,
+     gradient-text, or heading rule anywhere can override it. */
+  font-size: 27px; font-weight: 780; margin: 0 0 8px;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
   letter-spacing: -0.03em;
+  text-shadow: 0 1px 10px rgba(76, 29, 149, 0.35);
 }
-.mkt-banner-sub { font-size: 14px; line-height: 1.5; color: rgba(44,39,53,.72); margin: 0 0 20px; max-width: 54ch; }
+.mkt-banner-sub { font-size: 14px; line-height: 1.5; margin: 0 0 20px; max-width: 54ch; color: rgba(255,255,255,.92) !important; -webkit-text-fill-color: rgba(255,255,255,.92) !important; text-shadow: 0 1px 8px rgba(76, 29, 149, 0.3); }
 
 .mkt-search-wrap { position: relative; max-width: 508px; display: flex; align-items: center; gap: 8px; }
 .mkt-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: #7b7b86; z-index: 1; }
@@ -13127,6 +13142,14 @@ select:focus {
 /* "View public page" is navigation inside the identity card, not a button. */
 .mc-view-link { font-size: 12px; margin-top: 2px; }
 .mkt-console-apps { display: grid; gap: 10px; }
+
+/* ── Developer console: Home tab (usage-style) ────────────────────────── */
+/* Air between the tab strip and the stat cards, and around the charts. */
+#mcc-home .dash-grid { margin-top: 22px; }
+.mcc-charts { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin: 18px 0 6px; }
+.mcc-chart-host { position: relative; height: 220px; margin-top: 10px; }
+@media (max-width: 900px) { .mcc-charts { grid-template-columns: 1fr; } }
+.mc-chip-row { display: flex; justify-content: flex-end; min-height: 20px; }
 .mkt-console-app { border: 1px solid var(--border-2); border-radius: 12px; background: var(--surface); overflow: hidden; }
 .mkt-console-app-head {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px;
@@ -13829,7 +13852,9 @@ body.wb-max .ws-right-rails { width: 100%; }
   align-items: center;
   gap: 8px;
   padding-left: 14px;
-  z-index: 300;
+  /* ABOVE the drag strip (z 380 since the workspace-bar fix, 2026-08-20) —
+     at 300 the blurred strip painted over the traffic lights and ate them. */
+  z-index: 390;
 }
 #panel-wc,
 #panel-wc * { -webkit-app-region: no-drag; }
@@ -15003,7 +15028,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-rail-slot[data-view="coding"] .ws-rail-slot-header.hidden-header { display: none; }
 /* History dropdown rows: title | pin | delete. */
 .wb-session-menu {
-  min-width: 260px; max-width: 340px; max-height: 60vh; overflow-y: auto;
+  /* WIDER but constrained (his ask, 2026-08-20) — sections + search need room. */
+  min-width: 340px; max-width: min(480px, 92vw); max-height: 60vh;
+  display: flex; flex-direction: column; overflow: hidden;
   z-index: 400; padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border-2);
@@ -15011,6 +15038,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 .wb-session-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; }
+.wb-session-search { padding: 2px 2px 6px; }
+.wb-session-search .repo-drop-search { width: 100%; box-sizing: border-box; }
+.wb-session-list { overflow-y: auto; min-height: 0; }
+.wb-session-menu .code-history-sec { padding: 8px 8px 4px; }
 .wb-session-row:hover { background: var(--hover); }
 .wb-session-row.selected .wb-session-title {
   color: color-mix(in srgb, var(--accent) 55%, var(--text));
@@ -16226,9 +16257,14 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-page-grid {
   display: grid;
   grid-template-columns: repeat(8, minmax(calc(var(--echo-icon-size, 76px) * 0.95), calc(var(--echo-icon-size, 76px) * 1.45)));
-  gap: 22px 26px;
+  /* ZOOM-AWARE SPACING (his rule, 2026-08-20): the hover zoom grows a tile by
+     (zoom-1)·size/2 per side — the gaps grow with the SAME term (plus slack)
+     so no icon-zoom / icon-size pairing can make neighbours overlap. */
+  gap: calc(17px + (var(--icon-zoom, 1.08) - 1) * (var(--echo-icon-size, 76px) + 24px) * 0.62)
+       calc(20px + (var(--icon-zoom, 1.08) - 1) * var(--echo-icon-size, 76px) * 0.62);
   justify-content: center; align-content: start;
-  padding: 118px 34px 148px;
+  /* More air under the dock (labels live there now). */
+  padding: 142px 34px 148px;
 }
 
 /* the drip PICKER popup — ABOVE its droplet (the anchor wraps the button,
@@ -16303,6 +16339,10 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-app-btn:hover .echo-app-ic { box-shadow: 0 0 0 1.5px var(--echo-tile-highlight, var(--text)); }
 .echo-app-btn.open .echo-app-ic { box-shadow: 0 0 0 1.5px var(--accent); }
 .echo-app-ic svg { width: 62%; height: 62%; }
+/* The dev workbench tool tiles (Files/Terminal/Editor/Diff/Plan/Releases):
+   plain outline glyphs read oversized at 62% — seat them smaller. */
+.echo-app-ic svg.dev-glyph { width: 46%; height: 46%; }
+.echo-dock-btn svg.dev-glyph { width: 46%; height: 46%; }
 .echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
 .echo-app-fallback { font: 600 20px var(--font-sans); color: var(--text-2); }
 .echo-app-name {
@@ -16373,6 +16413,29 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* SAME inner proportions as the page tiles (.echo-app-ic) — one icon
    language: the glyph scales with ITS square, not the viewport. */
 .echo-dock-btn img { width: 54%; height: 54%; object-fit: contain; }
+/* TITLES under the dock icons (his ask, 2026-08-20) — pure CSS from the
+   button's title attribute, so both builders (nav template + traded icons)
+   get labels with zero markup churn. Absolute: the squares keep their size. */
+/* Bottom margin RESERVES the magnification's reach: a zoomed slot grows down
+   (scale + the arc's dip) — scaling the gap with the dock-zoom pref keeps it
+   off the tiles below at every strength. */
+.echo-dock { margin-bottom: calc(24px + (var(--dock-zoom, 1.2) - 1) * 64px); }
+.echo-dock-btn { position: relative; overflow: visible; }
+.echo-dock-btn::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 110%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-3);
+  pointer-events: none;
+}
 .echo-dock-btn .echo-app-mini { width: 72%; height: 72%; }   /* = the page tiles' mini */
 .echo-dock-btn .echo-app-fallback { font-size: 20px; }
 
@@ -16507,11 +16570,16 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    OUT OF SIGHT like the docked composer — only a grabber LINE stays visible;
    hovering it slides the bar down. */
 .echo-layout-bar:not(.hidden) {
-  transition: transform 0.22s ease, opacity 0.22s ease, box-shadow 0.22s ease;
-  /* FULLY off: the bar's untransformed top edge is 19px into the header
-     (top:50% of 38px), so -100%-4px left a 15px sliver on screen. -100%-26px
-     puts the bottom edge at -7px — nothing shows but the grabber line. */
-  transform: translate(-50%, calc(-100% - 26px));
+  /* DESKTOP CLICKABILITY (his bug, 2026-08-20: revealed bar dead after a
+     tuck/reveal cycle): Electron's -webkit-app-region hit-test rects do NOT
+     track CSS transforms, so a transform-tucked bar left its no-drag region
+     behind and the revealed pill sat inside the window-DRAG region — every
+     click started a window drag. The tuck now animates `top` (layout, which
+     the region map does track); translate stays a constant centering. */
+  transition: top 0.22s ease, opacity 0.22s ease, box-shadow 0.22s ease;
+  /* Tucked: rendered top ≈ -41px (−24 − h/2), bottom edge ≈ -7px — nothing
+     shows but the grabber line, same geometry as the old transform tuck. */
+  top: -24px;
   box-shadow: none;   /* the 20px blur bled below the window edge otherwise */
 }
 .echo-layout-bar:not(.hidden)::after {
@@ -16536,18 +16604,23 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   height: 34px;
 }
 .echo-layout-bar:not(.hidden):hover,
-.echo-layout-bar:not(.hidden):focus-within {
-  transform: translate(-50%, -50%);
+.echo-layout-bar:not(.hidden):focus-within,
+.echo-layout-bar.peek:not(.hidden) {
+  /* 19px = the 38px strip's center in px — px↔% doesn't interpolate, so the
+     slide needs both ends in px. */
+  top: 19px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
 }
 .echo-layout-bar:not(.hidden):hover::after,
-.echo-layout-bar:not(.hidden):focus-within::after { opacity: 0; }
+.echo-layout-bar:not(.hidden):focus-within::after,
+.echo-layout-bar.peek:not(.hidden)::after { opacity: 0; }
 .echo-layout-bar.intro,
-.echo-layout-bar.intro:not(.hidden) { transform: translate(-50%, -50%); opacity: 1; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); }
+.echo-layout-bar.intro:not(.hidden) { top: 19px; transform: translate(-50%, -50%); opacity: 1; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28); }
 .glyphh-web .echo-layout-bar:not(.hidden) { transform: translate(-50%, calc(-100% - 14px)) !important; }   /* fixed top:6px → bottom edge -8px */
 .glyphh-web .echo-layout-bar.intro:not(.hidden) { transform: translateX(-50%) !important; opacity: 1; }
 .glyphh-web .echo-layout-bar:not(.hidden):hover,
-.glyphh-web .echo-layout-bar:not(.hidden):focus-within { transform: translateX(-50%) !important; }
+.glyphh-web .echo-layout-bar:not(.hidden):focus-within,
+.glyphh-web .echo-layout-bar.peek:not(.hidden) { transform: translateX(-50%) !important; }
 .echo-layout-bar-name {
   font-size: 12px; font-weight: 600; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -17401,6 +17474,13 @@ body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover
 
 /* Pushes the drips/recents/+/⋮ cluster to the source row's RIGHT end. */
 .code-source-slot .code-source-spacer { flex: 1; min-width: 8px; }
+/* EXPANDED (his ask, 2026-08-20): the cluster right-aligns to the OUTER
+   pill's edge — the card ends where the side band begins, so without this
+   the icons stopped a band-width short of the right edge. The band's buttons
+   sit pinned at the BOTTOM in this state; the top strip is free air. */
+.code-root[data-anchor="center"] > .code-agent .code-input-card.options-open .code-source-slot { margin-right: -49px; }
+/* …and the ⏎/stop rides out with the cluster so the column stays aligned. */
+.code-root[data-anchor="center"] > .code-agent .code-input-card.options-open .code-input-wrap .code-send { right: -42px; }
 
 /* The ⏎ sits a tad lower in the pill. */
 .code-root[data-anchor="center"] > .code-agent .code-input-wrap .code-send { bottom: 4px; }
@@ -18849,3 +18929,86 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdz-modal-role { width: 110px; }
 .gdz-modal-foot .office-pager { padding: 4px 0 0; }
 .gdz-modal-empty { grid-column: 1 / -1; padding: 30px 0; text-align: center; color: var(--text-3); font-size: 12px; }
+
+/* ── Listing builder (developer console) ─────────────────────────────── */
+.lb-head { display: flex; align-items: center; gap: 16px; margin: 18px 0 8px; }
+.lb-icon { width: 72px; height: 72px; border-radius: 16px; overflow: hidden; background: var(--surface-3); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.lb-icon img { width: 100%; height: 100%; object-fit: cover; }
+.lb-head-main { min-width: 0; flex: 1; }
+.lb-head-actions { display: flex; align-items: center; gap: 8px; }
+.lb-shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.lb-shot { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.lb-shot img { width: 100%; display: block; }
+.lb-shot-del { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; cursor: pointer; font-size: 15px; line-height: 1; }
+.lb-video { width: 100%; max-width: 640px; border-radius: 12px; background: #000; }
+.mkt-console-approw {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 14px; margin-bottom: 10px;
+  text-align: left; cursor: pointer; color: var(--text);
+}
+.mkt-console-approw:hover { background: var(--hover); }
+.mkt-console-approw .mkt-card-icon { width: 30px; height: 30px; flex: 0 0 auto; }
+.mkt-console-approw .mkt-console-app-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mkt-console-approw .mkt-console-app-sub { white-space: nowrap; }
+.mkt-console-apps .mkt-pagination { margin-top: 12px; }
+
+/* Breathing room on the listing builder form (his call, 2026-08-20). */
+#mkt-console .mkt-dt-section { margin-top: 36px; }
+#mkt-console .mkt-dt-section h3 { margin-bottom: 16px; }
+#mkt-console .acct-row { margin-bottom: 20px; gap: 18px; }
+#mkt-console .acct-field { display: flex; flex-direction: column; gap: 6px; }
+#mkt-console .acct-field .settings-input { margin-top: 2px; }
+#mkt-console .lb-head { margin-bottom: 16px; }
+
+/* ── Review recommendations + admin source viewer ─────────────────────── */
+.mq-recs { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.mq-recs-head { font-size: 13px; margin-bottom: 8px; }
+.mq-recs-list { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.mq-recs-list .mkt-review-chip { margin-right: 4px; }
+.mq-recs .action-btn { margin-top: 10px; }
+.mq-src { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 10px; max-height: 420px; }
+.mq-src-tree { overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface-2); }
+.mq-src-row { display: flex; justify-content: space-between; gap: 8px; width: 100%; padding: 5px 10px; border: none; background: none; color: var(--text-2); font-size: 12px; font-family: ui-monospace, monospace; cursor: pointer; text-align: left; }
+.mq-src-row:hover { background: var(--hover); color: var(--text); }
+.mq-src-row.active { background: var(--hover); color: var(--accent-light); }
+.mq-src-row i { font-style: normal; color: var(--text-3); flex: 0 0 auto; }
+.mq-src-view { margin: 0; padding: 12px 14px; overflow: auto; font-size: 12px; line-height: 1.5; white-space: pre; }
+
+/* ── Nav notification badges (red count, top-right of the icon) ────────── */
+.echo-dock-btn[data-badge]::before,
+.echo-app-btn[data-badge]::before {
+  content: attr(data-badge);
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  z-index: 2;
+  pointer-events: none;
+}
+/* Tiles are column-flex (icon over label): the badge pins to the ICON square's
+   top-right — the button's own top-right IS the icon's. */
+.echo-app-btn[data-badge] { overflow: visible; }
+
+/* Video thumb in the gallery strip: real poster + play badge. */
+.mkt-thumb-video { position: relative; background: #17141f; }
+.mkt-thumb-video video, .mkt-thumb-video img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.mkt-thumb-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 15px; text-shadow: 0 1px 6px rgba(0,0,0,.6);
+  background: linear-gradient(rgba(0,0,0,.08), rgba(0,0,0,.28));
+  pointer-events: none;
+}
+
+.mkt-dev-row-link { cursor: pointer; border-radius: 8px; }
+.mkt-dev-row-link:hover { background: var(--hover); }
+.mkt-dev-row-link:hover b { color: var(--accent-light); text-decoration: underline; }

@@ -90,7 +90,7 @@ export function registerGlyphhIpc(): void {
   registerGlyphhContextIpc();
   // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; source?: RunSource }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; model?: string; loop?: string; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -144,11 +144,15 @@ export function registerGlyphhIpc(): void {
     const startPermission = (PERMS as readonly string[]).includes(String(payload?.permission))
       ? (String(payload?.permission) as (typeof PERMS)[number])
       : undefined;
+    // The SESSION's own model binding (per-session, his rule 2026-08-20) —
+    // overrides the ambient loop resolution exactly like a relaying client's.
+    const sessionModel = typeof payload?.model === "string" && payload.model ? payload.model : undefined;
+    const sessionLoop = typeof payload?.loop === "string" && payload.loop ? payload.loop : undefined;
     const runner = mode === "chat"
-      ? chatRun(e.sender, id, messages, ctrl, replyBudget)
+      ? chatRun(e.sender, id, messages, ctrl, replyBudget, sessionModel)
       // publishFrames: true — a desktop-local turn tees its frames to the run-stream
       // broker so the same thread opened on web/mobile shows this run live.
-      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source, startPermission, true);
+      : harnessRun(e.sender, id, messages, ctrl, attachments, chatId, runWorkdir || undefined, mode, source, startPermission, true, sessionModel, sessionLoop);
     void runner.finally(() => {
       if (activeRuns.get(chatId)?.id === id) activeRuns.delete(chatId);
       if (activeAgentRuns.get(chatId)?.runId === id) activeAgentRuns.delete(chatId);
@@ -282,6 +286,8 @@ async function chatRun(
   messages: ChatMessage[],
   ctrl: AbortController,
   maxTokens: number,
+  /** The session's own model binding — wins over the ambient loop pick. */
+  modelOverride?: string,
 ): Promise<void> {
   const emit = (channel: string, data: Record<string, unknown>) => {
     try { if (!wc.isDestroyed()) wc.send(channel, { runId, ...data }); } catch { /* panel gone */ }
@@ -291,7 +297,7 @@ async function chatRun(
     // /slug resolves to the skill's prompt body and rides the system prompt;
     // unknown slugs pass through (the text may just be a path).
     const skillSeed = await skillSeedFor(String(messages[messages.length - 1]?.content ?? ""));
-    const model = await effectiveModel();
+    const model = modelOverride ?? await effectiveModel();
     if (!model) throw new Error("no model available — your workspace allows none, or you're signed out");
     // Anthropic shape: system is a TOP-LEVEL param, the messages array is
     // user/assistant only.

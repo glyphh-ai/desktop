@@ -390,3 +390,24 @@ export function getHelpTransitioning(): boolean {
 export function setHelpTransitioning(v: boolean) {
   helpTransitioning = v;
 }
+
+/** Downscale a picked image to fit an avatar/logo slot (≤`max` px on the long
+ *  side, webp) so a 4MB phone photo never bounces off a 512KB upload limit.
+ *  Small files pass through untouched (keeps GIF animation); anything the
+ *  browser can't decode passes through raw and the server's sniffer rules. */
+export async function downscaleImage(file: File, max = 512, passThroughBytes = 480 * 1024): Promise<Uint8Array> {
+  if (file.size <= passThroughBytes) return new Uint8Array(await file.arrayBuffer());
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d")!.drawImage(bmp, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/webp", 0.85));
+    if (blob?.size) return new Uint8Array(await blob.arrayBuffer());
+  } catch { /* undecodable — let the server's sniffer say so honestly */ }
+  return new Uint8Array(await file.arrayBuffer());
+}

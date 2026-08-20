@@ -126,13 +126,19 @@ export interface MktRelease {
   submittedAt: string | null;
   reviewedAt: string | null;
   createdAt: string;
-  updatedAt: string;
+  updatedAt: string;  reviewRecommendations?: { summary: string; items: Array<{ severity: string; area: string; note: string }>; author: string; createdAt: string } | null;
+}
+
+export interface MktAdminApp {
+  id: string; slug: string; name: string; kind: string; suspended: boolean;
+  suspendReason: string | null; listed: boolean; publisherOrg: string | null; installs: number;
 }
 
 export interface MktQueueRelease extends MktRelease {
+  submitNote?: string | null;
   appSlug: string;
   appName: string;
-  publisherOrgId: string;
+  publisherOrgId: string;  reviewRecommendations?: { summary: string; items: Array<{ severity: string; area: string; note: string }>; author: string; createdAt: string } | null;
 }
 
 /** One malicious report in the triage queue (contract AppReport). */
@@ -312,14 +318,17 @@ interface SdkApps {
   mine?: () => Promise<MktOrgApp[]>;
   setPricing?: (slug: string, patch: MktPricingPatch) => Promise<{ ok: boolean }>;
   releases?: (slug: string) => Promise<MktRelease[]>;
-  submitRelease?: (slug: string, releaseId: string) => Promise<MktRelease>;
+  submitRelease?: (slug: string, releaseId: string, note?: string) => Promise<MktRelease>;
+  adminSearch?: (q: string) => Promise<{ apps: MktAdminApp[] }>;
   reviewQueue?: () => Promise<MktQueueRelease[]>;
-  reviewRelease?: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string) => Promise<MktRelease>;
+  reviewRelease?: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string, force?: boolean, shareRecommendations?: boolean) => Promise<MktRelease>;
+  releaseSourceTree?: (releaseId: string) => Promise<{ files: Array<{ path: string; size: number }> }>;
+  releaseSourceFile?: (releaseId: string, path: string) => Promise<{ path: string; size: number; content: string }>;
   reports?: (status?: string) => Promise<MktReport[]>;
   resolveReport?: (reportId: string, status: "reviewing" | "resolved" | "dismissed") => Promise<MktReport>;
   flaggedReviews?: () => Promise<MktFlaggedReview[]>;
   moderateReview?: (reviewId: string, action: "restore" | "remove") => Promise<MktReview>;
-  suspend?: (slug: string) => Promise<{ ok: boolean; suspended: boolean }>;
+  suspend?: (slug: string, reason?: string) => Promise<{ ok: boolean; suspended: boolean }>;
   unsuspend?: (slug: string) => Promise<{ ok: boolean; suspended: boolean }>;
 }
 interface SdkMarketplace {
@@ -362,7 +371,7 @@ interface MktIpc {
   mktMyApps?: () => Promise<unknown>;
   mktPricingSet?: (slug: string, patch: MktPricingPatch) => Promise<unknown>;
   mktReleases?: (slug: string) => Promise<unknown>;
-  mktReleaseSubmit?: (slug: string, releaseId: string) => Promise<unknown>;
+  mktReleaseSubmit?: (slug: string, releaseId: string, note?: string) => Promise<unknown>;
   mktDevMe?: () => Promise<unknown>;
   mktDevGet?: (handle: string) => Promise<unknown>;
   mktDevCreate?: (input: MktDeveloperInput) => Promise<unknown>;
@@ -374,14 +383,17 @@ interface MktIpc {
   mktDevReviewRespond?: (handle: string, reviewId: string, response: string) => Promise<unknown>;
   mktDevReviewReport?: (handle: string, reviewId: string, reason: string) => Promise<unknown>;
   mktAdminQueue?: () => Promise<unknown>;
-  mktAdminReview?: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string) => Promise<unknown>;
+  mktAdminReview?: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string, share?: boolean) => Promise<unknown>;
+  mktAdminSourceTree?: (releaseId: string) => Promise<{ files: Array<{ path: string; size: number }> }>;
+  mktAdminSourceFile?: (releaseId: string, path: string) => Promise<{ path: string; size: number; content: string }>;
   mktAdminReports?: (status?: string) => Promise<unknown>;
   mktAdminReportResolve?: (reportId: string, status: string) => Promise<unknown>;
   mktAdminFlaggedReviews?: () => Promise<unknown>;
   mktAdminReviewModerate?: (reviewId: string, action: "restore" | "remove") => Promise<unknown>;
   mktAdminDevFlagged?: () => Promise<unknown>;
   mktAdminDevModerate?: (reviewId: string, action: "restore" | "remove") => Promise<unknown>;
-  mktAdminSuspend?: (slug: string, suspend: boolean) => Promise<unknown>;
+  mktAdminSuspend?: (slug: string, suspend: boolean, reason?: string) => Promise<unknown>;
+  mktAdminAppSearch?: (q: string) => Promise<{ apps: MktAdminApp[] }>;
   // Developer program (M7) — handle-scoped, `{ ok, … }` envelopes.
   mktProgramState?: (handle: string) => Promise<unknown>;
   mktProgramEnroll?: (handle: string, agreementVersion: string) => Promise<unknown>;
@@ -497,8 +509,8 @@ export const mkt = {
     write<unknown>((s) => s.apps?.setPricing?.(slug, patch), (g) => g.mktPricingSet?.(slug, patch)),
   releases: (slug: string) => read<{ releases: MktRelease[] }>(
     (s) => s.apps?.releases?.(slug)?.then((releases) => ({ releases })), (g) => g.mktReleases?.(slug)),
-  submitRelease: (slug: string, releaseId: string) =>
-    write<MktRelease>((s) => s.apps?.submitRelease?.(slug, releaseId), (g) => g.mktReleaseSubmit?.(slug, releaseId), "release"),
+  submitRelease: (slug: string, releaseId: string, note?: string) =>
+    write<MktRelease>((s) => s.apps?.submitRelease?.(slug, releaseId, note), (g) => g.mktReleaseSubmit?.(slug, releaseId, note), "release"),
 
   // developer profiles + their reviews
   devMe: () => read<{ personal: MktDeveloper | null; org: MktDeveloper | null }>(
@@ -528,8 +540,12 @@ export const mkt = {
   // platform-admin queues
   adminQueue: () => read<{ releases: MktQueueRelease[] }>(
     (s) => s.apps?.reviewQueue?.()?.then((releases) => ({ releases })), (g) => g.mktAdminQueue?.()),
-  adminReview: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string) =>
-    write<MktRelease>((s) => s.apps?.reviewRelease?.(releaseId, action, notes), (g) => g.mktAdminReview?.(releaseId, action, notes), "release"),
+  adminReview: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string, share?: boolean) =>
+    write<MktRelease>((s) => s.apps?.reviewRelease?.(releaseId, action, notes, undefined, share), (g) => g.mktAdminReview?.(releaseId, action, notes, share), "release"),
+  adminSourceTree: (releaseId: string) =>
+    read<{ files: Array<{ path: string; size: number }> }>((s) => s.apps?.releaseSourceTree?.(releaseId), (g) => g.mktAdminSourceTree?.(releaseId)),
+  adminSourceFile: (releaseId: string, path: string) =>
+    read<{ path: string; size: number; content: string }>((s) => s.apps?.releaseSourceFile?.(releaseId, path), (g) => g.mktAdminSourceFile?.(releaseId, path)),
   adminReports: (status?: "open" | "reviewing" | "resolved" | "dismissed") =>
     read<{ reports: MktReport[] }>((s) => s.apps?.reports?.(status)?.then((reports) => ({ reports })), (g) => g.mktAdminReports?.(status)),
   adminResolveReport: (reportId: string, status: "reviewing" | "resolved" | "dismissed") =>
@@ -542,11 +558,13 @@ export const mkt = {
     (s) => s.marketplace?.flaggedDeveloperReviews?.()?.then((reviews) => ({ reviews })), (g) => g.mktAdminDevFlagged?.()),
   adminModerateDevReview: (reviewId: string, action: "restore" | "remove") =>
     write<MktReview>((s) => s.marketplace?.moderateDeveloperReview?.(reviewId, action), (g) => g.mktAdminDevModerate?.(reviewId, action), "review"),
-  adminSuspend: (slug: string, suspend: boolean) =>
+  adminSuspend: (slug: string, suspend: boolean, reason?: string) =>
     write<unknown>(
-      (s) => (suspend ? s.apps?.suspend?.(slug) : s.apps?.unsuspend?.(slug)),
-      (g) => g.mktAdminSuspend?.(slug, suspend),
+      (s) => (suspend ? s.apps?.suspend?.(slug, reason) : s.apps?.unsuspend?.(slug)),
+      (g) => g.mktAdminSuspend?.(slug, suspend, reason),
     ),
+  adminAppSearch: (q: string) =>
+    read<{ apps: MktAdminApp[] }>((s) => s.apps?.adminSearch?.(q), (g) => g.mktAdminAppSearch?.(q)),
 };
 
 // ── Developer program transport (M7) ──────────────────────────────────────

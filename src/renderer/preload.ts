@@ -28,6 +28,8 @@ export interface SavedPanelApp {
   owned?: boolean;
   latestVersion?: string | null;
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
+  /** The marketplace listing's uploaded icon (installed/built Glyphh apps). */
+  iconUrl?: string | null;
   connectionIds: string[];       // ids of first-class Connections this app uses
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -330,6 +332,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   runStreamAttach: (threadId: string, token: string) =>
     ipcRenderer.invoke("run-stream-attach", threadId, token) as Promise<{ ok: boolean; error?: string }>,
   runStreamStop: (token: string) => ipcRenderer.invoke("run-stream-stop", token) as Promise<{ ok: boolean }>,
+  /** Cross-surface stop of an observed run by its id. */
+  harnessStopRun: (runId: string) => ipcRenderer.invoke("harness-stop-run", runId) as Promise<{ ok: boolean; error?: string }>,
   onRunStreamFrame: (cb: (p: { token: string; frame: unknown }) => void) => {
     const l = (_e: unknown, p: { token: string; frame: unknown }) => cb(p);
     ipcRenderer.on("run-stream-frame", l);
@@ -404,8 +408,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   mktMyApps: () => ipcRenderer.invoke("mkt-my-apps") as Promise<unknown>,
   mktPricingSet: (slug: string, patch: unknown) => ipcRenderer.invoke("mkt-pricing-set", slug, patch) as Promise<unknown>,
   mktReleases: (slug: string) => ipcRenderer.invoke("mkt-releases", slug) as Promise<unknown>,
-  mktReleaseSubmit: (slug: string, releaseId: string) =>
-    ipcRenderer.invoke("mkt-release-submit", slug, releaseId) as Promise<unknown>,
+  mktReleaseSubmit: (slug: string, releaseId: string, note?: string) =>
+    ipcRenderer.invoke("mkt-release-submit", slug, releaseId, note) as Promise<unknown>,
   mktDevMe: () => ipcRenderer.invoke("mkt-dev-me") as Promise<unknown>,
   mktDevGet: (handle: string) => ipcRenderer.invoke("mkt-dev-get", handle) as Promise<unknown>,
   mktDevCreate: (input: unknown) => ipcRenderer.invoke("mkt-dev-create", input) as Promise<unknown>,
@@ -421,8 +425,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   mktDevReviewReport: (handle: string, reviewId: string, reason: string) =>
     ipcRenderer.invoke("mkt-dev-review-report", handle, reviewId, reason) as Promise<unknown>,
   mktAdminQueue: () => ipcRenderer.invoke("mkt-admin-queue") as Promise<unknown>,
-  mktAdminReview: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string) =>
-    ipcRenderer.invoke("mkt-admin-review", releaseId, action, notes) as Promise<unknown>,
+  mktAdminSourceTree: (releaseId: string) =>
+    ipcRenderer.invoke("mkt-admin-source-tree", releaseId) as Promise<{ files: Array<{ path: string; size: number }> }>,
+  mktAdminSourceFile: (releaseId: string, path: string) =>
+    ipcRenderer.invoke("mkt-admin-source-file", releaseId, path) as Promise<{ path: string; size: number; content: string }>,
+  mktAdminReview: (releaseId: string, action: "begin" | "approve" | "reject", notes?: string, share?: boolean) =>
+    ipcRenderer.invoke("mkt-admin-review", releaseId, action, notes, share) as Promise<unknown>,
   mktAdminReports: (status?: string) => ipcRenderer.invoke("mkt-admin-reports", status) as Promise<unknown>,
   mktAdminReportResolve: (reportId: string, status: string) =>
     ipcRenderer.invoke("mkt-admin-report-resolve", reportId, status) as Promise<unknown>,
@@ -432,8 +440,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   mktAdminDevFlagged: () => ipcRenderer.invoke("mkt-admin-dev-flagged") as Promise<unknown>,
   mktAdminDevModerate: (reviewId: string, action: "restore" | "remove") =>
     ipcRenderer.invoke("mkt-admin-dev-moderate", reviewId, action) as Promise<unknown>,
-  mktAdminSuspend: (slug: string, suspend: boolean) =>
-    ipcRenderer.invoke("mkt-admin-suspend", slug, suspend) as Promise<unknown>,
+  mktAdminAppSearch: (q: string) =>
+    ipcRenderer.invoke("mkt-admin-app-search", q) as Promise<{ apps: unknown[] }>,
+  mktAdminSuspend: (slug: string, suspend: boolean, reason?: string) =>
+    ipcRenderer.invoke("mkt-admin-suspend", slug, suspend, reason) as Promise<unknown>,
   // Developer program (M7) — Settings → Developer. Handle-scoped: a PROFILE
   // (org or personal) holds the program; payout config rides inside the state.
   mktProgramState: (handle: string) => ipcRenderer.invoke("mkt-program-state", handle) as Promise<unknown>,
@@ -556,7 +566,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Marketplace listing — copy, images, and the list/unlist decision.
   appListingSet: (slug: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("app-listing-set", slug, patch) as Promise<{ ok: boolean; error?: string }>,
-  appListingImageAdd: (slug: string, kind: "icon" | "screenshot") =>
+  appListingImageAdd: (slug: string, kind: "icon" | "screenshot" | "video") =>
     ipcRenderer.invoke("app-listing-image-add", slug, kind) as Promise<{ ok: boolean; key?: string; error?: string }>,
   appListingImageRemove: (slug: string, key: string) =>
     ipcRenderer.invoke("app-listing-image-remove", slug, key) as Promise<{ ok: boolean; error?: string }>,
@@ -621,12 +631,22 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
   billingTopup: (credits: number, embedded?: boolean) =>
     ipcRenderer.invoke("billing-topup", credits, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
+  cloudFsBrowse: (scope: string, dir?: string) =>
+    ipcRenderer.invoke("cloud-fs-browse", scope, dir) as Promise<{ root: string; path: string; entries: Array<{ name: string; path: string; kind: string }> } | null>,
+  /** The API origin this desktop talks to — clients pin media URLs to it. */
+  apiUrl: process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai",
   cloudSpacesList: () =>
     ipcRenderer.invoke("cloud-spaces-list") as Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }>,
   billingConfig: () =>
     ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,
   accountOrgGet: () => ipcRenderer.invoke("account-org-get") as Promise<AccountOrg>,
+  orgAppBlocks: () =>
+    ipcRenderer.invoke("org-app-blocks") as Promise<{ blocks: Array<{ appId: string; slug: string; name: string; createdAt: string }> }>,
+  orgAppBlockSet: (ref: string, blocked: boolean) =>
+    ipcRenderer.invoke("org-app-block-set", ref, blocked) as Promise<{ ok: boolean; blocked?: boolean; slug?: string; error?: string }>,
+  accountOrgImage: (bytes: ArrayBuffer) =>
+    ipcRenderer.invoke("account-org-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>
     ipcRenderer.invoke("account-org-update", patch) as Promise<{ ok: boolean; org?: AccountOrg; error?: string }>,
   accountProfileGet: () => ipcRenderer.invoke("account-profile-get") as Promise<AccountProfile>,
@@ -722,7 +742,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
     ipcRenderer.on("boot", (_event, data) => callback(data));
   },
-  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
+  glyphhRun: (p: { chatId: string; attachments?: Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; model?: string; loop?: string; source?: { kind: "cloud-new" } | { kind: "cloud-repo"; repo: string } | { kind: "local"; path: string; machineId?: string } }) =>
     ipcRenderer.invoke("glyphh-agent-run", p) as Promise<{ runId: string }>,
   glyphhPickAttachments: (mode?: "files" | "folder") =>
     ipcRenderer.invoke("glyphh-agent-pick-attachments", { mode }) as Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>,

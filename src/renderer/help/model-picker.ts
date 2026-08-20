@@ -42,6 +42,20 @@ export function currentRoles(): RoleView[] {
   return roles;
 }
 
+/** Overlay a SESSION's own model bindings onto the resolved slots (his rule,
+ *  2026-08-20: each session runs its own models — five layouts, five casts,
+ *  independent). The chip, the menu's checkmarks, and turn resolution all read
+ *  the overlaid state, so what this session shows is what this session runs. */
+export function overlayRoleSelections(models?: Record<string, string> | null): void {
+  if (!models) return;
+  roles = roles.map((r) => {
+    const bound = models[r.name];
+    return bound && r.choices.some((c) => c.id === bound)
+      ? { ...r, modelId: bound, source: "selection" as const }
+      : r;
+  });
+}
+
 /** Pull this loop's slots from the server. Safe to call on every loop change.
  *  `context: "cloud"` resolves for a pod-executed session — the server excludes
  *  on-device models, whose weights only exist on the user's machine. */

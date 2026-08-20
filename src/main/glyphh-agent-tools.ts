@@ -2272,6 +2272,48 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "review_release_queue",
+    doc: "review_release_queue() — PLATFORM ADMIN ONLY (the server refuses everyone else): the marketplace review queue — every submitted/in-review release with any stored recommendations. THE entry point when asked to review an app: find the release here by app name/slug, then get_release_source + read_release_file to inspect the submitted code, then submit_release_review with your findings. You NEVER approve or reject — a human admin rules in the review desk (marketplace-review-policy.md).",
+    action: () => ({ kind: "read", title: "Read the marketplace review queue" }),
+    run: async () => {
+      const rows = await getClient().apps.reviewQueue();
+      if (!rows.length) return "The review queue is empty — nothing is submitted for review.";
+      return JSON.stringify(rows.map((r) => ({
+        releaseId: r.id, app: (r as { appSlug?: string }).appSlug, appName: (r as { appName?: string }).appName,
+        version: r.version, reviewStatus: r.reviewStatus, submittedAt: r.submittedAt,
+        submitNote: (r as { submitNote?: string | null }).submitNote ?? null,
+        recommendations: (r as { reviewRecommendations?: unknown }).reviewRecommendations ?? null,
+      })));
+    },
+  },
+  {
+    name: "get_release_source",
+    doc: "get_release_source(releaseId) — PLATFORM ADMIN ONLY: the file tree of a queued release's submitted source archive (exactly what the author uploaded).",
+    action: (a) => ({ kind: "read", title: `List release ${String(a.releaseId ?? "")} source` }),
+    run: async (a) => JSON.stringify(await getClient().apps.releaseSourceTree(String(a.releaseId ?? ""))),
+  },
+  {
+    name: "read_release_file",
+    doc: "read_release_file(releaseId, path) — PLATFORM ADMIN ONLY: one text file from the queued release's archive (512KB cap; binaries refuse).",
+    action: (a) => ({ kind: "read", title: `Read ${String(a.path ?? "")} from the release` }),
+    run: async (a) => {
+      const f = await getClient().apps.releaseSourceFile(String(a.releaseId ?? ""), String(a.path ?? ""));
+      return `// ${f.path} (${f.size} bytes)\n${f.content}`;
+    },
+  },
+  {
+    name: "submit_release_review",
+    doc: "submit_release_review(releaseId, summary, recommendations) — PLATFORM ADMIN ONLY: store your structured review on a queued release: summary (one paragraph) + recommendations [{severity: critical|warning|suggestion, area, note}]. The author sees these ONLY if the human admin rejects with 'accept recommendations & send back' in the review desk — never directly. You never rule on the release yourself.",
+    action: (a) => ({ kind: "edit", title: `File review on release ${String(a.releaseId ?? "")}` }),
+    run: async (a) => {
+      const items = Array.isArray(a.recommendations) ? a.recommendations as Array<{ severity: "critical" | "warning" | "suggestion"; area: string; note: string }> : [];
+      const r = await getClient().apps.submitReviewRecommendations(String(a.releaseId ?? ""), {
+        summary: String(a.summary ?? ""), items,
+      });
+      return `Stored ${r.items} recommendation(s). A human admin rules in the Review desk; accepting them on a rejection sends them to the author.`;
+    },
+  },
+  {
     name: "store_file",
     doc: "store_file(path, name?, folderId?) — publish a DELIVERABLE (pdf, export, image, zip — any finished file) from the working folder to the org's cloud Drive (R2). Every surface (web, mobile) can reach it instantly; it appears as a card in Drive. Use this for finished outputs; plain save_file/workdir writes stay local to this machine. path is relative to the working folder or absolute inside it.",
     action: (a) => ({ kind: "edit", title: `Store ${String(a.path ?? "")} in Drive` }),

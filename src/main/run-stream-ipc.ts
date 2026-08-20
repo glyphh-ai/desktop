@@ -51,4 +51,12 @@ export function registerRunStreamIpc(): void {
     if (typeof token === "string") subs.get(token)?.stop();
     return { ok: true };
   });
+
+  // Cross-surface STOP: abort an OBSERVED run by id (a cloud run watched from
+  // this desktop — the observer holds no run handle, only the broker stream).
+  ipcMain.handle("harness-stop-run", async (_event, runId: unknown) => {
+    if (typeof runId !== "string" || !runId) return { ok: false };
+    try { await getClient().harnessViaApi().stopRun(runId); return { ok: true }; }
+    catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
+  });
 }

@@ -555,6 +555,9 @@ export function toLegacyPanelApps(apps) {
     owned: a.owned ?? true,
     latestVersion: a.latestVersion ?? null,
     requiredConnections: a.requiredConnections ?? [],
+    // The listing's uploaded icon — the CC/Apps tiles' real art for Glyphh
+    // apps (their launch URL has no favicon to derive one from).
+    iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null,
     connectionIds: a.connectionIds ?? [],
     mcp: a.mcp ?? null,
     commands: a.commands ?? {},
