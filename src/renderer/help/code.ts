@@ -5320,6 +5320,39 @@ export function initCode(): void {
       }, true);
     }
   }
+
+  // ── Layout header: name (inline rename) LEFT, controls RIGHT ──────────────
+  // In a layout the agent panel shows .code-agent-head (name + kebab). His
+  // rule (2026-08-21): the session-controls row (recents/+new/⋯) RELOCATES
+  // into that header's right side, and the NAME becomes click-to-rename.
+  {
+    // Clicking the session name renames it inline (stopPropagation so the
+    // surrounding back-button nav doesn't fire).
+    const title = el("code-session-title");
+    if (title) {
+      title.addEventListener("click", (ev) => { ev.stopPropagation(); renameCurrentInline(); });
+      title.setAttribute("title", "Click to rename this session");
+      title.style.cursor = "text";
+    }
+
+    // Relocate the controls between the composer's source slot (home) and the
+    // head's right actions, driven by body.echo-agent-in-layout.
+    const controls = el("code-session-controls");
+    const home = el("code-source-slot");            // where they live in the composer
+    const headActions = document.querySelector<HTMLElement>(".session-head-actions");
+    const placeControls = (): void => {
+      if (!controls || !home || !headActions) return;
+      const inLayout = document.body.classList.contains("echo-agent-in-layout");
+      const target = inLayout ? headActions : home;
+      if (controls.parentElement !== target) {
+        // In the head, sit BEFORE the kebab; in the composer, append at the end.
+        if (inLayout) headActions.insertBefore(controls, headActions.firstChild);
+        else home.appendChild(controls);
+      }
+    };
+    placeControls();
+    new MutationObserver(placeControls).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  }
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const anchor = ev.currentTarget as HTMLElement;

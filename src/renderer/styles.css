@@ -16989,6 +16989,10 @@ body:not(.composer-on-home) .code-input,
 /* Agent header, LEFT group: [+ new] [recents] [⋯] — the same trio on every
    agent view (full screen and layout-hosted), left of the spacer. */
 .session-head-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+/* The relocatable session-controls group (recents / + new / ⋯ dev tools) —
+   lives in the composer's source slot by default; in a layout it moves into
+   .session-head-actions (help/code.ts). Flex either way. */
+.code-session-controls { display: inline-flex; align-items: center; gap: 2px; }
 .session-head-actions + #code-session-kebab-wrap { margin-left: 0; }
 /* The history dropdown hangs off its button in the header's left group. */
 .session-head-actions { position: relative; }
