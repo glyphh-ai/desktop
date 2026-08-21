@@ -3639,9 +3639,7 @@ async function init(): Promise<void> {
       const margin = 7;
       let top = margin;
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      // A TUCKED dock (auto-hide, slid off the top) reserves NO band space —
-      // it floats over on hover, it doesn't push the panels down.
-      if (bar && bar.style.visibility !== "hidden" && !bar.classList.contains("dock-tucked")) {
+      if (bar && bar.style.visibility !== "hidden") {
         const r = bar.getBoundingClientRect();
         if (r.height > 0) top = Math.max(top, r.bottom - stageR.top + margin);
       }
@@ -3865,16 +3863,9 @@ async function init(): Promise<void> {
     // below tucks it again. This is what makes auto-hide actually UN-hide.
     document.addEventListener("mousemove", (ev) => {
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (!bar || !bar.classList.contains("dock-tucked")) {
-        if (document.body.classList.contains("echo-dock-peeking")) document.body.classList.remove("echo-dock-peeking");
-        return;
-      }
+      if (!bar || !bar.classList.contains("dock-tucked")) return;
       if (ev.clientY <= 46) bar.classList.add("dock-peek");
       else if (ev.clientY > 140) bar.classList.remove("dock-peek");
-      // The app-webview layer (z 120) composites above ALL DOM — the ONLY way
-      // the peeked dock sits in FRONT of open panels is to hide that layer
-      // while peeking, exactly as the modal + thread-peek paths do.
-      document.body.classList.toggle("echo-dock-peeking", bar.classList.contains("dock-peek"));
     }, { passive: true });
     // The dock's close-workspace icon (auto-hide mode's exit) — same action
     // as the layout bar's close.
