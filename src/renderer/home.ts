@@ -195,16 +195,13 @@ void (async () => {
             background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
           #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
           #solo-panel-header button + button { margin-left: 0; }
-          [data-home-scope="solo-tool"] #help-layout { padding-top: 34px; }`;
+          [data-home-scope="solo-tool"] #help-overlay { top: 34px !important; padding-top: 0 !important; }
+          [data-home-scope="solo-tool"] #help-layout { padding-top: 0 !important; margin-top: 0 !important; top: 0 !important; }`;
         document.head.appendChild(hdrStyle);
         const hdr = document.createElement("div");
         hdr.id = "solo-panel-header";
-        hdr.innerHTML = `<span class="sph-title"></span>
-          <button class="sph-expand" title="Expand — fill the workspace">⤢</button>
-          <button class="sph-collapse" title="Collapse — back to its place in the stack">⤡</button>`;
+        hdr.innerHTML = `<span class="sph-title"></span>`;
         (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
-        hdr.querySelector(".sph-expand")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("expand"));
-        hdr.querySelector(".sph-collapse")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("collapse"));
         document.body.appendChild(hdr);
       }
 
@@ -260,16 +257,13 @@ void (async () => {
             background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
           #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
           #solo-panel-header button + button { margin-left: 0; }
-          [data-home-scope="solo-tool"] #help-layout { padding-top: 34px; }`;
+          [data-home-scope="solo-tool"] #help-overlay { top: 34px !important; padding-top: 0 !important; }
+          [data-home-scope="solo-tool"] #help-layout { padding-top: 0 !important; margin-top: 0 !important; top: 0 !important; }`;
         document.head.appendChild(hdrStyle);
         const hdr = document.createElement("div");
         hdr.id = "solo-panel-header";
-        hdr.innerHTML = `<span class="sph-title"></span>
-          <button class="sph-expand" title="Expand — fill the workspace">⤢</button>
-          <button class="sph-collapse" title="Collapse — back to its place in the stack">⤡</button>`;
+        hdr.innerHTML = `<span class="sph-title"></span>`;
         (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
-        hdr.querySelector(".sph-expand")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("expand"));
-        hdr.querySelector(".sph-collapse")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("collapse"));
         document.body.appendChild(hdr);
       }
 
