@@ -5291,7 +5291,11 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
-      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
+      if (t.layoutRow) {
+        // ONE PLANE: layouts open on the DESKTOP, never as in-app cards.
+        void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(t.layoutRow.name);
+        return;
+      }
       // NATIVE app tile (desktop app / terminal — execPath, no url): launch the
       // OS app itself. Nothing renders in-window; the tile IS the launcher.
       if (t.kind === "app" && !t.url && !t.glyphh && !t.toolView) {

@@ -338,7 +338,12 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   //    target is the desktop. Only genuine impossibilities error, with the
   //    offending cells named: agent panels and installed Glyphh apps can't
   //    leave the Glyphh window, and native apps can't render as panels. ──
-  const wanted = layout.target === "desktop" ? "external" : "internal";
+  // ONE PLANE (his rule, 2026-08-21): every layout opens ON THE DESKTOP —
+  // the in-app workbench rendering is retired for now. Panel-only cells are
+  // SKIPPED with a log instead of failing the whole layout.
+  const forcedDesktop = true;
+  const wanted = "external";
+  void layout.target;
   const offenders: string[] = [];
   for (const cell of layout.cells) {
     const cellKey = cell.panelId.trim().toLowerCase();
@@ -356,16 +361,12 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     }
   }
   if (offenders.length) {
-    throw new Error(
-      layout.target === "desktop"
-        ? `layout "${layout.name}" targets the desktop but contains panel-only content: ${offenders.join(", ")}. Agent panels and installed Glyphh apps can only open inside the Glyphh window.`
-        : `layout "${layout.name}" targets the Glyphh window but contains native apps: ${offenders.join(", ")}. Native apps can't render as panels — set the layout's target to Desktop.`,
-    );
+    console.warn(`[layouts] "${layout.name}": skipping panel-only cells on the desktop: ${offenders.join(", ")}`);
   }
 
   // ── DESKTOP target: web cells open as positioned OS webview windows, native
   //    cells launch, Glyphh collapses to the rail — the desktop IS the layout. ──
-  if (layout.target === "desktop") {
+  if (forcedDesktop) {
     const opened = await openDesktopLayout(
       { name: layout.name, cols: layout.cols, rows: layout.rows, cells: layout.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })), ...(layout.glyphh ? { glyphh: layout.glyphh } : {}) },
       (panelId) => findLibraryApp(apps, panelId),

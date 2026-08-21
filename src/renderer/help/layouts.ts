@@ -15,41 +15,11 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   await ensureAppNames();
   const layout = (await window.glyphh.layoutsList()).find((l) => l.name === name);
   if (!layout) return;
-  // A DESKTOP-target layout never panels — main opens it on the desktop
-  // (native launches + external browsers), the same path .dip and the agent use.
-  if ((layout as { target?: string }).target === "desktop") {
-    await window.glyphh.layoutsOpen(name);
-    return;
-  }
-  // Opening a layout LEAVES settings — drop the modal (no-op when absent) so
-  // the workbench isn't hidden behind it.
-  closeSettingsModal();
-  // A layout also sets the loop + its slot models — apply before the panels
-  // tile so the composer is already in the layout's program state.
-  if (layout.loop) {
-    try {
-      await window.glyphh.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
-      // Tell the composer to re-sync its loop + model chips to the new state.
-      document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
-    } catch { /* offline — the panels still open; the loop just stays as-is */ }
-  }
-  showWorkspaceSurface();   // neutral flip — the layout's cells define the view
-  // Open BY NAME so the workbench's recall path runs: the layout's definition
-  // plus the geometry the user last dragged it into (its named memory). The
-  // old path here handed over a pristine payload via __wbOpenLayout, which
-  // skipped recall — every click snapped back to the server's default
-  // placement until an app restart.
-  const w = window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> };
-  // The workbench init runs on the code section's first load; wait a few
-  // frames for the hook to exist rather than dropping the click.
-  let tries = 0;
-  const go = () => {
-    if (w.__wbOpenLayoutByName) void w.__wbOpenLayoutByName(layout.name);
-    else if (tries++ < 20) requestAnimationFrame(go);
-  };
-  go();
+  // ONE PLANE (his rule, 2026-08-21): EVERY layout opens on the desktop —
+  // the in-app rendering path below is retired for now.
+  await window.glyphh.layoutsOpen(name);
+  return;
 }
-
 
 /** A geometric mini-grid preview of a layout — the split structure only, no
  *  app icons (command-center parity, minus the icons the page dropped). Cells

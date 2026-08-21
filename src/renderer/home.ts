@@ -178,7 +178,7 @@ void (async () => {
       const slug = solo.slice(4);
       const appName = params.get("appName") || slug;
       const appUrl = params.get("appUrl") || "";
-      document.title = `${appName} — Glyphh`;
+      document.title = appName;
       // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
       {
         const hdrStyle = document.createElement("style");
@@ -240,7 +240,7 @@ void (async () => {
       const kind = solo.slice(5);
       const soloLabel = SOLO_LABELS[kind] || kind;
       // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
-      document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
+      document.title = soloLabel;
       // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
       {
         const hdrStyle = document.createElement("style");
