@@ -46,49 +46,66 @@ const stack: BrowserWindow[] = [];
 // every open is a NEW window (its own thread, its own stream).
 const byKey = new Map<string, BrowserWindow>();
 
-/** Re-tile the stack in the BUILD pattern (his rule, 2026-08-21): the first
- *  panel takes the CENTER at half the workspace width; the next goes UNDER
- *  it; then the RIGHT column (and under it); then LEFT; past six, a plain
- *  near-square grid. Columns split top/bottom when they hold two. */
+const GAP = 6; // thin seam between panels, like the internal layout manager
+
+/** Column/row assignment for the BUILD pattern: 1 → CENTER half-width; 2 →
+ *  under it; 3 → the pair becomes LEFT half and the new panel takes the
+ *  RIGHT half (together they fill the screen); 4 → under the right; then
+ *  alternate. splitX is user-draggable via window resize (shared edge). */
+let splitFrac = 0.5;
+const seat = new WeakMap<BrowserWindow, { col: number; row: number }>();
+
+function assign(live: BrowserWindow[]): Array<{ col: number; row: number }> {
+  const out: Array<{ col: number; row: number }> = [];
+  const counts = [0, 0];
+  live.forEach((_w, i) => {
+    const col = i < 2 ? 0 : i < 4 ? 1 : (i % 2);
+    out.push({ col, row: counts[col]++ });
+  });
+  return out;
+}
+
+function applyBounds(live: BrowserWindow[]): void {
+  const area = workspaceArea();
+  const seats = assign(live);
+  const twoCols = live.length > 2;
+  const colCount = [seats.filter(s => s.col === 0).length, seats.filter(s => s.col === 1).length];
+  const splitX = area.x + Math.round(area.width * splitFrac);
+  live.forEach((w, i) => {
+    const { col, row } = seats[i];
+    seat.set(w, seats[i]);
+    const x = !twoCols
+      ? area.x + Math.round(area.width / 4)
+      : col === 0 ? area.x : splitX + GAP;
+    const width = !twoCols
+      ? Math.round(area.width / 2)
+      : col === 0 ? (splitX - area.x - GAP) : (area.x + area.width - splitX - GAP);
+    const rows = Math.max(1, colCount[col]);
+    const rowH = Math.round((area.height - GAP * (rows - 1)) / rows);
+    w.setBounds({ x, y: area.y + row * (rowH + GAP), width, height: rowH });
+  });
+}
+
 function retile(): void {
   const live = stack.filter((w) => !w.isDestroyed());
   stack.length = 0;
   stack.push(...live);
   if (!live.length) return;
-  const area = workspaceArea();
-  if (live.length > 6) {
-    const cols = Math.ceil(Math.sqrt(live.length));
-    const rows = Math.ceil(live.length / cols);
-    live.forEach((w, i) => {
-      const c = i % cols, r = Math.floor(i / cols);
-      w.setBounds({
-        x: area.x + Math.round((area.width * c) / cols),
-        y: area.y + Math.round((area.height * r) / rows),
-        width: Math.round(area.width / cols),
-        height: Math.round(area.height / rows),
-      });
-    });
-    return;
-  }
-  const half = Math.round(area.width / 2);
-  const quarter = Math.round(area.width / 4);
-  // Column x/width in fill order: center (half), right (quarter), left (quarter).
-  const columns = [
-    { x: area.x + quarter, width: half },
-    { x: area.x + quarter + half, width: quarter },
-    { x: area.x, width: quarter },
-  ];
-  live.forEach((w, i) => {
-    const col = columns[Math.floor(i / 2)];
-    const occupants = Math.min(2, live.length - Math.floor(i / 2) * 2);
-    const rowIdx = i % 2;
-    const h = occupants === 2 ? Math.round(area.height / 2) : area.height;
-    w.setBounds({
-      x: col.x,
-      y: area.y + rowIdx * Math.round(area.height / 2),
-      width: col.width,
-      height: h,
-    });
+  applyBounds(live);
+}
+
+/** Shared-edge drag: resizing a panel's width moves the column split for
+ *  everyone (the internal layout manager's divider, as window edges). */
+function watchResize(win: BrowserWindow): void {
+  win.on("resized", () => {
+    const s = seat.get(win);
+    const live = stack.filter((w) => !w.isDestroyed());
+    if (!s || live.length <= 2) return;
+    const area = workspaceArea();
+    const b = win.getBounds();
+    const edge = s.col === 0 ? b.x + b.width + GAP : b.x - GAP;
+    splitFrac = Math.max(0.2, Math.min(0.8, (edge - area.x) / area.width));
+    applyBounds(live);
   });
 }
 
@@ -102,6 +119,7 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
   }
   const win = new BrowserWindow({
     width: 1160, height: 740, show: false,
+    resizable: true,
     // ONE header: the page draws a slim drag strip that hosts the traffic
     // lights AND the expand/collapse controls (his rule, 2026-08-21 — no
     // second header row inside the panel).
@@ -135,6 +153,7 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
   if (key) byKey.set(key, win);
   win.on("closed", () => { if (key && byKey.get(key) === win) byKey.delete(key); retile(); });
   win.once("ready-to-show", () => { win.show(); retile(); });
+  watchResize(win);
   return win;
 }
 

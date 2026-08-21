@@ -3099,6 +3099,9 @@ async function init(): Promise<void> {
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
       // replay: the composer restores its own session (or sits waiting fresh).
+      // ONE PLANE (his rule, 2026-08-21): NOTHING reopens inside the app at
+      // boot. The wall comes back bare; panels live on the desktop.
+      if (saved || !saved) return;
       try {
         if (!saved || !echoCtl) return;
         if (saved.layout) {
