@@ -1979,6 +1979,36 @@ function initApps() {
   });
 
   // Import a .glyphh bundle (main shows the open dialog) → reload the apps list.
+  // "+ New" — a workpanel app arrives exactly three ways: the agent builds
+  // it, the marketplace installs it, or a .glyphh bundle imports it. The
+  // button offers those; there is no hand-made app form any more.
+  document.getElementById("apps-new-btn")?.addEventListener("click", (ev) => {
+    document.querySelector(".apps-new-menu")?.remove();
+    const m = document.createElement("div");
+    m.className = "code-menu apps-new-menu";
+    const add = (label: string, fn: () => void): void => {
+      const b = document.createElement("button");
+      b.className = "code-menu-item";
+      b.textContent = label;
+      b.addEventListener("click", () => { m.remove(); fn(); });
+      m.appendChild(b);
+    };
+    add("Build with Glyphh", () => {
+      gotoSection("code");
+      (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    });
+    add("Install from Marketplace", () => gotoSection("marketplace"));
+    add("Import .glyphh file", () => (document.getElementById("apps-import-btn") as HTMLButtonElement | null)?.click());
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    m.style.position = "fixed";
+    m.style.top = `${r.bottom + 4}px`;
+    m.style.left = `${Math.max(8, r.right - 200)}px`;
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener("pointerdown", function close(e) {
+      if (!(e.target as HTMLElement).closest(".apps-new-menu")) { m.remove(); document.removeEventListener("pointerdown", close, true); }
+    }, true), 0);
+  });
+
   document.getElementById("apps-import-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("apps-import-btn") as HTMLButtonElement;
     const prev = btn.textContent;
