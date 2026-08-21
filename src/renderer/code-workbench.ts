@@ -1988,9 +1988,6 @@ async function init(): Promise<void> {
       <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div></div>
       <div class="echo-topbar echo-topbar-stacked">
         <div class="echo-dock">${DOCK_ITEMS.map((d) => `<button class="echo-dock-btn" data-dock="${d.key}" title="${d.title}" type="button">${d.icon}</button>`).join("")}</div>
-        <button class="echo-dock-btn echo-dock-closelayout hidden" type="button" title="Close workspace — close every panel in it">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
-        </button>
       </div>
       <div class="echo-veil"></div>
       <div class="echo-layout-bar hidden">
@@ -3252,7 +3249,7 @@ async function init(): Promise<void> {
       const dockEl = body.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (bar && bar.classList.contains("dock-tucked") && !bar.classList.contains("dock-peek")) { queueDockZoom(null); return; }
+      if (bar && bar.style.visibility === "hidden") { queueDockZoom(null); return; }
       const r = dockEl.getBoundingClientRect();
       const near = r.width > 0 && r.bottom > 0 && ev.clientY >= r.top - 26 && ev.clientY <= r.bottom + 26;
       queueDockZoom(near ? ev.clientX : null);
@@ -3275,8 +3272,6 @@ async function init(): Promise<void> {
         const nextPp = Number.isFinite(ppn) ? Math.max(8, Math.min(120, ppn)) : 56;
         if (nextPp !== perPage) { perPage = nextPp; renderPages(); }
         syncWallVisibility();
-        // Auto-hide flip moves the close between the layout bar and the dock.
-        try { paintLayoutBar(); } catch { /* pre-definition on first boot — syncWallVisibility already covered it */ }
         layoutCards();
       });
     };
@@ -3733,21 +3728,7 @@ async function init(): Promise<void> {
       // which pins it always-on.
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
       const autoHideOn = document.body.classList.contains("echo-dock-autohide");
-      // Class-based tuck (was inline visibility, which fought the hover peek
-      // and left the dock stuck hidden — "never unhides"). When the CC is
-      // covered AND auto-hide is on the dock slides up off the top; a
-      // mousemove near the top edge peeks it back (handler below).
-      const tuck = hidden && autoHideOn;
-      if (bar) {
-        bar.style.visibility = "";
-        bar.classList.toggle("dock-tucked", tuck);
-        if (!tuck) bar.classList.remove("dock-peek");
-        // The close-workspace icon rides the DOCK in auto-hide mode (his
-        // rule, 2026-08-21) — the layout bar is hidden then, so this is the
-        // exit. Shown only when a layout/cards are up and auto-hide is on.
-        bar.querySelector<HTMLElement>(".echo-dock-closelayout")
-          ?.classList.toggle("hidden", !((layoutUp || cardsUp) && autoHideOn));
-      }
+      if (bar) bar.style.visibility = (!hidden || !autoHideOn) ? "" : "hidden";
       // The CC + reset buttons live in the COMPOSER'S side band now (help/
       // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
       // live LAYOUT owns the surface (no dock, no wall reveal) and the layout
@@ -3858,22 +3839,6 @@ async function init(): Promise<void> {
       if (ev.clientY <= 46) layoutBar.classList.add("peek");
       else if (ev.clientY > 120) layoutBar.classList.remove("peek");
     }, { passive: true });
-    // DOCK auto-hide reveal: when the dock is tucked (auto-hide on + CC
-    // covered), a mousemove near the top edge peeks it down; moving well
-    // below tucks it again. This is what makes auto-hide actually UN-hide.
-    document.addEventListener("mousemove", (ev) => {
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (!bar || !bar.classList.contains("dock-tucked")) return;
-      if (ev.clientY <= 46) bar.classList.add("dock-peek");
-      else if (ev.clientY > 140) bar.classList.remove("dock-peek");
-    }, { passive: true });
-    // The dock's close-workspace icon (auto-hide mode's exit) — same action
-    // as the layout bar's close.
-    body.querySelector<HTMLElement>(".echo-dock-closelayout")
-      ?.addEventListener("click", () => {
-        if (openList.some((e) => e.layoutId != null)) closeLayoutGroup();
-        else resetEcho();
-      });
     // These live INSIDE layoutBar, which was just re-parented into the header —
     // query them from layoutBar, NOT body, or they come back null and the
     // addEventListener below throws, killing every handler bound after it
@@ -3908,11 +3873,8 @@ async function init(): Promise<void> {
       // Outer scopes (e.g. __wbNewSessionPanel) need layout-ness without
       // reaching into this closure — stamp it on the body.
       document.body.classList.toggle("echo-layout-active", inLayout);
-      // In AUTO-HIDE mode the layout bar is gone entirely — its close moved
-      // to the dock (his rule, 2026-08-21). Otherwise it shows as before.
-      const autoHideOn = document.body.classList.contains("echo-dock-autohide");
       const wasHidden = layoutBar.classList.contains("hidden");
-      layoutBar.classList.toggle("hidden", !show || autoHideOn);
+      layoutBar.classList.toggle("hidden", !show);
       layoutBar.querySelector(".echo-layout-save")?.classList.toggle("hidden", inLayout);
       if (inLayout) layoutBarName.textContent = echoLayoutName || "Workspace";
       else if (cards.length > 4) layoutBarName.textContent = "Multi";

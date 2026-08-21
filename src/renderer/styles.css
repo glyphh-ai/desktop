@@ -16445,16 +16445,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-topbar {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px; z-index: 3;
-  transition: transform 0.22s cubic-bezier(0.25, 0.9, 0.3, 1), opacity 0.18s ease;
 }
-/* Auto-hide: the dock slides up off the top edge; a mousemove near the top
-   (JS adds .dock-peek, via a global handler — no :hover target needed) brings
-   it back. Tucked = click-through so it never eats input while invisible. */
-.echo-topbar.dock-tucked { transform: translate(-50%, calc(-100% - 24px)); opacity: 0; pointer-events: none; }
-.echo-topbar.dock-tucked.dock-peek { transform: translateX(-50%); opacity: 1; pointer-events: auto; }
-/* The close-workspace icon that rides the dock in auto-hide mode. */
-.echo-dock-closelayout.hidden { display: none; }
-.echo-dock-closelayout:hover { box-shadow: 0 0 0 1.5px var(--echo-danger, #e5484d); }
 /* The dock — FIXED nav slots above the search box: Apps / Marketplace /
    Connections / Workspaces / Scheduled Tasks / Agents / Browser / Settings.
    Office-icon language (full-bleed object silhouettes, the VIEW_META
