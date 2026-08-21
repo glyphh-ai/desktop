@@ -54,7 +54,7 @@ window.glyphh.refreshAuth?.().catch(() => {});
 // name + "Close layout" (app-reset: closes the layout's windows and un-docks
 // this window). Hidden the rest of the time — the bar only exists while a
 // desktop layout is active.
-window.glyphh.onDesktopLayoutChanged?.((name) => {
+const ensureDlb = (name: string | null): void => {
   let bar = document.getElementById("desktop-layout-bar");
   if (!name) { bar?.remove(); return; }
   if (!bar) {
@@ -72,8 +72,10 @@ window.glyphh.onDesktopLayoutChanged?.((name) => {
     });
     document.body.appendChild(bar);
   }
-  (bar.querySelector(".dlb-name") as HTMLElement).textContent = name;
-});
+  (bar.querySelector(".dlb-name") as HTMLElement).textContent = name || "Apps";
+};
+window.glyphh.onDesktopLayoutChanged?.(ensureDlb);
+window.addEventListener("glyphh:force-bar", () => ensureDlb("Apps"));
 
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the
 // window controls and the command button (page-top, left of which sits the
@@ -93,6 +95,24 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
+    // TOP-OF-SCREEN LAYOUT BAR (?solo=bar) — the close-layout strip as its
+    // own always-on-top window at the top of the OS screen (desktop-panels
+    // shows/hides it with the stack). Only the bar renders.
+    if (solo === "bar") {
+      document.body.classList.remove("wb-booting");
+      const style = document.createElement("style");
+      style.textContent = `body > :not(#desktop-layout-bar) { display: none !important; }
+        html, body { background: transparent !important; }
+        #desktop-layout-bar { height: 36px; }`;
+      document.head.appendChild(style);
+      window.glyphh.onDesktopLayoutChanged?.((name) => {
+        const n = document.querySelector("#desktop-layout-bar .dlb-name");
+        if (n) n.textContent = name || "Apps";
+      });
+      // Force-create the bar now (the shared creator waits for an event).
+      window.dispatchEvent(new Event("glyphh:force-bar"));
+      return;
+    }
     // FULL-SCREEN ECHO overlay (?solo=echo, ⌘⇧Space — echo-overlay.ts): the
     // normal home boot continues below (Echo IS the app), only the window
     // chrome hides and Esc dismisses the overlay. Deliberately NO return —

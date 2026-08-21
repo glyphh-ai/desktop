@@ -68,7 +68,10 @@ function assign(live: BrowserWindow[]): Array<{ col: number; row: number }> {
 }
 
 function applyBounds(live: BrowserWindow[]): void {
-  const area = workspaceArea();
+  const raw = workspaceArea();
+  const area = live.length
+    ? { x: raw.x, y: raw.y + BAR_H + GAP, width: raw.width, height: raw.height - BAR_H - GAP }
+    : raw;
   const seats = assign(live);
   const twoCols = live.length > 2;
   const colCount = [seats.filter(s => s.col === 0).length, seats.filter(s => s.col === 1).length];
@@ -99,11 +102,37 @@ function applyBounds(live: BrowserWindow[]): void {
 
 // The top-of-screen bar (the in-app "dropdown"): reuse the desktop-layout bar
 // whenever ANY panel is up — Close there tears the stack down (app-reset).
+const BAR_H = 36;
+let barWin: BrowserWindow | null = null;
+function syncBar(on: boolean): void {
+  if (!on) { if (barWin && !barWin.isDestroyed()) barWin.hide(); return; }
+  const { screen } = require("electron") as typeof import("electron");
+  const wa = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  if (!barWin || barWin.isDestroyed()) {
+    barWin = new BrowserWindow({
+      x: wa.x, y: wa.y, width: wa.width, height: BAR_H, show: false,
+      frame: false, transparent: true, resizable: false, movable: false,
+      minimizable: false, maximizable: false, skipTaskbar: true,
+      alwaysOnTop: true, hasShadow: false, focusable: true,
+      webPreferences: {
+        preload: path.join(__dirname, "..", "renderer", "preload.js"),
+        contextIsolation: true, nodeIntegration: false,
+      },
+    });
+    barWin.setAlwaysOnTop(true, "floating");
+    void barWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { solo: "bar" } });
+    barWin.on("closed", () => { barWin = null; });
+  }
+  barWin.setBounds({ x: wa.x, y: wa.y, width: wa.width, height: BAR_H });
+  if (!barWin.isVisible()) barWin.showInactive();
+}
+
 let lastBroadcast = -1;
 function broadcastStack(count: number): void {
   const state = count > 0 ? 1 : 0;
   if (state === lastBroadcast) return;
   lastBroadcast = state;
+  syncBar(state === 1);
   const { webContents } = require("electron") as typeof import("electron");
   for (const wc of webContents.getAllWebContents()) {
     try {
