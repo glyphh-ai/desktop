@@ -7803,6 +7803,20 @@ async function init(): Promise<void> {
   }
 
   async function renderPreviewIntoSlot(body: HTMLElement, slot: PreviewSlot): Promise<void> {
+    // WEB: the Browser panel is DESKTOP-ONLY — a <webview> is inert in a real
+    // browser, and an iframe of an arbitrary site blanks on X-Frame-Options/
+    // CSP. A workspace cell that configured a URL gets an honest error, not a
+    // dead rectangle; on the desktop the same cell opens straight to its page.
+    if (isWebTarget()) {
+      body.innerHTML = "";
+      const card = document.createElement("div");
+      card.style.cssText = "flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--text-3);font-size:12.5px;line-height:1.6;background:var(--surface)";
+      card.textContent = slot.url
+        ? `The Browser panel can't open ${slot.url} on the web — browsers don't let a page embed arbitrary sites. Open this workspace on the desktop and it will open there automatically.`
+        : "The Browser panel is desktop-only — open this workspace on the desktop.";
+      body.appendChild(card);
+      return;
+    }
     // A native <webview> per TAB, NOT iframes (X-Frame-Options/CSP would blank
     // most of the web). Tabs swap by visibility — a webview reloads if its DOM
     // node moves, so every tab keeps its own guest and history.
