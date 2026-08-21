@@ -90,6 +90,7 @@ import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
 import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
 import { toggleEchoOverlay, disposeEchoOverlay } from "./echo-overlay";
+import { registerDesktopPanelsIpc, closeAllDesktopPanels } from "./desktop-panels";
 import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
@@ -485,6 +486,9 @@ async function boot() {
 
   // PROTOTYPE — the Echo agent attached to the frontmost desktop app (⌘⇧G toggles).
   registerAgentDockIpc();
+  // Everything opens OUTSIDE the app — tools/sections/agents as stacked
+  // desktop windows (desktop-panels.ts).
+  registerDesktopPanelsIpc();
   // Background mode: rebuild the window when the tray asks, and reflect the
   // current setting (tray + launch-at-login) now.
   setReopenHandler(() => { void createWindow(); });
@@ -1292,6 +1296,7 @@ function cleanupAll(backstopMs = 4000) {
   try { closeAllPanels(); } catch { /* noop */ }
   try { disposeAgentDock(); } catch { /* noop */ }
   try { disposeEchoOverlay(); } catch { /* noop */ }
+  try { closeAllDesktopPanels(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on

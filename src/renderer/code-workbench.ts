@@ -5261,13 +5261,29 @@ async function init(): Promise<void> {
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
+      // EVERYTHING OPENS OUTSIDE (his rule, 2026-08-21): sections, tools and
+      // agents are standalone stacked windows on the desktop (desktop-panels).
+      const desktopPanel = (window as unknown as { glyphh?: { desktopPanelOpen?: (s: { kind: string; value: string; name?: string }) => Promise<unknown> } }).glyphh?.desktopPanelOpen;
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        if (t.navKey === "glyphh") w.__glyphhNewSession?.();
+        if (t.navKey === "glyphh") { if (desktopPanel) void desktopPanel({ kind: "agent", value: "", name: "Glyphh" }); else w.__glyphhNewSession?.(); }
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
+        else if (t.navKey === "tasks" || t.navKey === "preview") { if (desktopPanel) void desktopPanel({ kind: "tool", value: t.navKey }); else w.__wbOpenTool?.(t.navKey); }
+        else if (desktopPanel) void desktopPanel({ kind: "section", value: t.navKey === "settings" ? "settings" : t.navKey });
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
+        return;
+      }
+      // The Glyphh tile: a NEW standalone agent window every click — each is
+      // its own webContents (own thread, own run stream), so parallel agents
+      // never contend over one transcript.
+      if ((t.slug === "glyphh-home" || t.kind === "agent") && desktopPanel) {
+        void desktopPanel({ kind: "agent", value: "", name: "Glyphh" });
+        return;
+      }
+      // A workbench TOOL tile opens as its own desktop window.
+      if (t.toolView && t.toolView !== "echo" && desktopPanel) {
+        void desktopPanel({ kind: "tool", value: t.toolView, name: t.name });
         return;
       }
       // HOME — the fixed first tile — and the agent tile are ONE identity
@@ -5287,6 +5303,12 @@ async function init(): Promise<void> {
           });
           return;
         }
+      }
+      // WEB app tiles open in their own desktop window too — only Glyphh
+      // apps (file:// entries needing in-app webview caps) stay internal.
+      if (t.url && !t.glyphh && /^https?:\/\//i.test(t.url) && desktopPanel) {
+        void desktopPanel({ kind: "url", value: t.url, name: t.name });
+        return;
       }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
