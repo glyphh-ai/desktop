@@ -219,7 +219,11 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
 export function closeAllDesktopPanels(): void {
   for (const w of [...stack]) { try { if (!w.isDestroyed()) w.close(); } catch { /* gone */ } }
   stack.length = 0;
-  broadcastStack(0);
+  // No broadcast here: at quit the home frames are mid-teardown and sends
+  // land on disposed frames ("Error sending from webFrameMain"). Just note
+  // the state and drop the bar.
+  lastBroadcast = 0;
+  if (barWin && !barWin.isDestroyed()) { try { barWin.hide(); } catch { /* dying */ } }
 }
 
 const preExpand = new WeakMap<BrowserWindow, Electron.Rectangle>();
