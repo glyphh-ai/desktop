@@ -14,7 +14,6 @@ import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/sdk";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { registerMarketplaceIpc } from "./marketplace-ipc";
 
-import { detectBrowsers } from "./browser-detect";
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
@@ -51,42 +50,6 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // Renderer diagnostic bridge — surfaces the main-window renderer's [wb] logs
   // in the terminal (its own console lives in the window's DevTools).
   ipcMain.on("wb-log", (_e, msg: unknown) => console.log(String(msg)));
-
-  // Command center as a DESKTOP OVERLAY: a transparent fullscreen always-on-top
-  // window on the display under the cursor, hosting only the command center
-  // (home.html?solo=cc). Closes on blur/Esc/pick — the page closes itself when
-  // the switcher leaves the DOM.
-  let ccOverlayWin: BrowserWindow | null = null;
-  ipcMain.handle("cc-overlay-open", () => {
-    if (ccOverlayWin && !ccOverlayWin.isDestroyed()) { ccOverlayWin.focus(); return { ok: true }; }
-    const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-    ccOverlayWin = new BrowserWindow({
-      ...d.bounds,
-      frame: false,
-      transparent: true,
-      resizable: false,
-      movable: false,
-      alwaysOnTop: true,
-      hasShadow: false,
-      skipTaskbar: true,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "..", "renderer", "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        webviewTag: true,
-      },
-    });
-    ccOverlayWin.setAlwaysOnTop(true, "screen-saver");
-    ccOverlayWin.on("blur", () => { try { ccOverlayWin?.close(); } catch { /* already closing */ } });
-    ccOverlayWin.on("closed", () => { ccOverlayWin = null; });
-    void ccOverlayWin.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { solo: "cc" } });
-    ccOverlayWin.once("ready-to-show", () => ccOverlayWin?.show());
-    return { ok: true };
-  });
-
-  // Installed real browsers — feeds the app editor's Browser dropdown.
-  ipcMain.handle("browsers-detect", () => detectBrowsers());
 
   // Native-app icon as a data URL (Apps page, Layouts cards, command overlay),
   // session-cached per path and SERIALIZED through a promise chain.
@@ -553,16 +516,9 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   registerPanelAppsIpc(getMainWindow);
 
-  // Open a saved layout at the OS level — real windows tiled across the display
-  // (nothing renders inside the Glyphh client). This is the hand-off the Layouts
-  // tab's "Open" button uses instead of the legacy in-window layout manager.
-  // Reset button on the close-layout bar: put every OS window (and Glyphh)
-  // back where the pre-layout snapshot recorded it. Layouts stay open.
-  ipcMain.handle("desktop-geometry-reset", async () => {
-    const { resetDesktopGeometry } = await import("./desktop-layout.js");
-    return resetDesktopGeometry();
-  });
-
+  // Open a saved layout: every cell becomes a workbench PANEL inside Glyphh.
+  // (Layouts used to be able to target the desktop and tile real OS windows —
+  // that is gone; Glyphh does not arrange other apps' windows.)
   ipcMain.handle("layouts-open", async (_e, name: string) => {
     showThinking();
     try { return { ok: true, ...(await openLayoutByName(String(name))) }; }
@@ -581,7 +537,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       colWidths: l.colWidths,
       rowHeights: l.rowHeights,
       target: (l as { target?: "glyphh" | "desktop" }).target ?? "glyphh",
-      glyphh: (l as { glyphh?: { mode: string; fraction?: number } }).glyphh ?? null,
       loop: (l as { loop?: string }).loop ?? null,
       modelSelections: (l as { modelSelections?: Record<string, string> }).modelSelections ?? {},
       sessionMode: (l as { sessionMode?: "keep" | "new" | "last" }).sessionMode ?? "keep",
@@ -615,7 +570,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     return true;
   });
-  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; glyphh?: { mode: "top" | "bottom" | "full" | "rail" | "left" | "right" | "none"; fraction?: number }; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
+  ipcMain.handle("layouts-save-grid", async (_e, grid: { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>; folderMode?: "single" | "multi"; target?: "glyphh" | "desktop"; loop?: string | null; modelSelections?: Record<string, string>; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null }) => {
     const existing = layoutManager.listLayouts().find(l => l.name === grid.name);
     if (!existing) {
       const gate = canSaveLayout(layoutManager.listLayouts().length);

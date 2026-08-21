@@ -11,17 +11,15 @@
  */
 
 import { spawn } from "child_process";
-import { ipcMain, shell, webContents } from "electron";
+import { ipcMain, webContents } from "electron";
 import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
 import { applyLoopConfig } from "./loop-selections.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { normKey, isSubsequence, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
-import { getBrowser } from "./browser-detect.js";
 import { isGlyphhAppRow } from "./glyphh-app-host.js";
 import { getMainWindowRef } from "./main-window-ref.js";
-import { openDesktopLayout } from "./desktop-layout.js";
 
 export interface ServerApp {
   id: string;
@@ -227,23 +225,13 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
     launchNativeRow(app);
     return { slug: app.slug, name: app.name };
   }
-  // A browser choice other than the Glyphh Panel opens EXTERNALLY in that
-  // browser. Missing/"glyphh-panel" (the default) opens inside the workbench.
-  const browserChoice = browserChoiceOf(app);
-  if (!isGlyphhAppRow(app) && browserChoice !== "glyphh-panel") {
-    openUrlExternally(toWbRef(app).url, browserChoice);
-    return { slug: app.slug, name: app.name };
-  }
-
+  // Every web app opens as a Glyphh PANEL. Handing the URL to a real browser
+  // meant Glyphh then wanted to find, adopt and place that window — the OS
+  // window management this app no longer does.
   sendWbCmd({ action: "open", app: toWbRef(app) });
   return { slug: app.slug, name: app.name };
 }
 
-/** The app's browser choice; unset = the Glyphh Panel (opens inside Glyphh). */
-function browserChoiceOf(app: ServerApp): string {
-  const lc = app.launchConfig as { browser?: unknown } | null | undefined;
-  return typeof lc?.browser === "string" && lc.browser ? lc.browser : "glyphh-panel";
-}
 
 /** Open the gPoint panel — with a deck file, straight into its reader
  *  (the agent's open_gpoint; the plain panel rides open_app("gpoint")). */
@@ -304,17 +292,6 @@ function launchNativeRow(app: ServerApp): void {
   launchInstalledApp(installed);
 }
 
-/** Open a URL in the chosen EXTERNAL browser ("default" = the system's). */
-function openUrlExternally(url: string, choice: string): void {
-  if (choice !== "default") {
-    const b = getBrowser(choice);
-    if (b?.appPath && process.platform === "darwin") {
-      spawn("open", ["-a", b.appPath, url], { detached: true, stdio: "ignore" }).unref();
-      return;
-    }
-  }
-  void shell.openExternal(url);
-}
 
 /** Open a saved layout by name — every cell becomes a workbench panel. */
 export async function openLayoutByName(name: string): Promise<{ layout: string; apps: string[] }> {
@@ -332,50 +309,28 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
     throw new Error(`unknown layout: ${name} — saved layouts: ${names}`);
   }
 
-  // ── Feasibility: the layout TARGET decides where cells open. Web apps
-  //    follow it either way (panel inside Glyphh, or an external window on
-  //    the desktop), and workbench tools open as solo tool windows when the
-  //    target is the desktop. Only genuine impossibilities error, with the
-  //    offending cells named: agent panels and installed Glyphh apps can't
-  //    leave the Glyphh window, and native apps can't render as panels. ──
-  // ONE PLANE (his rule, 2026-08-21): every layout opens ON THE DESKTOP —
-  // the in-app workbench rendering is retired for now. Panel-only cells are
-  // SKIPPED with a log instead of failing the whole layout.
-  const forcedDesktop = true;
-  const wanted = "external";
-  void layout.target;
+  // ── Feasibility: a layout is a grid of PANELS inside the Glyphh window.
+  //    Arranging the OS desktop is gone — Glyphh does not place other apps'
+  //    windows — so a native app has nothing to render into and is named
+  //    rather than silently skipped. ──
   const offenders: string[] = [];
   for (const cell of layout.cells) {
     const cellKey = cell.panelId.trim().toLowerCase();
-    if (cellKey.startsWith("tool:") || builtinRef(cellKey)) continue; // both worlds
-    if (cellKey.startsWith("agent:") || cellKey === "agents-tabbed") {
-      if (wanted === "external") offenders.push(cell.panelId);
-      continue;
-    }
+    if (cellKey.startsWith("tool:") || builtinRef(cellKey)) continue;
+    if (cellKey.startsWith("agent:") || cellKey === "agents-tabbed") continue;
     const app = findLibraryApp(apps, cell.panelId);
     if (!app || isGlyphhSelfRow(app)) continue;
-    if (wanted === "external") {
-      if (isGlyphhAppRow(app)) offenders.push(app.name); // capability-scoped host is panel-only
-    } else if (app.isBrowser === false || app.execPath) {
-      offenders.push(app.name);
-    }
+    if (app.isBrowser === false || app.execPath) offenders.push(app.name);
   }
   if (offenders.length) {
-    console.warn(`[layouts] "${layout.name}": skipping panel-only cells on the desktop: ${offenders.join(", ")}`);
-  }
-
-  // ── DESKTOP target: web cells open as positioned OS webview windows, native
-  //    cells launch, Glyphh collapses to the rail — the desktop IS the layout. ──
-  if (forcedDesktop) {
-    const opened = await openDesktopLayout(
-      { name: layout.name, cols: layout.cols, rows: layout.rows, cells: layout.cells.map((c) => ({ panelId: c.panelId, col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan })), ...(layout.glyphh ? { glyphh: layout.glyphh } : {}) },
-      (panelId) => findLibraryApp(apps, panelId),
+    throw new Error(
+      `layout "${layout.name}" contains native apps: ${offenders.join(", ")}. ` +
+      "A layout arranges panels inside Glyphh; a native app opens in its own OS window and cannot be one.",
     );
-    return { layout: layout.name, apps: opened };
   }
 
-  // ── GLYPHH target: panels tile inside the workbench (family-pure by the
-  //    validation above — every cell is a tool or a Glyphh-Panel app). ──
+  // ── Panels tile inside the workbench (family-pure by the validation
+  //    above — every cell is a tool or a Glyphh-Panel app). ──
   const refs: WbAppRef[] = [];
   const opened: string[] = [];
   for (const cell of layout.cells) {

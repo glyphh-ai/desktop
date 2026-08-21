@@ -31,51 +31,10 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", as
   } catch {}
 });
 
-// The MAIN window has no embedded agent anymore (his rule, 2026-08-21): the
-// floating attached agent (agent-dock) is THE agent everywhere — it anchors
-// to any panel, this window included. Solo agent windows keep theirs.
-{
-  const p = new URLSearchParams(window.location.search).get("solo");
-  if (p !== "agent" && !(p || "").startsWith("tool:")) {
-    const style = document.createElement("style");
-    style.textContent = ".code-root > .code-agent { display: none !important; }";
-    document.head.appendChild(style);
-  }
-}
-
 initHelp();
 initSearchClears();
 installAutofillGuard();
 window.glyphh.refreshAuth?.().catch(() => {});
-
-// ── Desktop-layout close bar ────────────────────────────────────────────────
-// While a DESKTOP layout owns the screen, Glyphh docks as a strip across the
-// top (screen-layout.ts, mode "top") and this bar is the way back: layout
-// name + "Close layout" (app-reset: closes the layout's windows and un-docks
-// this window). Hidden the rest of the time — the bar only exists while a
-// desktop layout is active.
-const ensureDlb = (name: string | null): void => {
-  let bar = document.getElementById("desktop-layout-bar");
-  if (!name) { bar?.remove(); return; }
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.id = "desktop-layout-bar";
-    bar.innerHTML = `
-      <span class="dlb-name"></span>
-      <button class="dlb-reset" type="button" title="Put every window back where it was before the layout opened">Reset</button>
-      <button class="dlb-close" type="button">Close layout</button>`;
-    bar.querySelector(".dlb-reset")!.addEventListener("click", () => {
-      void window.glyphh.desktopGeometryReset?.();
-    });
-    bar.querySelector(".dlb-close")!.addEventListener("click", () => {
-      void window.glyphh.appReset?.();
-    });
-    document.body.appendChild(bar);
-  }
-  (bar.querySelector(".dlb-name") as HTMLElement).textContent = name || "Apps";
-};
-window.glyphh.onDesktopLayoutChanged?.(ensureDlb);
-window.addEventListener("glyphh:force-bar", () => ensureDlb("Apps"));
 
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the
 // window controls and the command button (page-top, left of which sits the
@@ -95,43 +54,13 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
-    // TOP-OF-SCREEN LAYOUT BAR (?solo=bar) — the close-layout strip as its
-    // own always-on-top window at the top of the OS screen (desktop-panels
-    // shows/hides it with the stack). Only the bar renders.
-    if (solo === "bar") {
-      document.body.classList.remove("wb-booting");
-      const style = document.createElement("style");
-      style.textContent = `body > :not(#desktop-layout-bar) { display: none !important; }
-        html, body { background: transparent !important; }
-        #desktop-layout-bar { height: 36px; }`;
-      document.head.appendChild(style);
-      window.glyphh.onDesktopLayoutChanged?.((name) => {
-        const n = document.querySelector("#desktop-layout-bar .dlb-name");
-        if (n) n.textContent = name || "Apps";
-      });
-      // Force-create the bar now (the shared creator waits for an event).
-      window.dispatchEvent(new Event("glyphh:force-bar"));
-      return;
-    }
-    // FULL-SCREEN ECHO overlay (?solo=echo, ⌘⇧Space — echo-overlay.ts): the
-    // normal home boot continues below (Echo IS the app), only the window
-    // chrome hides and Esc dismisses the overlay. Deliberately NO return —
-    // this branch decorates the default boot rather than replacing it.
-    if (solo === "echo") {
-      document.documentElement.setAttribute("data-home-scope", "echo-overlay");
-      const style = document.createElement("style");
-      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }`;
-      document.head.appendChild(style);
-      document.title = "Echo";
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
-    }
     // ATTACHED AGENT window (?solo=agent) — the real Echo agent floating over
-    // ANOTHER app's window (agent-dock.ts sizes/positions this window along
-    // the target's bottom edge). The full home page loads, but only the agent
-    // paints, over a transparent page. The foreign app plays the role cards
-    // play in Echo: the wall is permanently "covered", so the agent tucks and
-    // hover-reveals exactly as it does over panels — and the lock
-    // (echoAgentLock) pins it up, same control, same pref.
+    // ANOTHER window's bottom band (agent-dock.ts sizes/positions this window;
+    // the native helper tracks the frontmost window). The full home page
+    // loads, but only the agent paints, over a transparent page. The foreign
+    // window plays the role cards play in Echo: the wall is permanently
+    // "covered", so the agent tucks and hover-reveals exactly as it does over
+    // panels — and the lock (echoAgentLock) pins it up, same control, same pref.
     if (solo === "agent") {
       document.documentElement.setAttribute("data-home-scope", "agent-dock");
       const style = document.createElement("style");
@@ -151,20 +80,13 @@ void (async () => {
       // or this window keeps the opaque booting state forever.
       document.body.classList.remove("wb-booting");
       // Assert the covered state NOW — syncWallVisibility only re-runs when
-      // cards open/close, which never happens in this window. The workbench's
-      // own computation (patched to respect agent-dock) keeps it set.
+      // cards open/close, which never happens in this window.
       document.body.classList.add("echo-wall-covered");
       gotoSection("code");
-      // Click-through: this window covers the target app's bottom band — only
-      // the agent's own pixels may eat the mouse. Anything else under the
-      // cursor forwards events to the app beneath (setIgnoreMouseEvents with
-      // forward:true still delivers mousemove, so re-entry is detected).
-      // POSITIVE scope — only the agent's own surfaces take the mouse. A
-      // negative test ("anything but the background") once let an invisible
-      // full-window element flip this window into click-eating mode, which
-      // swallowed the TARGET app's close button. Everything not listed here
-      // forwards, always. (.code-menu / #code-history / .confirm-overlay are
-      // the pill's popovers that mount at body level, outside .code-agent.)
+      // Click-through: only the agent's own surfaces take the mouse — a
+      // POSITIVE scope; everything else forwards to the app beneath.
+      // (.code-menu / #code-history / .confirm-overlay are the pill's
+      // popovers that mount at body level, outside .code-agent.)
       const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog";
       let ignoring = true;
       document.addEventListener("mousemove", (e) => {
@@ -179,65 +101,6 @@ void (async () => {
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows.
-    // Standalone GLYPHH APP PANEL (?solo=app:<slug>&appUrl=…) — one web-app
-    // cell fills the window (desktop-panels "app" kind): the panel look with
-    // a real window header.
-    if (solo && solo.startsWith("app:")) {
-      document.body.classList.remove("wb-booting");
-      document.documentElement.setAttribute("data-home-scope", "solo-tool");
-      const style = document.createElement("style");
-      style.textContent = `
-        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
-        [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
-        [data-home-scope="solo-tool"] .echo-stage, [data-home-scope="solo-tool"] .echo-topbar, [data-home-scope="solo-tool"] .echo-veil, [data-home-scope="solo-tool"] .echo-cards, [data-home-scope="solo-tool"] .echo-layout-bar { display: none !important; }
-        [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
-        [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
-        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }`;
-      document.head.appendChild(style);
-      gotoSection("code");
-      const slug = solo.slice(4);
-      const appName = params.get("appName") || slug;
-      const appUrl = params.get("appUrl") || "";
-      document.title = appName;
-      // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
-      {
-        const hdrStyle = document.createElement("style");
-        hdrStyle.textContent = `
-          [data-home-scope="solo-tool"] .ws-rail-slot-header { display: none !important; }
-          #solo-panel-header { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 4000;
-            display: flex; align-items: center; gap: 8px; padding: 0 10px 0 80px;
-            background: var(--surface-2); border-bottom: 1px solid var(--border-2);
-            -webkit-app-region: drag; }
-          #solo-panel-header .sph-title { font-size: 12px; font-weight: 650; color: var(--text);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          #solo-panel-header button { -webkit-app-region: no-drag; margin-left: auto; flex: none;
-            width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-            background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
-          #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
-          #solo-panel-header button + button { margin-left: 0; }
-          [data-home-scope="solo-tool"] #help-overlay { top: 34px !important; padding-top: 0 !important; }
-          [data-home-scope="solo-tool"] #help-layout { padding-top: 0 !important; margin-top: 0 !important; top: 0 !important; }`;
-        document.head.appendChild(hdrStyle);
-        const hdr = document.createElement("div");
-        hdr.id = "solo-panel-header";
-        hdr.innerHTML = `<span class="sph-title"></span>`;
-        (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
-        document.body.appendChild(hdr);
-      }
-
-      const payload = {
-        cols: 1, colWidths: [], rowHeights: [],
-        cells: [{ slug, name: appName, url: appUrl, glyphh: false, col: 0, row: 0 }],
-      };
-      const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
-      let tries = 0;
-      const go = () => {
-        if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
-        else if (tries++ < 40) requestAnimationFrame(go);
-      };
-      go();
-      return;
-    }
     if (solo && solo.startsWith("tool:")) {
       document.documentElement.setAttribute("data-home-scope", "solo-tool");
       const style = document.createElement("style");
@@ -247,7 +110,6 @@ void (async () => {
       style.textContent = `
         [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
-        [data-home-scope="solo-tool"] .echo-stage, [data-home-scope="solo-tool"] .echo-topbar, [data-home-scope="solo-tool"] .echo-veil, [data-home-scope="solo-tool"] .echo-cards, [data-home-scope="solo-tool"] .echo-layout-bar { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
         [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }`;
@@ -260,33 +122,7 @@ void (async () => {
       const kind = solo.slice(5);
       const soloLabel = SOLO_LABELS[kind] || kind;
       // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
-      document.title = soloLabel;
-      // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
-      {
-        const hdrStyle = document.createElement("style");
-        hdrStyle.textContent = `
-          [data-home-scope="solo-tool"] .ws-rail-slot-header { display: none !important; }
-          #solo-panel-header { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 4000;
-            display: flex; align-items: center; gap: 8px; padding: 0 10px 0 80px;
-            background: var(--surface-2); border-bottom: 1px solid var(--border-2);
-            -webkit-app-region: drag; }
-          #solo-panel-header .sph-title { font-size: 12px; font-weight: 650; color: var(--text);
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          #solo-panel-header button { -webkit-app-region: no-drag; margin-left: auto; flex: none;
-            width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
-            background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
-          #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
-          #solo-panel-header button + button { margin-left: 0; }
-          [data-home-scope="solo-tool"] #help-overlay { top: 34px !important; padding-top: 0 !important; }
-          [data-home-scope="solo-tool"] #help-layout { padding-top: 0 !important; margin-top: 0 !important; top: 0 !important; }`;
-        document.head.appendChild(hdrStyle);
-        const hdr = document.createElement("div");
-        hdr.id = "solo-panel-header";
-        hdr.innerHTML = `<span class="sph-title"></span>`;
-        (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
-        document.body.appendChild(hdr);
-      }
-
+      document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
       const payload = {
         cols: 1, colWidths: [], rowHeights: [],
         cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],
@@ -304,7 +140,6 @@ void (async () => {
     }
     const urlSection = params.get("section");
     if (urlSection) {
-      document.body.classList.remove("wb-booting");
       document.documentElement.setAttribute("data-home-scope", urlSection);
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.

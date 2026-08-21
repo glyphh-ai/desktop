@@ -118,10 +118,6 @@ declare global {
       getPathForFile: (file: File) => string;
       windowClose: () => void;
       agentDockIgnoreMouse?: (ignore: boolean) => void;
-      appReset?: () => Promise<{ ok: boolean }>;
-      onDesktopLayoutChanged?: (cb: (name: string | null) => void) => void;
-      desktopGeometryReset?: () => Promise<{ ok: boolean; restored?: number }>;
-      appsDefaults?: () => Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;
@@ -131,7 +127,6 @@ declare global {
       panelsGetZoom: () => Promise<number>;
       // Dashboard shell (5a): server-authoritative Apps tab CRUD — see
       // apps-ipc.ts's panel-apps-* handlers / saved-app-routes.ts.
-      browsersDetect: () => Promise<Array<{ id: string; name: string; chromium: boolean }>>;
       appFileIcon: (execPath: string) => Promise<string>;
       appLaunch: (spec: {
         slug: string; name: string; url?: string | null;

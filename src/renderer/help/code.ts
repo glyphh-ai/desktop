@@ -4681,13 +4681,7 @@ export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): vo
  *  ECHO — the command center is gone; Echo is the launcher AND the layout
  *  manager. (opts kept for caller compatibility; there is no overlay mode.) */
 export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean } = {}): void {
-  // SOLO windows (a single tool/app panel, the attached agent) are NOT the
-  // app — booting Echo there put a full launcher under every panel window
-  // ("a new full blown version of the app"). The workbench still inits; the
-  // echo surface never raises.
-  const scope = document.documentElement.getAttribute("data-home-scope");
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __wbOpenEchoHome?: () => void };
-  if (scope === "solo-tool" || scope === "agent-dock") { w.__initCodeWorkbench?.(); return; }
   w.__initCodeWorkbench?.();
   let tries = 0;
   const go = (): void => {
@@ -4868,17 +4862,8 @@ export function initCode(): void {
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
-  // The rail's New session button goes through the SAME gate as every other
-  // agent entry — a standalone desktop window, never in-app.
-  el("code-new-chat")?.addEventListener("click", () => (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.());
-  // New session = a NEW standalone agent window on the desktop (never
-  // in-app). Solo agent windows keep the in-place behavior for themselves.
-  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = () => {
-    const scope = document.documentElement.getAttribute("data-home-scope");
-    const dp = (window.glyphh as unknown as { desktopPanelOpen?: (s: { kind: string; value: string; name?: string }) => Promise<unknown> }).desktopPanelOpen;
-    if (scope !== "solo-tool" && scope !== "agent-dock" && dp) { void dp({ kind: "agent", value: "", name: "Glyphh" }); return; }
-    newSessionInPlace();
-  };
+  el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
+  (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.

@@ -294,21 +294,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
-  // Reset button (top-left): close desktop-layout windows, un-collapse the
-  // rail, and un-dock the main window to a centered default. The renderer
-  // clears its own panels + returns home.
-  appReset: () => ipcRenderer.invoke("app-reset") as Promise<{ ok: boolean }>,
-  /** Fires with the active DESKTOP layout's name (null = none) — drives the
-   *  page's close-layout bar while Glyphh is docked as the top strip. */
-  onDesktopLayoutChanged: (cb: (name: string | null) => void) => {
-    ipcRenderer.on("desktop-layout-changed", (_e, name: string | null) => cb(name));
-  },
-  /** Restore every OS window to the pre-layout geometry snapshot. */
-  desktopGeometryReset: () => ipcRenderer.invoke("desktop-geometry-reset") as Promise<{ ok: boolean; restored?: number }>,
-  /** Open a surface as a standalone stacked desktop window (desktop-panels.ts). */
-  desktopPanelExpand: (mode: "expand" | "collapse") => ipcRenderer.send("desktop-panel-expand", mode),
-  desktopPanelOpen: (spec: { kind: "tool" | "agent" | "section" | "url" | "app"; value: string; url?: string; name?: string }) =>
-    ipcRenderer.invoke("desktop-panel-open", spec) as Promise<{ ok: boolean; error?: string }>,
 
   // Home view visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
@@ -502,8 +487,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   appCallTool: (slug: string, tool: string, args: unknown) =>
     ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
   // Installed real browsers — the app editor's Browser dropdown.
-  browsersDetect: () =>
-    ipcRenderer.invoke("browsers-detect") as Promise<Array<{ id: string; name: string; chromium: boolean }>>,
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.

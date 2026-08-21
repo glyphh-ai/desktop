@@ -27,9 +27,6 @@ export interface ServerLayout {
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
-  /** DESKTOP layouts only: where Glyphh itself sits while the layout owns the
-   *  screen (top bar by default; see screen-layout.ts GlyphhPlacement). */
-  glyphh?: { mode: "top" | "bottom" | "full" | "rail" | "left" | "right" | "none"; fraction?: number };
   /** The loop this layout activates on open — its program AND its models. Absent
    *  → the layout has no opinion; the active loop stays as-is. */
   loop?: string;
@@ -54,11 +51,18 @@ const LAYOUTS_CACHE_KEY = "/api/layouts";
 // a GLOBAL device setting owned by the agent. Any saved layout still carrying that field
 // is migrated ONCE (background, best-effort) so nothing lingers to move the agent.
 let strippedLegacyAnchors = false;
-async function stripLegacyLayoutAnchors(_items: Array<{ id: string; name: string; data?: unknown }>): Promise<void> {
-  // RETIRED 2026-08-21: `glyphh` is a live field again — the per-layout
-  // desktop PLACEMENT (screen-layout GlyphhPlacement), not the old agent
-  // anchor this migration existed to remove. Stripping it now would delete
-  // user settings on every boot.
+async function stripLegacyLayoutAnchors(items: Array<{ id: string; name: string; data?: unknown }>): Promise<void> {
+  if (strippedLegacyAnchors) return;
+  strippedLegacyAnchors = true;
+  const stale = items.filter((it) => it.data && typeof it.data === "object" && "glyphh" in (it.data as object));
+  if (stale.length === 0) return;
+  for (const it of stale) {
+    try {
+      const { glyphh: _drop, ...clean } = it.data as Record<string, unknown>;
+      await getClient().layouts.save({ id: it.id, name: it.name, data: clean });
+    } catch { /* best-effort — a failed strip just retries next boot */ }
+  }
+  if (stale.length) { strippedLegacyAnchors = true; appCache.invalidate(LAYOUTS_CACHE_KEY); }
 }
 
 /** The server's saved layouts (library kind `layout`), flattened to the spec
@@ -80,8 +84,6 @@ export function fetchServerLayouts(): Promise<ServerLayout[]> {
         cells: data.cells,
         folderMode: data.folderMode === "multi" ? "multi" : "single",
         target: data.target === "desktop" ? "desktop" : "glyphh",
-        ...(data.glyphh && typeof data.glyphh === "object" && typeof (data.glyphh as { mode?: unknown }).mode === "string"
-          ? { glyphh: data.glyphh as ServerLayout["glyphh"] } : {}),
         ...(typeof data.loop === "string" && data.loop ? { loop: data.loop } : {}),
         ...(data.sessionMode === "new" || data.sessionMode === "last" ? { sessionMode: data.sessionMode } : {}),
         ...(typeof data.folder === "string" && data.folder ? { folder: data.folder } : {}),
@@ -133,8 +135,6 @@ export interface GridLayout {
    *  Glyphh window) or "desktop" (cells open ON the desktop: native apps
    *  launch, web apps open as positioned webview windows). */
   target?: "glyphh" | "desktop";
-  /** Desktop layouts: where Glyphh docks (screen-layout GlyphhPlacement). */
-  glyphh?: { mode: "top" | "bottom" | "full" | "rail" | "left" | "right" | "none"; fraction?: number };
   /** The loop this layout activates on open — its program AND its models. */
   loop?: string;
   /** For that loop: role → catalog model id. */

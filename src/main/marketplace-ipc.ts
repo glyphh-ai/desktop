@@ -176,12 +176,7 @@ export function registerMarketplaceIpc(): void {
   });
 
   // ── platform-admin queues (server enforces the role on every route) ───────
-  // Non-admins get an EMPTY queue, not an unhandled 403 in the log — the
-  // renderer probes this to decide whether to show the admin tab at all.
-  ipcMain.handle("mkt-admin-queue", async () => {
-    try { return { releases: await getClient().apps.reviewQueue() }; }
-    catch { return { releases: [] }; }
-  });
+  ipcMain.handle("mkt-admin-queue", async () => ({ releases: await getClient().apps.reviewQueue() }));
   ipcMain.handle("mkt-admin-review", async (_e, releaseId: string, action: "begin" | "approve" | "reject", notes?: string, share?: boolean) => {
     try { return { ok: true as const, release: await getClient().apps.reviewRelease(String(releaseId), action, notes, undefined, share === true) }; }
     catch (err) { return fail(err); }

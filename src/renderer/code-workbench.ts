@@ -799,11 +799,13 @@ async function init(): Promise<void> {
   }
   function loadLayout(): void {
     rails.length = 0;
-    // ONE PLANE (his rule, 2026-08-21): the app NEVER restores panels — the
-    // saved per-folder rail state stays on disk, but boot ignores it. Panels
-    // live in desktop windows; solo windows seed their one slot themselves.
-    pushDefaultLayout();
-    renderRails();
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(layoutKey()); } catch { /* noop */ }
+    if (!raw) { pushDefaultLayout(); renderRails(); return; }
+    let data: SavedLayout;
+    try { data = JSON.parse(raw); } catch { pushDefaultLayout(); renderRails(); return; }
+    applySavedLayout(data);
+    if (rails.length === 0) { pushDefaultLayout(); renderRails(); }
   }
   function railsBudget(): number {
     // 2.5.0: there is no center agent column — the rails ARE the surface.
@@ -2852,11 +2854,8 @@ async function init(): Promise<void> {
     };
     /** APPS ONLY — the wall's app filter (no self row, no nav page tiles; a
      *  glyphh app rides its archetype: it has no url until deployed). */
-    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null; execPath?: string | null; isBrowser?: boolean }): boolean =>
-      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav"
-      // NATIVE rows (desktop apps, terminals — execPath, no url) belong on the
-      // wall too: their tile launches the OS app (activateTile's native branch).
-      && (!!a.url || a.appArchetype === "glyphh-app" || a.isBrowser === false || !!a.execPath);
+    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
+      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = [bands.flat().map((t) => makeTileEntry(t))];
       renderPages();
@@ -2886,7 +2885,7 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       // The HOUSE DEFAULTS (the glyphh launcher set) join the org's own rows —
@@ -2902,11 +2901,6 @@ async function init(): Promise<void> {
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);
-      // NATIVE rows draw their OS file icon (same as the Apps page). The tile
-      // BAKES its iconUrl at build time (appTileOf → appIconUrl), so the cache
-      // must be warm BEFORE the tiles are built — a post-hoc re-render would
-      // redraw the same stale tiles.
-      await primeNativeIcons(appsAll, () => {}).catch(() => { /* lettered fallback */ });
       appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
@@ -3097,9 +3091,6 @@ async function init(): Promise<void> {
       // bare-boot): the wall comes back exactly as it was left — the open
       // layout by name, else the ad-hoc cards. The agent is NOT part of this
       // replay: the composer restores its own session (or sits waiting fresh).
-      // ONE PLANE (his rule, 2026-08-21): NOTHING reopens inside the app at
-      // boot. The wall comes back bare; panels live on the desktop.
-      if (saved || !saved) return;
       try {
         if (!saved || !echoCtl) return;
         if (saved.layout) {
@@ -4949,12 +4940,6 @@ async function init(): Promise<void> {
      *  doubles an agent a live layout already shows (that click just focuses
      *  the composer). New sessions live on ＋ alone now. */
     const activateGlyphh = (_self?: TileEntry): void => {
-      // OUTSIDE THE APP, always (his rule, repeated): the Glyphh agent is a
-      // standalone desktop window like every other app. Every entry point
-      // lands here, so this one gate covers the wall tile, the dock button,
-      // and the palette.
-      const dp = (window as unknown as { glyphh?: { desktopPanelOpen?: (s: { kind: string; value: string; name?: string }) => Promise<unknown> } }).glyphh?.desktopPanelOpen;
-      if (dp) { void dp({ kind: "agent", value: "", name: "Glyphh" }); return; }
       const inLayout = openList.some((x) => x.layoutId != null);
       const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
       if (inLayout && agentShowing) {
@@ -5268,29 +5253,13 @@ async function init(): Promise<void> {
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
-      // EVERYTHING OPENS OUTSIDE (his rule, 2026-08-21): sections, tools and
-      // agents are standalone stacked windows on the desktop (desktop-panels).
-      const desktopPanel = (window as unknown as { glyphh?: { desktopPanelOpen?: (s: { kind: string; value: string; name?: string }) => Promise<unknown> } }).glyphh?.desktopPanelOpen;
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        if (t.navKey === "glyphh") { if (desktopPanel) void desktopPanel({ kind: "agent", value: "", name: "Glyphh" }); else w.__glyphhNewSession?.(); }
+        if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
-        else if (t.navKey === "tasks" || t.navKey === "preview") { if (desktopPanel) void desktopPanel({ kind: "tool", value: t.navKey }); else w.__wbOpenTool?.(t.navKey); }
-        else if (desktopPanel) void desktopPanel({ kind: "section", value: t.navKey === "settings" ? "settings" : t.navKey });
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
+        else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
-        return;
-      }
-      // The Glyphh tile: a NEW standalone agent window every click — each is
-      // its own webContents (own thread, own run stream), so parallel agents
-      // never contend over one transcript.
-      if ((t.slug === "glyphh-home" || t.kind === "agent") && desktopPanel) {
-        void desktopPanel({ kind: "agent", value: "", name: "Glyphh" });
-        return;
-      }
-      // A workbench TOOL tile opens as its own desktop window.
-      if (t.toolView && t.toolView !== "echo" && desktopPanel) {
-        void desktopPanel({ kind: "tool", value: t.toolView, name: t.name });
         return;
       }
       // HOME — the fixed first tile — and the agent tile are ONE identity
@@ -5298,32 +5267,7 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
-      if (t.layoutRow) {
-        // ONE PLANE: layouts open on the DESKTOP, never as in-app cards.
-        void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(t.layoutRow.name);
-        return;
-      }
-      // NATIVE app tile (desktop app / terminal — execPath, no url): launch the
-      // OS app itself. Nothing renders in-window; the tile IS the launcher.
-      if (t.kind === "app" && !t.url && !t.glyphh && !t.toolView) {
-        const row = echoRows.find((r) => (r.slug || r.id) === (t.slug || t.appId));
-        if (row?.execPath) {
-          void (window as unknown as { glyphh?: { appLaunch?: (spec: unknown) => Promise<unknown> } }).glyphh?.appLaunch?.({
-            slug: row.slug || row.id, name: t.name, isBrowser: false,
-            execPath: row.execPath, appArchetype: row.appArchetype ?? null,
-          });
-          return;
-        }
-      }
-      // WEB app tiles (the house defaults included) open as standalone GLYPHH
-      // APP PANELS — the workbench panel look in its own window with a real
-      // header. Only Glyphh apps (file:// + caps) stay internal.
-      if (t.url && !t.glyphh && /^https?:\/\//i.test(t.url) && desktopPanel) {
-        void (desktopPanel as (s: { kind: string; value: string; url?: string; name?: string }) => Promise<unknown>)({
-          kind: "app", value: t.slug || t.name, url: t.url, name: t.name,
-        });
-        return;
-      }
+      if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
@@ -5471,8 +5415,7 @@ async function init(): Promise<void> {
         // direct tile clicks share it, so the two paths can never disagree.
         activateTile(adHoc(tile));
       },
-      // ONE PLANE: layouts open on the DESKTOP, never as in-app cards.
-      openLayout: (layout) => { void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(layout.name); },
+      openLayout: (layout) => openLayoutInEcho(layout),
       openSection: (section) => {
         // A rail destination REPLACES an open layout — the layout's seams
         // and dividers kept eating events meant for the page stacked above
@@ -9029,8 +8972,7 @@ async function init(): Promise<void> {
       ?? layouts.find((l) => l.name.toLowerCase().startsWith(key))
       ?? layouts.find((l) => l.name.toLowerCase().includes(key));
     if (!layout) return false;
-    void rows; // ONE PLANE: the desktop opens it — no in-app grid.
-    void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(layout.name);
+    openLayoutRow(layout, rows);
     return true;
   };
   wbApp.__wbListApps = () => [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];
