@@ -5464,7 +5464,8 @@ async function init(): Promise<void> {
         // direct tile clicks share it, so the two paths can never disagree.
         activateTile(adHoc(tile));
       },
-      openLayout: (layout) => openLayoutInEcho(layout),
+      // ONE PLANE: layouts open on the DESKTOP, never as in-app cards.
+      openLayout: (layout) => { void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(layout.name); },
       openSection: (section) => {
         // A rail destination REPLACES an open layout — the layout's seams
         // and dividers kept eating events meant for the page stacked above
@@ -9021,7 +9022,8 @@ async function init(): Promise<void> {
       ?? layouts.find((l) => l.name.toLowerCase().startsWith(key))
       ?? layouts.find((l) => l.name.toLowerCase().includes(key));
     if (!layout) return false;
-    openLayoutRow(layout, rows);
+    void rows; // ONE PLANE: the desktop opens it — no in-app grid.
+    void (window as unknown as { glyphh?: { layoutsOpen?: (n: string) => Promise<unknown> } }).glyphh?.layoutsOpen?.(layout.name);
     return true;
   };
   wbApp.__wbListApps = () => [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];

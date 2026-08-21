@@ -46,30 +46,48 @@ const stack: BrowserWindow[] = [];
 // every open is a NEW window (its own thread, its own stream).
 const byKey = new Map<string, BrowserWindow>();
 
-/** Re-tile the live stack across the workspace: 1 → right half, 2 → halves,
- *  then a near-square grid — the same shape a desktop layout would take. */
+/** Re-tile the stack in the BUILD pattern (his rule, 2026-08-21): the first
+ *  panel takes the CENTER at half the workspace width; the next goes UNDER
+ *  it; then the RIGHT column (and under it); then LEFT; past six, a plain
+ *  near-square grid. Columns split top/bottom when they hold two. */
 function retile(): void {
   const live = stack.filter((w) => !w.isDestroyed());
   stack.length = 0;
   stack.push(...live);
   if (!live.length) return;
   const area = workspaceArea();
-  if (live.length === 1) {
-    live[0].setBounds({
-      x: area.x + Math.round(area.width / 2), y: area.y,
-      width: Math.round(area.width / 2), height: area.height,
+  if (live.length > 6) {
+    const cols = Math.ceil(Math.sqrt(live.length));
+    const rows = Math.ceil(live.length / cols);
+    live.forEach((w, i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      w.setBounds({
+        x: area.x + Math.round((area.width * c) / cols),
+        y: area.y + Math.round((area.height * r) / rows),
+        width: Math.round(area.width / cols),
+        height: Math.round(area.height / rows),
+      });
     });
     return;
   }
-  const cols = Math.ceil(Math.sqrt(live.length));
-  const rows = Math.ceil(live.length / cols);
+  const half = Math.round(area.width / 2);
+  const quarter = Math.round(area.width / 4);
+  // Column x/width in fill order: center (half), right (quarter), left (quarter).
+  const columns = [
+    { x: area.x + quarter, width: half },
+    { x: area.x + quarter + half, width: quarter },
+    { x: area.x, width: quarter },
+  ];
   live.forEach((w, i) => {
-    const c = i % cols, r = Math.floor(i / cols);
+    const col = columns[Math.floor(i / 2)];
+    const occupants = Math.min(2, live.length - Math.floor(i / 2) * 2);
+    const rowIdx = i % 2;
+    const h = occupants === 2 ? Math.round(area.height / 2) : area.height;
     w.setBounds({
-      x: area.x + Math.round((area.width * c) / cols),
-      y: area.y + Math.round((area.height * r) / rows),
-      width: Math.round(area.width / cols),
-      height: Math.round(area.height / rows),
+      x: col.x,
+      y: area.y + rowIdx * Math.round(area.height / 2),
+      width: col.width,
+      height: h,
     });
   });
 }
