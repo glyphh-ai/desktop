@@ -306,7 +306,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** Restore every OS window to the pre-layout geometry snapshot. */
   desktopGeometryReset: () => ipcRenderer.invoke("desktop-geometry-reset") as Promise<{ ok: boolean; restored?: number }>,
   /** Open a surface as a standalone stacked desktop window (desktop-panels.ts). */
-  desktopPanelOpen: (spec: { kind: "tool" | "agent" | "section" | "url"; value: string; name?: string }) =>
+  desktopPanelOpen: (spec: { kind: "tool" | "agent" | "section" | "url" | "app"; value: string; url?: string; name?: string }) =>
     ipcRenderer.invoke("desktop-panel-open", spec) as Promise<{ ok: boolean; error?: string }>,
 
   // Home view visibility + refresh

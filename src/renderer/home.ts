@@ -147,6 +147,37 @@ void (async () => {
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows.
+    // Standalone GLYPHH APP PANEL (?solo=app:<slug>&appUrl=…) — one web-app
+    // cell fills the window (desktop-panels "app" kind): the panel look with
+    // a real window header.
+    if (solo && solo.startsWith("app:")) {
+      document.documentElement.setAttribute("data-home-scope", "solo-tool");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
+        [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
+        [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
+        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }`;
+      document.head.appendChild(style);
+      gotoSection("code");
+      const slug = solo.slice(4);
+      const appName = params.get("appName") || slug;
+      const appUrl = params.get("appUrl") || "";
+      document.title = `${appName} — Glyphh`;
+      const payload = {
+        cols: 1, colWidths: [], rowHeights: [],
+        cells: [{ slug, name: appName, url: appUrl, glyphh: false, col: 0, row: 0 }],
+      };
+      const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+      let tries = 0;
+      const go = () => {
+        if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
+        else if (tries++ < 40) requestAnimationFrame(go);
+      };
+      go();
+      return;
+    }
     if (solo && solo.startsWith("tool:")) {
       document.documentElement.setAttribute("data-home-scope", "solo-tool");
       const style = document.createElement("style");

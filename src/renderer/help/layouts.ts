@@ -750,7 +750,7 @@ async function editLayout(name: string) {
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
   layoutTargetSelect.value = (layout as any)?.target === "desktop" ? "desktop" : "glyphh";
   const gp = (layout as any)?.glyphh as { mode?: string; fraction?: number } | undefined;
-  glyphhPosSelect.value = gp?.mode && ["top", "rail", "left", "right", "none"].includes(gp.mode) ? gp.mode : "top";
+  glyphhPosSelect.value = gp?.mode && ["top", "bottom", "full", "rail", "left", "right", "none"].includes(gp.mode) ? gp.mode : "top";
   glyphhSizeSelect.value = String(gp?.fraction === 0.25 || gp?.fraction === 0.5 ? gp.fraction : 0.33);
   refreshGlyphhRow();
   layoutNameInput.value = name;
@@ -846,7 +846,7 @@ async function saveLayout() {
 
   const folderMode = (folderModeSelect?.value === "multi" ? "multi" : "single") as "single" | "multi";
   const target = (layoutTargetSelect?.value === "desktop" ? "desktop" : "glyphh") as "glyphh" | "desktop";
-  const glyphhMode = (glyphhPosSelect?.value || "top") as "top" | "rail" | "left" | "right" | "none";
+  const glyphhMode = (glyphhPosSelect?.value || "top") as "top" | "bottom" | "full" | "rail" | "left" | "right" | "none";
   const glyphh = target === "desktop"
     ? { mode: glyphhMode, ...(glyphhMode === "left" || glyphhMode === "right" ? { fraction: Number(glyphhSizeSelect?.value) || 0.33 } : {}) }
     : undefined;

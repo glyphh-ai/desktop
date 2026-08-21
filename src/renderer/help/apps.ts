@@ -367,18 +367,9 @@ async function loadApps() {
     const userRows = apps
       .filter((a) => !a.system && (a.url || a.isBrowser === false))
       .map(toPanelApp);
-    // The HOUSE DEFAULTS (the glyphh launcher set) list here too — the Apps
-    // page is the full catalog, not just what you built. Defaults carry no
-    // id, so their cards are read-only (no detail to open, nothing to edit).
-    const userSlugs = new Set(userRows.map((a) => a.slug.toLowerCase()));
-    let defaultRows: PanelApp[] = [];
-    try {
-      const defaults = (await window.glyphh.appsDefaults?.()) || [];
-      defaultRows = defaults
-        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()))
-        .map((d) => toPanelApp({ id: "", slug: d.slug, name: d.name, url: d.url, system: true, commands: {}, connectionIds: [], mcp: null }));
-    } catch { /* defaults are decorative — the user's rows still list */ }
-    panelApps = [...userRows, ...defaultRows];
+    // ONLY what the user explicitly added lists here — the house defaults
+    // live on the Echo wall, not the management page.
+    panelApps = userRows;
   } catch { panelApps = []; }
   // The rail's Apps grid mirrors this list — tell it to refresh.
   document.dispatchEvent(new CustomEvent("glyphh:apps-changed"));

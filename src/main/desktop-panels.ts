@@ -34,8 +34,9 @@ function themedBackground(): string {
 }
 
 interface PanelSpec {
-  kind: "tool" | "agent" | "section" | "url";
-  value: string;      // ViewKind | section slug | url ("" for agent)
+  kind: "tool" | "agent" | "section" | "url" | "app";
+  value: string;      // ViewKind | section slug | url | app slug ("" for agent)
+  url?: string;       // kind "app": the web app's url
   name?: string;
 }
 
@@ -83,7 +84,8 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
   }
   const win = new BrowserWindow({
     width: 1160, height: 740, show: false,
-    titleBarStyle: "hiddenInset",
+    // A DEDICATED header row — the traffic lights get a real title bar, they
+    // never overlay panel content (his rule, 2026-08-21).
     backgroundColor: themedBackground(),
     webPreferences: spec.kind === "url"
       ? { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" }
@@ -97,6 +99,11 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
   if (spec.name) win.setTitle(spec.name);
   if (spec.kind === "url") {
     void win.loadURL(spec.value);
+  } else if (spec.kind === "app") {
+    // A GLYPHH APP PANEL, standalone: the workbench mounts the one app cell
+    // (webview, persist:yo) — the panel look, its own window, real header.
+    void win.loadFile(path.join(__dirname, "..", "renderer", "home.html"),
+      { query: { solo: `app:${spec.value}`, appUrl: spec.url || "", appName: spec.name || spec.value } });
   } else if (spec.kind === "section") {
     void win.loadFile(path.join(__dirname, "..", "renderer", "home.html"), { query: { section: spec.value } });
   } else {

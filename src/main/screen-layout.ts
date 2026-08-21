@@ -116,7 +116,7 @@ export function workspaceArea(): Rect {
 // ── Per-layout Glyphh placement (the old Settings "screen layout" dock,
 //    reborn as a LAYOUT property) ─────────────────────────────────────────
 
-export type GlyphhPlacementMode = "top" | "rail" | "left" | "right" | "none";
+export type GlyphhPlacementMode = "top" | "bottom" | "full" | "rail" | "left" | "right" | "none";
 export interface GlyphhPlacement {
   mode: GlyphhPlacementMode;
   /** Docked width as a fraction of the work area (left/right modes);
@@ -150,6 +150,23 @@ export function placeGlyphhForLayout(placement: GlyphhPlacement): Rect {
     setRailCollapsed(false);
     tweenBounds(win, { x: wa.x, y: wa.y, width: wa.width, height: gh });
     return { x: wa.x, y: wa.y + gh, width: wa.width, height: wa.height - gh };
+  }
+
+  if (placement.mode === "bottom") {
+    const gh = placement.fraction
+      ? Math.round(wa.height * clampFraction(placement.fraction))
+      : 148;
+    setRailCollapsed(false);
+    tweenBounds(win, { x: wa.x, y: wa.y + wa.height - gh, width: wa.width, height: gh });
+    return { x: wa.x, y: wa.y, width: wa.width, height: wa.height - gh };
+  }
+
+  if (placement.mode === "full") {
+    // Glyphh keeps the whole work area; the layout tiles OVER it (the old
+    // "full" dock from the e1b6f457^ screen-layout settings).
+    setRailCollapsed(false);
+    tweenBounds(win, { ...wa });
+    return { ...wa };
   }
 
   if (placement.mode === "rail") {

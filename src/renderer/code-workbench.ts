@@ -5304,10 +5304,13 @@ async function init(): Promise<void> {
           return;
         }
       }
-      // WEB app tiles open in their own desktop window too — only Glyphh
-      // apps (file:// entries needing in-app webview caps) stay internal.
+      // WEB app tiles (the house defaults included) open as standalone GLYPHH
+      // APP PANELS — the workbench panel look in its own window with a real
+      // header. Only Glyphh apps (file:// + caps) stay internal.
       if (t.url && !t.glyphh && /^https?:\/\//i.test(t.url) && desktopPanel) {
-        void desktopPanel({ kind: "url", value: t.url, name: t.name });
+        void (desktopPanel as (s: { kind: string; value: string; url?: string; name?: string }) => Promise<unknown>)({
+          kind: "app", value: t.slug || t.name, url: t.url, name: t.name,
+        });
         return;
       }
       if (t.url || t.glyphh) {
