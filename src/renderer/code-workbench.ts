@@ -799,13 +799,11 @@ async function init(): Promise<void> {
   }
   function loadLayout(): void {
     rails.length = 0;
-    let raw: string | null = null;
-    try { raw = localStorage.getItem(layoutKey()); } catch { /* noop */ }
-    if (!raw) { pushDefaultLayout(); renderRails(); return; }
-    let data: SavedLayout;
-    try { data = JSON.parse(raw); } catch { pushDefaultLayout(); renderRails(); return; }
-    applySavedLayout(data);
-    if (rails.length === 0) { pushDefaultLayout(); renderRails(); }
+    // ONE PLANE (his rule, 2026-08-21): the app NEVER restores panels — the
+    // saved per-folder rail state stays on disk, but boot ignores it. Panels
+    // live in desktop windows; solo windows seed their one slot themselves.
+    pushDefaultLayout();
+    renderRails();
   }
   function railsBudget(): number {
     // 2.5.0: there is no center agent column — the rails ARE the surface.
