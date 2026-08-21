@@ -106,7 +106,13 @@ function ensureDockWindow(): BrowserWindow {
  *  top-left-origin global point coordinates on macOS, so the rect maps
  *  straight through. The agent centers itself inside via its own CSS
  *  (--echo-agent-x/--echo-agent-w), exactly as it does over the Echo wall. */
+// True while any OTHER Glyphh window (main shell, echo overlay — not the dock
+// itself) is focused. The dock is always-on-top, so without this the attached
+// pill bleeds through the app's own shell: two composers on screen.
+let glyphhFront = false;
+
 function position(target: TargetInfo): void {
+  if (glyphhFront) return;
   const w = ensureDockWindow();
   // Never cover the target's title bar: whatever the hit-test logic does, the
   // close/zoom controls must stay physically outside this window.
@@ -173,6 +179,23 @@ function setEnabled(on: boolean): void {
 
 export function registerAgentDockIpc(): void {
   if (process.platform !== "darwin") return;
+
+  // Hide the pill while the Glyphh shell itself is up front (it has its own
+  // composer); reshow when focus moves back to the attached app. Focusing the
+  // DOCK window doesn't count — clicking the pill must not hide it.
+  app.on("browser-window-focus", (_e, w) => {
+    if (w === dockWin) return;
+    glyphhFront = true;
+    if (dockWin && !dockWin.isDestroyed() && dockWin.isVisible()) dockWin.hide();
+  });
+  app.on("browser-window-blur", () => {
+    setTimeout(() => {
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused && focused !== dockWin) return; // still inside Glyphh
+      glyphhFront = false;
+      if (enabled && lastTarget) position(lastTarget);
+    }, 80);
+  });
 
   // The renderer (home.ts, ?solo=agent) drives click-through from
   // elementFromPoint — only the agent's pixels take the mouse.

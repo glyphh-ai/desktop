@@ -2904,6 +2904,10 @@ async function init(): Promise<void> {
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);
+      // NATIVE rows draw their OS file icon (same as the Apps page) — the
+      // cache fill re-renders the wall, so "Claude" is the Claude icon, not
+      // a lettered tile.
+      void primeNativeIcons(appsAll, () => renderPages());
       appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
