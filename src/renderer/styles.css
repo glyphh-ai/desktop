@@ -16444,7 +16444,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    card.) */
 .echo-topbar {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 10px; z-index: 3;
+  display: flex; align-items: center; gap: 10px; z-index: 40;
   transition: transform 0.22s cubic-bezier(0.25, 0.9, 0.3, 1), opacity 0.18s ease;
 }
 /* Auto-hide: the dock slides up off the top edge; a mousemove near the top
@@ -16452,9 +16452,20 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    it back. Tucked = click-through so it never eats input while invisible. */
 .echo-topbar.dock-tucked { transform: translate(-50%, calc(-100% - 24px)); opacity: 0; pointer-events: none; }
 .echo-topbar.dock-tucked.dock-peek { transform: translateX(-50%); opacity: 1; pointer-events: auto; }
-/* The close-workspace icon that rides the dock in auto-hide mode. */
-.echo-dock-closelayout.hidden { display: none; }
-.echo-dock-closelayout:hover { box-shadow: 0 0 0 1.5px var(--echo-danger, #e5484d); }
+/* The peeked dock must sit in FRONT of open panels — the app-webview layer
+   composites above every z-index, so hide it while peeking (the modal /
+   thread-peek pattern). Panels repaint the instant the dock tucks again. */
+body.echo-dock-peeking #code-wb-applayer { visibility: hidden !important; }
+/* The close-workspace icon that rides the dock in auto-hide mode — a small
+   pill, NOT a full dock-tile square. */
+.echo-topbar .echo-dock-closelayout.hidden { display: none; }
+.echo-topbar .echo-dock-closelayout {
+  width: 30px; height: 30px; min-width: 30px; flex-shrink: 0;
+  border-radius: 9px; color: var(--text-2);
+  align-self: center;
+}
+.echo-topbar .echo-dock-closelayout svg { width: 15px; height: 15px; }
+.echo-topbar .echo-dock-closelayout:hover { color: #fff; background: var(--echo-danger, #e5484d); box-shadow: none; transform: none; }
 /* The dock — FIXED nav slots above the search box: Apps / Marketplace /
    Connections / Workspaces / Scheduled Tasks / Agents / Browser / Settings.
    Office-icon language (full-bleed object silhouettes, the VIEW_META
