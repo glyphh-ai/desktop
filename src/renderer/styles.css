@@ -19167,3 +19167,14 @@ body.echo-agent-locked .code-thread-grip { display: none; }
 .echo-savews-cancel:hover { background: var(--hover); color: var(--text); }
 .echo-savews-go { background: var(--accent, #8c3bf2); color: #fff; }
 .echo-savews-go:hover { filter: brightness(1.1); }
+
+/* ── Agent hosted in a LAYOUT: the head row reads (his spec, 2026-08-21)
+   <session-name, inline editable> ......... <drips><recents><new><⋮ menu>
+   — no chevron/locus clutter, no kebab (rename is the name itself), and no
+   LOCK (pinning over panels makes no sense inside a layout cell). The name
+   shows even on a fresh landing so there is always something to rename. ── */
+body.echo-agent-in-layout .code-agent-head .session-head-chev,
+body.echo-agent-in-layout .code-agent-head .session-head-locus,
+body.echo-agent-in-layout #code-session-kebab-wrap,
+body.echo-agent-in-layout #code-agent-lock { display: none !important; }
+body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { display: inline-flex; }
