@@ -5330,7 +5330,12 @@ export function initCode(): void {
     // surrounding back-button nav doesn't fire).
     const title = el("code-session-title");
     if (title) {
-      title.addEventListener("click", (ev) => { ev.stopPropagation(); renameCurrentInline(); });
+      title.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        // A fresh landing has no session row yet — naming one IS starting it.
+        if (!current()) { newChat(); renderThread(); }
+        renameCurrentInline();
+      });
       title.setAttribute("title", "Click to rename this session");
       title.style.cursor = "text";
     }

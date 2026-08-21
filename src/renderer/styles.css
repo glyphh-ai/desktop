@@ -19218,6 +19218,12 @@ body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { dis
 .code-session-controls > #code-tools-wrap { order: 4 !important; }
 
 
+/* In the LAYOUT header the popovers hang DOWN (his rule, 2026-08-21): the
+   row sits at the TOP of the panel, so the composer's open-upward default
+   throws them off the top edge, clipped — "the menu doesn't work". */
+body.echo-agent-in-layout .code-agent-head .code-view-more-menu { bottom: auto; top: calc(100% + 6px); }
+body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: calc(100% + 8px); }
+
 /* ── Platform shell (web /platform) ──────────────────────────────────────────
    The settings surface PROMOTED to a full page: home.ts's platform branch sets
    body.platform-shell and opens the EXISTING settings modal — these rules
