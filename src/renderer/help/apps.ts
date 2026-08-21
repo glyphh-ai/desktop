@@ -365,7 +365,10 @@ async function loadApps() {
     // the old truthy workbench filter hid those too, leaving customs with no
     // edit/delete surface at all.
     panelApps = apps
-      .filter((a) => !a.system && (a.url || a.isBrowser === false))
+      // WORKPANEL APPS ONLY: installed/built Glyphh apps. URL rows and
+      // native rows are retired kinds — legacy rows list so they can be
+      // deleted, but nothing creates them any more.
+      .filter((a) => !a.system && (a.appArchetype === "glyphh-app" || a.url || a.isBrowser === false))
       .map(toPanelApp);
   } catch { panelApps = []; }
   // The rail's Apps grid mirrors this list — tell it to refresh.

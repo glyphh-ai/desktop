@@ -2855,7 +2855,10 @@ async function init(): Promise<void> {
     /** APPS ONLY — the wall's app filter (no self row, no nav page tiles; a
      *  glyphh app rides its archetype: it has no url until deployed). */
     const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
-      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
+      // WORKPANEL APPS ONLY (his rule, 2026-08-21): installed/built Glyphh
+      // apps. URL rows and house-default web tiles are gone — the Browser
+      // tool is the one road to the web.
+      a.appArchetype === "glyphh-app";
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = [bands.flat().map((t) => makeTileEntry(t))];
       renderPages();
@@ -2882,7 +2885,7 @@ async function init(): Promise<void> {
       // card or anything else can schedule a save that overwrites it.
       yoApi?.getPreference?.(WALL_STATE_PREF, null) ?? null,
       yoApi?.getPreference?.("echoDockOrder", null) ?? null,
-      yoApi?.appsDefaults?.().catch(() => []) ?? [],
+      Promise.resolve([]),
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
     ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
@@ -2894,12 +2897,8 @@ async function init(): Promise<void> {
       // tiles are never deletable/editable, and the slug-based keys keep the
       // saved icon order working across the copy→global transition.
       const userRows = (rows || []).filter(wallAppRow);
-      const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
-      const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
-      const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
-        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
-        .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
-      const appsAll = [...userRows, ...defaultRows];
+      void houseDefaults; void hiddenPref; // defaults retired with URL apps
+      const appsAll = [...userRows];
       echoRows = (rows || []);
       appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }

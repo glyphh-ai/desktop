@@ -118,12 +118,6 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     catch { return []; }
   });
 
-  // The HOUSE DEFAULTS — the glyphh launcher set, command-center only (the
-  // Apps page stays the org's own rows via panel-apps-list).
-  ipcMain.handle("apps-defaults", async () => {
-    try { return await getClient().apps.defaults(); }
-    catch { return []; }
-  });
 
   // ── Marketplace ──────────────────────────────────────────────
   // The storefront / reviews / developer / admin transport lives in
