@@ -84,8 +84,10 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
   }
   const win = new BrowserWindow({
     width: 1160, height: 740, show: false,
-    // A DEDICATED header row — the traffic lights get a real title bar, they
-    // never overlay panel content (his rule, 2026-08-21).
+    // ONE header: the page draws a slim drag strip that hosts the traffic
+    // lights AND the expand/collapse controls (his rule, 2026-08-21 — no
+    // second header row inside the panel).
+    titleBarStyle: "hiddenInset",
     backgroundColor: themedBackground(),
     webPreferences: spec.kind === "url"
       ? { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" }
@@ -123,7 +125,23 @@ export function closeAllDesktopPanels(): void {
   stack.length = 0;
 }
 
+const preExpand = new WeakMap<BrowserWindow, Electron.Rectangle>();
+
 export function registerDesktopPanelsIpc(): void {
+  // Header controls: EXPAND fills the workspace (remembering where the
+  // window sat); COLLAPSE puts it back.
+  ipcMain.on("desktop-panel-expand", (event, mode: "expand" | "collapse") => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+    if (mode === "expand") {
+      preExpand.set(win, win.getBounds());
+      win.setBounds(workspaceArea());
+    } else {
+      const prev = preExpand.get(win);
+      if (prev) win.setBounds(prev);
+    }
+  });
+
   ipcMain.handle("desktop-panel-open", (_e, spec: PanelSpec) => {
     try { openDesktopPanel(spec); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }

@@ -179,6 +179,35 @@ void (async () => {
       const appName = params.get("appName") || slug;
       const appUrl = params.get("appUrl") || "";
       document.title = `${appName} — Glyphh`;
+      // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
+      {
+        const hdrStyle = document.createElement("style");
+        hdrStyle.textContent = `
+          [data-home-scope="solo-tool"] .ws-rail-slot-header { display: none !important; }
+          #solo-panel-header { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 4000;
+            display: flex; align-items: center; gap: 8px; padding: 0 10px 0 80px;
+            background: var(--surface-2); border-bottom: 1px solid var(--border-2);
+            -webkit-app-region: drag; }
+          #solo-panel-header .sph-title { font-size: 12px; font-weight: 650; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          #solo-panel-header button { -webkit-app-region: no-drag; margin-left: auto; flex: none;
+            width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+            background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
+          #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
+          #solo-panel-header button + button { margin-left: 0; }
+          [data-home-scope="solo-tool"] #help-layout { padding-top: 34px; }`;
+        document.head.appendChild(hdrStyle);
+        const hdr = document.createElement("div");
+        hdr.id = "solo-panel-header";
+        hdr.innerHTML = `<span class="sph-title"></span>
+          <button class="sph-expand" title="Expand — fill the workspace">⤢</button>
+          <button class="sph-collapse" title="Collapse — back to its place in the stack">⤡</button>`;
+        (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
+        hdr.querySelector(".sph-expand")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("expand"));
+        hdr.querySelector(".sph-collapse")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("collapse"));
+        document.body.appendChild(hdr);
+      }
+
       const payload = {
         cols: 1, colWidths: [], rowHeights: [],
         cells: [{ slug, name: appName, url: appUrl, glyphh: false, col: 0, row: 0 }],
@@ -215,6 +244,35 @@ void (async () => {
       const soloLabel = SOLO_LABELS[kind] || kind;
       // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
       document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
+      // ONE header: slim drag strip hosting the traffic lights + expand/collapse.
+      {
+        const hdrStyle = document.createElement("style");
+        hdrStyle.textContent = `
+          [data-home-scope="solo-tool"] .ws-rail-slot-header { display: none !important; }
+          #solo-panel-header { position: fixed; top: 0; left: 0; right: 0; height: 34px; z-index: 4000;
+            display: flex; align-items: center; gap: 8px; padding: 0 10px 0 80px;
+            background: var(--surface-2); border-bottom: 1px solid var(--border-2);
+            -webkit-app-region: drag; }
+          #solo-panel-header .sph-title { font-size: 12px; font-weight: 650; color: var(--text);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          #solo-panel-header button { -webkit-app-region: no-drag; margin-left: auto; flex: none;
+            width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+            background: none; border: none; border-radius: 6px; color: var(--text-2); cursor: pointer; font-size: 12px; }
+          #solo-panel-header button:hover { background: var(--surface); color: var(--text); }
+          #solo-panel-header button + button { margin-left: 0; }
+          [data-home-scope="solo-tool"] #help-layout { padding-top: 34px; }`;
+        document.head.appendChild(hdrStyle);
+        const hdr = document.createElement("div");
+        hdr.id = "solo-panel-header";
+        hdr.innerHTML = `<span class="sph-title"></span>
+          <button class="sph-expand" title="Expand — fill the workspace">⤢</button>
+          <button class="sph-collapse" title="Collapse — back to its place in the stack">⤡</button>`;
+        (hdr.querySelector(".sph-title") as HTMLElement).textContent = document.title;
+        hdr.querySelector(".sph-expand")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("expand"));
+        hdr.querySelector(".sph-collapse")!.addEventListener("click", () => (window.glyphh as unknown as { desktopPanelExpand?: (m: string) => void }).desktopPanelExpand?.("collapse"));
+        document.body.appendChild(hdr);
+      }
+
       const payload = {
         cols: 1, colWidths: [], rowHeights: [],
         cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],
