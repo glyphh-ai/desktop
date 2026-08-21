@@ -23,14 +23,14 @@
 import AppKit
 import Foundation
 
-let excludePids: Set<pid_t> = {
-  var pids: Set<pid_t> = [getppid()]
+let excludeCgids: Set<CGWindowID> = {
+  var ids: Set<CGWindowID> = []
   let args = CommandLine.arguments
   var i = 1
   while i < args.count - 1 {
-    if args[i] == "--exclude-pid", let p = pid_t(args[i + 1]) { pids.insert(p); i += 2 } else { i += 1 }
+    if args[i] == "--exclude-cgid", let w = CGWindowID(args[i + 1]) { ids.insert(w); i += 2 } else { i += 1 }
   }
-  return pids
+  return ids
 }()
 
 struct Front: Equatable {
@@ -53,7 +53,7 @@ func frontWindow(of pid: pid_t) -> Front? {
   for w in raw {
     guard let layer = w[kCGWindowLayer as String] as? Int, layer == 0,
           let owner = w[kCGWindowOwnerPID as String] as? pid_t, owner == pid,
-          let cgid = w[kCGWindowNumber as String] as? CGWindowID,
+          let cgid = w[kCGWindowNumber as String] as? CGWindowID, !excludeCgids.contains(cgid),
           let bounds = w[kCGWindowBounds as String] as? [String: CGFloat] else { continue }
     let width = Int(bounds["Width"] ?? 0)
     let height = Int(bounds["Height"] ?? 0)
@@ -84,8 +84,7 @@ timer.schedule(deadline: .now(), repeating: .milliseconds(33))
 timer.setEventHandler {
   // Follow the frontmost REGULAR app, except Glyphh itself — focusing the
   // pill must not steal the anchor from the app it is attached to.
-  if let app = NSWorkspace.shared.frontmostApplication,
-     app.activationPolicy == .regular, !excludePids.contains(app.processIdentifier) {
+  if let app = NSWorkspace.shared.frontmostApplication, app.activationPolicy == .regular {
     targetPid = app.processIdentifier
   }
   guard let pid = targetPid,

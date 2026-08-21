@@ -31,6 +31,18 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", as
   } catch {}
 });
 
+// The MAIN window has no embedded agent anymore (his rule, 2026-08-21): the
+// floating attached agent (agent-dock) is THE agent everywhere — it anchors
+// to any panel, this window included. Solo agent windows keep theirs.
+{
+  const p = new URLSearchParams(window.location.search).get("solo");
+  if (p !== "agent" && !(p || "").startsWith("tool:")) {
+    const style = document.createElement("style");
+    style.textContent = ".code-root > .code-agent { display: none !important; }";
+    document.head.appendChild(style);
+  }
+}
+
 initHelp();
 initSearchClears();
 installAutofillGuard();
@@ -151,6 +163,7 @@ void (async () => {
     // cell fills the window (desktop-panels "app" kind): the panel look with
     // a real window header.
     if (solo && solo.startsWith("app:")) {
+      document.body.classList.remove("wb-booting");
       document.documentElement.setAttribute("data-home-scope", "solo-tool");
       const style = document.createElement("style");
       style.textContent = `
@@ -217,6 +230,7 @@ void (async () => {
     }
     const urlSection = params.get("section");
     if (urlSection) {
+      document.body.classList.remove("wb-booting");
       document.documentElement.setAttribute("data-home-scope", urlSection);
       // Hide the left rail when this panel is locked to a single section —
       // it's mounted as its own app (yo://<slug>), so no in-rail switching.
