@@ -19197,6 +19197,18 @@ body.platform-shell .settings-nav-item.platform-only { display: flex; }
 .apps-builder-launch:hover { opacity: 1; }
 body.platform-rail-collapsed .apps-builder-launch { display: none; }
 
+/* ── Agent hosted in a LAYOUT: the head row reads (his spec, 2026-08-21)
+   <session-name, inline editable> ......... <drips><recents><new><⋮ menu>
+   — no chevron/locus clutter, no kebab (rename is the name itself), and no
+   LOCK (pinning over panels makes no sense inside a layout cell). The name
+   shows even on a fresh landing so there is always something to rename. ── */
+body.echo-agent-in-layout .code-agent-head .session-head-chev,
+body.echo-agent-in-layout .code-agent-head .session-head-locus,
+body.echo-agent-in-layout #code-session-kebab-wrap,
+body.echo-agent-in-layout #code-agent-lock { display: none !important; }
+body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { display: inline-flex; }
+
+
 /* ── Platform shell (web /platform) ──────────────────────────────────────────
    The settings surface PROMOTED to a full page: home.ts's platform branch sets
    body.platform-shell and opens the EXISTING settings modal — these rules
