@@ -19178,3 +19178,11 @@ body.echo-agent-in-layout .code-agent-head .session-head-locus,
 body.echo-agent-in-layout #code-session-kebab-wrap,
 body.echo-agent-in-layout #code-agent-lock { display: none !important; }
 body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { display: inline-flex; }
+/* Inside the relocatable controls group, DOM order IS the spec order —
+   drips, recents, + new, ⋮ menu. The legacy .session-head-actions order
+   rules above (history=1/new=2) otherwise shuffle the un-ordered items
+   (drips, ⋮) to the front, which is exactly the backwards row he saw. */
+.code-session-controls > .echo-drip-anchor { order: 1 !important; }
+.code-session-controls > #code-session-history { order: 2 !important; }
+.code-session-controls > #code-session-new { order: 3 !important; }
+.code-session-controls > #code-tools-wrap { order: 4 !important; }
