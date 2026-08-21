@@ -5279,6 +5279,47 @@ export function initCode(): void {
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
   const sessApi = (): HeadSessionsApi | undefined => (window as unknown as { __agentSessions?: HeadSessionsApi }).__agentSessions;
   el("code-session-new")?.addEventListener("click", newSessionInPlace);
+
+  // ── Developer tools ⋯ menu (his rule, 2026-08-21): Files/Terminal/Editor/
+  // Browser/Diff/Plan/Releases live HERE, right of + new session — off the
+  // command-center wall. Each opens its workbench view via __wbOpenTool. The
+  // whole control hides when the agent is ATTACHED to another app
+  // (data-home-scope="agent-dock") — that overlay is not a dev surface.
+  {
+    const TOOLS: Array<{ view: string; label: string; icon: string }> = [
+      { view: "files",    label: "Files",    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
+      { view: "terminal", label: "Terminal", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
+      { view: "monaco",   label: "Editor",   icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>` },
+      { view: "preview",  label: "Browser",  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
+      { view: "diff",     label: "Diff",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
+      { view: "plan",     label: "Plan",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
+      { view: "releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
+    ];
+    const wrap = el("code-tools-wrap");
+    const moreBtn = el("code-tools-more");
+    const menu = el("code-tools-menu");
+    // Attached-agent overlay is not a dev surface — drop the whole control.
+    if (document.documentElement.getAttribute("data-home-scope") === "agent-dock") {
+      wrap?.remove();
+    } else if (moreBtn && menu) {
+      menu.innerHTML = TOOLS.map((t) =>
+        `<button class="code-view-menu-item" data-view="${t.view}" type="button">${t.icon}<span>${t.label}</span></button>`).join("");
+      const close = (): void => menu.classList.add("hidden");
+      moreBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        menu.classList.toggle("hidden");
+      });
+      menu.addEventListener("click", (ev) => {
+        const b = (ev.target as HTMLElement).closest<HTMLElement>(".code-view-menu-item");
+        if (!b) return;
+        close();
+        (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(b.dataset.view!);
+      });
+      document.addEventListener("pointerdown", (ev) => {
+        if (!menu.classList.contains("hidden") && !(ev.target as HTMLElement).closest("#code-tools-wrap")) close();
+      }, true);
+    }
+  }
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const anchor = ev.currentTarget as HTMLElement;
