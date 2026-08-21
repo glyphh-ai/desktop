@@ -125,6 +125,11 @@ function onEvent(evt: { event: string } & Partial<TargetInfo>): void {
   if (evt.event === "front" && evt.proc !== undefined) {
     lastTarget = evt as TargetInfo;
     position(lastTarget);
+  } else if (evt.event === "glyphh-front") {
+    // A Glyphh window is the active app. If it is the DOCK itself (the user
+    // clicked into the composer), the pill stays; any other Glyphh window —
+    // the main app, a popout — hides it. The agent never shows over Glyphh.
+    if (dockWin && !dockWin.isDestroyed() && !dockWin.isFocused() && dockWin.isVisible()) dockWin.hide();
   } else if (evt.event === "gone") {
     lastTarget = null;
     if (dockWin && !dockWin.isDestroyed() && dockWin.isVisible()) dockWin.hide();
@@ -176,6 +181,15 @@ function setEnabled(on: boolean): void {
 
 export function registerAgentDockIpc(): void {
   if (process.platform !== "darwin") return;
+
+  // The pill NEVER shows over Glyphh. The helper's glyphh-front covers app
+  // activation, but focus moving BETWEEN Glyphh windows (pill → main window)
+  // changes no frontmost app and fires no helper event — so hide on the
+  // focus event itself. Focusing the dock (typing in the composer) keeps it.
+  app.on("browser-window-focus", (_e, w) => {
+    if (w === dockWin) return;
+    if (dockWin && !dockWin.isDestroyed() && dockWin.isVisible()) dockWin.hide();
+  });
 
 
   // The renderer (home.ts, ?solo=agent) drives click-through from

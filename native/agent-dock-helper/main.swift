@@ -33,6 +33,12 @@ let excludeCgids: Set<CGWindowID> = {
   return ids
 }()
 
+// Glyphh's own Electron process — when a GLYPHH window is the active app the
+// pill hides entirely (his rule, 2026-08-21: "if the app is glyphh it isn't
+// shown"); the dock window itself is Glyphh too, so main keeps the pill up
+// while it is the focused window (typing in the composer).
+let glyphhPid: pid_t = getppid()
+
 struct Front: Equatable {
   var pid: pid_t
   var cgid: CGWindowID
@@ -85,6 +91,14 @@ timer.setEventHandler {
   // Follow the frontmost REGULAR app, except Glyphh itself — focusing the
   // pill must not steal the anchor from the app it is attached to.
   if let app = NSWorkspace.shared.frontmostApplication, app.activationPolicy == .regular {
+    if app.processIdentifier == glyphhPid {
+      // Glyphh is the ACTIVE app: tell main (it decides — the dock window
+      // being focused keeps the pill; any other Glyphh window hides it), and
+      // drop the dedupe state so re-activating the target re-emits fresh.
+      if !gone || last != nil { gone = true; last = nil; emit(["event": "glyphh-front"]) }
+      return
+    }
+    // ONLY the active app ever wears the pill — the anchor follows focus.
     targetPid = app.processIdentifier
   }
   guard let pid = targetPid,
