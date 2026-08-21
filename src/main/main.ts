@@ -63,6 +63,7 @@ function isNewerVersion(latest: string, current: string): boolean {
 import { setMainWindowRef } from "./main-window-ref";
 import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncBackgroundMode, setReopenHandler } from "./background-mode";
 import { initRailCollapse } from "./screen-layout";
+import { initOsWindowManager, disposeOsWindowManager } from "./os-window-manager";
 import { McpManager } from "./mcp-manager";
 import { startMcpOAuthRefresh, stopMcpOAuthRefresh } from "./mcp-oauth-refresh";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
@@ -87,6 +88,7 @@ import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
+import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
 import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
@@ -146,6 +148,16 @@ async function createWindow() {
   // (app-resolver focuses it when the "Glyphh" system app is opened).
   setMainWindowRef(mainWindow);
   initRailCollapse(mainWindow);
+
+  // OS window control (.dip grid/split/min/exp, desktop-layout tiling) drives
+  // other apps' windows through the native backends (macOS: bundled Swift AX
+  // helper; Windows: koffi→user32). Pre-spawn the helper and prompt for
+  // Accessibility once (no-op if already granted) so commands don't silently
+  // fail.
+  initOsWindowManager();
+  if (process.platform === "darwin") {
+    try { systemPreferences.isTrustedAccessibilityClient(true); } catch { /* noop */ }
+  }
 
   // Request macOS mic entitlement (triggers OS permission dialog on first use)
   if (process.platform === "darwin") {
@@ -476,6 +488,9 @@ async function boot() {
 
   // Create window
   await createWindow();
+
+  // PROTOTYPE — the Echo agent attached to the frontmost desktop app (⌘⇧G toggles).
+  registerAgentDockIpc();
   // Background mode: rebuild the window when the tray asks, and reflect the
   // current setting (tray + launch-at-login) now.
   setReopenHandler(() => { void createWindow(); });
@@ -1281,6 +1296,7 @@ function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
+  try { disposeAgentDock(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
@@ -1300,6 +1316,7 @@ function cleanupAll(backstopMs = 4000) {
   // Node event loop alive and window-all-closed from firing.
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
+    ["osWindowManager", () => disposeOsWindowManager()],
     ["mcpOAuthRefresh", () => stopMcpOAuthRefresh()],
     ["authTimers", () => cleanupAuthTimers()],
     ["glyphh", () => shutdownGlyphh()],

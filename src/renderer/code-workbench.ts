@@ -3745,7 +3745,11 @@ async function init(): Promise<void> {
       // covered proceeds as ever, cards take the FULL band, and the lock's
       // CSS pin (body.echo-agent-locked, !important) simply overrides the
       // tuck transform so the agent floats OVER the cards instead of hiding.
-      const covered = hidden && !layoutUp;
+      // ?solo=agent (the attached-agent window): the foreign app beneath the
+      // window IS the covering surface — covered is permanent there, and the
+      // lock pin overrides the tuck exactly as it does over cards.
+      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
+      const covered = agentDock || (hidden && !layoutUp);
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)

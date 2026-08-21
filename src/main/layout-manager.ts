@@ -27,6 +27,9 @@ export interface ServerLayout {
   cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
+  /** DESKTOP layouts only: where Glyphh itself sits while the layout owns the
+   *  screen (top bar by default; see screen-layout.ts GlyphhPlacement). */
+  glyphh?: { mode: "top" | "rail" | "left" | "right" | "none"; fraction?: number };
   /** The loop this layout activates on open — its program AND its models. Absent
    *  → the layout has no opinion; the active loop stays as-is. */
   loop?: string;

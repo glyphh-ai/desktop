@@ -80,7 +80,92 @@ export function toggleRailCollapsed(): boolean {
   return setRailCollapsed(!railCollapsed);
 }
 
-// NOTE: per-layout Glyphh placement (the old "screen layout" dock as a LAYOUT property)
-// was removed — the agent anchor is a GLOBAL device setting owned by the agent
-// (help/code-anchor.ts → the `glyphhAnchorMode` preference), never a layout property.
+/**
+ * The screen area OS app windows should tile into (os-window-manager's grid /
+ * split / expand geometry). Derived from the Glyphh window's actual bounds
+ * rather than stored mode state: when Glyphh hugs the left or right edge of
+ * the active display (rail-collapsed or docked by a layout), apps tile into
+ * the space BESIDE it; otherwise they get the full work area.
+ */
+export function workspaceArea(): Rect {
+  const d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const wa = d.workArea;
+  if (!win || win.isDestroyed() || win.isMinimized()) return { ...wa };
+  if (screen.getDisplayMatching(win.getBounds()).id !== d.id) return { ...wa };
+  const b = win.getBounds();
+  const MIN_WORKSPACE_PX = 240; // below this the split is unusable — go full
+  const slim = b.width < wa.width * 0.7; // a near-full window isn't a dock
+  // Top-docked (full-width band hugging the top edge): apps tile BELOW it.
+  const short = b.height < wa.height * 0.7;
+  if (!slim && short && b.y <= wa.y + 8) {
+    const edge = b.y + b.height;
+    const h = wa.y + wa.height - edge;
+    if (h >= MIN_WORKSPACE_PX) return { x: wa.x, y: edge, width: wa.width, height: h };
+  }
+  if (slim && b.x <= wa.x + 8) {
+    const edge = b.x + b.width;
+    const w = wa.x + wa.width - edge;
+    if (w >= MIN_WORKSPACE_PX) return { x: edge, y: wa.y, width: w, height: wa.height };
+  } else if (slim && b.x + b.width >= wa.x + wa.width - 8) {
+    const w = b.x - wa.x;
+    if (w >= MIN_WORKSPACE_PX) return { x: wa.x, y: wa.y, width: w, height: wa.height };
+  }
+  return { ...wa };
+}
 
+// ── Per-layout Glyphh placement (the old Settings "screen layout" dock,
+//    reborn as a LAYOUT property) ─────────────────────────────────────────
+
+export type GlyphhPlacementMode = "top" | "rail" | "left" | "right" | "none";
+export interface GlyphhPlacement {
+  mode: GlyphhPlacementMode;
+  /** Docked width as a fraction of the work area (left/right modes);
+   *  docked HEIGHT fraction for the top mode. */
+  fraction?: number;
+}
+
+const clampFraction = (f: number): number => Math.max(0.2, Math.min(0.6, f));
+
+/**
+ * Place the Glyphh window for a DESKTOP layout and return the screen area the
+ * layout's app windows should tile into:
+ *   top   → dock Glyphh across the top of the screen; grid gets the space
+ *           below (the default for desktop layouts — his rule, 2026-08-21)
+ *   rail  → collapse to the left rail; the rest of the display is the grid
+ *   left  → dock Glyphh to the left edge at `fraction`; grid gets the right
+ *   right → the mirror image
+ *   none  → leave the window alone; the grid gets the full work area
+ */
+export function placeGlyphhForLayout(placement: GlyphhPlacement): Rect {
+  const display = win && !win.isDestroyed() ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+  const wa = display.workArea;
+  if (!win || win.isDestroyed() || placement.mode === "none") return { ...wa };
+
+  if (placement.mode === "top") {
+    // A compact strip by default — just enough for the close-layout bar; an
+    // explicit fraction (layout editor) buys Glyphh a real share of the screen.
+    const gh = placement.fraction
+      ? Math.round(wa.height * clampFraction(placement.fraction))
+      : 148;
+    setRailCollapsed(false);
+    tweenBounds(win, { x: wa.x, y: wa.y, width: wa.width, height: gh });
+    return { x: wa.x, y: wa.y + gh, width: wa.width, height: wa.height - gh };
+  }
+
+  if (placement.mode === "rail") {
+    setRailCollapsed(true);
+    const w = railWidth();
+    tweenBounds(win, { x: wa.x, y: wa.y, width: w, height: wa.height });
+    return { x: wa.x + w, y: wa.y, width: wa.width - w, height: wa.height };
+  }
+
+  const fr = clampFraction(placement.fraction ?? 1 / 3);
+  const gw = Math.round(wa.width * fr);
+  setRailCollapsed(false);
+  if (placement.mode === "left") {
+    tweenBounds(win, { x: wa.x, y: wa.y, width: gw, height: wa.height });
+    return { x: wa.x + gw, y: wa.y, width: wa.width - gw, height: wa.height };
+  }
+  tweenBounds(win, { x: wa.x + wa.width - gw, y: wa.y, width: gw, height: wa.height });
+  return { x: wa.x, y: wa.y, width: wa.width - gw, height: wa.height };
+}

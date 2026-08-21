@@ -7,8 +7,9 @@
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "WILLIAM_TRAINING_CAPTURE=1 npm run build && ELECTRON_RUN_AS_NODE= electron .",
-    "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs",
+    "build": "node scripts/check-ipc-registered.mjs && npm run build:helper && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs",
     "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/popout-slides.ts --bundle --outfile=dist/renderer/popout-slides.js --platform=browser && shx cp src/renderer/popout-slides.html dist/renderer/",
+    "build:helper": "bash scripts/build-mac-helper.sh",
     "build:main": "tsc",
     "build:app-libs": "node scripts/build-app-libs.mjs",
     "pack:apps": "node scripts/pack-apps.mjs",
@@ -79,6 +80,7 @@
     "dotenv": "^17.4.2",
     "electron-updater": "^6.8.9",
     "js-yaml": "^4.1.1",
+    "koffi": "^3.1.6",
     "kuzu": "^0.11.3",
     "marked": "^14.0.0",
     "monaco-editor": "^0.55.1",

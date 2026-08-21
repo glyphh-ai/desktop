@@ -22,6 +22,7 @@ import {
   listOpenAppWindows,
 } from "./app-resolver";
 import { fetchServerLayouts } from "./layout-manager";
+import { tryDipOsCommand } from "./dip-os-commands";
 import { showThinking, hideThinking } from "./thinking-overlay";
 
 export class CommandParser {
@@ -125,6 +126,12 @@ export class CommandParser {
     }
 
     const sub = args[0].toLowerCase();
+
+// OS-window verbs (min/minAll/exp/expAll + the `os` namespace for
+    // grid/split) — arrange EVERY visible app window on the machine, not
+    // Glyphh's panels. Non-matches return null and dispatch continues.
+    const osResult = await tryDipOsCommand(args);
+    if (osResult !== null) return osResult;
 
     // `dip a | b | c` — open several apps, each per its own config.
     if (args.join(" ").includes("|")) {

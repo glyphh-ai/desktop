@@ -257,6 +257,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
+  // Attached-agent window (?solo=agent) only: forward mouse events to the app
+  // BENEATH the window except over the agent's own pixels (agent-dock.ts).
+  agentDockIgnoreMouse: (ignore: boolean) => ipcRenderer.send("agent-dock:ignore-mouse", ignore),
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },
@@ -291,6 +294,15 @@ contextBridge.exposeInMainWorld("glyphh", {
   railCollapseGet: () => ipcRenderer.invoke("rail-collapse-get") as Promise<boolean>,
   railCollapseToggle: () => ipcRenderer.invoke("rail-collapse-toggle") as Promise<boolean>,
   railCollapseSet: (on: boolean) => ipcRenderer.invoke("rail-collapse-set", on) as Promise<boolean>,
+  // Reset button (top-left): close desktop-layout windows, un-collapse the
+  // rail, and un-dock the main window to a centered default. The renderer
+  // clears its own panels + returns home.
+  appReset: () => ipcRenderer.invoke("app-reset") as Promise<{ ok: boolean }>,
+  /** Fires with the active DESKTOP layout's name (null = none) — drives the
+   *  page's close-layout bar while Glyphh is docked as the top strip. */
+  onDesktopLayoutChanged: (cb: (name: string | null) => void) => {
+    ipcRenderer.on("desktop-layout-changed", (_e, name: string | null) => cb(name));
+  },
 
   // Home view visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
@@ -484,6 +496,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   appCallTool: (slug: string, tool: string, args: unknown) =>
     ipcRenderer.invoke("glyphh-app:call-tool", slug, tool, args) as Promise<{ ok: boolean; result?: unknown; error?: string }>,
   // Installed real browsers — the app editor's Browser dropdown.
+  browsersDetect: () =>
+    ipcRenderer.invoke("browsers-detect") as Promise<Array<{ id: string; name: string; chromium: boolean }>>,
   // OS icon for a native app's executable / .app bundle (data URL, "" if none).
   appFileIcon: (execPath: string) => ipcRenderer.invoke("app-file-icon", execPath) as Promise<string>,
   // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.

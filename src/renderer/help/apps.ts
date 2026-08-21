@@ -1732,6 +1732,13 @@ async function openPanelAppDetail(app: PanelApp) {
   const detailType: AppType = isBrowser ? "browser" : "native";
   const typeSel = document.getElementById("app-detail-type") as HTMLSelectElement | null;
   if (typeSel) typeSel.value = detailType;
+  {
+    const lc = (app.launchConfig || {}) as Record<string, unknown>;
+    const browserSel = document.getElementById("app-detail-browser") as HTMLSelectElement | null;
+    if (browserSel) browserSel.value = typeof lc.browser === "string" && lc.browser ? String(lc.browser) : "glyphh-panel";
+    const openAsSel = document.getElementById("app-detail-open-as") as HTMLSelectElement | null;
+    if (openAsSel) openAsSel.value = lc.openAs === "tab" ? "tab" : "window";
+  }
   const execEl = document.getElementById("app-detail-exec-path") as HTMLInputElement | null;
   if (execEl) execEl.value = app.execPath || "";
   const detailArchetype = (app.appArchetype as Archetype) || "generic";
@@ -1845,6 +1852,19 @@ function initApps() {
     })();
   };
 
+  // Browser dropdowns (add form + editor) — the real browsers on this machine.
+  void window.glyphh.browsersDetect?.().then((browsers) => {
+    for (const id of ["app-add-browser", "app-detail-browser"]) {
+      const sel = document.getElementById(id) as HTMLSelectElement | null;
+      if (!sel) continue;
+      for (const b of browsers) {
+        const opt = document.createElement("option");
+        opt.value = b.id;
+        opt.textContent = b.name;
+        sel.appendChild(opt);
+      }
+    }
+  }).catch(() => { /* dropdowns keep "System default" */ });
   // Upgrade gates (App connections / MCP) open the platform to manage the plan,
   // the same way Settings → Account → Manage Account does.
   document.querySelectorAll<HTMLElement>(".tab-upgrade-btn").forEach((btn) => {
@@ -1936,7 +1956,12 @@ function initApps() {
     addSlugInput.value = "";
     slugTouched = false;
     addUrlInput.value = "";
-    // Every new app is a WEB PANEL.
+    // Reset Browser ↔ Native fields to defaults (browser / webview / window).
+    if (addTypeSelect) addTypeSelect.value = "browser";
+    const addBrowserSel = document.getElementById("app-add-browser") as HTMLSelectElement | null;
+    if (addBrowserSel) addBrowserSel.value = "glyphh-panel";
+    const addOpenAsSel = document.getElementById("app-add-open-as") as HTMLSelectElement | null;
+    if (addOpenAsSel) addOpenAsSel.value = "window";
     addExecPath.value = "";
     addArchetypeSelect.value = "generic";
     writeLaunchConfig("app-add", "generic", null);
@@ -1999,11 +2024,13 @@ function initApps() {
     }
     const archetype = addArchetypeSelect.value as Archetype;
     const createInput = addType === "browser"
-      // A web app opens as a Glyphh panel — there is no browser or window
-      // placement to configure, so it carries no launcher config at all.
       ? {
           name, slug: id, isBrowser: true, url, execPath: null,
-          launchConfig: (document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {},
+          launchConfig: {
+            browser: (document.getElementById("app-add-browser") as HTMLSelectElement | null)?.value || "glyphh-panel",
+            openAs: (document.getElementById("app-add-open-as") as HTMLSelectElement | null)?.value || "window",
+            ...((document.getElementById("app-add-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {}),
+          },
         }
       : { name, slug: id, isBrowser: false, url: null, execPath, appArchetype: archetype, launchConfig: readLaunchConfig("app-add", archetype) };
     const created = await window.glyphh.panelAppsCreate?.(createInput);
@@ -2093,7 +2120,11 @@ function initApps() {
     } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
-      patch.launchConfig = (document.getElementById("app-detail-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {};
+      patch.launchConfig = {
+        browser: (document.getElementById("app-detail-browser") as HTMLSelectElement | null)?.value || "glyphh-panel",
+        openAs: (document.getElementById("app-detail-open-as") as HTMLSelectElement | null)?.value || "window",
+        ...((document.getElementById("app-detail-force-web") as HTMLInputElement | null)?.checked ? { forceWeb: true } : {}),
+      };
       patch.execPath = null;
     } else {
       patch.url = null;

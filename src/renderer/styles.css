@@ -19163,3 +19163,27 @@ body.echo-agent-locked .code-thread-grip { display: none; }
 .echo-savews-cancel:hover { background: var(--hover); color: var(--text); }
 .echo-savews-go { background: var(--accent, #8c3bf2); color: #fff; }
 .echo-savews-go:hover { filter: brightness(1.1); }
+
+/* ── Desktop-layout close bar (home.ts onDesktopLayoutChanged) ──────────────
+   Shown only while a DESKTOP layout owns the screen and Glyphh is the top
+   strip: the layout's name and the one way back. Fixed over everything so it
+   is visible no matter what the strip's viewport crops. */
+#desktop-layout-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 4000;
+  display: flex; align-items: center; gap: 12px;
+  height: 40px; padding: 0 14px 0 88px; /* clear the traffic lights */
+  background: var(--surface-2); border-bottom: 1px solid var(--border-2);
+  -webkit-app-region: drag;
+}
+#desktop-layout-bar .dlb-name {
+  font-size: 12.5px; font-weight: 650; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#desktop-layout-bar .dlb-close {
+  -webkit-app-region: no-drag;
+  margin-left: auto; flex: none;
+  font-size: 12px; font-weight: 600; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 8px; padding: 5px 12px; cursor: pointer;
+}
+#desktop-layout-bar .dlb-close:hover { background: var(--surface-3, var(--surface)); }

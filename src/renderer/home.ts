@@ -36,6 +36,29 @@ initSearchClears();
 installAutofillGuard();
 window.glyphh.refreshAuth?.().catch(() => {});
 
+// ── Desktop-layout close bar ────────────────────────────────────────────────
+// While a DESKTOP layout owns the screen, Glyphh docks as a strip across the
+// top (screen-layout.ts, mode "top") and this bar is the way back: layout
+// name + "Close layout" (app-reset: closes the layout's windows and un-docks
+// this window). Hidden the rest of the time — the bar only exists while a
+// desktop layout is active.
+window.glyphh.onDesktopLayoutChanged?.((name) => {
+  let bar = document.getElementById("desktop-layout-bar");
+  if (!name) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "desktop-layout-bar";
+    bar.innerHTML = `
+      <span class="dlb-name"></span>
+      <button class="dlb-close" type="button">Close layout</button>`;
+    bar.querySelector(".dlb-close")!.addEventListener("click", () => {
+      void window.glyphh.appReset?.();
+    });
+    document.body.appendChild(bar);
+  }
+  (bar.querySelector(".dlb-name") as HTMLElement).textContent = name;
+});
+
 // Full-bleed chrome — the panel covers the titlebar strip, so it owns the
 // window controls and the command button (page-top, left of which sits the
 // rail toggle wired by code.ts).
@@ -54,6 +77,58 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
+    // ATTACHED AGENT window (?solo=agent) — the real Echo agent floating over
+    // ANOTHER app's window (agent-dock.ts sizes/positions this window along
+    // the target's bottom edge). The full home page loads, but only the agent
+    // paints, over a transparent page. The foreign app plays the role cards
+    // play in Echo: the wall is permanently "covered", so the agent tucks and
+    // hover-reveals exactly as it does over panels — and the lock
+    // (echoAgentLock) pins it up, same control, same pref.
+    if (solo === "agent") {
+      document.documentElement.setAttribute("data-home-scope", "agent-dock");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="agent-dock"] .code-root > :not(.code-agent) { display: none !important; }
+        [data-home-scope="agent-dock"], [data-home-scope="agent-dock"] body,
+        [data-home-scope="agent-dock"] #home-root, [data-home-scope="agent-dock"] #help-overlay,
+        [data-home-scope="agent-dock"] #help-layout, [data-home-scope="agent-dock"] #help-content,
+        [data-home-scope="agent-dock"] #page-body, [data-home-scope="agent-dock"] .help-section,
+        [data-home-scope="agent-dock"] #section-code, [data-home-scope="agent-dock"] .code-root {
+          background: transparent !important; box-shadow: none !important; }`;
+      document.head.appendChild(style);
+      document.title = "Glyphh";
+      // The boot veil (body.wb-booting) is lifted by the wall-settle loop in
+      // the DEFAULT boot path, which this branch returns before — drop it now
+      // or this window keeps the opaque booting state forever.
+      document.body.classList.remove("wb-booting");
+      // Assert the covered state NOW — syncWallVisibility only re-runs when
+      // cards open/close, which never happens in this window. The workbench's
+      // own computation (patched to respect agent-dock) keeps it set.
+      document.body.classList.add("echo-wall-covered");
+      gotoSection("code");
+      // Click-through: this window covers the target app's bottom band — only
+      // the agent's own pixels may eat the mouse. Anything else under the
+      // cursor forwards events to the app beneath (setIgnoreMouseEvents with
+      // forward:true still delivers mousemove, so re-entry is detected).
+      // POSITIVE scope — only the agent's own surfaces take the mouse. A
+      // negative test ("anything but the background") once let an invisible
+      // full-window element flip this window into click-eating mode, which
+      // swallowed the TARGET app's close button. Everything not listed here
+      // forwards, always. (.code-menu / #code-history / .confirm-overlay are
+      // the pill's popovers that mount at body level, outside .code-agent.)
+      const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog";
+      let ignoring = true;
+      document.addEventListener("mousemove", (e) => {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const interactive = !!el && !!(el as HTMLElement).closest(HIT);
+        if (interactive === ignoring) {
+          ignoring = !interactive;
+          window.glyphh.agentDockIgnoreMouse?.(ignoring);
+        }
+      }, { passive: true });
+      return;
+    }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows.
     if (solo && solo.startsWith("tool:")) {

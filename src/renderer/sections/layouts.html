@@ -37,6 +37,49 @@
               <div id="grid-preview"></div>
             </div>
 
+            <!-- Where the layout opens: inside the Glyphh window as panels, or
+                 on the DESKTOP (native cells launch their OS apps; web cells
+                 open in the browser each app declares). -->
+            <div style="margin-top:12px;">
+              <label class="settings-label">Opens on</label>
+              <select id="layout-target" class="settings-input settings-input-md">
+                <option value="glyphh">Glyphh — panels tile inside the Glyphh window</option>
+                <option value="desktop">Desktop — apps open on the desktop (native + browser)</option>
+              </select>
+            </div>
+
+            <!-- Desktop layouts only: where GLYPHH ITSELF sits while the layout
+                 owns the screen — the old Settings screen-layout dock, reborn
+                 per-layout. "Rail only" turns Glyphh into a slim control panel
+                 beside any other desktop app (Claude, an IDE, …). -->
+            <div id="layout-glyphh-row" class="hidden" style="margin-top:12px;">
+              <label class="settings-label">Glyphh position</label>
+              <select id="layout-glyphh-pos" class="settings-input settings-input-md">
+                <option value="top" selected>Top bar — Glyphh becomes a strip at the top of the screen</option>
+                <option value="rail">Rail only — slim control panel on the left</option>
+                <option value="left">Docked left — Glyphh keeps a share of the screen</option>
+                <option value="right">Docked right — Glyphh keeps a share of the screen</option>
+                <option value="none">Leave in place — don't move the Glyphh window</option>
+              </select>
+              <select id="layout-glyphh-size" class="settings-input settings-input-md hidden" style="margin-top:6px;">
+                <option value="0.25">Quarter of the screen</option>
+                <option value="0.33" selected>Third of the screen</option>
+                <option value="0.5">Half of the screen</option>
+              </select>
+            </div>
+
+            <!-- Folder-binding mode — only meaningful when the layout contains
+                 a folder-bound app (Vibe, Spec, Terminal, Agent, …). -->
+            <div id="layout-folder-mode-row" class="hidden" style="margin-top:12px;">
+              <label class="settings-label">Folder binding</label>
+              <select id="layout-folder-mode" class="settings-input settings-input-md">
+                <option value="single">Single folder (one picker, all panels share)</option>
+                <option value="multi">Multi-folder (each panel picks its own)</option>
+              </select>
+              <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">
+                Layouts never bake in a folder. You pick one at load time.
+              </span>
+            </div>
 
             <label class="settings-label" style="margin-top:16px;">Loop &amp; models</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches to this loop and binds its models. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>

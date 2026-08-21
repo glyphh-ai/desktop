@@ -68,6 +68,12 @@ files:
 extraResources:
   - from: vendor/rrotor
     to: rrotor
+  # Ship the Swift window-arrange helper (scripts/build-mac-helper.sh) into
+  # Contents/Resources so the PACKAGED app can position native windows —
+  # mac-helper-backend.ts resolves it at process.resourcesPath/glyphh-window-helper.
+  # Without this the helper is missing in prod and window arranging silently no-ops.
+  - from: native/mac-window-helper/build/glyphh-window-helper
+    to: glyphh-window-helper
 
 asarUnpack:
   - node_modules/better-sqlite3/**/*
