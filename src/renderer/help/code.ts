@@ -4681,7 +4681,13 @@ export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): vo
  *  ECHO — the command center is gone; Echo is the launcher AND the layout
  *  manager. (opts kept for caller compatibility; there is no overlay mode.) */
 export function openCommandCenter(opts: { forceInline?: boolean; boot?: boolean } = {}): void {
+  // SOLO windows (a single tool/app panel, the attached agent) are NOT the
+  // app — booting Echo there put a full launcher under every panel window
+  // ("a new full blown version of the app"). The workbench still inits; the
+  // echo surface never raises.
+  const scope = document.documentElement.getAttribute("data-home-scope");
   const w = window as unknown as { __initCodeWorkbench?: () => void; __wbToggleAppSwitcher?: () => void; __wbOpenEchoHome?: () => void };
+  if (scope === "solo-tool" || scope === "agent-dock") { w.__initCodeWorkbench?.(); return; }
   w.__initCodeWorkbench?.();
   let tries = 0;
   const go = (): void => {
