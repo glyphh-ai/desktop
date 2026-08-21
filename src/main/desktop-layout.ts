@@ -17,7 +17,7 @@ import path from "node:path";
 import type { ServerApp } from "./app-resolver.js";
 import { placeGlyphhForLayout, setRailCollapsed, type GlyphhPlacement } from "./screen-layout.js";
 import { openNativeTracked, openWebTracked, trackedWinId } from "./window-tiling.js";
-import { osWindowsTrusted, setWindowBounds } from "./os-window-manager.js";
+import { osWindowsTrusted, setWindowBounds, listWindows } from "./os-window-manager.js";
 import { getMainWindowRef } from "./main-window-ref.js";
 
 /** Legacy cell ids for the built-in tools, normalized to tool:<ViewKind>. */
@@ -162,6 +162,44 @@ function attachRetile(al: ActiveLayout): void {
   }
 }
 
+// ── Pre-layout geometry snapshot ────────────────────────────────────────────
+// Captured ONCE, before the first layout (or app open) rearranges the desktop:
+// every visible OS window's bounds plus Glyphh's own. The bar's Reset button
+// puts everything back exactly here. Cleared when the last layout closes.
+let geometrySnapshot: { windows: Array<{ id: string; x: number; y: number; width: number; height: number }>; glyphh: Electron.Rectangle | null } | null = null;
+
+/** Capture the desktop as it stands — no-op if a snapshot is already held
+ *  (the FIRST arrangement wins; switching layouts keeps the original). */
+export async function captureDesktopGeometry(): Promise<void> {
+  if (geometrySnapshot) return;
+  try {
+    const wins = await listWindows();
+    const main = getMainWindowRef();
+    geometrySnapshot = {
+      windows: wins.map((w) => ({ id: w.id, x: w.x, y: w.y, width: w.width, height: w.height })),
+      glyphh: main && !main.isDestroyed() ? main.getBounds() : null,
+    };
+  } catch { /* untrusted / no backend — reset simply won't have a snapshot */ }
+}
+
+/** Put every window the snapshot knows back where it was. Windows that closed
+ *  in the meantime are skipped; the layouts stay open (Close is separate). */
+export async function resetDesktopGeometry(): Promise<{ ok: boolean; restored: number }> {
+  if (!geometrySnapshot) return { ok: false, restored: 0 };
+  let restored = 0;
+  for (const w of geometrySnapshot.windows) {
+    try { if (await setWindowBounds(w.id, { x: w.x, y: w.y, width: w.width, height: w.height })) restored++; } catch { /* window gone */ }
+  }
+  const main = getMainWindowRef();
+  if (geometrySnapshot.glyphh && main && !main.isDestroyed()) {
+    setRailCollapsed(false);
+    main.setBounds(geometrySnapshot.glyphh);
+  }
+  return { ok: true, restored };
+}
+
+export function clearDesktopGeometrySnapshot(): void { geometrySnapshot = null; }
+
 /** Tell every home surface which desktop layout is up (null = none) — the
  *  page shows/hides its close-layout bar from this. */
 function broadcastActive(): void {
@@ -190,6 +228,7 @@ function closeExisting(name: string): void {
  *  (native apps / browsers the user launched) are left alone. */
 export function closeAllDesktopLayouts(): void {
   for (const name of [...activeLayouts.keys()]) closeExisting(name);
+  clearDesktopGeometrySnapshot();
 }
 
 /** The web url a row opens at (top-level url, else legacy launchConfig homes). */
@@ -210,6 +249,9 @@ export async function openDesktopLayout(
   layout: DesktopLayoutSpec,
   resolve: (panelId: string) => ServerApp | undefined,
 ): Promise<string[]> {
+  // The desktop as the user left it — captured before the first arrangement,
+  // so the bar's Reset button can put everything back.
+  await captureDesktopGeometry();
   closeExisting(layout.name);
   // A Glyphh CELL means the main window is part of the grid itself — the
   // dock setting is overridden and the grid gets the full work area.

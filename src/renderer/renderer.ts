@@ -120,6 +120,8 @@ declare global {
       agentDockIgnoreMouse?: (ignore: boolean) => void;
       appReset?: () => Promise<{ ok: boolean }>;
       onDesktopLayoutChanged?: (cb: (name: string | null) => void) => void;
+      desktopGeometryReset?: () => Promise<{ ok: boolean; restored?: number }>;
+      appsDefaults?: () => Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;

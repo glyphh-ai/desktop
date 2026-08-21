@@ -2854,8 +2854,11 @@ async function init(): Promise<void> {
     };
     /** APPS ONLY — the wall's app filter (no self row, no nav page tiles; a
      *  glyphh app rides its archetype: it has no url until deployed). */
-    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
-      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
+    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null; execPath?: string | null; isBrowser?: boolean }): boolean =>
+      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav"
+      // NATIVE rows (desktop apps, terminals — execPath, no url) belong on the
+      // wall too: their tile launches the OS app (activateTile's native branch).
+      && (!!a.url || a.appArchetype === "glyphh-app" || a.isBrowser === false || !!a.execPath);
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = [bands.flat().map((t) => makeTileEntry(t))];
       renderPages();
@@ -5268,6 +5271,18 @@ async function init(): Promise<void> {
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
+      // NATIVE app tile (desktop app / terminal — execPath, no url): launch the
+      // OS app itself. Nothing renders in-window; the tile IS the launcher.
+      if (t.kind === "app" && !t.url && !t.glyphh && !t.toolView) {
+        const row = echoRows.find((r) => (r.slug || r.id) === (t.slug || t.appId));
+        if (row?.execPath) {
+          void (window as unknown as { glyphh?: { appLaunch?: (spec: unknown) => Promise<unknown> } }).glyphh?.appLaunch?.({
+            slug: row.slug || row.id, name: t.name, isBrowser: false,
+            execPath: row.execPath, appArchetype: row.appArchetype ?? null,
+          });
+          return;
+        }
+      }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)

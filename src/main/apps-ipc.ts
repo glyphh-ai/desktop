@@ -556,6 +556,13 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // Open a saved layout at the OS level — real windows tiled across the display
   // (nothing renders inside the Glyphh client). This is the hand-off the Layouts
   // tab's "Open" button uses instead of the legacy in-window layout manager.
+  // Reset button on the close-layout bar: put every OS window (and Glyphh)
+  // back where the pre-layout snapshot recorded it. Layouts stay open.
+  ipcMain.handle("desktop-geometry-reset", async () => {
+    const { resetDesktopGeometry } = await import("./desktop-layout.js");
+    return resetDesktopGeometry();
+  });
+
   ipcMain.handle("layouts-open", async (_e, name: string) => {
     showThinking();
     try { return { ok: true, ...(await openLayoutByName(String(name))) }; }

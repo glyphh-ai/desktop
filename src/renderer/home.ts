@@ -50,7 +50,11 @@ window.glyphh.onDesktopLayoutChanged?.((name) => {
     bar.id = "desktop-layout-bar";
     bar.innerHTML = `
       <span class="dlb-name"></span>
+      <button class="dlb-reset" type="button" title="Put every window back where it was before the layout opened">Reset</button>
       <button class="dlb-close" type="button">Close layout</button>`;
+    bar.querySelector(".dlb-reset")!.addEventListener("click", () => {
+      void window.glyphh.desktopGeometryReset?.();
+    });
     bar.querySelector(".dlb-close")!.addEventListener("click", () => {
       void window.glyphh.appReset?.();
     });
@@ -77,6 +81,18 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
+    // FULL-SCREEN ECHO overlay (?solo=echo, ⌘⇧Space — echo-overlay.ts): the
+    // normal home boot continues below (Echo IS the app), only the window
+    // chrome hides and Esc dismisses the overlay. Deliberately NO return —
+    // this branch decorates the default boot rather than replacing it.
+    if (solo === "echo") {
+      document.documentElement.setAttribute("data-home-scope", "echo-overlay");
+      const style = document.createElement("style");
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }`;
+      document.head.appendChild(style);
+      document.title = "Echo";
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") window.close(); });
+    }
     // ATTACHED AGENT window (?solo=agent) — the real Echo agent floating over
     // ANOTHER app's window (agent-dock.ts sizes/positions this window along
     // the target's bottom edge). The full home page loads, but only the agent

@@ -89,6 +89,7 @@ import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
 import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
+import { toggleEchoOverlay, disposeEchoOverlay } from "./echo-overlay";
 import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
@@ -470,20 +471,13 @@ async function boot() {
     }
   });
 
-  // ⌘⇧Space anywhere on the system: front Glyphh and open the command
-  // center (the renderer's opener applies the desktop-overlay preference).
+  // ⌘⇧Space anywhere on the system: Echo, FULL SCREEN, over the desktop —
+  // a summonable overlay window (echo-overlay.ts), not the main window.
+  // Toggles: press again (or Esc, or blur) to dismiss.
   globalShortcut.register("CommandOrControl+Shift+Space", () => {
-    try {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.show();
-        mainWindow.focus();
-      }
-      const homes = webContents.getAllWebContents().filter((wc) => {
-        try { return !wc.isDestroyed() && /home\.html/.test(wc.getURL()); } catch { return false; }
-      });
-      for (const wc of homes) wc.send("home:open-cc");
-    } catch { /* window mid-teardown */ }
+    try { toggleEchoOverlay(); } catch (e) {
+      console.error("[echo-overlay] toggle failed:", (e as Error).message);
+    }
   });
 
   // Create window
@@ -1297,6 +1291,7 @@ function cleanupAll(backstopMs = 4000) {
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
   try { disposeAgentDock(); } catch { /* noop */ }
+  try { disposeEchoOverlay(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on

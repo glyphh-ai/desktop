@@ -19187,3 +19187,12 @@ body.echo-agent-locked .code-thread-grip { display: none; }
   border-radius: 8px; padding: 5px 12px; cursor: pointer;
 }
 #desktop-layout-bar .dlb-close:hover { background: var(--surface-3, var(--surface)); }
+#desktop-layout-bar .dlb-reset {
+  -webkit-app-region: no-drag;
+  margin-left: auto; flex: none;
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+  background: none; border: 1px solid var(--border-2);
+  border-radius: 8px; padding: 5px 12px; cursor: pointer;
+}
+#desktop-layout-bar .dlb-reset:hover { color: var(--text); background: var(--surface); }
+#desktop-layout-bar .dlb-reset + .dlb-close { margin-left: 0; }

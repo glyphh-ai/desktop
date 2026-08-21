@@ -303,6 +303,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   onDesktopLayoutChanged: (cb: (name: string | null) => void) => {
     ipcRenderer.on("desktop-layout-changed", (_e, name: string | null) => cb(name));
   },
+  /** Restore every OS window to the pre-layout geometry snapshot. */
+  desktopGeometryReset: () => ipcRenderer.invoke("desktop-geometry-reset") as Promise<{ ok: boolean; restored?: number }>,
 
   // Home view visibility + refresh
   panelsHide: () => ipcRenderer.send("panels-hide"),
