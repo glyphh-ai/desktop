@@ -4949,6 +4949,12 @@ async function init(): Promise<void> {
      *  doubles an agent a live layout already shows (that click just focuses
      *  the composer). New sessions live on ＋ alone now. */
     const activateGlyphh = (_self?: TileEntry): void => {
+      // OUTSIDE THE APP, always (his rule, repeated): the Glyphh agent is a
+      // standalone desktop window like every other app. Every entry point
+      // lands here, so this one gate covers the wall tile, the dock button,
+      // and the palette.
+      const dp = (window as unknown as { glyphh?: { desktopPanelOpen?: (s: { kind: string; value: string; name?: string }) => Promise<unknown> } }).glyphh?.desktopPanelOpen;
+      if (dp) { void dp({ kind: "agent", value: "", name: "Glyphh" }); return; }
       const inLayout = openList.some((x) => x.layoutId != null);
       const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
       if (inLayout && agentShowing) {
