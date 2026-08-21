@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import { exportServerApp } from "./glyphh-app-package";
-import { deployAppFromWorkdir } from "./glyphh-app-builder";
 import { deployAppFromCloud, isCloudSource } from "./glyphh-harness-run";
 import { loadSessions } from "./glyphh-agent-context";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
@@ -702,87 +701,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // ── Deploy tab (dev-host): status + deploy + take-down ──────────────────────
   // Deploy bundles the app's newest built release and serves it at a dev URL
   // (<slug>.glyphh.app / /hosted/<slug>). Status comes from the org's deployments.
-  ipcMain.handle("hosting-status", async (_e, slug: string) => {
-    try {
-      const deployments = await getClient().hosting.list();
-      const d = deployments.find((x) => x.appSlug === slug) ?? null;
-      return { ok: true, deployment: d };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("hosting-deploy", async (_e, slug: string) => {
-    try {
-      const d = await getClient().hosting.deploy({ appSlug: slug });
-      return { ok: true, deployment: d };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("hosting-destroy", async (_e, id: string) => {
-    try {
-      await getClient().hosting.destroy(id);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
 
   // ── Dedicated app servers + custom domains (last-mile Phase F) ───────────────
   // Deploy an app to its OWN Fly machine (sized by an app-server image) and point a
   // custom domain at it. Everything through the SDK — the main process holds no state.
-  ipcMain.handle("app-servers-list", async () => {
-    try {
-      return { ok: true, images: await getClient().appServers.list() };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-server-deploy", async (_e, slug: string, imageKey: string, releaseId?: string) => {
-    try {
-      const d = await getClient().hosting.deployToServer(slug, releaseId ? { imageKey, releaseId } : { imageKey });
-      return { ok: true, queued: d };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-server-deployments", async (_e, slug: string) => {
-    try {
-      return { ok: true, deployments: await getClient().hosting.serverDeployments(slug) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-server-destroy", async (_e, slug: string, id: string) => {
-    try {
-      await getClient().hosting.destroyServer(slug, id);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-domains-list", async (_e, slug: string) => {
-    try {
-      return { ok: true, domains: await getClient().hosting.domains(slug) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-domain-add", async (_e, slug: string, deploymentId: string, hostname: string) => {
-    try {
-      return { ok: true, domain: await getClient().hosting.addDomain(slug, { deploymentId, hostname }) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-  ipcMain.handle("app-domain-remove", async (_e, slug: string, id: string) => {
-    try {
-      await getClient().hosting.removeDomain(slug, id);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
 
   // ── Releases tab: the app's version history ─────────────────────────────────
   // Read + the owner actions. Cutting a release is the BUILD path
@@ -790,24 +712,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // here: Build packages the working folder's compiled dist, cuts a release,
   // uploads the source, and deploys. This is also the recovery path when a
   // release's source archive is gone from storage ("rebuild the app").
-  ipcMain.handle("app-build-deploy", async (_e, slug: string) => {
-    try {
-      // Auto by session source: a CLOUD session has no local workdir — its app
-      // source lives in the pod, so build+deploy runs THERE (remote dev). A local
-      // session builds from the working folder as before. Deploy/promote are
-      // server-side, so they already work from either.
-      const { chats, currentId } = loadSessions();
-      const chat = chats.find((c) => c.id === currentId);
-      if (chat && isCloudSource(chat.source)) {
-        const r = await deployAppFromCloud(slug, chat.id, chat.source ?? { kind: "cloud-new" });
-        return { ok: r.ok, result: r.result, error: r.error };
-      }
-      const r = await deployAppFromWorkdir(slug || undefined);
-      return { ok: r.status === "ready", result: r, error: r.error };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
   ipcMain.handle("app-releases", async (_e, slug: string) => {
     try { return { ok: true, releases: await getClient().apps.releases(slug) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), releases: [] }; }

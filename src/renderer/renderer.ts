@@ -160,23 +160,12 @@ declare global {
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-      hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
-      hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
-      hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      appServersList: () => Promise<{ ok: boolean; images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>; error?: string }>;
-      appServerDeploy: (slug: string, imageKey: string, releaseId?: string) => Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>;
-      appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
-      appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
-      appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
-      appDomainAdd: (slug: string, deploymentId: string, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
-      appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
       // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
       appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      appBuildDeploy: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>;
       appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
