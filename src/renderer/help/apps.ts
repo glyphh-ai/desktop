@@ -1714,10 +1714,9 @@ async function openPanelAppDetail(app: PanelApp) {
   document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
     el.classList.toggle("hidden", !(isBuilt && owned));
   });
-  // The type control is retired: every NEW app is a web panel, and a built
-  // app's type comes from its bundle either way.
-  void isBuilt;
-  document.getElementById("app-detail-type-row")?.classList.add("hidden");
+  // A built app's type is its bundle's, not a dropdown choice — the server refuses
+  // to retype it, so offering the control would only produce a failed save.
+  document.getElementById("app-detail-type-row")?.classList.toggle("hidden", isBuilt);
 
   // Populate dashboard fields
   appDetailId.value = app.slug;
@@ -1974,7 +1973,8 @@ function initApps() {
     addNameInput.focus();
   });
 
-  // Add-form archetype toggle + Browse… button (the type control is gone).
+  // Add-form Browser / Native + archetype toggles + Browse… button.
+  addTypeSelect?.addEventListener("change", () => toggleTypeFields("app-add", addTypeSelect.value as AppType));
   addArchetypeSelect?.addEventListener("change", () => toggleArchetypeFields("app-add", addArchetypeSelect.value as Archetype));
   document.getElementById("app-add-exec-browse")?.addEventListener("click", async () => {
     const picked = await window.glyphh.pickExecutable?.();
@@ -1987,8 +1987,8 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
-    const addType = "browser" as AppType;   // apps ARE web panels
-    const isBrowser = true;
+    const addType = (addTypeSelect?.value || "browser") as AppType;
+    const isBrowser = addType === "browser";
     const execPath = addExecPath.value.trim();
     if (!name) { addNameInput.classList.add("invalid"); clearInvalid(addNameInput); valid = false; }
     if (addType === "browser" && !url) { addUrlInput.classList.add("invalid"); clearInvalid(addUrlInput); valid = false; }
