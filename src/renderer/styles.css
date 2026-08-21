@@ -19224,6 +19224,15 @@ body.echo-agent-in-layout .code-agent-head.head-landing #code-session-back { dis
 body.echo-agent-in-layout .code-agent-head .code-view-more-menu { bottom: auto; top: calc(100% + 6px); }
 body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: calc(100% + 8px); }
 
+
+/* The session name, now a sibling of the back button (rename needs a real
+   span, not button innards). Reads like part of the head row. */
+.session-head-title { font-weight: 600; font-size: 13px; color: var(--text);
+  cursor: text; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  min-width: 0; flex-shrink: 1; -webkit-app-region: no-drag; }
+.session-head-rename { font: inherit; font-weight: 600; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 6px; padding: 2px 6px; min-width: 140px; }
 /* ── Platform shell (web /platform) ──────────────────────────────────────────
    The settings surface PROMOTED to a full page: home.ts's platform branch sets
    body.platform-shell and opens the EXISTING settings modal — these rules

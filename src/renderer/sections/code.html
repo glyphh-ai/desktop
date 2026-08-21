@@ -11,8 +11,12 @@
                 <button id="code-session-back" class="session-head-back" title="All sessions" type="button">
                   <svg class="session-head-chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                   <span id="code-session-locus" class="session-head-locus" title="Where this session runs"></span>
-                  <span id="code-session-title" title="Current session">New session</span>
                 </button>
+                <!-- The NAME lives OUTSIDE the back button: an input swapped
+                     into a <button> is inert (nested interactive content) —
+                     that is why inline rename "didn't work". Plain span:
+                     click renames, everywhere. -->
+                <span id="code-session-title" class="session-head-title" title="Click to rename this session">New session</span>
                 <!-- Workdir controls (old workbench header): folder picker +
                      git branch (shown once a repo is picked) + add-folder.
                      Wiring lands with the William loop. -->
