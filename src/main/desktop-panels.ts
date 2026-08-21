@@ -46,13 +46,15 @@ const stack: BrowserWindow[] = [];
 // every open is a NEW window (its own thread, its own stream).
 const byKey = new Map<string, BrowserWindow>();
 
-const GAP = 6; // thin seam between panels, like the internal layout manager
+const GAP = 2; // hairline seam between panels
+
 
 /** Column/row assignment for the BUILD pattern: 1 → CENTER half-width; 2 →
  *  under it; 3 → the pair becomes LEFT half and the new panel takes the
  *  RIGHT half (together they fill the screen); 4 → under the right; then
  *  alternate. splitX is user-draggable via window resize (shared edge). */
 let splitFrac = 0.5;
+const rowFrac = [0.5, 0.5]; // per-column horizontal divider (2-row columns)
 const seat = new WeakMap<BrowserWindow, { col: number; row: number }>();
 
 function assign(live: BrowserWindow[]): Array<{ col: number; row: number }> {
@@ -81,9 +83,34 @@ function applyBounds(live: BrowserWindow[]): void {
       ? Math.round(area.width / 2)
       : col === 0 ? (splitX - area.x - GAP) : (area.x + area.width - splitX - GAP);
     const rows = Math.max(1, colCount[col]);
-    const rowH = Math.round((area.height - GAP * (rows - 1)) / rows);
-    w.setBounds({ x, y: area.y + row * (rowH + GAP), width, height: rowH });
+    let y = area.y, height = area.height;
+    if (rows === 2) {
+      const topH = Math.round((area.height - GAP) * rowFrac[col]);
+      if (row === 0) { height = topH; }
+      else { y = area.y + topH + GAP; height = area.height - topH - GAP; }
+    } else if (rows > 2) {
+      const rowH = Math.round((area.height - GAP * (rows - 1)) / rows);
+      y = area.y + row * (rowH + GAP); height = rowH;
+    }
+    w.setBounds({ x, y, width, height });
   });
+  broadcastStack(live.length);
+}
+
+// The top-of-screen bar (the in-app "dropdown"): reuse the desktop-layout bar
+// whenever ANY panel is up — Close there tears the stack down (app-reset).
+let lastBroadcast = -1;
+function broadcastStack(count: number): void {
+  const state = count > 0 ? 1 : 0;
+  if (state === lastBroadcast) return;
+  lastBroadcast = state;
+  const { webContents } = require("electron") as typeof import("electron");
+  for (const wc of webContents.getAllWebContents()) {
+    try {
+      const url = wc.getURL();
+      if (!wc.isDestroyed() && /home\.html(?!\?solo|\?section)/.test(url)) wc.send("desktop-layout-changed", state ? "Apps" : null);
+    } catch { /* teardown */ }
+  }
 }
 
 function retile(): void {
@@ -105,6 +132,9 @@ function watchResize(win: BrowserWindow): void {
     const b = win.getBounds();
     const edge = s.col === 0 ? b.x + b.width + GAP : b.x - GAP;
     splitFrac = Math.max(0.2, Math.min(0.8, (edge - area.x) / area.width));
+    // Vertical: the panel's new height moves its column's row divider.
+    const topH = s.row === 0 ? b.height : area.height - GAP - b.height;
+    rowFrac[s.col] = Math.max(0.15, Math.min(0.85, topH / (area.height - GAP)));
     applyBounds(live);
   });
 }
@@ -160,6 +190,7 @@ export function openDesktopPanel(spec: PanelSpec): BrowserWindow {
 export function closeAllDesktopPanels(): void {
   for (const w of [...stack]) { try { if (!w.isDestroyed()) w.close(); } catch { /* gone */ } }
   stack.length = 0;
+  broadcastStack(0);
 }
 
 const preExpand = new WeakMap<BrowserWindow, Electron.Rectangle>();

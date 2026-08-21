@@ -113,6 +113,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // clears its panels + returns home separately (app-reset:renderer).
   ipcMain.handle("app-reset", () => {
     try { closeAllDesktopLayouts(); } catch { /* nothing to close */ }
+    try { require("./desktop-panels.js").closeAllDesktopPanels(); } catch { /* none open */ }
     setRailCollapsed(false);
     const win = getMainWindowRef();
     if (win && !win.isDestroyed()) {
