@@ -2888,7 +2888,7 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       // The HOUSE DEFAULTS (the glyphh launcher set) join the org's own rows —
@@ -2904,10 +2904,11 @@ async function init(): Promise<void> {
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);
-      // NATIVE rows draw their OS file icon (same as the Apps page) — the
-      // cache fill re-renders the wall, so "Claude" is the Claude icon, not
-      // a lettered tile.
-      void primeNativeIcons(appsAll, () => renderPages());
+      // NATIVE rows draw their OS file icon (same as the Apps page). The tile
+      // BAKES its iconUrl at build time (appTileOf → appIconUrl), so the cache
+      // must be warm BEFORE the tiles are built — a post-hoc re-render would
+      // redraw the same stale tiles.
+      await primeNativeIcons(appsAll, () => {}).catch(() => { /* lettered fallback */ });
       appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
