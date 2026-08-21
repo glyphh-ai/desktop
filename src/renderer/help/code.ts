@@ -4868,7 +4868,9 @@ export function initCode(): void {
   // screen. The rail's +, Home, and the GLYPHH tile all empty the current
   // thread and keep the agent exactly where it is (docked, hosted, or full),
   // the same as the agent header's own + button.
-  el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
+  // The rail's New session button goes through the SAME gate as every other
+  // agent entry — a standalone desktop window, never in-app.
+  el("code-new-chat")?.addEventListener("click", () => (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.());
   // New session = a NEW standalone agent window on the desktop (never
   // in-app). Solo agent windows keep the in-place behavior for themselves.
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = () => {
