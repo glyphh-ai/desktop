@@ -19359,3 +19359,17 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
 #platform-rail-head { padding: 14px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
 #platform-brand { display: block; height: 22px; width: auto; padding: 0 6px; object-fit: contain; }
 body.platform-rail-collapsed #platform-brand { display: none; }
+
+/* Collapsed rail: the expand toggle floats JUST OUTSIDE the rail's right
+   edge (rail is 54px wide collapsed). */
+body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
+  position: fixed !important;
+  left: 60px; top: 6px; z-index: 60;
+  width: 26px; height: 26px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+/* Collapsed rail: page content drops below the floating expand toggle so
+   panel titles never touch it. */
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-panels { padding-top: 44px; }
