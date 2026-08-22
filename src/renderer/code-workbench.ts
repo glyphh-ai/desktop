@@ -2754,8 +2754,9 @@ async function init(): Promise<void> {
             if (!key || onWall.has(key)) continue;
             const band = wallBands[wallBands.length - 1];
             if (!band) break;
-            band.push(makeTileEntry(layoutTileOf(row)));
-            shifted = true;
+            // Layout tiles retired (2026-08-22): never re-seeded (this line
+            // leaked Dev/test layout tiles back onto the wall).
+            void row;
           }
         }
         // APPS join and leave the wall the same way — an app the user adds

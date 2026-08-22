@@ -19,7 +19,6 @@
 import type { OrgApp } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client.js";
 import { appCache } from "./glyphh-client.js";
-import { syncExecutionHomes } from "./glyphh-app-services.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
 export interface OrgAppRow {
@@ -186,10 +185,8 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     // recents reference it — normalize its archetype, and pin it first.
     // Dropping it in favor of a synthetic row orphans those references (cells
     // render raw UUIDs and the picker loses the app).
-    // Reconcile the ONE-execution-home rule on every server read (this is the
-    // apps-changed refresh path): an app flipped to `regional` disarms its
-    // local cron + worker here; flipped back to `local`, it re-arms.
-    syncExecutionHomes(mineRows);
+    // (Execution-home reconciliation removed: nothing runs locally anymore —
+    // the cloud runtime owns every app's worker and schedules.)
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };

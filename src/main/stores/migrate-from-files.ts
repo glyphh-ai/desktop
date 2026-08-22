@@ -39,10 +39,6 @@ const V2_STRANDED_KEYS = [
   "workingDirDefault",
   "workingDirRecents",
   "recents",
-  // home-ipc.ts + local-mcp-server.ts
-  "localMcpEnabled",
-  "localMcpPort",
-  "localMcpTokens",
   // mcp-manager.ts
   "mcpServers",
   "mcpToolOverrides",

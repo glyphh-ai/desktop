@@ -215,7 +215,7 @@ declare global {
       onPanelAppsChanged: (callback: () => void) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
-      pickWorkingDir: (opts?: { asDefault?: boolean }) => Promise<string | null>;
+      pickWorkingDir: (opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => Promise<string | null>;
       setWorkingDir: (dir: string) => Promise<string>;
       gitInfo: (root: string) => Promise<{ isRepo: boolean; branch?: string; defaultBranch?: string }>;
       getWorkingDirRecents: () => Promise<string[]>;
@@ -356,13 +356,8 @@ declare global {
       getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
       // Remote relay
 
-      // Local MCP server (127.0.0.1)
-      localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
-      localMcpStatus: () => Promise<{ running: boolean; port: number }>;
-      localMcpSetPort: (port: number) => Promise<{ ok: boolean; error?: string }>;
-      localMcpTokensList: () => Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>;
-      localMcpTokensCreate: (label: string) => Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>;
-      localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
+      // (Local MCP server removed — the desktop hosts no local runtime/MCP
+      // surface; there is only the cloud rrotor.)
 
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
 

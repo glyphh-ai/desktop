@@ -1,10 +1,8 @@
 /**
- * Per-webContents capability grants for Glyphh apps. Both surfaces of an app —
- * the visible UI window and the hidden worker — get an entry here when they
- * start; the "glyphh-app:call" IPC handler consults it on every capability
- * call. Kept in its own module so glyphh-app-host.ts (IPC handler) and
- * glyphh-app-worker.ts (worker windows) can share it without importing each
- * other.
+ * Per-webContents capability grants for Glyphh apps. An app's visible UI
+ * window/preview gets an entry here when it starts; the "glyphh-app:call"
+ * IPC handler consults it on every capability call. (Hidden local worker
+ * windows are gone — app workers run on the cloud runtime.)
  */
 
 export interface AppGrant {

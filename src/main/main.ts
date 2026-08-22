@@ -65,9 +65,6 @@ import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncB
 import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
 import { startMcpOAuthRefresh, stopMcpOAuthRefresh } from "./mcp-oauth-refresh";
-import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
-import { stopAllAppWorkers } from "./glyphh-app-worker";
-import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
 import { installAttachRunHandlers } from "./attach-run";
@@ -296,10 +293,8 @@ async function boot() {
   // server-side (connector tools + custom MCP connections).
   mcpManager = new McpManager();
 
-  // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
-  // LLMs. The cloud relay that let external callers reach in was removed; this
-  // is the only remaining MCP surface, and it shares the handler registry.
-  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
+  // The local MCP server (127.0.0.1) is gone — the desktop hosts no local
+  // runtime/MCP surface. There is only the cloud rrotor.
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
@@ -1285,9 +1280,6 @@ function cleanupAll(backstopMs = 4000) {
     ["agentScheduler", () => stopAgentScheduler()],
     ["connectors", () => connectorManager?.cleanup()],
     ["drips", () => dripManager?.cleanup()],
-    ["localMcpServer", () => stopLocalMcpServer()],
-    ["appWorkers", () => stopAllAppWorkers()],
-    ["schedules", () => stopAllSchedules()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],
   ];

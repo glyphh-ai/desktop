@@ -18,10 +18,11 @@
  * manifest's capability list per-window — an app can never call a capability
  * it didn't declare at install time.
  *
- * v2 adds the headless side: a `worker` script (hidden sandboxed window, see
- * glyphh-app-worker.ts) whose named handlers back MCP tools and cron firings,
- * plus host services (per-app SQLite, cron, notifications — see
- * glyphh-app-services.ts).
+ * v2 adds the headless side: a `worker` script whose named handlers back MCP
+ * tools and cron firings. Workers NEVER run on this machine — every handler
+ * call travels to the cloud runtime (glyphh-app-remote-worker.ts). Host
+ * services for panels (per-app SQLite, notifications, connectors) live in
+ * glyphh-app-services.ts.
  *
  * Capabilities:
  *   contacts.search { query }        → [{ name, value }]           (macOS)
@@ -45,7 +46,6 @@ import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import { invokeRegionalAppHandler } from "./glyphh-app-remote-worker.js";
 import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
-import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
 import { lintRemoteAssets } from "@glyphh/sdk";
 import {
@@ -290,24 +290,9 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
-  // (Re)install: kill any running worker so the next invoke runs the new
-  // code, then warm-start it so the app can (re-)register its cron schedules
-  // immediately — without this, a freshly deployed background app would sit
-  // dead until something else invoked it. NOT when the app's execution home
-  // is regional: the pod runs the worker, this machine stands down (a fresh
-  // row defaults to "local", so first installs always warm-start).
-  stopAppWorker(manifest.slug);
-  const regional = (await findAppRow(manifest.slug).catch(() => undefined))?.executionHome === "regional";
-  if (manifest.worker && !regional) {
-    void ensureAppWorker({
-      slug: manifest.slug,
-      name: manifest.name,
-      appDir: dir,
-      workerFile: manifest.worker,
-      capabilities: manifest.capabilities,
-      connectors: manifest.connectors ?? [],
-    }).catch((err) => console.error(`[glyphh-app] worker warm-start "${manifest.slug}" failed:`, err instanceof Error ? err.message : err));
-  }
+  // Workers never run on this machine anymore — the cloud runtime owns every
+  // app's worker and schedules (apps never run locally), so a (re)install has
+  // nothing to warm-start here.
   return { ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [] };
 }
 
@@ -538,27 +523,6 @@ interface AppRow {
   launchConfig?: { capabilities?: string[]; connectors?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
 }
 
-/** Does this row's worker run on the org's regional pod (not this machine)? */
-function isRegionalRow(row: AppRow): boolean {
-  return row.executionHome === "regional";
-}
-
-/** Saved-app row → the spec needed to run its worker (null if it has none). */
-function workerSpecFromRow(row: AppRow): AppWorkerSpec | null {
-  const workerFile = row.launchConfig?.worker;
-  const entryPath = String(row.execPath || "");
-  if (!workerFile || !entryPath) return null;
-  return {
-    slug: row.slug,
-    name: row.name,
-    appDir: path.dirname(entryPath),
-    workerFile,
-    capabilities: (row.launchConfig?.capabilities || []).filter((c) => KNOWN_CAPABILITIES.has(c)),
-    connectors: row.launchConfig?.connectors || [],
-    executionHome: isRegionalRow(row) ? "regional" : "local",
-  };
-}
-
 async function findAppRow(slug: string): Promise<AppRow | undefined> {
   const key = String(slug || "").trim().toLowerCase();
   // The shared row types launchConfig loosely; AppRow narrows it to the
@@ -602,16 +566,11 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
   if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
 
   if (tool.handler) {
-    // ONE execution home: a regional app's worker lives on the org's pod, so
-    // the handler runs THERE — same session identity (the user's own bearer),
-    // same error shapes back (glyphh-app-remote-worker maps the pod's typed
-    // failures onto the local ones), so the caller can't tell the difference.
-    if (isRegionalRow(app)) {
-      return invokeRegionalAppHandler(app.slug, tool.handler, args || {});
-    }
-    const spec = workerSpecFromRow(app);
-    if (!spec) throw new Error(`tool "${toolName}" needs a worker but the app has none — re-install it`);
-    return invokeAppWorkerHandler(spec, tool.handler, args || {});
+    // Apps never run locally: EVERY worker handler runs on the cloud runtime
+    // — same session identity (the user's own bearer), same error shapes back
+    // (glyphh-app-remote-worker maps the pod's typed failures onto the shapes
+    // the old local worker path produced).
+    return invokeRegionalAppHandler(app.slug, tool.handler, args || {});
   }
 
   const declared = app.launchConfig?.capabilities || [];
@@ -708,22 +667,12 @@ export function registerGlyphhAppHost(): void {
   hardenAppSession(session.fromPartition("persist:yo"));
 
   initAppServices({
-    resolveApp: async (slug) => {
-      const row = await findAppRow(slug);
-      return row ? workerSpecFromRow(row) : null;
-    },
     openApp: (slug) => {
       // Workbench panel beside the agent — OS app windows are retired.
       // (Dynamic import: app-resolver imports this module for isGlyphhAppRow.)
       void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
     },
   });
-
-  // Pull the org's apps once at startup so execution homes reconcile EARLY
-  // (fetchOrgApps → syncExecutionHomes): a schedule armed above for an app
-  // whose home moved to the pod disarms before it can fire. Best-effort —
-  // offline, fireSchedule's per-fire home check still guards the window.
-  void fetchOrgApps().catch(() => {});
 
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
     const grant = getAppGrant(event.sender.id);

@@ -190,8 +190,9 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
           : {}),
       });
       invalidateOrgApps();
-      // Re-read NOW so a home flip takes effect immediately (fetchOrgApps →
-      // syncExecutionHomes disarms/re-arms), not on the next incidental read.
+      // Re-read NOW so the fresh row lands immediately, not on the next
+      // incidental read. (Nothing arms/disarms locally anymore — the cloud
+      // runtime owns every app's worker and schedules.)
       void fetchOrgApps().catch(() => {});
       return { ok: true, app };
     }

@@ -132,14 +132,6 @@
                       <span class="toggle-desc">Automatically download and install updates</span>
                     </div>
                   </label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="toggle-background-mode" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Keep running in the background</span>
-                      <span class="toggle-desc">Closing the window keeps Glyphh in the menu bar so scheduled agents, loops, and skills keep running. Adds a tray icon and launches at login.</span>
-                    </div>
-                  </label>
                 </div>
                 <div id="settings-relaunch" class="settings-relaunch hidden">
                   <span>Restart required for changes to take effect</span>
@@ -1008,7 +1000,6 @@
                 </div>
               </div>
 
-              <!-- Advanced: Services, Relaunch -->
               <div class="settings-panel" data-sub="drips">
                 <h2>Drips</h2>
                 <p class="section-desc">Celebration effects — play them by hand or from an agent run.</p>
@@ -1063,24 +1054,29 @@
           </div>
               </div>
 
-              <!-- Desktop — is the user's Glyphh desktop ATTACHED (outbound
-                   socket live)? Ported from the platform's Settings → Desktop.
-                   Idiom matches the other panels: h2 + section-desc + a row
-                   using the connection-status-dot pattern. -->
+              <!-- Desktop — the DIRECTORY GRANT: the one local folder this
+                   machine shares with the user's Glyphh apps (the cloud runtime
+                   reaches it through the desktop). Electron-only; on web the
+                   nav aliases this sub to General (navigation.ts). -->
               <div class="settings-panel" data-sub="desktop">
                 <h2>Desktop</h2>
-                <p class="section-desc">Your Glyphh desktop attaches automatically while the app is open and signed in — that link is what lets the web reach your machine (panels, files, local tools).</p>
+                <p class="section-desc">The folder this computer shares with your Glyphh apps. Apps run in the cloud; this is the one place on this machine they can reach.</p>
                 <div class="settings-form">
-                  <div class="desktop-attach-row">
-                    <span class="connection-status-dot disconnected" id="desktop-attach-dot" aria-hidden="true"></span>
-                    <div class="desktop-attach-text">
-                      <div class="desktop-attach-title" id="desktop-attach-title">Checking…</div>
-                      <div class="desktop-attach-sub" id="desktop-attach-sub">Looking for your machine…</div>
-                    </div>
-                    <!-- No downloads page yet (the desktop installer ships with the
-                         directory-grant agent) — land on the site, not a 404. -->
-                    <a class="action-btn hidden" id="desktop-attach-get" href="https://glyphh.ai" target="_blank" rel="noopener">Get the app</a>
+                  <label class="settings-label">Shared folder</label>
+                  <div class="settings-inline">
+                    <input id="desktop-grant-path" class="settings-input" readonly placeholder="No folder shared yet" spellcheck="false" />
+                    <button id="desktop-grant-change" class="action-btn" type="button">Change</button>
                   </div>
+                </div>
+                <div class="settings-toggles" style="margin-top:24px;">
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="toggle-background-mode" />
+                    <span class="toggle-switch"></span>
+                    <div class="toggle-info">
+                      <span class="toggle-title">Run in background</span>
+                      <span class="toggle-desc">Closing the window keeps Glyphh in the menu bar so your apps can keep reaching the shared folder. Adds a tray icon and launches at login.</span>
+                    </div>
+                  </label>
                 </div>
               </div>
 

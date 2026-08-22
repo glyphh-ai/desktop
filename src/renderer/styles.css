@@ -1370,17 +1370,8 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   line-height: 1.55;
   color: var(--text-2);
 }
-.welcome-pick-btn {
-  margin-top: 6px;
-  padding: 9px 18px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 13.5px;
-  cursor: pointer;
-}
-.welcome-pick-btn:hover { border-color: var(--accent); }
+.welcome-pick-btn { width: 100%; justify-content: center; }
+
 .welcome-picked-path {
   max-width: 100%;
   overflow: hidden;
@@ -1402,19 +1393,8 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   cursor: pointer;
 }
 .welcome-bg-row input { margin-top: 2px; accent-color: var(--accent); }
-.welcome-continue-btn {
-  margin-top: 8px;
-  width: 100%;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.welcome-continue-btn:hover { opacity: 0.92; }
+.welcome-continue-btn { width: 100%; justify-content: center; margin-top: 14px; }
+
 .welcome-continue-btn:disabled { opacity: 0.45; cursor: default; }
 
 /* While the account is locked the overlay covers everything below the 38px
