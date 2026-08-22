@@ -20,9 +20,6 @@ export { loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel };
 // toggles) owns its own save.
 
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
-const settingsBrowserHome = document.getElementById("settings-browser-home") as HTMLSelectElement;
-const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
-const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
 
 // MCP is now its own top-level dashboard tab (data-section="mcp"). The relay
 // refreshers live inside initSettings' scope, so initSettings assigns this hook
@@ -75,34 +72,8 @@ function initSettings() {
   initOrg();
   initMembers();
   initWorkspaces();
-  // Compaction guidance saves ITSELF — debounced while typing, immediately on
-  // blur — with the standard "Saved" flash. No Save button (General's rule:
-  // every control owns its own save).
-  {
-    const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-    const status = document.getElementById("glyphh-agent-compact-status");
-    let timer = 0;
-    const save = (): void => {
-      if (!wcp) return;
-      const value = wcp.value.trim();
-      // The loader stamps the stored value into data-saved — an untouched (or
-      // reverted) field neither writes nor flashes.
-      if (value === (wcp.dataset.saved ?? "")) return;
-      wcp.dataset.saved = value;
-      void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", value)).then(() => {
-        if (status) {
-          status.textContent = "Saved";
-          status.className = "set-save-state success";
-          setTimeout(() => { status.textContent = ""; }, 1600);
-        }
-      });
-    };
-    wcp?.addEventListener("input", () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(save, 700);
-    });
-    wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
-  }
+  // Compaction guidance retired (2026-08-22) — it advised the agent's context
+  // compaction; the agent is gone.
 
   // The General tab's Guardrails group folds — same disclosure grammar as
   // Billing's Auto top-up / Invoices (aria-expanded bar + hidden body).
@@ -314,30 +285,8 @@ function initSettings() {
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
 
-  // Browser homepage
-  settingsBrowserHome.addEventListener("change", () => {
-    const val = settingsBrowserHome.value;
-    browserHomeCustomRow.classList.toggle("hidden", val !== "custom");
-    if (val !== "custom") {
-      window.glyphh.setPreference("browserHomepage", val);
-    }
-  });
-  settingsBrowserHomeUrl.addEventListener("change", () => {
-    const url = settingsBrowserHomeUrl.value.trim();
-    if (url) {
-      window.glyphh.setPreference("browserHomepage", "custom");
-      window.glyphh.setPreference("browserHomepageUrl", url);
-    }
-  });
-
-  // Show the address bar on app panels by default (roams to the server, since
-  // it's not device-local). The workbench listens for the change to apply it
-  // to newly-opened panels live.
-  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
-  appUrlBar?.addEventListener("change", () => {
-    void window.glyphh.setPreference("showAppUrlBar", appUrlBar.checked);
-    document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
-  });
+  // Browser homepage + app-panel URL bar retired (2026-08-22) — the Browser
+  // tool died with the dev-tools cut.
 
   // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
   // drives the caret panel), persisted on release.
@@ -488,13 +437,6 @@ async function loadSettings() {
   void loadMembers();
   // Workspaces hides its own nav item unless the caller is an org admin.
   void loadWorkspacesPanel();
-  // Glyphh: standing compaction guidance + training capture
-  const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-  if (wcp) {
-    wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
-    // Baseline for the auto-save (initSettings): unchanged content never writes.
-    wcp.dataset.saved = wcp.value.trim();
-  }
 
   // The Account header's ORG + PLAN chips. Name, email, role and the avatar
   // come from the server profile via loadProfile() — one painter each, so the
@@ -510,15 +452,6 @@ async function loadSettings() {
   const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
   mcpSectionWrap.classList.remove("hidden");
 
-  // Browser homepage
-  const homePref = await window.glyphh.getPreference("browserHomepage", "claude") as string;
-  settingsBrowserHome.value = homePref === "custom" ? "custom" : homePref;
-  browserHomeCustomRow.classList.toggle("hidden", homePref !== "custom");
-  if (homePref === "custom") {
-    settingsBrowserHomeUrl.value = await window.glyphh.getPreference("browserHomepageUrl", "") as string;
-  }
-  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
-  if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 
   const echoSz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
   if (echoSz) {
