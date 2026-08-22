@@ -105,8 +105,13 @@ const SHELL_ROUTES = new Set([
   '/auth/callback', '/auth/callback/',
   '/auth/device', '/auth/device/',
 ]);
-/** A shell route BELOW the root needs <base href="/"> for its relative assets. */
-const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !== '/login';
+/** A shell route BELOW the root needs <base href="/"> for its relative assets.
+ *  /settings/mcp is two levels deep — without <base>, home.html's relative
+ *  src="home.js" resolves to /settings/home.js (404) and the consent page
+ *  never boots (stuck on the wb-booting veil, blank). */
+const isNestedShellRoute = (p) =>
+  (SHELL_ROUTES.has(p) && p !== '/' && p !== '/login')
+  || p === '/settings/mcp' || p === '/settings/mcp/';
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
