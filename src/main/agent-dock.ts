@@ -46,6 +46,7 @@ interface TargetInfo {
 const BAND_HEIGHT = 760;
 
 let helper: ChildProcess | null = null;
+let helperRespawns = 0;
 let dockWin: BrowserWindow | null = null;
 let enabled = false;
 let lastTarget: TargetInfo | null = null;
@@ -154,7 +155,19 @@ function startHelper(): void {
   helper.stderr?.on("data", (d: Buffer) => console.error("[agent-dock] helper:", d.toString().trim()));
   helper.on("exit", (code) => {
     helper = null;
-    if (enabled) console.error(`[agent-dock] helper exited (${code})`);
+    if (!enabled) return;
+    // The helper died while attach is ON (crash, or its binary was rebuilt
+    // out from under it) — attach must not silently stay dead until an app
+    // restart. Respawn with backoff; give up after a few tries.
+    console.error(`[agent-dock] helper exited (${code}) — respawning`);
+    helperRespawns += 1;
+    if (helperRespawns > 5) {
+      console.error("[agent-dock] helper respawned too many times — attach disabled (⌘⇧G to retry)");
+      enabled = false;
+      helperRespawns = 0;
+      return;
+    }
+    setTimeout(() => { if (enabled && !helper) startHelper(); }, 1000 * helperRespawns);
   });
 }
 
@@ -170,6 +183,7 @@ function setEnabled(on: boolean): void {
   enabled = on;
   console.log(`[agent-dock] attach mode ${on ? "ON" : "off"}`);
   if (on) {
+    helperRespawns = 0;
     ensureDockWindow(); // page boots while the helper finds a target
     startHelper();
   } else {
