@@ -4830,6 +4830,19 @@ async function init(): Promise<void> {
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
+        // A DEPLOYED Glyphh app is a real website at https://<slug>.glyphh.app —
+        // its tile opens that URL in the BROWSER (desktop: the OS browser via
+        // openExternal; web: a new tab), the same road every external link takes.
+        // Workbench apps and marketplace installs render as chromeless panels
+        // (his rule, 2026-08-20) and keep the card; an app with no deployment
+        // has no url and keeps its current behavior too.
+        if (t.glyphh && t.url && !t.workbench && /^https?:\/\//i.test(t.url)) {
+          const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+          const ext = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
+          if (!isWeb && ext) ext(t.url);
+          else window.open(t.url, "_blank", "noopener");
+          return;
+        }
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
         const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
