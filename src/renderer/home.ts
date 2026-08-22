@@ -373,8 +373,20 @@ void (async () => {
 
 /** localStorage key holding the full consent URL (path+query) to return to
  *  after a signed-out visitor logs in. web-boot.js reads + clears it post-login
- *  and location.replace()s back here with the params intact. */
+ *  and location.replace()s back here with the params intact.
+ *  MUST be localStorage, not sessionStorage: magic-link logins complete in a
+ *  NEW tab, and sessionStorage is per-tab — the stash vanished and the user
+ *  landed on /home instead of back on consent. Stored as JSON {t, ts} so the
+ *  reader can expire a stale stash. */
 const MCP_CONSENT_RETURN_KEY = "glyphhMcpConsentReturn";
+
+/** Stash the current consent URL for the post-login return hook. */
+function stashMcpConsentReturn(): void {
+  try {
+    const t = window.location.pathname + window.location.search;
+    localStorage.setItem(MCP_CONSENT_RETURN_KEY, JSON.stringify({ t, ts: Date.now() }));
+  } catch { /* private mode — the return hook simply won't fire */ }
+}
 
 interface McpConsentClient {
   clientId: string;
@@ -462,10 +474,7 @@ async function renderMcpConsent(params: URLSearchParams): Promise<void> {
     token = null;
   }
   if (!token) {
-    try {
-      const full = window.location.pathname + window.location.search;
-      sessionStorage.setItem(MCP_CONSENT_RETURN_KEY, full);
-    } catch { /* private mode — the return hook simply won't fire */ }
+    stashMcpConsentReturn();
     // '/' is the login shell; web-boot's post-login hand-off (goHome) checks the
     // stash and location.replace()s back to this exact URL with params intact.
     window.location.replace("/");
@@ -494,9 +503,7 @@ async function renderMcpConsent(params: URLSearchParams): Promise<void> {
     });
     if (res.status === 401) {
       // Session died between the cookie check and here — re-run the signed-out path.
-      try {
-        sessionStorage.setItem(MCP_CONSENT_RETURN_KEY, window.location.pathname + window.location.search);
-      } catch { /* */ }
+      stashMcpConsentReturn();
       window.location.replace("/");
       return;
     }

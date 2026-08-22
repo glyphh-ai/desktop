@@ -231,8 +231,12 @@ const server = http.createServer(async (req, res) => {
     // branches on the pathname client-side to render the consent card. Like the
     // other shell routes a signed-in phone gets the mobile shell (phoneWantsApp).
     const isMcpConsentRoute = p === '/settings/mcp' || p === '/settings/mcp/';
-    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
-      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute || isMcpConsentRoute);
+    // The consent screen must NEVER be swapped for the mobile shell — the
+    // consent renderer lives in home.html's module; the mobile app has no
+    // /settings/mcp surface, so a phone would land in the app with the OAuth
+    // params silently dropped.
+    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isMcpConsentRoute
+      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
       p = '/mobile.html';
@@ -285,10 +289,17 @@ const server = http.createServer(async (req, res) => {
       // The `glyphh_force_desktop` localStorage flag (set by the mobile app's
       // Appearance → "Desktop site" toggle) is the escape hatch: a tablet that
       // opted into the full desktop layout must NOT be bounced back to /m.
+      // /settings/mcp is exempt: the OAuth consent flow must finish on this
+      // page — bouncing a tablet/phone to /m mid-flow drops the PKCE params.
+      // A pending consent-return stash also holds the redirect: a phone with a
+      // live cookie but dead token bounces consent→"/" to re-auth, and /m
+      // would strand the flow in the mobile app before the resume hook runs.
       const touchRedirect =
         "<script>try{if(matchMedia('(pointer: coarse)').matches"
         + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0"
-        + "&&localStorage.getItem('glyphh_force_desktop')!=='1')"
+        + "&&localStorage.getItem('glyphh_force_desktop')!=='1'"
+        + "&&location.pathname.indexOf('/settings/mcp')!==0"
+        + "&&!localStorage.getItem('glyphhMcpConsentReturn'))"
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.

@@ -69,10 +69,20 @@ const MCP_CONSENT_RETURN_KEY = 'glyphhMcpConsentReturn';
  *  the consent URL (path+query intact) now that they're authed. Consumes the stash
  *  so a later normal navigation doesn't re-trigger it. Returns true if it redirected. */
 function resumeMcpConsent() {
+  // localStorage, NOT sessionStorage: magic-link logins finish in a NEW tab,
+  // and a per-tab stash meant the return never fired (user landed on /home).
   let target = null;
   try {
-    target = sessionStorage.getItem(MCP_CONSENT_RETURN_KEY);
-    if (target) sessionStorage.removeItem(MCP_CONSENT_RETURN_KEY);
+    const raw = localStorage.getItem(MCP_CONSENT_RETURN_KEY);
+    if (raw) {
+      localStorage.removeItem(MCP_CONSENT_RETURN_KEY);
+      try {
+        const parsed = JSON.parse(raw);
+        // Expire a stale stash (>30 min) — an abandoned consent attempt must
+        // not ambush an unrelated login days later.
+        if (parsed && parsed.t && Date.now() - (parsed.ts || 0) < 30 * 60 * 1000) target = parsed.t;
+      } catch { target = raw; /* pre-JSON stash from an older tab */ }
+    }
   } catch { target = null; }
   // Only honor an in-app /settings/mcp path — never an absolute/foreign URL.
   if (target && /^\/settings\/mcp(?:[/?]|$)/.test(target)) {
