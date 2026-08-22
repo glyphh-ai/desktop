@@ -514,6 +514,12 @@ export function buildContract(client, deps) {
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
+    // Rename a personal connection — same envelope the desktop IPC returns
+    // (the fabricated-Proxy fallback returned undefined and crashed the panel).
+    connectionRename: async (id, label) => {
+      try { return { ok: true, connection: await client.connections.renamePersonalConnection(id, label) }; }
+      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    },
     // The connector OAuth flow, WEB-NATIVE (his rule, 2026-08-20: same tooling
     // as the desktop minus fs): Pipedream Connect is a browser flow by nature —
     // open the popup FIRST (inside the click's gesture budget, before any
