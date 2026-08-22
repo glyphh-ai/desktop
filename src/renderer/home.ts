@@ -138,7 +138,7 @@ void (async () => {
           return b;
         };
         surf.appendChild(mkSurf("Platform", "platform", "/platform", true));
-        surf.appendChild(mkSurf("Builder", "builder", "/home", false));
+        surf.appendChild(mkSurf("Launch Pad", "builder", "/home", false));
         head.appendChild(surf);
         return head;
       };
@@ -272,30 +272,23 @@ void (async () => {
       return;
     }
   } catch { /* fall through */ }
-  // Every restart lands on the COMMAND CENTER — the bare wall, no agent (his
-  // rule, 2026-08-18). initCode's boot raises it (openCommandCenter); calling
-  // gotoSection("agent") here would open the agent card via
-  // openSectionInWorkbench("agent") → openChat, which is exactly the
-  // agent-on-boot he keeps seeing. (?section / ?solo panels above are system
-  // windows, not normal boots.)
-  // Lift the boot veil only once the WALL is actually up — its bare first
-  // paint was the flash between splash and Home.
-  let veilTries = 0;
-  let settled = 0;
-  const lift = (): void => {
-    // The launcher is UP when a page grid has rendered its icons. Wait until
-    // it is present AND stable for ~10 frames so the first visible frame is
-    // the settled command center, then lift.
-    const wall = document.querySelector(".echo-pages .echo-page-grid");
-    const up = !!wall && wall.getClientRects().length > 0;
-    settled = up ? settled + 1 : 0;
-    if (settled >= 10 || veilTries++ > 360) {
-      document.body.classList.remove("wb-booting");
-      return;
-    }
-    requestAnimationFrame(lift);
-  };
-  lift();
+  // LAUNCH PAD (decided 2026-08-22, PLAN cut #1): the default boot — web /home
+  // AND the desktop app — opens the org's Launch Pad: the full-page shell
+  // landing on Apps (open in browser, install from marketplace). The command
+  // wall / agent workbench never mounts; building happens in any MCP client.
+  // Same full-bleed treatment as the /platform branch (body.platform-shell
+  // restyles the settings modal into THE page).
+  document.documentElement.setAttribute("data-home-scope", "launchpad");
+  document.body.classList.add("platform-shell");
+  const lpStyle = document.createElement("style");
+  lpStyle.textContent = `
+    [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+    [data-home-scope="launchpad"] #help-overlay { display: none !important; }`;
+  document.head.appendChild(lpStyle);
+  // This branch owns the boot veil — the wall-settle loop that used to lift it
+  // died with the command wall.
+  document.body.classList.remove("wb-booting");
+  openSettingsModal("apps");
 })();
 
 // ── Surface tabs (web target only) ──────────────────────────────────────────
@@ -331,7 +324,7 @@ void (() => {
     return b;
   };
   wrap.appendChild(mk("Platform", "platform", "/platform", onPlatform));
-  wrap.appendChild(mk("Builder", "builder", "/home", !onPlatform));
+  wrap.appendChild(mk("Launch Pad", "builder", "/home", !onPlatform));
   document.body.appendChild(wrap);
 })();
 
