@@ -19242,6 +19242,109 @@ body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: c
 .surface-tab:hover { color: var(--text); background: var(--active-bg); }
 .surface-tab.active { color: var(--text-bright); background: var(--active-bg); }
 
+/* ── MCP OAuth consent screen (web /settings/mcp) ────────────────────────────
+   The "connect Claude to Glyphh" step. home.ts's /settings/mcp branch renders a
+   centered consent card into .mcp-consent-root over the (hidden) workbench. Web
+   only: the data-home-scope="mcp-consent" attribute is set on that route alone. */
+.mcp-consent-root {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  overflow: auto;
+}
+.mcp-consent-card {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 32px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px var(--shadow);
+}
+.mcp-consent-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.mcp-consent-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+.mcp-consent-title strong { font-weight: 700; color: var(--text-bright); }
+.mcp-consent-lede {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.mcp-consent-clienturi {
+  margin-top: -6px;
+  font-size: 0.8125rem;
+  color: var(--text-3);
+  text-decoration: none;
+}
+.mcp-consent-clienturi:hover { color: var(--accent); text-decoration: underline; }
+.mcp-consent-scope {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.mcp-consent-scope-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mcp-consent-scope-desc {
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  color: var(--text-2);
+}
+.mcp-consent-error {
+  margin: 0;
+  width: 100%;
+  font-size: 0.8125rem;
+  color: var(--danger, #dc2626);
+}
+.mcp-consent-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+.mcp-consent-actions .btn { flex: 1 1 0; }
+.mcp-consent-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border-2);
+  border-top-color: var(--accent);
+  animation: mcp-consent-spin 0.8s linear infinite;
+}
+@keyframes mcp-consent-spin { to { transform: rotate(360deg); } }
+.mcp-consent-root.is-busy { cursor: progress; }
+
 /* ── Platform shell (web /platform) ──────────────────────────────────────────
    The settings surface PROMOTED to a full page: home.ts's platform branch sets
    body.platform-shell and opens the EXISTING settings modal — these rules

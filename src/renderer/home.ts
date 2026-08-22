@@ -50,6 +50,17 @@ void (async () => {
   // ?section=<slug> query. When set, this panel is locked to that section.
   try {
     const params = new URLSearchParams(window.location.search);
+    // MCP OAuth CONSENT SCREEN (web-only — app-web's /settings/mcp route serves
+    // home.html; Electron's pathname is a file path so this never matches there).
+    // This is the "connect Claude to Glyphh" step: Claude's server /oauth/authorize
+    // 302-redirects the browser here carrying the PKCE params, and this page
+    // completes the flow (GET /oauth/client/:id to render, POST /oauth/consent to
+    // approve → redirect back to Claude with the code). Self-contained: owns its
+    // own auth handling (the login-first wall in bridge.js does NOT touch this path).
+    if (/^\/settings\/mcp\/?$/.test(window.location.pathname)) {
+      await renderMcpConsent(params);
+      return;
+    }
     // PLATFORM shell (web-only — platform.glyphh.ai's /platform route serves
     // home.html; Electron loads home.html from disk, so this pathname never
     // matches there and the branch is inert on desktop). The workbench/echo
@@ -267,6 +278,8 @@ void (async () => {
 void (() => {
   if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
   if (document.getElementById("surface-tabs")) return;
+  // The MCP consent screen is a standalone flow page — no surface switcher.
+  if (/^\/settings\/mcp\/?$/.test(window.location.pathname)) return;
   const onPlatform = /^\/platform\/?$/.test(window.location.pathname);
   if (onPlatform) return;   // the platform rail hosts the surface buttons
   const wrap = document.createElement("div");
@@ -317,3 +330,266 @@ void (async () => {
   const pending = await window.glyphh.getUpdateStatus?.();
   if (pending?.ready) show(pending.version);
 })();
+
+// ── MCP OAuth CONSENT SCREEN (web-only, /settings/mcp) ──────────────────────
+// The "connect Claude to Glyphh" step. Claude's server /oauth/authorize 302s the
+// browser here with the PKCE params; this page renders a consent card, and on
+// Approve POSTs /oauth/consent → redirects the browser back to Claude with the
+// authorization code. See the early-return branch in the main IIFE above.
+//
+// Envelope: the control plane wraps successes as `{ data: … }` (server
+// http/respond.ts `ok()`), NOT `{ ok, data }` — so we unwrap `.data`.
+
+/** localStorage key holding the full consent URL (path+query) to return to
+ *  after a signed-out visitor logs in. web-boot.js reads + clears it post-login
+ *  and location.replace()s back here with the params intact. */
+const MCP_CONSENT_RETURN_KEY = "glyphhMcpConsentReturn";
+
+interface McpConsentClient {
+  clientId: string;
+  clientName?: string;
+  redirectUris?: string[];
+  logoUri?: string;
+  clientUri?: string;
+}
+
+/** The raw @glyphh/sdk handle the web bridge exposes (window.glyphhSdk). */
+function mcpSdk(): { token(): Promise<string | null> } | null {
+  return (window as unknown as { glyphhSdk?: { token(): Promise<string | null> } }).glyphhSdk ?? null;
+}
+
+/** The API origin the web target boots against (bridge stamps it before us). */
+function mcpApiUrl(): string {
+  const w = window as unknown as { __GLYPHH_API_URL__?: string };
+  return (w.__GLYPHH_API_URL__ || "https://api.glyphh.ai").replace(/\/$/, "");
+}
+
+async function renderMcpConsent(params: URLSearchParams): Promise<void> {
+  document.documentElement.setAttribute("data-home-scope", "mcp-consent");
+  document.title = "Connect to Glyphh";
+  // Hide the workbench chrome + the help overlay — this page owns the viewport.
+  const style = document.createElement("style");
+  style.textContent = `
+    [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+    [data-home-scope="mcp-consent"] #help-overlay { display: none !important; }`;
+  document.head.appendChild(style);
+  // CRITICAL: the boot veil (body.wb-booting) is lifted by the wall-settle loop
+  // in the DEFAULT boot path, which this branch returns before — drop it now or
+  // the page stays blank (opaque booting state forever).
+  document.body.classList.remove("wb-booting");
+
+  // The OAuth params Claude forwarded through /oauth/authorize.
+  const clientId = params.get("client_id") || "";
+  const redirectUri = params.get("redirect_uri") || "";
+  const codeChallenge = params.get("code_challenge") || "";
+  const codeChallengeMethod = params.get("code_challenge_method") || "S256";
+  const state = params.get("state") || "";
+  const scope = params.get("scope") || "mcp";
+  const resource = params.get("resource") || "";
+
+  // Mount a root the CSS scopes to (styles.css ".mcp-consent-root" block).
+  const root = document.createElement("div");
+  root.className = "mcp-consent-root";
+  document.body.appendChild(root);
+
+  const card = document.createElement("div");
+  card.className = "mcp-consent-card";
+  root.appendChild(card);
+
+  const setBusy = (busy: boolean) => root.classList.toggle("is-busy", busy);
+  const el = (tag: string, cls?: string, text?: string): HTMLElement => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+
+  /** A terminal error state — a readable message, never a blank/spinner. */
+  const showError = (title: string, detail: string) => {
+    card.innerHTML = "";
+    card.append(
+      el("h1", "mcp-consent-title", title),
+      el("p", "mcp-consent-lede", detail),
+    );
+    // Offer a way back to Claude if we have a trusted redirect target and it was
+    // the client (not the redirect) that is the problem. When we can't trust the
+    // redirect_uri, only a plain dismiss (close the tab) is safe.
+    setBusy(false);
+  };
+
+  // Spinner while we resolve auth + fetch the client.
+  card.append(el("div", "mcp-consent-spinner"));
+
+  // ── AUTH ──────────────────────────────────────────────────────────────────
+  // Signed-out (no SDK yet / token() throws or is empty): stash THIS full URL and
+  // send the user to the login funnel, returning here (params intact) after login.
+  const sdk = mcpSdk();
+  let token: string | null = null;
+  try {
+    token = sdk ? await sdk.token() : null;
+  } catch {
+    token = null;
+  }
+  if (!token) {
+    try {
+      const full = window.location.pathname + window.location.search;
+      sessionStorage.setItem(MCP_CONSENT_RETURN_KEY, full);
+    } catch { /* private mode — the return hook simply won't fire */ }
+    // '/' is the login shell; web-boot's post-login hand-off (goHome) checks the
+    // stash and location.replace()s back to this exact URL with params intact.
+    window.location.replace("/");
+    return;
+  }
+
+  const api = mcpApiUrl();
+  const authHeader = { Authorization: `Bearer ${token}` };
+
+  // Missing the essentials → nothing to consent to. Don't bounce to a random
+  // redirect; show a readable message.
+  if (!clientId || !redirectUri || !codeChallenge) {
+    showError(
+      "Invalid connection request",
+      "This link is missing information needed to connect. Start again from the app you are connecting.",
+    );
+    return;
+  }
+
+  // ── FETCH the client to render ──────────────────────────────────────────────
+  let client: McpConsentClient | null = null;
+  try {
+    const res = await fetch(`${api}/oauth/client/${encodeURIComponent(clientId)}`, {
+      headers: authHeader,
+      cache: "no-store",
+    });
+    if (res.status === 401) {
+      // Session died between the cookie check and here — re-run the signed-out path.
+      try {
+        sessionStorage.setItem(MCP_CONSENT_RETURN_KEY, window.location.pathname + window.location.search);
+      } catch { /* */ }
+      window.location.replace("/");
+      return;
+    }
+    if (res.status === 404) {
+      showError("Unknown application", "This application is not registered with Glyphh, so it can't be connected.");
+      return;
+    }
+    if (!res.ok) {
+      showError("Couldn’t load this request", `The server returned an error (${res.status}). Please try again.`);
+      return;
+    }
+    // Envelope unwrap: { data: { clientId, clientName, … } }.
+    const body = (await res.json()) as { data?: McpConsentClient } | McpConsentClient;
+    client = (body && typeof body === "object" && "data" in body ? body.data : body) as McpConsentClient;
+  } catch {
+    showError("Couldn’t reach the server", "Check your connection and try again.");
+    return;
+  }
+  if (!client) {
+    showError("Unknown application", "This application is not registered with Glyphh.");
+    return;
+  }
+
+  // ── RENDER the consent card ─────────────────────────────────────────────────
+  const name = (client.clientName || "An application").trim();
+  card.innerHTML = "";
+
+  if (client.logoUri) {
+    const logo = document.createElement("img");
+    logo.className = "mcp-consent-logo";
+    logo.src = client.logoUri;
+    logo.alt = "";
+    logo.referrerPolicy = "no-referrer";
+    logo.addEventListener("error", () => logo.remove());
+    card.appendChild(logo);
+  }
+
+  const title = el("h1", "mcp-consent-title");
+  const strong = el("strong", undefined, name);
+  title.append(strong, document.createTextNode(" wants to access your Glyphh account"));
+  card.appendChild(title);
+
+  if (client.clientUri) {
+    const link = el("a", "mcp-consent-clienturi", client.clientUri.replace(/^https?:\/\//, ""));
+    (link as HTMLAnchorElement).href = client.clientUri;
+    (link as HTMLAnchorElement).target = "_blank";
+    (link as HTMLAnchorElement).rel = "noreferrer noopener";
+    card.appendChild(link);
+  }
+
+  const scopeBox = el("div", "mcp-consent-scope");
+  scopeBox.append(
+    el("div", "mcp-consent-scope-name", "mcp"),
+    el("div", "mcp-consent-scope-desc", "Your Glyphh tools, apps, loops, and connections."),
+  );
+  card.appendChild(scopeBox);
+
+  const err = el("p", "mcp-consent-error");
+  err.style.display = "none";
+  card.appendChild(err);
+
+  const actions = el("div", "mcp-consent-actions");
+  const cancelBtn = el("button", "btn btn-secondary mcp-consent-cancel", "Cancel") as HTMLButtonElement;
+  cancelBtn.type = "button";
+  const approveBtn = el("button", "btn btn-primary mcp-consent-approve", "Approve") as HTMLButtonElement;
+  approveBtn.type = "button";
+  actions.append(cancelBtn, approveBtn);
+  card.appendChild(actions);
+
+  // ── CANCEL → the OAuth deny response back to the client ─────────────────────
+  cancelBtn.addEventListener("click", () => {
+    try {
+      const to = new URL(redirectUri);
+      to.searchParams.set("error", "access_denied");
+      if (state) to.searchParams.set("state", state);
+      window.location.assign(to.toString());
+    } catch {
+      // redirect_uri isn't a valid URL — nothing safe to bounce to; just say so.
+      showError("Connection cancelled", "You declined this connection. You can close this tab.");
+    }
+  });
+
+  // ── APPROVE → mint the code, then hand the browser back to Claude ───────────
+  approveBtn.addEventListener("click", async () => {
+    approveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    approveBtn.textContent = "Connecting…";
+    err.style.display = "none";
+    setBusy(true);
+    try {
+      const res = await fetch(`${api}/oauth/consent`, {
+        method: "POST",
+        headers: { ...authHeader, "content-type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          code_challenge: codeChallenge,
+          code_challenge_method: codeChallengeMethod,
+          state,
+          scope,
+          resource,
+        }),
+      });
+      if (!res.ok) {
+        let msg = `The server returned an error (${res.status}).`;
+        try {
+          const j = (await res.json()) as { error?: { message?: string }; message?: string };
+          msg = j?.error?.message || j?.message || msg;
+        } catch { /* keep the status message */ }
+        throw new Error(msg);
+      }
+      const body = (await res.json()) as { data?: { redirectTo?: string }; redirectTo?: string };
+      const redirectTo = (body && "data" in body ? body.data?.redirectTo : body?.redirectTo) || "";
+      if (!redirectTo) throw new Error("The server did not return a destination.");
+      window.location.assign(redirectTo);
+    } catch (ex) {
+      approveBtn.disabled = false;
+      cancelBtn.disabled = false;
+      approveBtn.textContent = "Approve";
+      setBusy(false);
+      err.textContent = (ex instanceof Error && ex.message) || "Could not complete the connection. Please try again.";
+      err.style.display = "";
+    }
+  });
+
+  setBusy(false);
+}

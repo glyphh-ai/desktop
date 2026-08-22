@@ -60,11 +60,36 @@ function isLoginShell() {
   return !!document.getElementById('onboarding-overlay');
 }
 
+/** localStorage key the MCP consent screen (home.ts /settings/mcp branch) stashes
+ *  the full return URL under when a SIGNED-OUT visitor is bounced to login. After
+ *  sign-in we land them back on that exact URL (params intact) instead of /home. */
+const MCP_CONSENT_RETURN_KEY = 'glyphhMcpConsentReturn';
+
+/** If a signed-out MCP consent visitor was bounced here to log in, return them to
+ *  the consent URL (path+query intact) now that they're authed. Consumes the stash
+ *  so a later normal navigation doesn't re-trigger it. Returns true if it redirected. */
+function resumeMcpConsent() {
+  let target = null;
+  try {
+    target = sessionStorage.getItem(MCP_CONSENT_RETURN_KEY);
+    if (target) sessionStorage.removeItem(MCP_CONSENT_RETURN_KEY);
+  } catch { target = null; }
+  // Only honor an in-app /settings/mcp path — never an absolute/foreign URL.
+  if (target && /^\/settings\/mcp(?:[/?]|$)/.test(target)) {
+    try { window.location.replace(target); } catch { window.location.href = target; }
+    return true;
+  }
+  return false;
+}
+
 /** Navigate to the remembered surface (Platform by default, Builder if that tab
  *  was last chosen). A full navigation (not a history push) so home.html boots
  *  fresh under the bridge; a fresh session in localStorage survives the nav.
  *  Overridable in tests. */
 function goHome() {
+  // MCP consent flow: a signed-out visitor bounced from /settings/mcp returns
+  // there (params intact) after login instead of landing on the surface.
+  if (resumeMcpConsent()) return;
   const path = surfacePath();
   try { window.location.assign(path); }
   catch { window.location.href = path; }
