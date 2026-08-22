@@ -3478,6 +3478,13 @@ async function init(): Promise<void> {
         // B2: a panel that's part of a layout hides its own X — closing happens
         // via the layout bar (B1). A standalone app (no layoutId) keeps its X.
         e.card.classList.toggle("echo-card-in-layout", e.layoutId != null);
+        // MARKETPLACE opens FULL STAGE (his rule, 2026-08-22): edge to edge,
+        // no reserved band under the search — the whole page is the store.
+        if (e.card.querySelector('.help-section[data-section="marketplace"]')) {
+          e.card.classList.add("expanded");
+          setRect(e.card, { left: 0, top: 0, width: stage.clientWidth || 1, height: stage.clientHeight || 1 });
+          return;
+        }
         if (e.card.classList.contains("expanded")) {
           // Expanded = the whole BAND, never the whole stage — the top bar
           // and the composer stay clear.
