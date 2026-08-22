@@ -285,14 +285,11 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 // open as wall cards via __wbOpenSection; tools (tasks, preview) go
 // through __wbOpenTool. ──
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
-  { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
   { key: "marketplace", title: "Marketplace",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2 4.6 3.5h14.8L21 8.2z" style="fill:#f97316;stroke:none"/><path d="M3 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M6.6 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M10.2 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M13.8 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M17.4 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M4.2 11.2h15.6v7.8a1.5 1.5 0 0 1-1.5 1.5H5.7a1.5 1.5 0 0 1-1.5-1.5z" style="fill:#fb923c;stroke:none"/><rect x="13.4" y="14" width="3.6" height="6.5" rx="0.7" style="fill:#7c2d12;stroke:none"/><rect x="6.6" y="14" width="4" height="3.4" rx="0.7" style="fill:#ffedd5;stroke:none"/></svg>` },
   { key: "connections", title: "Connections",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7" style="fill:none;stroke:#0e7490;stroke-width:2.6"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7" style="fill:none;stroke:#06b6d4;stroke-width:2.6"/></svg>` },
-  { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "tasks",       title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
   { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
-  { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
 ];
@@ -2904,8 +2901,10 @@ async function init(): Promise<void> {
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
         ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
-        ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
+        // Layout tiles retired (LAUNCH PAD cut 2026-08-22): a layout was an
+        // app pretending — real apps fill the wall now.
       ];
+      void layouts; void layoutTileOf;
       const byKey = new Map(all.map((e) => [e.key, e]));
       const orderKeys = Array.isArray(orderPref) ? orderPref.map(String) : [];
       const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
@@ -3002,7 +3001,7 @@ async function init(): Promise<void> {
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
       const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
-      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
       if (Array.isArray(dockPref)) dockKeys = dockPref.map(String);
       // …and NEW nav slots shipped after the pref was saved still join it
@@ -3012,9 +3011,11 @@ async function init(): Promise<void> {
         const savedPage = Array.isArray(orderPref) ? orderPref.map(String) : [];
         for (const d of DOCK_ITEMS) {
           if (dockKeys.includes(d.key) || savedPage.includes(`dock:${d.key}`)) continue;
-          if (d.key === "glyphh") dockKeys.unshift(d.key);
-          else dockKeys.push(d.key);
+          dockKeys.push(d.key);
         }
+        // A saved dock pref may still name retired slots (glyphh/new-session,
+        // layouts, browser — LAUNCH PAD cut 2026-08-22): drop them.
+        dockKeys = dockKeys.filter((k) => DOCK_ITEMS.some((d) => d.key === k));
       }
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).

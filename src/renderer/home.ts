@@ -273,22 +273,35 @@ void (async () => {
     }
   } catch { /* fall through */ }
   // LAUNCH PAD (decided 2026-08-22, PLAN cut #1): the default boot — web /home
-  // AND the desktop app — opens the org's Launch Pad: the full-page shell
-  // landing on Apps (open in browser, install from marketplace). The command
-  // wall / agent workbench never mounts; building happens in any MCP client.
-  // Same full-bleed treatment as the /platform branch (body.platform-shell
-  // restyles the settings modal into THE page).
-  document.documentElement.setAttribute("data-home-scope", "launchpad");
-  document.body.classList.add("platform-shell");
-  const lpStyle = document.createElement("style");
-  lpStyle.textContent = `
-    [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
-    [data-home-scope="launchpad"] #help-overlay { display: none !important; }`;
-  document.head.appendChild(lpStyle);
-  // This branch owns the boot veil — the wall-settle loop that used to lift it
-  // died with the command wall.
-  document.body.classList.remove("wb-booting");
-  openSettingsModal("apps");
+  // AND the desktop app — raises the WALL as the org's Launch Pad: app tiles +
+  // the dock, nothing else. The agent/sessions/dev-tools never mount (initCode
+  // is unbooted — navigation.ts); the workbench boots only to render the wall
+  // and its cards. Building happens in any MCP client.
+  {
+    const w = window as unknown as { __initCodeWorkbench?: () => void; __wbOpenEchoHome?: () => void };
+    w.__initCodeWorkbench?.();
+    let raiseTries = 0;
+    const raise = (): void => {
+      if (w.__wbOpenEchoHome) { w.__wbOpenEchoHome(); return; }
+      if (raiseTries++ < 120) requestAnimationFrame(raise);
+    };
+    raise();
+  }
+  // Lift the boot veil only once the wall is actually up — its bare first
+  // paint was the flash between splash and Home.
+  let veilTries = 0;
+  let settled = 0;
+  const lift = (): void => {
+    const wall = document.querySelector(".echo-pages .echo-page-grid");
+    const up = !!wall && wall.getClientRects().length > 0;
+    settled = up ? settled + 1 : 0;
+    if (settled >= 10 || veilTries++ > 360) {
+      document.body.classList.remove("wb-booting");
+      return;
+    }
+    requestAnimationFrame(lift);
+  };
+  lift();
 })();
 
 // ── Surface tabs (web target only) ──────────────────────────────────────────

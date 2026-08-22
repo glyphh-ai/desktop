@@ -157,14 +157,11 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  // LAUNCH PAD (2026-08-22): the workbench is severed — these open as Launch
-  // Pad subs of the full-page shell, not workbench section cards. "layouts"
-  // (and its "workspaces" alias) retired with the layout system → land on Apps.
-  if (["apps", "marketplace", "connections", "layouts", "agents", "artifacts"].includes(section)) {
-    const sub = section === "layouts" ? "apps" : section;
-    void window.glyphh.setPreference?.("homeLastSection", "settings");
-    void window.glyphh.setPreference?.("homeLastSub", sub);
-    openSettingsModal(sub);
+  // Wall section CARDS (LAUNCH PAD cut 2026-08-22): layouts retired — its
+  // route (and the "workspaces" alias) lands on the Apps card.
+  if (["apps", "marketplace", "connections", "layouts", "agents"].includes(section)) {
+    const card = section === "layouts" ? "apps" : section;
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(card);
     return;
   }
   if (["loops", "skills"].includes(section)) {
@@ -608,22 +605,22 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   // "artifacts" is the files section's rail name.
-  // LAUNCH PAD cut (2026-08-22): every rail link opens the full-page shell at
-  // its Launch Pad sub — no workbench section cards.
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", marketplace: "marketplace", connections: "connections", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
-      openSettingsModal(sub === "layouts" ? "apps" : sub);
+      const wb = RAIL_WB_SECTIONS[sub];
+      if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
+      else openSettingsModal(sub);
     });
   });
   // The More fly-out — second-tier rail destinations, every one a WORKBENCH
   // surface (Scheduled Tasks is the hidden tasks view; Agents a section card).
-  // Scheduled Tasks was a workbench tool view — retired with the workbench;
-  // schedules surface under Agents (each agent's cron) until a dedicated
-  // Launch Pad page exists.
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
+    { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
+      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
     { label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>`,
-      open: () => openSettingsModal("agents") },
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("agents") },
   ];
   const moreToggle = document.getElementById("rail-more-toggle");
   let moreMenu: HTMLDivElement | null = null;
