@@ -26,7 +26,6 @@
               <div class="settings-nav-group">Devices</div>
 
               <button class="settings-nav-item" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
-              <button class="settings-nav-item" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
               <div class="settings-nav-group">You</div>
 
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
@@ -1010,79 +1009,6 @@
               </div>
 
               <!-- Advanced: Services, Relaunch -->
-              <!-- MCP Server -->
-        <div class="settings-panel" data-sub="mcp">
-                <h2>MCP Server</h2>
-                <p class="section-desc">Let a local LLM tool — Claude Desktop, Cursor, the claude CLI — drive your Glyphh workspace over MCP: open apps and workspaces, click, type, read, and screenshot. Runs as a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
-
-                <!-- Glyphh Skill — teaches the connected assistant how to drive
-                     this workspace. Claude installs straight into
-                     ~/.claude/skills; Gemini/ChatGPT save a file to paste into
-                     custom instructions. -->
-                <h3 class="settings-subheading" style="margin:4px 0 4px;">Glyphh Skill</h3>
-                <p class="settings-hint" style="margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
-                <div class="settings-actions" style="flex-wrap:wrap;margin-bottom:18px;">
-                  <button id="export-skill-claude" class="action-btn primary" data-provider="claude">Install for Claude</button>
-                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Export for Gemini</button>
-                  <button id="export-skill-openai" class="action-btn" data-provider="openai">Export for ChatGPT</button>
-                  <span id="export-skill-status" class="settings-hint"></span>
-                </div>
-
-                <div id="mcp-section-wrap" class="settings-form">
-                  <!-- ── Local MCP server (this machine). Opt-in: runs a
-                       127.0.0.1 HTTP MCP server so a local LLM (Claude Desktop,
-                       Cursor, the claude CLI) connects directly — no cloud,
-                       lowest latency. Exposes the same tool surface as the
-                       relay. ── -->
-                  <div id="local-mcp-section" class="hidden" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border-2);">
-                    <h3 class="settings-subheading" style="margin:0 0 4px;">Local server</h3>
-                    <label class="settings-toggle" style="margin-bottom:10px;">
-                      <input type="checkbox" id="local-mcp-toggle" />
-                      <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Run a local MCP server</span>
-                        <span class="toggle-desc">Serve Glyphh's tools from this machine over 127.0.0.1 — direct, no cloud round-trip. Best for a local LLM on the same computer.</span>
-                      </div>
-                    </label>
-                    <span id="local-mcp-status" class="settings-hint" style="display:inline-block;margin-bottom:8px;">Stopped.</span>
-
-                    <div id="local-mcp-body">
-                      <!-- Port -->
-                      <h4 class="acct-row-head" style="margin:16px 0 6px;">Port</h4>
-                      <div class="settings-inline">
-                        <input id="local-mcp-port" type="text" class="settings-input settings-input-sm" value="7860" />
-                        <button id="local-mcp-port-save" class="action-btn">Save</button>
-                      </div>
-
-                      <!-- Config -->
-                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Config</h4>
-                      <p class="settings-hint" style="margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
-                      <div style="position:relative;">
-                        <pre id="local-mcp-config" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
-                        <button id="local-mcp-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
-                      </div>
-
-                      <!-- Tokens -->
-                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Access Tokens</h4>
-                      <p class="settings-hint" style="margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
-                      <div id="local-mcp-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
-                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                          <code id="local-mcp-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
-                          <button id="local-mcp-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
-                        </div>
-                      </div>
-                      <div id="local-mcp-tokens-list" style="margin-bottom:10px;"></div>
-                      <div class="settings-inline">
-                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;" />
-                        <button id="local-mcp-gen-token" class="action-btn primary">+ Generate</button>
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
               <div class="settings-panel" data-sub="drips">
                 <h2>Drips</h2>
                 <p class="section-desc">Celebration effects — play them by hand or from an agent run.</p>
@@ -1151,7 +1077,9 @@
                       <div class="desktop-attach-title" id="desktop-attach-title">Checking…</div>
                       <div class="desktop-attach-sub" id="desktop-attach-sub">Looking for your machine…</div>
                     </div>
-                    <a class="action-btn hidden" id="desktop-attach-get" href="https://glyphh.ai/downloads" target="_blank" rel="noopener">Get the app</a>
+                    <!-- No downloads page yet (the desktop installer ships with the
+                         directory-grant agent) — land on the site, not a 404. -->
+                    <a class="action-btn hidden" id="desktop-attach-get" href="https://glyphh.ai" target="_blank" rel="noopener">Get the app</a>
                   </div>
                 </div>
               </div>
