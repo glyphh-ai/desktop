@@ -103,11 +103,15 @@ void (async () => {
       // Rail HEADER (his spec, 2026-08-21): top-left of the rail — a TEXT-ONLY
       // wordmark, then the surface switch as plain buttons. No fixed top-right
       // tabs on the platform (mountSurfaceTabs skips this page).
-      const nav = document.querySelector(".settings-nav");
-      if (nav) {
+      // The nav is rendered ASYNC by openSettingsModal — poll for it before
+      // inserting, or the head silently no-ops (the bug: no logo, no tabs).
+      const insertRailHead = (): void => {
+        const nav = document.querySelector(".settings-nav");
+        if (!nav) return;
+        if (document.getElementById("platform-rail-head")) return;
         const head = document.createElement("div");
         head.id = "platform-rail-head";
-        head.innerHTML = `<div id="platform-brand">Glyphh</div>`;
+        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
         const surf = document.createElement("div");
         surf.id = "platform-surface-btns";
         const mkSurf = (label: string, key: string, href: string, active: boolean) => {
@@ -125,7 +129,13 @@ void (async () => {
         surf.appendChild(mkSurf("Builder", "builder", "/home", false));
         head.appendChild(surf);
         nav.insertBefore(head, nav.firstChild);
-      }
+      };
+      let railTries = 0;
+      const railGo = (): void => {
+        insertRailHead();
+        if (!document.getElementById("platform-rail-head") && railTries++ < 60) requestAnimationFrame(railGo);
+      };
+      railGo();
       return;
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
