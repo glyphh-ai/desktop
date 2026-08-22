@@ -142,14 +142,14 @@ describe('startWebBoot routing', () => {
     expect(window.location.assign).toHaveBeenCalledWith('/platform');
   });
 
-  it('remembered Builder tab (glyphhSurfaceTab=builder) → lands on /home instead of /platform', async () => {
+  it('remembered Builder tab (glyphhSurfaceTab=builder) → lands on /apps instead of /platform', async () => {
     installDom({ pathname: '/' });
     globalThis.localStorage = { getItem: vi.fn(() => 'builder'), setItem: vi.fn() };
     try {
       web.isAuthenticated.mockResolvedValueOnce(true);
       web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
       await startWebBoot();
-      expect(window.location.assign).toHaveBeenCalledWith('/home');
+      expect(window.location.assign).toHaveBeenCalledWith('/apps');
     } finally {
       delete globalThis.localStorage;
     }
