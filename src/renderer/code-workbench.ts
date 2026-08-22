@@ -4099,6 +4099,11 @@ async function init(): Promise<void> {
      *  setting it on the entry afterwards was too late (the shell had
      *  already spawned) and the parked pty was orphaned. */
     let pendingParkedTerms: TermSlot | null = null;
+    // A layout's Browser cell carries its start URL — stamp it on the slot
+    // BEFORE the preview renders (adopted below, like a parked terminal), or
+    // previewTabs seeds the first tab empty and paintFrames fills it with the
+    // Settings browser-home default instead of the workspace's page.
+    let pendingPreviewUrl: string | null = null;
     const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void => {
       const card = e.card;
       if (!card) return;
@@ -4546,15 +4551,16 @@ async function init(): Promise<void> {
               // the DEFINITION says whether this terminal survives the
               // layout closing ("Maintain on close", default yes)
               if (v === "terminal") entry.keepTermsAlive = cell.config?.keepAlive !== false;
+              // The Browser cell's configured page must be on the slot BEFORE
+              // it renders (adopted in activateTile), else the first tab seeds
+              // empty and falls back to the Settings browser-home default.
+              if (v === "preview" && cell.config?.url) pendingPreviewUrl = cell.config.url;
               activateTile(entry);
               pendingParkedTerms = null;   // never leak into the next cell
+              pendingPreviewUrl = null;    // ditto
               if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cell.config.cmd;
-              }
-              if (v === "preview" && cell.config?.url) {
-                const pv = entry.toolSlot as unknown as { url?: string } | undefined;
-                if (pv && !pv.url) { pv.url = cell.config.url; rerenderToolBody(entry); }
               }
             }
           } else {
@@ -4870,6 +4876,11 @@ async function init(): Promise<void> {
           slot.terminals = pendingParkedTerms.terminals;
           slot.activeIdx = pendingParkedTerms.activeIdx;
           pendingParkedTerms = null;
+        }
+        // Seed the Browser cell's start page onto a FRESH preview slot before
+        // it renders — a live/reused slot keeps its own tabs (its own history).
+        if (slot.view === "preview" && pendingPreviewUrl && !slot.url && !slot.tabs?.length) {
+          slot.url = pendingPreviewUrl;
         }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
