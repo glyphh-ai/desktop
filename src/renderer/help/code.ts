@@ -4315,133 +4315,6 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(home);
 
-  // SLIDES — Glyphh Office's first app: a FIXED tile beside Home (a builtin
-  // tool panel, not an installed app row — no row backs it, so no edit/delete).
-  const slides = document.createElement("button");
-  slides.className = "app-rail-tile";
-  slides.type = "button";
-  slides.title = "Slides — Glyphh Office";
-  const slIcon = document.createElement("div");
-  slIcon.className = "tile-icon";
-  slIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#8c3bf2;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>`;
-  const slName = document.createElement("div");
-  slName.className = "tile-name";
-  slName.textContent = "Slides";
-  slides.append(slIcon, slName);
-  slides.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gpoint");
-  });
-  list.appendChild(slides);
-
-  // DOCS — Glyphh Office documents, the same fixed-tile treatment.
-  const gdocs = document.createElement("button");
-  gdocs.className = "app-rail-tile";
-  gdocs.type = "button";
-  gdocs.title = "Docs — Glyphh Office";
-  const gdIcon = document.createElement("div");
-  gdIcon.className = "tile-icon";
-  gdIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>`;
-  const gdName = document.createElement("div");
-  gdName.className = "tile-name";
-  gdName.textContent = "Docs";
-  gdocs.append(gdIcon, gdName);
-  gdocs.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdoc");
-  });
-  list.appendChild(gdocs);
-
-  // DRIVE — the Office index, same fixed-tile treatment.
-  const gdrive = document.createElement("button");
-  gdrive.className = "app-rail-tile";
-  gdrive.type = "button";
-  gdrive.title = "Drive — Glyphh Office";
-  const gvIcon = document.createElement("div");
-  gvIcon.className = "tile-icon";
-  gvIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>`;
-  const gvName = document.createElement("div");
-  gvName.className = "tile-name";
-  gvName.textContent = "Drive";
-  gdrive.append(gvIcon, gvName);
-  gdrive.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdrive");
-  });
-  // SHEETS — same fixed-tile treatment.
-  const gsheets = document.createElement("button");
-  gsheets.className = "app-rail-tile";
-  gsheets.type = "button";
-  gsheets.title = "Sheets — Glyphh Office";
-  const gsIcon = document.createElement("div");
-  gsIcon.className = "tile-icon";
-  gsIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>`;
-  const gsName = document.createElement("div");
-  gsName.className = "tile-name";
-  gsName.textContent = "Sheets";
-  gsheets.append(gsIcon, gsName);
-  gsheets.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gsheet");
-  });
-  list.appendChild(gsheets);
-
-  list.appendChild(gdrive);
-
-  // DESIGN — the org's design systems, same fixed-tile treatment.
-  const gdesign = document.createElement("button");
-  gdesign.className = "app-rail-tile";
-  gdesign.type = "button";
-  gdesign.title = "Design — the org's design systems";
-  const dzIcon = document.createElement("div");
-  dzIcon.className = "tile-icon";
-  dzIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4"/></svg>`;
-  const dzName = document.createElement("div");
-  dzName.className = "tile-name";
-  dzName.textContent = "Design";
-  gdesign.append(dzIcon, dzName);
-  gdesign.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdesign");
-  });
-  list.appendChild(gdesign);
-
-  // MEMORY — the stator visualized, same fixed-tile treatment.
-  const gmemory = document.createElement("button");
-  gmemory.className = "app-rail-tile";
-  gmemory.type = "button";
-  gmemory.title = "Memory — your org's memory, visualized";
-  const gmIcon = document.createElement("div");
-  gmIcon.className = "tile-icon";
-  gmIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e"/></svg>`;
-  const gmName = document.createElement("div");
-  gmName.className = "tile-name";
-  gmName.textContent = "Memory";
-  gmemory.append(gmIcon, gmName);
-  gmemory.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gmemory");
-  });
-  list.appendChild(gmemory);
-
-  // BAND — the music studio app, same fixed-tile treatment.
-  const gband = document.createElement("button");
-  gband.className = "app-rail-tile";
-  gband.type = "button";
-  gband.title = "Band — songs, artists, music video";
-  const gbIcon = document.createElement("div");
-  gbIcon.className = "tile-icon";
-  gbIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>`;
-  const gbName = document.createElement("div");
-  gbName.className = "tile-name";
-  gbName.textContent = "Band";
-  gband.append(gbIcon, gbName);
-  gband.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gband");
-  });
-  list.appendChild(gband);
-
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -4656,10 +4529,10 @@ export function openAppInWorkbench(app: { slug: string; name: string; url?: stri
   open();
 }
 
-/** Open a built-in WORK PANEL as a workbench panel — the Apps page's "Work
- *  panels" cards. Same cold-safe mechanics as openAppInWorkbench: flip to the
- *  workspace, boot the workbench, retry until the panel's bridge (__wbOpenGPoint,
- *  __wbOpenMedia, …) is assigned by the workbench init. */
+/** Open a built-in WORK PANEL as a workbench panel. Same cold-safe mechanics
+ *  as openAppInWorkbench: flip to the workspace, boot the workbench, retry
+ *  until the panel's bridge (a __wb* window function) is assigned by the
+ *  workbench init. */
 export function openWorkPanelInWorkbench(bridge: string, ...args: unknown[]): void {
   showWorkspaceSurface();
   const w = window as unknown as { __initCodeWorkbench?: () => void } & Record<string, unknown>;
@@ -4772,11 +4645,6 @@ export function initCode(): void {
     if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
-    else if (cmd.action === "gpoint") (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
-    else if (cmd.action === "gdoc") (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
-    else if (cmd.action === "gsheet") (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
-    else if (cmd.action === "gdesign") (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
-    else if (cmd.action === "gmedia") (window as unknown as { __wbOpenMedia?: (view: string, assetId?: string, songId?: string) => void }).__wbOpenMedia?.((cmd as unknown as { view: string }).view, (cmd as unknown as { assetId?: string }).assetId, (cmd as unknown as { songId?: string }).songId);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);
     else if (cmd.action === "open-many" && cmd.apps) {
       // A NAMED layout goes through the one true layout-open (the switcher's

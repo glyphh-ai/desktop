@@ -85,16 +85,8 @@ import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
-import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
 import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
-import { registerOfficeExportIpc } from "./office-export";
-import { registerOfficeDocsIpc } from "./office-docs";
-import { registerOfficeSheetsIpc } from "./office-sheets";
-import { registerDesignIpc } from "./design";
-import { registerMemoryPanelIpc } from "./memory-panel";
-import { registerMediaPanelIpc } from "./media-panel";
-import { registerMusicPanelIpc } from "./music-panel";
 import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -1004,24 +996,8 @@ async function boot() {
   // Files — the artifacts gallery's transport, same main-process SDK client.
   registerFilesIpc();
 
-  // Glyphh Office · Slides — the Slides panel's org deck library.
-  registerGPointIpc();
-
-  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
+  // Panel pop-out — any web panel as a standalone OS window.
   registerPopoutIpc();
-
-  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
-  registerOfficeExportIpc();
-
-  // Glyphh Office · Docs — the Docs panel's org library transport.
-  registerOfficeDocsIpc();
-
-  // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
-  registerOfficeSheetsIpc();
-  registerDesignIpc();
-  registerMemoryPanelIpc();
-  registerMediaPanelIpc();
-  registerMusicPanelIpc();
 
   // Run-stream observer bridge — the renderer watches runs executing on OTHER
   // surfaces (web/cloud) through the main-process SDK client.
