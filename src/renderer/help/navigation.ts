@@ -157,7 +157,11 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Wall section CARDS (LAUNCH PAD cut 2026-08-22): layouts retired — its
   // route (and the "workspaces" alias) lands on the Apps card.
-  if (["apps", "marketplace", "connections", "layouts"].includes(section)) {
+  if (section === "marketplace") {
+    openSettingsModal("marketplace");
+    return;
+  }
+  if (["apps", "connections", "layouts"].includes(section)) {
     const card = section === "layouts" ? "apps" : section;
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(card);
     return;
@@ -620,7 +624,10 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   // "artifacts" is the files section's rail name.
-  const RAIL_WB_SECTIONS: Record<string, string> = { marketplace: "marketplace", connections: "connections" };
+  // ONE marketplace interface (his rule, 2026-08-22): every door — rail link,
+  // wall tile, section route — opens the SAME full-screen storefront (the
+  // settings-shell marketplace). The workbench card marketplace is retired.
+  const RAIL_WB_SECTIONS: Record<string, string> = { connections: "connections" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
