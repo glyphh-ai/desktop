@@ -143,8 +143,15 @@ void (async () => {
         return head;
       };
       const railHead = buildRailHead();
+      // MUST scope to #settings-modal: the document holds a SECOND
+      // .settings-nav inside #help-overlay, which this page force-hides — a
+      // bare querySelector(".settings-nav") finds THAT one first and the head
+      // mounts into an invisible tree (the bug: everything "worked" headless,
+      // rendered 0×0 on screen).
+      const platformNav = (): Element | null =>
+        document.querySelector("#settings-modal .settings-nav");
       const mountRailHead = (): boolean => {
-        const nav = document.querySelector(".settings-nav");
+        const nav = platformNav();
         if (!nav || !nav.parentElement) return false;
         if (railHead.isConnected) return true;
         nav.parentElement.insertBefore(railHead, nav);   // ABOVE the nav, as a sibling
@@ -154,7 +161,7 @@ void (async () => {
       const railGo = (): void => {
         if (mountRailHead()) {
           // Keep it mounted across nav rebuilds / replacement.
-          const rail = document.querySelector(".settings-nav")?.parentElement;
+          const rail = platformNav()?.parentElement;
           if (rail) new MutationObserver(() => { if (!railHead.isConnected) mountRailHead(); }).observe(rail, { childList: true });
           return;
         }
