@@ -19542,3 +19542,8 @@ body.platform-rail-collapsed .nav-launch-ic { display: none; }
 /* Wall's in-place full-screen Marketplace: platform-shell hides the modal
    close — the overlay mode needs it back (it's the only way home). */
 body.wall-shell-overlay .settings-modal-close { display: flex !important; }
+
+/* The wall's "← Platform" link belongs to the BARE wall only — any open
+   panel (Marketplace, future panel apps) hides it. */
+body.echo-wall-covered #wall-platform-link,
+body.echo-card-fullscreen #wall-platform-link { display: none; }
