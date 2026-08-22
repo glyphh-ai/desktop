@@ -19,6 +19,7 @@ import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
+import { loadMcpPanel, initMcpPanel } from "./settings-mcp.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
@@ -416,11 +417,11 @@ const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
   // Desktop-machine subs have no meaning in a browser tab: Drips runs on the
-  // desktop app, and Desktop is the machine's directory grant. The old MCP
-  // Server panel is gone entirely (no local MCP server anymore) — a stale
-  // deep link (saved nav app, remembered homeLastSub) lands on General.
+  // desktop app, and Desktop is the machine's directory grant. (MCP is NOT
+  // aliased anywhere — it manages the CLOUD connection, api.glyphh.ai/mcp,
+  // which exists on both surfaces; the old local-server panel it replaced is
+  // gone.)
   const onWeb = document.documentElement.classList.contains("glyphh-web");
-  if (target === "mcp") return "general";
   if ((target === "desktop" || target === "drips") && onWeb) return "general";
   return target;
 };
@@ -451,6 +452,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "apikeys") void loadApiKeys();
+  else if (sub === "mcp") void loadMcpPanel();
   else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
@@ -717,6 +719,7 @@ export function initHelp() {
   boot("layouts", initLayoutsEvents);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("apikeys", initApiKeys);
+  boot("mcp", initMcpPanel);
   boot("support", initSupportPanel);
   boot("guardrails", initGuardrails);
   boot("org", initOrgPanel);

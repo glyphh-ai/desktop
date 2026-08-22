@@ -850,6 +850,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Theme
   getTheme: () => ipcRenderer.invoke("get-theme") as Promise<string>,
   exportGlyphhSkill: (provider: string) => ipcRenderer.invoke("export-glyphh-skill", provider) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  // Settings → MCP: the caller's connected cloud MCP clients (OAuth grants).
+  mcpClientsList: () => ipcRenderer.invoke("mcp-clients-list") as Promise<{ clientId: string; clientName: string; firstGrantedAt: string; lastUsedAt: string | null }[]>,
+  mcpClientsRevoke: (clientId: string) => ipcRenderer.invoke("mcp-clients-revoke", clientId) as Promise<{ ok: boolean; error?: string }>,
   setTheme: (theme: string) => ipcRenderer.invoke("set-theme", theme),
 
   // Account info
