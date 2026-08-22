@@ -114,12 +114,13 @@ void (async () => {
       // Rail HEADER (his spec, 2026-08-21): top-left of the rail — a TEXT-ONLY
       // wordmark, then the surface switch as plain buttons. No fixed top-right
       // tabs on the platform (mountSurfaceTabs skips this page).
-      // The nav is rendered ASYNC by openSettingsModal — poll for it before
-      // inserting, or the head silently no-ops (the bug: no logo, no tabs).
-      const insertRailHead = (): void => {
-        const nav = document.querySelector(".settings-nav");
-        if (!nav) return;
-        if (document.getElementById("platform-rail-head")) return;
+      // Build the head ONCE, then keep it mounted as the nav's PREVIOUS
+      // SIBLING (in the rail container, not inside .settings-nav). The
+      // org-admin gating (gateAdminSubs) rebuilds the nav's children async —
+      // anything INSIDE the nav gets wiped a beat after insert (the bug: it
+      // showed then vanished). A sibling survives that; an observer re-mounts
+      // it if the whole nav element is ever replaced.
+      const buildRailHead = (): HTMLElement => {
         const head = document.createElement("div");
         head.id = "platform-rail-head";
         head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
@@ -139,12 +140,25 @@ void (async () => {
         surf.appendChild(mkSurf("Platform", "platform", "/platform", true));
         surf.appendChild(mkSurf("Builder", "builder", "/home", false));
         head.appendChild(surf);
-        nav.insertBefore(head, nav.firstChild);
+        return head;
+      };
+      const railHead = buildRailHead();
+      const mountRailHead = (): boolean => {
+        const nav = document.querySelector(".settings-nav");
+        if (!nav || !nav.parentElement) return false;
+        if (railHead.isConnected) return true;
+        nav.parentElement.insertBefore(railHead, nav);   // ABOVE the nav, as a sibling
+        return true;
       };
       let railTries = 0;
       const railGo = (): void => {
-        insertRailHead();
-        if (!document.getElementById("platform-rail-head") && railTries++ < 60) requestAnimationFrame(railGo);
+        if (mountRailHead()) {
+          // Keep it mounted across nav rebuilds / replacement.
+          const rail = document.querySelector(".settings-nav")?.parentElement;
+          if (rail) new MutationObserver(() => { if (!railHead.isConnected) mountRailHead(); }).observe(rail, { childList: true });
+          return;
+        }
+        if (railTries++ < 120) requestAnimationFrame(railGo);
       };
       railGo();
       return;
