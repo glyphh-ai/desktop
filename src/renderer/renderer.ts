@@ -77,7 +77,7 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  access?: "public" | "members";
+  access?: "public" | "members" | "org-idp";
   /** The app's ONE execution home — where its worker + schedules run. */
   executionHome?: "local" | "regional";
 };

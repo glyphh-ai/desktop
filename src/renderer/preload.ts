@@ -198,7 +198,7 @@ export interface PanelAppInput {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  access?: "public" | "members";
+  access?: "public" | "members" | "org-idp";
   /** Move the app's ONE execution home (worker + schedules): this machine
    *  ('local') or the org's cloud runtime ('regional'). */
   executionHome?: "local" | "regional";

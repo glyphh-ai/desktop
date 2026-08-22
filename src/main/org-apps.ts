@@ -33,7 +33,7 @@ export interface OrgAppRow {
   execPath: string | null;
   appArchetype: string | null;
   launchConfig: Record<string, unknown> | null;
-  /** Who may reach the deployed app — 'public' or 'members'. */
+  /** Who may reach the deployed app — 'public', 'members', or 'org-idp' (the customer's own IdP via WorkOS). */
   access: string;
   /** True when THIS org published the app — gates the publish-side tabs. */
   owned: boolean;
