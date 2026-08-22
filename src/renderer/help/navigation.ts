@@ -284,19 +284,18 @@ function restoreWallAfterShellOverlay(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
-  // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
-  // platform shell itself, any settings open routes to the platform page —
-  // EXCEPT the Marketplace (2026-08-22): the wall opens it full screen IN
-  // PLACE (borrow the platform-shell full-bleed treatment; closing restores
-  // the wall — see closeSettingsModal).
-  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
-      && !document.body.classList.contains("platform-shell")) {
-    if (sub === "marketplace") {
-      document.body.classList.add("platform-shell", "wall-shell-overlay");
-    } else {
-      window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
-      return;
-    }
+  // The Marketplace opens FULL SCREEN on EVERY target (his rule, 2026-08-22):
+  // borrow the platform-shell full-bleed treatment in place; closing restores
+  // the wall (see closeSettingsModal). Desktop included — never the centered
+  // settings dialog.
+  const inShell = document.body.classList.contains("platform-shell");
+  if (!inShell && sub === "marketplace") {
+    document.body.classList.add("platform-shell", "wall-shell-overlay");
+  } else if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ && !inShell) {
+    // WEB (his rule, 2026-08-21): the web has no settings dialog — any other
+    // settings open routes to the platform page.
+    window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
+    return;
   }
   // Already open — just switch the sub-panel.
   if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
