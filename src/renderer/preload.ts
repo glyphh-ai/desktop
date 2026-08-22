@@ -27,6 +27,9 @@ export interface SavedPanelApp {
   access?: string;
   owned?: boolean;
   latestVersion?: string | null;
+  /** Where the app's worker + schedules run — its ONE execution home:
+   *  'local' (this machine's runtime) or 'regional' (the org's cloud pod). */
+  executionHome?: "local" | "regional";
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon (installed/built Glyphh apps). */
   iconUrl?: string | null;
@@ -196,6 +199,9 @@ export interface PanelAppInput {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   access?: "public" | "members";
+  /** Move the app's ONE execution home (worker + schedules): this machine
+   *  ('local') or the org's cloud runtime ('regional'). */
+  executionHome?: "local" | "regional";
 }
 
 // Marketplace wire shapes are the SDK CONTRACT (contract/apps.ts +

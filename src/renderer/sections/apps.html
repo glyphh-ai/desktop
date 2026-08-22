@@ -213,6 +213,17 @@
                   <!-- Required connections — declared by an installed Glyphh
                        app's manifest. Shows per-connector connected status and
                        warns loudly when any are missing. -->
+                  <!-- Execution home — installed Glyphh apps WITH a worker only.
+                       One home per app (spec): the worker + schedules run in one
+                       place; panels open anywhere. -->
+                  <div id="app-exec-home-row" class="hidden">
+                    <label class="settings-label">Runs on</label>
+                    <select id="app-exec-home" class="settings-input">
+                      <option value="local">This machine</option>
+                      <option value="regional">Cloud runtime</option>
+                    </select>
+                    <p class="settings-hint">Where this app's background worker and schedules run. Panels open anywhere either way.</p>
+                  </div>
                   <div id="app-req-conns" class="hidden">
                     <label class="settings-label">Required connections</label>
                     <div id="app-req-conns-list"></div>

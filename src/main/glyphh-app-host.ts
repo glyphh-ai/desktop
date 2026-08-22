@@ -42,6 +42,7 @@ import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
 import { glyphhPath } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
+import { invokeRegionalAppHandler } from "./glyphh-app-remote-worker.js";
 import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
@@ -292,9 +293,12 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   // (Re)install: kill any running worker so the next invoke runs the new
   // code, then warm-start it so the app can (re-)register its cron schedules
   // immediately — without this, a freshly deployed background app would sit
-  // dead until something else invoked it.
+  // dead until something else invoked it. NOT when the app's execution home
+  // is regional: the pod runs the worker, this machine stands down (a fresh
+  // row defaults to "local", so first installs always warm-start).
   stopAppWorker(manifest.slug);
-  if (manifest.worker) {
+  const regional = (await findAppRow(manifest.slug).catch(() => undefined))?.executionHome === "regional";
+  if (manifest.worker && !regional) {
     void ensureAppWorker({
       slug: manifest.slug,
       name: manifest.name,
@@ -528,7 +532,15 @@ interface AppRow {
   name: string;
   appArchetype?: string | null;
   execPath?: string | null;
+  /** The ONE execution home (app-runtime-spec): "regional" → the org's pod
+   *  runs the worker + schedules and this desktop stands down. */
+  executionHome?: "local" | "regional" | string | null;
   launchConfig?: { capabilities?: string[]; connectors?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
+}
+
+/** Does this row's worker run on the org's regional pod (not this machine)? */
+function isRegionalRow(row: AppRow): boolean {
+  return row.executionHome === "regional";
 }
 
 /** Saved-app row → the spec needed to run its worker (null if it has none). */
@@ -543,6 +555,7 @@ function workerSpecFromRow(row: AppRow): AppWorkerSpec | null {
     workerFile,
     capabilities: (row.launchConfig?.capabilities || []).filter((c) => KNOWN_CAPABILITIES.has(c)),
     connectors: row.launchConfig?.connectors || [],
+    executionHome: isRegionalRow(row) ? "regional" : "local",
   };
 }
 
@@ -589,6 +602,13 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
   if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
 
   if (tool.handler) {
+    // ONE execution home: a regional app's worker lives on the org's pod, so
+    // the handler runs THERE — same session identity (the user's own bearer),
+    // same error shapes back (glyphh-app-remote-worker maps the pod's typed
+    // failures onto the local ones), so the caller can't tell the difference.
+    if (isRegionalRow(app)) {
+      return invokeRegionalAppHandler(app.slug, tool.handler, args || {});
+    }
     const spec = workerSpecFromRow(app);
     if (!spec) throw new Error(`tool "${toolName}" needs a worker but the app has none — re-install it`);
     return invokeAppWorkerHandler(spec, tool.handler, args || {});
@@ -698,6 +718,12 @@ export function registerGlyphhAppHost(): void {
       void import("./app-resolver.js").then((m) => m.openAppByRef(slug)).catch(() => {});
     },
   });
+
+  // Pull the org's apps once at startup so execution homes reconcile EARLY
+  // (fetchOrgApps → syncExecutionHomes): a schedule armed above for an app
+  // whose home moved to the pod disarms before it can fire. Best-effort —
+  // offline, fireSchedule's per-fire home check still guards the window.
+  void fetchOrgApps().catch(() => {});
 
   ipcMain.handle("glyphh-app:call", async (event, method: string, args: unknown) => {
     const grant = getAppGrant(event.sender.id);

@@ -19,6 +19,7 @@
 import type { OrgApp } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client.js";
 import { appCache } from "./glyphh-client.js";
+import { syncExecutionHomes } from "./glyphh-app-services.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
 export interface OrgAppRow {
@@ -39,6 +40,10 @@ export interface OrgAppRow {
   owned: boolean;
   /** Newest live release version, or null — drives the auto-update check. */
   latestVersion: string | null;
+  /** WHERE the app's worker + schedules run (one execution home per (org, app),
+   *  app-runtime-spec): "local" = this desktop arms them; "regional" = the
+   *  org's regional rrotor pod does, and this desktop must stand down. */
+  executionHome: "local" | "regional";
   /** The connections the app's manifest requires, with connected status. */
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
@@ -72,6 +77,7 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   access: "members",
   owned: true,
   latestVersion: null,
+  executionHome: "local",
   requiredConnections: [],
   connectionIds: [],
   iconUrl: null,
@@ -128,6 +134,7 @@ function toRow(app: OrgApp): OrgAppRow {
     access: app.access,
     owned: app.owned,
     latestVersion: app.latestVersion,
+    executionHome: app.executionHome === "regional" ? "regional" : "local",
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     iconUrl: app.listing?.iconUrl ?? null,
@@ -168,7 +175,8 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
         url: d.url, isBrowser: true, execPath: null,
         appArchetype: "web", launchConfig: null,
         access: "members", owned: false,
-        latestVersion: null, requiredConnections: [], connectionIds: [], iconUrl: null,
+        latestVersion: null, executionHome: "local",
+        requiredConnections: [], connectionIds: [], iconUrl: null,
         mcp: null, commands: {},
         createdAt: "", updatedAt: "",
       }));
@@ -178,6 +186,10 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     // recents reference it — normalize its archetype, and pin it first.
     // Dropping it in favor of a synthetic row orphans those references (cells
     // render raw UUIDs and the picker loses the app).
+    // Reconcile the ONE-execution-home rule on every server read (this is the
+    // apps-changed refresh path): an app flipped to `regional` disarms its
+    // local cron + worker here; flipped back to `local`, it re-arms.
+    syncExecutionHomes(mineRows);
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };

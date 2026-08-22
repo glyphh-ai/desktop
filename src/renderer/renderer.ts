@@ -78,6 +78,8 @@ type PanelAppInput = {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   access?: "public" | "members";
+  /** The app's ONE execution home — where its worker + schedules run. */
+  executionHome?: "local" | "regional";
 };
 
 /** Mirrors preload.ts AppReleaseRow — one immutable build of an app. */

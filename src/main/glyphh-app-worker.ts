@@ -29,6 +29,10 @@ export interface AppWorkerSpec {
   capabilities: string[];
   /** Connector app slugs the manifest declared (manifest `connectors`). */
   connectors: string[];
+  /** The app row's ONE execution home (app-runtime-spec). "regional" means the
+   *  org's pod runs the worker + schedules — local paths must not start this
+   *  worker. Absent reads as "local" (pre-field rows). */
+  executionHome?: "local" | "regional";
 }
 
 interface WorkerHandle {

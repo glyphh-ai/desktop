@@ -35,7 +35,7 @@ import path from "path";
 import { initLocalDb } from "./local-db.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { glyphhPath } from "./app-paths.js";
-import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
+import { AppWorkerSpec, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { getClient } from "./glyphh-client.js";
 import {
   getConnectorCatalog,
@@ -100,6 +100,50 @@ export function dbExec(slug: string, args: Record<string, unknown>): { rows?: un
   return { changes: info.changes, lastInsertRowid: Number(info.lastInsertRowid) };
 }
 
+// ── execution home (spec: ONE home per (org, app)) ──────────
+//
+// docs/app-runtime-spec.md, "Distribution and execution home": panels render
+// anywhere, but an app's WORKER and SCHEDULES run in exactly one place. When
+// an org app's `executionHome` is "regional", the org's regional rrotor pod
+// arms them — and this desktop must NOT, or the same schedule fires twice.
+// The set below is the desktop's live view of which slugs are regional,
+// reconciled from every server read (org-apps.fetchOrgApps →
+// syncExecutionHomes). Persisted schedule ROWS are never deleted by a flip:
+// regional→local re-arms exactly what the app had.
+
+const regionalHomes = new Set<string>();
+
+/** Is this app's execution home the regional pod (so local must stand down)? */
+export function isRegionalExecutionHome(slug: string): boolean {
+  return regionalHomes.has(slug);
+}
+
+/**
+ * Reconcile the one-execution-home rule against a fresh server read (the
+ * apps-changed refresh path). Newly-regional slugs DISARM here — cron timers
+ * stop (rows kept) and the hidden worker window is destroyed; newly-local
+ * slugs re-arm their persisted schedules. Idempotent.
+ */
+export function syncExecutionHomes(rows: Array<{ slug: string; executionHome?: string | null }>): void {
+  const next = new Set<string>();
+  for (const r of rows) if (r.executionHome === "regional") next.add(r.slug);
+  // regional → local: this machine is the home again — arm what persisted.
+  for (const slug of [...regionalHomes]) {
+    if (!next.has(slug)) {
+      regionalHomes.delete(slug);
+      armSchedulesFor(slug);
+    }
+  }
+  // local → regional: stand down — stop timers (rows stay) and the worker.
+  for (const slug of next) {
+    if (!regionalHomes.has(slug)) {
+      regionalHomes.add(slug);
+      disarmSchedulesFor(slug);
+      stopAppWorker(slug);
+    }
+  }
+}
+
 // ── cron (cron.schedule / cron.cancel / cron.list) ──────────
 
 const MAX_SCHEDULES_PER_APP = 20;
@@ -144,6 +188,11 @@ async function fireSchedule(row: ScheduleRow): Promise<void> {
     cronCancel(row.app_slug, { id: row.id });
     return;
   }
+  // ONE execution home: a schedule for a regional app never fires here — the
+  // pod's cron owns it. Re-checked at fire time (resolveApp reads a fresh row)
+  // so even a schedule armed before the flip landed cannot double-fire. The
+  // row is KEPT: regional→local re-arms it.
+  if (regionalHomes.has(row.app_slug) || spec.executionHome === "regional") return;
   let args: Record<string, unknown> = {};
   try { args = row.args_json ? JSON.parse(row.args_json) : {}; } catch { /* keep {} */ }
   await invokeAppWorkerHandler(spec, row.handler, args);
@@ -170,7 +219,13 @@ export function cronSchedule(slug: string, args: Record<string, unknown>): { sch
       args_json = excluded.args_json, updated_at = excluded.updated_at
   `).run(slug, id, expr, handler, argsJson);
 
-  arm({ app_slug: slug, id, cron: expr, handler, args_json: argsJson });
+  // A regional app's schedule PERSISTS but never arms locally — the pod fires
+  // it. (Reachable from a panel calling cron.schedule: panels render anywhere,
+  // the schedule still runs in the one home.) If the home flips back to local,
+  // syncExecutionHomes arms this row.
+  if (!regionalHomes.has(slug)) {
+    arm({ app_slug: slug, id, cron: expr, handler, args_json: argsJson });
+  }
   return { scheduled: true, id };
 }
 
@@ -194,7 +249,9 @@ export function cronList(slug: string): Array<{ id: string; cron: string; handle
   }));
 }
 
-/** Re-arm every persisted schedule (startup). Bad rows are dropped, not fatal. */
+/** Re-arm every persisted schedule (startup). Bad rows are dropped, not fatal.
+ *  Regional apps are skipped — their home is the pod (and fireSchedule guards
+ *  the boot window before the first server read fills `regionalHomes`). */
 function armAllSchedules(): void {
   const rows = initLocalDb()
     .prepare("SELECT app_slug, id, cron, handler, args_json FROM app_schedules")
@@ -204,7 +261,34 @@ function armAllSchedules(): void {
       initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(row.app_slug, row.id);
       continue;
     }
+    if (regionalHomes.has(row.app_slug)) continue;
     arm(row);
+  }
+}
+
+/** Arm ONE app's persisted schedules (regional→local flip). Invalid rows are
+ *  dropped, matching armAllSchedules. */
+function armSchedulesFor(slug: string): void {
+  const rows = initLocalDb()
+    .prepare("SELECT app_slug, id, cron, handler, args_json FROM app_schedules WHERE app_slug = ?")
+    .all(slug) as ScheduleRow[];
+  for (const row of rows) {
+    if (!cron.validate(row.cron)) {
+      initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(row.app_slug, row.id);
+      continue;
+    }
+    arm(row);
+  }
+}
+
+/** Stop ONE app's armed cron timers, KEEPING the persisted rows (local→regional
+ *  flip) — the opposite of resetAppSchedules, which deletes them. */
+function disarmSchedulesFor(slug: string): void {
+  for (const key of [...armedTasks.keys()]) {
+    if (key.startsWith(`${slug}\n`)) {
+      armedTasks.get(key)?.stop();
+      armedTasks.delete(key);
+    }
   }
 }
 

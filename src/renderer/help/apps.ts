@@ -77,6 +77,8 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** The app's ONE execution home — where its worker + schedules run. */
+  executionHome?: "local" | "regional";
 };
 
 function readLaunchConfig(prefix: string, archetype: Archetype): Record<string, unknown> {
@@ -292,6 +294,9 @@ interface PanelApp {
   owned?: boolean;
   /** Newest live release version, or null — drives the auto-update banner. */
   latestVersion?: string | null;
+  /** Where the app's worker + schedules run — its ONE execution home
+   *  ('local' = this machine, 'regional' = the org's cloud runtime). */
+  executionHome?: "local" | "regional";
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The listing's uploaded icon — the ONE icon source (same as the command
@@ -315,6 +320,7 @@ function toPanelApp(a: {
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
   owned?: boolean; latestVersion?: string | null;
+  executionHome?: "local" | "regional";
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
@@ -325,7 +331,8 @@ function toPanelApp(a: {
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
-    owned: a.owned, latestVersion: a.latestVersion, requiredConnections: a.requiredConnections,
+    owned: a.owned, latestVersion: a.latestVersion, executionHome: a.executionHome,
+    requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -1550,6 +1557,15 @@ async function openPanelAppDetail(app: PanelApp) {
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
 
+  // Execution home ("Runs on") — ONLY for installed Glyphh apps with a worker:
+  // the one setting that moves the app's headless side (worker + schedules)
+  // between this machine and the org's cloud runtime. Panels are unaffected.
+  const hasWorker = !!(app.launchConfig as { worker?: string | null } | null)?.worker;
+  const execHomeRow = document.getElementById("app-exec-home-row");
+  const execHomeSel = document.getElementById("app-exec-home") as HTMLSelectElement | null;
+  execHomeRow?.classList.toggle("hidden", !(isBuilt && hasWorker));
+  if (execHomeSel) execHomeSel.value = app.executionHome === "regional" ? "regional" : "local";
+
   // MCP + Guardrails tabs — installed apps that declare tools. The consumer
   // view doesn't carry them (its tabs are exactly About/Connections/Support);
   // the app's tools still reach the org's agents through the install.
@@ -1899,6 +1915,12 @@ function initApps() {
       // spread the existing config rather than replacing it.
       const { mcpApproved, guardrails } = readMcpConfig();
       patch.launchConfig = { ...(currentApp?.launchConfig || {}), mcpApproved, guardrails };
+      // "Runs on" — only when the row is offered (worker-bearing glyphh apps).
+      const homeSel = document.getElementById("app-exec-home") as HTMLSelectElement | null;
+      const homeRow = document.getElementById("app-exec-home-row");
+      if (homeSel && homeRow && !homeRow.classList.contains("hidden")) {
+        patch.executionHome = homeSel.value === "regional" ? "regional" : "local";
+      }
     } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;

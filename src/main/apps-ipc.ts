@@ -183,8 +183,16 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
       const app = await getClient().apps.updateEntry(slug, {
         ...entryFields(patch),
         ...(kind === "web" || kind === "native" ? { kind } : {}),
+        // The ONE execution home (app-runtime-spec): where the app's worker +
+        // schedules run — "local" (this machine) or "regional" (the org's pod).
+        ...(patch.executionHome === "local" || patch.executionHome === "regional"
+          ? { executionHome: patch.executionHome }
+          : {}),
       });
       invalidateOrgApps();
+      // Re-read NOW so a home flip takes effect immediately (fetchOrgApps →
+      // syncExecutionHomes disarms/re-arms), not on the next incidental read.
+      void fetchOrgApps().catch(() => {});
       return { ok: true, app };
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
