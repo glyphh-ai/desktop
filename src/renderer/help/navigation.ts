@@ -272,6 +272,13 @@ function onSettingsModalKey(e: KeyboardEvent): void {
 }
 
 export function openSettingsModal(sub?: string): void {
+  // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
+  // platform shell itself, any settings open routes to the platform page.
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
+      && !document.body.classList.contains("platform-shell")) {
+    window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
+    return;
+  }
   // Already open — just switch the sub-panel.
   if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
 
