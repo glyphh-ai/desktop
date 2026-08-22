@@ -229,6 +229,10 @@ export function isSettingsModalOpen(): boolean {
 }
 
 export function closeSettingsModal(): void {
+  // PLATFORM shell (web /platform): the settings surface IS the page — there
+  // is nothing behind it to return to, so close is a no-op (the close button
+  // and backdrop are CSS-hidden there too; this catches Esc and data-jump).
+  if (document.body.classList.contains("platform-shell")) return;
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
@@ -397,9 +401,10 @@ const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
   // MCP is a desktop-machine feature — a browser tab has no machine to run the
-  // 127.0.0.1 server on. The nav item + panel are CSS-hidden on web; any stale
-  // deep link (saved nav app, remembered homeLastSub) lands on General instead.
-  if (target === "mcp" && document.documentElement.classList.contains("glyphh-web")) return "general";
+  // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
+  // + panels are CSS-hidden on web; any stale deep link (saved nav app,
+  // remembered homeLastSub) lands on General instead.
+  if ((target === "mcp" || target === "drips") && document.documentElement.classList.contains("glyphh-web")) return "general";
   return target;
 };
 

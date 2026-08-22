@@ -134,7 +134,9 @@ if (typeof window !== 'undefined') {
   const isAuthedSync = () =>
     isWebAuthedFromCookie(typeof document !== 'undefined' ? document.cookie : '');
   const loc = typeof window !== 'undefined' ? window.location : undefined;
-  if (loc && /^\/home(\.html)?\/?$/.test(loc.pathname || '') && !isAuthedSync()) {
+  // /platform (the admin surface) is the same authed home.html shell — an
+  // anonymous visitor there bounces to the login exactly like /home.
+  if (loc && /^\/(home(\.html)?|platform)\/?$/.test(loc.pathname || '') && !isAuthedSync()) {
     loc.replace('/');
   }
   window.glyphhWeb = {

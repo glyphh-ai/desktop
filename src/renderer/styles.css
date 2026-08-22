@@ -1526,6 +1526,14 @@ body.account-locked #dl-btn-wrap {
    settingsSubAlias). */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="mcp"],
 .glyphh-web .settings-panel[data-sub="mcp"] { display: none !important; }
+/* Drips is likewise a desktop-app surface — hidden on web the same way, with
+   the same stale-deep-link fallback to General (settingsSubAlias). */
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="drips"],
+.glyphh-web .settings-panel[data-sub="drips"] { display: none !important; }
+/* Appearance → Browser homepage drives the DESKTOP app's built-in browser
+   panel; a browser tab has none. Only this group hides — the rest of the
+   Browser block (address-bar toggle, the tablet "mobile app" door) stays. */
+.glyphh-web #browser-home-group { display: none !important; }
 
 /* ── Web: neutralize OS window chrome, KEEP the app header ───────────────────
    The frameless-window TITLEBAR (#titlebar — the login/splash shell's desktop
@@ -19142,3 +19150,104 @@ body.echo-agent-locked #code-agent-layer {
 body.echo-agent-locked .code-root[data-anchor="center"] .code-agent-toprow { cursor: default; }
 body.echo-agent-locked .code-agent-edge,
 body.echo-agent-locked .code-thread-grip { display: none; }
+
+/* ── Surface tabs (web target only — home.ts mounts #surface-tabs under
+   window.__GLYPHH_WEB__; Electron never renders it). A small fixed top-right
+   segmented control on both signed-in desktop-browser surfaces:
+   [ Platform | Builder ]. Sits ABOVE the settings modal/platform shell
+   (z 9000) so the switch stays reachable everywhere. */
+#surface-tabs {
+  position: fixed;
+  top: 10px;
+  right: 12px;
+  z-index: 9500;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+.surface-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.surface-tab:hover { color: var(--text); background: var(--active-bg); }
+.surface-tab.active { color: var(--text-bright); background: var(--active-bg); }
+
+/* ── Platform shell (web /platform) ──────────────────────────────────────────
+   The settings surface PROMOTED to a full page: home.ts's platform branch sets
+   body.platform-shell and opens the EXISTING settings modal — these rules
+   restyle that same DOM into a full-bleed admin layout (rail left, content
+   right) with no backdrop and no close/expand affordances (closeSettingsModal
+   is also a guarded no-op there). Inert on desktop: the class is only ever set
+   on the web-only /platform route. */
+body.platform-shell #settings-modal .yo-modal-backdrop { display: none; }
+body.platform-shell .yo-settings-modal .settings-modal-panel {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}
+body.platform-shell .settings-modal-close,
+body.platform-shell .settings-modal-max { display: none; }
+/* The rail-collapse chevron (home.ts platform branch) reuses the modal
+   icon-button voice but pins to the shell's TOP-LEFT, over the rail. The id
+   out-specifies the .settings-modal-close display:none above. */
+body.platform-shell #platform-rail-toggle {
+  display: flex;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  right: auto;
+  z-index: 3;
+}
+/* Full-page proportions: a slightly wider rail with room under the fixed
+   chevron (left) and the surface tabs (right). */
+body.platform-shell .settings-modal-body > .settings-layout > .settings-nav {
+  width: 216px;
+  padding-top: 48px;
+  padding-left: 10px;
+  transition: width 0.15s ease, padding 0.15s ease;
+}
+body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
+  padding-top: 48px;
+}
+/* Collapsed rail — icons only (labels + group headings fold away); state in
+   localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav {
+  width: 54px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav > .settings-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 8px 0;
+}
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav > .settings-nav-item > span { display: none; }
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav > .settings-nav-item > .settings-nav-icon {
+  width: 17px;
+  height: 17px;
+}
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav > .settings-nav-group {
+  height: 0;
+  margin: 8px 0 0;
+  padding: 0;
+  overflow: hidden;
+}

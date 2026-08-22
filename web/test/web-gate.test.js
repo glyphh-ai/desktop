@@ -83,6 +83,16 @@ describe('window.glyphhWeb (login-first wall)', () => {
     expect(replaced).toEqual([]);
   });
 
+  it('anonymous on /platform (the admin surface) bounces to the login shell too', async () => {
+    const { replaced } = await loadBridge('', '/platform');
+    expect(replaced).toEqual(['/']);
+  });
+
+  it('an AUTHED session on /platform is NOT bounced', async () => {
+    const { replaced } = await loadBridge('glyphh_logged_in=1', '/platform');
+    expect(replaced).toEqual([]);
+  });
+
   it('the login shell itself never bounces (no redirect loop)', async () => {
     const anon = await loadBridge('', '/');
     expect(anon.replaced).toEqual([]);

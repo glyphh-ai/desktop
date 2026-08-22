@@ -5,7 +5,7 @@
  * window.glyphh API.
  */
 
-import { initHelp, gotoSection } from "./help/index.js";
+import { initHelp, gotoSection, openSettingsModal } from "./help/index.js";
 import { seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 import { installAutofillGuard } from "./autofill-guard.js";
@@ -50,6 +50,58 @@ void (async () => {
   // ?section=<slug> query. When set, this panel is locked to that section.
   try {
     const params = new URLSearchParams(window.location.search);
+    // PLATFORM shell (web-only — platform.glyphh.ai's /platform route serves
+    // home.html; Electron loads home.html from disk, so this pathname never
+    // matches there and the branch is inert on desktop). The workbench/echo
+    // never shows: the existing settings surface opens as THE PAGE — the
+    // settings modal, restyled full-bleed by body.platform-shell (rail left
+    // with a collapse toggle, content right, no close/backdrop — styles.css
+    // "Platform shell (web)"). All panel loaders, the org-admin gating and
+    // the super-admin (gateAdminSubs) nav-gating run untouched inside it.
+    if (/^\/platform\/?$/.test(window.location.pathname)) {
+      document.documentElement.setAttribute("data-home-scope", "platform");
+      document.body.classList.add("platform-shell");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="platform"] #help-overlay { display: none !important; }`;
+      document.head.appendChild(style);
+      document.title = "Platform — Glyphh";
+      // The boot veil (body.wb-booting) is lifted by the wall-settle loop in
+      // the DEFAULT boot path, which this branch returns before — drop it now
+      // or this page keeps the opaque booting state forever.
+      document.body.classList.remove("wb-booting");
+      // Rail collapse state persists per browser (chevron toggle below).
+      try {
+        if (localStorage.getItem("glyphhPlatformRail") === "collapsed") {
+          document.body.classList.add("platform-rail-collapsed");
+        }
+      } catch { /* private mode — starts expanded */ }
+      // Open the settings surface as the page. ?sub=<panel> deep-links a
+      // specific panel (billing, members, padmin-orgs, …); default General.
+      openSettingsModal(params.get("sub") || undefined);
+      // Rail collapse chevron — pinned to the rail's top edge of the shell.
+      const railBtn = document.createElement("button");
+      railBtn.type = "button";
+      railBtn.id = "platform-rail-toggle";
+      railBtn.className = "settings-modal-close";
+      const railSvg = (collapsed: boolean) =>
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="${collapsed ? "9 18 15 12 9 6" : "15 18 9 12 15 6"}"/></svg>`;
+      const paintRailBtn = () => {
+        const collapsed = document.body.classList.contains("platform-rail-collapsed");
+        railBtn.innerHTML = railSvg(collapsed);
+        railBtn.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+        railBtn.title = collapsed ? "Expand navigation" : "Collapse navigation";
+      };
+      paintRailBtn();
+      railBtn.addEventListener("click", () => {
+        const collapsed = document.body.classList.toggle("platform-rail-collapsed");
+        try { localStorage.setItem("glyphhPlatformRail", collapsed ? "collapsed" : "open"); } catch { /* */ }
+        paintRailBtn();
+      });
+      document.getElementById("settings-modal")?.querySelector(".settings-modal-panel")?.appendChild(railBtn);
+      return;
+    }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
@@ -131,6 +183,40 @@ void (async () => {
     requestAnimationFrame(lift);
   };
   lift();
+})();
+
+// ── Surface tabs (web target only) ──────────────────────────────────────────
+// A small fixed top-right control on signed-in desktop-browser surfaces:
+// [ Platform | Builder ]. Platform → /platform (the admin shell above),
+// Builder → /home (the workbench). Clicking stores the choice
+// (localStorage glyphhSurfaceTab) — web-boot's post-login hand-off reads it,
+// so `/` lands on the remembered tab (default Platform). Renders ONLY under
+// the web bridge (window.__GLYPHH_WEB__); on desktop (Electron) nothing
+// mounts, and the mobile app never loads this bundle.
+void (() => {
+  if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
+  if (document.getElementById("surface-tabs")) return;
+  const onPlatform = /^\/platform\/?$/.test(window.location.pathname);
+  const wrap = document.createElement("div");
+  wrap.id = "surface-tabs";
+  wrap.setAttribute("role", "tablist");
+  wrap.setAttribute("aria-label", "Surface");
+  const mk = (label: string, key: "platform" | "builder", href: string, active: boolean) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "surface-tab" + (active ? " active" : "");
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", active ? "true" : "false");
+    b.textContent = label;
+    b.addEventListener("click", () => {
+      try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
+      if (!active) window.location.assign(href);
+    });
+    return b;
+  };
+  wrap.appendChild(mk("Platform", "platform", "/platform", onPlatform));
+  wrap.appendChild(mk("Builder", "builder", "/home", !onPlatform));
+  document.body.appendChild(wrap);
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────

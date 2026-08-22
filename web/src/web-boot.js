@@ -34,10 +34,24 @@ import { mountLogin } from './web-login.js';
 
 const SPLASH_MIN_MS = 1200;
 
-/** The AUTHED app surface (serve.mjs maps /home → home.html). LOGIN-FIRST: `/` is
+/** The AUTHED app surfaces (serve.mjs maps both to home.html). LOGIN-FIRST: `/` is
  *  the login shell now, so after sign-in we hand off HERE — navigating to '/'
  *  would land back on the login shell and loop the getting-started flow. */
 export const HOME_PATH = '/home';
+/** The admin surface — the settings shell as a full page (home.ts branches on
+ *  the pathname). The TOP-RIGHT tabs on both surfaces switch between them. */
+export const PLATFORM_PATH = '/platform';
+/** Where a signed-in desktop browser lands: the REMEMBERED surface tab
+ *  (stored by the tabs control on click), defaulting to Platform. Client-side
+ *  only — never touches auth/device/mobile routing (phones never run this
+ *  module; serve.mjs routes them to /m before the bridge loads). */
+export function surfacePath() {
+  try {
+    return localStorage.getItem('glyphhSurfaceTab') === 'builder' ? HOME_PATH : PLATFORM_PATH;
+  } catch {
+    return PLATFORM_PATH;
+  }
+}
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the
  *  onboarding overlay. home.html (the Chat tab) has none, so the splash→auth→login
@@ -46,12 +60,14 @@ function isLoginShell() {
   return !!document.getElementById('onboarding-overlay');
 }
 
-/** Navigate to the Chat-tab front door. A full navigation (not a history push) so
- *  home.html boots fresh under the bridge; a fresh session in localStorage survives
- *  the nav. Overridable in tests. */
+/** Navigate to the remembered surface (Platform by default, Builder if that tab
+ *  was last chosen). A full navigation (not a history push) so home.html boots
+ *  fresh under the bridge; a fresh session in localStorage survives the nav.
+ *  Overridable in tests. */
 function goHome() {
-  try { window.location.assign(HOME_PATH); }
-  catch { window.location.href = HOME_PATH; }
+  const path = surfacePath();
+  try { window.location.assign(path); }
+  catch { window.location.href = path; }
 }
 
 /** app-web has NO splash beat — the login/app paints immediately. The splash
