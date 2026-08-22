@@ -132,14 +132,31 @@ void (async () => {
         return head;
       };
       // The Apps nav entry OPENS THE WALL (his call, 2026-08-22): the wall IS
-      // Apps. Capture-phase so the settings panel switch never fires.
+      // Apps. It launches in a NEW TAB (less confusing than swapping the admin
+      // surface out from under you), and the row wears a launch icon on the
+      // far right so the jump is telegraphed. Capture-phase so the settings
+      // panel switch never fires.
       document.addEventListener("click", (ev) => {
         const item = (ev.target as HTMLElement).closest('.settings-nav-item[data-sub="apps"]');
         if (!item || !document.body.classList.contains("platform-shell")) return;
         ev.preventDefault();
         ev.stopPropagation();
-        window.location.assign("/home");
+        window.open("/home", "_blank", "noopener");
       }, true);
+      const decorateAppsLaunch = (): boolean => {
+        const item = document.querySelector('#settings-modal .settings-nav-item[data-sub="apps"]');
+        if (!item) return false;
+        if (!item.querySelector(".nav-launch-ic")) {
+          const ic = document.createElement("span");
+          ic.className = "nav-launch-ic";
+          ic.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+          item.appendChild(ic);
+        }
+        return true;
+      };
+      let launchTries = 0;
+      const launchGo = (): void => { if (!decorateAppsLaunch() && launchTries++ < 120) requestAnimationFrame(launchGo); };
+      launchGo();
       const railHead = buildRailHead();
       // MUST scope to #settings-modal: the document holds a SECOND
       // .settings-nav inside #help-overlay, which this page force-hides — a
@@ -513,50 +530,76 @@ async function renderMcpConsent(params: URLSearchParams): Promise<void> {
   }
 
   // ── RENDER the consent card ─────────────────────────────────────────────────
+  // Look-and-feel matches the old platform's OAuth consent screen (the retired
+  // platform repo's app/(app)/settings/mcp/page.js rendered with the .auth-page /
+  // .auth-card treatment from its globals.css): Glyphh wordmark, "{name} wants to
+  // connect" heading, plain-English description with the redirect host, a checked
+  // permission list, footnote, then Deny / Allow.
   const name = (client.clientName || "An application").trim();
   card.innerHTML = "";
 
-  if (client.logoUri) {
-    const logo = document.createElement("img");
-    logo.className = "mcp-consent-logo";
-    logo.src = client.logoUri;
-    logo.alt = "";
-    logo.referrerPolicy = "no-referrer";
-    logo.addEventListener("error", () => logo.remove());
-    card.appendChild(logo);
-  }
+  const logo = document.createElement("img");
+  logo.className = "mcp-consent-logo";
+  logo.src = "brand/glyphh-logo-text-black.png";
+  logo.alt = "Glyphh";
+  card.appendChild(logo);
 
-  const title = el("h1", "mcp-consent-title");
-  const strong = el("strong", undefined, name);
-  title.append(strong, document.createTextNode(" wants to access your Glyphh account"));
+  const title = el("h1", "mcp-consent-title", `${name} wants to connect`);
   card.appendChild(title);
-
-  if (client.clientUri) {
-    const link = el("a", "mcp-consent-clienturi", client.clientUri.replace(/^https?:\/\//, ""));
-    (link as HTMLAnchorElement).href = client.clientUri;
-    (link as HTMLAnchorElement).target = "_blank";
-    (link as HTMLAnchorElement).rel = "noreferrer noopener";
-    card.appendChild(link);
-  }
-
-  const scopeBox = el("div", "mcp-consent-scope");
-  scopeBox.append(
-    el("div", "mcp-consent-scope-name", "mcp"),
-    el("div", "mcp-consent-scope-desc", "Your Glyphh tools, apps, loops, and connections."),
-  );
-  card.appendChild(scopeBox);
 
   const err = el("p", "mcp-consent-error");
   err.style.display = "none";
   card.appendChild(err);
 
+  let redirectOrigin = "";
+  try {
+    redirectOrigin = new URL(redirectUri).hostname;
+  } catch {
+    /* redirect_uri already validated above — just skip the host mention */
+  }
+  const lede = el("p", "mcp-consent-lede");
+  lede.append("This will let ", el("strong", undefined, name), " access your Glyphh account");
+  if (redirectOrigin) {
+    lede.append(" and redirect back to ", el("span", "mcp-consent-mono", redirectOrigin), " when you approve");
+  }
+  lede.append(".");
+  card.appendChild(lede);
+
+  // The permission checklist — copy and check treatment from the platform screen.
+  const PERMISSIONS: Array<[string, string]> = [
+    ["View and manage your connected apps", "list, connect, and drive apps via RPA"],
+    ["Run and author skills", "execute saved skills and build new ones"],
+    ["Run and manage saved agents", "start agents/swarms you’ve configured"],
+    ["Basic account info", "organization and user identifiers only — never your password"],
+  ];
+  const CHECK_SVG =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+  const perms = el("div", "mcp-consent-perms");
+  for (const [label, desc] of PERMISSIONS) {
+    const row = el("div", "mcp-consent-perm");
+    row.innerHTML = CHECK_SVG; // static markup only — no client-supplied strings
+    const text = el("div");
+    text.append(el("div", "mcp-consent-perm-label", label), el("div", "mcp-consent-perm-desc", desc));
+    row.appendChild(text);
+    perms.appendChild(row);
+  }
+  card.appendChild(perms);
+
+  const note = el("p", "mcp-consent-note");
+  note.append("Requested scope: ", el("span", "mcp-consent-mono", scope), ". You can revoke this connection at any time.");
+  card.appendChild(note);
+
   const actions = el("div", "mcp-consent-actions");
-  const cancelBtn = el("button", "btn btn-secondary mcp-consent-cancel", "Cancel") as HTMLButtonElement;
+  const cancelBtn = el("button", "btn mcp-consent-cancel", "Deny") as HTMLButtonElement;
   cancelBtn.type = "button";
-  const approveBtn = el("button", "btn btn-primary mcp-consent-approve", "Approve") as HTMLButtonElement;
+  const approveBtn = el("button", "btn btn-primary mcp-consent-approve", "Allow") as HTMLButtonElement;
   approveBtn.type = "button";
   actions.append(cancelBtn, approveBtn);
   card.appendChild(actions);
+
+  root.appendChild(
+    el("p", "mcp-consent-copyright", `© ${new Date().getFullYear()} Glyphh AI LLC. All rights reserved.`),
+  );
 
   // ── CANCEL → the OAuth deny response back to the client ─────────────────────
   cancelBtn.addEventListener("click", () => {
@@ -607,7 +650,7 @@ async function renderMcpConsent(params: URLSearchParams): Promise<void> {
     } catch (ex) {
       approveBtn.disabled = false;
       cancelBtn.disabled = false;
-      approveBtn.textContent = "Approve";
+      approveBtn.textContent = "Allow";
       setBusy(false);
       err.textContent = (ex instanceof Error && ex.message) || "Could not complete the connection. Please try again.";
       err.style.display = "";

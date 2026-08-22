@@ -667,7 +667,8 @@ export function initHelp() {
   // The wall's dock gear lands here (the workbench bundle can't import this
   // module): open the SETTINGS MODAL — gotoSection("settings") is the modal
   // path. Account/Logout live inside it.
-  (window as unknown as { __glyphhOpenSettings?: () => void }).__glyphhOpenSettings = () => gotoSection("settings");
+  (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings =
+    (sub?: string) => (sub ? openSettingsModal(sub) : gotoSection("settings"));
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
   // repaints it instead of showing the previous identity all run.

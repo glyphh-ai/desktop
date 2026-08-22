@@ -4807,10 +4807,14 @@ async function init(): Promise<void> {
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
-        const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
+        const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: (sub?: string) => void; __glyphhNewSession?: () => void };
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
+        // Marketplace opens FULL SCREEN in the shell (his rule, 2026-08-22) —
+        // no wall card, no close-workspace chrome, no expand icon; its own
+        // close returns to the wall.
+        else if (t.navKey === "marketplace") w.__glyphhOpenSettings?.("marketplace");
         else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;

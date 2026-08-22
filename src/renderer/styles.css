@@ -19245,15 +19245,20 @@ body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: c
 /* ── MCP OAuth consent screen (web /settings/mcp) ────────────────────────────
    The "connect Claude to Glyphh" step. home.ts's /settings/mcp branch renders a
    centered consent card into .mcp-consent-root over the (hidden) workbench. Web
-   only: the data-home-scope="mcp-consent" attribute is set on that route alone. */
+   only: the data-home-scope="mcp-consent" attribute is set on that route alone.
+   LOOK: 1:1 port of the old platform repo's consent screen — its .auth-page /
+   .auth-card treatment (globals.css) around app/(app)/settings/mcp/page.js:
+   left-aligned 420px card, 24px radius, 2.5rem padding, wordmark up top,
+   check-list of permissions, ghost Deny + primary Allow, copyright below. */
 .mcp-consent-root {
   position: fixed;
   inset: 0;
   z-index: 5;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 2rem;
   background: var(--bg);
   overflow: auto;
 }
@@ -19261,86 +19266,92 @@ body.echo-agent-in-layout .code-agent-head .echo-drip-pop { bottom: auto; top: c
   width: 100%;
   max-width: 420px;
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 14px;
-  padding: 32px 28px;
+  text-align: left;
+  padding: 2.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 40px var(--shadow);
+  border-radius: 24px;
 }
+/* Glyphh wordmark — the platform auth card's .auth-title img treatment. */
 .mcp-consent-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  object-fit: cover;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  display: block;
+  height: 48px;
+  width: auto;
+  margin-bottom: 1.5rem;
 }
+/* Platform .auth-subtitle. */
 .mcp-consent-title {
-  margin: 0;
+  margin: 0 0 1.5rem;
   font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.4;
+  font-weight: 700;
+  line-height: 1.55;
   color: var(--text);
 }
-.mcp-consent-title strong { font-weight: 700; color: var(--text-bright); }
+/* Platform .auth-desc. */
 .mcp-consent-lede {
-  margin: 0;
-  font-size: 0.875rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.9375rem;
   line-height: 1.5;
   color: var(--text-2);
 }
-.mcp-consent-clienturi {
-  margin-top: -6px;
-  font-size: 0.8125rem;
-  color: var(--text-3);
-  text-decoration: none;
+.mcp-consent-lede strong { font-weight: 600; color: var(--text); }
+/* Platform .mono. */
+.mcp-consent-mono { font-family: var(--font-mono); font-size: 0.8125rem; }
+/* The permission check-list. */
+.mcp-consent-perms {
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
-.mcp-consent-clienturi:hover { color: var(--accent); text-decoration: underline; }
-.mcp-consent-scope {
-  width: 100%;
-  box-sizing: border-box;
-  text-align: left;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+.mcp-consent-perm {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
 }
-.mcp-consent-scope-name {
-  font-size: 0.8125rem;
-  font-weight: 600;
+.mcp-consent-perm svg {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.mcp-consent-scope-desc {
-  margin-top: 2px;
-  font-size: 0.8125rem;
-  color: var(--text-2);
-}
-.mcp-consent-error {
+.mcp-consent-perm-label { font-size: 0.875rem; color: var(--text); }
+.mcp-consent-perm-desc { font-size: 0.75rem; color: var(--text-3); }
+/* Scope / revoke footnote. */
+.mcp-consent-note {
   margin: 0;
-  width: 100%;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+/* Platform .auth-error — sits between the title and the description. */
+.mcp-consent-error {
+  margin: -0.75rem 0 0.75rem;
   font-size: 0.8125rem;
   color: var(--danger, #dc2626);
 }
+/* Deny / Allow row — platform used flex:1 on each with a 0.5rem gap. */
 .mcp-consent-actions {
   display: flex;
-  gap: 10px;
-  width: 100%;
-  margin-top: 4px;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
 }
 .mcp-consent-actions .btn { flex: 1 1 0; }
+/* Platform .auth-copyright, below the card. */
+.mcp-consent-copyright {
+  margin: 2rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+/* Platform .dash-spinner (24px, 0.6s) — centered while the card resolves. */
 .mcp-consent-spinner {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto;
   border-radius: 50%;
   border: 2px solid var(--border-2);
   border-top-color: var(--accent);
-  animation: mcp-consent-spin 0.8s linear infinite;
+  animation: mcp-consent-spin 0.6s linear infinite;
 }
 @keyframes mcp-consent-spin { to { transform: rotate(360deg); } }
 .mcp-consent-root.is-busy { cursor: progress; }
@@ -19456,3 +19467,9 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
   box-shadow: 0 2px 8px var(--shadow);
 }
+
+/* Launch decoration on the platform's Apps nav entry — telegraphs the new-tab jump. */
+.settings-nav-item .nav-launch-ic { margin-left: auto; display: inline-flex; opacity: 0.5; }
+.settings-nav-item .nav-launch-ic svg { width: 13px; height: 13px; }
+.settings-nav-item:hover .nav-launch-ic { opacity: 0.85; }
+body.platform-rail-collapsed .nav-launch-ic { display: none; }
