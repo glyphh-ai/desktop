@@ -27,7 +27,7 @@
 
 import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
 import {
-  isAuthenticated, syncGating, serverReachable,
+  glyphh, isAuthenticated, syncGating, serverReachable,
   signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice, signOut,
 } from './glyphh-web.js';
 import { mountLogin } from './web-login.js';
@@ -92,11 +92,92 @@ function resumeMcpConsent() {
   return false;
 }
 
+/** localStorage key the app-SSO hand-off stashes its target under. A `members`
+ *  app on <slug>.<appDomain> can't see the platform session (different
+ *  registrable domain), so its edge bounces the browser here with
+ *  ?appReturn=<full app URL>. Same stash shape as MCP_CONSENT_RETURN_KEY —
+ *  JSON {t, ts}, 30-min expiry, localStorage (NOT sessionStorage: a magic-link
+ *  login finishes in a NEW tab and must still return). */
+const APP_RETURN_KEY = 'glyphhAppReturn';
+
+/** Stash ?appReturn=<url> the moment we land with it, BEFORE any auth branch
+ *  runs — the login may finish in this tab (Google), another tab (magic link),
+ *  or not be needed at all; every path funnels through goHome → resumeAppReturn. */
+function stashAppReturn(search) {
+  try {
+    const target = new URLSearchParams(search).get('appReturn');
+    if (target) localStorage.setItem(APP_RETURN_KEY, JSON.stringify({ t: target, ts: Date.now() }));
+  } catch { /* storage unavailable — the user simply lands on the surface */ }
+}
+
+/** The suffix deployed apps live under (<slug>.<appDomain>), injected by
+ *  serve.mjs as window.__GLYPHH_APP_DOMAIN__. */
+function appDomain() {
+  return ((typeof window !== 'undefined' && window.__GLYPHH_APP_DOMAIN__) || 'glyphh.app').toLowerCase();
+}
+
+/** Validate an appReturn target: https:// and exactly ONE label under the app
+ *  domain. Anything else — foreign host, deeper labels, http:, garbage — is
+ *  dropped: this URL is navigated to carrying a fresh one-time session code. */
+function parseAppReturn(raw) {
+  let url;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.protocol !== 'https:') return null;
+  const suffix = `.${appDomain()}`;
+  const host = url.hostname.toLowerCase();
+  if (!host.endsWith(suffix)) return null;
+  const label = host.slice(0, -suffix.length);
+  if (!label || label.includes('.')) return null;
+  return url;
+}
+
+/** Finish the app-SSO hop for a stashed appReturn: mint a one-time code with
+ *  this session's bearer (POST /api/app-session/code), then hand the browser to
+ *  the app host's /__glyphh/session, which trades code → app cookie → target
+ *  path. Consumes the stash (a later unrelated login must not replay it).
+ *  Returns true when the hand-off is underway — the caller stops navigating. */
+function resumeAppReturn() {
+  let raw = null;
+  try {
+    const stashed = localStorage.getItem(APP_RETURN_KEY);
+    if (stashed) {
+      localStorage.removeItem(APP_RETURN_KEY);
+      try {
+        const parsed = JSON.parse(stashed);
+        // The MCP stash's 30-min expiry — an abandoned attempt must not ambush
+        // an unrelated login days later.
+        if (parsed && parsed.t && Date.now() - (parsed.ts || 0) < 30 * 60 * 1000) raw = parsed.t;
+      } catch { raw = null; }
+    }
+  } catch { raw = null; }
+  const url = raw ? parseAppReturn(raw) : null;
+  if (!url) return false;
+  void (async () => {
+    try {
+      const { code } = await glyphh().http.post('/api/app-session/code', { target: url.href });
+      const to = `${url.pathname}${url.search}${url.hash}` || '/';
+      window.location.replace(
+        `https://${url.host}/__glyphh/session?code=${encodeURIComponent(code)}&to=${encodeURIComponent(to)}`,
+      );
+    } catch (err) {
+      // Mint failed (session hiccup, app gone) — land on the surface rather
+      // than a dead end; opening the tile again retries the whole hop.
+      console.error('[glyphh-web] app session hand-off failed', err);
+      const path = surfacePath();
+      try { window.location.assign(path); } catch { window.location.href = path; }
+    }
+  })();
+  return true;
+}
+
 /** Navigate to the remembered surface (Platform by default, Builder if that tab
  *  was last chosen). A full navigation (not a history push) so home.html boots
  *  fresh under the bridge; a fresh session in localStorage survives the nav.
  *  Overridable in tests. */
 function goHome() {
+  // App-SSO hand-off: a members-app visitor bounced here to authenticate
+  // returns to the app (via its /__glyphh/session code hop), not the surface.
+  if (resumeAppReturn()) return;
   // MCP consent flow: a signed-out visitor bounced from /settings/mcp returns
   // there (params intact) after login instead of landing on the surface.
   if (resumeMcpConsent()) return;
@@ -357,6 +438,12 @@ export async function startWebBoot(overrides = {}) {
   const shownAt = Date.now();
   const isAuthed = overrides.isAuthenticated || isAuthenticated;
   const loginShell = overrides.isLoginShell ? overrides.isLoginShell() : isLoginShell();
+
+  // A members app bounced this visitor here (?appReturn=<app URL>): stash the
+  // target NOW, before any auth branch runs. Already signed in → the flow below
+  // reaches goHome without showing login and the hand-off fires immediately;
+  // signed out → it fires right after whichever login path completes.
+  stashAppReturn(window.location.search);
 
   dismissSplash(); // no splash on app-web — straight to the surface
   let authed = false;

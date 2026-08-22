@@ -122,6 +122,9 @@ function configScript() {
     __GLYPHH_API_URL__: ENV.GLYPHH_SERVER_URL || 'https://api.glyphh.ai',
     __GLYPHH_GOOGLE_CLIENT_ID__: ENV.GLYPHH_GOOGLE_CLIENT_ID || '',
     __GLYPHH_WEB_URL__: ENV.GLYPHH_WEB_URL || 'https://glyphh.ai',
+    // The suffix deployed apps live under (<slug>.<appDomain>) — the ?appReturn=
+    // SSO hand-off in web-boot.js only ever redirects to a host under this suffix.
+    __GLYPHH_APP_DOMAIN__: ENV.GLYPHH_APP_DOMAIN || 'glyphh.app',
   };
   const assigns = Object.entries(cfg)
     .map(([k, v]) => `window.${k}=${JSON.stringify(v)};`)
