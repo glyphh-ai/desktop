@@ -79,7 +79,7 @@ void (async () => {
       } catch { /* private mode — starts expanded */ }
       // Open the settings surface as the page. ?sub=<panel> deep-links a
       // specific panel (billing, members, padmin-orgs, …); default General.
-      openSettingsModal(params.get("sub") || undefined);
+      openSettingsModal(params.get("sub") || "usage");
       // Rail collapse chevron — pinned to the rail's top edge of the shell.
       const railBtn = document.createElement("button");
       railBtn.type = "button";
@@ -100,6 +100,32 @@ void (async () => {
         paintRailBtn();
       });
       document.getElementById("settings-modal")?.querySelector(".settings-modal-panel")?.appendChild(railBtn);
+      // Rail HEADER (his spec, 2026-08-21): top-left of the rail — a TEXT-ONLY
+      // wordmark, then the surface switch as plain buttons. No fixed top-right
+      // tabs on the platform (mountSurfaceTabs skips this page).
+      const nav = document.querySelector(".settings-nav");
+      if (nav) {
+        const head = document.createElement("div");
+        head.id = "platform-rail-head";
+        head.innerHTML = `<div id="platform-brand">Glyphh</div>`;
+        const surf = document.createElement("div");
+        surf.id = "platform-surface-btns";
+        const mkSurf = (label: string, key: string, href: string, active: boolean) => {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "settings-nav-item platform-surface-btn" + (active ? " active" : "");
+          b.innerHTML = `<span>${label}</span>`;
+          b.addEventListener("click", () => {
+            try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
+            if (!active) window.location.assign(href);
+          });
+          return b;
+        };
+        surf.appendChild(mkSurf("Platform", "platform", "/platform", true));
+        surf.appendChild(mkSurf("Builder", "builder", "/home", false));
+        head.appendChild(surf);
+        nav.insertBefore(head, nav.firstChild);
+      }
       return;
     }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
@@ -242,6 +268,7 @@ void (() => {
   if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
   if (document.getElementById("surface-tabs")) return;
   const onPlatform = /^\/platform\/?$/.test(window.location.pathname);
+  if (onPlatform) return;   // the platform rail hosts the surface buttons
   const wrap = document.createElement("div");
   wrap.id = "surface-tabs";
   wrap.setAttribute("role", "tablist");

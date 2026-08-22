@@ -19310,3 +19310,17 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
   padding: 0;
   overflow: hidden;
 }
+
+/* WEB: settings lives on the /platform surface — the dock drops its slot
+   (his rule, 2026-08-21). Desktop keeps it. */
+.glyphh-web .echo-dock-btn[data-dock="settings"] { display: none !important; }
+
+/* Platform rail header: text-only wordmark + the surface switch as rail
+   buttons (top-left). Collapsed rail folds the labels like the nav items. */
+#platform-rail-head { padding: 14px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
+#platform-brand { font-weight: 800; font-size: 16px; letter-spacing: 0.02em; color: var(--text); padding: 0 6px; }
+#platform-surface-btns { display: flex; gap: 4px; }
+#platform-surface-btns .platform-surface-btn { flex: 1; justify-content: center; padding: 6px 8px; border: 1px solid var(--border-2); border-radius: 8px; }
+#platform-surface-btns .platform-surface-btn.active { background: var(--surface-2); color: var(--text); }
+body.platform-rail-collapsed #platform-brand { display: none; }
+body.platform-rail-collapsed #platform-surface-btns { flex-direction: column; }
