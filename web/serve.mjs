@@ -217,14 +217,17 @@ const server = http.createServer(async (req, res) => {
     const isPhoneUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
     const authedCookie = /(?:^|;\s*)glyphh_logged_in=1\b/.test(req.headers.cookie || '');
     const isAuthRoute = p === '/auth' || p.startsWith('/auth/');
+    // /platform — the admin surface (the settings shell as a full page). Same
+    // home.html document as /home; home.ts branches on the pathname client-side.
+    const isPlatformRoute = p === '/platform' || p === '/platform/';
     const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
-      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/');
+      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
       p = '/mobile.html';
     } else if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    } else if (p === '/home' || p === '/home/') {
+    } else if (p === '/home' || p === '/home/' || isPlatformRoute) {
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));

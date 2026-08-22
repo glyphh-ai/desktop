@@ -352,17 +352,22 @@
 
                 <h3 class="settings-subheading">Browser</h3>
                 <div class="settings-form">
-                  <label class="settings-label">Default Homepage</label>
-                  <div class="settings-inline">
-                    <select id="settings-browser-home" class="settings-input settings-input-md">
-                      <option value="claude">Claude</option>
-                      <option value="chatgpt">ChatGPT</option>
-                      <option value="gemini">Gemini</option>
-                      <option value="custom">Custom URL</option>
-                    </select>
-                  </div>
-                  <div id="browser-home-custom-row" class="settings-inline hidden" style="margin-top:6px">
-                    <input id="settings-browser-home-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" />
+                  <!-- Browser homepage drives the DESKTOP app's built-in browser
+                       panel — a browser tab has none, so this group is CSS-hidden
+                       on web (.glyphh-web #browser-home-group in styles.css). -->
+                  <div id="browser-home-group">
+                    <label class="settings-label">Default Homepage</label>
+                    <div class="settings-inline">
+                      <select id="settings-browser-home" class="settings-input settings-input-md">
+                        <option value="claude">Claude</option>
+                        <option value="chatgpt">ChatGPT</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="custom">Custom URL</option>
+                      </select>
+                    </div>
+                    <div id="browser-home-custom-row" class="settings-inline hidden" style="margin-top:6px">
+                      <input id="settings-browser-home-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" />
+                    </div>
                   </div>
                   <label class="settings-toggle" style="margin-top:16px;">
                     <input type="checkbox" id="settings-app-urlbar" checked />
