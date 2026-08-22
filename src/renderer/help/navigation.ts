@@ -518,6 +518,7 @@ function parkSettingsDocs(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
+  marketplace: { host: "settings-marketplace-host" },
   connections: { host: "settings-connections-host" },
   loops: { host: "settings-loops-host" },
   skills: { host: "settings-skills-host" },
