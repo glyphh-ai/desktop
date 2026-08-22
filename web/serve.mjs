@@ -225,6 +225,8 @@ const server = http.createServer(async (req, res) => {
     // /platform — the admin surface (the settings shell as a full page). Same
     // home.html document as /home; home.ts branches on the pathname client-side.
     const isPlatformRoute = p === '/platform' || p === '/platform/';
+    // /apps — the WALL's canonical URL (final IA, 2026-08-22); /home stays an alias.
+    const isWallRoute = p === '/apps' || p === '/apps/';
     // /settings/mcp — the MCP OAuth CONSENT SCREEN (the "connect Claude to
     // Glyphh" step). Claude's /oauth/authorize 302s the browser here with the
     // PKCE params; this serves the SAME home.html document as /home, and home.ts
@@ -236,13 +238,13 @@ const server = http.createServer(async (req, res) => {
     // /settings/mcp surface, so a phone would land in the app with the OAuth
     // params silently dropped.
     const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isMcpConsentRoute
-      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
+      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isWallRoute || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
       p = '/mobile.html';
     } else if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    } else if (p === '/home' || p === '/home/' || isPlatformRoute || isMcpConsentRoute) {
+    } else if (p === '/home' || p === '/home/' || isWallRoute || isPlatformRoute || isMcpConsentRoute) {
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));

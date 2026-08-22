@@ -37,7 +37,7 @@ const SPLASH_MIN_MS = 1200;
 /** The AUTHED app surfaces (serve.mjs maps both to home.html). LOGIN-FIRST: `/` is
  *  the login shell now, so after sign-in we hand off HERE — navigating to '/'
  *  would land back on the login shell and loop the getting-started flow. */
-export const HOME_PATH = '/home';
+export const HOME_PATH = '/apps';
 /** The admin surface — the settings shell as a full page (home.ts branches on
  *  the pathname). The TOP-RIGHT tabs on both surfaces switch between them. */
 export const PLATFORM_PATH = '/platform';

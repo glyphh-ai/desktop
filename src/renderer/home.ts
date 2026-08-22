@@ -131,25 +131,23 @@ void (async () => {
 
         return head;
       };
-      // The Apps nav entry OPENS THE WALL (his call, 2026-08-22): the wall IS
-      // Apps. It launches in a NEW TAB (less confusing than swapping the admin
-      // surface out from under you), and the row wears a launch icon on the
-      // far right so the jump is telegraphed. Capture-phase so the settings
-      // panel switch never fires.
-      document.addEventListener("click", (ev) => {
-        const item = (ev.target as HTMLElement).closest('.settings-nav-item[data-sub="apps"]');
-        if (!item || !document.body.classList.contains("platform-shell")) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        window.open("/home", "_blank", "noopener");
-      }, true);
+      // Build → Apps (final IA, 2026-08-22): the ROW opens the Apps ADMIN
+      // panel (developers/org: build, publish, edit, delete); only the LAUNCH
+      // ICON on its right jumps to the WALL (/apps, new tab) — the consumer
+      // surface most org users will only ever see.
       const decorateAppsLaunch = (): boolean => {
         const item = document.querySelector('#settings-modal .settings-nav-item[data-sub="apps"]');
         if (!item) return false;
         if (!item.querySelector(".nav-launch-ic")) {
           const ic = document.createElement("span");
           ic.className = "nav-launch-ic";
+          ic.title = "Open the wall";
           ic.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+          ic.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            window.open("/apps", "_blank", "noopener");
+          });
           item.appendChild(ic);
         }
         return true;
