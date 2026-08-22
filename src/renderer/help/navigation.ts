@@ -157,11 +157,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Wall section CARDS (LAUNCH PAD cut 2026-08-22): layouts retired — its
   // route (and the "workspaces" alias) lands on the Apps card.
-  if (section === "marketplace") {
-    openSettingsModal("marketplace");
-    return;
-  }
-  if (["apps", "connections", "layouts"].includes(section)) {
+  if (["apps", "marketplace", "connections", "layouts"].includes(section)) {
     const card = section === "layouts" ? "apps" : section;
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(card);
     return;
@@ -284,16 +280,10 @@ function restoreWallAfterShellOverlay(): void {
 }
 
 export function openSettingsModal(sub?: string): void {
-  // The Marketplace opens FULL SCREEN on EVERY target (his rule, 2026-08-22):
-  // borrow the platform-shell full-bleed treatment in place; closing restores
-  // the wall (see closeSettingsModal). Desktop included — never the centered
-  // settings dialog.
-  const inShell = document.body.classList.contains("platform-shell");
-  if (!inShell && sub === "marketplace") {
-    document.body.classList.add("platform-shell", "wall-shell-overlay");
-  } else if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ && !inShell) {
-    // WEB (his rule, 2026-08-21): the web has no settings dialog — any other
-    // settings open routes to the platform page.
+  // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
+  // platform shell itself, any settings open routes to the platform page.
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
+      && !document.body.classList.contains("platform-shell")) {
     window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
     return;
   }
@@ -626,7 +616,7 @@ export function initHelp() {
   // ONE marketplace interface (his rule, 2026-08-22): every door — rail link,
   // wall tile, section route — opens the SAME full-screen storefront (the
   // settings-shell marketplace). The workbench card marketplace is retired.
-  const RAIL_WB_SECTIONS: Record<string, string> = { connections: "connections" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { marketplace: "marketplace", connections: "connections" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;

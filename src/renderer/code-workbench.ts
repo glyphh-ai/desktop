@@ -4812,10 +4812,6 @@ async function init(): Promise<void> {
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        // Marketplace opens FULL SCREEN in the shell (his rule, 2026-08-22) —
-        // no wall card, no close-workspace chrome, no expand icon; its own
-        // close returns to the wall.
-        else if (t.navKey === "marketplace") w.__glyphhOpenSettings?.("marketplace");
         else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;
