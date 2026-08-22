@@ -84,7 +84,6 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
-import { registerFilesIpc } from "./files-ipc";
 import { registerPopoutIpc } from "./popout";
 import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
 import { registerRunStreamIpc } from "./run-stream-ipc";

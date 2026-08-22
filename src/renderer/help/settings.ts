@@ -339,61 +339,10 @@ function initSettings() {
     document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
   });
 
-  // Dock auto-hide (default ON) — the echo surface re-reads on the event.
-  {
-    const t = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
-    t?.addEventListener("change", () => {
-      void Promise.resolve(window.glyphh.setPreference("echoAutoHideDock", t.checked)).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
-    });
-  }
   // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
   // drives the caret panel), persisted on release.
-  {
-    const o = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
-    const ov = document.getElementById("settings-echo-agent-opacity-val");
-    const paint = (): void => {
-      if (!o) return;
-      document.documentElement.style.setProperty("--echo-agent-opacity", o.value);
-      if (ov) ov.textContent = `${Math.round(Number(o.value) * 100)}%`;
-    };
-    o?.addEventListener("input", paint);
-    o?.addEventListener("change", () => {
-      paint();
-      void window.glyphh.setPreference("echoAgentOpacity", Number(o.value));
-    });
-  }
   // TEXT transparency — its own var, independent of the panel's.
-  {
-    const t = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
-    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
-    const paint = (): void => {
-      if (!t) return;
-      document.documentElement.style.setProperty("--echo-agent-text-opacity", t.value);
-      if (tv) tv.textContent = `${Math.round(Number(t.value) * 100)}%`;
-    };
-    t?.addEventListener("input", paint);
-    t?.addEventListener("change", () => {
-      paint();
-      void window.glyphh.setPreference("echoAgentTextOpacity", Number(t.value));
-    });
-  }
   // Max panel height (vh) — how tall the agent panel may grow.
-  {
-    const m = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
-    const mv = document.getElementById("settings-echo-agent-max-h-val");
-    const paint = (): void => {
-      if (!m) return;
-      document.documentElement.style.setProperty("--echo-agent-max-h", `${m.value}vh`);
-      if (mv) mv.textContent = `${m.value}%`;
-    };
-    m?.addEventListener("input", paint);
-    m?.addEventListener("change", () => {
-      paint();
-      void window.glyphh.setPreference("echoAgentMaxH", Number(m.value));
-    });
-  }
 
   // Command center: icon size (live CSS var) + apps per page (the launcher
   // re-reads on the event and re-chunks its pages).
@@ -440,18 +389,6 @@ function initSettings() {
   }
 
   // Dock zoom (magnification strength; 1 = off) — same live re-read event.
-  {
-    const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
-    const zv = document.getElementById("settings-dock-zoom-val");
-    const paint = (): void => { if (z && zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`; };
-    z?.addEventListener("input", paint);
-    z?.addEventListener("change", () => {
-      paint();
-      void Promise.resolve(window.glyphh.setPreference("echoDockZoom", Number(z.value))).then(() => {
-        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
-      });
-    });
-  }
 
   // Interface sound volume (his ask, 2026-08-19) — pref uiSoundVolume 0..1,
   // server-backed like every pref (/api/me/prefs → db). Live: dragging updates
@@ -583,30 +520,6 @@ async function loadSettings() {
   const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
   if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
 
-  // Dock auto-hide — defaults ON; zoom defaults 20%.
-  const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
-  if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
-  const agTx = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
-  if (agTx) {
-    const raw = Number(await window.glyphh.getPreference("echoAgentTextOpacity", 1));
-    agTx.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 1);
-    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
-    if (tv) tv.textContent = `${Math.round(Number(agTx.value) * 100)}%`;
-  }
-  const agMh = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
-  if (agMh) {
-    const raw = Number(await window.glyphh.getPreference("echoAgentMaxH", 76));
-    agMh.value = String(Number.isFinite(raw) ? Math.max(20, Math.min(100, raw)) : 76);
-    const mv = document.getElementById("settings-echo-agent-max-h-val");
-    if (mv) mv.textContent = `${agMh.value}%`;
-  }
-  const agOp = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
-  if (agOp) {
-    const raw = Number(await window.glyphh.getPreference("echoAgentOpacity", 0.92));
-    agOp.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 0.92);
-    const ov = document.getElementById("settings-echo-agent-opacity-val");
-    if (ov) ov.textContent = `${Math.round(Number(agOp.value) * 100)}%`;
-  }
   const echoSz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
   if (echoSz) {
     const raw = Number(await window.glyphh.getPreference("echoIconSize", 76));
@@ -635,13 +548,6 @@ async function loadSettings() {
     snd.value = String(Math.round(v * 100));
     const zv = document.getElementById("general-ui-sound-val");
     if (zv) zv.textContent = v <= 0 ? "Off" : `${Math.round(v * 100)}%`;
-  }
-  const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
-  if (zoom) {
-    const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
-    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(1.5, zRaw)) : 1.2);
-    const zv = document.getElementById("settings-dock-zoom-val");
-    if (zv) zv.textContent = Number(zoom.value) <= 1 ? "Off" : `${Math.round((Number(zoom.value) - 1) * 100)}%`;
   }
 }
 

@@ -295,31 +295,6 @@
                   </button>
                 </div>
 
-                <h3 class="settings-subheading">Dock</h3>
-                <div class="settings-form">
-                  <!-- Auto-hide: the dock stays hidden until the mouse reaches
-                       the top of the page (macOS-dock style). code-workbench
-                       listens for the change event and applies it live. -->
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="settings-autohide-dock" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Auto-hide the dock</span>
-                      <span class="toggle-desc">The dock hides; move the mouse to the top of the page to reveal it.</span>
-                    </div>
-                  </label>
-                  <label class="settings-label" style="margin-top:16px;">Dock zoom</label>
-                  <div class="settings-inline">
-                    <input type="range" id="settings-dock-zoom" min="1" max="1.5" step="0.05" />
-                    <span id="settings-dock-zoom-val" class="settings-hint"></span>
-                  </div>
-                  <label class="settings-label" style="margin-top:16px;">Icon zoom</label>
-                  <div class="settings-inline">
-                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
-                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
-                  </div>
-                </div>
-
                 <h3 class="settings-subheading">Command center</h3>
                 <div class="settings-form">
                   <label class="settings-label">Icon size</label>
@@ -332,29 +307,10 @@
                     <input type="range" id="settings-echo-per-page" min="16" max="96" step="8" />
                     <span id="settings-echo-per-page-val" class="settings-hint"></span>
                   </div>
-                </div>
-
-                <h3 class="settings-subheading">Echo Agent</h3>
-                <div class="settings-form">
-                  <!-- Transparency of the agent panel the caret opens over the
-                       echo surface — panel AND text fade together, so the work
-                       underneath stays readable through it. -->
-                  <label class="settings-label">Panel transparency</label>
+                  <label class="settings-label" style="margin-top:16px;">Icon zoom</label>
                   <div class="settings-inline">
-                    <input type="range" id="settings-echo-agent-opacity" min="0.25" max="1" step="0.05" />
-                    <span id="settings-echo-agent-opacity-val" class="settings-hint"></span>
-                  </div>
-                  <!-- TEXT fades independently of the panel (his rule,
-                       2026-08-20) — glassy panel, solid words, or both faded. -->
-                  <label class="settings-label">Text transparency</label>
-                  <div class="settings-inline">
-                    <input type="range" id="settings-echo-agent-text-opacity" min="0.25" max="1" step="0.05" />
-                    <span id="settings-echo-agent-text-opacity-val" class="settings-hint"></span>
-                  </div>
-                  <label class="settings-label">Max panel height</label>
-                  <div class="settings-inline">
-                    <input type="range" id="settings-echo-agent-max-h" min="20" max="100" step="5" />
-                    <span id="settings-echo-agent-max-h-val" class="settings-hint"></span>
+                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
+                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
                   </div>
                 </div>
 

@@ -1645,11 +1645,12 @@ async function init(): Promise<void> {
    * ⟲ resets. That's it — ordering via layouts comes later.
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
+    try {
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div></div>
       <div class="echo-topbar echo-topbar-stacked">
-        <div class="echo-dock">${DOCK_ITEMS.map((d) => `<button class="echo-dock-btn" data-dock="${d.key}" title="${d.title}" type="button">${d.icon}</button>`).join("")}</div>
+        <div class="echo-wall-search"><input id="echo-wall-search-input" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" /></div>
       </div>
       <div class="echo-veil"></div>
       <div class="echo-layout-bar hidden">
@@ -1718,7 +1719,7 @@ async function init(): Promise<void> {
     const prevArrow = mkArrow(-1);
     const nextArrow = mkArrow(1);
     /** Dots ride just UNDER the icon grid; arrows center on it. */
-    const positionPageChrome = (): void => {
+    function positionPageChrome(): void {
       const grid = pagesEl.querySelector<HTMLElement>(".echo-page-grid");
       const pageCount = pagesEl.children.length;
       if (!grid) { dotsEl.classList.add("hidden"); prevArrow.style.display = "none"; nextArrow.style.display = "none"; return; }
@@ -1737,14 +1738,18 @@ async function init(): Promise<void> {
       const many = pageCount > 1;
       prevArrow.style.display = many && pageIndex > 0 ? "" : "none";
       nextArrow.style.display = many && pageIndex < pageCount - 1 ? "" : "none";
-    };
+    }
     // SHELL RESIZE → everything reflows: page chrome repositions, the open
     // panels re-lay against the fresh band (pixel rects, so nothing tracks
     // for free), the carousel re-snaps to its page, and transitions pause so
     // cards track the resize instead of rubber-banding behind it. (The old
     // 3D wall's ResizeObserver owned this and died with it.)
     let resizeAnimT = 0;
+    // The RO can fire between observe() and the closure reaching layoutCards'
+    // const (TDZ throw) — hold it until the wall chrome is fully defined.
+    let wallChromeReady = false;
     const chromeRo = new ResizeObserver(() => {
+      if (!wallChromeReady) return;
       positionPageChrome();
       cardsLayer.classList.add("echo-no-anim");
       window.clearTimeout(resizeAnimT);
@@ -1836,7 +1841,7 @@ async function init(): Promise<void> {
     };
     /** (Re)paint one icon — the DOM successor of the old canvas drawTile;
      *  same name so every call site still works. */
-    const drawTile = (e: TileEntry): void => {
+    function drawTile(e: TileEntry): void {
       const el = e.iconEl;
       if (!el) return;
       el.classList.toggle("open", !!e.open);
@@ -1848,7 +1853,7 @@ async function init(): Promise<void> {
       if (e.tile.issues) { el.dataset.badge = String(e.tile.issues); el.title = `${e.tile.name} — ${e.tile.issues} issue${e.tile.issues === 1 ? "" : "s"} to resolve`; return; }
       if (!e.tile.navKey) delete el.dataset.badge;
       el.title = e.tile.name;
-    };
+    }
     /** The key an icon orders/trades under. Tools carry tool:<view>; apps and
      *  layouts their orderKey; nav slots traded out of the dock dock:<key>. */
     const keyOf = (t: EchoTile): string | null => t.orderKey ?? (t.toolView ? `tool:${t.toolView}` : null);
@@ -1901,7 +1906,7 @@ async function init(): Promise<void> {
     /** Every tile the wall knows, keyed — foldered members live here even
      *  while they are off the band (the modal renders from this). */
     let wallCatalog = new Map<string, EchoTile>();
-    const persistFolders = (): void => { void yoApi?.setPreference?.("echoFolders", folders); };
+    function persistFolders(): void { void yoApi?.setPreference?.("echoFolders", folders); };
     const folderedKeys = (): Set<string> => new Set(folders.flatMap((f) => f.keys));
     const folderCells = (f: WallFolder): EchoCell[] =>
       f.keys.slice(0, 4).map((k) => {
@@ -1925,8 +1930,8 @@ async function init(): Promise<void> {
         e.tile.name = f.name;
         drawTile(e);
       }
-    };
-    const addToFolder = (key: string, folderId: string): void => {
+    }
+    function addToFolder(key: string, folderId: string): void {
       const f = folders.find((x) => x.id === folderId);
       if (!f || key.startsWith("folder:") || f.keys.includes(key)) return;
       // The filed tile leaves the band (its EchoTile stays in the catalog).
@@ -1943,7 +1948,7 @@ async function init(): Promise<void> {
       renderPages();
       persistPages();
       refreshFolderTiles();
-    };
+    }
     const removeFromFolder = (key: string, folderId: string): void => {
       const f = folders.find((x) => x.id === folderId);
       if (!f) return;
@@ -1985,11 +1990,11 @@ async function init(): Promise<void> {
     // layouts wear a ✕ (delete after the standard confirm); everything else
     // just moves. Click empty space or Esc to leave. ──
     let iconEditMode = false;
-    const setIconEdit = (on: boolean): void => {
+    function setIconEdit(on: boolean): void {
       if (iconEditMode === on) return;
       iconEditMode = on;
       pagesEl.classList.toggle("echo-edit", on);
-    };
+    }
     document.addEventListener("keydown", (ev) => {
       if (!body.isConnected) return;
       if (ev.key === "Escape" && iconEditMode) { ev.stopPropagation(); setIconEdit(false); }
@@ -1997,7 +2002,7 @@ async function init(): Promise<void> {
     const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || t.houseDefault === true || (t.kind === "layout" && !!t.layoutName);
     /** Delete what an icon stands for — the app or the layout — after the
      *  standard confirm, then drop it off the launcher (and the saved order). */
-    const deleteTileEntry = (e: TileEntry): void => {
+    function deleteTileEntry(e: TileEntry): void {
       const t = e.tile;
       if (!removableTile(t)) return;
       void (async () => {
@@ -2037,13 +2042,13 @@ async function init(): Promise<void> {
         persistPages();
         persistDock();
       })();
-    };
+    }
     // ── Drag: reorder within the pages, and TRADE between dock and pages.
     // Nothing here deletes by dropping — a drop outside any target snaps back. ──
     let dragIconKey: string | null = null;
     /** The keys riding a group drag (a L→R selection dragged by any member). */
     let dragGroupKeys: string[] | null = null;
-    const wireIconDrag = (el: HTMLElement, key: string | null): void => {
+    function wireIconDrag(el: HTMLElement, key: string | null): void {
       if (!key) return;   // the fixed Home tile never moves
       el.draggable = true;
       el.addEventListener("dragstart", (ev) => {
@@ -2059,9 +2064,9 @@ async function init(): Promise<void> {
         if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
       });
       el.addEventListener("dragend", () => { el.classList.remove("dock-dragging"); dragIconKey = null; dragGroupKeys = null; });
-    };
+    }
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
-    const moveKeyToPage = (key: string, at: TileEntry | null): void => {
+    function moveKeyToPage(key: string, at: TileEntry | null): void {
       const band = wallBands[0]!;
       let entry = entriesByKey().get(key) ?? null;
       if (!entry) {
@@ -2081,7 +2086,7 @@ async function init(): Promise<void> {
       renderPages();
       persistPages();
       persistDock();
-    };
+    }
     /** Land a dragged key IN THE DOCK before (optionally) a target key. */
     const moveKeyToDock = (key: string, beforeKey: string | null): void => {
       const navKey = key.startsWith("dock:") ? key.slice(5) : key;
@@ -2102,7 +2107,7 @@ async function init(): Promise<void> {
     };
     /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
      *  icons render as dock slots. Click routing is delegated (topbar). */
-    const reconcileDock = (): void => {
+    function reconcileDock(): void {
       const dockEl = body.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       const byKey = entriesByKey();
@@ -2152,11 +2157,11 @@ async function init(): Promise<void> {
         else dockEl.prepend(el);
         prev = el;
       }
-    };
+    }
     // ── Per-tile context menu (his rule, 2026-08-19): apps get Edit; work-
     // spaces get Edit + Delete; the close items appear ONLY when that tile's
     // panel is actually open — a closed tile never offers "Close panel". ──
-    const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean }>): void => {
+    function showTileMenu(ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean }>): void {
       if (!items.length) return;
       document.querySelector(".ws-tab-ctx-menu")?.remove();
       const menu = document.createElement("div");
@@ -2184,7 +2189,7 @@ async function init(): Promise<void> {
       if (mr.bottom > window.innerHeight - 8) menu.style.top = `${window.innerHeight - mr.height - 8}px`;
       document.addEventListener("mousedown", onAway, true);
       document.addEventListener("keydown", onEsc, true);
-    };
+    }
     /** The open panel a NAV key routes to, when it is open: section cards land
      *  as `page:<key>` pseudo-tiles, tasks/preview as tool cards. */
     const openEntryForNav = (key: string): TileEntry | undefined =>
@@ -2232,9 +2237,16 @@ async function init(): Promise<void> {
       }
       return items;
     };
+    // The wall search (replaced the dock, 2026-08-22): filters app tiles live.
+    let wallSearch = "";
+    {
+      const inp = body.querySelector<HTMLInputElement>("#echo-wall-search-input");
+      inp?.addEventListener("input", () => { wallSearch = inp.value.trim().toLowerCase(); renderPages(); });
+    }
     // ── The pages: chunk the list, render icon grids, dots, snap scroll. ──
-    const renderPages = (): void => {
-      const list = (wallBands[0] ?? []).filter((e) => { const k = keyOf(e.tile); return !k || !dockKeys.includes(k); });
+    function renderPages(): void {
+      let list = (wallBands[0] ?? []).filter((e) => { const k = keyOf(e.tile); return !k || !dockKeys.includes(k); });
+      if (wallSearch) list = list.filter((e) => (e.tile.name || "").toLowerCase().includes(wallSearch));
       const pages: TileEntry[][] = [];
       for (let i = 0; i < list.length; i += perPage) pages.push(list.slice(i, i + perPage));
       if (!pages.length) pages.push([]);
@@ -2318,6 +2330,14 @@ async function init(): Promise<void> {
         });
         pagesEl.appendChild(p);
       });
+      if (!list.length) {
+        const empty = document.createElement("div");
+        empty.className = "echo-wall-empty";
+        empty.textContent = wallSearch
+          ? "No apps match your search."
+          : "No apps yet — describe one to Claude over MCP, or install from the Marketplace.";
+        pagesEl.querySelector(".echo-page")?.appendChild(empty);
+      }
       dotsEl.innerHTML = "";
       pages.forEach((_pg, i) => {
         const d = document.createElement("button");
@@ -2337,13 +2357,13 @@ async function init(): Promise<void> {
       if (firstGrid) chromeRo.observe(firstGrid);
       requestAnimationFrame(() => { scrollToPage(Math.min(pageIndex, pages.length - 1), false); positionPageChrome(); });
       reconcileDock();
-    };
-    const scrollToPage = (i: number, smooth = true): void => {
+    }
+    function scrollToPage(i: number, smooth = true): void {
       pageIndex = Math.max(0, Math.min(i, Math.max(0, pagesEl.children.length - 1)));
       pagesEl.scrollTo({ left: pagesEl.clientWidth * pageIndex, behavior: smooth ? "smooth" : "auto" });
       Array.from(dotsEl.children).forEach((d, j) => (d as HTMLElement).classList.toggle("active", j === pageIndex));
       positionPageChrome();
-    };
+    }
     pagesEl.addEventListener("scroll", () => {
       const i = Math.round(pagesEl.scrollLeft / Math.max(1, pagesEl.clientWidth));
       if (i !== pageIndex) {
@@ -2366,7 +2386,7 @@ async function init(): Promise<void> {
     const paintSel = (): void => {
       for (const e of entries) e.iconEl?.classList.toggle("selected", multiSel.has(e));
     };
-    const clearSel = (): void => { multiSel.clear(); paintSel(); };
+    function clearSel(): void { multiSel.clear(); paintSel(); };
     const openSelected = (): void => {
       const picks = [...multiSel].filter(selectable);
       clearSel();
@@ -2377,12 +2397,12 @@ async function init(): Promise<void> {
         }
         activateTile(entry);
       }
-    };
-    const toggleSel = (e: TileEntry): void => {
+    }
+    function toggleSel(e: TileEntry): void {
       if (!selectable(e)) return;
       if (multiSel.has(e)) multiSel.delete(e); else multiSel.add(e);
       paintSel();
-    };
+    }
     // Modifier lifted with a selection → launch it.
     const onSelKeyUp = (ev: KeyboardEvent): void => {
       if (!body.isConnected) { document.removeEventListener("keyup", onSelKeyUp); return; }
@@ -2637,7 +2657,14 @@ async function init(): Promise<void> {
       }
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
-      buildWall([[...pageTiles, ...rest]]);
+      // With the dock gone the wall carries two STICKY nav tiles: Marketplace
+      // (both targets — install is a first-class wall action) and, DESKTOP
+      // ONLY, Settings (web reaches it via the rail + ← Platform).
+      const isWebTarget = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+      const navTiles = [navTileFor("marketplace"), isWebTarget ? null : navTileFor("settings")]
+        .filter((t): t is EchoTile => !!t)
+        .map((t) => ({ ...t, sticky: true }));
+      buildWall([[...pageTiles, ...rest, ...navTiles]]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
     }).catch(() => buildWall([[]]));
@@ -2782,7 +2809,7 @@ async function init(): Promise<void> {
     // the gaussian. Strength: the Appearance slider (echoDockZoom, 1 = off). ──
     let dockZoom = 1.2;
     let dockZoomRaf = 0;
-    const applyDockZoomAt = (clientX: number | null): void => {
+    function applyDockZoomAt(clientX: number | null): void {
       dockZoomRaf = 0;
       const dockEl = body.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
@@ -2819,11 +2846,11 @@ async function init(): Promise<void> {
         if (c.style.transform !== t) c.style.transform = t;
         x += widths[i]! + gap;
       });
-    };
-    const queueDockZoom = (clientX: number | null): void => {
+    }
+    function queueDockZoom(clientX: number | null): void {
       if (dockZoomRaf) return;
       dockZoomRaf = requestAnimationFrame(() => applyDockZoomAt(clientX));
-    };
+    }
     // ONE pointer check drives the dock ZOOM. (The hover-peek is gone —
     // syncWallVisibility owns dock visibility now: CC showing → dock shows;
     // covered → hidden unless auto-hide is off.) Drags suspend the zoom.
@@ -2843,17 +2870,9 @@ async function init(): Promise<void> {
     body.addEventListener("mouseleave", () => { queueDockZoom(null); });
     const readAutoHide = (): void => {
       void Promise.all([
-        yoApi?.getPreference?.("echoAutoHideDock", true) ?? true,
-        yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
-      ]).then(([d, z, pp]) => {
-        document.body.classList.toggle("echo-dock-autohide", d !== false);
-        document.body.classList.remove("echo-dock-peek");
-        const zn = Number(z);
-        // CLAMPED at 1.5 (his rule, 2026-08-20): past that the arc outgrows
-        // any spacing the row can reserve. Old prefs saved up to 2 clamp down.
-        dockZoom = Number.isFinite(zn) ? Math.max(1, Math.min(1.5, zn)) : 1.2;
-        document.documentElement.style.setProperty("--dock-zoom", String(dockZoom));
+      ]).then(([pp]) => {
+        // Dock retired (2026-08-22): the auto-hide/zoom prefs died with it.
         const ppn = Number(pp);
         const nextPp = Number.isFinite(ppn) ? Math.max(8, Math.min(120, ppn)) : 56;
         if (nextPp !== perPage) { perPage = nextPp; renderPages(); }
@@ -3298,7 +3317,7 @@ async function init(): Promise<void> {
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
-    const syncWallVisibility = (): void => {
+    function syncWallVisibility(): void {
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
       // ANY open panel retires the launcher pages — the ⌃⌥ / eye peek lifts.
       const cardsUp = openList.some((e) => e.card);
@@ -3351,7 +3370,7 @@ async function init(): Promise<void> {
           && !(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLInputElement)
           && !active.isContentEditable) active.blur();
       }
-    };
+    }
     // The lock flipped mid-session: recompute the tuck + card band right away.
     window.addEventListener("glyphh:agent-lock-changed", () => { syncWallVisibility(); layoutCards(); });
     // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
@@ -3364,47 +3383,10 @@ async function init(): Promise<void> {
       // traded icons open exactly like their page selves. Slots can NEVER be
       // deleted — only MOVED (dock ⇄ pages); membership + order persist
       // (echoDockOrder, owned by the launcher's reconcileDock).
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock")!;
-      for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
-      dockEl.addEventListener("click", (ev) => {
-        const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");
-        if (!b || !dockEl.contains(b)) return;
-        ev.stopPropagation();
-        const key = b.dataset.dock || "";
-        if (DOCK_ITEMS.some((d) => d.key === key)) {
-          const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-          if (key === "glyphh") {
-            // Same rule as the pages' mark (2026-08-19): OPEN the agent —
-            // never reset to a new session, never double a layout's agent.
-            const inLayout = openList.some((x) => x.layoutId != null);
-            const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
-            if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
-            void openAgentPanel();
-            return;
-          }
-          if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
-          if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
-          else if (key) w.__wbOpenSection?.(key);
-          return;
-        }
-        const entry = entriesByKey().get(key);
-        if (entry) activateTile(entry);
-      });
-      dockEl.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => {
-        b.addEventListener("dragover", (ev) => { if (dragIconKey && dragIconKey !== b.dataset.dock) ev.preventDefault(); });
-        b.addEventListener("drop", (ev) => {
-          ev.preventDefault(); ev.stopPropagation();
-          if (dragIconKey && dragIconKey !== b.dataset.dock) moveKeyToDock(dragIconKey, b.dataset.dock || null);
-        });
-      });
-      dockEl.addEventListener("dragover", (ev) => { if (dragIconKey) ev.preventDefault(); });
-      dockEl.addEventListener("drop", (ev) => {
-        ev.preventDefault();
-        if (dragIconKey) moveKeyToDock(dragIconKey, null);
-      });
+      // Dock retired (2026-08-22): its drag wiring + click handler died with
+      // it. (This block once crashed setup post-removal — the "!"-asserted
+      // querySelector — killing everything declared after it via TDZ.)
     }
-    // B1: the layout bar — one control that closes the whole layout.    }
     // B1: the layout bar — one control that closes the whole layout. Shown only
     // while a layout's cards are on stage (any open card carries a layoutId).
     // Defined ABOVE layoutCards so there is no forward reference.
@@ -3449,7 +3431,7 @@ async function init(): Promise<void> {
     layoutBar.querySelector<HTMLElement>(".echo-layout-save")!
       .addEventListener("click", () => { void openSaveWorkspaceModal(); });
     let layoutBarIntro = 0;
-    const paintLayoutBar = (): void => {
+    function paintLayoutBar(): void {
       // THE WORKSPACE BAR is on EVERY page except the bare command center
       // (his rule, 2026-08-19): a layout titles it by name; loose panels
       // title it by their names — five or more reads "Multi".
@@ -3475,8 +3457,8 @@ async function init(): Promise<void> {
       } else if (!show) {
         layoutBar.classList.remove("intro");
       }
-    };
-    const layoutCards = (): void => {
+    }
+    function layoutCards(): void {
       const n = openList.length;
       // COMPOSER VISIBILITY FIRST — the band measures the composer live, so
       // this must land BEFORE any rect math. A layout HOSTING the agent
@@ -3524,15 +3506,24 @@ async function init(): Promise<void> {
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
-    };
+    }
+    wallChromeReady = true;
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
      *  handles): dragging one reshapes the layout by shifting the fraction
      *  between the two neighbors, and the shape is remembered. */
-    const dividerLayer = document.createElement("div");
-    dividerLayer.className = "echo-dividers";
-    cardsLayer.appendChild(dividerLayer);
-    const paintDividers = (on: boolean): void => {
-      dividerLayer.innerHTML = "";
+    // var + lazy mount: paintDividers is HOISTED (TDZ fix, 2026-08-22) and can
+    // run before this line — resolve the layer on first use instead.
+    let dividerLayerEl: HTMLDivElement | null = null;
+    const dividerLayer = ((): HTMLDivElement => {
+      if (!dividerLayerEl) {
+        dividerLayerEl = document.createElement("div");
+        dividerLayerEl.className = "echo-dividers";
+        cardsLayer.appendChild(dividerLayerEl);
+      }
+      return dividerLayerEl;
+    });
+    function paintDividers(on: boolean): void {
+      dividerLayer().innerHTML = "";
       if (!on || !echoGrid) return;
       // MUST match gridRects: the grid lives in the BUILD BAND.
       const band = buildBand();
@@ -3585,7 +3576,7 @@ async function init(): Promise<void> {
         el.style.top = `${y0}px`;
         el.style.height = `${H}px`;
         wire(el, false, i, 0);
-        dividerLayer.appendChild(el);
+        dividerLayer().appendChild(el);
       }
       // horizontal seams: one SEGMENT per column, spanning only that column —
       // a drag reshapes that column's stack and nothing else. A boundary
@@ -3605,15 +3596,15 @@ async function init(): Promise<void> {
           el.style.left = `${segLeft}px`;
           el.style.width = `${segWidth}px`;
           wire(el, true, i, ci);
-          dividerLayer.appendChild(el);
+          dividerLayer().appendChild(el);
         }
       });
-    };
+    }
     /** Slideable seams for the FLOW (accumulated panels) — the grid's
      *  dividers, driving flowColFr/flowRowFr instead of the layout's fracs.
      *  Same visuals (.echo-div), same live no-anim reshape. */
     const paintFlowDividers = (cards: TileEntry[] | null): void => {
-      dividerLayer.innerHTML = "";
+      dividerLayer().innerHTML = "";
       if (!cards || cards.length < 2) return;
       // MUST mirror flowRects EXACTLY — the seams sit in the gaps between
       // the band-placed cards, not in stage coordinates.
@@ -3663,7 +3654,7 @@ async function init(): Promise<void> {
           el.style.top = `${band.top}px`;
           el.style.height = `${h}px`;
           wireFlow(el, false, ci, 0);
-          dividerLayer.appendChild(el);
+          dividerLayer().appendChild(el);
         }
         const rhFr = normFr(flowRowFr.get(ci) ?? col.map(() => 1));
         const availH = h - gap * (col.length - 1);
@@ -3677,7 +3668,7 @@ async function init(): Promise<void> {
             el.style.left = `${x}px`;
             el.style.width = `${colW}px`;
             wireFlow(el, true, ri, ci);
-            dividerLayer.appendChild(el);
+            dividerLayer().appendChild(el);
           }
           y += cellH + gap;
         });
@@ -3700,7 +3691,7 @@ async function init(): Promise<void> {
     // previewTabs seeds the first tab empty and paintFrames fills it with the
     // Settings browser-home default instead of the workspace's page.
     let pendingPreviewUrl: string | null = null;
-    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void => {
+    function closeCard(e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void {
       const card = e.card;
       if (!card) return;
       // The AGENT card IS the session. Closing it must un-current that session
@@ -3779,13 +3770,13 @@ async function init(): Promise<void> {
       }, 380);
       if (!openList.length) setShadow(false, false);
       layoutCards();
-    };
+    }
     /** B1: close a LAYOUT as one unit — tear down every open card that shares
      *  the given layoutId (or the active layout's id when none is passed), then
      *  drop the grid state so the surface falls back to the command center (B4).
      *  Layout terminals with "Maintain on close" are parked, same as a nav-away.
      */
-    const closeLayoutGroup = (layoutId?: string): void => {
+    function closeLayoutGroup(layoutId?: string): void {
       const id = layoutId ?? activeLayoutId;
       if (!id) return;
       saveEchoLayoutMem();   // a "last" layout remembers its panels through a close
@@ -3803,7 +3794,7 @@ async function init(): Promise<void> {
         setShadow(false, false);
       }
       layoutCards();
-    };
+    }
     /** The card shell every open shares: head (name / expand / close), a
      *  body, the zoom-up-from-the-tile entrance. Echo is a BINARY mode —
      *  nothing opened here ever lands in the standard layout. */
@@ -4810,7 +4801,7 @@ async function init(): Promise<void> {
       paint();
       document.body.appendChild(overlay);
     }
-    const activateTile = (e: TileEntry): void => {
+    function activateTile(e: TileEntry): void {
       const t = e.tile;
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
@@ -4874,7 +4865,7 @@ async function init(): Promise<void> {
       if (t.navApp) {
         openSectionCard(t.navApp.slug === "home" ? "dashboard" : t.navApp.slug, t.navApp.name);
       }
-    };
+    }
     /** A PAGE (Home, Apps, Settings, …) as an Echo card: adopt the section
      *  singleton, run its loader, park it back on close. One card per page. */
     const openSectionCard = (section: string, title?: string): void => {
@@ -5137,6 +5128,7 @@ async function init(): Promise<void> {
       }
     });
     obs.observe(document.getElementById("code-wb-rails") ?? document.body, { childList: true, subtree: true });
+    } catch (err) { console.error("[wall-setup] FAILED:", err); throw err; }
   }
 
   function renderCodingIntoSlot(body: HTMLElement, wrap: HTMLElement): void {

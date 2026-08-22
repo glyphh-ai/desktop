@@ -19383,12 +19383,12 @@ body.platform-shell #platform-rail-toggle {
    chevron (left) and the surface tabs (right). */
 body.platform-shell .settings-modal-body > .settings-layout > .settings-nav {
   width: 216px;
-  padding-top: 48px;
+  padding-top: 8px;
   padding-left: 10px;
   transition: width 0.15s ease, padding 0.15s ease;
 }
 body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
-  padding-top: 48px;
+  padding-top: 20px;
 }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
@@ -19420,15 +19420,39 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
 
 /* Platform rail header: text-only wordmark + the surface switch as rail
    buttons (top-left). Collapsed rail folds the labels like the nav items. */
-#platform-rail-head { padding: 14px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
-#platform-brand { display: block; height: 22px; width: auto; padding: 0 6px; object-fit: contain; }
+#platform-rail-head { padding: 12px 4px 8px 10px; display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+#platform-rail-toggle { position: static !important; flex: 0 0 auto; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted); }
+#platform-rail-toggle:hover { color: var(--text); }
+#platform-rail-toggle svg { width: 17px; height: 17px; }
+body.platform-rail-collapsed #platform-rail-head { flex-direction: column; }
+#platform-brand { display: block; height: 28px; width: auto; padding: 0; object-fit: contain; }
+#platform-brand-mark { display: none; height: 30px; width: auto; padding: 0 2px; object-fit: contain; }
 #platform-surface-btns { display: flex; gap: 4px; }
 #platform-surface-btns .platform-surface-btn { flex: 1; justify-content: center; padding: 6px 8px; border: 1px solid var(--border-2); border-radius: 8px; }
 #platform-surface-btns .platform-surface-btn.active { background: var(--surface-2); color: var(--text); }
 body.platform-rail-collapsed #platform-brand { display: none; }
+body.platform-rail-collapsed #platform-brand-mark { display: block; }
 body.platform-rail-collapsed #platform-surface-btns { flex-direction: column; }
 
 /* ── The wall's "← Platform" link (web Launch Pad, top-left) ─────────────── */
 #wall-platform-link { position: fixed; top: 10px; left: 12px; z-index: 200; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px 6px 6px; background: transparent; border: none; border-radius: 8px; color: var(--text-muted); font: inherit; font-size: 12.5px; cursor: pointer; -webkit-app-region: no-drag; }
 #wall-platform-link:hover { color: var(--text); background: var(--surface-2); }
 #wall-platform-link svg { width: 14px; height: 14px; }
+
+
+/* ── The wall search (replaced the dock) + empty state ───────────────────── */
+.echo-wall-search { display: flex; justify-content: center; margin-bottom: 16px; padding-top: 46px; pointer-events: auto; }
+.echo-wall-search input { width: min(420px, 70vw); padding: 9px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; outline: none; text-align: center; }
+.echo-wall-search input:focus { border-color: var(--border-2); background: var(--surface-2); }
+.echo-wall-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13.5px; text-align: center; padding: 0 24px; }
+
+
+/* Collapsed rail: the expand toggle floats JUST OUTSIDE the rail's right
+   edge (rail is 54px wide collapsed). */
+body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
+  position: fixed !important;
+  left: 60px; top: 12px; z-index: 60;
+  width: 26px; height: 26px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+  box-shadow: 0 2px 8px var(--shadow);
+}

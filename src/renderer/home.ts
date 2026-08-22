@@ -96,11 +96,13 @@ void (async () => {
       railBtn.type = "button";
       railBtn.id = "platform-rail-toggle";
       railBtn.className = "settings-modal-close";
-      const railSvg = (collapsed: boolean) =>
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="${collapsed ? "9 18 15 12 9 6" : "15 18 9 12 15 6"}"/></svg>`;
+      // The RAIL icon (his spec, 2026-08-22) — same glyph both states, like
+      // every sidebar toggle; only the tooltip flips.
+      const railSvg = () =>
+        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9.5" y1="4" x2="9.5" y2="20"/></svg>`;
       const paintRailBtn = () => {
         const collapsed = document.body.classList.contains("platform-rail-collapsed");
-        railBtn.innerHTML = railSvg(collapsed);
+        railBtn.innerHTML = railSvg();
         railBtn.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
         railBtn.title = collapsed ? "Expand navigation" : "Collapse navigation";
       };
@@ -110,7 +112,6 @@ void (async () => {
         try { localStorage.setItem("glyphhPlatformRail", collapsed ? "collapsed" : "open"); } catch { /* */ }
         paintRailBtn();
       });
-      document.getElementById("settings-modal")?.querySelector(".settings-modal-panel")?.appendChild(railBtn);
       // Rail HEADER (his spec, 2026-08-21): top-left of the rail — a TEXT-ONLY
       // wordmark, then the surface switch as plain buttons. No fixed top-right
       // tabs on the platform (mountSurfaceTabs skips this page).
@@ -123,7 +124,8 @@ void (async () => {
       const buildRailHead = (): HTMLElement => {
         const head = document.createElement("div");
         head.id = "platform-rail-head";
-        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
+        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" /><img id="platform-brand-mark" src="brand/glyphh-mark.png" alt="Glyphh" draggable="false" />`;
+        head.appendChild(railBtn);   // same row, right of the logo
         // Surface buttons retired (his call, 2026-08-22): the nav's Apps
         // entry IS the road to the wall; the wall carries "← Platform" back.
 
@@ -150,15 +152,19 @@ void (async () => {
         const nav = platformNav();
         if (!nav || !nav.parentElement) return false;
         if (railHead.isConnected) return true;
-        nav.parentElement.insertBefore(railHead, nav);   // ABOVE the nav, as a sibling
+        // FIRST CHILD of the nav — the nav's parent (.settings-layout) is a
+        // flex ROW, so a sibling there sat BESIDE the menu and shoved it
+        // right. Inside the nav it stacks above the groups. (gateAdminSubs
+        // only toggles .hidden — it never rebuilds children, so this is safe.)
+        nav.insertBefore(railHead, nav.firstChild);
         return true;
       };
       let railTries = 0;
       const railGo = (): void => {
         if (mountRailHead()) {
           // Keep it mounted across nav rebuilds / replacement.
-          const rail = platformNav()?.parentElement;
-          if (rail) new MutationObserver(() => { if (!railHead.isConnected) mountRailHead(); }).observe(rail, { childList: true });
+          const nav = platformNav();
+          if (nav) new MutationObserver(() => { if (!railHead.isConnected) mountRailHead(); }).observe(nav, { childList: true });
           return;
         }
         if (railTries++ < 120) requestAnimationFrame(railGo);
