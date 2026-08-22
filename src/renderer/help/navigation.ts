@@ -18,7 +18,6 @@ import { wireDipWatcher } from "./dip-watch.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
-import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadRuntime } from "./settings-runtime.js";
@@ -106,7 +105,6 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
-  else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
   else if (sec === "marketplace") loadMarketplaceSection();
   else if (sec === "connections") void loadConnections();
@@ -169,11 +167,6 @@ export function gotoSection(section: string, sub?: string): void {
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
     return;
-  }
-  // Content sections need the window body — if Glyphh is collapsed to the
-  // rail, expand it (the workspace apps slide back right).
-  if (["files"].includes(section)) {
-    void window.glyphh.railCollapseSet?.(false);
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
   void window.glyphh.setPreference?.("homeLastSub", sub || "");
@@ -451,8 +444,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
-  // Artifacts adopts the FILES section (the gallery page) — same page, second door.
-  else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -703,7 +694,6 @@ export function initHelp() {
   boot("marketplace", initMarketplace);
   boot("connections", initConnections);
   boot("layouts", initLayoutsEvents);
-  boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("apikeys", initApiKeys);
   boot("support", initSupportPanel);

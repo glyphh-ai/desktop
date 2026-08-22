@@ -19427,3 +19427,8 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
 #platform-surface-btns .platform-surface-btn.active { background: var(--surface-2); color: var(--text); }
 body.platform-rail-collapsed #platform-brand { display: none; }
 body.platform-rail-collapsed #platform-surface-btns { flex-direction: column; }
+
+/* ── The wall's "← Platform" link (web Launch Pad, top-left) ─────────────── */
+#wall-platform-link { position: fixed; top: 10px; left: 12px; z-index: 200; display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px 6px 6px; background: transparent; border: none; border-radius: 8px; color: var(--text-muted); font: inherit; font-size: 12.5px; cursor: pointer; -webkit-app-region: no-drag; }
+#wall-platform-link:hover { color: var(--text); background: var(--surface-2); }
+#wall-platform-link svg { width: 14px; height: 14px; }

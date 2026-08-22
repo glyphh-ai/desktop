@@ -686,12 +686,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
   // an honest error; create answers with { ok, file, error }. help/files.ts
   // mirrors these shapes and owns the web target's SDK-handle transport. ──
-  filesList: () => ipcRenderer.invoke("files-list") as Promise<FileArtifactRow[]>,
-  filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
-  filesDelete: (id: string) => ipcRenderer.invoke("files-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  filesContent: (id: string) => ipcRenderer.invoke("files-content", id) as Promise<{ ok: boolean; content?: string; error?: string }>,
-  filesCreate: (input: FileCreateInputRow) =>
-    ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
   // MAIN-process SDK client executes these; reads REJECT, writes answer
   // { ok, …, error }. help/settings-*.ts mirror these + own the web SDK path. ──

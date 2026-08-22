@@ -124,24 +124,20 @@ void (async () => {
         const head = document.createElement("div");
         head.id = "platform-rail-head";
         head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
-        const surf = document.createElement("div");
-        surf.id = "platform-surface-btns";
-        const mkSurf = (label: string, key: string, href: string, active: boolean) => {
-          const b = document.createElement("button");
-          b.type = "button";
-          b.className = "settings-nav-item platform-surface-btn" + (active ? " active" : "");
-          b.innerHTML = `<span>${label}</span>`;
-          b.addEventListener("click", () => {
-            try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
-            if (!active) window.location.assign(href);
-          });
-          return b;
-        };
-        surf.appendChild(mkSurf("Platform", "platform", "/platform", true));
-        surf.appendChild(mkSurf("Launch Pad", "builder", "/home", false));
-        head.appendChild(surf);
+        // Surface buttons retired (his call, 2026-08-22): the nav's Apps
+        // entry IS the road to the wall; the wall carries "← Platform" back.
+
         return head;
       };
+      // The Apps nav entry OPENS THE WALL (his call, 2026-08-22): the wall IS
+      // Apps. Capture-phase so the settings panel switch never fires.
+      document.addEventListener("click", (ev) => {
+        const item = (ev.target as HTMLElement).closest('.settings-nav-item[data-sub="apps"]');
+        if (!item || !document.body.classList.contains("platform-shell")) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        window.location.assign("/home");
+      }, true);
       const railHead = buildRailHead();
       // MUST scope to #settings-modal: the document holds a SECOND
       // .settings-nav inside #help-overlay, which this page force-hides — a
@@ -287,6 +283,16 @@ void (async () => {
     };
     raise();
   }
+  // "← Platform" — the wall's one nav affordance back to the admin surface
+  // (web only; the desktop has no /platform route).
+  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__ && !document.getElementById("wall-platform-link")) {
+    const back = document.createElement("button");
+    back.type = "button";
+    back.id = "wall-platform-link";
+    back.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Platform</span>`;
+    back.addEventListener("click", () => window.location.assign("/platform"));
+    document.body.appendChild(back);
+  }
   // Lift the boot veil only once the wall is actually up — its bare first
   // paint was the flash between splash and Home.
   let veilTries = 0;
@@ -304,42 +310,9 @@ void (async () => {
   lift();
 })();
 
-// ── Surface tabs (web target only) ──────────────────────────────────────────
-// A small fixed top-right control on signed-in desktop-browser surfaces:
-// [ Platform | Builder ]. Platform → /platform (the admin shell above),
-// Builder → /home (the workbench). Clicking stores the choice
-// (localStorage glyphhSurfaceTab) — web-boot's post-login hand-off reads it,
-// so `/` lands on the remembered tab (default Platform). Renders ONLY under
-// the web bridge (window.__GLYPHH_WEB__); on desktop (Electron) nothing
-// mounts, and the mobile app never loads this bundle.
-void (() => {
-  if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
-  if (document.getElementById("surface-tabs")) return;
-  // The MCP consent screen is a standalone flow page — no surface switcher.
-  if (/^\/settings\/mcp\/?$/.test(window.location.pathname)) return;
-  const onPlatform = /^\/platform\/?$/.test(window.location.pathname);
-  if (onPlatform) return;   // the platform rail hosts the surface buttons
-  const wrap = document.createElement("div");
-  wrap.id = "surface-tabs";
-  wrap.setAttribute("role", "tablist");
-  wrap.setAttribute("aria-label", "Surface");
-  const mk = (label: string, key: "platform" | "builder", href: string, active: boolean) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "surface-tab" + (active ? " active" : "");
-    b.setAttribute("role", "tab");
-    b.setAttribute("aria-selected", active ? "true" : "false");
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
-      if (!active) window.location.assign(href);
-    });
-    return b;
-  };
-  wrap.appendChild(mk("Platform", "platform", "/platform", onPlatform));
-  wrap.appendChild(mk("Launch Pad", "builder", "/home", !onPlatform));
-  document.body.appendChild(wrap);
-})();
+// Surface tabs retired (his call, 2026-08-22): the platform nav's Apps entry
+// opens the wall; the wall's top-left "← Platform" link goes back. No floating
+// top-right switcher on any surface.
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────
 // Shows once an update has downloaded; stays until the user restarts into it

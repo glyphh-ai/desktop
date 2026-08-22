@@ -994,7 +994,6 @@ async function boot() {
   registerAdminIpc();
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
-  registerFilesIpc();
 
   // Panel pop-out — any web panel as a standalone OS window.
   registerPopoutIpc();
