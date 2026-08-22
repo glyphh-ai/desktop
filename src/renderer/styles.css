@@ -1327,6 +1327,96 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
 
 #lockout-overlay.hidden { display: none !important; }
 
+/* ── Welcome / directory-grant gate (Electron only) ───────────────────────
+   Full-page overlay under the titlebar, same layering as the lockout gate:
+   a simple centered card on the app ground. Raised by boot-gate-ui.ts when
+   a signed-in desktop user has no desktopGrantedDirectory yet. */
+#welcome-overlay {
+  position: fixed;
+  top: var(--titlebar-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9000;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#welcome-overlay.hidden { display: none !important; }
+#welcome-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 440px;
+  padding: 36px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+#welcome-card .onboarding-title .glyphh-logo { height: 40px; }
+.welcome-title {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+.welcome-message {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+.welcome-pick-btn {
+  margin-top: 6px;
+  padding: 9px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.welcome-pick-btn:hover { border-color: var(--accent); }
+.welcome-picked-path {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+.welcome-bg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.welcome-bg-row input { margin-top: 2px; accent-color: var(--accent); }
+.welcome-continue-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.welcome-continue-btn:hover { opacity: 0.92; }
+.welcome-continue-btn:disabled { opacity: 0.45; cursor: default; }
+
 /* While the account is locked the overlay covers everything below the 38px
    titlebar, but the titlebar's own workspace chrome would otherwise stay
    visible and clickable above it. Hide it — the bare titlebar (drag region +
@@ -1520,16 +1610,13 @@ body.account-locked #dl-btn-wrap {
    .wc covers both the titlebar (#window-controls) and the home rail (#panel-wc). */
 .glyphh-web .wc,
 .glyphh-web #window-controls { display: none !important; }
-/* MCP is a desktop-MACHINE feature (a 127.0.0.1 server) — a browser tab has no
-   machine to run it on, so the whole tab hides on web, not just the local-MCP
-   section inside it. Stale deep links fall back to General (navigation.ts
-   settingsSubAlias). */
-.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="mcp"],
-.glyphh-web .settings-panel[data-sub="mcp"] { display: none !important; }
-/* Drips is likewise a desktop-app surface — hidden on web the same way, with
-   the same stale-deep-link fallback to General (settingsSubAlias). */
+/* Drips is a desktop-app surface — hidden on web, with a stale-deep-link
+   fallback to General (settingsSubAlias). Desktop is the machine's directory
+   grant — likewise meaningless in a browser tab. */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="drips"],
 .glyphh-web .settings-panel[data-sub="drips"] { display: none !important; }
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="desktop"],
+.glyphh-web .settings-panel[data-sub="desktop"] { display: none !important; }
 /* Appearance → Browser homepage drives the DESKTOP app's built-in browser
    panel; a browser tab has none. Only this group hides — the rest of the
    Browser block (address-bar toggle, the tablet "mobile app" door) stays. */
@@ -10932,9 +11019,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    input rows but too tight for compound panels (provider cards, MCP
    tokens + connectors). Let these fill the available width so the user
    doesn't have to scroll a tall column of inputs. */
-.settings-panel[data-sub="mcp"] .settings-form,
 .settings-panel[data-sub="providers"] .settings-form,
-#mcp-section-wrap,
 #provider-keys-list {
   max-width: none;
 }
@@ -19473,3 +19558,7 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 .settings-nav-item .nav-launch-ic svg { width: 13px; height: 13px; }
 .settings-nav-item:hover .nav-launch-ic { opacity: 0.85; }
 body.platform-rail-collapsed .nav-launch-ic { display: none; }
+
+/* Wall's in-place full-screen Marketplace: platform-shell hides the modal
+   close — the overlay mode needs it back (it's the only way home). */
+body.wall-shell-overlay .settings-modal-close { display: flex !important; }

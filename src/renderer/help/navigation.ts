@@ -223,10 +223,16 @@ export function isSettingsModalOpen(): boolean {
 }
 
 export function closeSettingsModal(): void {
-  // PLATFORM shell (web /platform): the settings surface IS the page — there
-  // is nothing behind it to return to, so close is a no-op (the close button
-  // and backdrop are CSS-hidden there too; this catches Esc and data-jump).
-  if (document.body.classList.contains("platform-shell")) return;
+  // The wall's in-place full-screen Marketplace borrows platform-shell —
+  // closing hands the wall back instead of no-op'ing.
+  if (document.body.classList.contains("wall-shell-overlay")) {
+    restoreWallAfterShellOverlay();
+  } else if (document.body.classList.contains("platform-shell")) {
+    // PLATFORM shell (web /platform): the settings surface IS the page — there
+    // is nothing behind it to return to, so close is a no-op (the close button
+    // and backdrop are CSS-hidden there too; this catches Esc and data-jump).
+    return;
+  }
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
@@ -265,13 +271,28 @@ function onSettingsModalKey(e: KeyboardEvent): void {
   closeSettingsModal();
 }
 
+/** The wall's in-place full-screen surfaces (Marketplace) borrow the
+ *  platform-shell classes — closing must hand the wall back. */
+function restoreWallAfterShellOverlay(): void {
+  if (document.body.classList.contains("wall-shell-overlay")) {
+    document.body.classList.remove("wall-shell-overlay", "platform-shell");
+  }
+}
+
 export function openSettingsModal(sub?: string): void {
   // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
-  // platform shell itself, any settings open routes to the platform page.
+  // platform shell itself, any settings open routes to the platform page —
+  // EXCEPT the Marketplace (2026-08-22): the wall opens it full screen IN
+  // PLACE (borrow the platform-shell full-bleed treatment; closing restores
+  // the wall — see closeSettingsModal).
   if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
       && !document.body.classList.contains("platform-shell")) {
-    window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
-    return;
+    if (sub === "marketplace") {
+      document.body.classList.add("platform-shell", "wall-shell-overlay");
+    } else {
+      window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
+      return;
+    }
   }
   // Already open — just switch the sub-panel.
   if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
@@ -401,11 +422,13 @@ const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
 };
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
-  // MCP is a desktop-machine feature — a browser tab has no machine to run the
-  // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
-  // + panels are CSS-hidden on web; any stale deep link (saved nav app,
-  // remembered homeLastSub) lands on General instead.
-  if ((target === "mcp" || target === "drips") && document.documentElement.classList.contains("glyphh-web")) return "general";
+  // Desktop-machine subs have no meaning in a browser tab: Drips runs on the
+  // desktop app, and Desktop is the machine's directory grant. The old MCP
+  // Server panel is gone entirely (no local MCP server anymore) — a stale
+  // deep link (saved nav app, remembered homeLastSub) lands on General.
+  const onWeb = document.documentElement.classList.contains("glyphh-web");
+  if (target === "mcp") return "general";
+  if ((target === "desktop" || target === "drips") && onWeb) return "general";
   return target;
 };
 
