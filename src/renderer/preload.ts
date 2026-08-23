@@ -22,9 +22,13 @@ export interface SavedPanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  /** Who may reach it once deployed: 'public' (anyone with the link) or
-   *  'members' (signed-in org members). Enforced at the edge. */
+  /** Who may reach it once deployed: 'public' (anyone with the link),
+   *  'members' (signed-in org members), or 'org-idp' (the customer's own IdP
+   *  via WorkOS). Enforced at the edge. */
   access?: string;
+  /** org-idp binding: the WorkOS Organization the app authenticates against,
+   *  or null (empty = email-domain fallback). */
+  workosOrgId?: string | null;
   owned?: boolean;
   latestVersion?: string | null;
   /** Where the app's worker + schedules run — its ONE execution home:
@@ -199,6 +203,8 @@ export interface PanelAppInput {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   access?: "public" | "members" | "org-idp";
+  /** org-idp binding: the WorkOS Organization (null clears). */
+  workosOrgId?: string | null;
   /** Move the app's ONE execution home (worker + schedules): this machine
    *  ('local') or the org's cloud runtime ('regional'). */
   executionHome?: "local" | "regional";

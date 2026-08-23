@@ -364,6 +364,9 @@ export function openSettingsModal(sub?: string): void {
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
+  // The user chip at the rail's bottom — both the desktop modal and the web
+  // /platform shell arrive here, so one mount covers both surfaces.
+  mountSettingsUserChip();
   selectSettingsSub(sub || "general");
 }
 
@@ -550,6 +553,141 @@ function parkSettingsSection(section: string): void {
   if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
 }
 
+// ── Account menu + the settings rail's user chip ─────────
+//
+// ONE account dropdown serves both rails: the wall's Account button
+// (#app-rail-user-btn) and the user chip pinned to the settings nav's bottom
+// (desktop modal AND the web /platform shell — same DOM). Items: Docs /
+// Support / About (each selects the existing settings sub through the nav's
+// own mechanism), then Logout in red. position:fixed, computed from the
+// anchor's rect, so the nav's overflow can never clip it; opens UPWARD from
+// a bottom-of-screen anchor.
+
+let userMenu: HTMLDivElement | null = null;
+let userMenuAnchor: HTMLElement | null = null;
+
+function closeUserMenu(): void {
+  userMenu?.remove();
+  userMenu = null;
+  userMenuAnchor = null;
+  window.removeEventListener("keydown", onUserMenuKey, true);
+}
+
+/** Esc closes the MENU first — on window capture so it runs (and stops)
+ *  before the settings modal's own document-capture Esc handler. */
+function onUserMenuKey(e: KeyboardEvent): void {
+  if (e.key !== "Escape" || !userMenu) return;
+  e.preventDefault();
+  e.stopPropagation();
+  closeUserMenu();
+}
+
+function openAccountMenu(anchor: HTMLElement): void {
+  if (userMenu) { closeUserMenu(); return; }
+  const m = document.createElement("div");
+  m.className = "code-menu app-rail-user-menu";
+  const mk = (label: string, icon: string, cb: () => void, danger = false) => {
+    const b = document.createElement("button");
+    b.className = "code-menu-item" + (danger ? " danger" : "");
+    b.innerHTML = `${icon}<span></span>`;
+    (b.querySelector("span") as HTMLElement).textContent = label;
+    b.addEventListener("click", () => { closeUserMenu(); cb(); });
+    m.appendChild(b);
+  };
+  const DOCS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+  const SUPPORT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+  const ABOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`;
+  const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
+  // Inside the settings surface (modal or /platform page) the item IS the
+  // nav's panel selection; from the wall rail it opens the modal on that sub.
+  const goSub = (sub: string): void => {
+    if (isSettingsModalOpen()) selectSettingsSub(sub);
+    else openSettingsModal(sub);
+  };
+  mk("Docs", DOCS_SVG, () => goSub("docs"));
+  mk("Support", SUPPORT_SVG, () => goSub("support"));
+  mk("About", ABOUT_SVG, () => goSub("about"));
+  const divider = document.createElement("div");
+  divider.className = "code-menu-divider";
+  m.appendChild(divider);
+  mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  const openUp = r.top > window.innerHeight / 2;
+  const top = openUp
+    ? Math.max(8, r.top - m.offsetHeight - 6)
+    : Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8);
+  m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
+  m.style.top = `${top}px`;
+  userMenu = m;
+  userMenuAnchor = anchor;
+  window.addEventListener("keydown", onUserMenuKey, true);
+}
+
+/** True once the chip subscribed to account updates — subscribe exactly once. */
+let userChipSubscribed = false;
+
+/** Paint the chip's avatar-initial + name/email from account info. */
+function paintUserChip(info: { email?: string; firstName?: string; lastName?: string } | null): void {
+  const chip = document.querySelector<HTMLElement>(".settings-user-chip");
+  if (!chip) return;
+  const name = info
+    ? (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account"
+    : "Account";
+  const initialSource = info?.firstName || info?.email || "?";
+  const avatar = chip.querySelector<HTMLElement>(".settings-user-avatar");
+  const nameEl = chip.querySelector<HTMLElement>(".settings-user-name");
+  const emailEl = chip.querySelector<HTMLElement>(".settings-user-email");
+  if (avatar) avatar.textContent = initialSource.charAt(0).toUpperCase();
+  if (nameEl) nameEl.textContent = name;
+  if (emailEl) emailEl.textContent = info?.email || "";
+}
+
+/**
+ * The user chip PINNED to the bottom of the settings rail — mounted on every
+ * settings open, into whichever surface holds the nav: the desktop's centered
+ * modal and the web /platform full-page shell adopt the SAME .settings-nav
+ * DOM, so one mount covers both. Guarded against double-mounts (the layout
+ * travels between its section pen and the modal, chip included) and against
+ * nav rebuilds via the same MutationObserver discipline as the platform
+ * rail head (home.ts).
+ */
+function mountSettingsUserChip(): void {
+  const nav = document.querySelector<HTMLElement>("#settings-modal .settings-nav:not(.docs-nav)");
+  if (!nav) return;
+  let chip = nav.querySelector<HTMLElement>(".settings-user-chip");
+  if (!chip) {
+    chip = document.createElement("div");
+    chip.className = "settings-user-chip";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "settings-user-chip-btn";
+    btn.setAttribute("aria-label", "Account menu");
+    btn.innerHTML = `<span class="settings-user-avatar">?</span><span class="settings-user-meta"><span class="settings-user-name">Account</span><span class="settings-user-email"></span></span>`;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openAccountMenu(btn);
+    });
+    chip.appendChild(btn);
+    nav.appendChild(chip);
+    // Re-append if a nav rebuild drops it or pushes it off the bottom slot.
+    // (The append inside the callback re-fires the observer; both branches
+    // are then false, so it settles rather than looping.)
+    const keep = chip;
+    new MutationObserver(() => {
+      if (!keep.isConnected) nav.appendChild(keep);
+      else if (nav.lastElementChild !== keep) nav.appendChild(keep);
+    }).observe(nav, { childList: true });
+  } else if (nav.lastElementChild !== chip) {
+    nav.appendChild(chip);
+  }
+  void window.glyphh.getAccountInfo?.().then(paintUserChip).catch(() => { /* signed out — placeholder stays */ });
+  if (!userChipSubscribed) {
+    userChipSubscribed = true;
+    window.glyphh.onAccountUpdated?.((info) => paintUserChip(info));
+  }
+}
+
 // ── Docs inner sub-navigation ────────────────────────────
 
 const docsSubNav = document.querySelectorAll<HTMLButtonElement>(".docs-nav .settings-nav-item");
@@ -638,50 +776,13 @@ export function initHelp() {
   // sections live in the Settings modal now, so the rail no longer carries a
   // More toggle or its dynamic menu.
 
-  // User area — dropdown opens upward: Settings / Account / Logout.
-  const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
-  const USER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
-  const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
+  // User area — the shared account dropdown (help/user-menu section below):
+  // the wall rail's Account button and the settings rail's user chip both
+  // open it, anchored upward from the rail bottom.
   const userBtn = document.getElementById("app-rail-user-btn");
-  let userMenu: HTMLDivElement | null = null;
-  let userMenuAnchor: HTMLElement | null = null;
-  const closeUserMenu = () => { userMenu?.remove(); userMenu = null; userMenuAnchor = null; };
-  /** The account dropdown — Docs / Settings / Account / Logout. ANCHOR-aware:
-   *  opens upward from a bottom-of-screen anchor (the retired rail button)
-   *  and downward from a top one. (No visible opener today — the retired
-   *  rail button keeps the binding; Settings/Account run through the dock's
-   *  gear → settings modal.) */
-  const openUserMenu = (anchor: HTMLElement): void => {
-    if (userMenu) { closeUserMenu(); return; }
-    const m = document.createElement("div");
-    m.className = "code-menu app-rail-user-menu";
-    const mk = (label: string, icon: string, cb: () => void, danger = false) => {
-      const b = document.createElement("button");
-      b.className = "code-menu-item" + (danger ? " danger" : "");
-      b.innerHTML = `${icon}<span></span>`;
-      (b.querySelector("span") as HTMLElement).textContent = label;
-      b.addEventListener("click", () => { closeUserMenu(); cb(); });
-      m.appendChild(b);
-    };
-    const DOCS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
-    mk("Docs", DOCS_SVG, () => gotoSection("docs"));
-    mk("Settings", GEAR_SVG, () => gotoSection("settings"));
-    mk("Account", USER_SVG, () => gotoSection("settings", "account"));
-    mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
-    document.body.appendChild(m);
-    const r = anchor.getBoundingClientRect();
-    const openUp = r.top > window.innerHeight / 2;
-    const top = openUp
-      ? Math.max(8, r.top - m.offsetHeight - 6)
-      : Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8);
-    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
-    m.style.top = `${top}px`;
-    userMenu = m;
-    userMenuAnchor = anchor;
-  };
   userBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    openUserMenu(userBtn);
+    openAccountMenu(userBtn);
   });
   document.addEventListener("mousedown", (e) => {
     if (userMenu && !userMenu.contains(e.target as Node) && !userMenuAnchor?.contains(e.target as Node)) closeUserMenu();

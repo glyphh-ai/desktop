@@ -736,6 +736,36 @@ export function buildContract(client, deps) {
     // and is empty for a fresh org (that read backs the dashboard count).
     panelAppsList: read(() => client.apps.mine(), toLegacyPanelApps, EMPTY.list),
 
+    // App edits from the shared Apps admin (help/apps.ts) — the SAME translation
+    // the desktop main process does in apps-ipc.ts entryFields: renderer field
+    // names → the entries API's, with access/workosOrgId validated here so a
+    // malformed patch never reaches the server. The renderer addresses apps by
+    // row id; the entries API by slug, so resolve through mine() first.
+    panelAppsUpdate: async (id, patch) => {
+      try {
+        const p = patch || {};
+        const rows = await client.apps.mine();
+        const slug = rows.find((r) => r.id === id || r.slug === id)?.slug ?? id;
+        const input = {
+          ...(p.name !== undefined ? { name: String(p.name) } : {}),
+          ...(p.url !== undefined && p.url !== null ? { url: String(p.url) } : {}),
+          ...(p.execPath !== undefined && p.execPath !== null ? { nativeRef: String(p.execPath) } : {}),
+          ...(p.description !== undefined ? { description: String(p.description) } : {}),
+          ...(p.launchConfig !== undefined ? { config: p.launchConfig ?? {} } : {}),
+          // Access is a closed set — anything else is dropped, not forwarded.
+          ...(p.access === 'public' || p.access === 'members' || p.access === 'org-idp'
+            ? { access: p.access } : {}),
+          // org-idp binding: a string sets the WorkOS Organization, null clears it.
+          ...(typeof p.workosOrgId === 'string' || p.workosOrgId === null
+            ? { workosOrgId: p.workosOrgId } : {}),
+          ...(p.executionHome === 'local' || p.executionHome === 'regional'
+            ? { executionHome: p.executionHome } : {}),
+        };
+        const app = await client.apps.updateEntry(slug, input);
+        return { ok: true, app };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+
     // ── App config vars (write-only secrets) — SDK apps.secrets surface.
     // The desktop's `appReadable` flag is a LOCAL concept; the cloud store
     // has no read-back path at all, so the flag is accepted and dropped.

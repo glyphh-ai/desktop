@@ -35,6 +35,8 @@ export interface OrgAppRow {
   launchConfig: Record<string, unknown> | null;
   /** Who may reach the deployed app — 'public', 'members', or 'org-idp' (the customer's own IdP via WorkOS). */
   access: string;
+  /** org-idp binding: the WorkOS Organization the app authenticates against, or null. */
+  workosOrgId: string | null;
   /** True when THIS org published the app — gates the publish-side tabs. */
   owned: boolean;
   /** Newest live release version, or null — drives the auto-update check. */
@@ -74,6 +76,7 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   appArchetype: "glyphh-self",
   launchConfig: null,
   access: "members",
+  workosOrgId: null,
   owned: true,
   latestVersion: null,
   executionHome: "local",
@@ -131,6 +134,7 @@ function toRow(app: OrgApp): OrgAppRow {
     appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
     launchConfig: app.config ?? null,
     access: app.access,
+    workosOrgId: app.workosOrgId ?? null,
     owned: app.owned,
     latestVersion: app.latestVersion,
     executionHome: app.executionHome === "regional" ? "regional" : "local",
@@ -173,7 +177,7 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
         system: true,                 // house-owned: not deletable as a user row
         url: d.url, isBrowser: true, execPath: null,
         appArchetype: "web", launchConfig: null,
-        access: "members", owned: false,
+        access: "members", workosOrgId: null, owned: false,
         latestVersion: null, executionHome: "local",
         requiredConnections: [], connectionIds: [], iconUrl: null,
         mcp: null, commands: {},

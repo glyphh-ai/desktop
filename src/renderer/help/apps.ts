@@ -77,6 +77,10 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed — enforced at the edge on every request. */
+  access?: "public" | "members" | "org-idp";
+  /** org-idp binding: the WorkOS Organization (null clears). */
+  workosOrgId?: string | null;
   /** The app's ONE execution home — where its worker + schedules run. */
   executionHome?: "local" | "regional";
 };
@@ -288,8 +292,12 @@ interface PanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  /** Who may reach it once deployed — shown + set on the Public hosting tab. */
+  /** Who may reach it once deployed — shown + set on the Public hosting tab
+   *  and the Releases tab's Access group ('public' | 'members' | 'org-idp'). */
   access?: string;
+  /** org-idp binding: the WorkOS Organization the app authenticates against,
+   *  or null (empty = email-domain fallback). */
+  workosOrgId?: string | null;
   /** True when this org published the app — an installed app hides publish tabs. */
   owned?: boolean;
   /** Newest live release version, or null — drives the auto-update banner. */
@@ -318,7 +326,8 @@ function toPanelApp(a: {
   id: string; slug: string; name: string; system?: boolean; url: string | null;
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
-  access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
+  access?: string; workosOrgId?: string | null;
+  iconUrl?: string | null; listing?: PanelApp["listing"];
   owned?: boolean; latestVersion?: string | null;
   executionHome?: "local" | "regional";
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
@@ -330,6 +339,7 @@ function toPanelApp(a: {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
+    workosOrgId: a.workosOrgId ?? null,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
     owned: a.owned, latestVersion: a.latestVersion, executionHome: a.executionHome,
     requiredConnections: a.requiredConnections,
@@ -956,6 +966,12 @@ async function loadReleasesTab(): Promise<void> {
   document.getElementById("release-installed-view")?.classList.toggle("hidden", owned);
   if (!owned) renderInstalledReleaseView();
 
+  // Access group — OWNED BUILT glyphh apps only (an installed app's access is
+  // its publisher's call; a plain launcher row has nothing deployed to gate).
+  const accessOwner = owned && currentApp?.appArchetype === "glyphh-app";
+  document.getElementById("release-access-group")?.classList.toggle("hidden", !accessOwner);
+  if (accessOwner) fillReleaseAccessGroup();
+
   const slug = currentApp?.slug || currentAppId;
   // The bridge may lack this call on a surface (web's cloud placeholder
   // resolves undefined) — say so honestly instead of throwing on `res.ok`.
@@ -1190,8 +1206,56 @@ async function loadAppConnectionsTab(): Promise<void> {
   primeConnectedIcons(mktConnIconApps(required.map(({ slug }) => ({ slug }))), () => {});
 }
 
+// ── Access group (Releases tab) — who may reach the deployed app ─────────────
+
+/** Prefill the Access controls from the current app row. */
+function fillReleaseAccessGroup(): void {
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  if (!sel || !orgInput) return;
+  const access = currentApp?.access === "public" || currentApp?.access === "org-idp" ? currentApp.access : "members";
+  sel.value = access;
+  orgInput.value = currentApp?.workosOrgId || "";
+  document.getElementById("release-access-workos")?.classList.toggle("hidden", access !== "org-idp");
+  const status = document.getElementById("release-access-status");
+  if (status) status.textContent = "";
+}
+
+/** Persist the Access selection (+ the WorkOS Organization for org-idp). */
+async function saveReleaseAccess(): Promise<void> {
+  if (!currentAppId) return;
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  const statusEl = document.getElementById("release-access-status");
+  if (!sel) return;
+  const access = sel.value === "public" || sel.value === "org-idp" ? sel.value : "members";
+  const patch: PanelAppInput = { access };
+  // The WorkOS binding only travels with an org-idp save: a string sets it,
+  // empty clears it (the edge falls back to email-domain matching). Other
+  // access modes leave the stored binding alone, so flipping back to org-idp
+  // doesn't lose it.
+  if (access === "org-idp") patch.workosOrgId = orgInput?.value.trim() || null;
+  if (statusEl) statusEl.textContent = "Saving…";
+  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, patch);
+  if (res?.ok && currentApp) {
+    currentApp.access = access;
+    if (patch.workosOrgId !== undefined) currentApp.workosOrgId = patch.workosOrgId;
+  }
+  if (statusEl) {
+    statusEl.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
+    setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 2500);
+  }
+}
+
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
+
+  // Access group — the org-idp choice reveals the WorkOS Organization binding.
+  document.getElementById("release-access")?.addEventListener("change", (e) => {
+    const v = (e.target as HTMLSelectElement).value;
+    document.getElementById("release-access-workos")?.classList.toggle("hidden", v !== "org-idp");
+  });
+  document.getElementById("release-access-save")?.addEventListener("click", () => { void saveReleaseAccess(); });
 
   // Auto-update toggle (installed apps) — persisted per app slug.
   document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {

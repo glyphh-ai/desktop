@@ -136,7 +136,14 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     ...(o.execPath !== undefined && o.execPath !== null ? { nativeRef: String(o.execPath) } : {}),
     ...(o.description !== undefined ? { description: String(o.description) } : {}),
     ...(o.launchConfig !== undefined ? { config: (o.launchConfig ?? {}) as Record<string, unknown> } : {}),
-    ...(o.access !== undefined ? { access: o.access as "public" | "members" } : {}),
+    // Access is a closed set — anything else is dropped rather than forwarded.
+    ...(o.access === "public" || o.access === "members" || o.access === "org-idp"
+      ? { access: o.access as "public" | "members" | "org-idp" }
+      : {}),
+    // org-idp binding: a string sets the WorkOS Organization, null clears it.
+    ...(typeof o.workosOrgId === "string" || o.workosOrgId === null
+      ? { workosOrgId: o.workosOrgId }
+      : {}),
   });
   /** The renderer addresses apps by row id; the entries API by slug. */
   const appSlug = async (id: string): Promise<string> => {

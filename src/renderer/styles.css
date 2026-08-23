@@ -98,6 +98,9 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --danger:      #ef4444;
   --danger-soft: #f87171;
   --danger-bg:   #fef2f2;
+  /* The LOGOUT red — a danger that stays legible as plain text on the active
+     scheme (darker on light; the dark-scheme override below lightens it). */
+  --danger-bright: #d64541;
   --warning:     #f59e0b;
   --success:     #16a34a;
   --blue:        #3b82f6;
@@ -15860,7 +15863,8 @@ body.code-dragging #app-rail { transition: none; }
 .app-rail-user-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
-/* User dropdown (opens upward; reuses .code-menu) */
+/* User dropdown (opens upward; reuses .code-menu) — shared by the wall rail's
+   Account button and the settings rail's user chip. */
 .app-rail-user-menu { min-width: 168px; }
 
 .app-rail-user-menu .code-menu-item {
@@ -15870,6 +15874,98 @@ body.code-dragging #app-rail { transition: none; }
 }
 
 .app-rail-user-menu .code-menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+.app-rail-user-menu .code-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+/* Logout — the ONE red row. --danger-bright is tuned per scheme so it reads
+   on both (light: darker; dark: lifted), unlike --danger which sinks on dark. */
+.app-rail-user-menu .code-menu-item.danger { color: var(--danger-bright); }
+.app-rail-user-menu .code-menu-item.danger svg { color: var(--danger-bright); }
+
+/* The dark-scheme --danger-bright — grouped exactly like the logo swap above:
+   every dark theme lifts the logout red so it reads on a dark surface. */
+html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data-theme="github"],
+  [data-theme="highvis"], [data-theme="chatgpt"], [data-theme="gemini"], [data-theme="dracula"],
+  [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) {
+  --danger-bright: #ff7a76;
+}
+
+/* ── Settings rail user chip — pinned to the nav's bottom (desktop modal +
+   web /platform shell share the DOM; navigation.ts mountSettingsUserChip). ── */
+.settings-user-chip {
+  margin-top: auto;         /* pin to the rail's bottom */
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.settings-user-chip-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-user-chip-btn:hover { background: var(--hover); color: var(--text); }
+
+.settings-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.settings-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-user-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-user-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapsed platform rail: the chip folds to its avatar — the menu still
+   opens from it (position:fixed, so the 54px rail can't clip it). */
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav .settings-user-chip-btn {
+  justify-content: center;
+  padding: 6px 0;
+}
+body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav .settings-user-meta {
+  display: none;
+}
 
 
 

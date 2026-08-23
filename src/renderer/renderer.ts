@@ -32,6 +32,10 @@ type SavedPanelApp = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed — 'public' | 'members' | 'org-idp'. */
+  access?: string;
+  /** org-idp binding: the WorkOS Organization, or null. */
+  workosOrgId?: string | null;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -78,6 +82,8 @@ type PanelAppInput = {
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
   access?: "public" | "members" | "org-idp";
+  /** org-idp binding: the WorkOS Organization (null clears). */
+  workosOrgId?: string | null;
   /** The app's ONE execution home — where its worker + schedules run. */
   executionHome?: "local" | "regional";
 };
