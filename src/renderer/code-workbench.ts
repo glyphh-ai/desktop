@@ -4838,8 +4838,10 @@ async function init(): Promise<void> {
         // constructed from the slug so the EDGE's honest error page shows
         // when something is genuinely wrong. No card path for apps, ever.
         if (t.glyphh) {
-          const appDomain = (window as unknown as { __GLYPHH_APP_DOMAIN__?: string }).__GLYPHH_APP_DOMAIN__ || "glyphh.app";
-          const url = t.url && /^https?:\/\//i.test(t.url) ? t.url : `https://${t.slug}.${appDomain}`;
+          // The SERVER presents the URL (the GLOBAL public_slug — the local
+          // slug can differ after collision-adjustment; never construct here).
+          const url = t.url && /^https?:\/\//i.test(t.url) ? t.url : null;
+          if (!url) return;
           const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
           const ext = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
           if (!isWeb && ext) ext(url);
