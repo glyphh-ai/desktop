@@ -4836,7 +4836,11 @@ async function init(): Promise<void> {
         // Workbench apps and marketplace installs render as chromeless panels
         // (his rule, 2026-08-20) and keep the card; an app with no deployment
         // has no url and keeps its current behavior too.
-        if (t.glyphh && t.url && !t.workbench && /^https?:\/\//i.test(t.url)) {
+        // ONE RULE (his call, 2026-08-22): an app with a URL opens in a NEW
+        // TAB — marketplace-installed included (developer-hosted, always
+        // live). Apps are websites; the browser is their window. Only a
+        // URL-less (undeployed) app falls through to the card.
+        if (t.glyphh && t.url && /^https?:\/\//i.test(t.url)) {
           const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
           const ext = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
           if (!isWeb && ext) ext(t.url);
