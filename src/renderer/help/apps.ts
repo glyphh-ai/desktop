@@ -12,6 +12,7 @@ import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import {
   escMkt, mktConnChip, connLabel, mktConnIconApps,
   mkt, mktProgram, mktIsProgramRefusal, mktStarRow, mktDate, mktDiscountActive,
+  mktMyAppGrants,
   type MktDetail, type MktProgramState,
 } from "./marketplace-data.js";
 import { openMktDetail } from "./marketplace.js";
@@ -1208,7 +1209,9 @@ async function loadAppConnectionsTab(): Promise<void> {
 
 // ── Access group (Releases tab) — who may reach the deployed app ─────────────
 
-/** Prefill the Access controls from the current app row. */
+/** Prefill the Access controls from the current app row, then narrow the
+ *  options to the caller's role grant (appsPublishAccess). The server enforces
+ *  the bound regardless; this keeps the picker honest. */
 function fillReleaseAccessGroup(): void {
   const sel = document.getElementById("release-access") as HTMLSelectElement | null;
   const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
@@ -1219,6 +1222,38 @@ function fillReleaseAccessGroup(): void {
   document.getElementById("release-access-workos")?.classList.toggle("hidden", access !== "org-idp");
   const status = document.getElementById("release-access-status");
   if (status) status.textContent = "";
+  void applyReleaseAccessPolicy(access);
+}
+
+/** Narrow the Access picker to the caller's role grant. An access value the
+ *  role can't set is hidden; if the app's CURRENT access sits outside the
+ *  grant, the whole group goes read-only with a "set by org policy" note. */
+async function applyReleaseAccessPolicy(current: string): Promise<void> {
+  const grants = await mktMyAppGrants();
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  const saveBtn = document.getElementById("release-access-save") as HTMLButtonElement | null;
+  const note = document.getElementById("release-access-policy-note");
+  if (!sel) return;
+  // A tab switch may have replaced the current app while we awaited.
+  if (sel.value !== current) return;
+  const allowed = grants.appsPublishAccess;
+  const readOnly = !allowed.includes(current);
+  for (const opt of Array.from(sel.options)) {
+    // The CURRENT value stays visible even when disallowed — the picker must
+    // show the truth; it just can't be changed from here.
+    opt.hidden = !allowed.includes(opt.value) && opt.value !== current;
+    opt.disabled = opt.hidden;
+  }
+  sel.disabled = readOnly;
+  if (orgInput) orgInput.disabled = readOnly;
+  if (saveBtn) saveBtn.classList.toggle("hidden", readOnly);
+  if (note) {
+    note.textContent = readOnly
+      ? "Set by org policy — your role can't change who may open this app. An org admin can, under Settings › Roles."
+      : "";
+    note.classList.toggle("hidden", !readOnly);
+  }
 }
 
 /** Persist the Access selection (+ the WorkOS Organization for org-idp). */

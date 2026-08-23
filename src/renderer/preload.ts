@@ -286,6 +286,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  workspacesGrants: () => ipcRenderer.invoke("workspaces-grants") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesModelCatalog: () => ipcRenderer.invoke("workspaces-model-catalog") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   workspacesOrgConnectors: () => ipcRenderer.invoke("workspaces-org-connectors") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesOrgToolCap: () => ipcRenderer.invoke("workspaces-org-tool-cap") as Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>,

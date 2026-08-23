@@ -621,6 +621,7 @@
                       <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
                       <button class="app-detail-tab" data-wstab="models" type="button">Models</button>
                       <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
+                      <button class="app-detail-tab" data-wstab="apps" type="button">Apps</button>
                     </div>
 
                     <div class="ws-tab active" data-wstab="general">
@@ -731,6 +732,48 @@
                         <p class="section-desc" id="ws-tools-hint">Uncheck a tool to hide it — members with this role won't see or be able to call it.</p>
                         <div id="ws-tools-list" class="ws-tools"></div>
                       </div>
+                    </div>
+
+                    <!-- APPS — role-level app governance: may this role build/publish
+                         apps, which access values it may set on one, and whether it
+                         may install from the marketplace. Server-enforced on every
+                         road; these controls only write the role policy. -->
+                    <div class="ws-tab" data-wstab="apps">
+                      <label class="settings-toggle" style="margin-top:12px;">
+                        <input type="checkbox" id="ws-apps-build" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title">Build apps</span>
+                          <span class="toggle-desc">Members with this role may create and publish apps (scaffold, entries, releases).</span>
+                        </div>
+                      </label>
+
+                      <h4 class="acct-row-head" style="margin-top:18px;">May publish as</h4>
+                      <p class="section-desc">Which audiences a member may set on a deployed app's Access. Unchecked values are refused by the server and hidden from the member's Access picker.</p>
+                      <label class="ws-tool-row">
+                        <input type="checkbox" id="ws-pub-public" />
+                        <span class="ws-tool-name">Public</span>
+                        <span class="ws-tool-desc">Anyone with the link.</span>
+                      </label>
+                      <label class="ws-tool-row">
+                        <input type="checkbox" id="ws-pub-members" />
+                        <span class="ws-tool-name">Members</span>
+                        <span class="ws-tool-desc">Signed-in members of your org.</span>
+                      </label>
+                      <label class="ws-tool-row">
+                        <input type="checkbox" id="ws-pub-orgidp" />
+                        <span class="ws-tool-name">Customer IdP (org-idp)</span>
+                        <span class="ws-tool-desc">A customer's employees via their own IdP (WorkOS).</span>
+                      </label>
+
+                      <label class="settings-toggle" style="margin-top:18px;">
+                        <input type="checkbox" id="ws-apps-install" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title">Install from the marketplace</span>
+                          <span class="toggle-desc">Off — members with this role can browse the marketplace but see "ask your admin" instead of install and pricing.</span>
+                        </div>
+                      </label>
                     </div>
                   </div>
                 </div>

@@ -297,6 +297,7 @@ declare global {
       workspacesCreate: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesUpdate: (id: string, input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      workspacesGrants: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesModelCatalog: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       workspacesOrgConnectors: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesOrgToolCap: () => Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>;
