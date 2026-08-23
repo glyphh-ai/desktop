@@ -4833,18 +4833,17 @@ async function init(): Promise<void> {
         // A DEPLOYED Glyphh app is a real website at https://<slug>.glyphh.app —
         // its tile opens that URL in the BROWSER (desktop: the OS browser via
         // openExternal; web: a new tab), the same road every external link takes.
-        // Workbench apps and marketplace installs render as chromeless panels
-        // (his rule, 2026-08-20) and keep the card; an app with no deployment
-        // has no url and keeps its current behavior too.
-        // ONE RULE (his call, 2026-08-22): an app with a URL opens in a NEW
-        // TAB — marketplace-installed included (developer-hosted, always
-        // live). Apps are websites; the browser is their window. Only a
-        // URL-less (undeployed) app falls through to the card.
-        if (t.glyphh && t.url && /^https?:\/\//i.test(t.url)) {
+        // NO FALLBACKS (his rule, 2026-08-22): installed = built + deployed.
+        // A glyphh app tile ALWAYS opens the tab — url from the row, or
+        // constructed from the slug so the EDGE's honest error page shows
+        // when something is genuinely wrong. No card path for apps, ever.
+        if (t.glyphh) {
+          const appDomain = (window as unknown as { __GLYPHH_APP_DOMAIN__?: string }).__GLYPHH_APP_DOMAIN__ || "glyphh.app";
+          const url = t.url && /^https?:\/\//i.test(t.url) ? t.url : `https://${t.slug}.${appDomain}`;
           const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
           const ext = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
-          if (!isWeb && ext) ext(t.url);
-          else window.open(t.url, "_blank", "noopener");
+          if (!isWeb && ext) ext(url);
+          else window.open(url, "_blank", "noopener");
           return;
         }
         // pinned card wins as the landing target (never while a layout is
