@@ -375,9 +375,9 @@
                     <p class="proxy-field-hint">Markdown. This is what an installer reads when they upgrade, and what travels in an exported <code>.glyphh</code> bundle.</p>
 
                     <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <p class="proxy-field-hint" style="margin-top:12px;">Building and deploying happen over MCP — ask Claude (or any connected client) to update the app; <code>build_app</code> cuts the release and ships it here.</p>
                     <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
                       <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                      <button id="release-build" class="action-btn" type="button" title="Package the working folder's built app, cut a release, upload the source, and deploy it">Build &amp; deploy</button>
                       <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
                       <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
                     </div>
@@ -443,8 +443,6 @@
                   <div id="deploy-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
                   <div class="settings-actions" style="margin-top:18px;display:flex;gap:8px;align-items:center;">
                     <span id="deploy-access-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                    <button id="deploy-btn" class="action-btn primary" type="button">Deploy</button>
-                    <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                   </div>
 
                   <div class="app-detail-section-sep"></div>
@@ -459,7 +457,6 @@
                   <p class="proxy-field-hint" id="server-size-hint"></p>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
                     <span id="server-note" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                    <button id="server-deploy-btn" class="action-btn primary" type="button">Deploy server</button>
                   </div>
                   <div id="server-list" style="margin-top:14px;"></div>
 
