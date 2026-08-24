@@ -845,6 +845,7 @@ export function initBilling(): void {
   // into state and deliberately does NOT trigger a write.
   ($("billing-at-cap") as HTMLInputElement | null)?.addEventListener("input", (e) => {
     autoTopup.monthlyCapUsd = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
+    void window.glyphh.setPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd);
   });
 
   $("billing-portal-btn")?.addEventListener("click", () => { void openPortal(); });
@@ -932,9 +933,9 @@ export async function loadBilling(): Promise<void> {
       enabled: !!a.enabled,
       thresholdCredits: toCredits(a.thresholdCredits),
       packUsd: Math.round(toCredits(a.topupCredits) * USD_PER_CREDIT),
-      // The server does not persist a 30-day cap yet — the field is a local
-      // guard rail only, so it keeps whatever the user last typed this session.
-      monthlyCapUsd: autoTopup.monthlyCapUsd,
+      // The server does not persist a 30-day cap yet — a LOCAL preference
+      // (billingMonthlyCapUsd) shared with the Usage page's spend-limit form.
+      monthlyCapUsd: Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd)) || autoTopup.monthlyCapUsd,
     };
   }
 

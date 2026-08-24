@@ -161,6 +161,7 @@
                      usage bar + reset date, purchased credits, refresh, and the
                      auto-top-up toggle. The platform keeps the dashboard below. -->
                 <div id="usage-app-view">
+                  <div id="ua-main">
                   <div class="ua-head">
                     <span class="ua-title">Plan usage limits <span class="ua-plan" id="ua-plan">—</span></span>
                     <span class="ua-head-aside">
@@ -205,6 +206,25 @@
                     </div>
                     <div class="ua-spacer"></div>
                     <button id="ua-buy" class="action-btn primary" type="button">Buy usage credits</button>
+                  </div>
+                  </div>
+
+                  <!-- Set monthly spend limit — in-tab form (his spec, 2026-08-24):
+                       ← Usage back, the one field, Cancel + primary Save right. -->
+                  <div id="ua-limit-form" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="ua-limit-back">&larr; Usage</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <h3 class="settings-subheading" style="margin-top:0;">Set monthly spend limit</h3>
+                    <label class="settings-label" for="ua-limit-input">Max per 30 days (USD)</label>
+                    <input id="ua-limit-input" type="number" min="0" class="settings-input settings-input-md" placeholder="200" />
+                    <span class="settings-hint" style="display:block;margin-top:4px;">A local guard rail — not enforced by the server yet. Blank or 0 means unlimited.</span>
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <div style="flex:1;"></div>
+                      <button id="ua-limit-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="ua-limit-save" class="action-btn primary" type="button">Save</button>
+                    </div>
                   </div>
                 </div>
 

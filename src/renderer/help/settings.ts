@@ -548,8 +548,31 @@ async function loadUsageAppView(): Promise<void> {
     uaWired = true;
     el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
     const toBilling = () => (document.querySelector('.settings-nav-item[data-sub="billing"]') as HTMLElement | null)?.click();
-    el("ua-adjust-limit")?.addEventListener("click", toBilling);
     el("ua-buy")?.addEventListener("click", toBilling);
+    // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
+    const showLimitForm = (on: boolean) => {
+      el("ua-main")?.classList.toggle("hidden", on);
+      el("ua-limit-form")?.classList.toggle("hidden", !on);
+    };
+    el("ua-adjust-limit")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+        (el("ua-limit-input") as HTMLInputElement).value = cap > 0 ? String(cap) : "";
+        showLimitForm(true);
+        (el("ua-limit-input") as HTMLInputElement | null)?.focus();
+      })();
+    });
+    el("ua-limit-back")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-cancel")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-save")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Math.max(0, Number((el("ua-limit-input") as HTMLInputElement).value) || 0);
+        await window.glyphh.setPreference?.("billingMonthlyCapUsd", cap);
+        const capEl = el("ua-cap");
+        if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
+        showLimitForm(false);
+      })();
+    });
     const toggle = el("ua-autotopup") as HTMLInputElement | null;
     toggle?.addEventListener("change", () => {
       void (async () => {
@@ -605,6 +628,9 @@ async function loadUsageAppView(): Promise<void> {
     if (t && topup) t.checked = !!topup.enabled;
     const reload = el("ua-reload-state");
     if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
+    const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+    const capEl = el("ua-cap");
+    if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
     const upd = el("ua-updated");
     if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   } catch { /* offline — the view keeps its dashes */ }
