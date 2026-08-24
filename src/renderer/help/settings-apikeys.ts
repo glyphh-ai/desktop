@@ -13,9 +13,16 @@
  * Neither present → an honest "not available on this build" message.
  */
 
-import { escapeHtml, confirmAction } from "./shared.js";
+import { escapeHtml, confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { USD_PER_CREDIT } from "./settings-api.js";
 
-export interface ApiKey { id: string; label: string; prefix: string; createdAt: string; expiresAt: string | null }
+export interface ApiKey {
+  id: string; label: string; prefix: string; createdAt: string; expiresAt: string | null;
+  userEmail?: string; lastUsedAt?: string | null;
+  /** Attributed spend in MICRO-credits (server-summed from the usage ledger). */
+  creditsMicro?: number;
+}
 interface CreatedApiKey { key: ApiKey; token: string }
 
 interface SdkApiKeys {
@@ -90,26 +97,61 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
+const PAGE_SIZE = 10;
+let page = 0;
+
+const fmtDay = (iso: string | null | undefined): string =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+/** Attributed spend: micro-credits → dollars at the flat display rate. */
+const fmtCost = (micro: number | undefined): string =>
+  `$${(((micro ?? 0) / 1_000_000) * USD_PER_CREDIT).toFixed(2)}`;
+
 function render(): void {
   const list = $("apikeys-list");
   const empty = $("apikeys-empty");
   if (!list) return;
   const q = query.toLowerCase();
-  const shown = q ? keys.filter((k) => `${k.label || ""} ${k.prefix}`.toLowerCase().includes(q)) : keys;
+  const shown = q ? keys.filter((k) => `${k.label || ""} ${k.prefix} ${k.userEmail || ""}`.toLowerCase().includes(q)) : keys;
   empty?.classList.toggle("hidden", shown.length > 0);
   if (empty) empty.textContent = keys.length === 0 ? "No keys yet." : `No keys matching "${query}"`;
   list.innerHTML = "";
-  for (const k of shown) {
-    const row = document.createElement("div");
-    row.className = "a4-row";
-    const when = k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "";
-    row.innerHTML = `<span class="a4-row-main"><span class="a4-row-name">${escapeHtml(k.label || "(unnamed)")}</span><span class="a4-row-sub">${escapeHtml(k.prefix)}${when ? ` · ${escapeHtml(when)}` : ""}</span></span><button class="action-btn danger" type="button">Revoke</button>`;
-    row.querySelector("button")!.addEventListener("click", async () => {
-      if (!(await confirmAction({ title: `Revoke “${k.label || "this key"}”?`, body: "Any client using this key immediately loses access.", confirmLabel: "Revoke", danger: true }))) return;
-      try { await transport()!.revoke(k.id); await loadApiKeys(); }
-      catch (e) { setError((e as Error).message); }
-    });
-    list.appendChild(row);
+  if (!shown.length) return;
+
+  // The console-style key table: Key (label + masked token), Created by,
+  // Created, Last used, Cost, kebab.
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Key</th><th>Created by</th><th>Created</th><th>Last used</th><th>Cost</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  const pg = paginate(shown, page, PAGE_SIZE);
+  page = pg.state.page;
+  for (const k of pg.items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="lib-table-name"><span class="ak-name"></span><span class="ak-prefix"></span></td>` +
+      `<td class="lib-table-desc"></td>` +
+      `<td class="lib-table-dim">${escapeHtml(fmtDay(k.createdAt))}</td>` +
+      `<td class="lib-table-dim">${escapeHtml(fmtDay(k.lastUsedAt))}</td>` +
+      `<td>${escapeHtml(fmtCost(k.creditsMicro))}</td>`;
+    (tr.querySelector(".ak-name") as HTMLElement).textContent = k.label || "(unnamed)";
+    (tr.querySelector(".ak-prefix") as HTMLElement).textContent = k.prefix;
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.userEmail || "";
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {
+        void (async () => {
+          if (!(await confirmAction({ title: `Revoke “${k.label || "this key"}”?`, body: "Any client using this key immediately loses access.", confirmLabel: "Revoke", danger: true }))) return;
+          try { await transport()!.revoke(k.id); await loadApiKeys(); }
+          catch (e) { setError((e as Error).message); }
+        })();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (pg.state.totalPages > 1) {
+    list.appendChild(renderPaginationBar(pg.state, (p) => { page = p; render(); }));
   }
 }
 

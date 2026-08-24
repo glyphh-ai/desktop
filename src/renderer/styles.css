@@ -15058,6 +15058,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* text-overflow:clip — the generic td ellipsis rendered a stray "." beside
    the squeezed kebab (his report, 2026-08-25). */
 .lib-table .lib-row-kebab-cell { width: 40px; text-align: right; text-overflow: clip; }
+/* API keys table: label over the masked token, console-style. */
+.ak-name { display: block; }
+.ak-prefix { display: block; font-family: var(--mono, monospace); font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 .lib-row-kebab {
   width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
   border: none; background: none; border-radius: 6px; color: var(--text-3); cursor: pointer;
