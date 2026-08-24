@@ -216,14 +216,14 @@ function formModal(title: string, fields: ModalField[], saveText = "Save"): Prom
 
 // ── icons ────────────────────────────────────────────────────────────────────
 
-const SVG = {
+export const MDL_SVG = {
   chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>`,
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
   trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
 };
 
-function icoBtn(svg: string, title: string): HTMLButtonElement {
+export function icoBtn(svg: string, title: string): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "mdl-ico-btn";
@@ -459,7 +459,7 @@ function renderList(): void {
     head.className = "mdl-prov-head" + (isOpen ? " open" : "");
     const chev = document.createElement("span");
     chev.className = "mdl-prov-chevron";
-    chev.innerHTML = SVG.chevron;
+    chev.innerHTML = MDL_SVG.chevron;
     const info = document.createElement("div");
     info.className = "mdl-prov-info";
     const name = document.createElement("div");
@@ -476,11 +476,11 @@ function renderList(): void {
     head.append(chev, info);
 
     if (e.customProv) {
-      const add = icoBtn(SVG.plus, "Add a model");
+      const add = icoBtn(MDL_SVG.plus, "Add a model");
       add.addEventListener("click", (ev) => { ev.stopPropagation(); void modelModal(e.customProv!.slug, null); });
       head.appendChild(add);
     }
-    const edit = icoBtn(SVG.edit, "Edit provider");
+    const edit = icoBtn(MDL_SVG.edit, "Edit provider");
     edit.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (e.gateway) void editGatewayProviderModal(e.gateway);
@@ -488,7 +488,7 @@ function renderList(): void {
     });
     head.appendChild(edit);
     if (e.customProv) {
-      const del = icoBtn(SVG.trash, "Delete provider");
+      const del = icoBtn(MDL_SVG.trash, "Delete provider");
       del.classList.add("danger");
       del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
       head.appendChild(del);
@@ -540,9 +540,9 @@ function renderList(): void {
         const list = custom.filter((m) => m.provider_slug === e.customProv!.slug);
         if (!list.length) body.innerHTML = `<div class="crud-empty">No models yet — add one with +.</div>`;
         for (const m of list) {
-          const editIc = icoBtn(SVG.edit, "Edit model");
+          const editIc = icoBtn(MDL_SVG.edit, "Edit model");
           editIc.addEventListener("click", (ev) => { ev.stopPropagation(); void modelModal(e.customProv!.slug, m); });
-          const delIc = icoBtn(SVG.trash, "Delete model");
+          const delIc = icoBtn(MDL_SVG.trash, "Delete model");
           delIc.classList.add("danger");
           delIc.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteModelConfirm(m); });
           body.appendChild(modelLine(m.name, m.model_name, {

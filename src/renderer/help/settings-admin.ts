@@ -24,6 +24,7 @@
 
 import { escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { icoBtn, MDL_SVG } from "./models-admin.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
@@ -268,7 +269,6 @@ const numOrNull = (s: string): number | null => (s === "" ? null : Math.max(0, M
 // ═══════════════════════════════════════════════════════════════════════════
 
 let models: AdminModel[] = [];
-let modelsPage = 0;
 let editingModel: AdminModel | null = null;
 let modelsWired = false;
 
@@ -279,73 +279,14 @@ function showModelEditor(on: boolean): void {
   $("pa-model-editor")?.classList.toggle("hidden", !on);
 }
 
-function paintModels(): void {
-  const wrap = $("pa-models-list");
-  if (!wrap) return;
-  const q = inputVal("pa-models-search").toLowerCase();
-  const rows = models.filter((m) =>
-    !q || m.display_name.toLowerCase().includes(q) || modelId(m).toLowerCase().includes(q));
-  wrap.innerHTML = "";
-  if (!models.length) { wrap.innerHTML = `<div class="crud-empty">No models in the catalog yet.</div>`; return; }
-  if (!rows.length) { wrap.innerHTML = `<div class="crud-empty">No models match your search.</div>`; return; }
-
-  const { items, state } = paginate(rows, modelsPage);
-  modelsPage = state.page;
-  const { table, tbody } = mkTable(["Model", "Id", "Rates (cr/MTok)", "Context", "Status"], true);
-  for (const m of items) {
-    const tr = document.createElement("tr");
-    const rates = m.input_credits_per_mtok == null && m.output_credits_per_mtok == null
-      ? "BYOK / direct"
-      : `${fmtInt(microToCredits(m.input_credits_per_mtok))} in · ${fmtInt(microToCredits(m.output_credits_per_mtok))} out`;
-    tr.innerHTML = `
-      <td class="lib-table-name"></td>
-      <td class="lib-table-desc"></td>
-      <td>${escapeHtml(rates)}</td>
-      <td class="lib-table-dim">${m.context_window ? escapeHtml(fmtInt(m.context_window)) : "—"}</td>`;
-    const status = document.createElement("td");
-    status.innerHTML = m.active ? `<span class="lib-badge">Active</span>` : `<span class="lib-table-dim">Inactive</span>`;
-    tr.appendChild(status);
-    const nameCell = tr.querySelector(".lib-table-name");
-    if (nameCell) nameCell.textContent = m.display_name;
-    const idCell = tr.querySelector(".lib-table-desc");
-    if (idCell) idCell.textContent = modelId(m);
-    tr.addEventListener("click", () => openModelEditor(m));
-    tr.appendChild(kebabCell(() => [
-      { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => openModelEditor(m) },
-      { icon: ROW_MENU_ICONS.delete, label: m.active ? "Deactivate" : "Activate", danger: m.active, onClick: () => {
-        void (async () => {
-          const sure = await confirmAction(m.active
-            ? { title: `Deactivate ${m.display_name}?`, body: "The model disappears from every org's catalog until reactivated.", confirmLabel: "Deactivate", danger: true }
-            : { title: `Activate ${m.display_name}?`, body: "Organizations can enable and use it again.", confirmLabel: "Activate" });
-          if (!sure) return;
-          const res = await write<AdminModel>(
-            (a) => a.updateModel?.(m.provider, m.model, { active: !m.active })?.then((r) => r.model),
-            (g) => g.adminModelUpdate?.(m.provider, m.model, { active: !m.active }), "model");
-          if (!res.ok) { setErr("pa-models-error", res.error); return; }
-          setErr("pa-models-error", "");
-          await loadAdminModels();
-        })();
-      } },
-    ]));
-    tbody.appendChild(tr);
-  }
-  wrap.appendChild(table);
-  if (state.totalPages > 1) wrap.appendChild(renderPaginationBar(state, (p) => { modelsPage = p; paintModels(); }));
-}
-
-/** The catalog's providers — real rows (GET /api/catalog/providers), searchable,
- *  click to EDIT (the create form pre-filled; POST /api/admin/providers is an
- *  upsert, so the same save updates). Platform keys are server config; never shown. */
 interface CatalogProvider { slug: string; name: string; kind: string; baseUrl: string | null; alias: string | null }
 let providers: CatalogProvider[] = [];
-let providerSearch = "";
 /** The slug being edited, or null when the form is creating a new provider. */
 let editingProviderSlug: string | null = null;
 
 async function loadProviders(): Promise<void> {
   try {
-    // Web first: the raw SDK client (window.glyphh there is a fabricating
-    // Proxy whose calls resolve undefined). Desktop: the models IPC.
+    // Web first: the raw SDK client; desktop: the models IPC.
     const sdk = (window as unknown as { glyphhSdk?: { catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
     if (sdk?.catalog?.providers) {
       providers = await sdk.catalog.providers();
@@ -355,13 +296,22 @@ async function loadProviders(): Promise<void> {
       }).orgProvidersList?.();
       if (r?.ok && Array.isArray(r.data)) providers = r.data;
     }
-  } catch { /* offline — the model-derived counts still paint below */ }
-  paintProviders();
+  } catch { /* offline — the model-derived rows still paint */ }
+  paintCatalog();
 }
 
-function paintProviders(): void {
-  const wrap = $("pa-providers-list");
+/** True while the model editor is CREATING (provider pinned by the + row). */
+let creatingModelProvider: string | null = null;
+const catalogExpanded = new Set<string>();
+let catalogPage = 0;
+
+/** ONE list (his spec, 2026-08-24, same as the org Models page): the PROVIDERS,
+ *  expandable to the catalog models inside each. Search matches providers AND
+ *  models (a model match auto-opens its provider); paginated over providers. */
+function paintCatalog(): void {
+  const wrap = $("pa-catalog-list");
   if (!wrap) return;
+  const q = inputVal("pa-models-search").toLowerCase();
   const counts = new Map<string, { total: number; active: number }>();
   for (const m of models) {
     const cur = counts.get(m.provider) || { total: 0, active: 0 };
@@ -369,34 +319,117 @@ function paintProviders(): void {
     if (m.active) cur.active += 1;
     counts.set(m.provider, cur);
   }
-  // Real provider rows when the list loaded; model-derived slugs as fallback.
   const rows: CatalogProvider[] = providers.length
     ? providers
     : [...counts.keys()].map((slug) => ({ slug, name: slug, kind: "proxied", baseUrl: null, alias: null }));
-  const q = providerSearch.trim().toLowerCase();
-  const shown = rows
-    .filter((p) => !q || p.slug.toLowerCase().includes(q) || p.name.toLowerCase().includes(q))
-    .sort((a, b) => a.slug.localeCompare(b.slug));
+  const entries = rows
+    .map((p) => ({
+      p,
+      autoOpen: !!q && models.some((m) => m.provider === p.slug &&
+        (m.display_name.toLowerCase().includes(q) || m.model.toLowerCase().includes(q))),
+    }))
+    .filter((e) => !q || e.p.name.toLowerCase().includes(q) || e.p.slug.toLowerCase().includes(q) || e.autoOpen)
+    .sort((a, b) => a.p.name.localeCompare(b.p.name));
+
+  const state = { page: catalogPage, pageSize: 10, total: entries.length, totalPages: Math.max(1, Math.ceil(entries.length / 10)) };
+  if (state.page >= state.totalPages) { state.page = state.totalPages - 1; catalogPage = state.page; }
+  const slice = entries.slice(state.page * state.pageSize, (state.page + 1) * state.pageSize);
+
   wrap.innerHTML = "";
-  if (!shown.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No providers match." : "No providers yet."}</div>`; return; }
-  const { table, tbody } = mkTable(["Provider", "Slug", "Base URL", "Models", "Active"], false);
-  for (const p of shown) {
-    const c = counts.get(p.slug) || { total: 0, active: 0 };
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="lib-table-name"></td>
-      <td class="lib-table-desc"></td>
-      <td class="lib-table-dim pa-prov-url"></td>
-      <td>${fmtInt(c.total)}</td>
-      <td class="lib-table-dim">${fmtInt(c.active)}</td>`;
-    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = p.name;
-    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = p.slug;
-    (tr.querySelector(".pa-prov-url") as HTMLElement).textContent = p.baseUrl || "—";
-    tr.style.cursor = "pointer";
-    tr.addEventListener("click", () => openProviderEditor(p));
-    tbody.appendChild(tr);
+  if (!slice.length) {
+    wrap.innerHTML = `<div class="crud-empty">${q ? "No providers or models match your search." : "No providers yet — add one above."}</div>`;
   }
-  wrap.appendChild(table);
+  for (const { p, autoOpen } of slice) {
+    const c = counts.get(p.slug) || { total: 0, active: 0 };
+    const isOpen = catalogExpanded.has(p.slug) || autoOpen;
+    const row = document.createElement("div");
+    row.className = "mdl-prov-row";
+
+    const head = document.createElement("div");
+    head.className = "mdl-prov-head" + (isOpen ? " open" : "");
+    const chev = document.createElement("span");
+    chev.className = "mdl-prov-chevron";
+    chev.innerHTML = MDL_SVG.chevron;
+    const info = document.createElement("div");
+    info.className = "mdl-prov-info";
+    const name = document.createElement("div");
+    name.className = "mdl-td-name";
+    name.textContent = p.name;
+    const chip = document.createElement("span");
+    chip.className = "mdl-type-chip glyphh";
+    chip.textContent = p.kind === "open_weight" ? "Open weight" : "Proxied";
+    name.appendChild(chip);
+    const sub = document.createElement("div");
+    sub.className = "mdl-td-sub";
+    sub.textContent = `${fmtInt(c.total)} models · ${fmtInt(c.active)} active` + (p.baseUrl ? ` · ${p.baseUrl}` : "");
+    info.append(name, sub);
+    head.append(chev, info);
+
+    const add = icoBtn(MDL_SVG.plus, "Add a model");
+    add.addEventListener("click", (ev) => { ev.stopPropagation(); openModelCreate(p.slug); });
+    const edit = icoBtn(MDL_SVG.edit, "Edit provider");
+    edit.addEventListener("click", (ev) => { ev.stopPropagation(); openProviderEditor(p); });
+    head.append(add, edit);
+    head.addEventListener("click", () => {
+      if (catalogExpanded.has(p.slug)) catalogExpanded.delete(p.slug);
+      else catalogExpanded.add(p.slug);
+      paintCatalog();
+    });
+    row.appendChild(head);
+
+    if (isOpen) {
+      const body = document.createElement("div");
+      body.className = "mdl-prov-models";
+      const list = models
+        .filter((m) => m.provider === p.slug)
+        .sort((a, b) => a.display_name.localeCompare(b.display_name));
+      if (!list.length) body.innerHTML = `<div class="crud-empty">No models yet — add one with +.</div>`;
+      for (const m of list) {
+        const line = document.createElement("div");
+        line.className = "mdl-model-line";
+        const mi = document.createElement("div");
+        mi.className = "mdl-model-info";
+        const mn = document.createElement("div");
+        mn.className = "mdl-td-name";
+        mn.textContent = m.display_name;
+        const rates = m.input_credits_per_mtok == null && m.output_credits_per_mtok == null
+          ? "BYOK / direct"
+          : `${fmtInt(microToCredits(m.input_credits_per_mtok))}/${fmtInt(microToCredits(m.output_credits_per_mtok))} cr`;
+        const ms = document.createElement("div");
+        ms.className = "mdl-td-sub mono";
+        ms.textContent = `${m.model} · ${rates}`;
+        mi.append(mn, ms);
+        const editIc = icoBtn(MDL_SVG.edit, "Edit model");
+        editIc.addEventListener("click", (ev) => { ev.stopPropagation(); openModelEditor(m); });
+        const lab = document.createElement("label");
+        lab.className = "settings-toggle mdl-toggle";
+        lab.title = "Active — visible to every organization's catalog";
+        lab.innerHTML = `<input type="checkbox" ${m.active ? "checked" : ""} /><span class="toggle-switch"></span>`;
+        const box = lab.querySelector("input") as HTMLInputElement;
+        box.addEventListener("change", () => {
+          void (async () => {
+            const res = await write<AdminModel>(
+              (a) => a.updateModel?.(m.provider, m.model, { active: box.checked })?.then((r) => r.model),
+              (g) => g.adminModelUpdate?.(m.provider, m.model, { active: box.checked }), "model");
+            if (!res.ok) { box.checked = !box.checked; setErr("pa-models-error", res.error); return; }
+            m.active = box.checked;
+            setErr("pa-models-error", "");
+            paintCatalog();
+          })();
+        });
+        line.append(mi, editIc, lab);
+        body.appendChild(line);
+      }
+      row.appendChild(body);
+    }
+    wrap.appendChild(row);
+  }
+
+  const pager = $("pa-catalog-pager");
+  if (pager) {
+    pager.innerHTML = "";
+    if (state.totalPages > 1) pager.appendChild(renderPaginationBar(state, (pg) => { catalogPage = pg; paintCatalog(); }));
+  }
 }
 
 /** The provider editor replaces the WHOLE catalog list view (the model/plan
@@ -524,6 +557,8 @@ function relabelModelRates(unit: string): void {
 
 function openModelEditor(m: AdminModel): void {
   editingModel = m;
+  creatingModelProvider = null;
+  $("pa-model-identity")?.classList.add("hidden");
   setErr("pa-model-form-error", "");
   const title = $("pa-model-title");
   if (title) title.textContent = `${m.display_name} · ${modelId(m)}`;
@@ -544,7 +579,60 @@ function openModelEditor(m: AdminModel): void {
   showModelEditor(true);
 }
 
+/** CREATE mode — the + on a provider row. Same editor page, identity shown. */
+function openModelCreate(providerSlug: string): void {
+  editingModel = null;
+  creatingModelProvider = providerSlug;
+  setErr("pa-model-form-error", "");
+  const title = $("pa-model-title");
+  if (title) title.textContent = "New model";
+  $("pa-model-identity")?.classList.remove("hidden");
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  set("pa-model-provider", providerSlug);
+  set("pa-model-id", "");
+  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-in", "pa-model-out", "pa-model-ctx", "pa-model-max"]) set(id, "");
+  const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = "chat";
+  const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = "mtok";
+  relabelModelRates("mtok");
+  const active = $<HTMLInputElement>("pa-model-active"); if (active) active.checked = true;
+  const defaultOn = $<HTMLInputElement>("pa-model-default-on"); if (defaultOn) defaultOn.checked = false;
+  showModelEditor(true);
+}
+
 async function saveModel(): Promise<void> {
+  // CREATE: the + row pinned a provider; release into the global catalog.
+  if (!editingModel && creatingModelProvider) {
+    const id = inputVal("pa-model-id").trim();
+    const name = inputVal("pa-model-name");
+    if (!id || !name) { setErr("pa-model-form-error", "The model needs an id and a display name."); return; }
+    const inCr0 = numOrNull(inputVal("pa-model-in")) ?? 0;
+    const outCr0 = numOrNull(inputVal("pa-model-out")) ?? 0;
+    const ctx0 = numOrNull(inputVal("pa-model-ctx"));
+    const input = {
+      id,
+      providerSlug: creatingModelProvider,
+      name,
+      kind: "proxied" as const,
+      modality: inputVal("pa-model-modality") || "chat",
+      rateUnit: inputVal("pa-model-rate-unit") || "mtok",
+      ...(inputVal("pa-model-alias").trim() ? { alias: inputVal("pa-model-alias").trim() } : {}),
+      ...(ctx0 ? { contextWindow: ctx0 } : {}),
+      inputCreditsPerMTok: inCr0,
+      outputCreditsPerMTok: outCr0,
+    };
+    const btn = $<HTMLButtonElement>("pa-model-save");
+    if (btn) btn.disabled = true;
+    const res = await write(
+      (a) => a.createModel?.(input),
+      (g) => g.adminModelCreate?.(input), "model");
+    if (btn) btn.disabled = false;
+    if (!res.ok) { setErr("pa-model-form-error", res.error); return; }
+    catalogExpanded.add(creatingModelProvider);
+    creatingModelProvider = null;
+    showModelEditor(false);
+    await loadAdminModels();
+    return;
+  }
   if (!editingModel) return;
   const name = inputVal("pa-model-name");
   if (!name) { setErr("pa-model-form-error", "The model needs a display name."); return; }
@@ -582,9 +670,6 @@ async function saveModel(): Promise<void> {
 
 /** The release flows — the old platform's add-provider / add-model forms. */
 function wireCatalogCreate(): void {
-  const toggle = (id: string, on: boolean) => $(id)?.classList.toggle("hidden", !on);
-  $("pa-model-add-btn")?.addEventListener("click", () => { toggle("pa-model-create", true); showProviderEditor(false); });
-  $("pa-mc-cancel")?.addEventListener("click", () => toggle("pa-model-create", false));
   // Relabel the editor's rate inputs when the modality's unit changes.
   $("pa-model-rate-unit")?.addEventListener("change", () => relabelModelRates(inputVal("pa-model-rate-unit")));
   // + Provider = CREATE mode: reset whatever an edit left in the shared form.
@@ -599,17 +684,12 @@ function wireCatalogCreate(): void {
     if (title) title.textContent = "New provider";
     setErr("pa-provider-create-error", "");
     $("pa-pc-keys-group")?.classList.add("hidden"); // keys attach after the first save
-    toggle("pa-model-create", false);
     showProviderEditor(true);
   });
   $("pa-pc-key-add")?.addEventListener("click", () => { void addProviderKeyFromForm(); });
   $("pa-pc-key-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addProviderKeyFromForm(); });
   $("pa-provider-back")?.addEventListener("click", () => showProviderEditor(false));
   $("pa-pc-cancel")?.addEventListener("click", () => showProviderEditor(false));
-  $("pa-provider-search")?.addEventListener("input", () => {
-    providerSearch = inputVal("pa-provider-search");
-    paintProviders();
-  });
 
   $("pa-pc-save")?.addEventListener("click", () => {
     void (async () => {
@@ -633,31 +713,6 @@ function wireCatalogCreate(): void {
     })();
   });
 
-  $("pa-mc-save")?.addEventListener("click", () => {
-    void (async () => {
-      const num = (id: string): number => Number(inputVal(id).replace(/[^0-9.]/g, "")) || 0;
-      const input = {
-        id: inputVal("pa-mc-id").trim(),
-        providerSlug: inputVal("pa-mc-provider").trim().toLowerCase(),
-        name: inputVal("pa-mc-name").trim(),
-        kind: (inputVal("pa-mc-kind") || "proxied") as "proxied" | "open_weight",
-        modality: inputVal("pa-mc-modality") || "chat",
-        rateUnit: inputVal("pa-mc-rate-unit") || "mtok",
-        ...(inputVal("pa-mc-alias").trim() ? { alias: inputVal("pa-mc-alias").trim() } : {}),
-        ...(num("pa-mc-ctx") ? { contextWindow: num("pa-mc-ctx") } : {}),
-        inputCreditsPerMTok: num("pa-mc-in"),
-        outputCreditsPerMTok: num("pa-mc-out"),
-      };
-      if (!input.id || !input.providerSlug || !input.name) { setErr("pa-model-create-error", "Provider, id, and name are required."); return; }
-      const res = await write(
-        (a) => a.createModel?.(input),
-        (g) => g.adminModelCreate?.(input), "model");
-      if (!res.ok) { setErr("pa-model-create-error", res.error); return; }
-      setErr("pa-model-create-error", "");
-      toggle("pa-model-create", false);
-      await loadAdminModelsAsync();
-    })();
-  });
 }
 
 /** The load body, awaitable (the create flows refresh through it). */
@@ -677,14 +732,14 @@ async function loadAdminModelsAsync(): Promise<void> {
     setErr("pa-models-error", `Couldn't load the catalog — ${errText(err)}`);
     models = [];
   }
-  paintModels();
-  void loadProviders(); // paints providers when the list lands (fallback inside)
+  paintCatalog();
+  void loadProviders(); // repaints when the provider list lands
 }
 
 export function loadAdminModels(): void {
   if (!modelsWired) {
     modelsWired = true;
-    $("pa-models-search")?.addEventListener("input", () => { modelsPage = 0; paintModels(); });
+    $("pa-models-search")?.addEventListener("input", () => { catalogPage = 0; paintCatalog(); });
     $("pa-model-back")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
     $("pa-model-cancel")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
     $("pa-model-save")?.addEventListener("click", () => { void saveModel(); });
