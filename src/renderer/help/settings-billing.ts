@@ -413,7 +413,7 @@ async function embeddedTopupOverlay(usd: number): Promise<boolean> {
   return mounted;
 }
 
-async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
+export async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
   if (!usd || usd < 5) { toast("Minimum top-up is $5."); return; }
   if (busy) return;
   busy = `topup-${usd}`;

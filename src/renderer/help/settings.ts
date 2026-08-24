@@ -4,7 +4,8 @@
 
 import { confirmAction } from "./shared.js";
 import { loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
-import { initBilling, loadBilling } from "./settings-billing.js";
+import { initBilling, loadBilling, buyTopup } from "./settings-billing.js";
+import { creditsForUsd, TOPUP_PRESETS } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initOrg, loadOrg } from "./settings-org.js";
 import { initMembers, loadMembers } from "./settings-members.js";
@@ -547,8 +548,59 @@ async function loadUsageAppView(): Promise<void> {
   if (!uaWired) {
     uaWired = true;
     el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
-    const toBilling = () => (document.querySelector('.settings-nav-item[data-sub="billing"]') as HTMLElement | null)?.click();
-    el("ua-buy")?.addEventListener("click", toBilling);
+    // Buy usage credits → the in-tab Need-more-usage form.
+    const showBuyForm = (on: boolean) => {
+      el("ua-main")?.classList.toggle("hidden", on);
+      el("ua-buy-form")?.classList.toggle("hidden", !on);
+      if (on) buildBuyGrid();
+    };
+    let buySelectedUsd = 0;
+    const buySummary = () => {
+      const sum = el("ua-buy-summary");
+      const go = el("ua-buy-go") as HTMLButtonElement | null;
+      if (sum) sum.textContent = buySelectedUsd >= 5
+        ? `${creditsForUsd(buySelectedUsd).toLocaleString()} credits · $${buySelectedUsd.toLocaleString()}`
+        : "";
+      if (go) go.disabled = buySelectedUsd < 5;
+    };
+    const buildBuyGrid = () => {
+      const grid = el("ua-buy-grid");
+      if (!grid || grid.childElementCount) return;
+      const pick = (btn: HTMLElement, usd: number, other: boolean) => {
+        grid.querySelectorAll(".billing-topup-card").forEach((c) => c.classList.remove("selected"));
+        btn.classList.add("selected");
+        el("ua-buy-custom-row")?.classList.toggle("hidden", !other);
+        buySelectedUsd = usd;
+        buySummary();
+        if (other) (el("ua-buy-custom") as HTMLInputElement | null)?.focus();
+      };
+      for (const usd of TOPUP_PRESETS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "billing-topup-card";
+        btn.innerHTML = `<span class="billing-topup-credits">${creditsForUsd(usd).toLocaleString()}</span><span class="billing-topup-unit">credits</span><span class="billing-topup-price">$${usd}</span>`;
+        btn.addEventListener("click", () => pick(btn, usd, false));
+        grid.appendChild(btn);
+      }
+      const other = document.createElement("button");
+      other.type = "button";
+      other.className = "billing-topup-card";
+      other.innerHTML = `<span class="billing-topup-credits">Other</span><span class="billing-topup-unit">custom amount</span><span class="billing-topup-price">&nbsp;</span>`;
+      other.addEventListener("click", () => pick(other, Math.max(0, Number((el("ua-buy-custom") as HTMLInputElement | null)?.value) || 0), true));
+      grid.appendChild(other);
+      el("ua-buy-custom")?.addEventListener("input", () => {
+        buySelectedUsd = Math.max(0, Number((el("ua-buy-custom") as HTMLInputElement).value) || 0);
+        const hint = el("ua-buy-custom-hint");
+        if (hint) hint.textContent = buySelectedUsd >= 5 ? `≈ ${creditsForUsd(buySelectedUsd).toLocaleString()} credits` : "";
+        buySummary();
+      });
+    };
+    el("ua-buy")?.addEventListener("click", () => showBuyForm(true));
+    el("ua-buy-back")?.addEventListener("click", () => showBuyForm(false));
+    el("ua-buy-cancel")?.addEventListener("click", () => showBuyForm(false));
+    el("ua-buy-go")?.addEventListener("click", (e) => {
+      void buyTopup(buySelectedUsd, e.currentTarget as HTMLButtonElement);
+    });
     // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
     const showLimitForm = (on: boolean) => {
       el("ua-main")?.classList.toggle("hidden", on);

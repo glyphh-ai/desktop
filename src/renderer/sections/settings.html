@@ -226,6 +226,30 @@
                       <button id="ua-limit-save" class="action-btn primary" type="button">Save</button>
                     </div>
                   </div>
+
+                  <!-- Need more usage? — the buy-credits form, in-tab (his
+                       spec, 2026-08-24): ← Usage, preset cards + Other, the
+                       summary line, Cancel + primary Buy right. Purchases ride
+                       the SAME checkout the Billing page uses. -->
+                  <div id="ua-buy-form" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="ua-buy-back">&larr; Usage</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <h3 class="settings-subheading" style="margin-top:0;">Need more usage?</h3>
+                    <p class="section-desc">Choose an amount to start. You can always buy more later. One-time purchases never expire.</p>
+                    <div class="billing-topup-grid" id="ua-buy-grid"></div>
+                    <div class="settings-inline hidden" id="ua-buy-custom-row" style="margin-top:12px;">
+                      <input id="ua-buy-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
+                      <span class="settings-hint" id="ua-buy-custom-hint"></span>
+                    </div>
+                    <p class="settings-hint" id="ua-buy-summary" style="margin-top:10px;"></p>
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <div style="flex:1;"></div>
+                      <button id="ua-buy-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="ua-buy-go" class="action-btn primary" type="button" disabled>Buy credits</button>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="platform-only">
