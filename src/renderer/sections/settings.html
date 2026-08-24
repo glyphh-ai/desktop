@@ -1367,15 +1367,14 @@
               <!-- Support — the stored, threaded ticketing system (list / thread
                    / new). Three views toggle inside one panel. -->
               <div class="settings-panel" data-sub="support">
-                <h2>Support</h2>
-                <p class="section-desc">Open a request and we'll get back to you. Your conversation lives here.</p>
                 <div id="support-error" class="settings-error hidden"></div>
 
-                <!-- LIST — the standard list-page grammar (Skills/Loops):
-                     crud-toolbar with search left + the primary action right,
-                     a lib-table of requests (rendered by settings-support.ts),
-                     crud-empty + pagination. -->
+                <!-- LIST — the standard list-page grammar (Skills/Loops). The
+                     title/description belong to the LIST view; the forms open
+                     on ← Support alone. -->
                 <div id="support-list-view">
+                  <h2>Support</h2>
+                  <p class="section-desc">Open a request and we'll get back to you. Your conversation lives here.</p>
                   <div class="crud-toolbar">
                     <input id="support-search" type="text" class="crud-search" placeholder="Search requests…" spellcheck="false" autocomplete="off" />
                     <button id="support-new-btn" class="action-btn primary" type="button">+ New request</button>
