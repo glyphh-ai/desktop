@@ -1255,43 +1255,74 @@
                 <p class="section-desc">Talk to your agent — pick the model that transcribes your speech and the model + voice that speaks replies. Choices are saved to your account.</p>
                 <div id="voice-settings-error" class="settings-error hidden"></div>
 
-                <div class="settings-form">
-                  <label class="settings-label" for="voice-mode">Capture mode</label>
-                  <select id="voice-mode" class="settings-input">
-                    <option value="off">Off</option>
-                    <option value="push-to-talk">Push to talk</option>
-                    <option value="continuous">Continuous — hands-free</option>
-                  </select>
-                  <label class="settings-label" for="voice-device">Microphone</label>
-                  <select id="voice-device" class="settings-input"><option value="">System default</option></select>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Capture mode</div>
+                    <div class="set-pref-desc">How the microphone listens — push to talk or hands-free.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="voice-mode" class="settings-input">
+                      <option value="off">Off</option>
+                      <option value="push-to-talk">Push to talk</option>
+                      <option value="continuous">Continuous — hands-free</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Microphone</div>
+                    <div class="set-pref-desc">The input device your speech is captured from.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="voice-device" class="settings-input"><option value="">System default</option></select>
+                  </div>
                 </div>
 
                 <h3 class="settings-subheading">Voice input · speech to text</h3>
-                <div class="settings-form">
-                  <label class="settings-label" for="voice-input-model">Transcription model</label>
-                  <select id="voice-input-model" class="settings-input"><option value="">None</option></select>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Transcription model</div>
+                    <div class="set-pref-desc">Turns your speech into the prompt.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="voice-input-model" class="settings-input"><option value="">None</option></select>
+                  </div>
                 </div>
 
                 <h3 class="settings-subheading">Voice output · text to speech</h3>
-                <div class="settings-form">
-                  <label class="settings-label" for="voice-output-model">Speech model</label>
-                  <select id="voice-output-model" class="settings-input"><option value="">None</option></select>
-                  <label class="settings-label" for="voice-output-voice">Voice</label>
-                  <select id="voice-output-voice" class="settings-input"><option value="">Provider default</option></select>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Speech model</div>
+                    <div class="set-pref-desc">Speaks the agent's replies.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="voice-output-model" class="settings-input"><option value="">None</option></select>
+                  </div>
                 </div>
-
-                <div class="settings-toggles" style="margin-top:24px;">
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="voice-autoplay" />
-                    <span class="toggle-switch"></span>
-                    Auto-play the agent's spoken reply
-                  </label>
-                  <label class="settings-toggle" style="margin-top:16px;">
-                    <input type="checkbox" id="voice-brief" />
-                    <span class="toggle-switch"></span>
-                    Speech mode — keep replies short (a sentence or two, no lists or code, spoken and on screen)
-                  </label>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Voice</div>
+                    <div class="set-pref-desc">Which of the model's voices you hear.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="voice-output-voice" class="settings-input"><option value="">Provider default</option></select>
+                  </div>
                 </div>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Auto-play the agent's spoken reply</div>
+                  </div>
+                  <input type="checkbox" id="voice-autoplay" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Speech mode</div>
+                    <div class="set-pref-desc">Keep replies short — a sentence or two, no lists or code, spoken and on screen.</div>
+                  </div>
+                  <input type="checkbox" id="voice-brief" />
+                  <span class="toggle-switch"></span>
+                </label>
               </div>
               <div class="settings-panel" data-sub="apikeys">
                 <h2>API Keys</h2>
