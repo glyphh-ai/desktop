@@ -19292,6 +19292,10 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-desc { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
 .set-pref-value { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .set-pref-value .settings-input { width: auto; }
+/* A toggle wearing the row grammar: same flex row, switch at the right edge,
+   none of the pill padding/hover chrome of the stock .settings-toggle. */
+.settings-toggle.set-pref-row { width: 100%; padding: 14px 0; border-radius: 0; background: none; }
+.settings-toggle.set-pref-row .toggle-switch { margin-left: 0; flex-shrink: 0; }
 body.platform-shell .settings-nav-item.platform-only { display: flex; }
 body.platform-shell .settings-nav-group.platform-only { display: block; }
 .apps-builder-launch {
@@ -19482,7 +19486,12 @@ body.platform-rail-collapsed #platform-user-btn { justify-content: center; paddi
 body.platform-rail-collapsed #platform-user-meta { display: none; }
 body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
   padding-top: 48px;
+  padding-left: 48px;
+  padding-right: 48px;
 }
+/* Center the content column (his rule, 2026-08-24): panels hold a measured
+   width with generous side margins instead of stretching to the pane edge. */
+body.platform-shell .settings-panel { max-width: 880px; margin: 0 auto; }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
 body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav {
