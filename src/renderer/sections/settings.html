@@ -455,29 +455,41 @@
                      itself (text debounced, pickers and toggles at once) and
                      the status line beside the heading reports it. -->
                 <h3 class="settings-subheading">Your profile <span id="profile-status" class="set-save-state"></span></h3>
-                <div class="acct-section" id="profile-form">
+                <div class="acct-section set-pref-list" id="profile-form">
                   <div id="profile-error" class="settings-error hidden"></div>
-                  <div class="acct-row">
-                    <div class="acct-field">
-                      <label class="settings-label" for="profile-first">First name</label>
+                  <div class="set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">First name</div>
+                    </div>
+                    <div class="set-pref-value">
                       <input id="profile-first" type="text" class="settings-input" autocomplete="off" />
                     </div>
-                    <div class="acct-field">
-                      <label class="settings-label" for="profile-last">Last name</label>
+                  </div>
+                  <div class="set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Last name</div>
+                    </div>
+                    <div class="set-pref-value">
                       <input id="profile-last" type="text" class="settings-input" autocomplete="off" />
                     </div>
-                    <div class="acct-field acct-field-wide">
-                      <label class="settings-label" for="profile-image-url">Profile image</label>
-                      <input id="profile-image-url" type="url" class="settings-input" placeholder="https://…/avatar.png — blank uses your Gravatar" spellcheck="false" autocomplete="off" />
+                  </div>
+                  <div class="set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Profile image</div>
+                      <div class="set-pref-desc">A URL to your avatar — blank uses your Gravatar.</div>
+                    </div>
+                    <div class="set-pref-value">
+                      <input id="profile-image-url" type="url" class="settings-input" placeholder="https://…/avatar.png" spellcheck="false" autocomplete="off" />
                     </div>
                   </div>
-                  <div class="acct-row">
-                    <div class="acct-field acct-field-solo">
-                      <label class="settings-label" for="profile-timezone">Timezone</label>
-                      <div class="settings-inline">
-                        <select id="profile-timezone" class="settings-input"></select>
-                        <button id="profile-tz-browser" class="action-btn" type="button">Use this device's</button>
-                      </div>
+                  <div class="set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Timezone</div>
+                      <div class="set-pref-desc">Times across Glyphh show in this zone.</div>
+                    </div>
+                    <div class="set-pref-value">
+                      <select id="profile-timezone" class="settings-input"></select>
+                      <button id="profile-tz-browser" class="action-btn" type="button">Use this device's</button>
                     </div>
                   </div>
                 </div>
