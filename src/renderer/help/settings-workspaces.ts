@@ -423,7 +423,6 @@ function paintModels(): void {
     filterLabel.textContent = wsModelsProvider;
     filterLabel.classList.toggle("hidden", !wsModelsProvider);
   }
-  $("ws-models-filter")?.classList.toggle("filtering", !!wsModelsProvider);
   const pagerHost = $("ws-models-pager");
   if (pagerHost) pagerHost.textContent = "";
   grid.innerHTML = "";

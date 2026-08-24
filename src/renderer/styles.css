@@ -15063,11 +15063,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* text-overflow:clip — the generic td ellipsis rendered a stray "." beside
    the squeezed kebab (his report, 2026-08-25). */
 .lib-table .lib-row-kebab-cell { width: 40px; text-align: right; text-overflow: clip; }
-/* The models-tab filter funnel: icon button beside the search; the active
-   provider shows as a small label and the icon takes the accent. */
+/* The models-tab filter funnel: a stock action-btn beside the search; an
+   active provider shows only as its name inside the button. */
 .ws-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ws-filter-btn svg { width: 14px; height: 14px; }
-.ws-filter-btn.filtering { color: var(--accent, #8c3bf2); border-color: var(--accent, #8c3bf2); }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
 /* Role editor models table: the toggle column hugs the right edge. */
 .lib-table .ws-model-toggle-cell { width: 56px; text-align: right; text-overflow: clip; }
