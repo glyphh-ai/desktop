@@ -4,11 +4,11 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
@@ -290,7 +290,8 @@ export function openSettingsModal(sub?: string): void {
     return;
   }
   // Already open — just switch the sub-panel.
-  if (isSettingsModalOpen()) { selectSettingsSub(sub || "usage"); return; }
+  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "usage";
+  if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
     ".help-section[data-section='settings'] > .settings-layout") ??
@@ -462,7 +463,7 @@ export function openSettingsModal(sub?: string): void {
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
-  selectSettingsSub(sub || "usage");
+  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "usage"));
 }
 
 /** Hide the admin-only surfaces for non-admins on modal open — the SAME rule
@@ -530,7 +531,9 @@ const settingsSubAlias = (sub: string): string => {
 function loadSettingsSub(sub: string): void {
   // General carries the Sessions (runtime region) + Guardrails groups (both
   // PLATFORM-ONLY surfaces now) — they fetch on show.
-  if (sub === "general") void loadGuardrails();
+  if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
+  else if (sub === "usage") void loadUsageAppView();
+  else if (sub === "general") void loadGuardrails();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();

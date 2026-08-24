@@ -5,6 +5,7 @@
 import { confirmAction } from "./shared.js";
 import { loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
+import { accountApi } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initMembers, loadMembers } from "./settings-members.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
@@ -538,8 +539,7 @@ let uaWired = false;
 
 /** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
  *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
-async function loadUsageAppView(): Promise<void> {
-  if (document.body.classList.contains("platform-shell")) return;
+export async function loadUsageAppView(): Promise<void> {
   const el = (id: string) => document.getElementById(id);
   if (!el("usage-app-view")) return;
   closeBuyForm();
@@ -576,30 +576,24 @@ async function loadUsageAppView(): Promise<void> {
     const toggle = el("ua-autotopup") as HTMLInputElement | null;
     toggle?.addEventListener("change", () => {
       void (async () => {
-        const api = window.glyphh as unknown as {
-          billingAutotopupGet: () => Promise<{ enabled: boolean; thresholdCredits: number; topupCredits: number }>;
-          billingAutotopupSet: (i: { enabled: boolean; thresholdCredits: number; topupCredits: number }) => Promise<{ ok: boolean }>;
-        };
+        const api = accountApi();
         try {
-          const cfg = await api.billingAutotopupGet();
-          await api.billingAutotopupSet({ ...cfg, enabled: toggle.checked });
+          const cfg = await api.autotopup();
+          await api.setAutotopup({ ...cfg, enabled: toggle.checked });
         } catch { toggle.checked = !toggle.checked; }
         const st = el("ua-reload-state");
         if (st) st.textContent = toggle.checked ? "On" : "Off";
       })();
     });
   }
-  const yo = window.glyphh as unknown as {
-    billingStatus: () => Promise<{ tier: string; billingStatus: string }>;
-    billingCredits: () => Promise<{ balance: number; allowance: number; grants: number; purchases: number }>;
-    billingAutotopupGet: () => Promise<{ enabled: boolean; thresholdCredits: number; topupCredits: number }>;
-    billingAutotopupSet: (i: { enabled: boolean; thresholdCredits: number; topupCredits: number }) => Promise<{ ok: boolean }>;
-  };
+  // The ONE account transport (SDK on web, IPC on desktop) — the page is
+  // identical on both surfaces by construction.
+  const api = accountApi();
   try {
     const [status, credits, topup] = await Promise.all([
-      yo.billingStatus(),
-      yo.billingCredits(),
-      yo.billingAutotopupGet().catch(() => null),
+      api.status(),
+      api.credits(),
+      api.autotopup().catch(() => null),
     ]);
     const tier = (status?.tier || "free");
     const planEl = el("ua-plan");

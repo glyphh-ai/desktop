@@ -19338,7 +19338,6 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-list .set-pref-row:last-child { border-bottom: none; }
 
 /* ── APP Usage view (plan-limits look; the platform keeps its dashboard) ── */
-body.platform-shell #usage-app-view { display: none; }
 /* The DESKTOP modal floats expand/close top-right — page titles drop clear
    of them (the platform shell has its own 48px padding). */
 .yo-settings-modal:not(.platform-page) .settings-modal-body .settings-panels { padding-top: 52px; }
@@ -19450,6 +19449,7 @@ body.platform-shell .settings-nav-item.platform-only { display: flex; }
 .settings-nav span.platform-only { display: none; }
 body.platform-shell .settings-nav span.platform-only { display: inline; }
 body.platform-shell .settings-nav span.not-on-platform { display: none; }
+body.platform-shell .settings-nav-item.not-on-platform { display: none !important; }
 /* Platform dashboard header: greeting left, actions at the right edge. */
 .dash-head { display: flex; align-items: center; gap: 14px; margin: 2px 0 20px; }
 /* Outranks the platform-only display:block reveal above. */
@@ -19658,6 +19658,7 @@ body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
 }
 /* Only the Dashboard keeps the centered column (his order, 2026-08-25) —
    every other platform page runs full width. */
+body.platform-shell .settings-panel[data-sub="dash"],
 body.platform-shell .settings-panel[data-sub="usage"] { max-width: 880px; margin: 0 auto; }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
