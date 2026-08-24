@@ -21,7 +21,7 @@
  * result it hasn't seen.
  */
 
-import { confirmAction, escapeHtml } from "./shared.js";
+import { confirmAction, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 import { openUrlInWorkbench } from "./code.js";
 import {
   accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, MICRO, openHostedPage,
@@ -358,15 +358,20 @@ function paintPlans(): void {
   }
 }
 
+const INV_PAGE_SIZE = 10;
+let invPage = 0;
+
 function paintInvoices(): void {
   const empty = $("billing-invoices-empty");
   const table = $("billing-invoices-table");
   const body = $("billing-invoices-body");
+  const pager = $("billing-inv-pager");
   if (!empty || !table || !body) return;
 
   setText("billing-inv-summary", invoices === null ? "Loading…"
     : invoices.length ? `${fmtInt(invoices.length)} invoice${invoices.length === 1 ? "" : "s"}`
     : "None yet");
+  if (pager) pager.textContent = "";
   if (invoices === null) {
     empty.textContent = "Loading…";
     empty.classList.remove("hidden");
@@ -382,7 +387,12 @@ function paintInvoices(): void {
   empty.classList.add("hidden");
   table.classList.remove("hidden");
   body.innerHTML = "";
-  for (const inv of invoices) {
+  const pg = paginate(invoices, invPage, INV_PAGE_SIZE);
+  invPage = pg.state.page;
+  if (pager && pg.state.totalPages > 1) {
+    pager.appendChild(renderPaginationBar(pg.state, (p) => { invPage = p; paintInvoices(); }));
+  }
+  for (const inv of pg.items) {
     const tr = document.createElement("tr");
     tr.innerHTML =
       `<td>${escapeHtml(fmtDate(inv.created))}</td>` +
@@ -925,6 +935,19 @@ export function initBilling(): void {
   // Buy more → the shared Need-more-usage form, breadcrumbed ← Billing.
   $("billing-buy-toggle")?.addEventListener("click", () => openBuyForm("billing"));
 
+  // Adjust plan → its own in-tab form; the plan cards act on their own, so
+  // the footer is just Cancel.
+  const closePlansForm = (): void => {
+    $("billing-plans-form")?.classList.add("hidden");
+    $("billing-main")?.classList.remove("hidden");
+  };
+  $("billing-plans-toggle")?.addEventListener("click", () => {
+    $("billing-main")?.classList.add("hidden");
+    $("billing-plans-form")?.classList.remove("hidden");
+  });
+  $("billing-plans-back")?.addEventListener("click", closePlansForm);
+  $("billing-plans-cancel")?.addEventListener("click", closePlansForm);
+
   // Auto-reload → its own in-tab form. Edits stage into state and write ONCE
   // on Save; Cancel/← discards them back to the snapshot.
   $("billing-at-toggle")?.addEventListener("click", openAtForm);
@@ -967,7 +990,6 @@ export function initBilling(): void {
   // The plan picker + the folded Organization group (the retired Organization
   // tab) share the same disclosure wiring as Auto top-up / Invoices.
   for (const [btn, body] of [
-    ["billing-plans-toggle", "billing-plans-body"],
     ["billing-inv-toggle", "billing-invoices-wrap"],
     ["org-panel-fold-toggle", "org-panel-fold-body"],
   ]) {
@@ -1009,6 +1031,7 @@ export async function loadBilling(): Promise<void> {
   // Entering the tab always lands on the page, not a form left open.
   closeBuyForm();
   closeAtForm(true);
+  $("billing-plans-form")?.classList.add("hidden");
   initBilling();
   void paintCardOnFile();
   const api = accountApi();

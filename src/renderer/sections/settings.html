@@ -989,12 +989,7 @@
                       <span id="billing-seats-count">—</span>
                     </div>
                   </div>
-                  <button type="button" id="billing-plans-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-plans-body">Adjust plan</button>
-                </div>
-                <div id="billing-plans-body" class="set-fold-body hidden">
-                  <div id="billing-plans-note" class="crud-empty hidden">Only an organization admin can change the plan.</div>
-                  <div id="billing-plans-error" class="settings-error hidden"></div>
-                  <div class="billing-plan-grid" id="billing-plan-grid"></div>
+                  <button type="button" id="billing-plans-toggle" class="action-btn">Adjust plan</button>
                 </div>
 
                 <div class="ua-section">Payment</div>
@@ -1031,7 +1026,8 @@
                   <button type="button" id="billing-at-toggle" class="action-btn">Manage</button>
                 </div>
 
-                <div class="ua-section">Invoices <span class="ua-sub" id="billing-inv-summary" style="font-weight:400;"></span></div>
+                <div class="ua-section">Invoices</div>
+                <div class="ua-sub" id="billing-inv-summary" style="margin:6px 0 12px;"></div>
                 <button type="button" id="billing-inv-toggle" class="hidden" aria-expanded="true" aria-controls="billing-invoices-wrap"></button>
                 <div id="billing-invoices-wrap">
                   <div class="crud-empty" id="billing-invoices-empty">Loading…</div>
@@ -1039,6 +1035,7 @@
                     <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>
                     <tbody id="billing-invoices-body"></tbody>
                   </table>
+                  <div id="billing-inv-pager"></div>
                 </div>
 
                 <!-- Organization — the org record (the retired Organization
@@ -1046,7 +1043,7 @@
                      the page. Ids unchanged so settings-org-panel.ts binds as
                      before; the group is admin-gated in navigation.ts
                      gateAdminSubs. -->
-                <div id="billing-org-group" class="hidden">
+                <div id="billing-org-group" class="platform-only hidden">
                   <h3 class="acct-row-head">Organization <span id="org-panel-status" class="set-save-state"></span></h3>
                   <button type="button" id="org-panel-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="org-panel-fold-body">
                     <span class="set-fold-head">
@@ -1120,6 +1117,24 @@
                   </div>
                 </div>
                 </div><!-- /billing-main -->
+
+                <!-- Adjust plan — in-tab form (his spec, 2026-08-24): same
+                     shape as Buy credits; the cards carry their own actions,
+                     so the footer is just Cancel. -->
+                <div id="billing-plans-form" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <a class="crud-breadcrumb-back" id="billing-plans-back">&larr; Billing</a>
+                    <div class="crud-spacer"></div>
+                  </div>
+                  <h3 class="settings-subheading" style="margin-top:0;">Adjust plan</h3>
+                  <div id="billing-plans-note" class="crud-empty hidden">Only an organization admin can change the plan.</div>
+                  <div id="billing-plans-error" class="settings-error hidden"></div>
+                  <div class="billing-plan-grid" id="billing-plan-grid"></div>
+                  <div class="settings-actions" style="margin-top:16px;">
+                    <div style="flex:1;"></div>
+                    <button id="billing-plans-cancel" class="action-btn" type="button">Cancel</button>
+                  </div>
+                </div>
 
                 <!-- Auto-reload — in-tab form (his spec, 2026-08-24): the
                      Manage button opens this in place of the page, ← Billing
