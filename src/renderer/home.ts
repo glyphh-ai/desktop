@@ -100,9 +100,9 @@ void (async () => {
         paintRailBtn();
       });
       document.getElementById("settings-modal")?.querySelector(".settings-modal-panel")?.appendChild(railBtn);
-      // Rail HEADER (his spec, 2026-08-21): top-left of the rail — a TEXT-ONLY
-      // wordmark, then the surface switch as plain buttons. No fixed top-right
-      // tabs on the platform (mountSurfaceTabs skips this page).
+      // Rail HEADER (his spec, 2026-08-24): top-left of the rail — the wordmark
+      // alone. No surface switch: the Builder opens from the Apps row's
+      // launcher (new tab), and the Builder page carries "← Platform" back.
       // Build the head ONCE, then keep it mounted as the nav's PREVIOUS
       // SIBLING (in the rail container, not inside .settings-nav). The
       // org-admin gating (gateAdminSubs) rebuilds the nav's children async —
@@ -113,24 +113,15 @@ void (async () => {
         const head = document.createElement("div");
         head.id = "platform-rail-head";
         head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
-        const surf = document.createElement("div");
-        surf.id = "platform-surface-btns";
-        const mkSurf = (label: string, key: string, href: string, active: boolean) => {
-          const b = document.createElement("button");
-          b.type = "button";
-          b.className = "settings-nav-item platform-surface-btn" + (active ? " active" : "");
-          b.innerHTML = `<span>${label}</span>`;
-          b.addEventListener("click", () => {
-            try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
-            if (!active) window.location.assign(href);
-          });
-          return b;
-        };
-        surf.appendChild(mkSurf("Platform", "platform", "/platform", true));
-        surf.appendChild(mkSurf("Builder", "builder", "/home", false));
-        head.appendChild(surf);
         return head;
       };
+      // The Apps row's far-right launcher: open the Builder in a NEW TAB
+      // without switching the row itself (the row still opens the Apps panel).
+      document.getElementById("apps-builder-launch")?.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        window.open("/home", "_blank", "noopener");
+      });
       const railHead = buildRailHead();
       // MUST scope to #settings-modal: the document holds a SECOND
       // .settings-nav inside #help-overlay, which this page force-hides — a
@@ -242,39 +233,20 @@ void (async () => {
   lift();
 })();
 
-// ── Surface tabs (web target only) ──────────────────────────────────────────
-// A small fixed top-right control on signed-in desktop-browser surfaces:
-// [ Platform | Builder ]. Platform → /platform (the admin shell above),
-// Builder → /home (the workbench). Clicking stores the choice
-// (localStorage glyphhSurfaceTab) — web-boot's post-login hand-off reads it,
-// so `/` lands on the remembered tab (default Platform). Renders ONLY under
-// the web bridge (window.__GLYPHH_WEB__); on desktop (Electron) nothing
-// mounts, and the mobile app never loads this bundle.
+// ── "← Platform" (web Builder only) ─────────────────────────────────────────
+// The Builder opens from the platform's Apps-row launcher in a NEW TAB; this
+// fixed top-left link is the way back. Renders ONLY under the web bridge
+// (window.__GLYPHH_WEB__) and never on /platform itself; on desktop
+// (Electron) nothing mounts, and the mobile app never loads this bundle.
 void (() => {
   if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
-  if (document.getElementById("surface-tabs")) return;
-  const onPlatform = /^\/platform\/?$/.test(window.location.pathname);
-  if (onPlatform) return;   // the platform rail hosts the surface buttons
-  const wrap = document.createElement("div");
-  wrap.id = "surface-tabs";
-  wrap.setAttribute("role", "tablist");
-  wrap.setAttribute("aria-label", "Surface");
-  const mk = (label: string, key: "platform" | "builder", href: string, active: boolean) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "surface-tab" + (active ? " active" : "");
-    b.setAttribute("role", "tab");
-    b.setAttribute("aria-selected", active ? "true" : "false");
-    b.textContent = label;
-    b.addEventListener("click", () => {
-      try { localStorage.setItem("glyphhSurfaceTab", key); } catch { /* */ }
-      if (!active) window.location.assign(href);
-    });
-    return b;
-  };
-  wrap.appendChild(mk("Platform", "platform", "/platform", onPlatform));
-  wrap.appendChild(mk("Builder", "builder", "/home", !onPlatform));
-  document.body.appendChild(wrap);
+  if (/^\/platform\/?$/.test(window.location.pathname)) return;
+  if (document.getElementById("builder-back-platform")) return;
+  const a = document.createElement("a");
+  a.id = "builder-back-platform";
+  a.href = "/platform";
+  a.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Platform</span>`;
+  document.body.appendChild(a);
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────

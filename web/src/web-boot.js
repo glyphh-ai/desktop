@@ -39,18 +39,14 @@ const SPLASH_MIN_MS = 1200;
  *  would land back on the login shell and loop the getting-started flow. */
 export const HOME_PATH = '/home';
 /** The admin surface — the settings shell as a full page (home.ts branches on
- *  the pathname). The TOP-RIGHT tabs on both surfaces switch between them. */
+ *  the pathname). THE web surface: sign-in always lands here; the Builder
+ *  opens from the platform's Apps-row launcher in its own tab. */
 export const PLATFORM_PATH = '/platform';
-/** Where a signed-in desktop browser lands: the REMEMBERED surface tab
- *  (stored by the tabs control on click), defaulting to Platform. Client-side
+/** Where a signed-in desktop browser lands: always the Platform. Client-side
  *  only — never touches auth/device/mobile routing (phones never run this
  *  module; serve.mjs routes them to /m before the bridge loads). */
 export function surfacePath() {
-  try {
-    return localStorage.getItem('glyphhSurfaceTab') === 'builder' ? HOME_PATH : PLATFORM_PATH;
-  } catch {
-    return PLATFORM_PATH;
-  }
+  return PLATFORM_PATH;
 }
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the
