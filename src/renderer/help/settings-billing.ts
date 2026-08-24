@@ -942,6 +942,16 @@ export function initBilling(): void {
   if (wired) return;
   wired = true;
 
+  // The pricing-table link: a real tab on web; the system browser on desktop
+  // (an anchor inside the Electron shell would navigate the app window).
+  $("billing-pricing-link")?.addEventListener("click", (e) => {
+    const g = window.glyphh as unknown as { openExternal?: (u: string) => void };
+    if (g.openExternal && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) {
+      e.preventDefault();
+      g.openExternal("https://glyphh.ai/pricing");
+    }
+  });
+
   // Buy more → the shared Need-more-usage form, breadcrumbed ← Billing.
   $("billing-buy-toggle")?.addEventListener("click", () => openBuyForm("billing"));
 
