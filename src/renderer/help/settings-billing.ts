@@ -1021,9 +1021,11 @@ async function paintCardOnFile(): Promise<void> {
       billingPaymentMethod?: () => Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>;
     };
     const card = await api.billingPaymentMethod?.();
-    if (card?.last4) {
-      const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
-      line.textContent = `${brand} •••• ${card.last4}`;
+    if (card?.brand) {
+      // A wallet method (Stripe Link, etc.) has no card digits to show.
+      const brand = card.brand === "link" ? "Stripe Link"
+        : card.brand.charAt(0).toUpperCase() + card.brand.slice(1);
+      line.textContent = card.last4 ? `${brand} •••• ${card.last4}` : brand;
       sub.textContent = card.expMonth ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear} · managed securely by Stripe` : "Managed securely by Stripe.";
     } else {
       line.textContent = "No card on file";
