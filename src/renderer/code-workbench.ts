@@ -284,6 +284,11 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 // details — never a glyph trapped in a uniform colored square. Sections
 // open as wall cards via __wbOpenSection; tools (tasks, preview) go
 // through __wbOpenTool. ──
+// APP-WEB (his rule, 2026-08-24): the Browser is an Electron webview and can
+// never render in a web tab, so the web dock hides it. navTileFor and the
+// dock backfill read this same filtered list, so a saved "preview" slot
+// simply stops materializing there.
+const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
@@ -295,7 +300,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
-];
+].filter((d) => !IS_WEB_TARGET || d.key !== "preview");
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -2890,11 +2895,14 @@ async function init(): Promise<void> {
       // A user row WINS its slug; defaults carry NO appId (id: "") so their
       // tiles are never deletable/editable, and the slug-based keys keep the
       // saved icon order working across the copy→global transition.
-      const userRows = (rows || []).filter(wallAppRow);
+      // APP-WEB (his rule, 2026-08-24): only GLYPHH apps render in a web tab —
+      // they are hosted on our servers. URL/native rows and the house defaults
+      // are desktop-only surfaces there.
+      const userRows = (rows || []).filter(wallAppRow).filter((a) => !IS_WEB_TARGET || a.appArchetype === "glyphh-app");
       const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
       const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
       const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
-        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
+        .filter((d) => !IS_WEB_TARGET && !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);

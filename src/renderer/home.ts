@@ -122,6 +122,53 @@ void (async () => {
         ev.preventDefault();
         window.open("/home", "_blank", "noopener");
       });
+      // ── Rail-bottom USER CHIP (his spec, 2026-08-24): first name with the
+      // plan under it; its popup menu carries Docs / Support / About (their
+      // rail rows are hidden in the platform shell — .not-platform). Fixed to
+      // the shell's bottom-left, so nav rebuilds can never wipe it. The menu
+      // items click the (hidden) nav rows, so panel switching stays the one
+      // existing path.
+      {
+        const chip = document.createElement("div");
+        chip.id = "platform-user-chip";
+        chip.innerHTML = `
+          <button type="button" id="platform-user-btn">
+            <span id="platform-user-avatar"></span>
+            <span id="platform-user-meta">
+              <span id="platform-user-name">—</span>
+              <span id="platform-user-plan"></span>
+            </span>
+          </button>
+          <div id="platform-user-menu" class="hidden" role="menu"></div>`;
+        document.body.appendChild(chip);
+        const menu = chip.querySelector<HTMLElement>("#platform-user-menu")!;
+        for (const [label, sub] of [["Docs", "docs"], ["Support", "support"], ["About", "about"]] as const) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = label;
+          b.setAttribute("role", "menuitem");
+          b.addEventListener("click", () => {
+            menu.classList.add("hidden");
+            document.querySelector<HTMLElement>(`#settings-modal .settings-nav-item[data-sub="${sub}"]`)?.click();
+          });
+          menu.appendChild(b);
+        }
+        chip.querySelector("#platform-user-btn")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          menu.classList.toggle("hidden");
+        });
+        document.addEventListener("click", () => menu.classList.add("hidden"));
+        type AccountInfo = { firstName?: string; email?: string; tier?: string } | null;
+        const glyphhApi = (window as unknown as { glyphh?: { getAccountInfo?: () => Promise<AccountInfo> } }).glyphh;
+        void glyphhApi?.getAccountInfo?.().then((info) => {
+          if (!info) return;
+          const first = (info.firstName || "").trim() || (info.email || "").split("@")[0] || "—";
+          const tier = (info.tier || "free").toLowerCase();
+          chip.querySelector("#platform-user-name")!.textContent = first;
+          chip.querySelector("#platform-user-plan")!.textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+          chip.querySelector("#platform-user-avatar")!.textContent = first.charAt(0).toUpperCase();
+        }).catch(() => { /* chip stays a dash — the shell still works */ });
+      }
       const railHead = buildRailHead();
       // MUST scope to #settings-modal: the document holds a SECOND
       // .settings-nav inside #help-overlay, which this page force-hides — a
