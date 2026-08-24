@@ -6600,6 +6600,9 @@ select.settings-input {
   transition: border-color 0.15s;
 }
 .settings-toggle:hover { border-color: var(--border-3); }
+/* Disabled switch — the same dimmed affordance the scheduler toggle uses
+   (sched-toggle): the roles model list reads inert until the limit is on. */
+.settings-toggle input:disabled + .toggle-switch { opacity: 0.4; cursor: not-allowed; }
 
 .settings-toggle input[type="checkbox"] {
   display: none;
