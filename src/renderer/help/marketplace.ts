@@ -20,7 +20,7 @@ import { confirmAction, promptAction } from "./shared.js";
 import { primeConnectedIcons } from "./app-icon.js";
 import { formatMarkdown } from "../format-markdown.js";
 import {
-  mkt, mktIsPlatformAdmin, escMkt, mktConnChip, connLabel, mktConnIconApps,
+  mkt, mktIsPlatformAdmin, mktMyAppGrants, escMkt, mktConnChip, connLabel, mktConnIconApps,
   mktVideoEmbed, MKT_CATEGORY_LABELS, mktStarRow, mktDate, mktDiscountActive, mktPriceLabel,
   type MktListing, type MktDetail, type MktReview,
 } from "./marketplace-data.js";
@@ -331,6 +331,10 @@ function renderMktStorefront(): void {
 let dtReviews: MktReview[] = [];
 let dtReviewsTotal = 0;
 let dtMyStars = 0;
+/** ROLE POLICY (appsInstall): whether the CALLER may install from the
+ *  marketplace. False swaps install + pricing for an "ask your admin" state —
+ *  the browse experience stays. Resolved per detail open; permissive default. */
+let dtCanInstall = true;
 
 function closeMktDetail(): void {
   showMktView("store");
@@ -345,10 +349,11 @@ export async function openMktDetail(slug: string): Promise<void> {
   let detail: MktDetail | null = null;
   let installed = false;
   try {
-    const res = await mkt.detail(slug);
+    const [res, grants] = await Promise.all([mkt.detail(slug), mktMyAppGrants()]);
     detail = res.detail;
     installed = res.installed;
     detailCache.set(slug, res.detail);
+    dtCanInstall = grants.appsInstall;
   } catch { detail = null; }
   if (!detail) {
     mktDetailEl.innerHTML = `<button class="mkt-back">‹ Back to marketplace</button><div class="crud-empty">Couldn't load this app right now.</div>`;
@@ -475,6 +480,10 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
   const isWorkpanel = d.kind === "workpanel";
   const priced = d.pricing.effectiveMonthlyCredits > 0;
   const installLabel = priced ? `Install — ${d.pricing.effectiveMonthlyCredits} credits/mo` : "Install — Free";
+  // ROLE POLICY (appsInstall): a member whose role forbids installing keeps the
+  // whole browse experience but sees "ask your admin" instead of install +
+  // pricing. Installed apps still show Open (no uninstall — that's a billing act).
+  const installBarred = !dtCanInstall;
   const cta = d.suspended
     ? `<button class="action-btn" disabled>Suspended</button>`
     : (d as { blockedForOrg?: boolean }).blockedForOrg
@@ -483,12 +492,16 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
       ? `<button class="action-btn" disabled title="Publishers can't install their own app — it's already yours.">Your listing</button>`
       : installed
       ? `<button class="action-btn primary mkt-dt-open" type="button">Open app</button>
-         <button class="action-btn mkt-dt-uninstall" type="button">Uninstall</button>`
+         ${installBarred ? "" : `<button class="action-btn mkt-dt-uninstall" type="button">Uninstall</button>`}`
+      : installBarred
+      ? `<button class="action-btn" disabled title="Installing marketplace apps is managed by your organization's admin.">Ask your admin to install</button>`
       : `<button class="action-btn primary mkt-dt-install" type="button">${escMkt(installLabel)}</button>`;
   // Workpanels read EXACTLY like every other app (his rule, 2026-08-20) --
   // no special explainer under the button.
   void isWorkpanel;
-  const ctaNote = priced
+  const ctaNote = installBarred && !installed && !d.owned && !d.suspended
+    ? "Your organization's admin manages app installs."
+    : priced
     ? `Charges the first month (${d.pricing.effectiveMonthlyCredits} credits) now, then monthly.`
     : "Free to install";
 
@@ -589,8 +602,8 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
         </div>
         <div class="mkt-dt-statrow">
           ${l.ratingCount ? `${mktStarRow(l.ratingAvg)}<b>${l.ratingAvg.toFixed(1)}</b><span>(${l.ratingCount.toLocaleString()} review${l.ratingCount === 1 ? "" : "s"})</span>` : `<span class="mkt-rating-none">No reviews yet</span>`}
-          <span class="mkt-dot">•</span><span>${priceLabel}</span>
-          ${mktDiscountActive(d.pricing) ? `<span class="mkt-discount-chip">${d.pricing.discountPercent}% off${d.pricing.discountEndsAt ? ` until ${escMkt(mktDate(d.pricing.discountEndsAt))}` : ""}</span>` : ""}
+          ${installBarred ? "" : `<span class="mkt-dot">•</span><span>${priceLabel}</span>`}
+          ${!installBarred && mktDiscountActive(d.pricing) ? `<span class="mkt-discount-chip">${d.pricing.discountPercent}% off${d.pricing.discountEndsAt ? ` until ${escMkt(mktDate(d.pricing.discountEndsAt))}` : ""}</span>` : ""}
         </div>
       </div>
       <div class="mkt-dt-cta">
@@ -606,11 +619,16 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
         ${descHtml ? `<section class="mkt-dt-section mkt-dt-desc"><h3>About ${escMkt(l.title || d.name)}</h3><div class="mkt-md">${descHtml}</div></section>` : ""}
         ${reqConnHtml}
 
+        ${installBarred ? `
+        <section class="mkt-dt-section">
+          <h3>Pricing</h3>
+          <p class="settings-hint">Pricing and installs are managed by your organization's admin — ask them to install this app.</p>
+        </section>` : `
         <section class="mkt-dt-section">
           <h3>Pricing</h3>
           <div class="mkt-plans">${pricingHtml(d)}</div>
           <div class="mkt-plans-note">All charges are billed in Glyphh compute credits.</div>
-        </section>
+        </section>`}
 
         <section class="mkt-dt-section">
           <h3>Reviews</h3>

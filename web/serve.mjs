@@ -105,8 +105,13 @@ const SHELL_ROUTES = new Set([
   '/auth/callback', '/auth/callback/',
   '/auth/device', '/auth/device/',
 ]);
-/** A shell route BELOW the root needs <base href="/"> for its relative assets. */
-const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !== '/login';
+/** A shell route BELOW the root needs <base href="/"> for its relative assets.
+ *  /settings/mcp is two levels deep — without <base>, home.html's relative
+ *  src="home.js" resolves to /settings/home.js (404) and the consent page
+ *  never boots (stuck on the wb-booting veil, blank). */
+const isNestedShellRoute = (p) =>
+  (SHELL_ROUTES.has(p) && p !== '/' && p !== '/login')
+  || p === '/settings/mcp' || p === '/settings/mcp/';
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
@@ -117,6 +122,9 @@ function configScript() {
     __GLYPHH_API_URL__: ENV.GLYPHH_SERVER_URL || 'https://api.glyphh.ai',
     __GLYPHH_GOOGLE_CLIENT_ID__: ENV.GLYPHH_GOOGLE_CLIENT_ID || '',
     __GLYPHH_WEB_URL__: ENV.GLYPHH_WEB_URL || 'https://glyphh.ai',
+    // The suffix deployed apps live under (<slug>.<appDomain>) — the ?appReturn=
+    // SSO hand-off in web-boot.js only ever redirects to a host under this suffix.
+    __GLYPHH_APP_DOMAIN__: ENV.GLYPHH_APP_DOMAIN || 'glyphh.app',
   };
   const assigns = Object.entries(cfg)
     .map(([k, v]) => `window.${k}=${JSON.stringify(v)};`)
@@ -217,14 +225,29 @@ const server = http.createServer(async (req, res) => {
     const isPhoneUA = /iPhone|iPod|Android.+Mobile/i.test(ua);
     const authedCookie = /(?:^|;\s*)glyphh_logged_in=1\b/.test(req.headers.cookie || '');
     const isAuthRoute = p === '/auth' || p.startsWith('/auth/');
-    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
-      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/');
+    // /platform — the admin surface (the settings shell as a full page). Same
+    // home.html document as /home; home.ts branches on the pathname client-side.
+    const isPlatformRoute = p === '/platform' || p === '/platform/';
+    // /apps — the WALL's canonical URL (final IA, 2026-08-22); /home stays an alias.
+    const isWallRoute = p === '/apps' || p === '/apps/';
+    // /settings/mcp — the MCP OAuth CONSENT SCREEN (the "connect Claude to
+    // Glyphh" step). Claude's /oauth/authorize 302s the browser here with the
+    // PKCE params; this serves the SAME home.html document as /home, and home.ts
+    // branches on the pathname client-side to render the consent card. Like the
+    // other shell routes a signed-in phone gets the mobile shell (phoneWantsApp).
+    const isMcpConsentRoute = p === '/settings/mcp' || p === '/settings/mcp/';
+    // The consent screen must NEVER be swapped for the mobile shell — the
+    // consent renderer lives in home.html's module; the mobile app has no
+    // /settings/mcp surface, so a phone would land in the app with the OAuth
+    // params silently dropped.
+    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isMcpConsentRoute
+      && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isWallRoute || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {
       p = '/mobile.html';
     } else if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    } else if (p === '/home' || p === '/home/') {
+    } else if (p === '/home' || p === '/home/' || isWallRoute || isPlatformRoute || isMcpConsentRoute) {
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));
@@ -271,10 +294,17 @@ const server = http.createServer(async (req, res) => {
       // The `glyphh_force_desktop` localStorage flag (set by the mobile app's
       // Appearance → "Desktop site" toggle) is the escape hatch: a tablet that
       // opted into the full desktop layout must NOT be bounced back to /m.
+      // /settings/mcp is exempt: the OAuth consent flow must finish on this
+      // page — bouncing a tablet/phone to /m mid-flow drops the PKCE params.
+      // A pending consent-return stash also holds the redirect: a phone with a
+      // live cookie but dead token bounces consent→"/" to re-auth, and /m
+      // would strand the flow in the mobile app before the resume hook runs.
       const touchRedirect =
         "<script>try{if(matchMedia('(pointer: coarse)').matches"
         + "&&document.cookie.indexOf('glyphh_logged_in=1')>=0"
-        + "&&localStorage.getItem('glyphh_force_desktop')!=='1')"
+        + "&&localStorage.getItem('glyphh_force_desktop')!=='1'"
+        + "&&location.pathname.indexOf('/settings/mcp')!==0"
+        + "&&!localStorage.getItem('glyphhMcpConsentReturn'))"
         + "location.replace('/m')}catch(e){}</script>";
       // The mobile shell loads its OWN React bundle (declared in mobile.html) and
       // must not get the desktop renderer bridge — only the client-safe config.

@@ -16,7 +16,7 @@
           <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 apps. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
           <div id="apps-toolbar" class="crud-toolbar">
             <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
-            <button id="apps-add-btn" class="action-btn primary">+ New</button>
+            <button id="apps-new-btn" class="action-btn primary">+ New</button>
             <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
             <button id="apps-refresh-btn" class="action-btn" title="Refresh app list" aria-label="Refresh app list" style="padding:6px 9px;">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
@@ -138,7 +138,6 @@
               <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
               <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
-              <button class="app-detail-tab tab-owner-only hidden" data-tab="hosting">Public hosting</button>
             </div>
 
             <div class="app-builder-split">
@@ -214,6 +213,17 @@
                   <!-- Required connections — declared by an installed Glyphh
                        app's manifest. Shows per-connector connected status and
                        warns loudly when any are missing. -->
+                  <!-- Execution home — installed Glyphh apps WITH a worker only.
+                       One home per app (spec): the worker + schedules run in one
+                       place; panels open anywhere. -->
+                  <div id="app-exec-home-row" class="hidden">
+                    <label class="settings-label">Runs on</label>
+                    <select id="app-exec-home" class="settings-input">
+                      <option value="local">This machine</option>
+                      <option value="regional">Cloud runtime</option>
+                    </select>
+                    <p class="settings-hint">Where this app's background worker and schedules run. Panels open anywhere either way.</p>
+                  </div>
                   <div id="app-req-conns" class="hidden">
                     <label class="settings-label">Required connections</label>
                     <div id="app-req-conns-list"></div>
@@ -313,6 +323,28 @@
                 <!-- Releases left: the selected release's notes + promotion. The
                      HISTORY is on the right, where a list belongs. -->
                 <div class="app-tab-left" data-tab="releases">
+                  <!-- Access — who may reach the deployed app. Owned BUILT glyphh
+                       apps only (toggled by loadReleasesTab); org-idp binds the
+                       app to a customer's WorkOS Organization. -->
+                  <div id="release-access-group" class="hidden" style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+                    <label class="settings-label">Access</label>
+                    <p id="release-access-policy-note" class="proxy-field-hint hidden"></p>
+                    <select id="release-access" class="settings-input">
+                      <option value="public">Anyone with the link</option>
+                      <option value="members">Signed-in members of your org</option>
+                      <option value="org-idp">Your customer's IdP via WorkOS</option>
+                    </select>
+                    <div id="release-access-workos" class="hidden">
+                      <label class="settings-label" style="margin-top:12px;">WorkOS Organization ID</label>
+                      <input id="release-workos-org" type="text" class="settings-input" placeholder="org_..." spellcheck="false" />
+                      <p class="proxy-field-hint">Create the Organization and its SSO connection in the WorkOS dashboard, then paste the Organization ID here. Leave empty to fall back to email-domain matching.</p>
+                    </div>
+                    <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                      <span id="release-access-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                      <button id="release-access-save" class="action-btn primary" type="button">Save</button>
+                    </div>
+                  </div>
+
                   <!-- Installed apps: current version + an update banner when a newer
                        live release exists, plus the auto-update toggle. -->
                   <div id="release-installed-view" class="hidden">
@@ -344,9 +376,9 @@
                     <p class="proxy-field-hint">Markdown. This is what an installer reads when they upgrade, and what travels in an exported <code>.glyphh</code> bundle.</p>
 
                     <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <p class="proxy-field-hint" style="margin-top:12px;">Building and deploying happen over MCP — ask Claude (or any connected client) to update the app; <code>build_app</code> cuts the release and ships it here.</p>
                     <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
                       <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                      <button id="release-build" class="action-btn" type="button" title="Package the working folder's built app, cut a release, upload the source, and deploy it">Build &amp; deploy</button>
                       <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
                       <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
                     </div>
@@ -412,8 +444,6 @@
                   <div id="deploy-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
                   <div class="settings-actions" style="margin-top:18px;display:flex;gap:8px;align-items:center;">
                     <span id="deploy-access-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                    <button id="deploy-btn" class="action-btn primary" type="button">Deploy</button>
-                    <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                   </div>
 
                   <div class="app-detail-section-sep"></div>
@@ -428,7 +458,6 @@
                   <p class="proxy-field-hint" id="server-size-hint"></p>
                   <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
                     <span id="server-note" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                    <button id="server-deploy-btn" class="action-btn primary" type="button">Deploy server</button>
                   </div>
                   <div id="server-list" style="margin-top:14px;"></div>
 

@@ -11,8 +11,12 @@
                 <button id="code-session-back" class="session-head-back" title="All sessions" type="button">
                   <svg class="session-head-chev" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                   <span id="code-session-locus" class="session-head-locus" title="Where this session runs"></span>
-                  <span id="code-session-title" title="Current session">New session</span>
                 </button>
+                <!-- The NAME lives OUTSIDE the back button: an input swapped
+                     into a <button> is inert (nested interactive content) —
+                     that is why inline rename "didn't work". Plain span:
+                     click renames, everywhere. -->
+                <span id="code-session-title" class="session-head-title" title="Click to rename this session">New session</span>
                 <!-- Workdir controls (old workbench header): folder picker +
                      git branch (shown once a repo is picked) + add-folder.
                      Wiring lands with the William loop. -->
@@ -84,6 +88,10 @@
                   <button id="code-agent-lock" class="code-icon-btn" title="Lock the agent up (stays visible over open panels)" type="button">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
                   </button>
+                  <!-- Session controls (recents / + new / ⋯ dev tools). In a
+                       layout this whole group RELOCATES into the agent panel's
+                       header, right of the session name (help/code.ts). -->
+                  <div id="code-session-controls" class="code-session-controls">
                   <span class="echo-drip-anchor">
                     <button id="code-drips-btn" class="code-icon-btn" title="Drips" type="button">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
@@ -96,7 +104,13 @@
                   <button id="code-session-new" class="code-icon-btn" title="New session" type="button">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                   </button>
-                  
+                  <div id="code-tools-wrap" class="code-view-more-wrap">
+                    <button id="code-tools-more" class="code-icon-btn" title="Developer tools" type="button" aria-haspopup="true">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    </button>
+                    <div id="code-tools-menu" class="code-view-more-menu hidden"></div>
+                  </div>
+                  </div>
                 </div>
                 <div class="code-input-wrap">
                   <div id="code-plus-wrap" class="code-chipwrap">

@@ -32,6 +32,10 @@ type SavedPanelApp = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed — 'public' | 'members' | 'org-idp'. */
+  access?: string;
+  /** org-idp binding: the WorkOS Organization, or null. */
+  workosOrgId?: string | null;
   connectionIds: string[];
   mcp: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
@@ -77,7 +81,11 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  access?: "public" | "members";
+  access?: "public" | "members" | "org-idp";
+  /** org-idp binding: the WorkOS Organization (null clears). */
+  workosOrgId?: string | null;
+  /** The app's ONE execution home — where its worker + schedules run. */
+  executionHome?: "local" | "regional";
 };
 
 /** Mirrors preload.ts AppReleaseRow — one immutable build of an app. */
@@ -117,6 +125,7 @@ declare global {
       copyToClipboard: (text: string) => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
+      agentDockIgnoreMouse?: (ignore: boolean) => void;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;
@@ -159,23 +168,12 @@ declare global {
       appSecretsDelete: (id: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appImport: () => Promise<{ ok: boolean; appId?: string; error?: string }>;
       appExport: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-      hostingStatus: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>;
-      hostingDeploy: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
-      hostingDestroy: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      appServersList: () => Promise<{ ok: boolean; images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>; error?: string }>;
-      appServerDeploy: (slug: string, imageKey: string, releaseId?: string) => Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>;
-      appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
-      appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
-      appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
-      appDomainAdd: (slug: string, deploymentId: string, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
-      appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;
       appListingImageRemove: (slug: string, key: string) => Promise<{ ok: boolean; error?: string }>;
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
       // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
       appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      appBuildDeploy: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>;
       appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
@@ -223,7 +221,7 @@ declare global {
       onPanelAppsChanged: (callback: () => void) => void;
       openInEditor: (filePath: string) => void;
       getWorkingDir: () => Promise<string | null>;
-      pickWorkingDir: (opts?: { asDefault?: boolean }) => Promise<string | null>;
+      pickWorkingDir: (opts?: { asDefault?: boolean; nullOnCancel?: boolean }) => Promise<string | null>;
       setWorkingDir: (dir: string) => Promise<string>;
       gitInfo: (root: string) => Promise<{ isRepo: boolean; branch?: string; defaultBranch?: string }>;
       getWorkingDirRecents: () => Promise<string[]>;
@@ -299,6 +297,7 @@ declare global {
       workspacesCreate: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesUpdate: (id: string, input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      workspacesGrants: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesModelCatalog: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       workspacesOrgConnectors: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspacesOrgToolCap: () => Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>;
@@ -364,13 +363,8 @@ declare global {
       getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
       // Remote relay
 
-      // Local MCP server (127.0.0.1)
-      localMcpSetEnabled: (enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
-      localMcpStatus: () => Promise<{ running: boolean; port: number }>;
-      localMcpSetPort: (port: number) => Promise<{ ok: boolean; error?: string }>;
-      localMcpTokensList: () => Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>;
-      localMcpTokensCreate: (label: string) => Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>;
-      localMcpTokensRevoke: (id: string) => Promise<{ ok: boolean }>;
+      // (Local MCP server removed — the desktop hosts no local runtime/MCP
+      // surface; there is only the cloud rrotor.)
 
       // BYOK provider key — only the Claude Code bootstrap gate path remains.
 

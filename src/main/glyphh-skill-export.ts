@@ -7,6 +7,10 @@
  * The BODY is the same everywhere (it's the same relay + tools); only the
  * wrapper differs per provider (Claude wants SKILL.md frontmatter; Gemini /
  * OpenAI want a plain system-instruction preamble).
+ *
+ * ⚠ KEEP IN SYNC with src/renderer/help/glyphh-skill-content.ts — the WEB
+ * export path's verbatim twin (the renderer build roots at src/renderer and
+ * cannot import this file). Any edit to the body or wrappers lands in BOTH.
  */
 
 export type SkillProvider = "claude" | "gemini" | "openai";
@@ -23,12 +27,19 @@ locally — you send commands, Glyphh runs them and returns the result.
 
 ## Connect
 
-Add Glyphh's MCP endpoint to your connectors/tools:
+Glyphh is a CLOUD MCP server. Add its endpoint to your MCP client (Claude
+connectors, Cursor, any MCP-capable IDE or agent):
 
     ${ENDPOINT}
 
-Use OAuth if your client supports it (approve the "Glyphh" connection). Otherwise
-paste a token generated in Glyphh → Settings → MCP as a Bearer header.
+- **OAuth (preferred):** add the endpoint as a connector — Glyphh's consent
+  screen opens in the browser; the user approves and the connection is live.
+  In Claude: Settings → Connectors → Add custom connector → paste the URL.
+- **API key:** for clients that can't run an OAuth flow, the user creates a key
+  in Glyphh → Settings → API Keys and sends it as a Bearer header
+  (\`Authorization: Bearer gy_ak_…\`).
+
+Connected clients are listed (and revocable) in Glyphh → Settings → MCP.
 
 ## The tools
 

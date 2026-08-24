@@ -8,6 +8,10 @@
  * A real Quit (tray menu, ⌘Q via app.isQuitting) tears everything down.
  *
  * When OFF the app behaves exactly as before: closing the window quits.
+ *
+ * Preference: `desktopRunInBackground` (set by the welcome flow's checkbox and
+ * Settings → Desktop). The pre-grant `runInBackground` pref is honored as a
+ * legacy fallback so an existing opt-in survives the rename.
  */
 
 import { app, Tray, Menu, nativeImage } from "electron";
@@ -19,6 +23,8 @@ let tray: Tray | null = null;
 
 /** The user's setting. Default OFF — background running is opt-in. */
 export function isBackgroundEnabled(): boolean {
+  const v = getPreference<boolean | null>("desktopRunInBackground", null);
+  if (typeof v === "boolean") return v;
   return getPreference<boolean>("runInBackground", false) === true;
 }
 
@@ -73,9 +79,9 @@ export function syncBackgroundMode(): void {
   } catch { /* unsupported platform — non-fatal */ }
 }
 
-/** Toggle the setting (from settings IPC) and apply immediately. */
+/** Toggle the setting (welcome flow / settings IPC) and apply immediately. */
 export function setBackgroundEnabled(enabled: boolean): void {
-  setPreference("runInBackground", !!enabled);
+  setPreference("desktopRunInBackground", !!enabled);
   syncBackgroundMode();
 }
 

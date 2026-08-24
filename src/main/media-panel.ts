@@ -10,11 +10,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename, extname } from "node:path";
-import { dialog, ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
 import type { MediaKind } from "@glyphh/sdk";
-
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const MIMES: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif",
@@ -71,81 +68,3 @@ export async function mediaFileUrl(id: string): Promise<string> {
   return `file://${dest}`;
 }
 
-export function registerMediaPanelIpc(): void {
-  ipcMain.handle("media-list", async (_e, kind?: unknown, q?: unknown) => {
-    try {
-      const assets = await getClient().media.list(kind ? (String(kind) as MediaKind) : undefined, q ? String(q) : undefined);
-      return { ok: true, assets };
-    } catch (err) {
-      return { ok: false, error: errText(err), assets: [] };
-    }
-  });
-  ipcMain.handle("media-url", async (_e, id: unknown) => {
-    try {
-      return { ok: true, url: await mediaFileUrl(String(id)) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-delete", async (_e, id: unknown) => {
-    try {
-      await getClient().media.delete(String(id));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-generate", async (_e, input: unknown) => {
-    try {
-      const started = await getClient().media.generate(input as Parameters<ReturnType<typeof getClient>["media"]["generate"]>[0]);
-      return { ok: true, job: started.job, outputKind: started.outputKind };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-job", async (_e, id: unknown) => {
-    try {
-      return { ok: true, job: await getClient().media.job(String(id)) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-save", async (_e, id: unknown) => {
-    try {
-      const asset = await getClient().media.get(String(id));
-      const ext = EXT_BY_MIME[asset.mime] ?? ".bin";
-      const stem = asset.title.replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "media";
-      const picked = await dialog.showSaveDialog({ defaultPath: `${stem}${ext}` });
-      if (picked.canceled || !picked.filePath) return { ok: false, error: "cancelled" };
-      const bytes = await getClient().media.bytes(String(id));
-      writeFileSync(picked.filePath, Buffer.from(bytes));
-      return { ok: true, path: picked.filePath, bytes: bytes.byteLength };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-upload-pick", async () => {
-    try {
-      const picked = await dialog.showOpenDialog({
-        properties: ["openFile"],
-        filters: [
-          { name: "Media", extensions: ["png", "jpg", "jpeg", "webp", "gif", "mp4", "webm", "mov", "mp3", "m4a", "wav", "ogg"] },
-        ],
-      });
-      const path = picked.filePaths[0];
-      if (picked.canceled || !path) return { ok: false, error: "cancelled" };
-      const r = await uploadMediaFile(path);
-      return { ok: true, ...r };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-upload-file", async (_e, path: unknown, opts: unknown) => {
-    try {
-      const r = await uploadMediaFile(String(path), (opts ?? {}) as { title?: string; kind?: MediaKind });
-      return { ok: true, ...r };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-}

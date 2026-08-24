@@ -12,6 +12,7 @@ import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import {
   escMkt, mktConnChip, connLabel, mktConnIconApps,
   mkt, mktProgram, mktIsProgramRefusal, mktStarRow, mktDate, mktDiscountActive,
+  mktMyAppGrants,
   type MktDetail, type MktProgramState,
 } from "./marketplace-data.js";
 import { openMktDetail } from "./marketplace.js";
@@ -77,6 +78,12 @@ type PanelAppInput = {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
+  /** Who may reach it once deployed — enforced at the edge on every request. */
+  access?: "public" | "members" | "org-idp";
+  /** org-idp binding: the WorkOS Organization (null clears). */
+  workosOrgId?: string | null;
+  /** The app's ONE execution home — where its worker + schedules run. */
+  executionHome?: "local" | "regional";
 };
 
 function readLaunchConfig(prefix: string, archetype: Archetype): Record<string, unknown> {
@@ -286,12 +293,19 @@ interface PanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  /** Who may reach it once deployed — shown + set on the Public hosting tab. */
+  /** Who may reach it once deployed — shown + set on the Public hosting tab
+   *  and the Releases tab's Access group ('public' | 'members' | 'org-idp'). */
   access?: string;
+  /** org-idp binding: the WorkOS Organization the app authenticates against,
+   *  or null (empty = email-domain fallback). */
+  workosOrgId?: string | null;
   /** True when this org published the app — an installed app hides publish tabs. */
   owned?: boolean;
   /** Newest live release version, or null — drives the auto-update banner. */
   latestVersion?: string | null;
+  /** Where the app's worker + schedules run — its ONE execution home
+   *  ('local' = this machine, 'regional' = the org's cloud runtime). */
+  executionHome?: "local" | "regional";
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The listing's uploaded icon — the ONE icon source (same as the command
@@ -313,8 +327,10 @@ function toPanelApp(a: {
   id: string; slug: string; name: string; system?: boolean; url: string | null;
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
-  access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
+  access?: string; workosOrgId?: string | null;
+  iconUrl?: string | null; listing?: PanelApp["listing"];
   owned?: boolean; latestVersion?: string | null;
+  executionHome?: "local" | "regional";
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
@@ -324,8 +340,10 @@ function toPanelApp(a: {
     id: a.id, slug: a.slug, name: a.name, system: a.system, url: a.url,
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
+    workosOrgId: a.workosOrgId ?? null,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
-    owned: a.owned, latestVersion: a.latestVersion, requiredConnections: a.requiredConnections,
+    owned: a.owned, latestVersion: a.latestVersion, executionHome: a.executionHome,
+    requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -365,7 +383,10 @@ async function loadApps() {
     // the old truthy workbench filter hid those too, leaving customs with no
     // edit/delete surface at all.
     panelApps = apps
-      .filter((a) => !a.system && (a.url || a.isBrowser === false))
+      // WORKPANEL APPS ONLY: installed/built Glyphh apps. URL rows and
+      // native rows are retired kinds — legacy rows list so they can be
+      // deleted, but nothing creates them any more.
+      .filter((a) => !a.system && (a.appArchetype === "glyphh-app" || a.url || a.isBrowser === false))
       .map(toPanelApp);
   } catch { panelApps = []; }
   // The rail's Apps grid mirrors this list — tell it to refresh.
@@ -660,7 +681,6 @@ function switchAppTab(tab: string) {
   // Deploy + "own your code" share the Public hosting tab: both answer "who runs
   // this for the public", which is a different question from how it is distributed
   // inside Glyphh (Releases + Marketplace).
-  if (tab === "hosting") { void loadDeployTab(); loadProductionTab(); }
 }
 
 // ── Marketplace tab — the listing an installer sees ──────────────
@@ -947,6 +967,12 @@ async function loadReleasesTab(): Promise<void> {
   document.getElementById("release-installed-view")?.classList.toggle("hidden", owned);
   if (!owned) renderInstalledReleaseView();
 
+  // Access group — OWNED BUILT glyphh apps only (an installed app's access is
+  // its publisher's call; a plain launcher row has nothing deployed to gate).
+  const accessOwner = owned && currentApp?.appArchetype === "glyphh-app";
+  document.getElementById("release-access-group")?.classList.toggle("hidden", !accessOwner);
+  if (accessOwner) fillReleaseAccessGroup();
+
   const slug = currentApp?.slug || currentAppId;
   // The bridge may lack this call on a surface (web's cloud placeholder
   // resolves undefined) — say so honestly instead of throwing on `res.ok`.
@@ -1181,8 +1207,90 @@ async function loadAppConnectionsTab(): Promise<void> {
   primeConnectedIcons(mktConnIconApps(required.map(({ slug }) => ({ slug }))), () => {});
 }
 
+// ── Access group (Releases tab) — who may reach the deployed app ─────────────
+
+/** Prefill the Access controls from the current app row, then narrow the
+ *  options to the caller's role grant (appsPublishAccess). The server enforces
+ *  the bound regardless; this keeps the picker honest. */
+function fillReleaseAccessGroup(): void {
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  if (!sel || !orgInput) return;
+  const access = currentApp?.access === "public" || currentApp?.access === "org-idp" ? currentApp.access : "members";
+  sel.value = access;
+  orgInput.value = currentApp?.workosOrgId || "";
+  document.getElementById("release-access-workos")?.classList.toggle("hidden", access !== "org-idp");
+  const status = document.getElementById("release-access-status");
+  if (status) status.textContent = "";
+  void applyReleaseAccessPolicy(access);
+}
+
+/** Narrow the Access picker to the caller's role grant. An access value the
+ *  role can't set is hidden; if the app's CURRENT access sits outside the
+ *  grant, the whole group goes read-only with a "set by org policy" note. */
+async function applyReleaseAccessPolicy(current: string): Promise<void> {
+  const grants = await mktMyAppGrants();
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  const saveBtn = document.getElementById("release-access-save") as HTMLButtonElement | null;
+  const note = document.getElementById("release-access-policy-note");
+  if (!sel) return;
+  // A tab switch may have replaced the current app while we awaited.
+  if (sel.value !== current) return;
+  const allowed = grants.appsPublishAccess;
+  const readOnly = !allowed.includes(current);
+  for (const opt of Array.from(sel.options)) {
+    // The CURRENT value stays visible even when disallowed — the picker must
+    // show the truth; it just can't be changed from here.
+    opt.hidden = !allowed.includes(opt.value) && opt.value !== current;
+    opt.disabled = opt.hidden;
+  }
+  sel.disabled = readOnly;
+  if (orgInput) orgInput.disabled = readOnly;
+  if (saveBtn) saveBtn.classList.toggle("hidden", readOnly);
+  if (note) {
+    note.textContent = readOnly
+      ? "Set by org policy — your role can't change who may open this app. An org admin can, under Settings › Roles."
+      : "";
+    note.classList.toggle("hidden", !readOnly);
+  }
+}
+
+/** Persist the Access selection (+ the WorkOS Organization for org-idp). */
+async function saveReleaseAccess(): Promise<void> {
+  if (!currentAppId) return;
+  const sel = document.getElementById("release-access") as HTMLSelectElement | null;
+  const orgInput = document.getElementById("release-workos-org") as HTMLInputElement | null;
+  const statusEl = document.getElementById("release-access-status");
+  if (!sel) return;
+  const access = sel.value === "public" || sel.value === "org-idp" ? sel.value : "members";
+  const patch: PanelAppInput = { access };
+  // The WorkOS binding only travels with an org-idp save: a string sets it,
+  // empty clears it (the edge falls back to email-domain matching). Other
+  // access modes leave the stored binding alone, so flipping back to org-idp
+  // doesn't lose it.
+  if (access === "org-idp") patch.workosOrgId = orgInput?.value.trim() || null;
+  if (statusEl) statusEl.textContent = "Saving…";
+  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, patch);
+  if (res?.ok && currentApp) {
+    currentApp.access = access;
+    if (patch.workosOrgId !== undefined) currentApp.workosOrgId = patch.workosOrgId;
+  }
+  if (statusEl) {
+    statusEl.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
+    setTimeout(() => { if (statusEl.textContent === "Saved ✓") statusEl.textContent = ""; }, 2500);
+  }
+}
+
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
+
+  // Access group — the org-idp choice reveals the WorkOS Organization binding.
+  document.getElementById("release-access")?.addEventListener("change", (e) => {
+    const v = (e.target as HTMLSelectElement).value;
+    document.getElementById("release-access-workos")?.classList.toggle("hidden", v !== "org-idp");
+  });
+  document.getElementById("release-access-save")?.addEventListener("click", () => { void saveReleaseAccess(); });
 
   // Auto-update toggle (installed apps) — persisted per app slug.
   document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {
@@ -1217,21 +1325,6 @@ function initReleasesTab(): void {
   // Build & deploy — packages the working folder's compiled dist, cuts a
   // release, uploads the source, and deploys. THE recovery for "its source is
   // gone from storage — rebuild the app": until now nothing on this tab could
-  // actually build.
-  document.getElementById("release-build")?.addEventListener("click", async () => {
-    const btn = document.getElementById("release-build") as HTMLButtonElement;
-    const slug = currentApp?.slug || currentAppId;
-    document.getElementById("release-error")?.classList.add("hidden");
-    btn.disabled = true;
-    releaseStatus("Building from your working folder…");
-    try {
-      const res = await window.glyphh.appBuildDeploy?.(slug);
-      if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Build failed."); return; }
-      releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
-      await loadReleasesTab();
-    } finally { btn.disabled = false; }
-  });
-
   document.getElementById("release-promote")?.addEventListener("click", async () => {
     if (!selectedReleaseId) return;
     const r = releases.find((x) => x.id === selectedReleaseId);
@@ -1254,184 +1347,6 @@ function initReleasesTab(): void {
 // ── Deploy tab (dev-host) — status + deploy + take-down ──────────
 let deployCurrentId: string | null = null;
 
-async function loadDeployTab(): Promise<void> {
-  const statusEl = document.getElementById("deploy-status");
-  const urlRow = document.getElementById("deploy-url-row");
-  const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement | null;
-  const takedown = document.getElementById("deploy-takedown-btn");
-  const deployBtn = document.getElementById("deploy-btn") as HTMLButtonElement | null;
-  if (!statusEl || !urlRow || !urlEl || !takedown || !deployBtn) return;
-  document.getElementById("deploy-error")?.classList.add("hidden");
-  statusEl.textContent = "Checking…";
-  urlRow.classList.add("hidden");
-  takedown.classList.add("hidden");
-  deployCurrentId = null;
-
-  // Who can reach it — the app's own setting, not the deployment's. Shown here
-  // because "it's live" and "who can open it" are one question to the owner.
-  const accessSel = document.getElementById("deploy-access") as HTMLSelectElement | null;
-  if (accessSel) accessSel.value = currentApp?.access === "public" ? "public" : "members";
-  syncDeployAccessHint();
-
-  const slug = currentApp?.slug || currentAppId;
-  const res = await window.glyphh.hostingStatus?.(slug);
-  if (!res?.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
-  const d = res.deployment;
-  if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
-    deployCurrentId = d.id;
-    statusEl.innerHTML = `<span class="deploy-dot ${d.status === "live" ? "on" : "pending"}"></span>${d.status === "live" ? "Deployed" : d.status}`;
-    if (d.url) { urlEl.textContent = d.url; urlEl.href = d.url; urlRow.classList.remove("hidden"); }
-    takedown.classList.remove("hidden");
-    deployBtn.textContent = "Redeploy";
-  } else {
-    statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
-    deployBtn.textContent = "Deploy";
-  }
-
-  // The dedicated-server + custom-domains section shares this tab.
-  void loadServerSection();
-}
-
-/** Delete is refused server-side while a live deployment exists — it would orphan
- *  the running Fly machine. So gate the Delete button on deploy state: clearly
- *  INACTIVE (with a why) until the app is taken down, instead of failing on click. */
-async function gateAppDelete(slug: string): Promise<void> {
-  const btn = document.getElementById("app-detail-delete") as HTMLButtonElement | null;
-  if (!btn || btn.classList.contains("hidden")) return;
-  let live = false;
-  try {
-    const res = await window.glyphh.hostingStatus?.(slug);
-    const d = res?.deployment;
-    live = !!d && (d.status === "live" || d.status === "building" || d.status === "queued");
-  } catch { /* status unknown — don't block the user */ }
-  btn.disabled = live;
-  btn.title = live
-    ? "Take it down first — an app can't be deleted while it's deployed (Hosting tab → Take down)."
-    : "";
-  btn.classList.toggle("delete-blocked", live);
-}
-
-// ── Dedicated server + custom domains (last-mile Phase F) ──────────────────────
-// One section under the hosting tab: pick a size and deploy the app to its OWN
-// machine, then point custom domains at a running server. All through the SDK
-// (window.glyphh.*), so it works identically on desktop and app-web.
-const SERVER_PROVISIONING = new Set(["queued", "building", "starting"]);
-let serverPollTimer: number | null = null;
-
-/** One deployment row — status dot, size/state, live link, tear-down. */
-function renderServerRow(d: { id: string; imageKey: string; status: string; url: string | null; error: string | null }): string {
-  const dot = d.status === "live" ? "on" : SERVER_PROVISIONING.has(d.status) ? "pending" : "";
-  const link = d.url && d.status === "live"
-    ? ` · <a href="${escMkt(d.url)}" target="_blank" rel="noreferrer">${escMkt(d.url.replace(/^https?:\/\//, ""))}</a>` : "";
-  const error = d.error ? ` · <span style="color:var(--danger,#e5484d);">${escMkt(d.error)}</span>` : "";
-  return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border-1,#2a2a2a);">
-    <span class="deploy-dot ${dot}"></span>
-    <span style="flex:1;">${escMkt(d.imageKey)} · ${escMkt(d.status)}${link}${error}</span>
-    <button class="action-btn danger" type="button" data-server-destroy="${escMkt(d.id)}">Tear down</button>
-  </div>`;
-}
-
-/** One custom-domain row — status, remove, and the DNS records to publish. */
-function renderDomainRow(dm: CustomDomainWire): string {
-  const dot = dm.status === "active" ? "on" : dm.status === "error" ? "" : "pending";
-  const error = dm.error ? ` · <span style="color:var(--danger,#e5484d);">${escMkt(dm.error)}</span>` : "";
-  const apex = dm.dnsInstructions?.apexUnsupported
-    ? `<p class="proxy-field-hint" style="color:var(--danger,#e5484d);margin-top:6px;">Bare apex domains aren't supported yet — use a subdomain like <code>www</code>.</p>` : "";
-  const records = (dm.dnsInstructions?.records ?? []).map((r) =>
-    `<div style="font-family:var(--font-mono,monospace);font-size:11px;line-height:1.7;">
-       <span style="display:inline-block;width:52px;color:var(--text-3);">${escMkt(r.type)}</span>${escMkt(r.name)} → ${escMkt(r.value)}</div>`).join("");
-  const dns = records
-    ? `<div style="margin-top:6px;padding:8px 10px;background:var(--bg-2,#1b1b1b);border-radius:6px;">
-         <div class="proxy-field-hint" style="margin:0 0 4px;">Publish these DNS records:</div>${records}</div>` : "";
-  return `<div style="padding:10px 0;border-top:1px solid var(--border-1,#2a2a2a);">
-    <div style="display:flex;align-items:center;gap:8px;">
-      <span class="deploy-dot ${dot}"></span>
-      <span style="flex:1;">${escMkt(dm.hostname)} · ${escMkt(dm.status)}${error}</span>
-      <button class="action-btn danger" type="button" data-domain-remove="${escMkt(dm.id)}">Remove</button>
-    </div>${apex}${dns}
-  </div>`;
-}
-
-/** Load (and re-poll while provisioning) the dedicated-server + domains section. */
-async function loadServerSection(): Promise<void> {
-  const sizeSel = document.getElementById("server-size") as HTMLSelectElement | null;
-  const sizeHint = document.getElementById("server-size-hint");
-  const listEl = document.getElementById("server-list");
-  const domSel = document.getElementById("domain-deployment") as HTMLSelectElement | null;
-  const domListEl = document.getElementById("domain-list");
-  if (!sizeSel || !listEl || !domSel || !domListEl) return;
-  const slug = currentApp?.slug || currentAppId;
-
-  // Sizes are the org's region catalog — fill once, keep the user's choice on refresh.
-  if (sizeSel.dataset.filled !== "1") {
-    const imgRes = await window.glyphh.appServersList?.();
-    if (imgRes?.ok && imgRes.images?.length) {
-      sizeSel.innerHTML = imgRes.images
-        .map((i) => `<option value="${escMkt(i.key)}" data-desc="${escMkt(i.description)}">${escMkt(i.description)} — ${i.monthlyCredits} cr/mo</option>`)
-        .join("");
-      sizeSel.dataset.filled = "1";
-      if (sizeHint) sizeHint.textContent = `${imgRes.images[0]!.ramMb} MB RAM · ${imgRes.images[0]!.diskGb} GB disk`;
-    } else {
-      sizeSel.innerHTML = `<option value="">No sizes available in your region</option>`;
-    }
-  }
-
-  const depRes = await window.glyphh.appServerDeployments?.(slug);
-  const deps = depRes?.ok ? (depRes.deployments ?? []) : [];
-  const visible = deps.filter((d) => d.status !== "destroyed");
-  listEl.innerHTML = visible.length ? visible.map(renderServerRow).join("") : `<p class="proxy-field-hint">No dedicated servers yet.</p>`;
-
-  // A domain can only target a server that is up (or coming up).
-  const targetable = deps.filter((d) => d.status === "live" || SERVER_PROVISIONING.has(d.status));
-  domSel.innerHTML = targetable.length
-    ? targetable.map((d) => `<option value="${escMkt(d.id)}">${escMkt(d.imageKey)} · ${escMkt(d.status)}</option>`).join("")
-    : `<option value="">No running server yet</option>`;
-
-  const domRes = await window.glyphh.appDomainsList?.(slug);
-  const domains = domRes?.ok ? (domRes.domains ?? []) : [];
-  domListEl.innerHTML = domains.length ? domains.map(renderDomainRow).join("") : `<p class="proxy-field-hint">No custom domains yet.</p>`;
-
-  // Keep polling while anything is still provisioning or verifying.
-  if (serverPollTimer) { clearTimeout(serverPollTimer); serverPollTimer = null; }
-  const busy = deps.some((d) => SERVER_PROVISIONING.has(d.status)) || domains.some((d) => d.status === "pending" || d.status === "verifying");
-  if (busy) {
-    serverPollTimer = window.setTimeout(() => {
-      if (document.getElementById("server-list")?.isConnected) void loadServerSection();
-    }, 5000);
-  }
-}
-
-/** Spell out what the chosen access actually means — "public" is the one that
- *  can surprise someone, so it says so plainly. */
-function syncDeployAccessHint(): void {
-  const hint = document.getElementById("deploy-access-hint");
-  const isPublic = (document.getElementById("deploy-access") as HTMLSelectElement | null)?.value === "public";
-  if (hint) {
-    hint.textContent = isPublic
-      ? "Anyone with the link can open this app, signed in or not, and their requests spend your org's credits."
-      : "Visitors sign in with a Glyphh account; anyone else is turned away at the edge, before the app is reached.";
-  }
-}
-
-/** Persist the access choice against the app entry. */
-async function saveDeployAccess(): Promise<void> {
-  if (!currentAppId) return;
-  const status = document.getElementById("deploy-access-status");
-  const sel = document.getElementById("deploy-access") as HTMLSelectElement | null;
-  if (!sel) return;
-  const access = sel.value as "public" | "members";
-  if (status) status.textContent = "Saving…";
-  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, { access });
-  if (res?.ok && currentApp) currentApp.access = access;
-  if (status) {
-    status.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
-    setTimeout(() => { if (status.textContent === "Saved ✓") status.textContent = ""; }, 2500);
-  }
-}
-
-async function loadProductionTab(): Promise<void> {
-  document.getElementById("graduate-error")?.classList.add("hidden");
-}
 
 // ── Config Vars tab (per-app encrypted secrets) ──────────
 //
@@ -1740,6 +1655,15 @@ async function openPanelAppDetail(app: PanelApp) {
   writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
   toggleTypeFields("app-detail", detailType);
   toggleArchetypeFields("app-detail", detailArchetype);
+
+  // Execution home ("Runs on") — ONLY for installed Glyphh apps with a worker:
+  // the one setting that moves the app's headless side (worker + schedules)
+  // between this machine and the org's cloud runtime. Panels are unaffected.
+  const hasWorker = !!(app.launchConfig as { worker?: string | null } | null)?.worker;
+  const execHomeRow = document.getElementById("app-exec-home-row");
+  const execHomeSel = document.getElementById("app-exec-home") as HTMLSelectElement | null;
+  execHomeRow?.classList.toggle("hidden", !(isBuilt && hasWorker));
+  if (execHomeSel) execHomeSel.value = app.executionHome === "regional" ? "regional" : "local";
 
   // MCP + Guardrails tabs — installed apps that declare tools. The consumer
   // view doesn't carry them (its tabs are exactly About/Connections/Support);
@@ -2090,6 +2014,12 @@ function initApps() {
       // spread the existing config rather than replacing it.
       const { mcpApproved, guardrails } = readMcpConfig();
       patch.launchConfig = { ...(currentApp?.launchConfig || {}), mcpApproved, guardrails };
+      // "Runs on" — only when the row is offered (worker-bearing glyphh apps).
+      const homeSel = document.getElementById("app-exec-home") as HTMLSelectElement | null;
+      const homeRow = document.getElementById("app-exec-home-row");
+      if (homeSel && homeRow && !homeRow.classList.contains("hidden")) {
+        patch.executionHome = homeSel.value === "regional" ? "regional" : "local";
+      }
     } else if (type === "browser") {
       const url = appDetailUrl.value.trim();
       if (url) patch.url = url;
@@ -2157,102 +2087,6 @@ function initApps() {
     }
   });
 
-  // Deploy tab: who can reach the app. Saved on change — it is one control, and
-  // a separate Save would let someone leave the page believing it took.
-  document.getElementById("deploy-access")?.addEventListener("change", () => {
-    syncDeployAccessHint();
-    void saveDeployAccess();
-  });
-
-  // Deploy tab: deploy + take-down.
-  document.getElementById("deploy-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("deploy-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error");
-    err?.classList.add("hidden");
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
-    const res = await window.glyphh.hostingDeploy?.(currentApp?.slug || currentAppId);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Deploy failed."; err.classList.remove("hidden"); } return; }
-    await loadDeployTab();
-  });
-  document.getElementById("deploy-takedown-btn")?.addEventListener("click", async () => {
-    if (!deployCurrentId) return;
-    const btn = document.getElementById("deploy-takedown-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error");
-    err?.classList.add("hidden");
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Taking down…";
-    const res = await window.glyphh.hostingDestroy?.(deployCurrentId);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Take-down failed."; err.classList.remove("hidden"); } return; }
-    await loadDeployTab();
-    // Taken down → Delete can go active again.
-    if (currentApp?.slug) void gateAppDelete(currentApp.slug);
-  });
-
-  // ── Dedicated server: deploy, tear down (delegated) ─────────────────────────
-  document.getElementById("server-deploy-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("server-deploy-btn") as HTMLButtonElement;
-    const sizeSel = document.getElementById("server-size") as HTMLSelectElement | null;
-    const err = document.getElementById("server-error");
-    err?.classList.add("hidden");
-    const imageKey = sizeSel?.value;
-    if (!imageKey) { if (err) { err.textContent = "Pick a size first."; err.classList.remove("hidden"); } return; }
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
-    const res = await window.glyphh.appServerDeploy?.(currentApp?.slug || currentAppId, imageKey);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Deploy failed."; err.classList.remove("hidden"); } return; }
-    await loadServerSection();
-  });
-
-  document.getElementById("server-list")?.addEventListener("click", async (e) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-server-destroy]")?.dataset.serverDestroy;
-    if (!id) return;
-    const ok = await confirmAction({
-      title: "Tear down this server?",
-      body: "Its machine and dedicated database are destroyed. Custom domains pointed at it stop resolving.",
-      confirmLabel: "Tear down", danger: true,
-    });
-    if (!ok) return;
-    const res = await window.glyphh.appServerDestroy?.(currentApp?.slug || currentAppId, id);
-    const err = document.getElementById("server-error");
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Tear-down failed."; err.classList.remove("hidden"); } return; }
-    await loadServerSection();
-  });
-
-  // ── Custom domains: add, remove (delegated) ─────────────────────────────────
-  document.getElementById("domain-add-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("domain-add-btn") as HTMLButtonElement;
-    const depSel = document.getElementById("domain-deployment") as HTMLSelectElement | null;
-    const hostInput = document.getElementById("domain-hostname") as HTMLInputElement | null;
-    const err = document.getElementById("domain-error");
-    err?.classList.add("hidden");
-    const deploymentId = depSel?.value;
-    const hostname = hostInput?.value.trim().toLowerCase();
-    if (!deploymentId) { if (err) { err.textContent = "Deploy a server first, then point a domain at it."; err.classList.remove("hidden"); } return; }
-    if (!hostname) { if (err) { err.textContent = "Enter a hostname."; err.classList.remove("hidden"); } return; }
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Adding…";
-    const res = await window.glyphh.appDomainAdd?.(currentApp?.slug || currentAppId, deploymentId, hostname);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Couldn't add the domain."; err.classList.remove("hidden"); } return; }
-    if (hostInput) hostInput.value = "";
-    await loadServerSection();
-  });
-
-  document.getElementById("domain-list")?.addEventListener("click", async (e) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-domain-remove]")?.dataset.domainRemove;
-    if (!id) return;
-    const ok = await confirmAction({
-      title: "Remove this domain?",
-      body: "It stops resolving to your app and its certificate is released.",
-      confirmLabel: "Remove", danger: true,
-    });
-    if (!ok) return;
-    const res = await window.glyphh.appDomainRemove?.(currentApp?.slug || currentAppId, id);
-    const err = document.getElementById("domain-error");
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Couldn't remove the domain."; err.classList.remove("hidden"); } return; }
-    await loadServerSection();
-  });
-
   // Production tab: graduate to a standalone Supabase repo (download zip).
   document.getElementById("graduate-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("graduate-btn") as HTMLButtonElement;
@@ -2266,6 +2100,36 @@ function initApps() {
   });
 
   // Import a .glyphh bundle (main shows the open dialog) → reload the apps list.
+  // "+ New" — a workpanel app arrives exactly three ways: the agent builds
+  // it, the marketplace installs it, or a .glyphh bundle imports it. The
+  // button offers those; there is no hand-made app form any more.
+  document.getElementById("apps-new-btn")?.addEventListener("click", (ev) => {
+    document.querySelector(".apps-new-menu")?.remove();
+    const m = document.createElement("div");
+    m.className = "code-menu apps-new-menu";
+    const add = (label: string, fn: () => void): void => {
+      const b = document.createElement("button");
+      b.className = "code-menu-item";
+      b.textContent = label;
+      b.addEventListener("click", () => { m.remove(); fn(); });
+      m.appendChild(b);
+    };
+    add("Build with Glyphh", () => {
+      gotoSection("code");
+      (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    });
+    add("Install from Marketplace", () => gotoSection("marketplace"));
+    add("Import .glyphh file", () => (document.getElementById("apps-import-btn") as HTMLButtonElement | null)?.click());
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    m.style.position = "fixed";
+    m.style.top = `${r.bottom + 4}px`;
+    m.style.left = `${Math.max(8, r.right - 200)}px`;
+    document.body.appendChild(m);
+    setTimeout(() => document.addEventListener("pointerdown", function close(e) {
+      if (!(e.target as HTMLElement).closest(".apps-new-menu")) { m.remove(); document.removeEventListener("pointerdown", close, true); }
+    }, true), 0);
+  });
+
   document.getElementById("apps-import-btn")?.addEventListener("click", async () => {
     const btn = document.getElementById("apps-import-btn") as HTMLButtonElement;
     const prev = btn.textContent;
@@ -2335,6 +2199,13 @@ function initApps() {
   };
   divider.addEventListener("pointerup", releaseDivider);
   divider.addEventListener("pointercancel", releaseDivider);
+}
+
+/** Hosting is gone — nothing blocks deleting an app any more. The gate
+ *  survives as a stub so the delete button is always live. */
+async function gateAppDelete(_slug: string): Promise<void> {
+  const btn = document.getElementById("app-detail-delete") as HTMLButtonElement | null;
+  if (btn) { btn.disabled = false; btn.title = "Delete this app"; }
 }
 
 export { loadApps, initApps, closeAppDetail };

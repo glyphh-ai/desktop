@@ -12,7 +12,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { ipcMain, nativeImage } from "electron";
+import { nativeImage } from "electron";
 import { getClient } from "./glyphh-client";
 import type { DesignSystem } from "@glyphh/sdk";
 
@@ -22,8 +22,6 @@ export function designFileName(name: unknown): string {
   if (!stem) throw new Error("a design needs a name");
   return `${stem}.json`;
 }
-
-const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 // ── Site extraction — colors/fonts/radii a page actually uses ────────────────
 
@@ -130,70 +128,3 @@ export async function imagePalette(path: string): Promise<Array<{ hex: string; s
 
 // ── IPC — the panel's transport ──────────────────────────────────────────────
 
-export function registerDesignIpc(): void {
-  ipcMain.handle("design-list", async () => {
-    try {
-      const designs = (await getClient().designs.list()).map((m) => ({
-        file: m.file, title: m.title, size: m.sizeBytes, mtime: Date.parse(m.updatedAt) || 0,
-      }));
-      return { ok: true, designs };
-    } catch (err) {
-      return { ok: false, error: errText(err), designs: [] };
-    }
-  });
-  ipcMain.handle("design-read", async (_e, name: unknown) => {
-    try {
-      const d = await getClient().designs.get(designFileName(name));
-      return { ok: true, title: d.title, document: d.document };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-write", async (_e, name: unknown, document: unknown) => {
-    try {
-      const meta = await getClient().designs.put(designFileName(name), document as DesignSystem);
-      return { ok: true, file: meta.file, title: meta.title };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-delete", async (_e, name: unknown) => {
-    try {
-      await getClient().designs.delete(designFileName(name));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-asset-upload", async (_e, name: unknown, input: unknown) => {
-    try {
-      const a = input as { id?: string; kind: "logo" | "icon" | "image"; title: string; contentType: string; dataBase64: string };
-      const entry = await getClient().designs.uploadAsset(designFileName(name), a);
-      return { ok: true, asset: entry };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  // Asset bytes ride IPC as a data URL — the panel <img> renders it directly;
-  // the session bearer never reaches the renderer.
-  ipcMain.handle("design-asset-url", async (_e, name: unknown, assetId: unknown) => {
-    try {
-      const file = designFileName(name);
-      const d = await getClient().designs.get(file);
-      const entry = (d.document.assets ?? []).find((x) => x.id === String(assetId));
-      if (!entry) throw new Error("asset not found");
-      const bytes = await getClient().designs.assetBytes(file, entry.id);
-      return { ok: true, url: `data:${entry.contentType};base64,${Buffer.from(bytes).toString("base64")}` };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("design-asset-delete", async (_e, name: unknown, assetId: unknown) => {
-    try {
-      await getClient().designs.deleteAsset(designFileName(name), String(assetId));
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-}

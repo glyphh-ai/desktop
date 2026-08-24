@@ -1,16 +1,21 @@
 /**
- * glyphh-app-services — host-implemented data/runtime services for Glyphh apps
- * (spec v2). These are the capabilities that turn a .glyphh from "a thin UI
- * over one AppleScript" into a real local app:
+ * glyphh-app-services — host-implemented data services for Glyphh app PANELS
+ * (spec v2):
  *
  *   db.exec          { sql, params? }            per-app SQLite, one statement
- *   cron.schedule    { id, cron, handler, args? } persisted; fires a worker handler
+ *   cron.schedule    { id, cron, handler, args? } persisted definition only
  *   cron.cancel      { id }
  *   cron.list        { }
  *   notify.send      { title, body }             OS notification; click opens the app
  *   connector.status { }                         declared connectors + connected?
  *   connector.tools  { connector? }              tool catalog for declared connectors
  *   connector.call   { connector, tool, args? }  invoke a connector tool (Pipedream via yo-server)
+ *
+ * EXECUTION LIVES IN THE CLOUD. This machine never runs an app worker and
+ * never fires a schedule — the cloud rrotor owns both (apps never run
+ * locally). cron.* here is a local DEFINITION store only: rows persist so a
+ * panel's schedule CRUD keeps working, but nothing arms and nothing fires on
+ * this machine.
  *
  * connector.* is what turns apps into integrations: an app declares the
  * connections it needs (manifest `connectors: ["salesforce","netsuite"]`) and
@@ -23,19 +28,17 @@
  * ~/.glyphh/app-data/<slug>/data.sqlite and its schedules are keyed by slug. Apps
  * cannot name another app's resources; there is no cross-app surface at all.
  *
- * The host injects resolveApp/openApp at init (initAppServices) so this module
- * never imports glyphh-app-host — host → services → worker, no cycles.
+ * The host injects openApp at init (initAppServices) so this module never
+ * imports glyphh-app-host — no cycles.
  */
 
 import { Notification } from "electron";
 import Database from "better-sqlite3";
-import cron, { ScheduledTask } from "node-cron";
+import cron from "node-cron";
 import fs from "fs";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
-import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { glyphhPath } from "./app-paths.js";
-import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { getClient } from "./glyphh-client.js";
 import {
   getConnectorCatalog,
@@ -47,8 +50,6 @@ import {
 // ── wiring (injected by glyphh-app-host at startup) ─────────
 
 interface AppServicesDeps {
-  /** Saved-app row → worker spec, or null if the app is gone/has no worker. */
-  resolveApp: (slug: string) => Promise<AppWorkerSpec | null>;
   /** Open the app's UI window (notification click). */
   openApp: (slug: string) => void;
 }
@@ -101,53 +102,11 @@ export function dbExec(slug: string, args: Record<string, unknown>): { rows?: un
 }
 
 // ── cron (cron.schedule / cron.cancel / cron.list) ──────────
+//
+// DEFINITIONS ONLY. Nothing arms and nothing fires on this machine — the
+// cloud runtime owns app workers and schedules (apps never run locally).
 
 const MAX_SCHEDULES_PER_APP = 20;
-
-interface ScheduleRow {
-  app_slug: string;
-  id: string;
-  cron: string;
-  handler: string;
-  args_json: string | null;
-}
-
-const armedTasks = new Map<string, ScheduledTask>(); // `${slug}\n${id}` → task
-
-function taskKey(slug: string, id: string): string {
-  return `${slug}\n${id}`;
-}
-
-function disarm(slug: string, id: string): void {
-  const key = taskKey(slug, id);
-  const task = armedTasks.get(key);
-  if (task) {
-    task.stop();
-    armedTasks.delete(key);
-  }
-}
-
-function arm(row: ScheduleRow): void {
-  disarm(row.app_slug, row.id);
-  const task = cron.schedule(row.cron, () => {
-    void fireSchedule(row).catch((err) => {
-      console.error(`[glyphh-app] cron "${row.app_slug}/${row.id}" failed:`, err instanceof Error ? err.message : err);
-    });
-  });
-  armedTasks.set(taskKey(row.app_slug, row.id), task);
-}
-
-async function fireSchedule(row: ScheduleRow): Promise<void> {
-  const spec = await requireDeps().resolveApp(row.app_slug);
-  if (!spec) {
-    // App was uninstalled (or lost its worker) — retire the schedule.
-    cronCancel(row.app_slug, { id: row.id });
-    return;
-  }
-  let args: Record<string, unknown> = {};
-  try { args = row.args_json ? JSON.parse(row.args_json) : {}; } catch { /* keep {} */ }
-  await invokeAppWorkerHandler(spec, row.handler, args);
-}
 
 export function cronSchedule(slug: string, args: Record<string, unknown>): { scheduled: true; id: string } {
   const id = String(args.id || "").trim();
@@ -170,14 +129,13 @@ export function cronSchedule(slug: string, args: Record<string, unknown>): { sch
       args_json = excluded.args_json, updated_at = excluded.updated_at
   `).run(slug, id, expr, handler, argsJson);
 
-  arm({ app_slug: slug, id, cron: expr, handler, args_json: argsJson });
+  // Definition persisted; the cloud runtime is the only place it can fire.
   return { scheduled: true, id };
 }
 
 export function cronCancel(slug: string, args: Record<string, unknown>): { cancelled: boolean } {
   const id = String(args.id || "").trim();
   if (!id) throw new Error("id is required");
-  disarm(slug, id);
   const info = initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(slug, id);
   return { cancelled: info.changes > 0 };
 }
@@ -194,46 +152,8 @@ export function cronList(slug: string): Array<{ id: string; cron: string; handle
   }));
 }
 
-/** Re-arm every persisted schedule (startup). Bad rows are dropped, not fatal. */
-function armAllSchedules(): void {
-  const rows = initLocalDb()
-    .prepare("SELECT app_slug, id, cron, handler, args_json FROM app_schedules")
-    .all() as ScheduleRow[];
-  for (const row of rows) {
-    if (!cron.validate(row.cron)) {
-      initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ? AND id = ?").run(row.app_slug, row.id);
-      continue;
-    }
-    arm(row);
-  }
-}
-
-/** Drop an app's schedules + worker state on reinstall (its worker restarts
- *  and re-registers what it still wants). */
-export function resetAppSchedules(slug: string): void {
-  for (const key of [...armedTasks.keys()]) {
-    if (key.startsWith(`${slug}\n`)) {
-      armedTasks.get(key)?.stop();
-      armedTasks.delete(key);
-    }
-  }
-  initLocalDb().prepare("DELETE FROM app_schedules WHERE app_slug = ?").run(slug);
-}
-
-/** Stop every armed cron task (app shutdown) so node-cron timers don't keep the
- *  process alive. Persisted schedules are untouched — they re-arm next launch. */
-export function stopAllSchedules(): void {
-  for (const task of armedTasks.values()) {
-    try { task.stop(); } catch { /* ignore */ }
-  }
-  armedTasks.clear();
-}
-
-// Schedule definitions used to roam through /api/me/app-schedules so they
-// survived reinstalls. That endpoint is gone; until a governed schedule
-// surface exists in the SDK, definitions live in this machine's local
-// app_schedules table and fire from here (cronSchedule/cronCancel above own
-// the writes directly — there is no server queue to keep).
+// Schedule definitions live in this machine's local app_schedules table as
+// definitions only — no timers, no firing. The cloud runtime owns execution.
 
 // ── connectors (connector.status / connector.tools / connector.call) ──
 //
@@ -305,9 +225,8 @@ export function notifySend(slug: string, appName: string, args: Record<string, u
 
 // ── init ────────────────────────────────────────────────────
 
-/** Wire the host callbacks and re-arm persisted schedules. Idempotent. */
+/** Wire the host callbacks. Idempotent. Nothing arms here — the cloud
+ *  runtime owns app workers and schedules. */
 export function initAppServices(d: AppServicesDeps): void {
-  const first = !deps;
   deps = d;
-  if (first) armAllSchedules();
 }

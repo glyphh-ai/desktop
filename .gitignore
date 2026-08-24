@@ -16,3 +16,4 @@ native/mac-window-helper/build/
 .sdk-src/
 vendor/
 .DS_Store
+native/agent-dock-helper/agent-dock-helper

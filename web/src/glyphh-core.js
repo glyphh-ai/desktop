@@ -552,6 +552,8 @@ export function toLegacyPanelApps(apps) {
     appArchetype: a.appArchetype ?? (a.kind === 'glyphh' ? 'glyphh-app' : a.kind ?? null),
     launchConfig: a.launchConfig ?? a.config ?? null,
     access: a.access ?? 'members',
+    // org-idp binding: the WorkOS Organization the app authenticates against.
+    workosOrgId: a.workosOrgId ?? null,
     owned: a.owned ?? true,
     latestVersion: a.latestVersion ?? null,
     requiredConnections: a.requiredConnections ?? [],

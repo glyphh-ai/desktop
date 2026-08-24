@@ -296,6 +296,28 @@
     </div>
   </div>
 
+  <!-- Welcome / directory-grant gate (Electron only). After login, when no
+       folder has been shared with Glyphh apps yet, boot-gate-ui.ts raises
+       this instead of revealing the wall: pick a folder, optionally opt into
+       background running, Continue → land on the wall. -->
+  <div id="welcome-overlay" class="hidden">
+    <div id="welcome-card">
+      <div class="onboarding-title">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <h2 class="welcome-title">Welcome to Glyphh</h2>
+      <p class="welcome-message">Choose a folder to share with your Glyphh apps. Apps run in the cloud — this folder is the one place on this computer they can reach.</p>
+      <button id="welcome-pick" class="btn welcome-pick-btn" type="button">Choose a folder…</button>
+      <div id="welcome-picked-path" class="welcome-picked-path hidden"></div>
+      <label class="welcome-bg-row">
+        <input type="checkbox" id="welcome-run-bg" />
+        <span>Run in background — keep Glyphh in the menu bar when the window closes</span>
+      </label>
+      <button id="welcome-continue" class="btn btn-primary welcome-continue-btn" type="button" disabled>Continue</button>
+    </div>
+  </div>
+
   <div id="titlebar">
     <div id="window-controls">
       <button id="btn-close" class="wc wc-close"></button>

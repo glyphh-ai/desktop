@@ -145,6 +145,73 @@ function showTutorial(cb: BootGateCallbacks, onWebComplete?: () => void): void {
 // The CC-bootstrap / BYOK key modal is gone: Glyphh has no in-app agent and
 // stores no LLM keys. Apps bring their own keys via per-app Config Vars.
 
+// ── Welcome / directory-grant gate (Electron only) ──────────────────────────
+// The desktop's one job besides the wall: hold the DIRECTORY GRANT — the local
+// folder the cloud runtime may reach through this machine. After login, a
+// desktop user with no stored grant sees a full-page welcome (pick a folder,
+// optionally opt into background running) before the wall. Web never sees
+// this (__GLYPHH_WEB__), and a stored grant boots straight to the wall.
+
+let welcomeShowing = false;
+
+function isDesktopBuild(): boolean {
+  return !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+}
+
+/** Does this boot need the welcome gate? Desktop + signed in + no grant. */
+async function welcomeNeeded(): Promise<boolean> {
+  if (!isDesktopBuild()) return false;
+  try {
+    const dir = (await window.glyphh.getPreference("desktopGrantedDirectory", "")) as string | null;
+    return !dir;
+  } catch { return false; }
+}
+
+/** After the grant lands: first run shows the tutorial, otherwise the wall. */
+async function afterWelcome(cb: BootGateCallbacks): Promise<void> {
+  const seen = await window.glyphh.getPreference("hasSeenTutorial", false);
+  if (!seen) showTutorial(cb);
+  else cb.showPanels();
+}
+
+function showWelcome(cb: BootGateCallbacks): void {
+  const overlay = document.getElementById("welcome-overlay");
+  if (!overlay) { void afterWelcome(cb); return; }
+  welcomeShowing = true;
+  // BrowserViews are native — they paint over HTML. Keep the wall detached
+  // until Continue.
+  cb.hidePanels();
+  overlay.classList.remove("hidden");
+
+  const pickBtn = document.getElementById("welcome-pick") as HTMLButtonElement | null;
+  const pathEl = document.getElementById("welcome-picked-path");
+  const bgCheck = document.getElementById("welcome-run-bg") as HTMLInputElement | null;
+  const continueBtn = document.getElementById("welcome-continue") as HTMLButtonElement | null;
+  let picked: string | null = null;
+
+  pickBtn?.addEventListener("click", () => {
+    // The main process's OS folder picker (working-directory.ts) — the same
+    // dialog Settings → Desktop's Change button uses.
+    void window.glyphh.pickWorkingDir({ nullOnCancel: true }).then((dir) => {
+      if (!dir) return;
+      picked = dir;
+      if (pathEl) { pathEl.textContent = dir; pathEl.classList.remove("hidden"); }
+      if (continueBtn) continueBtn.disabled = false;
+    });
+  });
+
+  continueBtn?.addEventListener("click", () => {
+    if (!picked) return;
+    window.glyphh.setPreference("desktopGrantedDirectory", picked);
+    // Persisted as desktopRunInBackground (background-mode.ts) and applied
+    // immediately: tray, launch-at-login, and hide-instead-of-quit on close.
+    void window.glyphh.setBackgroundMode?.(!!bgCheck?.checked).catch(() => {});
+    overlay.classList.add("hidden");
+    welcomeShowing = false;
+    void afterWelcome(cb);
+  });
+}
+
 // ── Splash dismiss ──────────────────────────────────────────────────────────
 
 /** Paint the update progress bar onto the splash. */
@@ -171,7 +238,7 @@ function finishSplash(cb: BootGateCallbacks): void {
   // BUT not if tutorial / CC modal / lockout gate / login overlay is up — BrowserViews paint
   // over HTML overlays. (Panels survive a renderer reload in the main process, so after a
   // logout-and-reload from the lockout screen we must NOT re-attach them over the login.)
-  if (!tutorialShowing && !ccModalShowing && !accountLocked && !bootData?.needsOnboarding) cb.showPanels();
+  if (!tutorialShowing && !ccModalShowing && !accountLocked && !welcomeShowing && !bootData?.needsOnboarding) cb.showPanels();
   const splash = document.getElementById("splash");
   if (splash) {
     splash.classList.add("fade-out");
@@ -334,10 +401,14 @@ export function initBootGate(cb: BootGateCallbacks): void {
       return;
     }
 
-    // Show tutorial on first launch (skip if going through onboarding — handled by yo-onboarding-done)
+    // Directory grant first, then the tutorial on first launch (both skipped
+    // when onboarding gates — yo-onboarding-done runs the same sequence).
     if (!data.needsOnboarding) {
-      window.glyphh.getPreference("hasSeenTutorial", false).then((seen) => {
-        if (!seen) showTutorial(cb);
+      void welcomeNeeded().then((need) => {
+        if (need) { showWelcome(cb); return; }
+        window.glyphh.getPreference("hasSeenTutorial", false).then((seen) => {
+          if (!seen) showTutorial(cb);
+        });
       });
     }
 
@@ -393,6 +464,9 @@ export function initBootGate(cb: BootGateCallbacks): void {
   // otherwise misfire the tutorial every boot), is skipped entirely.
   window.addEventListener("yo-onboarding-done", async () => {
     if ((window as any).__GLYPHH_WEB__) return;
+    // Directory grant before anything else — a fresh sign-in on a machine with
+    // no stored grant lands on the welcome, then tutorial/wall as usual.
+    if (await welcomeNeeded()) { showWelcome(cb); return; }
     const seen = await window.glyphh.getPreference("hasSeenTutorial", false);
     if (!seen) {
       showTutorial(cb);
