@@ -12,6 +12,7 @@ import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, load
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
+import { loadMarketplaceBlocks } from "./settings-workspaces.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -530,6 +531,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
+  else if (sub === "org-marketplace") loadMarketplaceBlocks();
   else if (sub === "models") loadModelsAdmin();
   // The Platform group — the super-admin console (settings-admin.ts). Each
   // loader re-checks the role and paints an honest gate; the server enforces.

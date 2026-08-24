@@ -1530,6 +1530,11 @@ body.account-locked #dl-btn-wrap {
    the same stale-deep-link fallback to General (settingsSubAlias). */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="drips"],
 .glyphh-web .settings-panel[data-sub="drips"] { display: none !important; }
+/* Account leaves the WEB rail (his rule, 2026-08-25) — it opens from the
+   user popup instead; the PANEL stays (only the nav item hides), centered
+   like the Dashboard. */
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="account"] { display: none !important; }
+body.platform-shell .settings-panel[data-sub="account"] { max-width: 880px; margin: 0 auto; }
 /* Voice + Appearance are desktop-app surfaces too (his rule, 2026-08-25):
    the platform themes itself from the user popup's three modes instead. */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="voice"],

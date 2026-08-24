@@ -684,6 +684,11 @@ async function loadWorkspaces(): Promise<void> {
   const rows = await via<Workspace[]>((c) => c.workspaces?.list?.(), "workspacesList");
   workspaces = rows || [];
   paintList();
+}
+
+/** Security › Marketplace — the org's blocked-apps governance page. */
+export function loadMarketplaceBlocks(): void {
+  initWorkspaces();   // the block-input wiring rides the shared init
   void paintBlocks();
 }
 
