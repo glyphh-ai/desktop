@@ -19297,9 +19297,40 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 
 /* ── APP Usage view (plan-limits look; the platform keeps its dashboard) ── */
 body.platform-shell #usage-app-view { display: none; }
+/* The DESKTOP modal floats expand/close top-right — page titles drop clear
+   of them (the platform shell has its own 48px padding). */
+.yo-settings-modal:not(.platform-page) .settings-modal-body .settings-panels { padding-top: 52px; }
+body.platform-shell .yo-settings-modal .settings-modal-body .settings-panels { padding-top: 48px; }
+
+/* ── Settings rail SEARCH (app only) ── */
+body.platform-shell #settings-nav-search-wrap { display: none; }
+#settings-nav-search-wrap { position: relative; padding: 4px 12px 10px 0; }
+#settings-nav-search { width: 100%; font-size: 12.5px; }
+#settings-nav-search-pop {
+  position: absolute;
+  left: 0; right: 12px; top: calc(100% - 6px);
+  z-index: 40;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
+  max-height: 300px;
+  overflow-y: auto;
+}
+#settings-nav-search-pop.hidden { display: none; }
+#settings-nav-search-pop button {
+  display: block; width: 100%;
+  padding: 7px 10px;
+  background: none; border: none; border-radius: 7px;
+  color: var(--text-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+#settings-nav-search-pop button:hover { background: var(--hover); color: var(--text); }
+#settings-nav-search-pop .pop-sub { display: block; font-size: 10.5px; color: var(--text-3); margin-top: 1px; }
+#settings-nav-search-pop .pop-empty { padding: 8px 10px; font-size: 12px; color: var(--text-3); }
 .ua-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 8px 0 18px; }
 .ua-head-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
-.ua-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.ua-title { font-size: 16px; font-weight: 700; color: var(--text); }
 .ua-plan { font-size: 12.5px; font-weight: 400; color: var(--text-3); }
 .ua-plan::before { content: "("; }
 .ua-plan::after { content: ")"; }

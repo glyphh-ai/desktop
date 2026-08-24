@@ -373,6 +373,82 @@ export function openSettingsModal(sub?: string): void {
     }
   }
 
+  // RAIL SEARCH (app only; his spec, 2026-08-24): type → a popup under the
+  // box lists matching sections and individual settings; clicking opens the
+  // section. Index = visible nav labels + each panel's row/label titles.
+  if (!document.body.classList.contains("platform-shell")) {
+    const input = overlay.querySelector<HTMLInputElement>("#settings-nav-search");
+    const pop = overlay.querySelector<HTMLElement>("#settings-nav-search-pop");
+    if (input && pop && !input.dataset.wired) {
+      input.dataset.wired = "1";
+      const index = (): Array<{ label: string; sub: string; section: string }> => {
+        const out: Array<{ label: string; sub: string; section: string }> = [];
+        overlay.querySelectorAll<HTMLElement>(".settings-nav-item").forEach((b) => {
+          if (getComputedStyle(b).display === "none") return;
+          const sub = b.dataset.sub || "";
+          const label = b.textContent?.trim() || "";
+          if (sub && label) out.push({ label, sub, section: label });
+        });
+        overlay.querySelectorAll<HTMLElement>(".settings-panel").forEach((panel) => {
+          const sub = panel.dataset.sub || "";
+          const navBtn = overlay.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`);
+          if (!sub || !navBtn || getComputedStyle(navBtn).display === "none") return;
+          const section = navBtn.textContent?.trim() || sub;
+          panel.querySelectorAll<HTMLElement>(".set-pref-title, .settings-label, .settings-subheading, .acct-row-head").forEach((t) => {
+            const label = (t.childNodes[0]?.textContent || t.textContent || "").trim();
+            if (label && label.length > 1) out.push({ label, sub, section });
+          });
+        });
+        return out;
+      };
+      const render = (): void => {
+        const q = input.value.trim().toLowerCase();
+        pop.textContent = "";
+        if (!q) { pop.classList.add("hidden"); return; }
+        const hits = index().filter((e) => e.label.toLowerCase().includes(q));
+        const seen = new Set<string>();
+        const top = hits.filter((e) => {
+          const k = `${e.sub}:${e.label.toLowerCase()}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        }).slice(0, 10);
+        if (!top.length) {
+          const empty = document.createElement("div");
+          empty.className = "pop-empty";
+          empty.textContent = "No settings match.";
+          pop.appendChild(empty);
+        }
+        for (const e of top) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = e.label;
+          if (e.section && e.section !== e.label) {
+            const sub = document.createElement("span");
+            sub.className = "pop-sub";
+            sub.textContent = e.section;
+            b.appendChild(sub);
+          }
+          b.addEventListener("click", () => {
+            pop.classList.add("hidden");
+            input.value = "";
+            selectSettingsSub(e.sub);
+          });
+          pop.appendChild(b);
+        }
+        pop.classList.remove("hidden");
+      };
+      input.addEventListener("input", render);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") { pop.classList.add("hidden"); input.value = ""; }
+        if (e.key === "Enter") (pop.querySelector("button") as HTMLElement | null)?.click();
+      });
+      document.addEventListener("click", (e) => {
+        if (!(e.target as HTMLElement).closest("#settings-nav-search-wrap")) pop.classList.add("hidden");
+      });
+    }
+  }
+
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
