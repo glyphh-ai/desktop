@@ -547,6 +547,9 @@ async function loadUsageAppView(): Promise<void> {
   if (!uaWired) {
     uaWired = true;
     el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
+    const toBilling = () => (document.querySelector('.settings-nav-item[data-sub="billing"]') as HTMLElement | null)?.click();
+    el("ua-adjust-limit")?.addEventListener("click", toBilling);
+    el("ua-buy")?.addEventListener("click", toBilling);
     const toggle = el("ua-autotopup") as HTMLInputElement | null;
     toggle?.addEventListener("change", () => {
       void (async () => {
@@ -558,6 +561,8 @@ async function loadUsageAppView(): Promise<void> {
           const cfg = await api.billingAutotopupGet();
           await api.billingAutotopupSet({ ...cfg, enabled: toggle.checked });
         } catch { toggle.checked = !toggle.checked; }
+        const st = el("ua-reload-state");
+        if (st) st.textContent = toggle.checked ? "On" : "Off";
       })();
     });
   }
@@ -590,11 +595,16 @@ async function loadUsageAppView(): Promise<void> {
     reset.setMonth(reset.getMonth() + 1, 1);
     const resetEl = el("ua-month-reset");
     if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-    const purchased = Math.floor((credits?.purchases ?? 0) / 1_000_000);
-    const pEl = el("ua-purchased");
-    if (pEl) pEl.textContent = `${purchased.toLocaleString()} credits`;
+    const spentEl = el("ua-spent");
+    if (spentEl) spentEl.textContent = `${Math.floor(used / 1_000_000).toLocaleString()} credits`;
+    const spentReset = el("ua-spent-reset");
+    if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
+    const balEl = el("ua-balance");
+    if (balEl) balEl.textContent = Math.floor((credits?.balance ?? 0) / 1_000_000).toLocaleString();
     const t = el("ua-autotopup") as HTMLInputElement | null;
     if (t && topup) t.checked = !!topup.enabled;
+    const reload = el("ua-reload-state");
+    if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
     const upd = el("ua-updated");
     if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
   } catch { /* offline — the view keeps its dashes */ }

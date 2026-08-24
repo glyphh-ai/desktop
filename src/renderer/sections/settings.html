@@ -158,8 +158,11 @@
                      auto-top-up toggle. The platform keeps the dashboard below. -->
                 <div id="usage-app-view">
                   <div class="ua-head">
-                    <span class="ua-title">Plan usage limits</span>
-                    <span class="ua-plan" id="ua-plan">—</span>
+                    <span class="ua-title">Plan usage limits <span class="ua-plan" id="ua-plan">—</span></span>
+                    <span class="ua-head-aside">
+                      <button id="ua-refresh" class="action-btn" type="button">Refresh</button>
+                      <span class="ua-updated" id="ua-updated"></span>
+                    </span>
                   </div>
                   <div class="ua-row">
                     <div class="ua-label">
@@ -169,27 +172,36 @@
                     <div class="ua-bar"><div class="ua-fill" id="ua-month-fill"></div></div>
                     <div class="ua-pct" id="ua-month-pct">—</div>
                   </div>
-                  <div class="ua-row">
-                    <div class="ua-label">
-                      <div class="ua-name">Purchased credits</div>
-                      <div class="ua-sub">Never expire</div>
-                    </div>
-                    <div class="ua-spacer"></div>
-                    <div class="ua-pct" id="ua-purchased">—</div>
-                  </div>
-                  <div class="ua-refresh-row">
-                    <button id="ua-refresh" class="action-btn" type="button">Refresh</button>
-                    <span class="ua-updated" id="ua-updated"></span>
-                  </div>
                   <div class="ua-section">Usage credits</div>
-                  <label class="settings-toggle set-pref-row">
+                  <label class="settings-toggle set-pref-row ua-credits-toggle">
                     <div class="set-pref-text">
-                      <div class="set-pref-title">Auto top-up</div>
-                      <div class="set-pref-desc">Keep going if you hit your plan allowance — automatically buys more credits with the card on file.</div>
+                      <div class="set-pref-title">Turn on auto top-up to keep using Glyphh if you hit your plan allowance.</div>
                     </div>
                     <input type="checkbox" id="ua-autotopup" />
                     <span class="toggle-switch"></span>
                   </label>
+                  <div class="ua-row ua-credits-row">
+                    <div class="ua-label bil-label-wide">
+                      <div class="ua-name"><span id="ua-spent">—</span> spent</div>
+                      <div class="ua-sub" id="ua-spent-reset">Resets —</div>
+                    </div>
+                  </div>
+                  <div class="ua-row ua-credits-row">
+                    <div class="ua-label bil-label-wide">
+                      <div class="ua-name" id="ua-cap">Unlimited</div>
+                      <div class="ua-sub">Monthly spend limit</div>
+                    </div>
+                    <div class="ua-spacer"></div>
+                    <button id="ua-adjust-limit" class="action-btn" type="button">Adjust limit</button>
+                  </div>
+                  <div class="ua-row ua-credits-row">
+                    <div class="ua-label bil-label-wide">
+                      <div class="ua-name"><span id="ua-balance">—</span> credits</div>
+                      <div class="ua-sub">Current balance · Auto-reload <span id="ua-reload-state">Off</span></div>
+                    </div>
+                    <div class="ua-spacer"></div>
+                    <button id="ua-buy" class="action-btn primary" type="button">Buy usage credits</button>
+                  </div>
                 </div>
 
                 <div class="platform-only">
@@ -914,88 +926,78 @@
                 <div id="billing-error" class="settings-error hidden"></div>
                 <div id="billing-toast" class="settings-success hidden"></div>
 
-                <h3 class="acct-row-head">Plan</h3>
-                <div class="set-bar">
-                  <span class="set-bar-main">
-                    <span class="set-fold-title" id="billing-plan-name">—</span>
-                    <span class="set-bar-sub" id="billing-plan-sub">—</span>
-                  </span>
-                  <span class="set-fold-aside">
-                    <button id="billing-portal-btn" class="action-btn" type="button">Payment method</button>
-                    <span id="billing-portal-status" class="set-save-state"></span>
-                  </span>
+                <!-- PLAN header (his spec, 2026-08-24: the Claude billing look
+                     on what Stripe gives us): mark + plan name + allowance line
+                     + seat line, Adjust plan (the plan-grid fold) on the right. -->
+                <div class="bil-plan-head">
+                  <img class="bil-plan-mark" src="brand/glyphh-mark.png" alt="" draggable="false" />
+                  <div class="bil-plan-text">
+                    <div class="bil-plan-name"><span id="billing-plan-name">—</span></div>
+                    <div class="bil-plan-sub" id="billing-plan-sub">—</div>
+                    <div class="bil-plan-seats">
+                      <span class="billing-seats-bar hidden"><span class="billing-seats-fill" id="billing-seats-fill"></span></span>
+                      <span id="billing-seats-count">—</span>
+                    </div>
+                  </div>
+                  <button type="button" id="billing-plans-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-plans-body">Adjust plan</button>
                 </div>
-                <div class="billing-seats">
-                  <div class="billing-seats-bar"><div class="billing-seats-fill" id="billing-seats-fill"></div></div>
-                  <p class="section-desc" id="billing-seats-count">—</p>
-                </div>
-
-                <!-- The plan picker — the old platform pricing page's grid,
-                     folded shut so the page keeps its rhythm (the catalog is
-                     consulted occasionally; the balance is why you're here). -->
-                <button type="button" id="billing-plans-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-plans-body">
-                  <span class="set-fold-head">
-                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                    <span class="set-fold-title">Compare &amp; change plans</span>
-                  </span>
-                </button>
                 <div id="billing-plans-body" class="set-fold-body hidden">
                   <div id="billing-plans-note" class="crud-empty hidden">Only an organization admin can change the plan.</div>
                   <div id="billing-plans-error" class="settings-error hidden"></div>
                   <div class="billing-plan-grid" id="billing-plan-grid"></div>
                 </div>
 
-                <h3 class="acct-row-head">Credits
+                <div class="ua-section">Payment</div>
+                <div class="ua-row">
+                  <div class="ua-label bil-label-wide">
+                    <div class="ua-name">Card on file</div>
+                    <div class="ua-sub">Managed securely by Stripe.</div>
+                  </div>
+                  <div class="ua-spacer"></div>
+                  <span id="billing-portal-status" class="set-save-state"></span>
+                  <button id="billing-portal-btn" class="action-btn" type="button">Update</button>
+                </div>
+
+                <div class="ua-section">Usage credits
                   <button id="billing-credits-refresh" class="acct-chip-refresh" title="Refresh balance" aria-label="Refresh balance">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
                   </button>
-                </h3>
-                <div class="dash-grid">
-                  <div class="dash-card">
-                    <div class="dash-card-label">Available</div>
-                    <div class="dash-card-value" id="billing-balance">—</div>
-                    <div class="dash-card-sub">credits</div>
+                </div>
+                <p class="section-desc">Buy credits so your team can keep going past the monthly allowance.</p>
+                <div class="ua-row">
+                  <div class="ua-label bil-label-wide">
+                    <div class="ua-name"><span id="billing-balance">—</span> credits</div>
+                    <div class="ua-sub">Current balance · plan allowance <span id="billing-grants">—</span>/mo · purchased <span id="billing-purchases">—</span></div>
                   </div>
-                  <div class="dash-card">
-                    <div class="dash-card-label">Plan allowance</div>
-                    <div class="dash-card-value" id="billing-grants">—</div>
-                    <div class="dash-card-sub">credits / month</div>
-                  </div>
-                  <div class="dash-card">
-                    <div class="dash-card-label">Purchased</div>
-                    <div class="dash-card-value" id="billing-purchases">—</div>
-                    <div class="dash-card-sub">never expires</div>
+                  <div class="ua-spacer"></div>
+                  <button type="button" id="billing-buy-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-buy-body">Buy more</button>
+                </div>
+                <div id="billing-buy-body" class="set-fold-body hidden">
+                  <div class="billing-topup-grid" id="billing-topup-grid"></div>
+                  <div class="settings-inline" style="margin-top:12px;">
+                    <input id="billing-topup-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
+                    <span class="settings-hint" id="billing-topup-custom-hint"></span>
+                    <button id="billing-topup-buy" class="action-btn primary">Buy credits</button>
                   </div>
                 </div>
-                <h3 class="acct-row-head">Buy credits</h3>
-                <div class="billing-topup-grid" id="billing-topup-grid"></div>
-                <div class="settings-inline" style="margin-top:12px;">
-                  <input id="billing-topup-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
-                  <span class="settings-hint" id="billing-topup-custom-hint"></span>
-                  <button id="billing-topup-buy" class="action-btn primary">Buy credits</button>
+                <div class="ua-row">
+                  <div class="ua-label bil-label-wide">
+                    <div class="ua-name">Auto-reload <span id="billing-at-status" class="set-save-state"></span></div>
+                    <div class="ua-sub" id="billing-at-summary">Off</div>
+                  </div>
+                  <div class="ua-spacer"></div>
+                  <button type="button" id="billing-at-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-at-body">Manage</button>
                 </div>
-
-                <!-- Auto top-up, Invoices and Organization are folded: a
-                     standing rule you set once, a table you consult
-                     occasionally, and the org record shouldn't be open on top
-                     of the things you came here to do. -->
-                <h3 class="acct-row-head">Auto top-up <span id="billing-at-status" class="set-save-state"></span></h3>
-                <button type="button" id="billing-at-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-at-body">
-                  <span class="set-fold-head">
-                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                    <span class="set-fold-title" id="billing-at-summary">Off</span>
-                  </span>
-                </button>
                 <div id="billing-at-body" class="set-fold-body hidden">
                   <p class="section-desc">Buys more credits when the balance runs low, capped per 30 days. Charges the card on file.</p>
                   <div class="acct-section">
-                    <label class="settings-toggle">
+                    <label class="settings-toggle set-pref-row">
+                      <div class="set-pref-text">
+                        <div class="set-pref-title">Auto top-up</div>
+                        <div class="set-pref-desc">Buy credits automatically when the balance falls below your threshold.</div>
+                      </div>
                       <input type="checkbox" id="billing-at-enabled" />
                       <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Auto top-up</span>
-                        <span class="toggle-desc">Buy credits automatically when the balance falls below your threshold.</span>
-                      </div>
                     </label>
                     <div class="acct-row">
                       <div class="acct-field">
@@ -1016,14 +1018,9 @@
                   </div>
                 </div>
 
-                <h3 class="acct-row-head">Invoices</h3>
-                <button type="button" id="billing-inv-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="billing-invoices-wrap">
-                  <span class="set-fold-head">
-                    <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                    <span class="set-fold-title" id="billing-inv-summary">—</span>
-                  </span>
-                </button>
-                <div id="billing-invoices-wrap" class="set-fold-body hidden">
+                <div class="ua-section">Invoices <span class="ua-sub" id="billing-inv-summary" style="font-weight:400;"></span></div>
+                <button type="button" id="billing-inv-toggle" class="hidden" aria-expanded="true" aria-controls="billing-invoices-wrap"></button>
+                <div id="billing-invoices-wrap">
                   <div class="crud-empty" id="billing-invoices-empty">Loading…</div>
                   <table class="lib-table billing-invoices hidden" id="billing-invoices-table">
                     <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Status</th><th></th></tr></thead>

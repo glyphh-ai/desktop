@@ -863,6 +863,7 @@ export function initBilling(): void {
   // tab) share the same disclosure wiring as Auto top-up / Invoices.
   for (const [btn, body] of [
     ["billing-plans-toggle", "billing-plans-body"],
+    ["billing-buy-toggle", "billing-buy-body"],
     ["billing-at-toggle", "billing-at-body"],
     ["billing-inv-toggle", "billing-invoices-wrap"],
     ["org-panel-fold-toggle", "org-panel-fold-body"],
