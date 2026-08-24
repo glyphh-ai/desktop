@@ -25,7 +25,7 @@
  */
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
-import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 
 const MICRO = 1_000_000;
 /** Calendar-aligned periods — the interval defines the reset, no arbitrary dates. */
@@ -397,6 +397,10 @@ function setTab(tab: string): void {
 
 // ── Models tab ───────────────────────────────────────────────────────────
 
+const WS_MODELS_PAGE_SIZE = 10;
+let wsModelsPage = 0;
+let wsModelsProvider = "";   // "" = every provider
+
 function paintModels(): void {
   const grid = $("ws-models-grid");
   const toggle = $<HTMLInputElement>("ws-limit-models");
@@ -411,7 +415,17 @@ function paintModels(): void {
       : "Off — it can use every model the org supports.";
   }
   const q = ($<HTMLInputElement>("ws-models-search")?.value || "").trim().toLowerCase();
-  const rows = catalog.filter((m) => !q || m.displayName.toLowerCase().includes(q) || (m.provider || "").toLowerCase().includes(q));
+  const rows = catalog
+    .filter((m) => !wsModelsProvider || (m.provider || (m.kind === "proxied" ? "" : "on-device")) === wsModelsProvider)
+    .filter((m) => !q || m.displayName.toLowerCase().includes(q) || (m.provider || "").toLowerCase().includes(q));
+  const filterLabel = $("ws-models-filter-label");
+  if (filterLabel) {
+    filterLabel.textContent = wsModelsProvider;
+    filterLabel.classList.toggle("hidden", !wsModelsProvider);
+  }
+  $("ws-models-filter")?.classList.toggle("filtering", !!wsModelsProvider);
+  const pagerHost = $("ws-models-pager");
+  if (pagerHost) pagerHost.textContent = "";
   grid.innerHTML = "";
   if (!catalog.length) {
     grid.innerHTML = `<div class="crud-empty">No org models yet — add them under Settings › Models.</div>`;
@@ -425,7 +439,9 @@ function paintModels(): void {
   table.className = "lib-table";
   table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th>Cost</th><th class="ws-model-toggle-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
-  for (const m of rows) {
+  const pg = paginate(rows, wsModelsPage, WS_MODELS_PAGE_SIZE);
+  wsModelsPage = pg.state.page;
+  for (const m of pg.items) {
     const on = !limited || allowed.includes(m.key);
     const tr = document.createElement("tr");
     tr.innerHTML =
@@ -450,6 +466,24 @@ function paintModels(): void {
   }
   table.appendChild(tbody);
   grid.appendChild(table);
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { wsModelsPage = p; paintModels(); }));
+  }
+}
+
+/** The funnel next to the search — pick ONE provider (or all). */
+function openModelsFilter(anchor: HTMLElement): void {
+  const providers = [...new Set(catalog.map((m) => m.provider || (m.kind === "proxied" ? "" : "on-device")).filter(Boolean))].sort();
+  const dot = (on: boolean): string => on
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none"></svg>`;
+  openRowMenu(anchor, [
+    { icon: dot(!wsModelsProvider), label: "All providers", onClick: () => { wsModelsProvider = ""; wsModelsPage = 0; paintModels(); } },
+    ...providers.map((pr) => ({
+      icon: dot(wsModelsProvider === pr), label: pr,
+      onClick: () => { wsModelsProvider = pr; wsModelsPage = 0; paintModels(); },
+    })),
+  ]);
 }
 
 // ── Connections tab ──────────────────────────────────────────────────────
@@ -786,7 +820,11 @@ export function initWorkspaces(): void {
   }
   $("ws-cap-period")?.addEventListener("change", () => scheduleGeneral(0));
 
-  $("ws-models-search")?.addEventListener("input", paintModels);
+  $("ws-models-search")?.addEventListener("input", () => { wsModelsPage = 0; paintModels(); });
+  $("ws-models-filter")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openModelsFilter(e.currentTarget as HTMLElement);
+  });
   $("ws-limit-models")?.addEventListener("change", (e) => {
     const on = (e.currentTarget as HTMLInputElement).checked;
     void commitModels(on ? catalog.map((m) => m.key) : null,
