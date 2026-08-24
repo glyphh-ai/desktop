@@ -463,7 +463,7 @@ export function openSettingsModal(sub?: string): void {
 function gateAdminSubs(): void {
   void window.glyphh.getAccountInfo?.().then((info) => {
     const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
-    for (const id of ["general-runtime-group", "general-guardrails-group", "billing-org-group"]) {
+    for (const id of ["general-runtime-group", "general-guardrails-group", "nav-org-general"]) {
       document.getElementById(id)?.classList.toggle("hidden", !admin);
     }
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
@@ -488,10 +488,10 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   // the app-level customization panel (themes, browser). General/Appearance/
   // Drips/Desktop/MCP are the app-config subs; Appearance is the natural anchor.
   app: "appearance",
-  // Organization / Runtime / Guardrails retired as tabs — Organization lives
-  // in Billing (folded under the Plan bar); Runtime + Guardrails live on
-  // General (the Sessions group and the folded Guardrails group).
-  organization: "billing",
+  // Organization / Runtime / Guardrails retired as tabs — Organization is
+  // now Organization › General; Runtime + Guardrails live on General (the
+  // Sessions group and the folded Guardrails group).
+  organization: "org-general",
   runtime: "general",
   guardrails: "general",
 };
@@ -521,9 +521,9 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "drips") loadDrips();
-  // Billing also hosts the folded Organization group (the retired tab) — its
-  // loader fires with the panel, like the invoice fold's data does.
-  else if (sub === "billing") { void loadBilling(); void loadOrgPanel(); }
+  else if (sub === "billing") void loadBilling();
+  // Organization › General — the org record page (admin-gated nav).
+  else if (sub === "org-general") void loadOrgPanel();
   // Organization is ALSO folded into Account (org admins only), so Account
   // still loads the org section; the standalone Organization panel (A4) is its
   // own sub below.

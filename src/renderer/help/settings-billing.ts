@@ -407,7 +407,10 @@ function paintInvoices(): void {
       btn.textContent = "View";
       const url = inv.hostedUrl;
       btn.addEventListener("click", () => {
-        if (!openHostedPage("Invoice", url, openUrlInWorkbench)) toast("That invoice link is no longer valid.");
+        const direct = (_n: string, u: string): void => {
+          (window.glyphh as unknown as { openExternal?: (u: string) => void }).openExternal?.(u);
+        };
+        if (!openHostedPage("Invoice", url, direct)) toast("That invoice link is no longer valid.");
       });
       tr.querySelector(".billing-invoice-link")!.appendChild(btn);
     }
@@ -994,7 +997,6 @@ export function initBilling(): void {
   // tab) share the same disclosure wiring as Auto top-up / Invoices.
   for (const [btn, body] of [
     ["billing-inv-toggle", "billing-invoices-wrap"],
-    ["org-panel-fold-toggle", "org-panel-fold-body"],
   ]) {
     $(btn)?.addEventListener("click", () => {
       const open = $(btn)?.getAttribute("aria-expanded") !== "true";
