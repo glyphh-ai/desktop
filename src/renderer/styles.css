@@ -19659,7 +19659,9 @@ body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
 /* Only the Dashboard keeps the centered column (his order, 2026-08-25) —
    every other platform page runs full width. */
 body.platform-shell .settings-panel[data-sub="dash"],
-body.platform-shell .settings-panel[data-sub="usage"] { max-width: 880px; margin: 0 auto; }
+body.platform-shell .settings-panel[data-sub="org-general"],
+body.platform-shell .settings-panel[data-sub="usage"],
+body.platform-shell .settings-panel[data-sub="billing"] { max-width: 880px; margin: 0 auto; }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
 body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav {
