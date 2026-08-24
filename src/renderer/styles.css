@@ -7287,17 +7287,6 @@ select.settings-input {
    Models page's card grid. */
 
 /* Back out of the editor / the tool drill-down. */
-.ws-back {
-  display: inline-block;
-  margin: 4px 0 8px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--text-2);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-.ws-back:hover { color: var(--text); }
 
 .ws-tab { display: none; }
 .ws-tab.active { display: block; }
@@ -7334,57 +7323,13 @@ select.settings-input {
 
 /* The per-connection tool list. Long, so it scrolls on its own rather than
    pushing the tab's chrome off screen. */
-.ws-tools {
-  max-height: 420px;
-  overflow-y: auto;
-  margin-top: 8px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-}
 
-.ws-tool-row {
-  display: grid;
-  grid-template-columns: auto minmax(120px, 200px) 1fr;
-  align-items: baseline;
-  gap: 10px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--border);
-  cursor: pointer;
-}
-.ws-tool-row:last-child { border-bottom: none; }
-.ws-tool-row:hover { background: var(--hover); }
 
-.ws-tool-all {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--surface-2);
-  font-weight: 600;
-}
 
-.ws-tool-name { font-size: 12.5px; color: var(--text); font-family: var(--font-mono); }
-.ws-tool-desc {
-  font-size: 11.5px;
-  color: var(--text-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-#ws-conn-picker {
-  margin: 0 0 12px;
-  padding: 12px;
-  border: 1px solid var(--border-2);
-  border-radius: 10px;
-  background: var(--surface-2);
-}
-#ws-conn-picker .mdl-grid { margin-top: 10px; }
 
 @media (max-width: 720px) {
-  .ws-tool-row { grid-template-columns: auto 1fr; }
-  .ws-tool-desc { grid-column: 2; }
-}
+    }
 
 /* ── Members ──────────────────────────────────────────────── */
 /* A row, not a table cell: name is an input that saves itself, role is a live
@@ -14357,12 +14302,6 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 /* FAILED — the chip reads as a problem, not as a live connection. */
 .cl-runtime-chip.cl-runtime-down { color: var(--danger, #ef4444); opacity: 0.9; }
 .cl-runtime-chip.cl-runtime-down .cl-runtime-dot { background: var(--danger, #ef4444); }
-.ws-back-head { gap: 6px; justify-content: flex-start; }
-.ws-back {
-  border: none; background: none; color: var(--text-2); cursor: pointer;
-  font-size: 17px; line-height: 1; padding: 0 4px; border-radius: 5px;
-}
-.ws-back:hover { color: var(--text); background: var(--hover); }
 .code-repo-drop-list { max-height: 260px; overflow-y: auto; }
 .ws-fs-list { max-height: 220px; }
 .ws-path {
@@ -15071,6 +15010,31 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ws-filter-btn svg { width: 14px; height: 14px; }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
+/* Tools page title row: app name left, the master toggle at the far right. */
+.ws-tools-head { display: flex; align-items: center; gap: 12px; }
+.ws-tools-head .settings-subheading { flex: 1; margin: 0; }
+/* Tool rows: two-line description clamp; clicking the text expands. */
+.ws-tool-line .set-pref-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+.ws-tool-line.expanded .set-pref-desc { -webkit-line-clamp: unset; }
+/* The allow-an-app modal list: icon + name rows, standard hover. */
+.ws-allow-modal { width: min(440px, 92vw); }
+.ws-allow-modal .settings-input { width: 100%; margin: 10px 0 12px; }
+.ws-allow-list { max-height: 320px; overflow-y: auto; }
+.ws-allow-row {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 10px;
+  background: none; border: none; border-radius: 8px;
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.ws-allow-row:hover { background: var(--hover); }
+.ws-allow-row:disabled { opacity: 0.5; cursor: default; }
+.ws-allow-name { font-size: 13px; }
 /* Role connections tab: vertical rhythm — the sub-tabs, blurb, toggle
    pills, toolbar and table each get room to breathe. */
 .ws-tab[data-wstab="connections"] #ws-conn-tabs { margin-bottom: 14px; }

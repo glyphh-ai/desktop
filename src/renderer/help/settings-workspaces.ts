@@ -27,6 +27,7 @@
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
+import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 
 const MICRO = 1_000_000;
 /** Calendar-aligned periods — the interval defines the reset, no arbitrary dates. */
@@ -543,12 +544,21 @@ function paintConnections(): void {
 
   const toolsView = $("ws-tools-view");
   const listWrap = $("ws-conn-list-wrap");
+  const chrome = $("ws-conn-chrome");
+  const editorHead = document.querySelector<HTMLElement>("#ws-edit-view > .crud-inline-header");
+  const tabBar = $("ws-tabs");
   if (selectedSlug) {
+    editorHead?.classList.add("hidden");
+    tabBar?.classList.add("hidden");
+    chrome?.classList.add("hidden");
     listWrap?.classList.add("hidden");
     toolsView?.classList.remove("hidden");
     paintTools();
     return;
   }
+  editorHead?.classList.remove("hidden");
+  tabBar?.classList.remove("hidden");
+  chrome?.classList.remove("hidden");
   toolsView?.classList.add("hidden");
   // The table shows in BOTH states, like the Models tab — toggles just sit
   // disabled until the restriction is on.
@@ -557,7 +567,6 @@ function paintConnections(): void {
   // "Allow another" only matters when a PERSONAL restriction is on — its
   // catalog is unbounded; the shared universe IS the org's connector set.
   $("ws-conn-add")?.classList.toggle("hidden", !(limited && personal));
-  if (!(limited && personal)) $("ws-conn-picker")?.classList.add("hidden");
 
   const q = ($<HTMLInputElement>("ws-conn-search")?.value || "").trim().toLowerCase();
   const tools = toolsOf(editing, connMode);
@@ -662,9 +671,7 @@ function paintTools(): void {
   const slug = selectedSlug;
   const meta = connMeta.get(slug) || { name: slug, icon: null };
   const nameEl = $("ws-tools-name");
-  const slugEl = $("ws-tools-slug");
   if (nameEl) nameEl.textContent = meta.name;
-  if (slugEl) slugEl.textContent = slug;
 
   const tools = toolUniverse(slug);
   const map = toolsOf(editing, connMode);
@@ -677,36 +684,51 @@ function paintTools(): void {
     return;
   }
 
+  // The STANDARD row grammar with the standard switch — title + description
+  // left (clamped to two lines; clicking the text expands), toggle at the
+  // right edge, one divider per row.
   const rowFor = (label: string, checked: boolean, desc: string | undefined, onToggle: () => void): HTMLElement => {
-    const row = document.createElement("label");
-    row.className = "ws-tool-row";
+    const row = document.createElement("div");
+    row.className = "set-pref-row ws-tool-line";
+    const text = document.createElement("div");
+    text.className = "set-pref-text";
+    const title = document.createElement("div");
+    title.className = "set-pref-title";
+    title.textContent = label;
+    text.appendChild(title);
+    if (desc) {
+      const d = document.createElement("div");
+      d.className = "set-pref-desc";
+      d.textContent = desc;
+      text.appendChild(d);
+      text.addEventListener("click", () => row.classList.toggle("expanded"));
+    }
+    const sw = document.createElement("label");
+    sw.className = "settings-toggle ws-model-allow";
     const box = document.createElement("input");
     box.type = "checkbox";
     box.checked = checked;
     box.addEventListener("change", onToggle);
-    const name = document.createElement("span");
-    name.className = "ws-tool-name";
-    name.textContent = label;
-    row.append(box, name);
-    if (desc) {
-      const d = document.createElement("span");
-      d.className = "ws-tool-desc";
-      d.textContent = desc;
-      row.appendChild(d);
-    }
+    const knob = document.createElement("span");
+    knob.className = "toggle-switch";
+    sw.append(box, knob);
+    row.append(text, sw);
     return row;
   };
 
   const checked = cur === null ? tools.length : tools.filter((t) => cur.includes(t.name)).length;
-  const all = wrap.appendChild(rowFor(`Select all (${checked}/${tools.length})`, checked === tools.length, undefined, () => {
-    // "Every tool" is stored as an ABSENT slug, not an empty list — an empty
-    // list means "no tools at all", which is the opposite.
-    const next = { ...map };
-    if (checked !== tools.length) delete next[slug];
-    else next[slug] = [];
-    void commitConn(listOf(editing!, connMode), next).then(paintTools);
-  }));
-  all.classList.add("ws-tool-all");
+  const master = $<HTMLInputElement>("ws-tools-all");
+  if (master) {
+    master.checked = checked === tools.length;
+    master.onchange = () => {
+      // "Every tool" is stored as an ABSENT slug, not an empty list — an
+      // empty list means "no tools at all", which is the opposite.
+      const next = { ...map };
+      if (checked !== tools.length) delete next[slug];
+      else next[slug] = [];
+      void commitConn(listOf(editing!, connMode), next).then(paintTools);
+    };
+  }
 
   for (const t of tools) {
     wrap.appendChild(rowFor(t.name, cur === null || cur.includes(t.name), t.description, () => {
@@ -723,44 +745,114 @@ function paintTools(): void {
   }
 }
 
-// ── The "allow another" picker ────────────────────────────────────────────
+// ── The "allow another" picker — a yo-modal, never an embedded panel ─────
 
-function paintPicker(): void {
-  const wrap = $("ws-picker-list");
-  if (!wrap || !editing) return;
-  const already = new Set(listOf(editing, connMode) || []);
-  wrap.innerHTML = "";
-  const rows = connMode === "shared"
-    ? orgConnectors.filter((c) => !already.has(c.id)).map((c) => ({ id: c.id, name: c.name, icon: c.icon }))
-    : pickerResults.filter((a) => !already.has(a.id));
-  if (!rows.length) {
-    wrap.innerHTML = `<div class="crud-empty">${connMode === "shared" ? "Every org connector is already allowed." : "No apps match — type to search the catalog."}</div>`;
-    return;
-  }
-  for (const r of rows) {
-    connMeta.set(r.id, { name: r.name, icon: r.icon });
-    wrap.appendChild(connCard(r.id, "Add", () => {
-      const list = listOf(editing!, connMode) || [];
-      void commitConn([...list, r.id], toolsOf(editing!, connMode), `${r.name} allowed`).then(() => {
-        $("ws-conn-picker")?.classList.add("hidden");
-        paintConnections();
+function openAllowModal(): void {
+  if (!editing) return;
+  document.querySelectorAll(".yo-modal.ws-allow-overlay").forEach((n) => n.remove());
+  const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  let panelsWereHidden = false;
+  if (!isWeb) void hidePanelsForModal().then((h) => { panelsWereHidden = h; });
+
+  const overlay = document.createElement("div");
+  overlay.className = "yo-modal ws-allow-overlay";
+  const backdrop = document.createElement("div");
+  backdrop.className = "yo-modal-backdrop";
+  const panel = document.createElement("div");
+  panel.className = "yo-modal-panel ws-allow-modal";
+
+  const head = document.createElement("div");
+  head.className = "yo-modal-title";
+  head.textContent = "Allow an app";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "settings-input";
+  search.placeholder = connMode === "personal" ? "Search the app catalog…" : "Search org connectors…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  const listHost = document.createElement("div");
+  listHost.className = "ws-allow-list";
+  const actions = document.createElement("div");
+  actions.className = "settings-actions";
+  actions.style.marginTop = "14px";
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  const cancel = document.createElement("button");
+  cancel.className = "action-btn";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  actions.append(spacer, cancel);
+  panel.append(head, search, listHost, actions);
+
+  const close = (): void => {
+    overlay.remove();
+    if (!isWeb) restorePanelsForModal(panelsWereHidden);
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", close);
+  cancel.addEventListener("click", close);
+
+  const paint = (): void => {
+    const already = new Set(listOf(editing!, connMode) || []);
+    const q = search.value.trim().toLowerCase();
+    const rows = (connMode === "shared"
+      ? orgConnectors.map((c) => ({ id: c.id, name: c.name, icon: c.icon }))
+      : pickerResults
+    ).filter((r) => !already.has(r.id))
+      .filter((r) => !q || connMode === "personal" || r.name.toLowerCase().includes(q) || r.id.includes(q));
+    listHost.innerHTML = "";
+    if (!rows.length) {
+      listHost.innerHTML = `<div class="crud-empty">${connMode === "shared" ? "Every org connector is already allowed." : "No apps match — type to search the catalog."}</div>`;
+      return;
+    }
+    for (const r of rows) {
+      connMeta.set(r.id, { name: r.name, icon: r.icon });
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "ws-allow-row";
+      const icon = document.createElement("span");
+      icon.className = "ws-conn-icon";
+      if (r.icon) {
+        const img = document.createElement("img");
+        img.src = r.icon; img.alt = "";
+        icon.appendChild(img);
+      } else icon.textContent = ICON_FALLBACK(r.name);
+      const name = document.createElement("span");
+      name.className = "ws-allow-name";
+      name.textContent = r.name;
+      row.append(icon, name);
+      row.addEventListener("click", () => {
+        row.disabled = true;
+        const list = listOf(editing!, connMode) || [];
+        void commitConn([...list, r.id], toolsOf(editing!, connMode), `${r.name} allowed`).then(() => {
+          close();
+          paintConnections();
+        });
       });
-    }));
-  }
-}
+      listHost.appendChild(row);
+    }
+  };
 
-function schedulePickerSearch(): void {
-  window.clearTimeout(pickerTimer);
-  pickerTimer = window.setTimeout(() => { void runPickerSearch(); }, 220);
-}
+  const runSearch = async (): Promise<void> => {
+    if (connMode !== "personal") { paint(); return; }
+    const q = search.value.trim();
+    const res = await via<{ apps?: Array<{ id: string; name: string; icon?: string }> }>(
+      (c) => c.connections?.apps?.({ ...(q ? { search: q } : {}), limit: 24 }), "workspacesAppSearch", q, 24);
+    pickerResults = (res?.apps || []).map((a) => ({ id: a.id, name: a.name, icon: a.icon || null }));
+    paint();
+  };
+  search.addEventListener("input", () => {
+    window.clearTimeout(pickerTimer);
+    pickerTimer = window.setTimeout(() => { void runSearch(); }, 220);
+  });
 
-async function runPickerSearch(): Promise<void> {
-  if (connMode !== "personal") { paintPicker(); return; }
-  const q = ($<HTMLInputElement>("ws-picker-search")?.value || "").trim();
-  const res = await via<{ apps?: Array<{ id: string; name: string; icon?: string }> }>(
-    (c) => c.connections?.apps?.({ ...(q ? { search: q } : {}), limit: 24 }), "workspacesAppSearch", q, 24);
-  pickerResults = (res?.apps || []).map((a) => ({ id: a.id, name: a.name, icon: a.icon || null }));
-  paintPicker();
+  overlay.append(backdrop, panel);
+  document.body.appendChild(overlay);
+  search.focus();
+  pickerResults = [];
+  void runSearch();
 }
 
 // ── Loads ────────────────────────────────────────────────────────────────
@@ -873,7 +965,6 @@ export function initWorkspaces(): void {
       connMode = (b.dataset.wsconn as ConnMode) || "personal";
       selectedSlug = null;
       pickerResults = [];
-      $("ws-conn-picker")?.classList.add("hidden");
       paintConnections();
     });
   }
@@ -922,22 +1013,9 @@ export function initWorkspaces(): void {
   });
 
   $("ws-conn-search")?.addEventListener("input", () => { wsConnPage = 0; paintConnections(); });
-  $("ws-conn-add")?.addEventListener("click", () => {
-    const picker = $("ws-conn-picker");
-    const open = picker?.classList.toggle("hidden") === false;
-    if (open) { pickerResults = []; void runPickerSearch(); }
-  });
-  $("ws-picker-search")?.addEventListener("input", schedulePickerSearch);
+  $("ws-conn-add")?.addEventListener("click", openAllowModal);
 
   $("ws-tools-back")?.addEventListener("click", () => { selectedSlug = null; paintConnections(); });
-  $("ws-tools-remove")?.addEventListener("click", () => {
-    if (!editing || !selectedSlug) return;
-    const slug = selectedSlug;
-    const list = (listOf(editing, connMode) || []).filter((s) => s !== slug);
-    const tools = toolsOf(editing, connMode);
-    delete tools[slug];
-    void commitConn(list, tools, "Removed").then(() => { selectedSlug = null; paintConnections(); });
-  });
 }
 
 function showPanel(on: boolean): void {

@@ -735,6 +735,7 @@
                     </div>
 
                     <div class="ws-tab" data-wstab="connections">
+                      <div id="ws-conn-chrome">
                       <div class="app-detail-tabs" id="ws-conn-tabs" style="margin-top:10px;">
                         <button class="app-detail-tab active" data-wsconn="personal" type="button">Personal</button>
                         <button class="app-detail-tab" data-wsconn="shared" type="button">Shared</button>
@@ -766,26 +767,30 @@
                           <input id="ws-conn-search" type="text" class="crud-search" placeholder="Search connections…" spellcheck="false" autocomplete="off" />
                           <button id="ws-conn-add" class="action-btn primary" type="button">Allow another</button>
                         </div>
-                        <div id="ws-conn-picker" class="hidden">
-                          <input id="ws-picker-search" type="text" class="settings-input" placeholder="Search…" spellcheck="false" autocomplete="off" />
-                          <div id="ws-picker-list" class="mdl-grid"></div>
-                        </div>
                         <div id="ws-conn-grid"></div>
                         <div id="ws-conn-pager"></div>
                       </div>
 
-                      <!-- Tool drill-down for one connection -->
-                      <div id="ws-tools-view" class="hidden">
-                        <button id="ws-tools-back" class="ws-back" type="button">← Connections</button>
-                        <div class="set-bar" style="margin-bottom:10px;">
-                          <span class="set-bar-main">
-                            <span class="set-fold-title" id="ws-tools-name">—</span>
-                            <span class="set-bar-sub" id="ws-tools-slug">—</span>
-                          </span>
-                          <button id="ws-tools-remove" class="action-btn danger" type="button">Remove from role</button>
+                      </div><!-- /ws-conn-chrome -->
+
+                      <!-- Tool drill-down — the STANDARD inline form: crumb
+                           back, subheading, row-grammar toggle rows. It
+                           replaces the whole tab (chrome hides with it);
+                           removal from the role is the table's toggle. -->
+                      <div id="ws-tools-view" class="crud-inline-form hidden">
+                        <div class="crud-inline-header">
+                          <a class="crud-breadcrumb-back" id="ws-tools-back">&larr; Connections</a>
+                          <div class="crud-spacer"></div>
                         </div>
-                        <p class="section-desc" id="ws-tools-hint">Uncheck a tool to hide it — members with this role won't see or be able to call it.</p>
-                        <div id="ws-tools-list" class="ws-tools"></div>
+                        <div class="ws-tools-head">
+                          <h3 class="settings-subheading" id="ws-tools-name" style="margin-top:0;">—</h3>
+                          <label class="settings-toggle ws-model-allow" title="Toggle every tool">
+                            <input type="checkbox" id="ws-tools-all" />
+                            <span class="toggle-switch"></span>
+                          </label>
+                        </div>
+                        <p class="section-desc" id="ws-tools-hint">Turn a tool off to hide it — members with this role won't see or be able to call it.</p>
+                        <div id="ws-tools-list"></div>
                       </div>
                     </div>
                   </div>
