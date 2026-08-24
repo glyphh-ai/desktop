@@ -19355,9 +19355,24 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
 .glyphh-web .echo-dock-btn[data-dock="settings"] { display: none !important; }
 
 /* Platform rail header: the wordmark alone (the surface switch is gone —
-   the Builder opens from the Apps row's launcher). */
-#platform-rail-head { padding: 14px 10px 10px; display: flex; flex-direction: column; gap: 10px; }
+   the Builder opens from the Apps row's launcher). FIXED out of the
+   .settings-layout flex row — as an in-flow sibling it became its own
+   left column and shoved the whole nav sideways (the misaligned rail). */
+#platform-rail-head {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 264px;
+  /* UNDER the collapse toggle (z 3) — the head is decoration, never a click target. */
+  z-index: 2;
+  pointer-events: none;
+  padding: 14px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 #platform-brand { display: block; height: 22px; width: auto; padding: 0 6px; object-fit: contain; }
+body.platform-rail-collapsed #platform-rail-head { width: 54px; }
 body.platform-rail-collapsed #platform-brand { display: none; }
 
 /* Collapsed rail: the expand toggle floats JUST OUTSIDE the rail's right
