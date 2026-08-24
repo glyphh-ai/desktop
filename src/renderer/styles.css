@@ -19295,6 +19295,10 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 /* General: the interface-sounds row is the panel's last visible row on the
    app — no underline (his rule, 2026-08-24). */
 .settings-panel[data-sub="general"] .set-pref-row { border-bottom: none; }
+/* Full-width form rows (the compaction guidance textarea) — match the row
+   grammar's page width instead of the 420px form cap. */
+.settings-form.set-pref-full { max-width: none; }
+.settings-form.set-pref-full .settings-input { width: 100%; }
 /* A toggle wearing the row grammar: same flex row, switch at the right edge,
    none of the pill padding/hover chrome of the stock .settings-toggle. */
 .settings-toggle.set-pref-row { width: 100%; padding: 14px 0; border-radius: 0; background: none; }
