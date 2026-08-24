@@ -360,13 +360,17 @@ export function openSettingsModal(sub?: string): void {
   // platform the buttons stay in their own Home/Organization groups.
   if (!document.body.classList.contains("platform-shell")) {
     const nav = overlay.querySelector(".settings-nav");
-    const usage = nav?.querySelector('.settings-nav-item[data-sub="usage"]');
-    const billing = nav?.querySelector('.settings-nav-item[data-sub="billing"]');
     const groups = Array.from(nav?.querySelectorAll(".settings-nav-group") ?? []);
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
-    const voice = nav?.querySelector('.settings-nav-item[data-sub="voice"]');
-    if (settingsGroup && usage) settingsGroup.after(usage);
-    if (voice && billing) voice.after(billing);
+    if (settingsGroup && nav) {
+      // The app's order (his spec, 2026-08-24): General, Appearance, Account,
+      // Voice, Usage, Billing — then Drips (desktop-only, unranked by the spec).
+      let anchor: Element = settingsGroup;
+      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing", "drips"]) {
+        const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+        if (item) { anchor.after(item); anchor = item; }
+      }
+    }
   }
 
   // Populate the whole panel set + admin gating, then reveal the requested sub.

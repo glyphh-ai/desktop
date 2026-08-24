@@ -45,25 +45,18 @@
                   <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Your session's memory lives in your org's regional stator — the memory plane sessions recall from. When a conversation outgrows its context window it's compacted: folded into a summary the session carries forward. This guidance is advisory to that compaction, automatic and manual alike; changes save on their own.</span>
                 </div>
 
-                <div class="settings-toggles" style="margin-top:24px;">
-                  <!-- Auto Updates hidden for now -->
-                  <label class="settings-toggle" style="display:none;">
-                    <input type="checkbox" id="toggle-auto-update" checked />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Auto Updates</span>
-                      <span class="toggle-desc">Automatically download and install updates</span>
-                    </div>
-                  </label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="toggle-background-mode" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Keep running in the background</span>
-                      <span class="toggle-desc">Closing the window keeps Glyphh in the menu bar so scheduled agents, loops, and skills keep running. Adds a tray icon and launches at login.</span>
-                    </div>
-                  </label>
-                </div>
+                <label class="settings-toggle" style="display:none;">
+                  <input type="checkbox" id="toggle-auto-update" checked />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Keep running in the background</div>
+                    <div class="set-pref-desc">Closing the window keeps Glyphh in the menu bar so scheduled agents, loops, and skills keep running. Adds a tray icon and launches at login.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-background-mode" />
+                  <span class="toggle-switch"></span>
+                </label>
 
                 <!-- The row grammar (his spec, 2026-08-24): title left with its
                      description UNDER it, the value control aligned to the
@@ -492,7 +485,7 @@
                 <!-- Organization — org_admin only, shown here rather than in a
                      tab of its own. The server enforces the same rule on write;
                      settings-org.ts hides the whole section for everyone else. -->
-                <div id="org-section" class="hidden">
+                <div id="org-section" class="platform-only hidden">
                   <h3 class="acct-row-head">Organization <span id="org-status" class="set-save-state"></span></h3>
                   <!-- The bar IS the disclosure: it stays put so the name and id
                        are readable at a glance, and everything under it folds
