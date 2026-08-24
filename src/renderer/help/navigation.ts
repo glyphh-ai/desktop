@@ -522,7 +522,7 @@ const settingsSubAlias = (sub: string): string => {
   // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
   // + panels are CSS-hidden on web; any stale deep link (saved nav app,
   // remembered homeLastSub) lands on General instead.
-  if ((target === "mcp" || target === "voice" || target === "appearance") && document.documentElement.classList.contains("glyphh-web")) return "general";
+  if ((target === "mcp" || target === "voice" || target === "appearance" || target === "general") && document.documentElement.classList.contains("glyphh-web")) return "dash";
   return target;
 };
 
@@ -533,12 +533,11 @@ function loadSettingsSub(sub: string): void {
   // PLATFORM-ONLY surfaces now) — they fetch on show.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   else if (sub === "usage") void loadUsageAppView();
-  else if (sub === "general") void loadGuardrails();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") { void loadOrgPanel(); void loadRuntime(); }
+  else if (sub === "org-general") { void loadOrgPanel(); void loadRuntime(); void loadGuardrails(); }
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();

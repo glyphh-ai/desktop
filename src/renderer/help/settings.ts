@@ -103,17 +103,6 @@ function initSettings() {
     wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
   }
 
-  // The General tab's Guardrails group folds — same disclosure grammar as
-  // Billing's Auto top-up / Invoices (aria-expanded bar + hidden body).
-  {
-    const toggle = document.getElementById("guardrails-fold-toggle");
-    toggle?.addEventListener("click", () => {
-      const open = toggle.getAttribute("aria-expanded") !== "true";
-      toggle.setAttribute("aria-expanded", String(open));
-      document.getElementById("guardrails-fold-body")?.classList.toggle("hidden", !open);
-    });
-  }
-
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
   if (themePicker) {

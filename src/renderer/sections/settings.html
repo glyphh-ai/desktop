@@ -31,7 +31,7 @@
               <div class="settings-nav-group platform-only">Devices</div>
               <button class="settings-nav-item platform-only" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
               <button class="settings-nav-item platform-only" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
-              <div class="settings-nav-group">Settings</div>
+              <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
@@ -88,57 +88,6 @@
 
                 <!-- Org-admin groups — PLATFORM-ONLY surfaces (desktop General
                      carries the interface-sounds row alone). -->
-<!-- Guardrails — org-wide runtime limits (moved in from the
-                     retired Guardrails tab), folded shut by default with the
-                     same disclosure grammar as Billing's Auto top-up. Ids are
-                     unchanged so settings-guardrails.ts binds as before; the
-                     group is admin-gated in navigation.ts gateAdminSubs. -->
-                <div id="general-guardrails-group" class="platform-only hidden">
-                  <h3 class="acct-row-head">Guardrails <span id="guardrails-status" class="set-save-state"></span></h3>
-                  <button type="button" id="guardrails-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="guardrails-fold-body">
-                    <span class="set-fold-head">
-                      <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                      <span class="set-fold-title">Org-wide runtime limits</span>
-                    </span>
-                  </button>
-                  <div id="guardrails-fold-body" class="set-fold-body hidden">
-                    <p class="section-desc">Blank means no limit. Applies to every member of your org.</p>
-                    <div id="guardrails-admin-only" class="crud-empty hidden">Only an organization admin can set guardrails.</div>
-                    <div id="guardrails-body">
-                      <div id="guardrails-error" class="settings-error hidden"></div>
-                      <div class="acct-section">
-                        <div class="acct-row">
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-maxInputTokens">Max input tokens</label>
-                            <input id="gr-maxInputTokens" data-gr="maxInputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-maxOutputTokens">Max output tokens</label>
-                            <input id="gr-maxOutputTokens" data-gr="maxOutputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-maxConcurrent">Max concurrent runs</label>
-                            <input id="gr-maxConcurrent" data-gr="maxConcurrent" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                        </div>
-                        <div class="acct-row">
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-windowSeconds">Rate window (seconds)</label>
-                            <input id="gr-windowSeconds" data-gr="windowSeconds" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-windowTokens">Tokens per window</label>
-                            <input id="gr-windowTokens" data-gr="windowTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="gr-windowCalls">Calls per window</label>
-                            <input id="gr-windowCalls" data-gr="windowCalls" type="number" min="0" class="settings-input" placeholder="No limit" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
 
 <div class="settings-panel" data-sub="dash">
@@ -826,7 +775,7 @@
                    the nav item is admin-gated in gateAdminSubs. -->
               <div class="settings-panel" data-sub="org-general">
                 <h2>General <span id="org-panel-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Your organization's name, image and address.</p>
+                <p class="section-desc">Your organization's name and image.</p>
 
                                         <div id="org-panel-admin-only" class="crud-empty hidden">Only an organization admin can manage the organization.</div>
                     <div id="org-panel-body">
@@ -871,37 +820,75 @@
                             </div>
                           </div>
                         </div>
-                        <h4 class="acct-row-head">Address</h4>
-                        <div class="acct-row">
-                          <div class="acct-field acct-field-wide">
-                            <label class="settings-label" for="org-panel-addr-line1">Address line 1</label>
-                            <input id="org-panel-addr-line1" type="text" class="settings-input" autocomplete="off" />
+
+                        <!-- Runtime limits (Guardrails) — moved in from
+                             Settings › General (his spec, 2026-08-25): no
+                             fold, the row grammar. Ids unchanged so
+                             settings-guardrails.ts binds; admin-gated in
+                             gateAdminSubs as before. -->
+                        <div id="general-guardrails-group" class="platform-only hidden">
+                          <h4 class="acct-row-head">Runtime limits <span id="guardrails-status" class="set-save-state"></span></h4>
+                          <p class="section-desc">Blank means no limit. Applies to every member of your org.</p>
+                          <div id="guardrails-admin-only" class="crud-empty hidden">Only an organization admin can set guardrails.</div>
+                          <div id="guardrails-body">
+                            <div id="guardrails-error" class="settings-error hidden"></div>
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Max input tokens</div>
+                              <div class="set-pref-desc">Largest prompt a single call may send.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-maxInputTokens" data-gr="maxInputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
                           </div>
-                          <div class="acct-field acct-field-wide">
-                            <label class="settings-label" for="org-panel-addr-line2">Address line 2</label>
-                            <input id="org-panel-addr-line2" type="text" class="settings-input" autocomplete="off" />
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Max output tokens</div>
+                              <div class="set-pref-desc">Largest completion a single call may produce.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-maxOutputTokens" data-gr="maxOutputTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
                           </div>
-                        </div>
-                        <div class="acct-row">
-                          <div class="acct-field">
-                            <label class="settings-label" for="org-panel-addr-city">City</label>
-                            <input id="org-panel-addr-city" type="text" class="settings-input" autocomplete="off" />
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Max concurrent runs</div>
+                              <div class="set-pref-desc">Runs allowed to execute at once.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-maxConcurrent" data-gr="maxConcurrent" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
                           </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="org-panel-addr-state">State / Region</label>
-                            <input id="org-panel-addr-state" type="text" class="settings-input" autocomplete="off" />
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Rate window (seconds)</div>
+                              <div class="set-pref-desc">The window the two limits below count within.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-windowSeconds" data-gr="windowSeconds" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
                           </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="org-panel-addr-postal">Postal code</label>
-                            <input id="org-panel-addr-postal" type="text" class="settings-input" autocomplete="off" />
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Tokens per window</div>
+                              <div class="set-pref-desc">Total tokens allowed per rate window.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-windowTokens" data-gr="windowTokens" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
                           </div>
-                          <div class="acct-field">
-                            <label class="settings-label" for="org-panel-addr-country">Country</label>
-                            <input id="org-panel-addr-country" type="text" class="settings-input" autocomplete="off" />
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Calls per window</div>
+                              <div class="set-pref-desc">Model calls allowed per rate window.</div>
+                            </div>
+                            <div class="set-pref-value">
+                              <input id="gr-windowCalls" data-gr="windowCalls" type="number" min="0" class="settings-input" placeholder="No limit" />
+                            </div>
+                          </div>
                           </div>
                         </div>
                       </div>
-                    
                       <!-- Billing address + contact — the bottom part of the
                            old Account org form (his spec, 2026-08-24). Same
                            ids; this panel's module loads and saves them. -->
