@@ -8,7 +8,7 @@ import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, 
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
@@ -377,7 +377,7 @@ export function openSettingsModal(sub?: string): void {
       // The app's order (his spec, 2026-08-24): General, Appearance, Account,
       // Voice, Usage, Billing — then Drips (desktop-only, unranked by the spec).
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing"]) {
+      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing", "mcp"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -533,6 +533,7 @@ function loadSettingsSub(sub: string): void {
   // PLATFORM-ONLY surfaces now) — they fetch on show.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   else if (sub === "usage") void loadUsageAppView();
+  else if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
