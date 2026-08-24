@@ -15071,6 +15071,12 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ws-filter-btn svg { width: 14px; height: 14px; }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
+/* Role connections tab: vertical rhythm — the sub-tabs, blurb, toggle
+   pills, toolbar and table each get room to breathe. */
+.ws-tab[data-wstab="connections"] #ws-conn-tabs { margin-bottom: 14px; }
+.ws-tab[data-wstab="connections"] #ws-conn-blurb { margin: 0 0 18px; }
+.ws-tab[data-wstab="connections"] #ws-mcp-row { margin-bottom: 12px; }
+.ws-tab[data-wstab="connections"] #ws-conn-grid { margin-top: 4px; }
 /* Role connections table: 7 columns — the GENERIC .lib-table nth-child
    widths (built for 4 columns) squeezed the kebab out of view and hid the
    Description/Tools columns at narrow widths. Higher-specificity overrides
