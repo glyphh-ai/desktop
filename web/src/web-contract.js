@@ -173,13 +173,15 @@ export function buildContract(client, deps) {
       let me;
       try { me = await client.me(); }        // 401 for an anonymous visitor → empty shape
       catch { return emptyDashboardData(); } // logged-out: still render the Chat landing
-      const [credits, alloc, usage, apps] = await Promise.all([
+      const [credits, alloc, usage, apps, plans, sub] = await Promise.all([
         client.billing.credits().catch(() => null),   // org pool — admins only (403 → null)
         client.usage.allocation().catch(() => null),   // the caller's own allocation
         client.usage.summary().catch(() => null),      // month-to-date spend
         client.apps.deployed().catch(() => null),      // deployed-app count
+        client.billing.plans().catch(() => []),        // the plan catalog — name + allowance
+        client.billing.status().catch(() => null),     // which tier the org is on
       ]);
-      return toDashboardData(me, credits, alloc, usage, apps);
+      return toDashboardData(me, credits, alloc, usage, apps, plans, sub);
     },
     // No cross-agent "recent runs" rollup on the new server yet (the SDK exposes only
     // per-task runs). EXPLICIT stub → the correct empty `{ ok, data:[] }` envelope the

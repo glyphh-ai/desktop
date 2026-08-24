@@ -118,7 +118,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
     const client = getClient();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [credits, me, usage, apps] = await Promise.all([
+    const [credits, me, usage, apps, plans, sub] = await Promise.all([
       // Org pool — admins only; members get a 403 (→ null) and the personal
       // allocation card below renders from the caller's allocation instead.
       client.billing.credits().catch(() => null),
@@ -130,12 +130,19 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // (which zeroed this card). Omitted = "through now".
       client.usage.summary({ from: ymd(monthStart) }).catch(() => null),
       client.apps.deployed().catch(() => null),
+      // The PLAN CATALOG is the authority on the plan's name + monthly
+      // allowance (his law, 2026-08-25) — never a tier string + the credits
+      // endpoint's remaining-grant number.
+      client.billing.plans().catch(() => []),
+      client.billing.status().catch(() => null),
     ]);
 
     const acct = getAccountInfo();
+    const tier = sub?.tier || getAuthStatus().tier || "";
+    const plan = (plans || []).find((x) => x.tier === tier) ?? null;
     return {
       name: (acct?.firstName || "").trim(),
-      plan: getAuthStatus().tier || "",
+      plan: plan?.displayName || tier,
       // null credits = the org pool is admin-only for this account — the
       // renderer swaps in the member card fed by `me`.
       orgCredits: credits != null,
@@ -152,7 +159,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
           }
         : null,
       credits: Math.floor((credits?.balance || 0) / MICRO),
-      allowance: Math.floor((credits?.allowance || 0) / MICRO),
+      // Whole credits already, straight off the plan record.
+      allowance: plan?.monthlyCredits ?? Math.floor((credits?.allowance || 0) / MICRO),
       // UsageSummary.credits is already WHOLE credits (the summary endpoint
       // converts from micro server-side) — dividing again zeroed this card.
       spendCredits: Math.round(usage?.credits || 0),

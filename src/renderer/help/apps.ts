@@ -639,7 +639,7 @@ function renderMktSupportTab(): void {
 
 function switchAppTab(tab: string) {
   activeAppTab = tab as typeof activeAppTab;
-  document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
+  document.querySelectorAll<HTMLButtonElement>(".app-detail-tab[data-tab]").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tab);
   });
   document.querySelectorAll<HTMLElement>(".app-tab-left").forEach(el => {
@@ -2058,8 +2058,9 @@ function initApps() {
   document.getElementById("app-add-cancel")?.addEventListener("click", () => { loadApps(); });
   document.getElementById("app-add-cancel-btn")?.addEventListener("click", () => { loadApps(); });
 
-  // Tab buttons
-  document.querySelectorAll<HTMLButtonElement>(".app-detail-tab").forEach(btn => {
+  // Tab buttons — [data-tab] only: other editors (Roles) share the tab
+  // CLASS but key their own data attributes.
+  document.querySelectorAll<HTMLButtonElement>(".app-detail-tab[data-tab]").forEach(btn => {
     btn.addEventListener("click", () => switchAppTab(btn.dataset.tab!));
   });
 

@@ -659,9 +659,6 @@
                    rate limit and a credit cap. org_admin only; the server
                    enforces every write and the base workspace's undeletability. -->
               <div class="settings-panel" data-sub="workspaces">
-                <h2>Roles <span id="ws-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Access tiers for your members. A role narrows what the org already allows — it can never grant past it.</p>
-
                 <div id="ws-admin-only" class="crud-empty hidden">Only an organization admin can manage roles.</div>
 
                 <div id="ws-body">
@@ -672,6 +669,8 @@
                        a lib-table of rows (rendered by settings-workspaces.ts),
                        crud-empty + pagination. -->
                   <div id="ws-list-view">
+                    <h2>Roles <span id="ws-status" class="set-save-state"></span></h2>
+                    <p class="section-desc">Access tiers for your members. A role narrows what the org already allows — it can never grant past it.</p>
                     <div class="crud-toolbar">
                       <input id="ws-search" type="text" class="crud-search" placeholder="Search roles…" spellcheck="false" autocomplete="off" />
                       <input id="ws-new-name" type="text" class="settings-input settings-input-md" placeholder="New role name" spellcheck="false" autocomplete="off" />
@@ -747,7 +746,7 @@
                       <div class="crud-toolbar" style="margin-top:12px;">
                         <input id="ws-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
                       </div>
-                      <div id="ws-models-grid" class="mdl-grid"></div>
+                      <div id="ws-models-grid"></div>
                     </div>
 
                     <div class="ws-tab" data-wstab="connections">

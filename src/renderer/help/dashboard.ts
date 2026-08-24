@@ -622,7 +622,11 @@ export async function loadUsageMetrics(): Promise<void> {
   try {
     const data = (await window.glyphh.dashboardData?.()) as DashboardData | undefined;
     if (!data) return;
-    const planName = data.plan ? data.plan.charAt(0).toUpperCase() + data.plan.slice(1) : "";
+    // data.plan is the plan's DISPLAY NAME off the catalog now (a bare tier
+    // slug only on old builds) — capitalize only single-word slugs.
+    const planName = data.plan
+      ? (data.plan.includes(" ") ? data.plan : data.plan.charAt(0).toUpperCase() + data.plan.slice(1))
+      : "";
     if (data.orgCredits === false) {
       // Member view — the org pool is admin-only; show THEIR allocation
       // (role cap, spend across LLM + compute, reset date).

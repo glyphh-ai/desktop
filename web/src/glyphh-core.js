@@ -617,13 +617,18 @@ export function emptyDashboardData() {
  * @param {{credits?:number,events?:number}|null} usage    MTD spend (usage.summary())
  * @param {Array<{system?:boolean,url?:string|null}>|null} apps  deployed apps (apps.deployed())
  */
-export function toDashboardData(me, credits, alloc, usage, apps) {
+export function toDashboardData(me, credits, alloc, usage, apps, plans, sub) {
   if (!me) return emptyDashboardData();
   const MICRO = 1_000_000;
+  // The PLAN CATALOG (billing.plans) is the authority on the plan's name and
+  // monthly allowance — never the identity tier string + credits.allowance
+  // (which the server computes as REMAINING grant credits, a burn-down).
+  const tier = sub?.tier || me.tier || '';
+  const plan = (plans || []).find((x) => x.tier === tier) || null;
   const parts = (me.name || '').trim().split(/\s+/).filter(Boolean);
   return {
     name: parts[0] || '',
-    plan: me.tier || '',
+    plan: plan?.displayName || tier,
     // null org credits = the pool is admin-only for this account — the renderer
     // swaps in the member card fed by `me`.
     orgCredits: credits != null,
@@ -638,7 +643,7 @@ export function toDashboardData(me, credits, alloc, usage, apps) {
         }
       : null,
     credits: Math.floor((credits?.balance || 0) / MICRO),
-    allowance: Math.floor((credits?.allowance || 0) / MICRO),
+    allowance: plan?.monthlyCredits ?? Math.floor((credits?.allowance || 0) / MICRO),
     // UsageSummary.credits is already WHOLE credits (converted server-side).
     spendCredits: Math.round(usage?.credits || 0),
     requests: usage?.events || 0,

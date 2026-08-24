@@ -50,7 +50,7 @@ interface Workspace {
   rateLimitWindowSeconds: number | null;
 }
 
-interface CatalogModel { key: string; kind: string; displayName: string; provider: string }
+interface CatalogModel { key: string; kind: string; displayName: string; provider: string; inCr: number; outCr: number }
 interface ConnMeta { name: string; icon: string | null }
 interface Tool { name: string; description?: string }
 
@@ -108,6 +108,7 @@ interface SdkWorkspaces {
     delete?: (id: string) => Promise<void>;
   };
   models?: { available?: () => Promise<Array<{ id: string; kind: string; name: string; providerSlug: string }>> };
+  orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean }>> };
   connections?: {
     pipedreamList?: () => Promise<Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>>;
     orgMcpList?: () => Promise<Array<{ slug: string; name: string; enabled?: boolean }>>;
@@ -420,12 +421,22 @@ function paintModels(): void {
     grid.innerHTML = `<div class="crud-empty">No models match your search.</div>`;
     return;
   }
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th>Cost</th><th class="ws-model-toggle-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
   for (const m of rows) {
     const on = !limited || allowed.includes(m.key);
-    const card = document.createElement("label");
-    card.className = "mdl-card ws-model-card" + (limited && !on ? " off" : "");
-    const box = document.createElement("input");
-    box.type = "checkbox";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="lib-table-desc"></td>` +
+      `<td class="lib-table-name"></td>` +
+      `<td class="lib-table-dim"></td>` +
+      `<td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-allow"><input type="checkbox" /><span class="toggle-switch"></span></label></td>`;
+    (tr.children[0] as HTMLElement).textContent = m.kind === "proxied" ? (m.provider || "proxy") : "on-device";
+    (tr.children[1] as HTMLElement).textContent = m.displayName;
+    (tr.children[2] as HTMLElement).textContent = `${m.inCr}/${m.outCr} cr per MTok`;
+    const box = tr.querySelector<HTMLInputElement>("input")!;
     box.checked = on;
     box.disabled = !limited;
     box.addEventListener("change", () => {
@@ -435,15 +446,10 @@ function paintModels(): void {
       // so the record doesn't drift from the org's catalogue as it grows.
       void commitModels(next.length === catalog.length ? null : next).then(paintModels);
     });
-    const name = document.createElement("div");
-    name.className = "mdl-name";
-    name.textContent = m.displayName;
-    const meta = document.createElement("div");
-    meta.className = "mdl-meta";
-    meta.textContent = m.kind === "proxied" ? (m.provider || "proxy") : "on-device";
-    card.append(box, name, meta);
-    grid.appendChild(card);
+    tbody.appendChild(tr);
   }
+  table.appendChild(tbody);
+  grid.appendChild(table);
 }
 
 // ── Connections tab ──────────────────────────────────────────────────────
@@ -849,7 +855,10 @@ export async function loadWorkspacesPanel(): Promise<void> {
   // The three universes a workspace narrows within. Each is independent — a
   // failed connector load must not blank the model list.
   const [models, connectors, cap] = await Promise.all([
-    via<Array<{ id: string; kind: string; name: string; providerSlug: string }>>((c) => c.models?.available?.(), "workspacesModelCatalog"),
+    // The MODELS PAGE's own list (rates included) — the role tab mirrors it,
+    // active (supported) models only.
+    via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean }>>(
+      (c) => c.orgModels?.list?.(), "orgModelsList"),
     via<{ pipedream?: Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>; mcp?: Array<{ slug: string; name: string; enabled?: boolean }> }>(
       // The two shared-connector lists are one read on the desktop; on web they
       // are two SDK calls, and either failing must not lose the other.
@@ -861,7 +870,10 @@ export async function loadWorkspacesPanel(): Promise<void> {
         : undefined), "workspacesOrgConnectors"),
     via<Record<string, string[]>>((c) => c.connections?.orgConnectionTools?.(), "workspacesOrgToolCap"),
   ]);
-  catalog = (models || []).map((m) => ({ key: m.id, kind: m.kind, displayName: m.name, provider: m.providerSlug }));
+  catalog = (models || []).filter((m) => m.supported !== false).map((m) => ({
+    key: m.id, kind: m.kind, displayName: m.name, provider: m.providerSlug,
+    inCr: m.inputCreditsPerMTok ?? 0, outCr: m.outputCreditsPerMTok ?? 0,
+  }));
   const byId = new Map<string, { id: string; name: string; icon: string | null; kind: string }>();
   // Several accounts for one Pipedream app collapse to a single connector.
   for (const c of connectors?.pipedream || []) {

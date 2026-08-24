@@ -23,6 +23,8 @@ function authedClient() {
     billing: {
       status: vi.fn(async () => ({ tier: 'pro', billingStatus: 'active' })),
       credits: vi.fn(async () => ({ balance: 5_000_000, allowance: 10_000_000 })),
+      // The plan catalog — dashboardData reads the plan's name + allowance here.
+      plans: vi.fn(async () => ([{ tier: 'pro', displayName: 'Glyphh Pro', monthlyCredits: 10_000, maxSeats: 25, sso: false, monthlyUsdCents: 5000 }])),
     },
     usage: {
       allocation: vi.fn(async () => ({ uncapped: true, capCredits: 0, spentCredits: 0, remainingCredits: 0, workspaceName: 'Main', windowEnd: '' })),
@@ -70,7 +72,7 @@ describe('buildContract — AUTHED shapes', () => {
 
   it('dashboardData composes the full DashboardData shape', async () => {
     const d = await c.dashboardData();
-    expect(d).toMatchObject({ name: 'Ada', plan: 'pro', orgCredits: true, credits: 5, allowance: 10, spendCredits: 7, requests: 3, appsCount: 0 });
+    expect(d).toMatchObject({ name: 'Ada', plan: 'Glyphh Pro', orgCredits: true, credits: 5, allowance: 10000, spendCredits: 7, requests: 3, appsCount: 0 });
     expect(d.me).toMatchObject({ roleName: 'Main', uncapped: true });
   });
   it('getAccountInfo → identity ⊕ org ⊕ billing', async () => {
