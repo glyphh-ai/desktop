@@ -214,7 +214,15 @@ function selectSettingsSub(sub: string): void {
   // .settings-panels class names.
   const navBtns = document.querySelectorAll<HTMLButtonElement>(".settings-nav:not(.docs-nav) > .settings-nav-item");
   const panels = document.querySelectorAll<HTMLDivElement>(".settings-modal-body > .settings-layout > .settings-panels > .settings-panel");
-  navBtns.forEach((n) => n.classList.toggle("active", n.dataset.sub === target));
+  // Two rail items may share a sub (Dashboard + Organization › Usage both
+  // open "usage") — the programmatic path lights only the FIRST; a direct
+  // click lights exactly the clicked one (its own handler).
+  let seen = false;
+  navBtns.forEach((n) => {
+    const hit = n.dataset.sub === target && !seen;
+    if (hit) seen = true;
+    n.classList.toggle("active", hit);
+  });
   panels.forEach((p) => p.classList.toggle("active", p.dataset.sub === target));
   const panelsWrap = document.querySelector<HTMLElement>(".settings-modal-body > .settings-layout > .settings-panels");
   if (panelsWrap) panelsWrap.scrollTop = 0;

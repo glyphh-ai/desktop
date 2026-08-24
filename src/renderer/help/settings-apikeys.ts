@@ -85,9 +85,16 @@ function showEditor(open: boolean): void {
     if (input) { input.value = ""; input.focus(); }
     const exp = $("apikeys-expires") as HTMLSelectElement | null;
     if (exp) exp.value = "";
+    syncNeverWarn();
     $("apikeys-form-error")?.classList.add("hidden");
     $("apikeys-new-token")?.classList.add("hidden");
   }
+}
+
+/** "Never" is a real risk choice — the warn banner shows while it's selected. */
+function syncNeverWarn(): void {
+  const exp = $("apikeys-expires") as HTMLSelectElement | null;
+  $("apikeys-never-warn")?.classList.toggle("hidden", !!exp?.value);
 }
 
 function setError(msg: string): void {
@@ -167,6 +174,7 @@ export function initApiKeys(): void {
   if (wired) return;
   wired = true;
   $("apikeys-new-btn")?.addEventListener("click", () => showEditor(true));
+  $("apikeys-expires")?.addEventListener("change", syncNeverWarn);
   $("apikeys-back-link")?.addEventListener("click", () => showEditor(false));
   $("apikeys-cancel-btn")?.addEventListener("click", () => showEditor(false));
   $("apikeys-search")?.addEventListener("input", () => {

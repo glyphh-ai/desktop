@@ -399,6 +399,7 @@ function setTab(tab: string): void {
 
 const WS_MODELS_PAGE_SIZE = 10;
 let wsModelsPage = 0;
+let wsConnPage = 0;
 let wsModelsProvider = "";   // "" = every provider
 
 function paintModels(): void {
@@ -554,31 +555,96 @@ function paintConnections(): void {
     return;
   }
   toolsView?.classList.add("hidden");
-  listWrap?.classList.toggle("hidden", list === null);
-  if (list === null) return;
+  // The table shows in BOTH states, like the Models tab — toggles just sit
+  // disabled until the restriction is on.
+  listWrap?.classList.remove("hidden");
+  const limited = list !== null;
+  // "Allow another" only matters when a PERSONAL restriction is on — its
+  // catalog is unbounded; the shared universe IS the org's connector set.
+  $("ws-conn-add")?.classList.toggle("hidden", !(limited && personal));
+  if (!(limited && personal)) $("ws-conn-picker")?.classList.add("hidden");
 
   const q = ($<HTMLInputElement>("ws-conn-search")?.value || "").trim().toLowerCase();
   const tools = toolsOf(editing, connMode);
-  const shown = list.filter((slug) =>
+  // Row universe: the org's connectors, plus anything the allow-list names
+  // that the org set doesn't cover (personal picks from the broad catalog).
+  const universe = [...new Set([...orgConnectors.map((c) => c.id), ...(list || [])])];
+  void hydrateMeta(universe);
+  const shown = universe.filter((slug) =>
     !q || slug.toLowerCase().includes(q) || (connMeta.get(slug)?.name || "").toLowerCase().includes(q));
   const grid = $("ws-conn-grid");
+  const pagerHost = $("ws-conn-pager");
+  if (pagerHost) pagerHost.textContent = "";
   if (!grid) return;
   grid.innerHTML = "";
-  if (!list.length) {
-    grid.innerHTML = `<div class="crud-empty">Nothing allowed yet — add one above.</div>`;
+  if (!universe.length) {
+    grid.innerHTML = `<div class="crud-empty">No connections yet — connect apps on the Connections page first.</div>`;
     return;
   }
   if (!shown.length) {
     grid.innerHTML = `<div class="crud-empty">No matches for your search.</div>`;
     return;
   }
-  for (const slug of shown) {
-    const t = tools[slug];
-    grid.appendChild(connCard(slug, t == null ? "All tools" : `${t.length} tool${t.length === 1 ? "" : "s"}`, () => {
-      selectedSlug = slug;
-      void loadTools(slug).then(paintConnections);
-      paintConnections();
-    }));
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th class="ws-conn-icon-cell"></th><th>Name</th><th>Description</th><th>Tools</th><th>Allowed</th><th class="ws-model-toggle-cell"></th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  const pg = paginate(shown, wsConnPage, WS_MODELS_PAGE_SIZE);
+  wsConnPage = pg.state.page;
+  // Tool counts load lazily, one page at a time — repaint once they land.
+  const missing = pg.items.filter((slug) => !slugTools.has(slug));
+  if (missing.length) {
+    void Promise.all(missing.map((slug) => loadTools(slug))).then(() => {
+      if (!selectedSlug) paintConnections();
+    });
+  }
+  for (const slug of pg.items) {
+    const meta = connMeta.get(slug) || { name: slug, icon: null };
+    const kind = orgConnectors.find((c) => c.id === slug)?.kind || (personal ? "Personal app" : "");
+    const universeTools = slugTools.has(slug) ? toolUniverse(slug).length : null;
+    const cur = tools[slug];
+    const allowedCount = cur == null ? (universeTools == null ? "All" : String(universeTools)) : String(cur.length);
+    const on = !limited || (list || []).includes(slug);
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="ws-conn-icon-cell"><span class="ws-conn-icon"></span></td>` +
+      `<td class="lib-table-name"></td>` +
+      `<td class="lib-table-desc"></td>` +
+      `<td class="lib-table-dim">${universeTools == null ? "—" : universeTools}</td>` +
+      `<td class="lib-table-dim"></td>` +
+      `<td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-allow"><input type="checkbox" /><span class="toggle-switch"></span></label></td>`;
+    const iconHost = tr.querySelector(".ws-conn-icon") as HTMLElement;
+    if (meta.icon) {
+      const img = document.createElement("img");
+      img.src = meta.icon; img.alt = "";
+      iconHost.appendChild(img);
+    } else iconHost.textContent = ICON_FALLBACK(meta.name);
+    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = meta.name;
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = kind;
+    (tr.children[4] as HTMLElement).textContent = on ? allowedCount : "—";
+    const box = tr.querySelector<HTMLInputElement>("input")!;
+    box.checked = on;
+    box.disabled = !limited;
+    box.addEventListener("change", () => {
+      const cur2 = listOf(editing!, connMode) || [];
+      const next = cur2.includes(slug) ? cur2.filter((x) => x !== slug) : [...cur2, slug];
+      const map = toolsOf(editing!, connMode);
+      if (!next.includes(slug)) delete map[slug];
+      void commitConn(next, map).then(paintConnections);
+    });
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.edit, label: "Edit tools", onClick: () => {
+        selectedSlug = slug;
+        void loadTools(slug).then(paintConnections);
+        paintConnections();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  grid.appendChild(table);
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { wsConnPage = p; paintConnections(); }));
   }
 }
 
@@ -855,7 +921,7 @@ export function initWorkspaces(): void {
     paintConnections();
   });
 
-  $("ws-conn-search")?.addEventListener("input", paintConnections);
+  $("ws-conn-search")?.addEventListener("input", () => { wsConnPage = 0; paintConnections(); });
   $("ws-conn-add")?.addEventListener("click", () => {
     const picker = $("ws-conn-picker");
     const open = picker?.classList.toggle("hidden") === false;

@@ -599,9 +599,20 @@ export function buildContract(client, deps) {
       ({ personal, org }) => toLegacyMcpConnections(personal, org, apiUrl),
       EMPTY.mcpConnections,
     ),
-    // Governance gate for "+ Custom MCP" — no server policy endpoint (section C). Default
-    // closed; a write still 403s if disallowed.
-    mcpCustomAllowed: async () => ({ allowed: false }),
+    // Governance gate for "+ Custom MCP" — mirrors the desktop (home-ipc):
+    // probe the personal MCP surface; a 403 means the org/role disallows it,
+    // anything else (incl. an empty list) means allowed. The old hard-closed
+    // stub hid every MCP configuration and connected endpoint on the web.
+    mcpCustomAllowed: async () => {
+      try {
+        await client.connections.personalMcpList();
+        return { allowed: true };
+      } catch (err) {
+        const status = err?.status ?? err?.statusCode;
+        if (status === 403) return { allowed: false, reason: 'Custom MCP connections are disabled by your organization.' };
+        return { allowed: false };
+      }
+    },
 
     // ── Loops (LoopsClient) ───────────────────────────────────────────────────────
     loopsList: read(() => client.loops.list(), toLegacyLoops, EMPTY.loops),

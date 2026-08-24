@@ -9,6 +9,7 @@
                   <button class="settings-nav-item" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="platform-only">Dashboard</span><span class="not-on-platform">Usage</span></button>
               <div class="settings-nav-group platform-only">Organization</div>
               <button id="nav-org-general" class="settings-nav-item platform-only hidden" data-sub="org-general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>General</span></button>
+              <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <button class="settings-nav-item platform-only" data-sub="apikeys"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-3 3l1.9-1.9L12 14l2-2 1.4 1.4L17.7 11l-2.3-2.3z"/><circle cx="7.5" cy="15.5" r="1.5"/></svg><span>API Keys</span></button>
@@ -789,7 +790,8 @@
                           <input id="ws-picker-search" type="text" class="settings-input" placeholder="Search…" spellcheck="false" autocomplete="off" />
                           <div id="ws-picker-list" class="mdl-grid"></div>
                         </div>
-                        <div id="ws-conn-grid" class="mdl-grid"></div>
+                        <div id="ws-conn-grid"></div>
+                        <div id="ws-conn-pager"></div>
                       </div>
 
                       <!-- Tool drill-down for one connection -->
@@ -1351,6 +1353,7 @@
                     <option value="90">90 days</option>
                     <option value="365">1 year</option>
                   </select>
+                  <div id="apikeys-never-warn" class="settings-warn" style="margin-top:10px;">A key that never expires stays valid until you revoke it — anyone holding it keeps access indefinitely. Prefer an expiry.</div>
                   <p class="settings-hint">Personal key for headless SDK/CLI use — pass it as <code>apiKey</code> to authenticate as you. The token is shown once, right here, on creation.</p>
                   <div id="apikeys-new-token" class="acct-section hidden" style="border:1px solid var(--accent);margin-top:16px;">
                     <p class="section-desc" style="color:var(--accent);margin:0 0 8px;">Copy your key now — it won't be shown again.</p>
