@@ -19305,11 +19305,17 @@ body.platform-shell .yo-settings-modal .settings-modal-body .settings-panels { p
 
 /* ── Settings rail SEARCH (app only) ── */
 body.platform-shell #settings-nav-search-wrap { display: none; }
-#settings-nav-search-wrap { position: relative; padding: 4px 12px 10px 0; }
-#settings-nav-search { width: 100%; font-size: 12.5px; }
+#settings-nav-search-wrap { position: relative; padding: 4px 0 10px 12px; }
+#settings-nav-search-wrap .set-search-ico {
+  position: absolute; left: 21px; top: 4px; height: calc(100% - 14px);
+  display: flex; align-items: center;
+  color: var(--text-3); pointer-events: none;
+}
+#settings-nav-search-wrap .set-search-ico svg { width: 13px; height: 13px; }
+#settings-nav-search { width: 100%; font-size: 12.5px; padding-left: 28px; }
 #settings-nav-search-pop {
   position: absolute;
-  left: 0; right: 12px; top: calc(100% - 6px);
+  left: 12px; right: 0; top: calc(100% - 6px);
   z-index: 40;
   padding: 5px;
   background: var(--surface-2);
@@ -19362,9 +19368,14 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 .bil-plan-sub { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
 .bil-plan-seats { font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
 .bil-plan-seats .billing-seats-bar.hidden { display: none; }
-/* General: the interface-sounds row is the panel's last visible row on the
-   app — no underline (his rule, 2026-08-24). */
-.settings-panel[data-sub="general"] .set-pref-row { border-bottom: none; }
+/* General (his spec, 2026-08-24): a divider under the compaction block —
+   with air between the guidance paragraph and the line — and one under each
+   row after it; only the last row (interface sounds) keeps no underline. */
+.settings-panel[data-sub="general"] .settings-form.set-pref-full {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-panel[data-sub="general"] .set-pref-row:has(#general-ui-sound) { border-bottom: none; }
 /* Full-width form rows (the compaction guidance textarea) — match the row
    grammar's page width instead of the 420px form cap. */
 .settings-form.set-pref-full { max-width: none; }
