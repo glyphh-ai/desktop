@@ -969,10 +969,11 @@
                    are the web's copy to own, so the Plan bar links out rather
                    than carrying a second pricing table that would drift. -->
               <div class="settings-panel" data-sub="billing">
-                <h2>Billing</h2>
-                <p class="section-desc">Prepaid compute credits — 1 credit = 30 seconds of tool compute. Browsing and listing are free.</p>
                 <div id="billing-error" class="settings-error hidden"></div>
                 <div id="billing-toast" class="settings-success hidden"></div>
+                <div id="billing-main">
+                <h2>Billing</h2>
+                <p class="section-desc">Prepaid compute credits — 1 credit = 30 seconds of tool compute. Browsing and listing are free.</p>
 
                 <!-- PLAN header (his spec, 2026-08-24: the Claude billing look
                      on what Stripe gives us): mark + plan name + allowance line
@@ -1018,52 +1019,15 @@
                     <div class="ua-sub">Current balance · plan allowance <span id="billing-grants">—</span>/mo · purchased <span id="billing-purchases">—</span></div>
                   </div>
                   <div class="ua-spacer"></div>
-                  <button type="button" id="billing-buy-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-buy-body">Buy more</button>
-                </div>
-                <div id="billing-buy-body" class="set-fold-body hidden">
-                  <div class="billing-topup-grid" id="billing-topup-grid"></div>
-                  <div class="settings-inline" style="margin-top:12px;">
-                    <input id="billing-topup-custom" type="number" min="5" max="5000" class="settings-input settings-input-md" placeholder="Custom amount (USD)" />
-                    <span class="settings-hint" id="billing-topup-custom-hint"></span>
-                    <button id="billing-topup-buy" class="action-btn primary">Buy credits</button>
-                  </div>
+                  <button type="button" id="billing-buy-toggle" class="action-btn">Buy more</button>
                 </div>
                 <div class="ua-row">
                   <div class="ua-label bil-label-wide">
-                    <div class="ua-name">Auto-reload <span id="billing-at-status" class="set-save-state"></span></div>
+                    <div class="ua-name">Auto-reload</div>
                     <div class="ua-sub" id="billing-at-summary">Off</div>
                   </div>
                   <div class="ua-spacer"></div>
-                  <button type="button" id="billing-at-toggle" class="action-btn" aria-expanded="false" aria-controls="billing-at-body">Manage</button>
-                </div>
-                <div id="billing-at-body" class="set-fold-body hidden">
-                  <p class="section-desc">Buys more credits when the balance runs low, capped per 30 days. Charges the card on file.</p>
-                  <div class="acct-section">
-                    <label class="settings-toggle set-pref-row">
-                      <div class="set-pref-text">
-                        <div class="set-pref-title">Auto top-up</div>
-                        <div class="set-pref-desc">Buy credits automatically when the balance falls below your threshold.</div>
-                      </div>
-                      <input type="checkbox" id="billing-at-enabled" />
-                      <span class="toggle-switch"></span>
-                    </label>
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-threshold">Below (credits)</label>
-                        <input id="billing-at-threshold" type="number" min="0" class="settings-input" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-pack">Buy each time (USD)</label>
-                        <input id="billing-at-pack" type="number" min="5" class="settings-input" />
-                        <span class="settings-hint" id="billing-at-pack-hint"></span>
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="billing-at-cap">Max per 30 days (USD)</label>
-                        <input id="billing-at-cap" type="number" min="0" class="settings-input" />
-                        <span class="settings-hint" id="billing-at-cap-hint">A local guard rail — not enforced by the server yet.</span>
-                      </div>
-                    </div>
-                  </div>
+                  <button type="button" id="billing-at-toggle" class="action-btn">Manage</button>
                 </div>
 
                 <div class="ua-section">Invoices <span class="ua-sub" id="billing-inv-summary" style="font-weight:400;"></span></div>
@@ -1152,6 +1116,49 @@
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+                </div><!-- /billing-main -->
+
+                <!-- Auto-reload — in-tab form (his spec, 2026-08-24): the
+                     Manage button opens this in place of the page, ← Billing
+                     brings it back. Saves on Save, not on keystroke. -->
+                <div id="billing-at-form" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <a class="crud-breadcrumb-back" id="billing-at-back">&larr; Billing</a>
+                    <div class="crud-spacer"></div>
+                  </div>
+                  <h3 class="settings-subheading" style="margin-top:0;">Auto-reload</h3>
+                  <p class="section-desc">Buys more credits when the balance runs low, capped per 30 days. Charges the card on file.</p>
+                  <label class="settings-toggle set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Auto top-up</div>
+                      <div class="set-pref-desc">Buy credits automatically when the balance falls below your threshold.</div>
+                    </div>
+                    <input type="checkbox" id="billing-at-enabled" />
+                    <span class="toggle-switch"></span>
+                  </label>
+                  <div class="acct-row">
+                    <div class="acct-field">
+                      <label class="settings-label" for="billing-at-threshold">Below (credits)</label>
+                      <input id="billing-at-threshold" type="number" min="0" class="settings-input" />
+                    </div>
+                    <div class="acct-field">
+                      <label class="settings-label" for="billing-at-pack">Buy each time (USD)</label>
+                      <input id="billing-at-pack" type="number" min="5" class="settings-input" />
+                      <span class="settings-hint" id="billing-at-pack-hint"></span>
+                    </div>
+                    <div class="acct-field">
+                      <label class="settings-label" for="billing-at-cap">Max per 30 days (USD)</label>
+                      <input id="billing-at-cap" type="number" min="0" class="settings-input" />
+                      <span class="settings-hint" id="billing-at-cap-hint">A local guard rail — not enforced by the server yet.</span>
+                    </div>
+                  </div>
+                  <div class="settings-actions" style="margin-top:16px;">
+                    <div style="flex:1;"></div>
+                    <span id="billing-at-status" class="set-save-state"></span>
+                    <button id="billing-at-cancel" class="action-btn" type="button">Cancel</button>
+                    <button id="billing-at-save" class="action-btn primary" type="button">Save</button>
                   </div>
                 </div>
               </div>

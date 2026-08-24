@@ -48,7 +48,6 @@ let busy = "";
 let wired = false;
 let toastTimer = 0;
 /** Debounce for the auto-top-up numbers (no Save button any more). */
-let atTimer = 0;
 
 const $ = (id: string): HTMLElement | null => document.getElementById(id);
 
@@ -89,10 +88,38 @@ function paintCredits(): void {
   setText("billing-purchases", credits ? fmtInt(toCredits(credits.purchases)) : "—");
 }
 
-function paintTopup(): void {
-  const grid = $("billing-topup-grid");
-  setText("billing-rate", `One-time credit purchases never expire. ≈ ${fmtInt(creditsForUsd(1))} credits per dollar.`);
+// ── The Need-more-usage form (ua-buy-form) — ONE node serving Usage AND
+//    Billing (his spec, 2026-08-24): whichever tab opens it re-homes the form
+//    into itself and the breadcrumb reads ← Usage / ← Billing accordingly.
+let buyFormWired = false;
+let buySelectedCredits = 0;
+
+function buySummary(): void {
+  const sum = $("ua-buy-summary");
+  const go = $("ua-buy-go") as HTMLButtonElement | null;
+  const price = usdForCredits(buySelectedCredits);
+  const save = topupDiscount(buySelectedCredits);
+  if (sum) sum.textContent = price >= 5
+    ? `${fmtInt(buySelectedCredits)} credits · $${price.toLocaleString()}${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
+    : "";
+  if (go) go.disabled = price < 5;
+}
+
+function buyCustomCredits(): number {
+  return creditsForUsdTiered(Math.max(0, Number(($("ua-buy-custom") as HTMLInputElement | null)?.value) || 0));
+}
+
+function buildBuyGrid(): void {
+  const grid = $("ua-buy-grid");
   if (!grid || grid.childElementCount) return;   // presets are static — build once
+  const pick = (btn: HTMLElement, credits: number, other: boolean) => {
+    grid.querySelectorAll(".billing-topup-card").forEach((c) => c.classList.remove("selected"));
+    btn.classList.add("selected");
+    $("ua-buy-custom-row")?.classList.toggle("hidden", !other);
+    buySelectedCredits = credits;
+    buySummary();
+    if (other) ($("ua-buy-custom") as HTMLInputElement | null)?.focus();
+  };
   for (const credits of TOPUP_CREDIT_BUCKETS) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -103,9 +130,74 @@ function paintTopup(): void {
       `<span class="billing-topup-credits">${escapeHtml(fmtInt(credits))}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
       (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
-    btn.addEventListener("click", () => { void buyTopup(credits, btn); });
+    btn.addEventListener("click", () => pick(btn, credits, false));
     grid.appendChild(btn);
   }
+  const other = document.createElement("button");
+  other.type = "button";
+  other.className = "billing-topup-card";
+  other.innerHTML = `<span class="billing-topup-price">&nbsp;</span><span class="billing-topup-credits">Other</span><span class="billing-topup-unit">custom amount</span>`;
+  other.addEventListener("click", () => pick(other, buyCustomCredits(), true));
+  grid.appendChild(other);
+  $("ua-buy-custom")?.addEventListener("input", () => {
+    buySelectedCredits = buyCustomCredits();
+    const hint = $("ua-buy-custom-hint");
+    const save = topupDiscount(buySelectedCredits);
+    if (hint) hint.textContent = buySelectedCredits > 0
+      ? `≈ ${fmtInt(buySelectedCredits)} credits${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
+      : "";
+    buySummary();
+  });
+}
+
+export function openBuyForm(from: "usage" | "billing"): void {
+  const form = $("ua-buy-form");
+  if (!form) return;
+  if (!buyFormWired) {
+    buyFormWired = true;
+    $("ua-buy-back")?.addEventListener("click", closeBuyForm);
+    $("ua-buy-cancel")?.addEventListener("click", closeBuyForm);
+    $("ua-buy-go")?.addEventListener("click", (e) => {
+      void buyTopup(buySelectedCredits, e.currentTarget as HTMLButtonElement);
+    });
+  }
+  const crumb = $("ua-buy-back");
+  if (crumb) crumb.innerHTML = `&larr; ${from === "billing" ? "Billing" : "Usage"}`;
+  const host = from === "billing"
+    ? document.querySelector<HTMLElement>('.settings-panel[data-sub="billing"]')
+    : $("usage-app-view");
+  if (host && form.parentElement !== host) host.appendChild(form);
+  $(from === "billing" ? "billing-main" : "ua-main")?.classList.add("hidden");
+  form.classList.remove("hidden");
+  buildBuyGrid();
+}
+
+/** Hide the form and bring back whichever page hosted it. Safe to call as a
+ *  tab-entry reset — unhiding a main that was never hidden is a no-op. */
+export function closeBuyForm(): void {
+  $("ua-buy-form")?.classList.add("hidden");
+  $("ua-main")?.classList.remove("hidden");
+  $("billing-main")?.classList.remove("hidden");
+}
+
+// ── Auto-reload — same in-tab form pattern. Edits stage locally and write on
+//    Save; Cancel/← restores the snapshot taken when the form opened.
+let atSnapshot: typeof autoTopup | null = null;
+
+function openAtForm(): void {
+  atSnapshot = { ...autoTopup };
+  paintAutotopup();
+  $("billing-main")?.classList.add("hidden");
+  $("billing-at-form")?.classList.remove("hidden");
+}
+
+function closeAtForm(discard: boolean): void {
+  if (discard && atSnapshot) { Object.assign(autoTopup, atSnapshot); paintAutotopup(); }
+  atSnapshot = null;
+  const statusEl = $("billing-at-status");
+  if (statusEl) statusEl.textContent = "";
+  $("billing-at-form")?.classList.add("hidden");
+  $("billing-main")?.classList.remove("hidden");
 }
 
 function paintAutotopup(): void {
@@ -778,7 +870,7 @@ async function saveAutotopup(): Promise<void> {
       statusEl.textContent = res.ok ? "Saved" : res.error;
       statusEl.className = `set-save-state ${res.ok ? "success" : "error"}`;
     }
-    if (res.ok) window.setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 2500);
+    if (res.ok) window.setTimeout(() => { closeAtForm(false); }, 600);
   } catch (err) {
     if (statusEl) {
       statusEl.textContent = err instanceof Error ? err.message : String(err);
@@ -788,13 +880,6 @@ async function saveAutotopup(): Promise<void> {
     busy = "";
     paintAutotopupSummary();
   }
-}
-
-/** Debounced commit for the auto-top-up numbers — same contract as Account:
- *  no Save button, typing settles, then it writes. */
-function scheduleAutotopup(delay = 700): void {
-  window.clearTimeout(atTimer);
-  atTimer = window.setTimeout(() => { void saveAutotopup(); }, delay);
 }
 
 /** The fold's one-line summary, so the rule is readable while shut. */
@@ -837,40 +922,34 @@ export function initBilling(): void {
   if (wired) return;
   wired = true;
 
-  const custom = $("billing-topup-custom") as HTMLInputElement | null;
-  custom?.addEventListener("input", () => {
-    const usd = Number(custom.value);
-    const c = creditsForUsdTiered(usd);
-    const save = topupDiscount(c);
-    setText("billing-topup-custom-hint", usd > 0
-      ? `≈ ${fmtInt(c)} credits${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
-      : "");
-  });
-  $("billing-topup-buy")?.addEventListener("click", (e) => {
-    void buyTopup(creditsForUsdTiered(Number(custom?.value || 0)), e.currentTarget as HTMLButtonElement);
-  });
+  // Buy more → the shared Need-more-usage form, breadcrumbed ← Billing.
+  $("billing-buy-toggle")?.addEventListener("click", () => openBuyForm("billing"));
 
-  // Auto-top-up saves itself: the toggle at once (a single decision), the
-  // numbers once typing settles, so a half-typed threshold never reaches the
-  // server but nobody has to find a Save button either.
+  // Auto-reload → its own in-tab form. Edits stage into state and write ONCE
+  // on Save; Cancel/← discards them back to the snapshot.
+  $("billing-at-toggle")?.addEventListener("click", openAtForm);
+  $("billing-at-back")?.addEventListener("click", () => closeAtForm(true));
+  $("billing-at-cancel")?.addEventListener("click", () => closeAtForm(true));
+  $("billing-at-save")?.addEventListener("click", () => {
+    void (async () => {
+      // The 30-day cap is a local preference until the server persists it.
+      await window.glyphh.setPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd);
+      await saveAutotopup();
+      atSnapshot = null;
+    })();
+  });
   ($("billing-at-enabled") as HTMLInputElement | null)?.addEventListener("change", (e) => {
     autoTopup.enabled = (e.currentTarget as HTMLInputElement).checked;
-    void saveAutotopup();
   });
   ($("billing-at-threshold") as HTMLInputElement | null)?.addEventListener("input", (e) => {
     autoTopup.thresholdCredits = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
-    scheduleAutotopup();
   });
   ($("billing-at-pack") as HTMLInputElement | null)?.addEventListener("input", (e) => {
     autoTopup.packUsd = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
     setText("billing-at-pack-hint", `≈ ${fmtInt(creditsForUsd(autoTopup.packUsd))} credits`);
-    scheduleAutotopup();
   });
-  // The 30-day cap is local-only until the server persists it, so it stages
-  // into state and deliberately does NOT trigger a write.
   ($("billing-at-cap") as HTMLInputElement | null)?.addEventListener("input", (e) => {
     autoTopup.monthlyCapUsd = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
-    void window.glyphh.setPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd);
   });
 
   $("billing-portal-btn")?.addEventListener("click", () => { void openPortal(); });
@@ -889,8 +968,6 @@ export function initBilling(): void {
   // tab) share the same disclosure wiring as Auto top-up / Invoices.
   for (const [btn, body] of [
     ["billing-plans-toggle", "billing-plans-body"],
-    ["billing-buy-toggle", "billing-buy-body"],
-    ["billing-at-toggle", "billing-at-body"],
     ["billing-inv-toggle", "billing-invoices-wrap"],
     ["org-panel-fold-toggle", "org-panel-fold-body"],
   ]) {
@@ -929,8 +1006,10 @@ async function paintCardOnFile(): Promise<void> {
 }
 
 export async function loadBilling(): Promise<void> {
+  // Entering the tab always lands on the page, not a form left open.
+  closeBuyForm();
+  closeAtForm(true);
   initBilling();
-  paintTopup();
   void paintCardOnFile();
   const api = accountApi();
   const problems: string[] = [];
