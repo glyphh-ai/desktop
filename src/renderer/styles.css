@@ -19547,7 +19547,7 @@ body.platform-shell #platform-rail-toggle svg { width: 16px; height: 16px; }
 body.platform-shell .not-platform { display: none !important; }
 body.platform-shell .settings-modal-body > .settings-layout > .settings-nav {
   width: 264px;
-  padding-top: 48px;
+  padding-top: 64px;
   padding-left: 12px;
   padding-bottom: 76px;
   transition: width 0.15s ease, padding 0.15s ease;
@@ -19641,6 +19641,11 @@ body.platform-shell #platform-brand { height: 34px; }
   cursor: pointer;
 }
 #platform-user-menu button:hover { background: var(--active-bg); color: var(--text); }
+/* Menu rows with icons — must sit AFTER the display:block base rule above
+   (same specificity; source order decides). */
+#platform-user-menu > button { display: flex; align-items: center; gap: 9px; }
+#platform-user-menu > button > svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-3); }
+#platform-user-menu > button:hover > svg { color: inherit; }
 #platform-user-menu .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 #platform-user-menu .menu-danger { color: var(--danger, #e5484d); }
 #platform-user-menu .menu-danger:hover { color: var(--danger, #e5484d); }
@@ -19650,6 +19655,9 @@ body.platform-rail-collapsed #platform-user-meta { display: none; }
 body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
   padding-top: 48px;
 }
+/* Only the Dashboard keeps the centered column (his order, 2026-08-25) —
+   every other platform page runs full width. */
+body.platform-shell .settings-panel[data-sub="usage"] { max-width: 880px; margin: 0 auto; }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
 body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav {

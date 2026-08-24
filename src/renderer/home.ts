@@ -182,10 +182,15 @@ void (async () => {
           sep.className = "menu-sep";
           menu.appendChild(sep);
         }
+        const MENU_ICONS: Record<string, string> = {
+          docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+          support: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>`,
+        };
         for (const [label, sub] of [["Docs", "docs"], ["Support", "support"]] as const) {
           const b = document.createElement("button");
           b.type = "button";
-          b.textContent = label;
+          b.innerHTML = `${MENU_ICONS[sub]}<span></span>`;
+          (b.lastElementChild as HTMLElement).textContent = label;
           b.setAttribute("role", "menuitem");
           b.addEventListener("click", () => {
             menu.classList.add("hidden");
@@ -200,7 +205,7 @@ void (async () => {
           menu.appendChild(sep);
           const out = document.createElement("button");
           out.type = "button";
-          out.textContent = "Log out";
+          out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
           out.className = "menu-danger";
           out.setAttribute("role", "menuitem");
           out.addEventListener("click", async () => {

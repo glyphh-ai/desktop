@@ -857,9 +857,24 @@ export function paintDashGreeting(): void {
   if (!el) return;
   void (async () => {
     let first = "";
-    try { first = ((await Promise.resolve(window.glyphh.getAccountInfo?.()))?.firstName || "").trim(); } catch { /* fall through */ }
+    let email = "";
+    try {
+      const info = await Promise.resolve(window.glyphh.getAccountInfo?.());
+      first = (info?.firstName || "").trim();
+      email = (info?.email || "").trim();
+    } catch { /* fall through */ }
     if (!first) {
-      try { first = ((await accountApi().profile())?.firstName || "").trim(); } catch { /* keep the default */ }
+      try {
+        const prof = await accountApi().profile();
+        first = (prof?.firstName || "").trim();
+        email = email || (prof?.email || "").trim();
+      } catch { /* fall through */ }
+    }
+    if (!first && email) {
+      // Last resort: the email local part ("chris.timmerman@…" → "Chris") —
+      // the greeting always carries a first name.
+      const raw = email.split("@")[0]?.split(/[._-]/)[0] || "";
+      first = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
     }
     el.textContent = greeting(first);
   })();
