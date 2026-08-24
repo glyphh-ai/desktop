@@ -483,6 +483,9 @@ async function refreshCredits(): Promise<void> {
     paintPlan();
     paintSeats();
     paintPlans();
+    void paintCardOnFile();
+    invoices = await api.invoices().catch(() => invoices);
+    paintInvoices();
   } finally {
     window.setTimeout(() => btn?.classList.remove("spinning"), 400);
   }

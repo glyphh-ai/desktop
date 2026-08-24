@@ -6517,14 +6517,31 @@ select.settings-input {
   margin-top: 8px;
 }
 
-.settings-success {
-  color: var(--text);
+.settings-success,
+.settings-error,
+.settings-warn {
   font-size: 13px;
+  font-weight: 500;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid;
+  margin: 0 0 14px;
 }
-
+.settings-success:empty, .settings-error:empty, .settings-warn:empty { display: none; }
+.settings-success {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, transparent);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
+}
 .settings-error {
   color: var(--danger);
-  font-size: 13px;
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.settings-warn {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
 }
 
 .settings-subheading {
@@ -7464,7 +7481,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .buy-credits-box { max-width: 480px; width: min(480px, 92vw); }
 /* Embedded Stripe checkout mounted inside the modal: give the iframe room and
    its own scroll — the modal must never grow past the viewport. */
-.bc-checkout-stage { min-height: 420px; max-height: min(64vh, 620px); overflow-y: auto; border-radius: 10px; }
+.bc-checkout-stage { min-height: 480px; max-height: min(72vh, 700px); overflow-y: auto; border-radius: 10px; }
 .bc-confirming { display: flex; align-items: center; gap: 10px; justify-content: center; min-height: 120px; color: var(--text-2); font-size: 14px; text-align: center; padding: 20px; }
 .bc-confirming.bc-done { color: var(--text); font-weight: 600; }
 .bc-back { margin-top: 10px; align-self: flex-start; }
