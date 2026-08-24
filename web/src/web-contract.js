@@ -514,11 +514,20 @@ export function buildContract(client, deps) {
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
-    // Rename a personal connection — same envelope the desktop IPC returns
-    // (the fabricated-Proxy fallback returned undefined and crashed the panel).
+    // Rename a connection — same envelope the desktop IPC returns. Web rows
+    // carry SLUGS as ids (toLegacyConnections), but the rename routes take the
+    // ACCOUNT UUID — resolve slug → account first (personal wins, org next),
+    // or postgres rejects the slug ("invalid input syntax for type uuid").
     connectionRename: async (id, label) => {
-      try { return { ok: true, connection: await client.connections.renamePersonalConnection(id, label) }; }
-      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+      try {
+        const personal = await client.connections.personalList().catch(() => []);
+        const mine = (personal || []).find((c) => c.id === id || c.appSlug === id);
+        if (mine) return { ok: true, connection: await client.connections.renamePersonalConnection(mine.id, label) };
+        const org = await client.connections.pipedreamList().catch(() => []);
+        const shared = (org || []).find((c) => c.id === id || c.appSlug === id);
+        if (shared) return { ok: true, connection: await client.connections.renameOrgConnection(shared.id, label) };
+        return { ok: false, error: 'No connected account to rename' };
+      } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
     },
     // The connector OAuth flow, WEB-NATIVE (his rule, 2026-08-20: same tooling
     // as the desktop minus fs): Pipedream Connect is a browser flow by nature —

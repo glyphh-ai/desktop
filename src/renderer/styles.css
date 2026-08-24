@@ -4173,6 +4173,24 @@ ol.docs-list li::before {
   font-size: 13px;
 }
 
+/* Theme-aware INFO CALLOUT — notices that must stand out from body copy
+   (the Members seat gate). Tokens only, so every theme paints it right. */
+.settings-callout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent, #8c3bf2);
+  border-radius: 8px;
+  background: var(--active-bg);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.settings-callout.hidden { display: none; }
+
 .crud-card {
   display: flex;
   align-items: center;
