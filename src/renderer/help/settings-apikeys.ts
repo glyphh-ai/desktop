@@ -73,6 +73,71 @@ function transport(): ApiKeysTransport | null {
 }
 
 const $ = (id: string) => document.getElementById(id);
+
+/** The copy ladder shared by the modal: browser-native → IPC → execCommand. */
+async function copyText(val: string, input?: HTMLInputElement | null): Promise<boolean> {
+  try { await navigator.clipboard.writeText(val); return true; } catch { /* fall through */ }
+  const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
+  if (ipc) { void ipc(val); return true; }
+  if (input) { input.focus(); input.select(); return document.execCommand("copy"); }
+  return false;
+}
+
+/** After a create/regenerate: back on the list, the ONE-TIME token in a modal
+ *  with the warning and a copy button (his spec, 2026-08-25). */
+function showTokenModal(label: string, token: string): void {
+  document.querySelectorAll(".yo-modal.ak-token-overlay").forEach((n) => n.remove());
+  const overlay = document.createElement("div");
+  overlay.className = "yo-modal ak-token-overlay";
+  const backdrop = document.createElement("div");
+  backdrop.className = "yo-modal-backdrop";
+  const panel = document.createElement("div");
+  panel.className = "yo-modal-panel ak-token-modal";
+  const head = document.createElement("div");
+  head.className = "yo-modal-title";
+  head.textContent = `API key created — ${label}`;
+  const warn = document.createElement("div");
+  warn.className = "settings-warn";
+  warn.textContent = "Copy your key now — it won't be shown again.";
+  const row = document.createElement("div");
+  row.className = "settings-inline";
+  const input = document.createElement("input");
+  input.className = "settings-input";
+  input.readOnly = true;
+  input.value = token;
+  input.spellcheck = false;
+  input.addEventListener("focus", () => input.select());
+  const copy = document.createElement("button");
+  copy.className = "action-btn primary";
+  copy.type = "button";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", () => {
+    void copyText(token, input).then((ok) => {
+      copy.textContent = ok ? "Copied" : "Select + ⌘C";
+      setTimeout(() => { copy.textContent = "Copy"; }, 1800);
+    });
+  });
+  row.append(input, copy);
+  const actions = document.createElement("div");
+  actions.className = "settings-actions";
+  actions.style.marginTop = "16px";
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  const done = document.createElement("button");
+  done.className = "action-btn";
+  done.type = "button";
+  done.textContent = "Done";
+  actions.append(spacer, done);
+  panel.append(head, warn, row, actions);
+  const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", close);
+  done.addEventListener("click", close);
+  overlay.append(backdrop, panel);
+  document.body.appendChild(overlay);
+  input.focus();
+}
 let keys: ApiKey[] = [];
 let wired = false;
 let query = "";
@@ -89,7 +154,6 @@ function showEditor(open: boolean): void {
     if (exp) exp.value = "";
     syncNeverWarn();
     $("apikeys-form-error")?.classList.add("hidden");
-    $("apikeys-new-token")?.classList.add("hidden");
   }
 }
 
@@ -153,6 +217,26 @@ function render(): void {
     }
     (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.userEmail || "";
     tr.appendChild(kebabCell(() => [
+      // Pre-hint keys can never show first...last4 (only their hash survives)
+      // — one click swaps them for a fresh key with the same label.
+      ...(!k.tokenHint ? [{ icon: ROW_MENU_ICONS.edit, label: "Regenerate…", onClick: () => {
+        void (async () => {
+          if (!(await confirmAction({
+            title: `Regenerate “${k.label || "this key"}”?`,
+            body: "A new key is minted with the same label and shown once; the old token stops working immediately.",
+            confirmLabel: "Regenerate",
+            danger: true,
+          }))) return;
+          const t = transport();
+          if (!t) { setError(NO_TRANSPORT); return; }
+          try {
+            const created = await t.create(k.label || "key", undefined);
+            await t.revoke(k.id);
+            await loadApiKeys();
+            showTokenModal(created.key.label, created.token);
+          } catch (e) { setError((e as Error).message); }
+        })();
+      } }] : []),
       { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {
         void (async () => {
           if (!(await confirmAction({ title: `Revoke “${k.label || "this key"}”?`, body: "Any client using this key immediately loses access.", confirmLabel: "Revoke", danger: true }))) return;
@@ -206,27 +290,9 @@ export function initApiKeys(): void {
     try {
       const created = await t.create(label, Number.isFinite(days) && days > 0 ? days : undefined);
       if (input) input.value = "";
-      const box = $("apikeys-new-token");
-      const val = $("apikeys-new-token-value") as HTMLInputElement | null;
-      if (box && val) { val.value = created.token; box.classList.remove("hidden"); }
       await loadApiKeys();
+      showEditor(false);
+      showTokenModal(created.key.label, created.token);
     } catch (e) { formError((e as Error).message); }
-  });
-  $("apikeys-new-token-copy")?.addEventListener("click", async () => {
-    const input = $("apikeys-new-token-value") as HTMLInputElement | null;
-    const val = input?.value || "";
-    if (!val) return;
-    // Browser-native first (works on web, where the bridge has no
-    // copyToClipboard and the old call was a silent no-op); desktop IPC and
-    // the select+execCommand path as fallbacks.
-    let copied = false;
-    try { await navigator.clipboard.writeText(val); copied = true; } catch { /* permission/insecure context */ }
-    if (!copied) {
-      const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
-      if (ipc) { void ipc(val); copied = true; }
-    }
-    if (!copied && input) { input.focus(); input.select(); copied = document.execCommand("copy"); }
-    const btn = $("apikeys-new-token-copy") as HTMLButtonElement | null;
-    if (btn) { btn.textContent = copied ? "Copied" : "Select + ⌘C"; setTimeout(() => { btn.textContent = "Copy"; }, 1800); }
   });
 }

@@ -596,9 +596,14 @@
                       <input id="members-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" />
                     </div>
                     <div id="members-list" class="mbr-list"></div>
+                    <div id="members-pager"></div>
                   </div>
                   <div id="members-tab-invited" class="hidden">
+                    <div class="crud-toolbar">
+                      <input id="members-invited-search" type="text" class="crud-search" placeholder="Search invites…" spellcheck="false" autocomplete="off" />
+                    </div>
                     <div id="members-invited-list"></div>
+                    <div id="members-invited-pager"></div>
                   </div>
                 </div>
               </div>
@@ -1317,13 +1322,6 @@
                   </select>
                   <div id="apikeys-never-warn" class="settings-warn" style="margin-top:10px;">A key that never expires stays valid until you revoke it — anyone holding it keeps access indefinitely. Prefer an expiry.</div>
                   <p class="settings-hint">Personal key for headless SDK/CLI use — pass it as <code>apiKey</code> to authenticate as you. The token is shown once, right here, on creation.</p>
-                  <div id="apikeys-new-token" class="acct-section hidden" style="border:1px solid var(--accent);margin-top:16px;">
-                    <p class="section-desc" style="color:var(--accent);margin:0 0 8px;">Copy your key now — it won't be shown again.</p>
-                    <div class="settings-inline">
-                      <input id="apikeys-new-token-value" class="settings-input" readonly onfocus="this.select()" />
-                      <button id="apikeys-new-token-copy" class="action-btn primary" type="button">Copy</button>
-                    </div>
-                  </div>
                   <div class="settings-actions" style="margin-top:8px;">
                     <button id="apikeys-cancel-btn" class="action-btn" type="button">Cancel</button>
                     <button id="apikeys-create-btn" class="action-btn primary" type="button">Create key</button>

@@ -18,7 +18,7 @@
  * They come back when members.list() returns those fields.
  */
 
-import { confirmAction } from "./shared.js";
+import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 import { accountApi, type Member, type Org, type PendingInvite } from "./settings-api.js";
 
@@ -143,11 +143,16 @@ async function remove(m: Member): Promise<void> {
   await loadMembers();
 }
 
+const MBR_PAGE_SIZE = 10;
+let mbrPage = 0;
+
 function paintList(): void {
   const list = $("members-list");
   if (!list) return;
   const rows = visible();
   list.innerHTML = "";
+  const pagerHost = $("members-pager");
+  if (pagerHost) pagerHost.textContent = "";
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "crud-empty";
@@ -158,7 +163,12 @@ function paintList(): void {
     return;
   }
 
-  for (const m of rows) {
+  const pg = paginate(rows, mbrPage, MBR_PAGE_SIZE);
+  mbrPage = pg.state.page;
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { mbrPage = p; paintList(); }));
+  }
+  for (const m of pg.items) {
     const row = document.createElement("div");
     row.className = "mbr-row";
     const owner = m.role === "org_admin";
@@ -252,12 +262,19 @@ function setMembersTab(tab: string): void {
   document.getElementById("members-tab-invited")?.classList.toggle("hidden", tab !== "invited");
 }
 
+const INV_PAGE_SIZE = 10;
+let invPage = 0;
+
 function paintInvited(): void {
   const host = document.getElementById("members-invited-list");
   if (!host) return;
   host.innerHTML = "";
-  if (!invited.length) {
-    host.innerHTML = `<div class="crud-empty">No pending invites — everyone you've invited has joined (or the invites expired).</div>`;
+  const pagerHost = document.getElementById("members-invited-pager");
+  if (pagerHost) pagerHost.textContent = "";
+  const q = ($<HTMLInputElement>("members-invited-search")?.value || "").trim().toLowerCase();
+  const rows = q ? invited.filter((i) => i.email.toLowerCase().includes(q) || (i.invitedByEmail || "").toLowerCase().includes(q)) : invited;
+  if (!rows.length) {
+    host.innerHTML = `<div class="crud-empty">${q ? "No invites match your search." : "No pending invites — everyone you've invited has joined (or the invites expired)."}</div>`;
     return;
   }
   const table = document.createElement("table");
@@ -265,7 +282,12 @@ function paintInvited(): void {
   table.innerHTML = `<thead><tr><th>Email</th><th>Role</th><th>Invited by</th><th>Expires</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   const day = (iso: string): string => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-  for (const inv of invited) {
+  const pg = paginate(rows, invPage, INV_PAGE_SIZE);
+  invPage = pg.state.page;
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { invPage = p; paintInvited(); }));
+  }
+  for (const inv of pg.items) {
     const tr = document.createElement("tr");
     tr.innerHTML =
       `<td class="lib-table-name"></td>` +
@@ -303,7 +325,8 @@ export function initMembers(): void {
   document.querySelectorAll<HTMLElement>("#members-tabs .app-detail-tab").forEach((b) => {
     b.addEventListener("click", () => setMembersTab(b.dataset.mtab || "members"));
   });
-  $("members-search")?.addEventListener("input", paintList);
+  $("members-search")?.addEventListener("input", () => { mbrPage = 0; paintList(); });
+  $("members-invited-search")?.addEventListener("input", () => { invPage = 0; paintInvited(); });
   $("members-invite-btn")?.addEventListener("click", () => { void invite(); });
   $("members-invite-email")?.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter") void invite();
