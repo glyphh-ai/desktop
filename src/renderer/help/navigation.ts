@@ -366,21 +366,33 @@ export function openSettingsModal(sub?: string): void {
 
   document.addEventListener("keydown", onSettingsModalKey, true);
 
-  // DESKTOP nav shape (his spec, 2026-08-24): one "Settings" group — Usage
-  // leads (it is also the landing panel), Billing closes the list. On the
-  // platform the buttons stay in their own Home/Organization groups.
+  // DESKTOP nav shape (his spec, 2026-08-25): the Settings group (General,
+  // Appearance, Account, Voice, MCP Server), then an Organization group
+  // holding Usage + Billing, and the user chip pinned at the rail's bottom.
   if (!document.body.classList.contains("platform-shell")) {
     const nav = overlay.querySelector(".settings-nav");
     const groups = Array.from(nav?.querySelectorAll(".settings-nav-group") ?? []);
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
     if (settingsGroup && nav) {
-      // The app's order (his spec, 2026-08-24): General, Appearance, Account,
-      // Voice, Usage, Billing — then Drips (desktop-only, unranked by the spec).
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing", "mcp"]) {
+      for (const sub of ["general", "appearance", "account", "voice", "mcp"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
+      let orgGroup = nav.querySelector("#app-nav-group-org");
+      if (!orgGroup) {
+        orgGroup = document.createElement("div");
+        orgGroup.id = "app-nav-group-org";
+        orgGroup.className = "settings-nav-group";
+        orgGroup.textContent = "Organization";
+      }
+      anchor.after(orgGroup);
+      anchor = orgGroup;
+      for (const sub of ["usage", "billing"]) {
+        const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+        if (item) { anchor.after(item); anchor = item; }
+      }
+      wireAppUserChip(nav as HTMLElement);
     }
   }
 
@@ -471,6 +483,30 @@ export function openSettingsModal(sub?: string): void {
  *  call). The old Organization/Runtime/Guardrails TABS live as groups on
  *  Billing/General now, so the gate toggles those groups instead of nav
  *  entries. Each loader re-asserts the gate + the admin-only body message. */
+/** The DESKTOP settings rail's user chip — bottom-left, like the platform's:
+ *  avatar initial, first name, plan; clicking opens Account. */
+function wireAppUserChip(nav: HTMLElement): void {
+  let chip = nav.querySelector<HTMLButtonElement>("#app-settings-user");
+  if (!chip) {
+    chip = document.createElement("button");
+    chip.id = "app-settings-user";
+    chip.type = "button";
+    chip.innerHTML = `<span class="asu-avatar"></span><span class="asu-meta"><span class="asu-name">—</span><span class="asu-plan"></span></span>`;
+    chip.addEventListener("click", () => {
+      nav.querySelector<HTMLElement>('.settings-nav-item[data-sub="account"]')?.click();
+    });
+    nav.appendChild(chip);
+  }
+  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+    if (!info || !chip) return;
+    const name = (info.firstName || info.email || "").trim();
+    (chip.querySelector(".asu-avatar") as HTMLElement).textContent = (name || "?").charAt(0).toUpperCase();
+    (chip.querySelector(".asu-name") as HTMLElement).textContent = name || "—";
+    const tier = (info.tier || "free");
+    (chip.querySelector(".asu-plan") as HTMLElement).textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+  }).catch(() => { /* signed out — the dash stays */ });
+}
+
 function gateAdminSubs(): void {
   void window.glyphh.getAccountInfo?.().then((info) => {
     const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);

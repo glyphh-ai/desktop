@@ -19445,6 +19445,36 @@ body.platform-shell .settings-nav-item.platform-only { display: flex; }
 .settings-nav span.platform-only { display: none; }
 body.platform-shell .settings-nav span.platform-only { display: inline; }
 body.platform-shell .settings-nav span.not-on-platform { display: none; }
+/* DESKTOP settings rail user chip — pinned at the rail's bottom, the
+   platform chip's grammar (avatar circle, name over plan). */
+#app-settings-user {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#app-settings-user:hover { background: var(--hover); }
+#app-settings-user .asu-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent, #8c3bf2); color: #fff;
+  font-size: 12px; font-weight: 600; flex-shrink: 0;
+}
+#app-settings-user .asu-meta { display: flex; flex-direction: column; min-width: 0; }
+#app-settings-user .asu-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#app-settings-user .asu-plan { font-size: 11px; color: var(--text-3); }
+body.platform-shell #app-settings-user { display: none; }
 body.platform-shell .settings-nav-item.not-on-platform,
 body.platform-shell .settings-nav-group.not-on-platform { display: none !important; }
 /* Platform dashboard header: greeting left, actions at the right edge. */
