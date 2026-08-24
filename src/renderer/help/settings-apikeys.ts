@@ -20,6 +20,8 @@ import { USD_PER_CREDIT } from "./settings-api.js";
 export interface ApiKey {
   id: string; label: string; prefix: string; createdAt: string; expiresAt: string | null;
   userEmail?: string; lastUsedAt?: string | null;
+  /** Console-style hint (`gy_ak_abcdefgh...wxyz`); null on pre-hint keys. */
+  tokenHint?: string | null;
   /** Attributed spend in MICRO-credits (server-summed from the usage ledger). */
   creditsMicro?: number;
 }
@@ -142,7 +144,7 @@ function render(): void {
       `<td class="lib-table-dim">${escapeHtml(fmtDay(k.lastUsedAt))}</td>` +
       `<td>${escapeHtml(fmtCost(k.creditsMicro))}</td>`;
     (tr.querySelector(".ak-name") as HTMLElement).textContent = k.label || "(unnamed)";
-    (tr.querySelector(".ak-prefix") as HTMLElement).textContent = k.prefix;
+    (tr.querySelector(".ak-prefix") as HTMLElement).textContent = k.tokenHint || `${k.prefix}...`;
     (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.userEmail || "";
     tr.appendChild(kebabCell(() => [
       { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {

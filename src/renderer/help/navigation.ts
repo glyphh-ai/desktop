@@ -530,12 +530,12 @@ const settingsSubAlias = (sub: string): string => {
 function loadSettingsSub(sub: string): void {
   // General carries the Sessions (runtime region) + Guardrails groups (both
   // PLATFORM-ONLY surfaces now) — they fetch on show.
-  if (sub === "general") { void loadRuntime(); void loadGuardrails(); }
+  if (sub === "general") void loadGuardrails();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") void loadOrgPanel();
+  else if (sub === "org-general") { void loadOrgPanel(); void loadRuntime(); }
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();

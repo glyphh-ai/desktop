@@ -15071,7 +15071,15 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .ws-filter-btn svg { width: 14px; height: 14px; }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
-/* Role connections table: a compact icon cell leads each row. */
+/* Role connections table: 7 columns — the GENERIC .lib-table nth-child
+   widths (built for 4 columns) squeezed the kebab out of view and hid the
+   Description/Tools columns at narrow widths. Higher-specificity overrides
+   pin every column. */
+.lib-table.ws-conn-table th:nth-child(1), .lib-table.ws-conn-table td:nth-child(1) { width: 40px; }
+.lib-table.ws-conn-table th:nth-child(2), .lib-table.ws-conn-table td:nth-child(2) { width: 24%; }
+.lib-table.ws-conn-table th:nth-child(3), .lib-table.ws-conn-table td:nth-child(3) { width: auto; display: table-cell; }
+.lib-table.ws-conn-table th:nth-child(4), .lib-table.ws-conn-table td:nth-child(4) { width: 72px; display: table-cell; }
+.lib-table.ws-conn-table th:nth-child(5), .lib-table.ws-conn-table td:nth-child(5) { width: 84px; }
 .lib-table .ws-conn-icon-cell { width: 40px; text-overflow: clip; }
 .lib-table .ws-conn-icon-cell .ws-conn-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
 .lib-table .ws-conn-icon-cell .ws-conn-icon img { width: 20px; height: 20px; border-radius: 5px; }
@@ -19357,6 +19365,7 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-value { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .set-pref-value .settings-input { width: auto; }
 .set-pref-value input[type="text"], .set-pref-value input[type="url"] { width: 280px; }
+.set-pref-value .ws-num { width: 110px; }
 .set-pref-list .set-pref-row:last-child { border-bottom: none; }
 
 /* ── APP Usage view (plan-limits look; the platform keeps its dashboard) ── */

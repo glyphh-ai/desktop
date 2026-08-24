@@ -26,6 +26,7 @@
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
+import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
 
 const MICRO = 1_000_000;
 /** Calendar-aligned periods — the interval defines the reset, no arbitrary dates. */
@@ -223,7 +224,6 @@ async function saveGeneral(): Promise<void> {
     creditsCap: cap == null ? null : cap * MICRO,
     capPeriodDays: Number($<HTMLSelectElement>("ws-cap-period")?.value) || 30,
   });
-  paintTitle();
 }
 
 const commitModels = (models: string[] | null, msg?: string): Promise<boolean> =>
@@ -358,10 +358,6 @@ function showEditor(on: boolean): void {
   $("ws-edit-view")?.classList.toggle("hidden", !on);
 }
 
-function paintTitle(): void {
-  const el = $("ws-edit-title");
-  if (el) el.textContent = editing ? `${editing.name}${editing.isBase ? " · base" : ""}` : "—";
-}
 
 async function openEditor(w: Workspace): Promise<void> {
   editing = w;
@@ -378,7 +374,6 @@ async function openEditor(w: Workspace): Promise<void> {
   const period = $<HTMLSelectElement>("ws-cap-period");
   if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
   hydrating = false;
-  paintTitle();
   paintModels();
   paintConnections();
   // The picker needs the org's own connectors + the tool cap; the allowed
@@ -586,7 +581,7 @@ function paintConnections(): void {
     return;
   }
   const table = document.createElement("table");
-  table.className = "lib-table";
+  table.className = "lib-table ws-conn-table";
   table.innerHTML = `<thead><tr><th class="ws-conn-icon-cell"></th><th>Name</th><th>Description</th><th>Tools</th><th>Allowed</th><th class="ws-model-toggle-cell"></th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   const pg = paginate(shown, wsConnPage, WS_MODELS_PAGE_SIZE);
@@ -598,6 +593,10 @@ function paintConnections(): void {
       if (!selectedSlug) paintConnections();
     });
   }
+  void primeConnectedIcons(
+    pg.items.map((slug) => ({ connection: { accountId: "x", pipedreamSlug: slug } })),
+    () => { if (!selectedSlug) paintConnections(); },
+  );
   for (const slug of pg.items) {
     const meta = connMeta.get(slug) || { name: slug, icon: null };
     const kind = orgConnectors.find((c) => c.id === slug)?.kind || (personal ? "Personal app" : "");
@@ -614,9 +613,10 @@ function paintConnections(): void {
       `<td class="lib-table-dim"></td>` +
       `<td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-allow"><input type="checkbox" /><span class="toggle-switch"></span></label></td>`;
     const iconHost = tr.querySelector(".ws-conn-icon") as HTMLElement;
-    if (meta.icon) {
+    const iconUrl = meta.icon || connectedIconCache[slug] || "";
+    if (iconUrl) {
       const img = document.createElement("img");
-      img.src = meta.icon; img.alt = "";
+      img.src = iconUrl; img.alt = "";
       iconHost.appendChild(img);
     } else iconHost.textContent = ICON_FALLBACK(meta.name);
     (tr.querySelector(".lib-table-name") as HTMLElement).textContent = meta.name;
