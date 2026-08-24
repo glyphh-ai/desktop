@@ -13,10 +13,14 @@ import { listingReviewState } from "./marketplace-dev.js";
 export interface NavBadges { marketplace: number; settings: number }
 
 async function marketplaceCount(): Promise<number> {
-  // Platform admin first: the review queue IS the pending work.
+  // Platform admin first: the review queue IS the pending work. Gated on the
+  // flag — an unconditional call 403'd (console noise) for everyone else.
   try {
-    const q = await mkt.adminQueue();
-    if (Array.isArray(q.releases)) return q.releases.length;
+    const info = await window.glyphh.getAccountInfo?.() as { isPlatformAdmin?: boolean; role?: string } | null;
+    if (info?.isPlatformAdmin || info?.role === "super_admin") {
+      const q = await mkt.adminQueue();
+      if (Array.isArray(q.releases)) return q.releases.length;
+    }
   } catch { /* not an admin — fall through to the author's view */ }
   // Author: listings with changes requested (a ruling waiting on them).
   try {

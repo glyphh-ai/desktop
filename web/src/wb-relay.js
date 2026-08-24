@@ -29,9 +29,25 @@ const noop = () => {};
 const msg = (e) => (e instanceof Error ? e.message : String(e));
 
 export function createWbRelay({ client, apiUrl, isAuthenticated }) {
+  // No desktop attached ⇒ every dispatch 409s (boot-time console noise).
+  // Check the attach status once, cache briefly, and short-circuit locally;
+  // callers already treat a throw as "relay unavailable".
+  let attachOkUntil = 0;
+  let attachOk = false;
+  const attached = async () => {
+    const now = Date.now();
+    if (now < attachOkUntil) return attachOk;
+    try {
+      const st = await client?.attach?.status?.();
+      attachOk = !!(st && (st.attached ?? st.desktops?.length ?? st.online));
+    } catch { attachOk = false; }
+    attachOkUntil = now + 30_000;
+    return attachOk;
+  };
   const dispatch = async (method, params) => {
     const d = client?.attach?.dispatch;
     if (!d) throw new Error('no attach transport');
+    if (!(await attached())) throw new Error('no desktop attached');
     return d.call(client.attach, method, params || {});
   };
 

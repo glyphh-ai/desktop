@@ -19292,6 +19292,9 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-desc { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
 .set-pref-value { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .set-pref-value .settings-input { width: auto; }
+/* General: the interface-sounds row is the panel's last visible row on the
+   app — no underline (his rule, 2026-08-24). */
+.settings-panel[data-sub="general"] .set-pref-row { border-bottom: none; }
 /* A toggle wearing the row grammar: same flex row, switch at the right edge,
    none of the pill padding/hover chrome of the stock .settings-toggle. */
 .settings-toggle.set-pref-row { width: 100%; padding: 14px 0; border-radius: 0; background: none; }
