@@ -85,11 +85,10 @@ void (async () => {
       railBtn.type = "button";
       railBtn.id = "platform-rail-toggle";
       railBtn.className = "settings-modal-close";
-      const railSvg = (collapsed: boolean) =>
-        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="${collapsed ? "9 18 15 12 9 6" : "15 18 9 12 15 6"}"/></svg>`;
+      // The LEFT-RAIL icon (a sidebar glyph, same both ways) — not a chevron.
+      railBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`;
       const paintRailBtn = () => {
         const collapsed = document.body.classList.contains("platform-rail-collapsed");
-        railBtn.innerHTML = railSvg(collapsed);
         railBtn.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
         railBtn.title = collapsed ? "Expand navigation" : "Collapse navigation";
       };
@@ -99,10 +98,9 @@ void (async () => {
         try { localStorage.setItem("glyphhPlatformRail", collapsed ? "collapsed" : "open"); } catch { /* */ }
         paintRailBtn();
       });
-      document.getElementById("settings-modal")?.querySelector(".settings-modal-panel")?.appendChild(railBtn);
-      // Rail HEADER (his spec, 2026-08-24): top-left of the rail — the wordmark
-      // alone. No surface switch: the Builder opens from the Apps row's
-      // launcher (new tab), and the Builder page carries "← Platform" back.
+      // Rail HEADER (his spec, 2026-08-24): wordmark + the rail toggle to its
+      // right; collapsed shows the MASCOT. No surface switch: the Builder
+      // opens from the Apps row's launcher (new tab) and carries "← Platform".
       // Build the head ONCE, then keep it mounted as the nav's PREVIOUS
       // SIBLING (in the rail container, not inside .settings-nav). The
       // org-admin gating (gateAdminSubs) rebuilds the nav's children async —
@@ -112,7 +110,10 @@ void (async () => {
       const buildRailHead = (): HTMLElement => {
         const head = document.createElement("div");
         head.id = "platform-rail-head";
-        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" />`;
+        // Wordmark when expanded, the MASCOT when collapsed (CSS swaps them);
+        // the rail toggle rides to the RIGHT of the logo, in the head row.
+        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" /><img id="platform-mascot" src="brand/glyphh-mark.png" alt="" draggable="false" />`;
+        head.appendChild(railBtn);
         return head;
       };
       // The Apps row's far-right launcher: open the Builder in a NEW TAB

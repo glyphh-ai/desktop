@@ -19279,12 +19279,14 @@ body.platform-shell .settings-modal-max { display: none; }
    out-specifies the .settings-modal-close display:none above. */
 body.platform-shell #platform-rail-toggle {
   display: flex;
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  right: auto;
-  z-index: 3;
+  position: static;
+  margin-left: auto;
+  pointer-events: auto;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
 }
+body.platform-shell #platform-rail-toggle svg { width: 16px; height: 16px; }
 /* Full-page proportions (his rule, 2026-08-24: BIGGER): a wide rail with
    larger rows, room under the fixed chevron, and room above the bottom
    user chip. Build and Help are desktop-settings groups — the platform
@@ -19313,7 +19315,9 @@ body.platform-shell #platform-brand { height: 25px; }
   left: 0;
   bottom: 0;
   width: 264px;
-  z-index: 4;
+  /* The platform page IS the settings modal (.yo-modal, z 9000) — the chip
+     must float above it or the opaque panel paints over it. */
+  z-index: 9100;
   padding: 10px 12px 12px;
   background: inherit;
 }
@@ -19421,23 +19425,29 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
   top: 0;
   left: 0;
   width: 264px;
-  /* UNDER the collapse toggle (z 3) — the head is decoration, never a click target. */
-  z-index: 2;
+  z-index: 3;
+  /* Decoration only EXCEPT the rail toggle, which re-enables its own events. */
   pointer-events: none;
-  padding: 14px 12px 8px;
+  padding: 12px 12px 8px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
 }
-#platform-brand { display: block; height: 22px; width: auto; padding: 0 6px; object-fit: contain; }
-body.platform-rail-collapsed #platform-rail-head { width: 54px; }
+#platform-brand { display: block; height: 28px; width: auto; padding: 0 6px; object-fit: contain; }
+#platform-mascot { display: none; height: 26px; width: auto; margin: 0 auto; }
+body.platform-rail-collapsed #platform-rail-head { width: 54px; padding: 12px 6px 8px; }
 body.platform-rail-collapsed #platform-brand { display: none; }
+body.platform-rail-collapsed #platform-mascot { display: block; }
 
 /* Collapsed rail: the expand toggle floats JUST OUTSIDE the rail's right
    edge (rail is 54px wide collapsed). */
 body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   position: fixed !important;
-  left: 60px; top: 2px; z-index: 60;
+  /* The base .settings-modal-close carries right:12px, and the expanded
+     rule margin-left:auto — both must reset or the fixed box slides to the
+     window's right edge. */
+  left: 60px; right: auto; top: 12px; margin-left: 0; z-index: 9100;
   width: 26px; height: 26px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
   box-shadow: 0 2px 8px var(--shadow);
