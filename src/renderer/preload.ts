@@ -891,7 +891,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   openExternal: (url: string) => ipcRenderer.send("open-external", url),
   platformUrl: process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai",
   serverUrl: process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai",
-  discordInvite: process.env.GLYPHH_DISCORD_INVITE || "https://discord.gg/cHGZR764D",
+  discordInvite: process.env.GLYPHH_DISCORD_INVITE || "https://discord.gg/P3yynv4v9",
   hasMcpAccess: () => ipcRenderer.invoke("has-mcp-access") as Promise<boolean>,
   openAccountDashboard: () => ipcRenderer.send("open-external", (process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai")),
   openBilling: () => ipcRenderer.send("open-external", (process.env.GLYPHH_PLATFORM_URL || "https://platform.glyphh.ai") + "/billing"),

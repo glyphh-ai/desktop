@@ -104,6 +104,7 @@ const SHELL_ROUTES = new Set([
   '/', '/login', '/auth', '/auth/',
   '/auth/callback', '/auth/callback/',
   '/auth/device', '/auth/device/',
+  '/auth/accept-invite', '/auth/accept-invite/',
 ]);
 /** A shell route BELOW the root needs <base href="/"> for its relative assets.
  *  /settings/mcp is two levels deep — without <base>, home.html's relative
@@ -225,6 +226,16 @@ const server = http.createServer(async (req, res) => {
     // /platform — the admin surface (the settings shell as a full page). Same
     // home.html document as /home; home.ts branches on the pathname client-side.
     const isPlatformRoute = p === '/platform' || p === '/platform/';
+    // Stripe returns to the OLD platform's /billing route (success/cancel and
+    // top-up redirects) — bounce it into the shell with the query intact; the
+    // shell opens the Billing tab from those params.
+    if (p === '/billing' || p === '/billing/') {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      res.statusCode = 302;
+      res.setHeader('Location', `/platform${qs}`);
+      res.end();
+      return;
+    }
     const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
       && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;

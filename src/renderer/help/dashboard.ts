@@ -898,7 +898,7 @@ export function initDashboardEvents(): void {
     // typeof guard: on web window.glyphh is a Proxy that fabricates a FUNCTION
     // for any name — a truthy || would "open" that function, not a URL.
     const raw = (window.glyphh as unknown as { discordInvite?: unknown }).discordInvite;
-    window.open(typeof raw === "string" && raw ? raw : "https://discord.gg/cHGZR764D", "_blank", "noopener");
+    window.open(typeof raw === "string" && raw ? raw : "https://discord.gg/P3yynv4v9", "_blank", "noopener");
   });
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
     gotoSection("settings", "apikeys");

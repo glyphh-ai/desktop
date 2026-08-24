@@ -28,7 +28,7 @@ function loadDocs() {
 // typeof guard: the WEB bridge is a Proxy that fabricates a function for any
 // name — a truthy || would hand links that function instead of the URL.
 const DISCORD_INVITE = typeof window.glyphh?.discordInvite === "string" && window.glyphh.discordInvite
-  ? window.glyphh.discordInvite : "https://discord.gg/cHGZR764D";
+  ? window.glyphh.discordInvite : "https://discord.gg/P3yynv4v9";
 
 let supportInitialized = false;
 

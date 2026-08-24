@@ -116,6 +116,18 @@ void (async () => {
         head.appendChild(railBtn);
         return head;
       };
+      // A Stripe return (/billing → 302 /platform?success=1|topup=1) lands
+      // on the Billing tab, so the outcome is visible where the purchase
+      // started. Params stripped so a reload doesn't re-open it.
+      {
+        const q = new URLSearchParams(window.location.search);
+        if (q.has("success") || q.has("topup") || q.has("billing")) {
+          window.setTimeout(() => {
+            document.querySelector<HTMLElement>('#settings-modal .settings-nav-item[data-sub="billing"], .settings-nav-item[data-sub="billing"]')?.click();
+          }, 600);
+          try { window.history.replaceState(null, "", "/platform"); } catch { /* cosmetic */ }
+        }
+      }
       // The Apps row's far-right launcher: open the Builder in a NEW TAB
       // without switching the row itself (the row still opens the Apps panel).
       document.getElementById("apps-builder-launch")?.addEventListener("click", (ev) => {

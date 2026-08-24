@@ -31,6 +31,7 @@ import {
   signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice, signOut,
 } from './glyphh-web.js';
 import { mountLogin } from './web-login.js';
+import { glyphh } from './glyphh-web.js';
 
 const SPLASH_MIN_MS = 1200;
 
@@ -314,6 +315,35 @@ function showLogin(shownAt, initialError) {
  * Run the web boot sequence. Idempotent-safe to call once at DOM-ready.
  * @param {object} [overrides] injectable seams for tests (all optional)
  */
+/** The org-invite hand-off (/auth/accept-invite?token=…). The token is
+ *  stashed so the sign-in round trip (magic link / OAuth) can finish the
+ *  accept on the way back in. Returns:
+ *    'accepted' — joined; navigation to the platform issued.
+ *    'error'    — invite invalid/mismatched; message shown, boot stops.
+ *    false      — nothing stashed, continue the normal boot. */
+async function maybeAcceptInvite(authed) {
+  const onInvitePath = window.location.pathname.replace(/\/$/, '') === '/auth/accept-invite';
+  let token = '';
+  if (onInvitePath) {
+    token = new URLSearchParams(window.location.search).get('token') || '';
+    if (token) { try { sessionStorage.setItem('glyphhInviteToken', token); } catch { /* private mode */ } }
+  } else {
+    try { token = sessionStorage.getItem('glyphhInviteToken') || ''; } catch { /* private mode */ }
+  }
+  if (!token) return false;
+  if (!authed) return false;   // stash kept — sign-in continues the flow
+  try {
+    await glyphh().invites.accept(token);
+  } catch (err) {
+    try { sessionStorage.removeItem('glyphhInviteToken'); } catch { /* */ }
+    splashStatus(`Couldn't accept the invite — ${err?.message || 'it may have expired or belong to a different email.'}`);
+    return 'error';
+  }
+  try { sessionStorage.removeItem('glyphhInviteToken'); } catch { /* */ }
+  window.location.assign(PLATFORM_PATH);
+  return 'accepted';
+}
+
 export async function startWebBoot(overrides = {}) {
   const shownAt = Date.now();
   const isAuthed = overrides.isAuthenticated || isAuthenticated;
@@ -333,7 +363,13 @@ export async function startWebBoot(overrides = {}) {
   // starters; auth-gated SDK reads degrade to empty via the bridge. If authed, syncing
   // gating cookies is best-effort (non-blocking) so the session-aware UI can light up.
   if (!loginShell) {
-    if (authed) { try { void syncGating(); } catch { /* best-effort */ } }
+    if (authed) {
+      try { void syncGating(); } catch { /* best-effort */ }
+      // A stashed invite (sign-in round trip landed here) still resolves;
+      // an invalid one just clears — never blank the front door over it.
+      const invite = await maybeAcceptInvite(true);
+      if (invite === 'accepted') return;
+    }
     return;
   }
 
@@ -356,6 +392,11 @@ export async function startWebBoot(overrides = {}) {
     // the presence check now that the server answers.
     try { authed = await isAuthed(); } catch { authed = false; }
   }
+  // An invite token (on this URL or stashed across the sign-in round trip)
+  // resolves before the normal boot decision.
+  const invite = await maybeAcceptInvite(authed);
+  if (invite === 'accepted' || invite === 'error') return;
+
   const state = decideBootState({
     pathname: window.location.pathname,
     search: window.location.search,
