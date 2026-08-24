@@ -64,7 +64,10 @@ export function restorePanelsForModal(wasHidden: boolean): void {
 export function yoConfirm(opts: YoConfirmOpts): Promise<boolean> {
   return new Promise((resolve) => {
     // Guard against stacking — if a dialog is already up, dismiss it first.
-    document.querySelectorAll(".yo-modal").forEach((el) => el.remove());
+    // Never sweep the SETTINGS surface — it rides the same yo-modal skeleton
+    // (navigation.ts: "yo-modal yo-settings-modal"), and a bare .yo-modal
+    // sweep deletes the whole page a confirm was raised FROM.
+    document.querySelectorAll(".yo-modal:not(.yo-settings-modal)").forEach((el) => el.remove());
 
     // Hide BrowserView panels while the modal is up — they render ABOVE
     // the renderer's HTML in Electron, so a DOM modal sits underneath them

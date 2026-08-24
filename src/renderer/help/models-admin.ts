@@ -1,10 +1,16 @@
 /**
- * Models (org admin) — the desktop mirror of the platform's Configure → Models:
- * catalog support toggles (proxy + open weight), provider enablement + BYOK
- * keys, and the org's custom OpenAI-compatible models. All writes go to the
- * server through models-ipc; the server enforces org_admin — a non-admin sees
- * the refusal in the banner, and nothing here pretends otherwise.
+ * Models (org admin) — ONE page. The list is the PROVIDERS list (searchable,
+ * paginated); each provider row expands to the models inside it. Glyphh
+ * providers proxy through the gateway (enable + BYOK; catalog models with
+ * Supported toggles); your own providers are any OpenAI-spec endpoint, with
+ * a + to add models under them. Add/edit runs in the app's modal skeleton
+ * (yo-modal — never inline); deletes go through the app-standard confirm.
+ * Deleting a provider deletes its models with it; sessions/threads are
+ * untouched. Every write rides the SDK surface; the server enforces org_admin.
  */
+
+import { renderPaginationBar } from "./shared.js";
+import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 
 interface OrgModelRow {
   id: string;
@@ -23,22 +29,40 @@ interface ProviderRow {
   kind: string;
   enabledForOrg: boolean;
   hasByokKey: boolean;
+  byokHint?: string | null;
+}
+
+interface CustomProviderRow {
+  slug: string;
+  name: string;
+  base_url: string;
+  has_key: boolean;
+  key_hint: string | null;
+  active: boolean;
+  model_count: number;
 }
 
 interface CustomModelRow {
   id: string;
   name: string;
   base_url: string;
+  provider_slug: string | null;
   model_name: string;
   context_window: number;
   max_output_tokens: number;
   has_key: boolean;
+  active: boolean;
 }
+
+const PAGE_SIZE = 10;
 
 let models: OrgModelRow[] = [];
 let providers: ProviderRow[] = [];
+let customProviders: CustomProviderRow[] = [];
 let custom: CustomModelRow[] = [];
 let initialized = false;
+let page = 0;
+const expanded = new Set<string>();
 
 const el = (id: string) => document.getElementById(id);
 
@@ -49,254 +73,536 @@ function showError(msg: string): void {
   b.classList.toggle("hidden", !msg);
 }
 
-// ── rendering ────────────────────────────────────────────────────────────────
+// ── the app's modal skeleton, as a FORM dialog ───────────────────────────────
 
-function renderModelGrid(kind: "proxied" | "open_weight"): void {
-  const tab = kind === "proxied" ? "proxy" : "open";
-  const grid = el(`models-grid-${tab}`);
-  if (!grid) return;
-  const q = ((el(`models-search-${tab}`) as HTMLInputElement | null)?.value || "").trim().toLowerCase();
-  const list = models.filter((m) => m.kind === kind &&
-    (!q || m.name.toLowerCase().includes(q) || m.providerSlug.toLowerCase().includes(q)));
-  grid.textContent = "";
-  if (!list.length) {
-    grid.innerHTML = `<div class="crud-empty">${q ? "No models match your search." : "No models in the catalog yet."}</div>`;
-    return;
-  }
-  for (const m of list) {
-    const card = document.createElement("div");
-    card.className = "mdl-card" + (m.kind === "proxied" && !m.providerEnabled ? " mdl-provider-off" : "");
-    const price = m.kind === "proxied"
-      ? `${m.providerSlug} · ${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok`
-      : (m.providerSlug === "local" ? "On-device · 0 credits" : `${m.providerSlug} · open weight`);
-    card.innerHTML = `
-      <div class="mdl-card-info">
-        <div class="mdl-card-name"></div>
-        <div class="mdl-card-sub"></div>
-      </div>
-      ${m.kind === "proxied" && !m.providerEnabled ? `<button type="button" class="mdl-chip-warn" title="Enable this model's provider on the Providers tab">Provider off</button>` : ""}
-      <label class="settings-toggle mdl-toggle">
-        <input type="checkbox" ${m.supported ? "checked" : ""} />
-        <span class="toggle-switch"></span>
-        <span class="mdl-toggle-text">Supported</span>
-      </label>`;
-    (card.querySelector(".mdl-card-name") as HTMLElement).textContent = m.name;
-    (card.querySelector(".mdl-card-sub") as HTMLElement).textContent = price;
-    card.querySelector(".mdl-chip-warn")?.addEventListener("click", () => switchTab("providers"));
-    const box = card.querySelector("input[type=checkbox]") as HTMLInputElement;
-    box.addEventListener("change", () => {
-      void window.glyphh.orgModelsSetSupported(m.id, box.checked).then((r) => {
-        if (!r?.ok) { box.checked = !box.checked; showError(r.error || "Update failed"); return; }
-        m.supported = box.checked;
-        showError("");
-      });
-    });
-    grid.appendChild(card);
-  }
+interface ModalField {
+  id: string;
+  label: string;
+  hint?: string;
+  type?: "text" | "password" | "number" | "checkbox";
+  value?: string;
+  checked?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+  /** A circle-x at the input's far right (shown when `visible`): clears the
+   *  STORED value immediately. On success the input resets to `after`. */
+  clear?: { visible: boolean; title: string; after: string; onClear: () => Promise<boolean> };
 }
 
-function renderProviders(): void {
-  const wrap = el("models-providers-list");
-  if (!wrap) return;
-  const q = ((el("models-search-providers") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
-  const list = providers.filter((p) => !q || p.name.toLowerCase().includes(q) || p.slug.includes(q));
-  wrap.textContent = "";
-  if (!list.length) {
-    wrap.innerHTML = `<div class="crud-empty">${q ? "No providers match your search." : "No providers in the catalog yet."}</div>`;
-    return;
-  }
-  for (const p of list) {
-    const row = document.createElement("div");
-    row.className = "mdl-row";
-    row.innerHTML = `
-      <div class="mdl-row-id">
-        <div class="mdl-card-name"></div>
-        <div class="mdl-card-sub mono"></div>
-      </div>
-      <input class="settings-input mdl-key" type="password" autocomplete="new-password" />
-      <button type="button" class="action-btn mdl-key-save" disabled></button>
-      <button type="button" class="action-btn mdl-key-remove" title="Remove the saved key — the provider stays enabled on the platform proxy key">Remove key</button>
-      <span class="mdl-key-state"></span>
-      <label class="settings-toggle" title="">
-        <input type="checkbox" ${p.enabledForOrg ? "checked" : ""} />
-        <span class="toggle-switch"></span>
-      </label>`;
-    (row.querySelector(".mdl-card-name") as HTMLElement).textContent = p.name;
-    (row.querySelector(".mdl-card-sub") as HTMLElement).textContent = p.slug;
-    const keyInput = row.querySelector(".mdl-key") as HTMLInputElement;
-    const saveBtn = row.querySelector(".mdl-key-save") as HTMLButtonElement;
-    const state = row.querySelector(".mdl-key-state") as HTMLElement;
-    keyInput.placeholder = p.hasByokKey ? "•••••••• (saved — enter a new key to replace)" : `${p.name} API key`;
-    saveBtn.textContent = p.hasByokKey ? "Replace key" : "Save";
-    state.textContent = p.hasByokKey ? "✓ key set" : "—";
-    state.classList.toggle("mdl-key-ok", p.hasByokKey);
-    keyInput.addEventListener("input", () => { saveBtn.disabled = !keyInput.value.trim(); });
-    const saveKey = () => {
-      const value = keyInput.value.trim();
-      if (!value) return;
-      saveBtn.disabled = true;
-      void window.glyphh.orgProviderEnable(p.slug, value).then((r) => {
-        if (!r?.ok) { showError(r.error || "Save failed"); saveBtn.disabled = false; return; }
-        showError("");
-        void refresh();
-      });
+/** Open a yo-modal form. Resolves the field values on Save, null on cancel. */
+function formModal(title: string, fields: ModalField[], saveText = "Save"): Promise<Record<string, string> | null> {
+  return new Promise((resolve) => {
+    // Scope the stacking guard to OUR overlays — the settings surface itself
+    // rides the yo-modal skeleton, and a bare ".yo-modal" sweep removes the
+    // whole platform page (the black-screen bug).
+    document.querySelectorAll(".yo-modal.mdl-form-overlay").forEach((n) => n.remove());
+    // BrowserViews exist only in Electron; the web has nothing to freeze.
+    const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+    let panelsWereHidden = false;
+    if (!isWeb) void hidePanelsForModal().then((h) => { panelsWereHidden = h; });
+
+    const overlay = document.createElement("div");
+    overlay.className = "yo-modal mdl-form-overlay";
+    const backdrop = document.createElement("div");
+    backdrop.className = "yo-modal-backdrop";
+    const panel = document.createElement("div");
+    panel.className = "yo-modal-panel mdl-form-modal";
+
+    const head = document.createElement("div");
+    head.className = "yo-modal-title";
+    head.textContent = title;
+    panel.appendChild(head);
+
+    const inputs = new Map<string, HTMLInputElement>();
+    for (const f of fields) {
+      if (f.type === "checkbox") {
+        const lab = document.createElement("label");
+        lab.className = "settings-label mdl-modal-check";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = !!f.checked;
+        lab.append(box, document.createTextNode(` ${f.label}`));
+        inputs.set(f.id, box);
+        panel.appendChild(lab);
+        continue;
+      }
+      const lab = document.createElement("label");
+      lab.className = "settings-label";
+      lab.textContent = f.label;
+      if (f.hint) {
+        const hint = document.createElement("span");
+        hint.className = "settings-hint";
+        hint.textContent = ` ${f.hint}`;
+        lab.appendChild(hint);
+      }
+      const inp = document.createElement("input");
+      inp.type = f.type ?? "text";
+      inp.className = "settings-input";
+      inp.value = f.value ?? "";
+      inp.placeholder = f.placeholder ?? "";
+      inp.disabled = !!f.disabled;
+      inp.spellcheck = false;
+      inp.autocomplete = f.type === "password" ? "new-password" : "off";
+      inputs.set(f.id, inp);
+      if (f.clear) {
+        const wrap = document.createElement("div");
+        wrap.className = "mdl-input-clearwrap";
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "mdl-input-clear" + (f.clear.visible ? "" : " hidden");
+        x.title = f.clear.title;
+        x.setAttribute("aria-label", f.clear.title);
+        x.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>`;
+        const after = f.clear.after;
+        const onClear = f.clear.onClear;
+        x.addEventListener("click", () => {
+          x.disabled = true;
+          void onClear().then((okGo) => {
+            x.disabled = false;
+            if (!okGo) return;
+            x.classList.add("hidden");
+            inp.placeholder = after;
+            inp.value = "";
+          });
+        });
+        wrap.append(inp, x);
+        panel.append(lab, wrap);
+      } else {
+        panel.append(lab, inp);
+      }
+    }
+
+    const err = document.createElement("div");
+    err.className = "crud-form-error hidden";
+    panel.appendChild(err);
+
+    const actions = document.createElement("div");
+    actions.className = "settings-actions";
+    actions.style.marginTop = "16px";
+    const spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    const cancel = document.createElement("button");
+    cancel.className = "action-btn";
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const save = document.createElement("button");
+    save.className = "action-btn primary";
+    save.type = "button";
+    save.textContent = saveText;
+    actions.append(spacer, cancel, save);
+    panel.appendChild(actions);
+
+    const close = (result: Record<string, string> | null) => {
+      overlay.remove();
+      if (!isWeb) restorePanelsForModal(panelsWereHidden);
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
     };
-    saveBtn.addEventListener("click", saveKey);
-    keyInput.addEventListener("keydown", (e) => { if (e.key === "Enter") saveKey(); });
-    const removeBtn = row.querySelector(".mdl-key-remove") as HTMLButtonElement;
-    removeBtn.classList.toggle("hidden", !p.hasByokKey);
-    removeBtn.addEventListener("click", () => {
-      removeBtn.disabled = true;
-      void window.glyphh.orgProviderClearKey(p.slug).then((r) => {
-        removeBtn.disabled = false;
-        if (!r?.ok) { showError(r.error || "Remove failed"); return; }
-        showError("");
-        void refresh();
-      });
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(null); };
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", () => close(null));
+    cancel.addEventListener("click", () => close(null));
+    save.addEventListener("click", () => {
+      const out: Record<string, string> = {};
+      for (const [id, inp] of inputs) out[id] = inp.type === "checkbox" ? (inp.checked ? "1" : "") : inp.value.trim();
+      close(out);
     });
-    const toggle = row.querySelector(".settings-toggle input") as HTMLInputElement;
-    toggle.addEventListener("change", () => {
-      const call = toggle.checked ? window.glyphh.orgProviderEnable(p.slug) : window.glyphh.orgProviderDisable(p.slug);
-      void call.then((r) => {
-        if (!r?.ok) { toggle.checked = !toggle.checked; showError(r.error || "Update failed"); return; }
-        p.enabledForOrg = toggle.checked;
-        showError("");
-        // Support cards show "Provider off" chips — keep them truthful.
-        void refreshModelsOnly();
-      });
-    });
-    wrap.appendChild(row);
-  }
-}
 
-function renderCustom(): void {
-  const wrap = el("models-custom-list");
-  if (!wrap) return;
-  wrap.textContent = "";
-  if (!custom.length) {
-    wrap.innerHTML = `<div class="crud-empty">No custom models yet.</div>`;
-    return;
-  }
-  for (const m of custom) {
-    const row = document.createElement("div");
-    row.className = "mdl-row";
-    row.innerHTML = `
-      <div class="mdl-row-id mdl-row-wide">
-        <div class="mdl-card-name"></div>
-        <div class="mdl-card-sub mono"></div>
-      </div>
-      <button type="button" class="action-btn mdl-edit">Edit</button>
-      <button type="button" class="action-btn danger mdl-del">Delete</button>`;
-    (row.querySelector(".mdl-card-name") as HTMLElement).textContent = `${m.name}  ·  ${m.id}`;
-    (row.querySelector(".mdl-card-sub") as HTMLElement).textContent =
-      `${m.base_url} · ${m.model_name} · ${m.context_window.toLocaleString()} ctx · ${m.has_key ? "✓ key" : "no key"}`;
-    row.querySelector(".mdl-edit")?.addEventListener("click", () => {
-      (el("mc-name") as HTMLInputElement).value = m.name;
-      (el("mc-slug") as HTMLInputElement).value = m.id.replace(/^custom::/, "");
-      (el("mc-url") as HTMLInputElement).value = m.base_url;
-      (el("mc-model") as HTMLInputElement).value = m.model_name;
-      (el("mc-ctx") as HTMLInputElement).value = String(m.context_window);
-      (el("mc-max") as HTMLInputElement).value = String(m.max_output_tokens);
-      (el("mc-key") as HTMLInputElement).value = "";
-    });
-    row.querySelector(".mdl-del")?.addEventListener("click", () => {
-      void window.glyphh.orgCustomModelsDelete(m.id).then((r) => {
-        if (!r?.ok) { showError(r.error || "Delete failed"); return; }
-        showError("");
-        void refresh();
-      });
-    });
-    wrap.appendChild(row);
-  }
-}
-
-function renderCounts(): void {
-  const set = (id: string, n: number) => { const e = el(id); if (e) e.textContent = String(n); };
-  set("models-count-proxy", models.filter((m) => m.kind === "proxied").length);
-  set("models-count-open", models.filter((m) => m.kind === "open_weight").length);
-  set("models-count-custom", custom.length);
-  set("models-count-providers", providers.length);
-}
-
-// ── data ─────────────────────────────────────────────────────────────────────
-
-async function refreshModelsOnly(): Promise<void> {
-  const r = await window.glyphh.orgModelsList();
-  if (r.ok && r.data) models = r.data as OrgModelRow[];
-  renderModelGrid("proxied");
-  renderModelGrid("open_weight");
-  renderCounts();
-}
-
-async function refresh(): Promise<void> {
-  const [m, p, c] = await Promise.all([
-    window.glyphh.orgModelsList(),
-    window.glyphh.orgProvidersList(),
-    window.glyphh.orgCustomModelsList(),
-  ]);
-  const firstError = [m, p, c].find((r) => !r.ok)?.error;
-  showError(firstError ? `Couldn't load: ${firstError}` : "");
-  if (m.ok && m.data) models = m.data as OrgModelRow[];
-  if (p.ok && p.data) providers = p.data as ProviderRow[];
-  if (c.ok && c.data) custom = c.data as CustomModelRow[];
-  renderModelGrid("proxied");
-  renderModelGrid("open_weight");
-  renderProviders();
-  renderCustom();
-  renderCounts();
-}
-
-// ── wiring ───────────────────────────────────────────────────────────────────
-
-function switchTab(tab: string): void {
-  document.querySelectorAll<HTMLElement>("#models-tabs .app-detail-tab").forEach((b) =>
-    b.classList.toggle("active", b.dataset.mtab === tab));
-  document.querySelectorAll<HTMLElement>(".mdl-tab").forEach((t) =>
-    t.classList.toggle("active", t.dataset.mtab === tab));
-}
-
-async function saveCustom(): Promise<void> {
-  const v = (id: string) => (el(id) as HTMLInputElement).value.trim();
-  const slug = v("mc-slug").toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  if (!v("mc-name") || !slug || !v("mc-url") || !v("mc-model")) {
-    showError("Custom models need a name, slug, base URL, and model name.");
-    return;
-  }
-  const btn = el("mc-save") as HTMLButtonElement;
-  btn.disabled = true;
-  const r = await window.glyphh.orgCustomModelsSave({
-    slug,
-    name: v("mc-name"),
-    baseUrl: v("mc-url"),
-    modelName: v("mc-model"),
-    contextWindow: Math.max(1, Number(v("mc-ctx")) || 8192),
-    maxOutputTokens: Math.max(1, Number(v("mc-max")) || 4096),
-    ...(v("mc-key") ? { key: v("mc-key") } : {}),
+    overlay.append(backdrop, panel);
+    document.body.appendChild(overlay);
+    (panel.querySelector("input:not([disabled])") as HTMLInputElement | null)?.focus();
   });
-  btn.disabled = false;
+}
+
+// ── icons ────────────────────────────────────────────────────────────────────
+
+const SVG = {
+  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+};
+
+function icoBtn(svg: string, title: string): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mdl-ico-btn";
+  b.title = title;
+  b.setAttribute("aria-label", title);
+  b.innerHTML = svg;
+  return b;
+}
+
+// ── provider forms (modals) ──────────────────────────────────────────────────
+
+async function newProviderModal(): Promise<void> {
+  const v = await formModal("New provider", [
+    { id: "name", label: "Name", placeholder: "Together AI" },
+    { id: "slug", label: "Slug", placeholder: "together" },
+    { id: "url", label: "Base URL", hint: "— OpenAI-compatible, speaks /chat/completions", placeholder: "https://api.together.xyz/v1" },
+    { id: "key", label: "API key", hint: "— write-only", type: "password", placeholder: "sk-…" },
+  ], "Add provider");
+  if (!v) return;
+  const slug = v.slug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  if (!v.name || !slug || !v.url) { showError("A provider needs a name, slug, and base URL."); return; }
+  const r = await window.glyphh.orgCustomProvidersSave({ slug, name: v.name, baseUrl: v.url, ...(v.key ? { key: v.key } : {}) });
   if (!r?.ok) { showError(r.error || "Save failed"); return; }
   showError("");
-  clearCustomForm();
+  expanded.add(`custom:${slug}`);
   void refresh();
 }
 
-function clearCustomForm(): void {
-  for (const id of ["mc-name", "mc-slug", "mc-url", "mc-model", "mc-ctx", "mc-max", "mc-key"]) {
-    const input = el(id) as HTMLInputElement | null;
-    if (input) input.value = "";
+async function editCustomProviderModal(p: CustomProviderRow): Promise<void> {
+  let cleared = false;
+  const v = await formModal(`Edit ${p.name}`, [
+    { id: "name", label: "Name", value: p.name },
+    { id: "slug", label: "Slug", value: p.slug, disabled: true },
+    { id: "url", label: "Base URL", hint: "— OpenAI-compatible", value: p.base_url },
+    {
+      id: "key",
+      label: "API key",
+      hint: "— write-only",
+      type: "password",
+      placeholder: p.has_key ? (p.key_hint || "•••• (saved)") : "sk-…",
+      clear: {
+        visible: p.has_key,
+        title: "Remove the saved key",
+        after: "sk-…",
+        onClear: async () => {
+          const r = await window.glyphh.orgCustomProvidersSave({ slug: p.slug, name: p.name, baseUrl: p.base_url, clearKey: true });
+          if (!r?.ok) { showError(r.error || "Remove failed"); return false; }
+          cleared = true;
+          return true;
+        },
+      },
+    },
+  ]);
+  if (!v) { if (cleared) void refresh(); return; }
+  if (!v.name || !v.url) { showError("A provider needs a name and base URL."); return; }
+  const r = await window.glyphh.orgCustomProvidersSave({ slug: p.slug, name: v.name, baseUrl: v.url, ...(v.key ? { key: v.key } : {}) });
+  if (!r?.ok) { showError(r.error || "Save failed"); return; }
+  showError("");
+  void refresh();
+}
+
+async function editGatewayProviderModal(p: ProviderRow): Promise<void> {
+  let cleared = false;
+  const v = await formModal(`Edit ${p.name}`, [
+    {
+      id: "key",
+      label: "BYOK API key",
+      hint: "— pays the vendor directly; write-only",
+      type: "password",
+      placeholder: p.hasByokKey ? (p.byokHint || "•••• (saved)") : `${p.name} API key`,
+      clear: {
+        visible: p.hasByokKey,
+        title: "Remove the saved key",
+        after: `${p.name} API key`,
+        onClear: async () => {
+          const r = await window.glyphh.orgProviderClearKey(p.slug);
+          if (!r?.ok) { showError(r.error || "Remove failed"); return false; }
+          cleared = true;
+          return true;
+        },
+      },
+    },
+    { id: "enabled", label: "Enabled for this organization", type: "checkbox", checked: p.enabledForOrg },
+  ]);
+  if (!v) { if (cleared) void refresh(); return; }
+  const r = v.enabled || v.key
+    ? await window.glyphh.orgProviderEnable(p.slug, v.key || undefined)
+    : await window.glyphh.orgProviderDisable(p.slug);
+  if (!r?.ok) { showError(r.error || "Save failed"); return; }
+  showError("");
+  void refresh();
+}
+
+async function deleteProviderConfirm(p: CustomProviderRow): Promise<void> {
+  const okGo = await yoConfirm({
+    title: `Delete ${p.name}?`,
+    message: p.model_count > 0
+      ? `Its ${p.model_count} model${p.model_count === 1 ? " is" : "s are"} deleted with it. Sessions and threads are untouched.`
+      : "Sessions and threads are untouched.",
+    confirmText: "Delete",
+    danger: true,
+  });
+  if (!okGo) return;
+  const r = await window.glyphh.orgCustomProvidersDelete(p.slug);
+  if (!r?.ok) { showError(r.error || "Delete failed"); return; }
+  showError("");
+  void refresh();
+}
+
+// ── model forms (modals) ─────────────────────────────────────────────────────
+
+async function modelModal(providerSlug: string, m: CustomModelRow | null): Promise<void> {
+  const v = await formModal(m ? `Edit ${m.name}` : "New model", [
+    { id: "name", label: "Display name", value: m?.name ?? "", placeholder: "Llama 3 70B" },
+    { id: "slug", label: "Slug", hint: "— id: custom::<slug>", value: m ? m.id.replace(/^custom::/, "") : "", placeholder: "my-llama", disabled: !!m },
+    { id: "model", label: "Model name", hint: '— sent as "model"', value: m?.model_name ?? "", placeholder: "meta-llama/Llama-3-70b-chat-hf" },
+    { id: "ctx", label: "Context window", type: "number", value: m ? String(m.context_window) : "", placeholder: "8192" },
+    { id: "max", label: "Max output tokens", type: "number", value: m ? String(m.max_output_tokens) : "", placeholder: "4096" },
+  ], m ? "Save" : "Add model");
+  if (!v) return;
+  const slug = v.slug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+  if (!v.name || !slug || !v.model) { showError("A model needs a name, slug, and model name."); return; }
+  const r = await window.glyphh.orgCustomModelsSave({
+    slug,
+    name: v.name,
+    providerSlug,
+    modelName: v.model,
+    contextWindow: Math.max(1, Number(v.ctx) || 8192),
+    maxOutputTokens: Math.max(1, Number(v.max) || 4096),
+  });
+  if (!r?.ok) { showError(r.error || "Save failed"); return; }
+  showError("");
+  void refresh();
+}
+
+async function deleteModelConfirm(m: CustomModelRow): Promise<void> {
+  const okGo = await yoConfirm({
+    title: `Delete ${m.name}?`,
+    message: "Sessions and threads are untouched.",
+    confirmText: "Delete",
+    danger: true,
+  });
+  if (!okGo) return;
+  const r = await window.glyphh.orgCustomModelsDelete(m.id);
+  if (!r?.ok) { showError(r.error || "Delete failed"); return; }
+  showError("");
+  void refresh();
+}
+
+// ── the providers list, models inside ────────────────────────────────────────
+
+interface ListEntry {
+  key: string;
+  name: string;
+  type: "Glyphh" | "Custom";
+  sub: string;
+  gateway?: ProviderRow;
+  customProv?: CustomProviderRow;
+  /** Search matched a MODEL inside — render the row open. */
+  autoOpen?: boolean;
+}
+
+function listEntries(): ListEntry[] {
+  const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
+  const gw: ListEntry[] = providers.map((p) => ({
+    key: `gw:${p.slug}`,
+    name: p.name,
+    type: "Glyphh",
+    sub: `${models.filter((m) => m.kind === "proxied" && m.providerSlug === p.slug).length} models`
+      + (p.hasByokKey && p.byokHint ? ` · BYOK Key: ${p.byokHint}` : ""),
+    gateway: p,
+  }));
+  const own: ListEntry[] = customProviders.map((p) => ({
+    key: `custom:${p.slug}`,
+    name: p.name,
+    type: "Custom",
+    sub: `${p.model_count} model${p.model_count === 1 ? "" : "s"} · ${p.base_url}`
+      + (p.has_key && p.key_hint ? ` · Key: ${p.key_hint}` : ""),
+    customProv: p,
+  }));
+  const matchModels = (e: ListEntry): boolean => {
+    if (e.gateway) return models.some((m) => m.kind === "proxied" && m.providerSlug === e.gateway!.slug && m.name.toLowerCase().includes(q));
+    return custom.some((m) => m.provider_slug === e.customProv!.slug && m.name.toLowerCase().includes(q));
+  };
+  return [...gw, ...own]
+    .map((e) => ({ ...e, autoOpen: !!q && matchModels(e) }))
+    .filter((e) => !q || e.name.toLowerCase().includes(q) || e.type.toLowerCase().includes(q) || e.autoOpen)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function modelLine(name: string, sub: string, toggle: { on: boolean; onChange: (on: boolean) => void }, icons?: HTMLElement[]): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "mdl-model-line";
+  const info = document.createElement("div");
+  info.className = "mdl-model-info";
+  const n = document.createElement("div");
+  n.className = "mdl-td-name";
+  n.textContent = name;
+  const s = document.createElement("div");
+  s.className = "mdl-td-sub mono";
+  s.textContent = sub;
+  info.append(n, s);
+  row.appendChild(info);
+  for (const ic of icons ?? []) row.appendChild(ic);
+  const lab = document.createElement("label");
+  lab.className = "settings-toggle mdl-toggle";
+  lab.title = "Supported — roles can pick this model";
+  lab.innerHTML = `<input type="checkbox" ${toggle.on ? "checked" : ""} /><span class="toggle-switch"></span>`;
+  const box = lab.querySelector("input") as HTMLInputElement;
+  box.addEventListener("change", () => toggle.onChange(box.checked));
+  row.appendChild(lab);
+  return row;
+}
+
+function renderList(): void {
+  const wrap = el("models-provider-list");
+  if (!wrap) return;
+  const all = listEntries();
+  const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+  if (page >= totalPages) page = totalPages - 1;
+  const slice = all.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  wrap.textContent = "";
+  if (!slice.length) {
+    wrap.innerHTML = `<div class="crud-empty">No providers match your search.</div>`;
   }
+  for (const e of slice) {
+    const row = document.createElement("div");
+    row.className = "mdl-prov-row";
+    const isOpen = expanded.has(e.key) || !!e.autoOpen;
+
+    const head = document.createElement("div");
+    head.className = "mdl-prov-head" + (isOpen ? " open" : "");
+    const chev = document.createElement("span");
+    chev.className = "mdl-prov-chevron";
+    chev.innerHTML = SVG.chevron;
+    const info = document.createElement("div");
+    info.className = "mdl-prov-info";
+    const name = document.createElement("div");
+    name.className = "mdl-td-name";
+    name.textContent = e.name;
+    const typeChip = document.createElement("span");
+    typeChip.className = "mdl-type-chip" + (e.type === "Glyphh" ? " glyphh" : "");
+    typeChip.textContent = e.type;
+    name.appendChild(typeChip);
+    const sub = document.createElement("div");
+    sub.className = "mdl-td-sub";
+    sub.textContent = e.sub;
+    info.append(name, sub);
+    head.append(chev, info);
+
+    if (e.customProv) {
+      const add = icoBtn(SVG.plus, "Add a model");
+      add.addEventListener("click", (ev) => { ev.stopPropagation(); void modelModal(e.customProv!.slug, null); });
+      head.appendChild(add);
+    }
+    const edit = icoBtn(SVG.edit, "Edit provider");
+    edit.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (e.gateway) void editGatewayProviderModal(e.gateway);
+      else void editCustomProviderModal(e.customProv!);
+    });
+    head.appendChild(edit);
+    if (e.customProv) {
+      const del = icoBtn(SVG.trash, "Delete provider");
+      del.classList.add("danger");
+      del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
+      head.appendChild(del);
+    }
+    if (e.gateway) {
+      const p = e.gateway;
+      const lab = document.createElement("label");
+      lab.className = "settings-toggle mdl-toggle";
+      lab.title = "Enabled for this organization";
+      lab.innerHTML = `<input type="checkbox" ${p.enabledForOrg ? "checked" : ""} /><span class="toggle-switch"></span>`;
+      lab.addEventListener("click", (ev) => ev.stopPropagation());
+      const box = lab.querySelector("input") as HTMLInputElement;
+      box.addEventListener("change", () => {
+        const call = box.checked ? window.glyphh.orgProviderEnable(p.slug) : window.glyphh.orgProviderDisable(p.slug);
+        void call.then((r) => {
+          if (!r?.ok) { box.checked = !box.checked; showError(r.error || "Update failed"); return; }
+          p.enabledForOrg = box.checked;
+          showError("");
+        });
+      });
+      head.appendChild(lab);
+    }
+    head.addEventListener("click", () => {
+      if (expanded.has(e.key)) expanded.delete(e.key);
+      else expanded.add(e.key);
+      renderList();
+    });
+    row.appendChild(head);
+
+    if (isOpen) {
+      const body = document.createElement("div");
+      body.className = "mdl-prov-models";
+      if (e.gateway) {
+        const list = models.filter((m) => m.kind === "proxied" && m.providerSlug === e.gateway!.slug);
+        if (!list.length) body.innerHTML = `<div class="crud-empty">No catalog models for this provider yet.</div>`;
+        for (const m of list) {
+          body.appendChild(modelLine(m.name, `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok`, {
+            on: m.supported,
+            onChange: (on) => {
+              void window.glyphh.orgModelsSetSupported(m.id, on).then((r) => {
+                if (!r?.ok) { showError(r.error || "Update failed"); renderList(); return; }
+                m.supported = on;
+                showError("");
+              });
+            },
+          }));
+        }
+      } else if (e.customProv) {
+        const list = custom.filter((m) => m.provider_slug === e.customProv!.slug);
+        if (!list.length) body.innerHTML = `<div class="crud-empty">No models yet — add one with +.</div>`;
+        for (const m of list) {
+          const editIc = icoBtn(SVG.edit, "Edit model");
+          editIc.addEventListener("click", (ev) => { ev.stopPropagation(); void modelModal(e.customProv!.slug, m); });
+          const delIc = icoBtn(SVG.trash, "Delete model");
+          delIc.classList.add("danger");
+          delIc.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteModelConfirm(m); });
+          body.appendChild(modelLine(m.name, m.model_name, {
+            on: m.active,
+            onChange: (on) => {
+              void window.glyphh.orgCustomModelsSave({
+                slug: m.id.replace(/^custom::/, ""),
+                name: m.name,
+                providerSlug: e.customProv!.slug,
+                modelName: m.model_name,
+                contextWindow: m.context_window,
+                maxOutputTokens: m.max_output_tokens,
+                active: on,
+              }).then((r) => {
+                if (!r?.ok) { showError(r.error || "Update failed"); renderList(); return; }
+                m.active = on;
+                showError("");
+              });
+            },
+          }, [editIc, delIc]));
+        }
+      }
+      row.appendChild(body);
+    }
+    wrap.appendChild(row);
+  }
+
+  const pager = el("models-pager");
+  if (pager) {
+    pager.textContent = "";
+    pager.appendChild(renderPaginationBar(
+      { page, totalPages, total: all.length, pageSize: PAGE_SIZE },
+      (p) => { page = p; renderList(); },
+    ));
+  }
+}
+
+// ── data + wiring ────────────────────────────────────────────────────────────
+
+async function refresh(): Promise<void> {
+  const [m, p, cp, c] = await Promise.all([
+    window.glyphh.orgModelsList(),
+    window.glyphh.orgProvidersList(),
+    window.glyphh.orgCustomProvidersList(),
+    window.glyphh.orgCustomModelsList(),
+  ]);
+  const firstError = [m, p, cp, c].find((r) => !r.ok)?.error;
+  showError(firstError ? `Couldn't load: ${firstError}` : "");
+  if (m.ok && m.data) models = m.data as OrgModelRow[];
+  if (p.ok && p.data) providers = p.data as ProviderRow[];
+  if (cp.ok && cp.data) customProviders = cp.data as CustomProviderRow[];
+  if (c.ok && c.data) custom = c.data as CustomModelRow[];
+  renderList();
 }
 
 export function loadModelsAdmin(): void {
   if (!initialized) {
     initialized = true;
-    document.querySelectorAll<HTMLElement>("#models-tabs .app-detail-tab").forEach((b) =>
-      b.addEventListener("click", () => switchTab(b.dataset.mtab || "proxy")));
-    el("models-search-proxy")?.addEventListener("input", () => renderModelGrid("proxied"));
-    el("models-search-open")?.addEventListener("input", () => renderModelGrid("open_weight"));
-    el("models-search-providers")?.addEventListener("input", renderProviders);
-    el("mc-save")?.addEventListener("click", () => void saveCustom());
-    el("mc-clear")?.addEventListener("click", () => { clearCustomForm(); showError(""); });
+    el("models-search")?.addEventListener("input", () => { page = 0; renderList(); });
+    el("provider-new-btn")?.addEventListener("click", () => void newProviderModal());
   }
   void refresh();
 }

@@ -309,6 +309,9 @@ declare global {
       orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgCustomModelsSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgCustomModelsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      orgCustomProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      orgCustomProvidersSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgCustomProvidersDelete: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       orgProvidersList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgProviderEnable: (slug: string, key?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgProviderDisable: (slug: string) => Promise<{ ok: boolean; error?: string }>;

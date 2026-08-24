@@ -10,7 +10,7 @@
 
 import { ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
-import type { CustomModelInput } from "@glyphh/sdk";
+import type { CustomModelInput, CustomProviderInput } from "@glyphh/sdk";
 
 function wrap<T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> {
   return fn()
@@ -28,6 +28,12 @@ export function registerModelsIpc(): void {
     wrap(() => getClient().orgModels.saveCustom(input)));
   ipcMain.handle("org-custom-models-delete", (_e, id: string) =>
     wrap(() => getClient().orgModels.deleteCustom(String(id))));
+
+  ipcMain.handle("org-custom-providers-list", () => wrap(() => getClient().orgModels.listProviders()));
+  ipcMain.handle("org-custom-providers-save", (_e, input: CustomProviderInput) =>
+    wrap(() => getClient().orgModels.saveProvider(input)));
+  ipcMain.handle("org-custom-providers-delete", (_e, slug: string) =>
+    wrap(() => getClient().orgModels.deleteProvider(String(slug))));
 
   ipcMain.handle("org-providers-list", () => wrap(() => getClient().catalog.providers()));
   ipcMain.handle("org-provider-enable", (_e, slug: string, key?: string) =>

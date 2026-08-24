@@ -15497,6 +15497,77 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 }
 .mdl-toggle { margin-top: auto; }
 .mdl-toggle-text { font-size: 11px; color: var(--text-2); }
+/* ── Models admin (2026-08-24: ONE page — expandable provider rows with the
+   models inside; modals for add/edit; open weight cut) ── */
+.mdl-prov-row { border: 1px solid var(--border); border-radius: 10px; margin-top: 8px; overflow: hidden; }
+.mdl-prov-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; cursor: pointer; background: var(--surface);
+  transition: background 0.15s;
+}
+.mdl-prov-head:hover { background: var(--surface-2); }
+.mdl-prov-chevron { display: inline-flex; color: var(--text-3); transition: transform 0.15s; flex-shrink: 0; }
+.mdl-prov-chevron svg { width: 13px; height: 13px; }
+.mdl-prov-head.open .mdl-prov-chevron { transform: rotate(90deg); }
+.mdl-prov-info { flex: 1; min-width: 0; }
+.mdl-type-chip {
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  background: var(--surface-3); color: var(--text-3); vertical-align: 1px;
+}
+.mdl-type-chip.glyphh { background: var(--active-bg); color: var(--accent, #8c3bf2); }
+.mdl-ico-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border: none; border-radius: 7px;
+  background: none; color: var(--text-3); cursor: pointer; flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.mdl-ico-btn svg { width: 14px; height: 14px; }
+.mdl-ico-btn:hover { background: var(--hover); color: var(--text); }
+.mdl-ico-btn.danger:hover { color: var(--danger, #e5484d); }
+.mdl-prov-models { border-top: 1px solid var(--border); background: var(--bg-raised, var(--bg)); padding: 4px 14px 8px 52px; }
+.mdl-prov-models .mdl-td-name { font-size: 12.5px; font-weight: 400; }
+.mdl-prov-models .mdl-td-sub { font-size: 11px; }
+.mdl-model-line { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.mdl-model-line:last-child { border-bottom: none; }
+.mdl-model-info { flex: 1; min-width: 0; }
+.mdl-prov-models .crud-empty { padding: 12px 0; }
+.mdl-form-modal { width: min(460px, 92vw); text-align: left; }
+.mdl-form-modal .yo-modal-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.mdl-form-modal .settings-label { margin-top: 10px; }
+.mdl-form-modal .mdl-modal-check { display: flex; align-items: center; gap: 8px; text-transform: none; letter-spacing: 0; }
+.mdl-form-modal .mdl-modal-check input { width: auto; margin: 0; flex: none; }
+.mdl-input-clearwrap { position: relative; display: block; }
+.mdl-input-clearwrap .settings-input { width: 100%; padding-right: 34px; }
+.mdl-input-clear {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border: none; border-radius: 50%;
+  background: none; color: var(--text-3); cursor: pointer;
+}
+.mdl-input-clear svg { width: 15px; height: 15px; }
+.mdl-input-clear:hover { color: var(--danger, #e5484d); }
+
+/* ── (tables kept for other admin lists) ── */
+.mdl-table-wrap { overflow-x: auto; margin-top: 6px; }
+.mdl-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mdl-table th {
+  text-align: left; padding: 7px 10px; font-size: 10.5px; font-weight: 600;
+  color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+}
+.mdl-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
+.mdl-table tr:last-child td { border-bottom: none; }
+.mdl-th-right { text-align: right; }
+.mdl-table td.mdl-th-right { white-space: nowrap; }
+.mdl-td-name { color: var(--text); font-weight: 500; }
+.mdl-td-sub { color: var(--text-3); font-size: 12px; }
+.mdl-table tr.mdl-provider-off td { opacity: 0.65; }
+.mdl-table .mdl-key { max-width: 260px; }
+.mdl-table td.crud-empty { padding: 14px 10px; }
+.mdl-table tr.mdl-row-click { cursor: pointer; }
+.mdl-table tr.mdl-row-click:hover td { background: var(--hover); }
+
 .mdl-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin-bottom: 4px;
   background: var(--surface-3); border: 1px solid var(--border); border-radius: 8px;
