@@ -19273,8 +19273,10 @@ body.echo-agent-locked .code-thread-grip { display: none; }
 /* Platform-only nav rows (Connections, Apps): hidden in the desktop settings
    modal, shown in the web platform shell. The Apps row's far-right launcher
    opens the Builder in a new tab. */
-.settings-nav-item.platform-only { display: none; }
+.settings-nav-item.platform-only,
+.settings-nav-group.platform-only { display: none; }
 body.platform-shell .settings-nav-item.platform-only { display: flex; }
+body.platform-shell .settings-nav-group.platform-only { display: block; }
 .apps-builder-launch {
   margin-left: auto;
   display: inline-flex;

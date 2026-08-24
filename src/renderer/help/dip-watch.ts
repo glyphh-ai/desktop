@@ -100,7 +100,7 @@ export function wireDipWatcher(): void {
     if (isEditable(ev.target)) return;              // fields are the input path
     if ((ev.target as HTMLElement | null)?.isContentEditable) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) { buf = ""; return; }
-    if (ev.key.length !== 1) { buf = ""; return; }  // Esc/Enter/arrows break it
+    if (!ev.key || ev.key.length !== 1) { buf = ""; return; }  // Esc/Enter/arrows/synthetic events break it
     buf = (buf + ev.key).slice(-8);
     if (endsWithDip(buf)) {
       buf = "";

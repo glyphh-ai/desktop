@@ -159,14 +159,10 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  if (["apps", "marketplace", "connections", "layouts", "agents"].includes(section)) {
+  // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
+  // as section panels beside the agent, never inside settings.
+  if (["apps", "marketplace", "connections", "layouts", "agents", "loops", "skills"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
-    return;
-  }
-  if (["loops", "skills"].includes(section)) {
-    void window.glyphh.setPreference?.("homeLastSection", "settings");
-    void window.glyphh.setPreference?.("homeLastSub", section);
-    openSettingsModal(section);
     return;
   }
   // Content sections need the window body — if Glyphh is collapsed to the
@@ -445,8 +441,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
-  else if (sub === "loops") { mountSettingsSection("loops"); void loadLoops(); }
-  else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
@@ -503,8 +497,6 @@ function parkSettingsDocs(): void {
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
   connections: { host: "settings-connections-host" },
-  loops: { host: "settings-loops-host" },
-  skills: { host: "settings-skills-host" },
   agents: { host: "settings-agents-host" },
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
