@@ -86,6 +86,12 @@ export function registerAccountIpc(): void {
     catch (err) { return fail(err); }
   });
 
+  ipcMain.handle("org-invites-list", () => getClient().members.pendingInvites());
+  ipcMain.handle("org-invite-revoke", async (_e, id: string) => {
+    try { await getClient().members.revokeInvite(String(id)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
+
   // ── Organization ────────────────────────────────────────────────────────
   ipcMain.handle("account-org-get", () => getClient().org.get());
   ipcMain.handle("org-app-blocks", () => getClient().org.appBlocks());

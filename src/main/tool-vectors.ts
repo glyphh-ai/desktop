@@ -76,6 +76,21 @@ export async function indexToolVectors(defs: ConnectorWireDef[]): Promise<void> 
 
 let enriching = false;
 
+/** The most recently started live agent run — background work attributes to
+ *  it when present (his rule, 2026-08-25). */
+function activeRunId(): string | null {
+  try {
+    // Lazy import avoids a cycle: glyphh-agent-tools imports this module.
+    const mod = require("./glyphh-agent-tools") as { activeAgentRuns?: Map<string, { runId: string; startedAt: number }> };
+    const runs = [...(mod.activeAgentRuns?.values() ?? [])];
+    if (!runs.length) return null;
+    runs.sort((a, b) => b.startedAt - a.startedAt);
+    return runs[0]!.runId;
+  } catch {
+    return null;
+  }
+}
+
 /** The cheapest capable model in the org's catalog — the back-path doctrine:
  *  enrichment never rides the session's frontier model. */
 async function enricherModel(): Promise<string | null> {
@@ -117,6 +132,10 @@ export async function enrichToolVectors(defs: ConnectorWireDef[]): Promise<void>
       let text: string;
       try {
         text = await getClient().gateway.text({
+          // Honest ledger: this is BACKGROUND enrichment, not a worker turn —
+          // and it books against the run that triggered it when one is live.
+          service: "enrichment",
+          ...(activeRunId() ? { runId: activeRunId()! } : {}),
           model,
           messages: [
             {
