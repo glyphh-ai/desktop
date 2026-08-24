@@ -63,14 +63,17 @@
               <!-- Right: tool exposure -->
               <div class="app-builder-preview">
                 <div class="conn-tools-pane">
-                  <h3 class="settings-subheading" style="margin:0 0 4px;">Tools exposed to your AI</h3>
-                  <p id="conn-tools-hint" class="settings-hint" style="margin-top:2px;">Uncheck a tool to hide it — your AI won't see or be able to call it.</p>
-                  <!-- Hidden until there are tools to select; a connector can publish
-                       dozens, and toggling them one at a time is the common complaint. -->
-                  <label id="conn-tools-select-all-wrap" class="conn-tools-select-all hidden">
-                    <input type="checkbox" id="conn-tools-select-all" />
-                    <span id="conn-tools-select-all-label">Select all</span>
-                  </label>
+                  <!-- SAME grammar as Roles › Connections › tools: title row
+                       with the master toggle at the far right, then toggle
+                       rows with two-line clamped descriptions. -->
+                  <div class="ws-tools-head">
+                    <h3 class="settings-subheading" style="margin:0;">Tools exposed to your AI</h3>
+                    <label id="conn-tools-select-all-wrap" class="settings-toggle ws-model-allow hidden" title="Toggle every tool">
+                      <input type="checkbox" id="conn-tools-select-all" />
+                      <span class="toggle-switch"></span>
+                    </label>
+                  </div>
+                  <p id="conn-tools-hint" class="settings-hint" style="margin-top:2px;">Turn a tool off to hide it — your AI won't see or be able to call it.</p>
                   <div id="conn-tools" class="conn-tools"></div>
                 </div>
               </div>

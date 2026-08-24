@@ -754,35 +754,33 @@ function openAllowModal(): void {
   let panelsWereHidden = false;
   if (!isWeb) void hidePanelsForModal().then((h) => { panelsWereHidden = h; });
 
+  // The SAME skeleton as Connections › "+ New" (conn-modal): header with a
+  // title + ✕, the search, a connector-card grid.
   const overlay = document.createElement("div");
-  overlay.className = "yo-modal ws-allow-overlay";
+  overlay.className = "conn-modal ws-allow-overlay";
   const backdrop = document.createElement("div");
-  backdrop.className = "yo-modal-backdrop";
+  backdrop.className = "conn-modal-backdrop";
   const panel = document.createElement("div");
-  panel.className = "yo-modal-panel ws-allow-modal";
-
-  const head = document.createElement("div");
-  head.className = "yo-modal-title";
-  head.textContent = "Allow an app";
+  panel.className = "conn-modal-panel";
+  const header = document.createElement("div");
+  header.className = "conn-modal-header";
+  const title = document.createElement("h3");
+  title.className = "conn-modal-title";
+  title.textContent = "Add a connection";
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "conn-modal-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "✕";
+  header.append(title, closeBtn);
   const search = document.createElement("input");
   search.type = "text";
   search.className = "settings-input";
-  search.placeholder = connMode === "personal" ? "Search the app catalog…" : "Search org connectors…";
+  search.placeholder = connMode === "personal" ? "Search apps…" : "Search org connectors…";
   search.spellcheck = false;
   search.autocomplete = "off";
   const listHost = document.createElement("div");
-  listHost.className = "ws-allow-list";
-  const actions = document.createElement("div");
-  actions.className = "settings-actions";
-  actions.style.marginTop = "14px";
-  const spacer = document.createElement("div");
-  spacer.style.flex = "1";
-  const cancel = document.createElement("button");
-  cancel.className = "action-btn";
-  cancel.type = "button";
-  cancel.textContent = "Cancel";
-  actions.append(spacer, cancel);
-  panel.append(head, search, listHost, actions);
+  listHost.className = "connector-grid";
+  panel.append(header, search, listHost);
 
   const close = (): void => {
     overlay.remove();
@@ -792,7 +790,7 @@ function openAllowModal(): void {
   const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
   backdrop.addEventListener("click", close);
-  cancel.addEventListener("click", close);
+  closeBtn.addEventListener("click", close);
 
   const paint = (): void => {
     const already = new Set(listOf(editing!, connMode) || []);
@@ -809,29 +807,35 @@ function openAllowModal(): void {
     }
     for (const r of rows) {
       connMeta.set(r.id, { name: r.name, icon: r.icon });
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "ws-allow-row";
-      const icon = document.createElement("span");
-      icon.className = "ws-conn-icon";
+      const card = document.createElement("div");
+      card.className = "connector-card";
+      const iconHtml = document.createElement("span");
       if (r.icon) {
         const img = document.createElement("img");
+        img.className = "connector-card-icon";
         img.src = r.icon; img.alt = "";
-        icon.appendChild(img);
-      } else icon.textContent = ICON_FALLBACK(r.name);
-      const name = document.createElement("span");
-      name.className = "ws-allow-name";
+        iconHtml.replaceWith(img);
+        card.appendChild(img);
+      } else {
+        iconHtml.className = "connector-card-initial";
+        iconHtml.textContent = ICON_FALLBACK(r.name);
+        card.appendChild(iconHtml);
+      }
+      const info = document.createElement("div");
+      info.className = "connector-card-info";
+      const name = document.createElement("div");
+      name.className = "connector-card-name";
       name.textContent = r.name;
-      row.append(icon, name);
-      row.addEventListener("click", () => {
-        row.disabled = true;
+      info.appendChild(name);
+      card.appendChild(info);
+      card.addEventListener("click", () => {
         const list = listOf(editing!, connMode) || [];
         void commitConn([...list, r.id], toolsOf(editing!, connMode), `${r.name} allowed`).then(() => {
           close();
           paintConnections();
         });
       });
-      listHost.appendChild(row);
+      listHost.appendChild(card);
     }
   };
 

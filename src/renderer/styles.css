@@ -15022,19 +15022,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   cursor: pointer;
 }
 .ws-tool-line.expanded .set-pref-desc { -webkit-line-clamp: unset; }
-/* The allow-an-app modal list: icon + name rows, standard hover. */
-.ws-allow-modal { width: min(440px, 92vw); }
-.ws-allow-modal .settings-input { width: 100%; margin: 10px 0 12px; }
-.ws-allow-list { max-height: 320px; overflow-y: auto; }
-.ws-allow-row {
-  display: flex; align-items: center; gap: 10px;
-  width: 100%; padding: 8px 10px;
-  background: none; border: none; border-radius: 8px;
-  color: var(--text); font: inherit; text-align: left; cursor: pointer;
-}
-.ws-allow-row:hover { background: var(--hover); }
-.ws-allow-row:disabled { opacity: 0.5; cursor: default; }
-.ws-allow-name { font-size: 13px; }
+/* The roles allow-modal is the Connections add-modal, floated over the
+   platform page (the shared z 1000 only works inside the section DOM). */
+.conn-modal.ws-allow-overlay { z-index: 9600; }
 /* Role connections tab: vertical rhythm — the sub-tabs, blurb, toggle
    pills, toolbar and table each get room to breathe. */
 .ws-tab[data-wstab="connections"] #ws-conn-tabs { margin-bottom: 14px; }

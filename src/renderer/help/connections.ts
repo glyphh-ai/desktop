@@ -178,18 +178,33 @@ async function openConnDetail(id: string): Promise<void> {
 
   toolsEl.innerHTML = "";
   for (const t of res.tools) {
+    // The ROLES tools grammar: toggle right, two-line clamped description.
     const row = document.createElement("div");
-    row.className = "conn-tool-row";
-    // Checkbox = expose/hide. Description is collapsed by default inside a
-    // <details> — click the tool name to expand it.
-    row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI${c.org ? " — only narrows what your org allows" : ""}" />
-      ${t.description
-        ? `<details class="conn-tool-details">
-             <summary class="conn-tool-name">${esc(t.name)}</summary>
-             <div class="conn-tool-desc">${esc(t.description)}</div>
-           </details>`
-        : `<span class="conn-tool-name conn-tool-name-flat">${esc(t.name)}</span>`}`;
+    row.className = "conn-tool-row set-pref-row ws-tool-line";
+    const text = document.createElement("div");
+    text.className = "set-pref-text";
+    const title = document.createElement("div");
+    title.className = "set-pref-title";
+    title.textContent = t.name;
+    text.appendChild(title);
+    if (t.description) {
+      const d = document.createElement("div");
+      d.className = "set-pref-desc";
+      d.textContent = t.description;
+      text.appendChild(d);
+      text.addEventListener("click", () => row.classList.toggle("expanded"));
+    }
+    const sw = document.createElement("label");
+    sw.className = "settings-toggle ws-model-allow";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "conn-tool-check";
+    box.dataset.tool = t.name;
+    box.checked = !t.hidden;
+    const knob = document.createElement("span");
+    knob.className = "toggle-switch";
+    sw.append(box, knob);
+    row.append(text, sw);
     toolsEl.appendChild(row);
   }
   // Toggling any checkbox persists the full hidden set.
@@ -228,19 +243,17 @@ function wireToolsSelectAll(save: () => void | Promise<void>): void {
   });
 }
 
-/** Reflect the rows in the header box: all, none, or a mix (indeterminate). */
+/** Reflect the rows in the title-row master toggle; the hint carries the
+ *  count (the switch has no text slot). */
 function syncToolsSelectAll(): void {
   const box = document.getElementById("conn-tools-select-all") as HTMLInputElement | null;
-  const label = document.getElementById("conn-tools-select-all-label");
   if (!box) return;
   const all = Array.from(toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check"));
   const checked = all.filter((c) => c.checked).length;
   box.checked = all.length > 0 && checked === all.length;
-  box.indeterminate = checked > 0 && checked < all.length;
-  if (label) {
-    label.textContent = checked === all.length && all.length > 0
-      ? `All ${all.length} exposed`
-      : `Select all · ${checked} of ${all.length} exposed`;
+  const hint = document.getElementById("conn-tools-hint");
+  if (hint && all.length) {
+    hint.textContent = `Turn a tool off to hide it — your AI won't see or be able to call it. ${checked} of ${all.length} exposed.`;
   }
 }
 
@@ -383,15 +396,31 @@ async function loadCustomStatus(c: McpConn): Promise<void> {
   toolsEl.innerHTML = "";
   for (const t of res.tools) {
     const row = document.createElement("div");
-    row.className = "conn-tool-row";
-    row.innerHTML = `
-      <input type="checkbox" class="conn-tool-check" data-tool="${esc(t.name)}" ${t.hidden ? "" : "checked"} title="Expose this tool to your AI" />
-      ${t.description
-        ? `<details class="conn-tool-details">
-             <summary class="conn-tool-name">${esc(t.name)}</summary>
-             <div class="conn-tool-desc">${esc(t.description)}</div>
-           </details>`
-        : `<span class="conn-tool-name conn-tool-name-flat">${esc(t.name)}</span>`}`;
+    row.className = "conn-tool-row set-pref-row ws-tool-line";
+    const text = document.createElement("div");
+    text.className = "set-pref-text";
+    const title = document.createElement("div");
+    title.className = "set-pref-title";
+    title.textContent = t.name;
+    text.appendChild(title);
+    if (t.description) {
+      const d = document.createElement("div");
+      d.className = "set-pref-desc";
+      d.textContent = t.description;
+      text.appendChild(d);
+      text.addEventListener("click", () => row.classList.toggle("expanded"));
+    }
+    const sw = document.createElement("label");
+    sw.className = "settings-toggle ws-model-allow";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.className = "conn-tool-check";
+    box.dataset.tool = t.name;
+    box.checked = !t.hidden;
+    const knob = document.createElement("span");
+    knob.className = "toggle-switch";
+    sw.append(box, knob);
+    row.append(text, sw);
     toolsEl.appendChild(row);
   }
   toolsEl.querySelectorAll<HTMLInputElement>(".conn-tool-check").forEach((cb) => {
