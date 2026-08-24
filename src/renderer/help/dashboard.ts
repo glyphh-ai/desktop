@@ -888,8 +888,11 @@ export function initDashboardEvents(): void {
   // Billing is a NATIVE panel now (Settings › Billing) — it used to open the
   // platform's /billing page in a workbench browser; there's nothing left over
   // there that this app can't do itself.
-  document.getElementById("dash-add-funds")?.addEventListener("click", () => {
-    gotoSection("settings", "billing");
+  // The header's primary action is the community (his order, 2026-08-25) —
+  // credits are bought on Billing.
+  document.getElementById("dash-discord")?.addEventListener("click", () => {
+    const invite = (window.glyphh as unknown as { discordInvite?: string }).discordInvite || "https://discord.gg/cHGZR764D";
+    window.open(invite, "_blank", "noopener");
   });
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
     gotoSection("settings", "apikeys");
