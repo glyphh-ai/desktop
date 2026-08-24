@@ -299,10 +299,11 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
   { key: "loops",       title: "Loops",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/><path d="M7 21.9l-4-4 4-4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/></svg>` },
   { key: "skills",      title: "Skills",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z" style="fill:#f59e0b;stroke:#d97706;stroke-width:1.2;stroke-linejoin:round"/><circle cx="12" cy="10.5" r="2" style="fill:#fef3c7;stroke:none"/></svg>` },
+  { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
-].filter((d) => !IS_WEB_TARGET || d.key !== "preview");
+].filter((d) => !IS_WEB_TARGET || (d.key !== "preview" && d.key !== "drips"));
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -380,7 +381,7 @@ function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, 
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
   layouts: "Workspaces",
-  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models",
+  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",
 };
 

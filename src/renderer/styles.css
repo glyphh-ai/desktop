@@ -19411,6 +19411,12 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 /* Organization › General: a divider between the address block and the two
    billing toggle rows below it. */
 #org-billing-same-row { border-top: 1px solid var(--border); margin-top: 18px; }
+/* The revealed blocks breathe: air around the wraps, the Billing-address
+   heading clear of its first label, and the page doesn't end hard on the
+   contact fields. */
+#org-billing-addr-wrap, #org-contact-wrap { margin: 10px 0 14px; }
+#org-billing-addr-wrap .acct-row-head { margin: 0 0 12px; }
+.settings-panel[data-sub="org-general"] { padding-bottom: 32px; }
 /* Voice: same rule — the last row ends the page clean. */
 .settings-panel[data-sub="voice"] .set-pref-row:has(#voice-brief) { border-bottom: none; }
 .settings-toggle.set-pref-row .toggle-switch { margin-left: 0; flex-shrink: 0; }

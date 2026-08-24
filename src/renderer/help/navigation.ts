@@ -104,6 +104,7 @@ export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "loops") void loadLoops();
+  else if (sec === "drips") loadDrips();
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
@@ -161,7 +162,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "marketplace", "connections", "layouts", "agents", "loops", "skills"].includes(section)) {
+  if (["apps", "marketplace", "connections", "layouts", "agents", "loops", "skills", "drips"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -366,7 +367,7 @@ export function openSettingsModal(sub?: string): void {
       // The app's order (his spec, 2026-08-24): General, Appearance, Account,
       // Voice, Usage, Billing — then Drips (desktop-only, unranked by the spec).
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing", "drips"]) {
+      for (const sub of ["general", "appearance", "account", "voice", "usage", "billing"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -494,6 +495,9 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   organization: "org-general",
   runtime: "general",
   guardrails: "general",
+  // Drips left Settings for the workpanel dock (2026-08-25); a stale deep
+  // link lands on General rather than a tab that no longer exists.
+  drips: "general",
 };
 
 /** Retired top-level sections, redirected to the Settings sub-panel that
@@ -508,7 +512,7 @@ const settingsSubAlias = (sub: string): string => {
   // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
   // + panels are CSS-hidden on web; any stale deep link (saved nav app,
   // remembered homeLastSub) lands on General instead.
-  if ((target === "mcp" || target === "drips") && document.documentElement.classList.contains("glyphh-web")) return "general";
+  if (target === "mcp" && document.documentElement.classList.contains("glyphh-web")) return "general";
   return target;
 };
 
@@ -520,7 +524,6 @@ function loadSettingsSub(sub: string): void {
   if (sub === "general") { void loadRuntime(); void loadGuardrails(); }
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
-  else if (sub === "drips") loadDrips();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
   else if (sub === "org-general") void loadOrgPanel();
