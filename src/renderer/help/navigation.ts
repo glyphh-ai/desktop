@@ -8,7 +8,8 @@ import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel } from "./settings.js";
+import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
@@ -522,7 +523,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "drips") loadDrips();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") void loadOrg();
+  else if (sub === "org-general") void loadOrgPanel();
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
@@ -818,6 +819,7 @@ export function initHelp() {
     try { fn(); } catch (err) { console.error(`[init] ${name} failed:`, err); }
   };
   boot("dashboard", initDashboardEvents);
+  boot("org", initOrgPanel);
   boot("settings", initSettings);
   boot("apps", initApps);
   boot("marketplace", initMarketplace);

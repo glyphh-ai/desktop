@@ -6,13 +6,12 @@ import { confirmAction } from "./shared.js";
 import { loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
-import { initOrg, loadOrg } from "./settings-org.js";
 import { initMembers, loadMembers } from "./settings-members.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 
 // The account panels are big enough to own their own modules; Settings just
 // initialises them and re-exports their loaders for navigation.ts.
-export { loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel };
+export { loadBilling, loadProfile, loadMembers, loadWorkspacesPanel };
 
 // ── Settings ─────────────────────────────────────────────
 
@@ -72,7 +71,6 @@ function initSettings() {
   // idempotent, so init here and let the sub-nav trigger their loads.
   initBilling();
   initProfile();
-  initOrg();
   initMembers();
   initWorkspaces();
   // Compaction guidance saves ITSELF — debounced while typing, immediately on
@@ -647,7 +645,7 @@ async function loadSettings() {
   void loadUsageMembers();
   // Account's profile form loads with Settings rather than waiting on a
   // sub-nav click; the org record lives on Organization › General now and
-  // loads there (loadOrg hides it unless the caller is an org admin).
+  // loads there.
   void loadProfile();
   // Members hides its own nav item unless the caller is an org admin, so this
   // has to run on Settings open, not only when the tab is clicked.

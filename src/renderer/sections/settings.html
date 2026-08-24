@@ -832,79 +832,75 @@
                 <div id="models-pager"></div>
               </div>
 
-              <!-- Organization › General — the org record (name, addresses,
-                   billing contact), the form that lived at the bottom of
-                   Account (his spec, 2026-08-24). Ids unchanged so
-                   settings-org.ts binds; the nav item is admin-gated in
-                   gateAdminSubs. -->
+              <!-- Organization › General — the org record (name, image,
+                   address, seats), moved out from under Billing (his spec,
+                   2026-08-24). Ids unchanged so settings-org-panel.ts binds;
+                   the nav item is admin-gated in gateAdminSubs. -->
               <div class="settings-panel" data-sub="org-general">
-                <h2>General <span id="org-status" class="set-save-state"></span></h2>
-                <p class="section-desc">Your organization's record — name, addresses, and billing contact. Seats and plan live on Billing.</p>
-<div id="org-section" class="platform-only hidden">
-                  <!-- The bar IS the disclosure: it stays put so the name and id
-                       are readable at a glance, and everything under it folds
-                       away. The copy button sits inside, so it stops its click
-                       from reaching the toggle. -->
-                  <button type="button" id="org-toggle" class="set-fold-bar" aria-expanded="true" aria-controls="org-body">
-                    <span class="set-fold-head">
-                      <svg class="set-fold-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></svg>
-                      <span class="set-fold-title" id="org-header-name">—</span>
-                    </span>
-                    <span class="set-fold-aside">
-                      <code id="org-header-id">—</code>
-                      <span id="org-copy-id" class="set-copy-btn" role="button" tabindex="0" title="Copy organization ID" aria-label="Copy organization ID">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                      </span>
-                    </span>
-                  </button>
-                  <div id="org-body" class="set-fold-body">
-                  <p class="section-desc">Name, addresses, and billing contact. Seats and plan live under Billing.</p>
-                  <div id="org-gate" class="crud-empty hidden">Loading…</div>
-                  <div class="acct-section hidden" id="org-form">
-                    <div id="org-error" class="settings-error hidden"></div>
+                <h2>General <span id="org-panel-status" class="set-save-state"></span></h2>
+                <p class="section-desc">Your organization's name, image and address.</p>
 
-                    <div class="acct-row">
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-name">Organization name</label>
-                        <input id="org-name" type="text" class="settings-input" autocomplete="off" />
+                                        <div id="org-panel-admin-only" class="crud-empty hidden">Only an organization admin can manage the organization.</div>
+                    <div id="org-panel-body">
+                      <div id="org-panel-error" class="settings-error hidden"></div>
+                      <div class="acct-section">
+                        <div class="acct-identity">
+                          <div class="acct-id-face">
+                            <div class="acct-avatar-slot">
+                              <span id="org-panel-initial" class="acct-initials">—</span>
+                              <img id="org-panel-image" class="acct-avatar hidden" alt="" />
+                            </div>
+                            <div class="acct-id-text">
+                              <div class="acct-name" id="org-panel-id-name">—</div>
+                              <div class="acct-email">Organization image — shows wherever your org identifies itself.</div>
+                            </div>
+                          </div>
+                          <div class="acct-id-actions">
+                            <button id="org-panel-image-pick" class="action-btn" type="button" title="PNG/JPEG/GIF/WebP, up to 512 KB">Change image…</button>
+                            <input id="org-panel-image-file" type="file" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp" />
+                          </div>
+                        </div>
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-name">Organization name</label>
+                            <input id="org-panel-name" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                        <h4 class="acct-row-head">Address</h4>
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-addr-line1">Address line 1</label>
+                            <input id="org-panel-addr-line1" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="org-panel-addr-line2">Address line 2</label>
+                            <input id="org-panel-addr-line2" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-city">City</label>
+                            <input id="org-panel-addr-city" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-state">State / Region</label>
+                            <input id="org-panel-addr-state" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-postal">Postal code</label>
+                            <input id="org-panel-addr-postal" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="org-panel-addr-country">Country</label>
+                            <input id="org-panel-addr-country" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
                       </div>
-                      <div class="acct-field">
-                        <label class="settings-label">Max seats</label>
-                        <div class="settings-readonly" id="org-max-seats">—</div>
-                      </div>
-                    </div>
-
-                    <h4 class="acct-row-head">Address</h4>
-                    <div class="acct-row">
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-addr-line1">Address line 1</label>
-                        <input id="org-addr-line1" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field acct-field-wide">
-                        <label class="settings-label" for="org-addr-line2">Address line 2</label>
-                        <input id="org-addr-line2" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                    </div>
-                    <div class="acct-row">
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-addr-city">City</label>
-                        <input id="org-addr-city" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-addr-state">State / Region</label>
-                        <input id="org-addr-state" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-addr-postal">Postal code</label>
-                        <input id="org-addr-postal" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                      <div class="acct-field">
-                        <label class="settings-label" for="org-addr-country">Country</label>
-                        <input id="org-addr-country" type="text" class="settings-input" autocomplete="off" />
-                      </div>
-                    </div>
-
-                    <label class="settings-toggle">
+                    
+                      <!-- Billing address + contact — the bottom part of the
+                           old Account org form (his spec, 2026-08-24). Same
+                           ids; this panel's module loads and saves them. -->
+                      <label class="settings-toggle">
                       <input type="checkbox" id="org-billing-same" checked />
                       <span class="toggle-switch"></span>
                       <div class="toggle-info">
@@ -969,10 +965,8 @@
                         </div>
                       </div>
                     </div>
-
-                  </div>
-                  </div>
-                </div>
+                    </div>
+                  
               </div>
 
               <!-- Billing — credits, top-ups, auto top-up, seats and invoices.
