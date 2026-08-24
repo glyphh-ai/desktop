@@ -71,6 +71,9 @@ export const EMPTY = {
  */
 export function buildContract(client, deps) {
   const { apiUrl, isAuthenticated, signOut } = deps;
+  // The API origin as a PROPERTY (preload.ts parity) — settings-mcp shows
+  // the cloud MCP endpoint from it.
+  void 0;
 
   /** The user's pref map, fetched once and cached. Reads are cheap + synchronous
    *  after the first load; writes update the cache immediately (optimistic) then
@@ -840,6 +843,7 @@ export function buildContract(client, deps) {
     // fabricated them (resolved undefined) and the Models page threw on `r.ok`.
     // Same SDK calls the desktop's main process makes.
     billingPaymentMethod: () => client.billing.paymentMethod().catch(() => null),
+    apiUrl,
     orgModelsSetSupported: lib((id, supported) => client.orgModels.setSupported(id, supported)),
     orgModelsSetSupportedBulk: lib((ids) => client.orgModels.setSupportedBulk(ids)),
     orgCustomModelsSave: lib((input) => client.orgModels.saveCustom(input)),

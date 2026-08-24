@@ -10,6 +10,7 @@ import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
+import { initMcpPanel, loadMcpPanel } from "./settings-mcp.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadMarketplaceBlocks } from "./settings-workspaces.js";
@@ -375,10 +376,11 @@ export function openSettingsModal(sub?: string): void {
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
     if (settingsGroup && nav) {
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account", "voice", "mcp"]) {
+      for (const sub of ["general", "appearance", "account", "voice"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
+      const mcpHead = nav.querySelector("#nav-group-mcp");
       let orgGroup = nav.querySelector("#app-nav-group-org");
       if (!orgGroup) {
         orgGroup = document.createElement("div");
@@ -392,6 +394,9 @@ export function openSettingsModal(sub?: string): void {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
+      // MCP is its OWN group at the end (his spec, 2026-08-25).
+      const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
+      if (mcpHead && mcpItem) { anchor.after(mcpHead); mcpHead.after(mcpItem); }
       wireAppUserChip(nav as HTMLElement);
     }
   }
@@ -611,7 +616,7 @@ function loadSettingsSub(sub: string): void {
   // PLATFORM-ONLY surfaces now) — they fetch on show.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   else if (sub === "usage") void loadUsageAppView();
-  else if (sub === "mcp") loadMcp();
+  else if (sub === "mcp") { loadMcp(); initMcpPanel(); void loadMcpPanel(); }
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();

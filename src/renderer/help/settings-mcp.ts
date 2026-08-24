@@ -21,9 +21,10 @@
 import { escapeHtml, confirmAction } from "./shared.js";
 
 export interface McpClientRow {
+  grantId: string;
   clientId: string;
   clientName: string;
-  firstGrantedAt: string;
+  createdAt: string;
   lastUsedAt: string | null;
 }
 
@@ -38,7 +39,7 @@ interface DesktopMcpIpc {
 
 interface McpTransport {
   list(): Promise<McpClientRow[]>;
-  revoke(clientId: string): Promise<void>;
+  revoke(grantId: string): Promise<void>;
 }
 
 const NO_TRANSPORT = "MCP connections aren't available on this build.";
@@ -55,8 +56,8 @@ function transport(): McpTransport | null {
     // reaches for private state and a detached method throws (settings-api.ts's
     // `need()` lesson).
     return {
-      list: async () => (await h.get!<{ clients: McpClientRow[] }>("/api/me/mcp-clients")).clients ?? [],
-      revoke: async (clientId) => { await h.del!(`/api/me/mcp-clients/${encodeURIComponent(clientId)}`); },
+      list: async () => (await h.get!<{ grants: McpClientRow[] }>("/api/oauth/grants")).grants ?? [],
+      revoke: async (grantId) => { await h.del!(`/api/oauth/grants/${encodeURIComponent(grantId)}`); },
     };
   }
   const g = (window as unknown as { glyphh?: DesktopMcpIpc }).glyphh;
@@ -89,7 +90,7 @@ function render(clients: McpClientRow[]): void {
   for (const c of clients) {
     const row = document.createElement("div");
     row.className = "a4-row";
-    const since = c.firstGrantedAt ? new Date(c.firstGrantedAt).toLocaleDateString() : "";
+    const since = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
     const used = c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleDateString() : "never";
     row.innerHTML = `<span class="a4-row-main"><span class="a4-row-name">${escapeHtml(c.clientName || c.clientId)}</span><span class="a4-row-sub">${since ? `Connected ${escapeHtml(since)} · ` : ""}Last used ${escapeHtml(used)}</span></span><button class="action-btn danger" type="button">Revoke</button>`;
     row.querySelector("button")!.addEventListener("click", async () => {
@@ -99,7 +100,7 @@ function render(clients: McpClientRow[]): void {
         confirmLabel: "Revoke",
         danger: true,
       }))) return;
-      try { await transport()!.revoke(c.clientId); await loadMcpPanel(); }
+      try { await transport()!.revoke(c.grantId); await loadMcpPanel(); }
       catch (e) { setError((e as Error).message); }
     });
     list.appendChild(row);
@@ -117,6 +118,9 @@ export async function loadMcpPanel(): Promise<void> {
 export function initMcpPanel(): void {
   if (wired) return;
   wired = true;
+  const input = $("mcp-endpoint") as HTMLInputElement | null;
+  const apiUrl = (window.glyphh as unknown as { apiUrl?: unknown }).apiUrl;
+  if (input && typeof apiUrl === "string" && apiUrl) input.value = `${apiUrl.replace(/\/$/, "")}/mcp`;
   $("mcp-endpoint-copy")?.addEventListener("click", async () => {
     const input = $("mcp-endpoint") as HTMLInputElement | null;
     const val = input?.value || "";

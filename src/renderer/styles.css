@@ -19423,16 +19423,10 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 #settings-mobile-ui-row { border-bottom: none !important; }
 /* Organization › General: a divider between the address block and the two
    billing toggle rows below it. */
-#org-billing-same-row { border-top: 1px solid var(--border); margin-top: 18px; }
 /* Section heads on Organization › General: air above each, description
    clear beneath (his report, 2026-08-25 — RUNTIME LIMITS sat on its blurb). */
 .settings-panel[data-sub="org-general"] .acct-row-head { margin: 30px 0 8px; }
 .settings-panel[data-sub="org-general"] .acct-row-head + .section-desc { margin: 0 0 14px; }
-/* The revealed blocks breathe: air around the wraps, the Billing-address
-   heading clear of its first label, and the page doesn't end hard on the
-   contact fields. */
-#org-billing-addr-wrap, #org-contact-wrap { margin: 10px 0 14px; }
-#org-billing-addr-wrap .acct-row-head { margin: 0 0 12px; }
 .settings-panel[data-sub="org-general"] { padding-bottom: 32px; }
 /* Voice: same rule — the last row ends the page clean. */
 .settings-panel[data-sub="voice"] .set-pref-row:has(#voice-brief) { border-bottom: none; }
@@ -19473,6 +19467,11 @@ body.platform-shell .settings-nav span.not-on-platform { display: none; }
 #app-settings-user .asu-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #app-settings-user .asu-plan { font-size: 11px; color: var(--text-3); }
 body.platform-shell #app-settings-user { display: none; }
+/* Surface-split blocks: web-only shows on any glyphh-web page; desktop-only
+   hides there. */
+.glyphh-web-only { display: none; }
+.glyphh-web .glyphh-web-only { display: block; }
+.glyphh-web .glyphh-desktop-only { display: none; }
 body.platform-shell .settings-nav-item.not-on-platform,
 body.platform-shell .settings-nav-group.not-on-platform { display: none !important; }
 /* Platform dashboard header: greeting left, actions at the right edge. */

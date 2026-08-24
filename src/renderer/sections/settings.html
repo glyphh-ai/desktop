@@ -30,6 +30,7 @@
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-orgs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>Orgs</span></button>
               <div class="settings-nav-group platform-only">Devices</div>
               <button class="settings-nav-item platform-only" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
+              <div class="settings-nav-group" id="nav-group-mcp">MCP</div>
               <button class="settings-nav-item" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
@@ -1057,7 +1058,33 @@
               <!-- MCP Server -->
         <div class="settings-panel" data-sub="mcp">
                 <h2>MCP Server</h2>
-                <p class="section-desc">Let a local LLM tool — Claude Desktop, Cursor, the claude CLI — drive your Glyphh workspace over MCP: open apps and workspaces, click, type, read, and screenshot. Runs as a <strong>local server</strong> on this machine (lowest latency, no cloud).</p>
+
+                <!-- CLOUD (web only): the endpoint an external MCP client
+                     (Claude, Cursor, any MCP-capable IDE) OAuths into for the
+                     org's tools — build, connect, drive rotors/agents/loops. -->
+                <div class="glyphh-web-only">
+                  <p class="section-desc">Connect Claude, Cursor, or any MCP-capable client to your organization's tools — build, connect, and drive rotors, agents and loops — over the cloud endpoint, authorized with OAuth or an API key.</p>
+                  <div id="mcp-error" class="settings-error hidden"></div>
+                  <h3 class="settings-subheading" style="margin-top:0;">Connect an MCP client</h3>
+                  <div class="settings-form">
+                    <label class="settings-label" for="mcp-endpoint">Endpoint</label>
+                    <div class="settings-inline">
+                      <input id="mcp-endpoint" class="settings-input" readonly value="https://api.glyphh.ai/mcp" onfocus="this.select()" spellcheck="false" />
+                      <button id="mcp-endpoint-copy" class="action-btn primary" type="button">Copy</button>
+                    </div>
+                    <p class="settings-hint"><strong>OAuth</strong> — in Claude, add the endpoint as a connector; approve the connection on the Glyphh consent screen and it's live. Any OAuth-capable client works the same way.</p>
+                    <p class="settings-hint"><strong>API keys</strong> — for clients that can't OAuth, create a key under Organization &rarr; API Keys and send it as a Bearer token.</p>
+                  </div>
+                  <h3 class="settings-subheading">Connected clients</h3>
+                  <p class="section-desc">Clients you've authorized over OAuth. Revoking one cuts its access immediately without signing you out anywhere.</p>
+                  <div id="mcp-clients-empty" class="crud-empty hidden">No MCP clients connected yet.</div>
+                  <div id="mcp-clients-list" class="mbr-list"></div>
+                </div>
+
+                <!-- LOCAL (desktop only): the 127.0.0.1 server this machine
+                     runs for a local LLM tool. -->
+                <div class="glyphh-desktop-only">
+                <p class="section-desc">Let a local LLM tool — Claude Desktop, Cursor, the claude CLI — drive your Glyphh workspace over MCP: open apps and workspaces, click, type, read, and screenshot. Runs as a <strong>local server</strong> on this machine (lowest latency, no cloud). The server acts as you against your Glyphh cloud — it needs an API key (Organization &rarr; API Keys), used as the token in the config below.</p>
 
                 <!-- Glyphh Skill — teaches the connected assistant how to drive
                      this workspace. Claude installs straight into
@@ -1713,5 +1740,6 @@
               </div>
 
             </div>
+              </div>
           </div>
         </div>
