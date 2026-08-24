@@ -678,42 +678,41 @@
                       <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
                     </div>
 
-                    <!-- The ROW GRAMMAR, like every other page: title +
-                         description left, the value control at the right
-                         edge. Ids unchanged. -->
                     <div class="ws-tab active" data-wstab="general">
-                      <div class="set-pref-row">
-                        <div class="set-pref-text">
-                          <div class="set-pref-title">Name</div>
-                          <div class="set-pref-desc">What members with this role see it called.</div>
+                      <div class="acct-section">
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="ws-name">Name</label>
+                            <input id="ws-name" type="text" class="settings-input" autocomplete="off" />
+                          </div>
                         </div>
-                        <div class="set-pref-value">
-                          <input id="ws-name" type="text" class="settings-input" autocomplete="off" />
+                        <h4 class="acct-row-head">Rate limit</h4>
+                        <p class="section-desc">Gateway calls allowed per window. Leave either blank for no limit.</p>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-rate-calls">Calls</label>
+                            <input id="ws-rate-calls" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-rate-window">Per (seconds)</label>
+                            <input id="ws-rate-window" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
                         </div>
-                      </div>
-                      <div class="set-pref-row">
-                        <div class="set-pref-text">
-                          <div class="set-pref-title">Rate limit</div>
-                          <div class="set-pref-desc">Gateway calls allowed per window. Leave either blank for no limit.</div>
-                        </div>
-                        <div class="set-pref-value">
-                          <input id="ws-rate-calls" type="number" min="0" class="settings-input ws-num" placeholder="calls" />
-                          <span class="settings-hint">per</span>
-                          <input id="ws-rate-window" type="number" min="0" class="settings-input ws-num" placeholder="seconds" />
-                        </div>
-                      </div>
-                      <div class="set-pref-row">
-                        <div class="set-pref-text">
-                          <div class="set-pref-title">Credit cap</div>
-                          <div class="set-pref-desc">Gateway credits per period. Resets on calendar boundaries — daily at midnight UTC, weekly on Mondays, monthly on the 1st. Blank = none.</div>
-                        </div>
-                        <div class="set-pref-value">
-                          <input id="ws-cap" type="number" min="0" class="settings-input ws-num" placeholder="none" />
-                          <select id="ws-cap-period" class="settings-input">
-                            <option value="1">Daily</option>
-                            <option value="7">Weekly</option>
-                            <option value="30" selected>Monthly</option>
-                          </select>
+                        <h4 class="acct-row-head">Credit cap</h4>
+                        <p class="section-desc">Gateway credits per period. Resets on calendar boundaries — daily at midnight UTC, weekly on Mondays, monthly on the 1st. Blank = none.</p>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-cap">Credits</label>
+                            <input id="ws-cap" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-cap-period">Period</label>
+                            <select id="ws-cap-period" class="settings-input">
+                              <option value="1">Daily</option>
+                              <option value="7">Weekly</option>
+                              <option value="30" selected>Monthly</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
                     </div>

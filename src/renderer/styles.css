@@ -19365,7 +19365,6 @@ body.platform-shell .settings-panel .platform-only:not(.hidden) { display: block
 .set-pref-value { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .set-pref-value .settings-input { width: auto; }
 .set-pref-value input[type="text"], .set-pref-value input[type="url"] { width: 280px; }
-.set-pref-value .ws-num { width: 110px; }
 .set-pref-list .set-pref-row:last-child { border-bottom: none; }
 
 /* ── APP Usage view (plan-limits look; the platform keeps its dashboard) ── */
