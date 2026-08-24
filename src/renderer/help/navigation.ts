@@ -10,6 +10,8 @@ import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel } from "./settings.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
+import { loadRuntime } from "./settings-runtime.js";
+import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
@@ -22,8 +24,6 @@ import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadRuntime } from "./settings-runtime.js";
-import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
 import { loadVoiceSettings } from "./settings-voice.js";
@@ -203,6 +203,7 @@ export function gotoSection(section: string, sub?: string): void {
 let settingsHomePen: HTMLElement | null = null;
 let settingsModalWebviewsGuarded = false;
 let settingsModalPanelsHidden = false;
+let settingsModalHidePromise: Promise<boolean> | null = null;
 
 function selectSettingsSub(sub: string): void {
   const target = settingsSubAlias(sub);
@@ -243,9 +244,12 @@ export function closeSettingsModal(): void {
   if (layout && settingsHomePen) settingsHomePen.appendChild(layout);
   overlay.remove();
   if (settingsModalWebviewsGuarded) { guardWebviewsForModal(false); settingsModalWebviewsGuarded = false; }
-  restorePanelsForModal(settingsModalPanelsHidden);
-  settingsModalPanelsHidden = false;
-  try { window.glyphh.panelsShow?.(); } catch { /* */ }
+  void (settingsModalHidePromise ?? Promise.resolve(false)).then(() => {
+    restorePanelsForModal(settingsModalPanelsHidden);
+    settingsModalPanelsHidden = false;
+    settingsModalHidePromise = null;
+    try { window.glyphh.panelsShow?.(); } catch { /* */ }
+  });
 }
 
 function onSettingsModalKey(e: KeyboardEvent): void {
@@ -276,7 +280,7 @@ export function openSettingsModal(sub?: string): void {
     return;
   }
   // Already open — just switch the sub-panel.
-  if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
+  if (isSettingsModalOpen()) { selectSettingsSub(sub || "usage"); return; }
 
   const layout = document.querySelector<HTMLElement>(
     ".help-section[data-section='settings'] > .settings-layout") ??
@@ -292,7 +296,10 @@ export function openSettingsModal(sub?: string): void {
   // capture-based freeze-frame is a best-effort extra for any legacy panels.
   guardWebviewsForModal(true);
   settingsModalWebviewsGuarded = true;
-  void hidePanelsForModal().then((hidden) => { settingsModalPanelsHidden = hidden; });
+  // SEQUENCED, not fire-and-forget: a fast open→close raced panelsHide past
+  // panelsShow, leaving every zoomed-up panel hidden ("settings killed the
+  // command center"). Close awaits this promise before restoring.
+  settingsModalHidePromise = hidePanelsForModal().then((hidden) => { settingsModalPanelsHidden = hidden; return hidden; });
 
   const overlay = document.createElement("div");
   overlay.id = "settings-modal";
@@ -348,10 +355,24 @@ export function openSettingsModal(sub?: string): void {
 
   document.addEventListener("keydown", onSettingsModalKey, true);
 
+  // DESKTOP nav shape (his spec, 2026-08-24): one "Settings" group — Usage
+  // leads (it is also the landing panel), Billing closes the list. On the
+  // platform the buttons stay in their own Home/Organization groups.
+  if (!document.body.classList.contains("platform-shell")) {
+    const nav = overlay.querySelector(".settings-nav");
+    const usage = nav?.querySelector('.settings-nav-item[data-sub="usage"]');
+    const billing = nav?.querySelector('.settings-nav-item[data-sub="billing"]');
+    const groups = Array.from(nav?.querySelectorAll(".settings-nav-group") ?? []);
+    const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
+    const voice = nav?.querySelector('.settings-nav-item[data-sub="voice"]');
+    if (settingsGroup && usage) settingsGroup.after(usage);
+    if (voice && billing) voice.after(billing);
+  }
+
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
-  selectSettingsSub(sub || "general");
+  selectSettingsSub(sub || "usage");
 }
 
 /** Hide the admin-only surfaces for non-admins on modal open — the SAME rule
@@ -414,8 +435,8 @@ const settingsSubAlias = (sub: string): string => {
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  // General carries the Sessions (runtime region) + Guardrails groups now —
-  // both fetch on show, exactly as their retired tabs did.
+  // General carries the Sessions (runtime region) + Guardrails groups (both
+  // PLATFORM-ONLY surfaces now) — they fetch on show.
   if (sub === "general") { void loadRuntime(); void loadGuardrails(); }
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();

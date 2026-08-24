@@ -2,12 +2,12 @@
           <div class="settings-layout">
             <nav class="settings-nav">
               <div class="settings-nav-group platform-only">Home</div>
-                  <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg><span>Home</span></button>
+                  <button class="settings-nav-item" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9.5"/></svg><span>Home</span></button>
               <div class="settings-nav-group platform-only">Organization</div>
               <button class="settings-nav-item platform-only" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
               <button class="settings-nav-item platform-only" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
-              <button class="settings-nav-item platform-only" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
+              <button class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <button class="settings-nav-item platform-only" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span><span id="apps-builder-launch" class="apps-builder-launch" title="Open the Builder" role="link" aria-label="Open the Builder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
@@ -21,7 +21,7 @@
               <div class="settings-nav-group platform-only">Devices</div>
               <button class="settings-nav-item platform-only" data-sub="desktop"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>
               <button class="settings-nav-item platform-only" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
-              <div class="settings-nav-group">General</div>
+              <div class="settings-nav-group">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item" data-sub="drips"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 13.7 8l4.8 1.7-4.8 1.7L12 16.2 10.3 11.4 5.5 9.7 10.3 8z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/><path d="M5.5 3l.6 1.6L7.7 5.2 6.1 5.8 5.5 7.4 4.9 5.8 3.3 5.2l1.6-.6z"/></svg><span>Drips</span></button>
@@ -38,27 +38,40 @@
               <div class="settings-panel active" data-sub="general">
                 <h2>General</h2>
                 <p class="section-desc">App-wide preferences.</p>
-                <div class="settings-form">
-                  <label class="settings-label">Compaction guidance <span id="glyphh-agent-compact-status" class="set-save-state"></span></label>
-                  <textarea id="glyphh-agent-compact-prompt" class="settings-input" rows="4" spellcheck="false" placeholder="e.g. Always keep API decisions, file paths, and open bugs."></textarea>
-                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">Your session's memory lives in your org's regional stator — the memory plane sessions recall from. When a conversation outgrows its context window it's compacted: folded into a summary the session carries forward. This guidance is advisory to that compaction, automatic and manual alike; changes save on their own.</span>
-                </div>
 
-                <div class="settings-form">
-                  <label class="settings-label">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></label>
-                  <div class="settings-inline">
+                <!-- The row grammar (his spec, 2026-08-24): title left with its
+                     description UNDER it, the value control aligned to the
+                     page's right edge. -->
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></div>
+                    <div class="set-pref-desc">The tiny hover and click sounds. Zero turns them off.</div>
+                  </div>
+                  <div class="set-pref-value">
                     <input type="range" id="general-ui-sound" min="0" max="100" step="5" />
                     <span id="general-ui-sound-val" class="settings-hint"></span>
                   </div>
-                  <span class="settings-hint" style="margin-top:4px;display:block;font-size:11px;color:var(--text-3);">The tiny hover and click sounds. Zero turns them off.</span>
                 </div>
 
-                <!-- Sessions — the org's regional runtime + stator (moved in from
+                <!-- Auto Updates stays in the DOM (hidden): settings.ts binds it
+                     unconditionally; the feature is parked, not removed. -->
+                <label class="settings-toggle" style="display:none;">
+                  <input type="checkbox" id="toggle-auto-update" checked />
+                  <span class="toggle-switch"></span>
+                </label>
+<div id="settings-relaunch" class="settings-relaunch hidden">
+                  <span>Restart required for changes to take effect</span>
+                  <button id="settings-relaunch-btn" class="action-btn primary">Relaunch</button>
+                </div>
+
+                <!-- Org-admin groups — PLATFORM-ONLY surfaces (desktop General
+                     carries the interface-sounds row alone). -->
+<!-- Sessions — the org's regional runtime + stator (moved in from
                      the retired Runtime tab). Read for any member; chooseInfra is
                      org_admin. The group is admin-gated like its nav item was
                      (navigation.ts gateAdminSubs); settings-runtime.ts binds the
                      same ids unchanged. -->
-                <div id="general-runtime-group" class="hidden">
+                <div id="general-runtime-group" class="platform-only hidden">
                   <h3 class="acct-row-head">Sessions</h3>
                   <p class="section-desc">The regional runtime + stator your sessions run on — where your memory lives. One choice for the whole org; NAM is the default.</p>
                   <div id="runtime-error" class="settings-error hidden"></div>
@@ -69,12 +82,12 @@
                   </div>
                 </div>
 
-                <!-- Guardrails — org-wide runtime limits (moved in from the
+<!-- Guardrails — org-wide runtime limits (moved in from the
                      retired Guardrails tab), folded shut by default with the
                      same disclosure grammar as Billing's Auto top-up. Ids are
                      unchanged so settings-guardrails.ts binds as before; the
                      group is admin-gated in navigation.ts gateAdminSubs. -->
-                <div id="general-guardrails-group" class="hidden">
+                <div id="general-guardrails-group" class="platform-only hidden">
                   <h3 class="acct-row-head">Guardrails <span id="guardrails-status" class="set-save-state"></span></h3>
                   <button type="button" id="guardrails-fold-toggle" class="set-fold-bar" aria-expanded="false" aria-controls="guardrails-fold-body">
                     <span class="set-fold-head">
@@ -120,34 +133,9 @@
                     </div>
                   </div>
                 </div>
-
-                <div class="settings-toggles" style="margin-top:24px;">
-                  <!-- Auto Updates hidden for now -->
-                  <label class="settings-toggle" style="display:none;">
-                    <input type="checkbox" id="toggle-auto-update" checked />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Auto Updates</span>
-                      <span class="toggle-desc">Automatically download and install updates</span>
-                    </div>
-                  </label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="toggle-background-mode" />
-                    <span class="toggle-switch"></span>
-                    <div class="toggle-info">
-                      <span class="toggle-title">Keep running in the background</span>
-                      <span class="toggle-desc">Closing the window keeps Glyphh in the menu bar so scheduled agents, loops, and skills keep running. Adds a tray icon and launches at login.</span>
-                    </div>
-                  </label>
-                </div>
-                <div id="settings-relaunch" class="settings-relaunch hidden">
-                  <span>Restart required for changes to take effect</span>
-                  <button id="settings-relaunch-btn" class="action-btn primary">Relaunch</button>
-                </div>
               </div>
 
-              <!-- Appearance: Tabs, URL bar, Browser home -->
-              <div class="settings-panel" data-sub="usage">
+<div class="settings-panel" data-sub="usage">
     <h2>Usage</h2>
     <p class="section-desc">What your organization has spent and where — credits, models, and members.</p>
     <div class="dash-usage-actions">
