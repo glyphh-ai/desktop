@@ -7497,6 +7497,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .billing-topup-credits { font-size: 20px; font-weight: 600; color: var(--text-bright); }
 .billing-topup-unit { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .billing-topup-price { margin-top: 6px; font-size: 13px; color: var(--text-2); }
+.billing-topup-save { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--accent, #8c3bf2); }
 
 /* The plan picker — the old platform pricing page's grid, folded under the
    Plan bar. Cards share the top-up cards' surface grammar; the current plan

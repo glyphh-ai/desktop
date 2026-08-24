@@ -25,7 +25,8 @@ import { confirmAction, escapeHtml } from "./shared.js";
 import { openUrlInWorkbench } from "./code.js";
 import {
   accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, MICRO, openHostedPage,
-  toCredits, TOPUP_PRESETS, USD_PER_CREDIT,
+  toCredits, USD_PER_CREDIT,
+  TOPUP_CREDIT_BUCKETS, topupDiscount, usdForCredits, creditsForUsdTiered,
   type Autotopup, type BillingPlan, type CreditsBreakdown, type Invoice, type Subscription,
 } from "./settings-api.js";
 
@@ -92,16 +93,18 @@ function paintTopup(): void {
   const grid = $("billing-topup-grid");
   setText("billing-rate", `One-time credit purchases never expire. ≈ ${fmtInt(creditsForUsd(1))} credits per dollar.`);
   if (!grid || grid.childElementCount) return;   // presets are static — build once
-  for (const usd of TOPUP_PRESETS) {
+  for (const credits of TOPUP_CREDIT_BUCKETS) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "billing-topup-card";
-    btn.dataset.usd = String(usd);
+    const save = topupDiscount(credits);
     btn.innerHTML =
-      `<span class="billing-topup-credits">${escapeHtml(fmtInt(creditsForUsd(usd)))}</span>` +
+      `<span class="billing-topup-credits">${escapeHtml(fmtInt(credits))}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
-      `<span class="billing-topup-price">$${usd}</span>`;
-    btn.addEventListener("click", () => { void buyTopup(usd, btn); });
+      `<span class="billing-topup-price">$${usdForCredits(credits)}` +
+      (save > 0 ? ` <span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "") +
+      `</span>`;
+    btn.addEventListener("click", () => { void buyTopup(credits, btn); });
     grid.appendChild(btn);
   }
 }
@@ -387,12 +390,18 @@ async function refreshCredits(): Promise<void> {
 /** A dedicated little overlay holding ONLY the embedded checkout — the
  *  Settings page's topup cards use this so the purchase happens in place.
  *  Resolves true when it handled the purchase (mounted), false → hosted. */
-async function embeddedTopupOverlay(usd: number): Promise<boolean> {
+async function embeddedTopupOverlay(credits: number): Promise<boolean> {
+  // PRE-CHECK before any DOM shows: an overlay that appears and instantly
+  // vanishes into the hosted fallback reads as a glitch ("an odd popup shows
+  // then jumps"). No key or no Stripe.js → never build the overlay at all.
+  const key = await publishableKey();
+  if (!key) return false;
+  if (!(await loadStripeJs())) return false;
   const overlay = document.createElement("div");
   overlay.className = "confirm-overlay buy-credits-overlay";
   overlay.innerHTML = `
     <div class="confirm-box buy-credits-box">
-      <div class="confirm-head"><h3>Add ${escapeHtml(fmtInt(creditsForUsd(usd)))} credits — $${usd}</h3></div>
+      <div class="confirm-head"><h3>Add ${escapeHtml(fmtInt(credits))} credits — $${usdForCredits(credits)}</h3></div>
       <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
       <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
     </div>`;
@@ -401,7 +410,7 @@ async function embeddedTopupOverlay(usd: number): Promise<boolean> {
   overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeIt(); });
   document.body.appendChild(overlay);
   const stage = overlay.querySelector<HTMLElement>(".bc-checkout-stage")!;
-  const mounted = await tryEmbeddedTopup(usd, stage, (grantSeen) => {
+  const mounted = await tryEmbeddedTopup(credits, stage, (grantSeen) => {
     if (!overlay.isConnected) return;
     stage.innerHTML = grantSeen
       ? `<div class="bc-confirming bc-done">✓ Credits added.</div>`
@@ -413,26 +422,37 @@ async function embeddedTopupOverlay(usd: number): Promise<boolean> {
   return mounted;
 }
 
-export async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
-  if (!usd || usd < 5) { toast("Minimum top-up is $5."); return; }
+export async function buyTopup(credits: number, btn?: HTMLButtonElement): Promise<void> {
+  const usd = usdForCredits(credits);
+  if (!credits || usd < 5) { toast("Minimum top-up is $5."); return; }
   if (busy) return;
-  busy = `topup-${usd}`;
+  busy = `topup-${credits}`;
   // Progress shows as a disabled control + a toast: the preset cards are built
   // from spans, so rewriting their text would eat the markup.
   if (btn) btn.disabled = true;
   try {
     // Embedded first — the purchase completes in an in-app overlay.
-    if (await embeddedTopupOverlay(usd)) { repollAfterStripe(); return; }
-    // topup() takes MICRO-credits; the USD amount converts through the display
-    // rate. Math.round because the server schema is z.number().int() and float
-    // arithmetic can leave ×1e6 fractionally off an integer → 400.
-    const res = await accountApi().topup(Math.round(creditsForUsd(usd) * MICRO));
+    if (await embeddedTopupOverlay(credits)) { repollAfterStripe(); return; }
+    // topup() takes MICRO-credits; the server prices them with the same
+    // volume-discount tiers this page displays.
+    const res = await accountApi().topup(Math.round(credits * MICRO));
     if (!res.ok) { toast(`Could not start the top-up — ${res.error}`); return; }
-    if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) {
+    const hostedInFront = (name: string, url: string): void => {
+      // The settings modal guards webviews (wb-modal-open hides them), so a
+      // workbench panel opened now is INVISIBLE until settings closes. The
+      // system browser is always in front; the workbench path stays for
+      // callers outside the modal.
+      if (document.getElementById("settings-modal")) {
+        (window.glyphh as unknown as { openExternal?: (u: string) => void }).openExternal?.(url);
+      } else {
+        openUrlInWorkbench(name, url);
+      }
+    };
+    if (!openHostedPage("Add credits", res.data, hostedInFront)) {
       toast("The checkout link came back malformed — try the Stripe portal below.");
       return;
     }
-    toast("Finish the purchase in the checkout page — your credits appear here once Stripe confirms.");
+    toast("Finish the purchase in your browser — your credits appear here once Stripe confirms.");
     repollAfterStripe();
   } catch (err) {
     toast(`Could not start the top-up — ${err instanceof Error ? err.message : String(err)}`);
@@ -482,7 +502,7 @@ function publishableKey(): Promise<string | null> {
  * back to the hosted page, the pre-existing path.
  */
 async function tryEmbeddedTopup(
-  usd: number,
+  credits: number,
   host: HTMLElement,
   onSettled: (grantSeen: boolean) => void,
 ): Promise<boolean> {
@@ -490,7 +510,7 @@ async function tryEmbeddedTopup(
   if (!key) return false;
   const Stripe = await loadStripeJs();
   if (!Stripe) return false;
-  const res = await accountApi().topupEmbedded(Math.round(creditsForUsd(usd) * MICRO));
+  const res = await accountApi().topupEmbedded(Math.round(credits * MICRO));
   if (!res.ok) return false;   // old server without embedded support → hosted
 
   const api = accountApi();
@@ -559,23 +579,26 @@ export async function openBuyCreditsModal(): Promise<void> {
 
   // One-time top-up cards → the SAME Stripe checkout the Billing page uses.
   const grid = overlay.querySelector<HTMLElement>("#bc-grid")!;
-  for (const usd of TOPUP_PRESETS) {
+  for (const credits of TOPUP_CREDIT_BUCKETS) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "billing-topup-card";
+    const save = topupDiscount(credits);
     card.innerHTML =
-      `<span class="billing-topup-credits">${fmtInt(creditsForUsd(usd))}</span>` +
+      `<span class="billing-topup-credits">${fmtInt(credits)}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
-      `<span class="billing-topup-price">$${usd}</span>`;
+      `<span class="billing-topup-price">$${usdForCredits(credits)}` +
+      (save > 0 ? ` <span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "") +
+      `</span>`;
     card.addEventListener("click", async () => {
       if (busy) return;
-      busy = `bc-${usd}`; card.disabled = true; setErr("");
+      busy = `bc-${credits}`; card.disabled = true; setErr("");
       try {
         // Embedded first: the purchase completes INSIDE this modal.
         const body = overlay.querySelector<HTMLElement>(".confirm-body")!;
         const stage = document.createElement("div");
         stage.className = "bc-checkout-stage";
-        const mounted = await tryEmbeddedTopup(usd, stage, (grantSeen) => {
+        const mounted = await tryEmbeddedTopup(credits, stage, (grantSeen) => {
           if (!overlay.isConnected) return;
           if (grantSeen) {
             stage.innerHTML = `<div class="bc-confirming bc-done">✓ Credits added — you're good to go.</div>`;
@@ -601,7 +624,7 @@ export async function openBuyCreditsModal(): Promise<void> {
           return;
         }
         // No key / no Stripe.js / old server → the hosted page, as before.
-        const res = await api.topup(Math.round(creditsForUsd(usd) * MICRO));
+        const res = await api.topup(Math.round(credits * MICRO));
         if (!res.ok) { setErr(res.error || "Could not start checkout."); return; }
         if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) { setErr("The checkout link came back malformed."); return; }
         close();   // Stripe opens; credits land via webhook and refresh on Billing.
@@ -819,10 +842,14 @@ export function initBilling(): void {
   const custom = $("billing-topup-custom") as HTMLInputElement | null;
   custom?.addEventListener("input", () => {
     const usd = Number(custom.value);
-    setText("billing-topup-custom-hint", usd > 0 ? `≈ ${fmtInt(creditsForUsd(usd))} credits` : "");
+    const c = creditsForUsdTiered(usd);
+    const save = topupDiscount(c);
+    setText("billing-topup-custom-hint", usd > 0
+      ? `≈ ${fmtInt(c)} credits${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
+      : "");
   });
   $("billing-topup-buy")?.addEventListener("click", (e) => {
-    void buyTopup(Number(custom?.value || 0), e.currentTarget as HTMLButtonElement);
+    void buyTopup(creditsForUsdTiered(Number(custom?.value || 0)), e.currentTarget as HTMLButtonElement);
   });
 
   // Auto-top-up saves itself: the toggle at once (a single decision), the

@@ -321,8 +321,31 @@ export const MICRO = 1_000_000;
 
 /** Top-up rate — DISPLAY only; the server prices the actual purchase. */
 export const USD_PER_CREDIT = 0.024;
-export const TOPUP_PRESETS = [24, 50, 120, 240];
 export const creditsForUsd = (usd: number): number => Math.floor((usd || 0) / USD_PER_CREDIT);
+/** VOLUME DISCOUNTS — mirrors the server's TOPUP_DISCOUNT_TIERS (pricing.ts);
+ *  thresholds in credits, fraction off the flat rate. Keep them in sync. */
+export const TOPUP_DISCOUNT_TIERS: ReadonlyArray<readonly [number, number]> = [
+  [10_000, 0.30],
+  [5_000, 0.20],
+  [2_500, 0.10],
+];
+export const topupDiscount = (credits: number): number => {
+  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) if (credits >= min) return frac;
+  return 0;
+};
+/** The DISCOUNTED price of a credit bucket, in whole USD (display). */
+export const usdForCredits = (credits: number): number =>
+  Math.round(credits * USD_PER_CREDIT * (1 - topupDiscount(credits)) * 100) / 100;
+/** Credit buckets for the top-up cards (the price derives per tier). */
+export const TOPUP_CREDIT_BUCKETS = [1_000, 2_500, 5_000, 10_000];
+/** Credits a CUSTOM USD amount buys — the best tier the resulting size earns. */
+export const creditsForUsdTiered = (usd: number): number => {
+  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) {
+    const c = Math.floor((usd || 0) / (USD_PER_CREDIT * (1 - frac)));
+    if (c >= min) return c;
+  }
+  return creditsForUsd(usd);
+};
 
 export const toCredits = (micro: number): number => Math.floor((micro || 0) / MICRO);
 export const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
