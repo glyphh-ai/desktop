@@ -156,6 +156,12 @@ async function handleCallback(shownAt) {
     if (token) await verifyEmailLink(token);
     else if (code) await exchangeCode(code);
     clearCallbackUrl(redirect);
+    // A stashed org invite resolves HERE — the one moment we know the session
+    // is fresh and the login-shell client is live. The front-door retry was
+    // failing silently after navigation and eating the stash.
+    const invite = await maybeAcceptInvite(true);
+    if (invite === 'accepted') return;                       // navigated to /platform
+    if (invite && invite.error) return showLogin(shownAt, invite.error);
     await enterApp(shownAt);
   } catch (err) {
     clearCallbackUrl('/');
@@ -336,8 +342,11 @@ async function maybeAcceptInvite(authed) {
     await glyphh().invites.accept(token);
   } catch (err) {
     try { sessionStorage.removeItem('glyphhInviteToken'); } catch { /* */ }
-    splashStatus(`Couldn't accept the invite — ${err?.message || 'it may have expired or belong to a different email.'}`);
-    return 'error';
+    // Surface the reason ON the login shell (a dismissed splash swallows
+    // text — the old path black-screened). The common case is being signed
+    // in as a DIFFERENT account than the invite's email: signing in with the
+    // right one from here re-runs the flow.
+    return { error: `Couldn't accept the invite — ${err?.message || 'it may have expired or belong to a different email.'} Sign in with the invited email to accept.` };
   }
   try { sessionStorage.removeItem('glyphhInviteToken'); } catch { /* */ }
   window.location.assign(PLATFORM_PATH);
@@ -395,7 +404,8 @@ export async function startWebBoot(overrides = {}) {
   // An invite token (on this URL or stashed across the sign-in round trip)
   // resolves before the normal boot decision.
   const invite = await maybeAcceptInvite(authed);
-  if (invite === 'accepted' || invite === 'error') return;
+  if (invite === 'accepted') return;
+  if (invite && invite.error) return showLogin(shownAt, invite.error);
 
   const state = decideBootState({
     pathname: window.location.pathname,
