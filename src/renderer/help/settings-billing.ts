@@ -337,6 +337,10 @@ function paintPlans(): void {
   for (const p of plans) {
     const generic = p.tier === "enterprise" && !p.bespoke;
     const isCurrent = p.tier === currentTier;
+    // The generic "Custom — contact sales" card is NOT an option a user can
+    // choose (his order, 2026-08-25) — only a real bespoke plan (the org's
+    // own provisioned deal) earns a card here.
+    if (generic && !isCurrent) continue;
     const { amount, period } = planPrice(p);
     const seatsLine = p.tier === "free" ? "1 seat"
       : generic ? `${fmtInt(p.maxSeats || 1)}+ seats`
