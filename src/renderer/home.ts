@@ -154,6 +154,24 @@ void (async () => {
           });
           menu.appendChild(b);
         }
+        // Log out closes the web session and returns to the login shell.
+        {
+          const sep = document.createElement("div");
+          sep.className = "menu-sep";
+          menu.appendChild(sep);
+          const out = document.createElement("button");
+          out.type = "button";
+          out.textContent = "Log out";
+          out.className = "menu-danger";
+          out.setAttribute("role", "menuitem");
+          out.addEventListener("click", async () => {
+            menu.classList.add("hidden");
+            const api = (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh;
+            try { await api?.logout?.(); } catch { /* tokens cleared best-effort */ }
+            window.location.assign("/");
+          });
+          menu.appendChild(out);
+        }
         chip.querySelector("#platform-user-btn")?.addEventListener("click", (ev) => {
           ev.stopPropagation();
           menu.classList.toggle("hidden");

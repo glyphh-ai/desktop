@@ -19319,7 +19319,9 @@ body.platform-shell #platform-brand { height: 25px; }
      must float above it or the opaque panel paints over it. */
   z-index: 9100;
   padding: 10px 12px 12px;
-  background: inherit;
+  /* The rail's own surface (the settings panel paints var(--surface)) — the
+     body bg read as a darker mismatched band. */
+  background: var(--surface);
 }
 #platform-user-btn {
   display: flex;
@@ -19382,6 +19384,9 @@ body.platform-shell #platform-brand { height: 25px; }
   cursor: pointer;
 }
 #platform-user-menu button:hover { background: var(--active-bg); color: var(--text); }
+#platform-user-menu .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+#platform-user-menu .menu-danger { color: var(--danger, #e5484d); }
+#platform-user-menu .menu-danger:hover { color: var(--danger, #e5484d); }
 body.platform-rail-collapsed #platform-user-chip { width: 54px; padding: 8px 6px 10px; }
 body.platform-rail-collapsed #platform-user-btn { justify-content: center; padding: 6px; }
 body.platform-rail-collapsed #platform-user-meta { display: none; }
