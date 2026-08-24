@@ -1524,8 +1524,6 @@ body.account-locked #dl-btn-wrap {
    machine to run it on, so the whole tab hides on web, not just the local-MCP
    section inside it. Stale deep links fall back to General (navigation.ts
    settingsSubAlias). */
-.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="mcp"],
-.glyphh-web .settings-panel[data-sub="mcp"] { display: none !important; }
 /* Drips is likewise a desktop-app surface — hidden on web the same way, with
    the same stale-deep-link fallback to General (settingsSubAlias). */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="drips"],
@@ -1537,12 +1535,12 @@ body.account-locked #dl-btn-wrap {
 body.platform-shell .settings-panel[data-sub="account"] { max-width: 880px; margin: 0 auto; }
 /* Voice + Appearance are desktop-app surfaces too (his rule, 2026-08-25):
    the platform themes itself from the user popup's three modes instead. */
-.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="general"],
-.glyphh-web .settings-panel[data-sub="general"],
-.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="voice"],
-.glyphh-web .settings-panel[data-sub="voice"],
-.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="appearance"],
-.glyphh-web .settings-panel[data-sub="appearance"] { display: none !important; }
+body.platform-shell .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="general"],
+body.platform-shell .settings-panel[data-sub="general"],
+body.platform-shell .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="voice"],
+body.platform-shell .settings-panel[data-sub="voice"],
+body.platform-shell .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="appearance"],
+body.platform-shell .settings-panel[data-sub="appearance"] { display: none !important; }
 /* The user-popup theme row: three icon modes — light / dark / system. */
 #platform-user-menu .menu-theme-row { display: flex; gap: 6px; padding: 6px 8px 8px; }
 #platform-user-menu .menu-theme-row button {
@@ -19656,6 +19654,29 @@ body.platform-shell #platform-brand { height: 34px; }
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35);
 }
 #platform-user-menu.hidden { display: none; }
+#app-settings-user-menu {
+  position: absolute;
+  left: 10px; bottom: 56px;
+  width: 200px;
+  padding: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.4);
+  z-index: 60;
+}
+#app-settings-user-menu.hidden { display: none; }
+#app-settings-user-menu button {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  background: none; border: none; border-radius: 7px;
+  color: var(--text-2); font-size: 13px; text-align: left; cursor: pointer;
+}
+#app-settings-user-menu button:hover { background: var(--active-bg); color: var(--text); }
+#app-settings-user-menu button > svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-3); }
+#app-settings-user-menu .menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
+#app-settings-user-menu .menu-danger { color: var(--danger, #e5484d); }
 #platform-user-menu button {
   display: block;
   width: 100%;

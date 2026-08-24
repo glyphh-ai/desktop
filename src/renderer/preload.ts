@@ -641,6 +641,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   apiUrl: process.env.GLYPHH_SERVER_URL || "https://api.glyphh.ai",
   cloudSpacesList: () =>
     ipcRenderer.invoke("cloud-spaces-list") as Promise<{ spaces: Array<{ id: string; updatedAt: number; top: string[] }> }>,
+  orgInvitesList: () => ipcRenderer.invoke("org-invites-list") as Promise<Array<{ id: string; email: string; role: string; invitedByEmail: string | null; createdAt: string; expiresAt: string }>>,
+  orgInviteRevoke: (id: string) => ipcRenderer.invoke("org-invite-revoke", id) as Promise<{ ok: boolean; error?: string }>,
   billingConfig: () =>
     ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,

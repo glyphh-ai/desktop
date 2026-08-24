@@ -144,7 +144,13 @@ function render(): void {
       `<td class="lib-table-dim">${escapeHtml(fmtDay(k.lastUsedAt))}</td>` +
       `<td>${escapeHtml(fmtCost(k.creditsMicro))}</td>`;
     (tr.querySelector(".ak-name") as HTMLElement).textContent = k.label || "(unnamed)";
-    (tr.querySelector(".ak-prefix") as HTMLElement).textContent = k.tokenHint || `${k.prefix}...`;
+    const prefixEl = tr.querySelector(".ak-prefix") as HTMLElement;
+    prefixEl.textContent = k.tokenHint || `${k.prefix}...`;
+    if (!k.tokenHint) {
+      // Pre-hint key: only its hash survives — the full mask exists solely
+      // for keys minted (or used) after hints landed.
+      prefixEl.title = "Created before key hints — the full mask appears after this key's next use, or regenerate it.";
+    }
     (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.userEmail || "";
     tr.appendChild(kebabCell(() => [
       { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {

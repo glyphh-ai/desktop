@@ -73,6 +73,11 @@ export interface PlanChange { tier: string; effect: string; url?: string }
 export interface Address {
   line1: string; line2?: string; city: string; state: string; postalCode: string; country: string;
 }
+export interface PendingInvite {
+  id: string; email: string; role: string;
+  invitedByEmail: string | null; createdAt: string; expiresAt: string;
+}
+
 export interface BillingContact { name: string; email: string; phone?: string }
 
 export interface Org {
@@ -142,6 +147,8 @@ interface SdkAccountHandle {
   members?: {
     list?: () => Promise<Member[]>;
     invite?: (email: string, role?: string) => Promise<CreatedInvite>;
+    pendingInvites?: () => Promise<PendingInvite[]>;
+    revokeInvite?: (id: string) => Promise<void>;
     remove?: (userId: string) => Promise<void>;
     setRole?: (userId: string, role: string) => Promise<Member>;
     updateProfile?: (userId: string, patch: MemberProfileUpdate) => Promise<Member>;
@@ -166,6 +173,8 @@ interface DesktopAccountIpc {
   accountProfileUpdate?: (patch: ProfileUpdate) => Promise<{ ok: boolean; profile?: Profile; error?: string }>;
   accountMembersList?: () => Promise<Member[]>;
   accountMembersInvite?: (email: string, role: string) => Promise<{ ok: boolean; invite?: CreatedInvite; error?: string }>;
+  orgInvitesList?: () => Promise<PendingInvite[]>;
+  orgInviteRevoke?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   accountMembersRemove?: (userId: string) => Promise<{ ok: boolean; error?: string }>;
   accountMembersSetRole?: (userId: string, role: string) => Promise<{ ok: boolean; error?: string }>;
   accountMembersUpdateProfile?: (userId: string, patch: MemberProfileUpdate) => Promise<{ ok: boolean; error?: string }>;
@@ -192,6 +201,8 @@ export interface AccountApi {
   updateProfile(patch: ProfileUpdate): Promise<WriteResult<Profile>>;
   members(): Promise<Member[]>;
   inviteMember(email: string, role: string): Promise<WriteResult<CreatedInvite>>;
+  pendingInvites(): Promise<PendingInvite[]>;
+  revokeInvite(id: string): Promise<WriteResult<unknown>>;
   removeMember(userId: string): Promise<WriteResult<unknown>>;
   setMemberRole(userId: string, role: string): Promise<WriteResult<unknown>>;
   updateMemberProfile(userId: string, patch: MemberProfileUpdate): Promise<WriteResult<unknown>>;
@@ -280,6 +291,8 @@ export function accountApi(): AccountApi {
       updateProfile: (patch) => web(p?.update && (() => p.update!(patch))),
       members: () => need(m?.list, m),
       inviteMember: (email, role) => web(m?.invite && (() => m.invite!(email, role))),
+      pendingInvites: () => need(m?.pendingInvites, m),
+      revokeInvite: (id) => web(m?.revokeInvite && (() => m.revokeInvite!(id))),
       removeMember: (userId) => web(m?.remove && (() => m.remove!(userId))),
       setMemberRole: (userId, role) => web(m?.setRole && (() => m.setRole!(userId, role))),
       updateMemberProfile: (userId, patch) => web(m?.updateProfile && (() => m.updateProfile!(userId, patch))),
@@ -308,6 +321,8 @@ export function accountApi(): AccountApi {
     updateProfile: (patch) => ipc(g?.accountProfileUpdate && (() => g.accountProfileUpdate!(patch)), "profile"),
     members: () => need(g?.accountMembersList, g),
     inviteMember: (email, role) => ipc(g?.accountMembersInvite && (() => g.accountMembersInvite!(email, role)), "invite"),
+    pendingInvites: () => need(g?.orgInvitesList, g),
+    revokeInvite: (id) => ipc(g?.orgInviteRevoke && (() => g.orgInviteRevoke!(id)), "ok"),
     removeMember: (userId) => ipc(g?.accountMembersRemove && (() => g.accountMembersRemove!(userId)), "removed"),
     setMemberRole: (userId, role) => ipc(g?.accountMembersSetRole && (() => g.accountMembersSetRole!(userId, role)), "member"),
     updateMemberProfile: (userId, patch) => ipc(g?.accountMembersUpdateProfile && (() => g.accountMembersUpdateProfile!(userId, patch)), "member"),

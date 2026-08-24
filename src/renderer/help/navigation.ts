@@ -492,9 +492,46 @@ function wireAppUserChip(nav: HTMLElement): void {
     chip.id = "app-settings-user";
     chip.type = "button";
     chip.innerHTML = `<span class="asu-avatar"></span><span class="asu-meta"><span class="asu-name">—</span><span class="asu-plan"></span></span>`;
-    chip.addEventListener("click", () => {
-      nav.querySelector<HTMLElement>('.settings-nav-item[data-sub="account"]')?.click();
+    const menu = document.createElement("div");
+    menu.id = "app-settings-user-menu";
+    menu.className = "hidden";
+    menu.setAttribute("role", "menu");
+    const ICONS: Record<string, string> = {
+      account: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>`,
+      docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+      support: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>`,
+    };
+    for (const [label, sub] of [["Account", "account"], ["Docs", "docs"], ["Support", "support"]] as const) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = `${ICONS[sub]}<span></span>`;
+      (b.lastElementChild as HTMLElement).textContent = label;
+      b.setAttribute("role", "menuitem");
+      b.addEventListener("click", () => {
+        menu.classList.add("hidden");
+        nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`)?.click();
+      });
+      menu.appendChild(b);
+    }
+    const sep = document.createElement("div");
+    sep.className = "menu-sep";
+    menu.appendChild(sep);
+    const out = document.createElement("button");
+    out.type = "button";
+    out.className = "menu-danger";
+    out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
+    out.setAttribute("role", "menuitem");
+    out.addEventListener("click", () => {
+      menu.classList.add("hidden");
+      void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
     });
+    menu.appendChild(out);
+    chip.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      menu.classList.toggle("hidden");
+    });
+    document.addEventListener("click", () => menu.classList.add("hidden"));
+    nav.appendChild(menu);
     nav.appendChild(chip);
   }
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
@@ -558,7 +595,12 @@ const settingsSubAlias = (sub: string): string => {
   // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
   // + panels are CSS-hidden on web; any stale deep link (saved nav app,
   // remembered homeLastSub) lands on General instead.
-  if ((target === "mcp" || target === "voice" || target === "appearance" || target === "general") && document.documentElement.classList.contains("glyphh-web")) return "dash";
+  // Drips is a desktop-machine feature (no web); MCP shows EVERYWHERE (his
+  // order, 2026-08-25). General/Voice/Appearance hide only on the platform.
+  if (target === "drips" && document.documentElement.classList.contains("glyphh-web")) {
+    return document.body.classList.contains("platform-shell") ? "dash" : "general";
+  }
+  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "dash";
   return target;
 };
 

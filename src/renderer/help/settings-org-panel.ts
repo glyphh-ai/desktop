@@ -49,35 +49,6 @@ const ADDR_FIELDS: Array<[keyof Address, string]> = [
   ["postalCode", "org-panel-addr-postal"], ["country", "org-panel-addr-country"],
 ];
 
-// The billing address + contact — the bottom part of the old Account org form,
-// now living on this page (his spec, 2026-08-24).
-const BILL_FIELDS: Array<[keyof Address, string]> = [
-  ["line1", "bill-addr-line1"], ["line2", "bill-addr-line2"],
-  ["city", "bill-addr-city"], ["state", "bill-addr-state"],
-  ["postalCode", "bill-addr-postal"], ["country", "bill-addr-country"],
-];
-
-function readFields(fields: Array<[keyof Address, string]>): Address | null {
-  const get = (id: string): string => ($(id) as HTMLInputElement | null)?.value.trim() || "";
-  const addr = Object.fromEntries(fields.map(([k, id]) => [k, get(id)])) as unknown as Address;
-  return Object.values(addr).some(Boolean) ? addr : null;
-}
-
-function readContact(): BillingContact | null {
-  const get = (id: string): string => ($(id) as HTMLInputElement | null)?.value.trim() || "";
-  const c = { name: get("org-contact-name"), email: get("org-contact-email"), phone: get("org-contact-phone") };
-  const out: Record<string, string> = {};
-  for (const k of ["name", "email", "phone"] as const) if (c[k]) out[k] = c[k];
-  return Object.keys(out).length ? (out as unknown as BillingContact) : null;
-}
-
-/** Reveal/hide the two conditional blocks from their toggles. */
-function syncConditionals(): void {
-  const same = ($("org-billing-same") as HTMLInputElement | null)?.checked ?? true;
-  $("org-billing-addr-wrap")?.classList.toggle("hidden", same);
-  const adminIsBilling = ($("org-admin-is-billing") as HTMLInputElement | null)?.checked ?? true;
-  $("org-contact-wrap")?.classList.toggle("hidden", adminIsBilling);
-}
 
 function paint(): void {
   const name = $("org-panel-name") as HTMLInputElement | null;
@@ -101,28 +72,6 @@ function paint(): void {
     initial.classList.toggle("hidden", !!imageUrl);
   }
   if (idName) idName.textContent = org?.name || "—";
-  // Billing address + contact.
-  const ba = org?.billingAddress;
-  for (const [key, id] of BILL_FIELDS) {
-    const el = $(id) as HTMLInputElement | null;
-    if (el && document.activeElement !== el) el.value = (ba?.[key] as string | undefined) || "";
-  }
-  const same = $("org-billing-same") as HTMLInputElement | null;
-  if (same) same.checked = org ? org.billingSameAsAddress !== false : true;
-  // "No contact set" IS the signal that the org admin is the billing contact.
-  // A saved contact forces it off; while none is saved the user's staged
-  // un-check (fields revealed, not yet filled) is left alone.
-  const adminIsBilling = $("org-admin-is-billing") as HTMLInputElement | null;
-  if (adminIsBilling && org?.billingContact) adminIsBilling.checked = false;
-  const c = org?.billingContact;
-  const setV = (id: string, v: string): void => {
-    const el = $(id) as HTMLInputElement | null;
-    if (el && document.activeElement !== el) el.value = v;
-  };
-  setV("org-contact-name", c?.name || "");
-  setV("org-contact-email", c?.email || "");
-  setV("org-contact-phone", c?.phone || "");
-  syncConditionals();
 }
 
 async function save(patch: OrgUpdate): Promise<void> {
@@ -191,24 +140,5 @@ export function initOrgPanel(): void {
   });
   for (const [, id] of ADDR_FIELDS) {
     ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ address: readAddress() }));
-  }
-  ($("org-billing-same") as HTMLInputElement | null)?.addEventListener("change", (e) => {
-    const same = (e.currentTarget as HTMLInputElement).checked;
-    syncConditionals();
-    void save({ billingSameAsAddress: same, billingAddress: same ? null : readFields(BILL_FIELDS) });
-  });
-  for (const [, id] of BILL_FIELDS) {
-    ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ billingAddress: readFields(BILL_FIELDS) }));
-  }
-  ($("org-admin-is-billing") as HTMLInputElement | null)?.addEventListener("change", (e) => {
-    const adminIs = (e.currentTarget as HTMLInputElement).checked;
-    syncConditionals();
-    // OFF saves nothing yet — an empty contact round-trips as null and the
-    // repaint would snap the switch straight back on. The contact fields
-    // commit themselves on blur; ON clears the stored contact at once.
-    if (adminIs) void save({ billingContact: null });
-  });
-  for (const id of ["org-contact-name", "org-contact-email", "org-contact-phone"]) {
-    ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ billingContact: readContact() }));
   }
 }

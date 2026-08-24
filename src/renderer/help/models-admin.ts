@@ -11,6 +11,7 @@
 
 import { renderPaginationBar } from "./shared.js";
 import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
+import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
 interface OrgModelRow {
   id: string;
@@ -480,19 +481,6 @@ function renderList(): void {
       add.addEventListener("click", (ev) => { ev.stopPropagation(); void modelModal(e.customProv!.slug, null); });
       head.appendChild(add);
     }
-    const edit = icoBtn(MDL_SVG.edit, "Edit provider");
-    edit.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      if (e.gateway) void editGatewayProviderModal(e.gateway);
-      else void editCustomProviderModal(e.customProv!);
-    });
-    head.appendChild(edit);
-    if (e.customProv) {
-      const del = icoBtn(MDL_SVG.trash, "Delete provider");
-      del.classList.add("danger");
-      del.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
-      head.appendChild(del);
-    }
     if (e.gateway) {
       const p = e.gateway;
       const lab = document.createElement("label");
@@ -511,6 +499,20 @@ function renderList(): void {
       });
       head.appendChild(lab);
     }
+    // ⋮ to the RIGHT of the toggle: Edit always; Delete only for CUSTOM
+    // providers (gateway providers are the platform's, not the org's).
+    const kebab = icoBtn(`<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`, "More");
+    kebab.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      openRowMenu(kebab, [
+        { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => {
+          if (e.gateway) void editGatewayProviderModal(e.gateway);
+          else void editCustomProviderModal(e.customProv!);
+        } },
+        ...(e.customProv ? [{ icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => { void deleteProviderConfirm(e.customProv!); } }] : []),
+      ]);
+    });
+    head.appendChild(kebab);
     head.addEventListener("click", () => {
       if (expanded.has(e.key)) expanded.delete(e.key);
       else expanded.add(e.key);

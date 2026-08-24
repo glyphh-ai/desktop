@@ -19,7 +19,8 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { accountApi, type Member, type Org } from "./settings-api.js";
+import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { accountApi, type Member, type Org, type PendingInvite } from "./settings-api.js";
 
 /** Roles an admin may assign. org_admin is granted by invite, never here. */
 const ASSIGNABLE: Array<{ value: string; label: string }> = [
@@ -240,9 +241,68 @@ function paintInviteLink(url: string): void {
   field.value = url;
 }
 
+// ── The Invited tab: pending (unaccepted) invites ────────────────────────
+let invited: PendingInvite[] = [];
+
+function setMembersTab(tab: string): void {
+  document.querySelectorAll<HTMLElement>("#members-tabs .app-detail-tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.mtab === tab);
+  });
+  document.getElementById("members-tab-members")?.classList.toggle("hidden", tab !== "members");
+  document.getElementById("members-tab-invited")?.classList.toggle("hidden", tab !== "invited");
+}
+
+function paintInvited(): void {
+  const host = document.getElementById("members-invited-list");
+  if (!host) return;
+  host.innerHTML = "";
+  if (!invited.length) {
+    host.innerHTML = `<div class="crud-empty">No pending invites — everyone you've invited has joined (or the invites expired).</div>`;
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Email</th><th>Role</th><th>Invited by</th><th>Expires</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  const day = (iso: string): string => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  for (const inv of invited) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="lib-table-name"></td>` +
+      `<td class="lib-table-desc"></td>` +
+      `<td class="lib-table-dim"></td>` +
+      `<td class="lib-table-dim">${day(inv.expiresAt)}</td>`;
+    (tr.children[0] as HTMLElement).textContent = inv.email;
+    (tr.children[1] as HTMLElement).textContent = inv.role === "org_admin" ? "Admin" : "User";
+    (tr.children[2] as HTMLElement).textContent = inv.invitedByEmail || "—";
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.delete, label: "Revoke invite", danger: true, onClick: () => {
+        void (async () => {
+          if (!(await confirmAction({ title: `Revoke the invite to ${inv.email}?`, body: "Their invite link stops working immediately.", confirmLabel: "Revoke", danger: true }))) return;
+          const r = await accountApi().revokeInvite(inv.id);
+          if (r.ok) { invited = invited.filter((x) => x.id !== inv.id); paintInvited(); paintInvitedCount(); }
+          else setError(r.error);
+        })();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
+
+/** The tab label carries the pending count so admins see it at a glance. */
+function paintInvitedCount(): void {
+  const b = document.querySelector<HTMLElement>('#members-tabs .app-detail-tab[data-mtab="invited"]');
+  if (b) b.textContent = invited.length ? `Invited (${invited.length})` : "Invited";
+}
+
 export function initMembers(): void {
   if (wired) return;
   wired = true;
+  document.querySelectorAll<HTMLElement>("#members-tabs .app-detail-tab").forEach((b) => {
+    b.addEventListener("click", () => setMembersTab(b.dataset.mtab || "members"));
+  });
   $("members-search")?.addEventListener("input", paintList);
   $("members-invite-btn")?.addEventListener("click", () => { void invite(); });
   $("members-invite-email")?.addEventListener("keydown", (e) => {
@@ -277,9 +337,10 @@ export async function loadMembers(): Promise<void> {
     if (!role || !["org_admin", "super_admin"].includes(role)) { showPanel(false); return; }
     showPanel(true);
 
-    const [list, orgRes] = await Promise.allSettled([accountApi().members(), accountApi().org()]);
+    const [list, orgRes, invRes] = await Promise.allSettled([accountApi().members(), accountApi().org(), accountApi().pendingInvites()]);
     members = list.status === "fulfilled" ? (list.value || []) : [];
     org = orgRes.status === "fulfilled" ? orgRes.value : null;
+    invited = invRes.status === "fulfilled" ? (invRes.value || []) : [];
     // The roster carries no "this is you" flag, so self is matched by the
     // signed-in email — the one identifier both surfaces agree on.
     selfId = members.find((m) => m.email === account?.email)?.userId || "";
@@ -290,6 +351,8 @@ export async function loadMembers(): Promise<void> {
     }
     paintSeats();
     paintList();
+    paintInvited();
+    paintInvitedCount();
   } catch (err) {
     setError(`Couldn't load members — ${err instanceof Error ? err.message : String(err)}`);
   }
