@@ -152,7 +152,48 @@
 <div class="settings-panel" data-sub="usage">
     <h2>Usage</h2>
     <p class="section-desc">What your organization has spent and where — credits, models, and members.</p>
-    <div class="dash-usage-actions">
+    <!-- APP view (his spec, 2026-08-24): the Claude-style plan-limits look,
+                     mapped to OUR limit model — monthly credit allowance with a
+                     usage bar + reset date, purchased credits, refresh, and the
+                     auto-top-up toggle. The platform keeps the dashboard below. -->
+                <div id="usage-app-view">
+                  <div class="ua-head">
+                    <span class="ua-title">Plan usage limits</span>
+                    <span class="ua-plan" id="ua-plan">—</span>
+                  </div>
+                  <div class="ua-row">
+                    <div class="ua-label">
+                      <div class="ua-name">Monthly credits</div>
+                      <div class="ua-sub" id="ua-month-reset">Resets —</div>
+                    </div>
+                    <div class="ua-bar"><div class="ua-fill" id="ua-month-fill"></div></div>
+                    <div class="ua-pct" id="ua-month-pct">—</div>
+                  </div>
+                  <div class="ua-row">
+                    <div class="ua-label">
+                      <div class="ua-name">Purchased credits</div>
+                      <div class="ua-sub">Never expire</div>
+                    </div>
+                    <div class="ua-spacer"></div>
+                    <div class="ua-pct" id="ua-purchased">—</div>
+                  </div>
+                  <div class="ua-refresh-row">
+                    <button id="ua-refresh" class="action-btn" type="button">Refresh</button>
+                    <span class="ua-updated" id="ua-updated"></span>
+                  </div>
+                  <div class="ua-section">Usage credits</div>
+                  <label class="settings-toggle set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Auto top-up</div>
+                      <div class="set-pref-desc">Keep going if you hit your plan allowance — automatically buys more credits with the card on file.</div>
+                    </div>
+                    <input type="checkbox" id="ua-autotopup" />
+                    <span class="toggle-switch"></span>
+                  </label>
+                </div>
+
+                <div class="platform-only">
+                <div class="dash-usage-actions">
       <button class="action-btn primary" id="dash-add-funds">Add credits</button>
     </div>
     <div class="dash-grid">
@@ -209,6 +250,7 @@
         <div class="dash-chart-empty hidden" id="dash-usage-empty">No usage yet — connect an AI and start driving your apps.</div>
       </div>
     </div>
+              </div>
               </div>
 
               <!-- Developer — the M7 developer program (Settings → Developer).

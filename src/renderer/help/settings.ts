@@ -536,8 +536,73 @@ function paintPlanChip(tier?: string | null): void {
 }
 
 
+let uaWired = false;
+
+/** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
+ *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
+async function loadUsageAppView(): Promise<void> {
+  if (document.body.classList.contains("platform-shell")) return;
+  const el = (id: string) => document.getElementById(id);
+  if (!el("usage-app-view")) return;
+  if (!uaWired) {
+    uaWired = true;
+    el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
+    const toggle = el("ua-autotopup") as HTMLInputElement | null;
+    toggle?.addEventListener("change", () => {
+      void (async () => {
+        const api = window.glyphh as unknown as {
+          billingAutotopupGet: () => Promise<{ enabled: boolean; thresholdCredits: number; topupCredits: number }>;
+          billingAutotopupSet: (i: { enabled: boolean; thresholdCredits: number; topupCredits: number }) => Promise<{ ok: boolean }>;
+        };
+        try {
+          const cfg = await api.billingAutotopupGet();
+          await api.billingAutotopupSet({ ...cfg, enabled: toggle.checked });
+        } catch { toggle.checked = !toggle.checked; }
+      })();
+    });
+  }
+  const yo = window.glyphh as unknown as {
+    billingStatus: () => Promise<{ tier: string; billingStatus: string }>;
+    billingCredits: () => Promise<{ balance: number; allowance: number; grants: number; purchases: number }>;
+    billingAutotopupGet: () => Promise<{ enabled: boolean; thresholdCredits: number; topupCredits: number }>;
+    billingAutotopupSet: (i: { enabled: boolean; thresholdCredits: number; topupCredits: number }) => Promise<{ ok: boolean }>;
+  };
+  try {
+    const [status, credits, topup] = await Promise.all([
+      yo.billingStatus(),
+      yo.billingCredits(),
+      yo.billingAutotopupGet().catch(() => null),
+    ]);
+    const tier = (status?.tier || "free");
+    const planEl = el("ua-plan");
+    if (planEl) planEl.textContent = `Glyphh ${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
+    // MICRO-credits on the wire. Used = the month's allowance minus what's
+    // left of the grant lot; purchased credits sit in their own lot.
+    const allowance = Math.max(0, credits?.allowance ?? 0);
+    const grants = Math.max(0, credits?.grants ?? 0);
+    const used = Math.max(0, allowance - grants);
+    const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
+    const fill = el("ua-month-fill");
+    if (fill) fill.style.width = `${pct}%`;
+    const pctEl = el("ua-month-pct");
+    if (pctEl) pctEl.textContent = allowance > 0 ? `${pct}% used` : "—";
+    const reset = new Date();
+    reset.setMonth(reset.getMonth() + 1, 1);
+    const resetEl = el("ua-month-reset");
+    if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+    const purchased = Math.floor((credits?.purchases ?? 0) / 1_000_000);
+    const pEl = el("ua-purchased");
+    if (pEl) pEl.textContent = `${purchased.toLocaleString()} credits`;
+    const t = el("ua-autotopup") as HTMLInputElement | null;
+    if (t && topup) t.checked = !!topup.enabled;
+    const upd = el("ua-updated");
+    if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  } catch { /* offline — the view keeps its dashes */ }
+}
+
 async function loadSettings() {
   // Settings › Usage owns the usage chart + metric cards now.
+  void loadUsageAppView();
   void loadUsageChart();
   void loadUsageMetrics();
   void loadUsageMembers();
