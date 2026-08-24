@@ -19412,6 +19412,18 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 .settings-panel[data-sub="voice"] .set-pref-row:has(#voice-brief) { border-bottom: none; }
 .settings-toggle.set-pref-row .toggle-switch { margin-left: 0; flex-shrink: 0; }
 body.platform-shell .settings-nav-item.platform-only { display: flex; }
+/* Per-surface TEXT inside a shared nav item (Dashboard on platform, Usage on
+   the app) — span-scoped so the item rules above stay untouched. */
+.settings-nav span.platform-only { display: none; }
+body.platform-shell .settings-nav span.platform-only { display: inline; }
+body.platform-shell .settings-nav span.not-on-platform { display: none; }
+/* Platform dashboard header: greeting left, actions at the right edge. */
+.dash-head { display: flex; align-items: center; gap: 14px; margin: 2px 0 20px; }
+/* Outranks the platform-only display:block reveal above. */
+body.platform-shell .settings-panel .dash-head.platform-only:not(.hidden) { display: flex; }
+.dash-head h2 { margin: 0; }
+.dash-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.dash-head-actions .action-btn svg { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
 body.platform-shell .settings-nav-group.platform-only { display: block; }
 .apps-builder-launch {
   margin-left: auto;

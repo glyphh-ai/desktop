@@ -24,7 +24,6 @@ import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
 import { loadVoiceSettings } from "./settings-voice.js";
 
@@ -523,11 +522,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "drips") loadDrips();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") void loadOrgPanel();
-  // Organization is ALSO folded into Account (org admins only), so Account
-  // still loads the org section; the standalone Organization panel (A4) is its
-  // own sub below.
-  else if (sub === "account") { void loadProfile(); void loadOrg(); }
+  else if (sub === "org-general") void loadOrg();
+  else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
@@ -832,7 +828,6 @@ export function initHelp() {
   boot("apikeys", initApiKeys);
   boot("support", initSupportPanel);
   boot("guardrails", initGuardrails);
-  boot("org", initOrgPanel);
   boot("drips", initDripsEvents);
   boot("loops", initLoopsEvents);
   boot("skills-library", initSkillsLibraryEvents);

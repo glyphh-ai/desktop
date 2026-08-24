@@ -3,7 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
+import { loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initOrg, loadOrg } from "./settings-org.js";
@@ -640,15 +640,15 @@ async function loadUsageAppView(): Promise<void> {
 
 async function loadSettings() {
   // Settings › Usage owns the usage chart + metric cards now.
+  paintDashGreeting();
   void loadUsageAppView();
   void loadUsageChart();
   void loadUsageMetrics();
   void loadUsageMembers();
-  // Account's profile form and the org section sit under the same panel as the
-  // identity header, so they load with Settings rather than waiting on a
-  // sub-nav click. loadOrg hides its section unless the caller is an org admin.
+  // Account's profile form loads with Settings rather than waiting on a
+  // sub-nav click; the org record lives on Organization › General now and
+  // loads there (loadOrg hides it unless the caller is an org admin).
   void loadProfile();
-  void loadOrg();
   // Members hides its own nav item unless the caller is an org admin, so this
   // has to run on Settings open, not only when the tab is clicked.
   void loadMembers();

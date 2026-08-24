@@ -850,6 +850,15 @@ async function loadRuns(): Promise<void> {
   renderRuns();
 }
 
+/** "Good afternoon, Chris" — time of day + first name, on the platform head. */
+export function paintDashGreeting(): void {
+  const el = document.getElementById("dash-greeting");
+  if (!el) return;
+  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+    el.textContent = greeting((info?.firstName || "").trim());
+  }).catch(() => { /* keep the default */ });
+}
+
 let wired = false;
 export function initDashboardEvents(): void {
   if (wired) return;
@@ -861,6 +870,10 @@ export function initDashboardEvents(): void {
   document.getElementById("dash-add-funds")?.addEventListener("click", () => {
     gotoSection("settings", "billing");
   });
+  document.getElementById("dash-get-key")?.addEventListener("click", () => {
+    gotoSection("settings", "apikeys");
+  });
+  paintDashGreeting();
   // the refresh button rides the chart card in Settings › Usage
   document.getElementById("dash-refresh")?.addEventListener("click", () => {
     void loadUsageChart();
