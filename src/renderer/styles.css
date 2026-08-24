@@ -19408,6 +19408,9 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 .settings-panel[data-sub="appearance"] { padding-bottom: 28px; }
 .settings-panel[data-sub="appearance"] .set-pref-row:has(#settings-app-urlbar) { border-bottom: none; }
 #settings-mobile-ui-row { border-bottom: none !important; }
+/* Organization › General: a divider between the address block and the two
+   billing toggle rows below it. */
+#org-billing-same-row { border-top: 1px solid var(--border); margin-top: 18px; }
 /* Voice: same rule — the last row ends the page clean. */
 .settings-panel[data-sub="voice"] .set-pref-row:has(#voice-brief) { border-bottom: none; }
 .settings-toggle.set-pref-row .toggle-switch { margin-left: 0; flex-shrink: 0; }

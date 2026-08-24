@@ -900,13 +900,13 @@
                       <!-- Billing address + contact — the bottom part of the
                            old Account org form (his spec, 2026-08-24). Same
                            ids; this panel's module loads and saves them. -->
-                      <label class="settings-toggle">
+                      <label class="settings-toggle set-pref-row" id="org-billing-same-row">
+                      <div class="set-pref-text">
+                        <div class="set-pref-title">Billing address is the same</div>
+                        <div class="set-pref-desc">Turn this off to invoice a different address.</div>
+                      </div>
                       <input type="checkbox" id="org-billing-same" checked />
                       <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">Billing address is the same</span>
-                        <span class="toggle-desc">Turn this off to invoice a different address.</span>
-                      </div>
                     </label>
 
                     <div id="org-billing-addr-wrap" class="hidden">
@@ -941,13 +941,13 @@
                       </div>
                     </div>
 
-                    <label class="settings-toggle">
+                    <label class="settings-toggle set-pref-row">
+                      <div class="set-pref-text">
+                        <div class="set-pref-title">The org admin is the billing contact</div>
+                        <div class="set-pref-desc" id="org-billing-contact-hint">Billing questions and invoices go to the org admin. Turn this off to designate someone else.</div>
+                      </div>
                       <input type="checkbox" id="org-admin-is-billing" checked />
                       <span class="toggle-switch"></span>
-                      <div class="toggle-info">
-                        <span class="toggle-title">The org admin is the billing contact</span>
-                        <span class="toggle-desc" id="org-billing-contact-hint">Billing questions and invoices go to the org admin. Turn this off to designate someone else.</span>
-                      </div>
                     </label>
                     <div id="org-contact-wrap" class="hidden">
                       <div class="acct-row">

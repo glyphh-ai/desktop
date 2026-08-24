@@ -110,8 +110,10 @@ function paint(): void {
   const same = $("org-billing-same") as HTMLInputElement | null;
   if (same) same.checked = org ? org.billingSameAsAddress !== false : true;
   // "No contact set" IS the signal that the org admin is the billing contact.
+  // A saved contact forces it off; while none is saved the user's staged
+  // un-check (fields revealed, not yet filled) is left alone.
   const adminIsBilling = $("org-admin-is-billing") as HTMLInputElement | null;
-  if (adminIsBilling) adminIsBilling.checked = !org?.billingContact;
+  if (adminIsBilling && org?.billingContact) adminIsBilling.checked = false;
   const c = org?.billingContact;
   const setV = (id: string, v: string): void => {
     const el = $(id) as HTMLInputElement | null;
@@ -201,7 +203,10 @@ export function initOrgPanel(): void {
   ($("org-admin-is-billing") as HTMLInputElement | null)?.addEventListener("change", (e) => {
     const adminIs = (e.currentTarget as HTMLInputElement).checked;
     syncConditionals();
-    void save({ billingContact: adminIs ? null : readContact() });
+    // OFF saves nothing yet — an empty contact round-trips as null and the
+    // repaint would snap the switch straight back on. The contact fields
+    // commit themselves on blur; ON clears the stored contact at once.
+    if (adminIs) void save({ billingContact: null });
   });
   for (const id of ["org-contact-name", "org-contact-email", "org-contact-phone"]) {
     ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ billingContact: readContact() }));

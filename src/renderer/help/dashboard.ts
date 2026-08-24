@@ -850,13 +850,19 @@ async function loadRuns(): Promise<void> {
   renderRuns();
 }
 
-/** "Good afternoon, Chris" — time of day + first name, on the platform head. */
+/** "Good afternoon, Chris" — time of day + first name, on the platform head.
+ *  Identity.name is often unset, so the PROFILE's firstName is the backstop. */
 export function paintDashGreeting(): void {
   const el = document.getElementById("dash-greeting");
   if (!el) return;
-  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
-    el.textContent = greeting((info?.firstName || "").trim());
-  }).catch(() => { /* keep the default */ });
+  void (async () => {
+    let first = "";
+    try { first = ((await Promise.resolve(window.glyphh.getAccountInfo?.()))?.firstName || "").trim(); } catch { /* fall through */ }
+    if (!first) {
+      try { first = ((await accountApi().profile())?.firstName || "").trim(); } catch { /* keep the default */ }
+    }
+    el.textContent = greeting(first);
+  })();
 }
 
 let wired = false;
