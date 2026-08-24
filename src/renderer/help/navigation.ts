@@ -512,7 +512,7 @@ const settingsSubAlias = (sub: string): string => {
   // 127.0.0.1 server on. Drips likewise runs on the desktop app. The nav items
   // + panels are CSS-hidden on web; any stale deep link (saved nav app,
   // remembered homeLastSub) lands on General instead.
-  if (target === "mcp" && document.documentElement.classList.contains("glyphh-web")) return "general";
+  if ((target === "mcp" || target === "voice" || target === "appearance") && document.documentElement.classList.contains("glyphh-web")) return "general";
   return target;
 };
 

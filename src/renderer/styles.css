@@ -1530,6 +1530,27 @@ body.account-locked #dl-btn-wrap {
    the same stale-deep-link fallback to General (settingsSubAlias). */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="drips"],
 .glyphh-web .settings-panel[data-sub="drips"] { display: none !important; }
+/* Voice + Appearance are desktop-app surfaces too (his rule, 2026-08-25):
+   the platform themes itself from the user popup's three modes instead. */
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="voice"],
+.glyphh-web .settings-panel[data-sub="voice"],
+.glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="appearance"],
+.glyphh-web .settings-panel[data-sub="appearance"] { display: none !important; }
+/* The user-popup theme row: three icon modes — light / dark / system. */
+#platform-user-menu .menu-theme-row { display: flex; gap: 6px; padding: 6px 8px 8px; }
+#platform-user-menu .menu-theme-row button {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  padding: 7px 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-3);
+  cursor: pointer;
+}
+#platform-user-menu .menu-theme-row button:hover { background: var(--hover); color: var(--text); }
+#platform-user-menu .menu-theme-row button.active { border-color: var(--accent, #8c3bf2); color: var(--text); }
+#platform-user-menu .menu-theme-row svg { width: 15px; height: 15px; }
 /* Appearance → Browser homepage drives the DESKTOP app's built-in browser
    panel; a browser tab has none. Only this group hides — the rest of the
    Browser block (address-bar toggle, the tablet "mobile app" door) stays. */
@@ -15034,7 +15055,9 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-table .lib-table-dim { color: var(--text-3); font-size: 12px; white-space: nowrap; }
 
 /* Table row ⋯ menu (Edit / Delete). */
-.lib-table .lib-row-kebab-cell { width: 40px; text-align: right; }
+/* text-overflow:clip — the generic td ellipsis rendered a stray "." beside
+   the squeezed kebab (his report, 2026-08-25). */
+.lib-table .lib-row-kebab-cell { width: 40px; text-align: right; text-overflow: clip; }
 .lib-row-kebab {
   width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
   border: none; background: none; border-radius: 6px; color: var(--text-3); cursor: pointer;
@@ -19552,6 +19575,10 @@ body.platform-shell #platform-brand { height: 34px; }
   /* The rail's own surface (the settings panel paints var(--surface)) — the
      body bg read as a darker mismatched band. */
   background: var(--surface);
+  /* The chip paints OVER the nav's full-height border — carry the same line
+     so the rail edge runs to the page bottom (his report, 2026-08-25). */
+  box-sizing: border-box;
+  border-right: 1px solid var(--border);
 }
 #platform-user-btn {
   display: flex;
@@ -19622,12 +19649,7 @@ body.platform-rail-collapsed #platform-user-btn { justify-content: center; paddi
 body.platform-rail-collapsed #platform-user-meta { display: none; }
 body.platform-shell .settings-modal-body > .settings-layout > .settings-panels {
   padding-top: 48px;
-  padding-left: 48px;
-  padding-right: 48px;
 }
-/* Center the content column (his rule, 2026-08-24): panels hold a measured
-   width with generous side margins instead of stretching to the pane edge. */
-body.platform-shell .settings-panel { max-width: 880px; margin: 0 auto; }
 /* Collapsed rail — icons only (labels + group headings fold away); state in
    localStorage glyphhPlatformRail, toggled by #platform-rail-toggle. */
 body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-layout > .settings-nav {
