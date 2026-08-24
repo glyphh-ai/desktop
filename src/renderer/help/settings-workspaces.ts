@@ -44,12 +44,6 @@ interface Workspace {
   allowedPersonalConnections: string[];
   allowedPersonalConnectionTools: Record<string, string[]>;
   allowCustomMcp: boolean;
-  /** APP GOVERNANCE — may this role build/publish apps at all? */
-  appsBuild: boolean;
-  /** The access values this role may set on an app ('public'/'members'/'org-idp'). */
-  appsPublishAccess: string[];
-  /** May this role install apps from the marketplace? */
-  appsInstall: boolean;
   creditsCap: number | null;
   capPeriodDays: number | null;
   rateLimitCalls: number | null;
@@ -386,7 +380,6 @@ async function openEditor(w: Workspace): Promise<void> {
   paintTitle();
   paintModels();
   paintConnections();
-  paintApps();
   // The picker needs the org's own connectors + the tool cap; the allowed
   // slugs need names and icons the record doesn't carry.
   void hydrateMeta([...(w.allowedConnections || []), ...(w.allowedPersonalConnections || [])]);
@@ -625,36 +618,6 @@ function paintTools(): void {
   }
 }
 
-// ── Apps tab — role-level app governance ─────────────────────────────────
-
-/** The three publish-access checkboxes, in the server's canonical order. */
-const PUBLISH_BOXES: Array<[string, string]> = [
-  ["ws-pub-public", "public"],
-  ["ws-pub-members", "members"],
-  ["ws-pub-orgidp", "org-idp"],
-];
-
-function paintApps(): void {
-  if (!editing) return;
-  const build = $<HTMLInputElement>("ws-apps-build");
-  if (build) build.checked = editing.appsBuild !== false;
-  const install = $<HTMLInputElement>("ws-apps-install");
-  if (install) install.checked = editing.appsInstall !== false;
-  const allowed = Array.isArray(editing.appsPublishAccess) ? editing.appsPublishAccess : ["members"];
-  for (const [id, value] of PUBLISH_BOXES) {
-    const box = $<HTMLInputElement>(id);
-    if (box) box.checked = allowed.includes(value);
-  }
-}
-
-/** Commit the publish-access set as currently checked. */
-function commitPublishAccess(): void {
-  const next = PUBLISH_BOXES
-    .filter(([id]) => $<HTMLInputElement>(id)?.checked)
-    .map(([, value]) => value);
-  void patch({ appsPublishAccess: next }, "Publish access saved").then(paintApps);
-}
-
 // ── The "allow another" picker ────────────────────────────────────────────
 
 function paintPicker(): void {
@@ -823,20 +786,6 @@ export function initWorkspaces(): void {
     const on = (e.currentTarget as HTMLInputElement).checked;
     void patch({ allowCustomMcp: on }, on ? "Custom MCP allowed" : "Custom MCP disabled");
   });
-
-  // Apps — the role's app-governance policy. Each control commits on the
-  // click that changed it, like the rest of the editor.
-  $("ws-apps-build")?.addEventListener("change", (e) => {
-    const on = (e.currentTarget as HTMLInputElement).checked;
-    void patch({ appsBuild: on }, on ? "Building apps allowed" : "Building apps disabled").then(paintApps);
-  });
-  $("ws-apps-install")?.addEventListener("change", (e) => {
-    const on = (e.currentTarget as HTMLInputElement).checked;
-    void patch({ appsInstall: on }, on ? "Marketplace installs allowed" : "Marketplace installs disabled").then(paintApps);
-  });
-  for (const [id] of PUBLISH_BOXES) {
-    $(id)?.addEventListener("change", () => commitPublishAccess());
-  }
 
   $("ws-limit-conns")?.addEventListener("change", async (e) => {
     const box = e.currentTarget as HTMLInputElement;

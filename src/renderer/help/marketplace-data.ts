@@ -661,53 +661,6 @@ export function mktIsProgramRefusal(error: string): boolean {
 
 // ── Role gate ─────────────────────────────────────────────────────────────
 
-// ── The caller's app-governance grants (role policy) ──────────────────────
-// GET /api/workspaces/grants, via whichever transport this surface has. The
-// server enforces every road regardless — these grants only NARROW the UI
-// (hide disallowed Access options, swap Install for "ask your admin"), so an
-// unreadable/older server resolves to the permissive shape and the UI shows
-// everything, exactly as before the policy existed.
-
-export interface MyAppGrants {
-  appsBuild: boolean;
-  appsPublishAccess: string[];
-  appsInstall: boolean;
-}
-
-const ALL_PUBLISH_ACCESS = ["public", "members", "org-idp"];
-
-let appGrantsCache: MyAppGrants | undefined;
-
-function normalizeAppGrants(g: unknown): MyAppGrants {
-  const raw = (g ?? {}) as { appsBuild?: unknown; appsPublishAccess?: unknown; appsInstall?: unknown };
-  return {
-    appsBuild: raw.appsBuild !== false,
-    appsPublishAccess: Array.isArray(raw.appsPublishAccess)
-      ? raw.appsPublishAccess.filter((a): a is string => typeof a === "string")
-      : [...ALL_PUBLISH_ACCESS],
-    appsInstall: raw.appsInstall !== false,
-  };
-}
-
-/** The caller's effective app grants, cached per page load. */
-export async function mktMyAppGrants(force = false): Promise<MyAppGrants> {
-  if (!force && appGrantsCache) return appGrantsCache;
-  try {
-    const s = (window as unknown as { glyphhSdk?: { workspaces?: { grants?: () => Promise<unknown> } } }).glyphhSdk;
-    if (s?.workspaces?.grants) {
-      appGrantsCache = normalizeAppGrants(await s.workspaces.grants());
-      return appGrantsCache;
-    }
-    const res = await (window.glyphh as { workspacesGrants?: () => Promise<{ ok: boolean; data?: unknown }> }).workspacesGrants?.();
-    if (res?.ok && res.data) {
-      appGrantsCache = normalizeAppGrants(res.data);
-      return appGrantsCache;
-    }
-  } catch { /* unreadable → permissive; the server still enforces */ }
-  appGrantsCache = normalizeAppGrants(null);
-  return appGrantsCache;
-}
-
 /** The super_admin gate the admin surfaces share (settings-admin's rule):
  *  unknown role → null (load and let the server's 403 speak). */
 export async function mktIsPlatformAdmin(): Promise<boolean | null> {

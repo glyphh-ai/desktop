@@ -1,50 +1,143 @@
 /**
- * glyphh-harness-run.ts — a tool-bearing turn, run on the CLOUD rrotor pod.
+ * glyphh-harness-run.ts — a tool-bearing turn, run on the machine's LOCAL
+ * HARNESS POD instead of in Electron's own process.
  *
- * ONE RROTOR, AND IT IS NOT ON THIS MACHINE. The local harness pod (the
- * vendored/spawned 127.0.0.1 rrotor and its loopback tool bridge) is gone:
- * the desktop no longer installs, spawns, or hosts any runtime. Every
- * tool-bearing turn — whatever its session's source — runs on a provisioned
- * cloud session pod, exactly as it does from the web:
+ * ONE HARNESS EVERYWHERE. The same rrotor harness that serves cloud sessions
+ * runs here on 127.0.0.1 (`ROTOR_MODE=harness`, introspection OFF → the pod
+ * loopback-binds itself; that bind is the security boundary). The desktop
+ * stops owning an agent loop and becomes what it should be: the machine, the
+ * window, and the user's tool surface.
  *
- *   pod        `ensureCloudPod` — the chat's existing runtime binding, or a
- *              freshly provisioned session polled to `ready`.
- *   models     the pod calls the Glyphh gateway with its session's own
- *              runtime token; metering lands on the user.
+ *   pod        `@glyphh/sdk/runtime` ensureLocalHarnessPod — the runtime
+ *              supervisor's singleton lock / discovery record / detached spawn,
+ *              with a harness-mode state home. One pod per MACHINE, shared with
+ *              the CLI, deliberately outliving this app (it is a machine
+ *              service, not an app subprocess).
+ *   tools      the desktop's own surface, lent over loopback MCP
+ *              (harness-mcp-bridge.ts) — the pod's `mcpServers` entry.
+ *   models     the pod calls the Glyphh gateway directly with the USER's
+ *              `gy_at_` access token as `runtimeToken`; metering lands on the
+ *              user. No local interceptor is involved.
  *   frames     `glyphh.harness/v1` translates 1:1 onto the renderer's existing
  *              `glyphh-agent:*` IPC — the renderer needs zero changes.
- *   threads    the renderer's thread-store LWW push stays the persistence path.
+ *   threads    no stator locally, so the pod records nothing; the renderer's
+ *              thread-store LWW push stays the persistence path.
+ *
+ * NOT YET AT PARITY with the in-process path — see GLYPHH_LOCAL_ROTOR in
+ * glyphh-agent.ts for the exact list that keeps this behind a flag.
  */
 
-import { type WebContents } from "electron";
+import { app, type WebContents } from "electron";
 import { openAppByRef, openBrowserAt } from "./app-resolver";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { ensureLocalHarnessPod } from "@glyphh/sdk/runtime";
 import type { HarnessWireFrame } from "@glyphh/sdk";
 import { getClient, SERVER_URL } from "./glyphh-client";
 import { loadSessions, saveSessions } from "./glyphh-agent-context";
 import { runModel, currentLoop } from "./loop-selections";
 import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
+import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
+import { selectConnectorTools } from "./tool-vectors";
+import { turnNeedsTools } from "./turn-router";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
+import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
 import { pushToAttach, isAttached } from "./attach-client";
 import { toWireFrame } from "./attach-run-frames";
 
-/** Strip the Agent SDK's MCP prefix so tool names read the way the renderer
- *  expects them (`open_app`, not `mcp__desktop__open_app`). */
+/** Strip the Agent SDK's MCP prefix so tool names read the way the in-process
+ *  path emits them (`open_app`, not `mcp__desktop__open_app`). */
 function bareToolName(name: string): string {
   return name.replace(/^mcp__[a-z0-9_-]+__/i, "");
 }
 
+// ── The pod ────────────────────────────────────────────────────────────────
+
+/** A plain `node` on PATH. The dev pod must NOT be spawned with
+ *  `process.execPath` — under Electron that is the Electron binary, which runs
+ *  a script as an app (dock icon, Chromium runtime) rather than as Node. */
+function nodeOnPath(): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(":")) {
+    if (!dir) continue;
+    const bin = join(dir, "node");
+    if (existsSync(bin)) return bin;
+  }
+  return undefined;
+}
+
+/**
+ * The launch command for the local pod.
+ *
+ * `GLYPHH_LOCAL_ROTOR_CMD` always wins (the SDK reads it too). Otherwise, in a
+ * DEV checkout, prefer the sibling rrotor build — `<repo>/rrotor/dist/cli.js`,
+ * whose `serve -p <port>` entry dispatches on ROTOR_MODE — so a developer runs
+ * the code they are editing. A packaged build falls through to the SDK's own
+ * resolution (`$GLYPHH_ROTOR_BIN`, then `rrotor` on PATH).
+ */
+function localRotorCmd(): string | undefined {
+  if (process.env.GLYPHH_LOCAL_ROTOR_CMD?.trim()) return undefined; // the SDK reads it
+  if (app.isPackaged) return undefined;
+  const repoBuild = join(app.getAppPath(), "..", "rrotor", "dist", "cli.js");
+  if (!existsSync(repoBuild)) return undefined;
+  const node = nodeOnPath();
+  return node ? `${node} ${repoBuild}` : undefined;
+}
+
+/**
+ * The VENDORED rotor — a packaged build's pod. CI places rrotor (dist +
+ * pruned node_modules, no native deps: better-sqlite3 loads lazily and the
+ * local pod runs the memory backend) under resources/rrotor, and we run it
+ * with OUR OWN binary as node (ELECTRON_RUN_AS_NODE). Two hard-won details:
+ *
+ *  - `bin`/`preArgs` (structured), NOT the whitespace-split `cmd` string —
+ *    process.execPath is ".../Glyphh Desktop.app/Contents/MacOS/Glyphh",
+ *    and the space in "Glyphh Desktop" would split the command in half.
+ *  - This exists because a packaged app's PATH is the GUI default
+ *    (/usr/bin:/bin:...): `rrotor` on PATH can never resolve from the dock,
+ *    which surfaced as a swallowed ENOENT + a 15s "did not become healthy".
+ */
+function vendoredRotor(): { bin: string; preArgs: string[]; env: Record<string, string> } | undefined {
+  if (process.env.GLYPHH_LOCAL_ROTOR_CMD?.trim()) return undefined; // explicit override wins
+  if (!app.isPackaged) return undefined;
+  const vendored = join(process.resourcesPath, "rrotor", "dist", "cli.js");
+  if (!existsSync(vendored)) return undefined;
+  return { bin: process.execPath, preArgs: [vendored], env: { ELECTRON_RUN_AS_NODE: "1" } };
+}
+
+/**
+ * The pod's URL, starting it if needed. `ensureLocalHarnessPod` is idempotent
+ * and atomic across processes: a healthy discovery record attaches, otherwise
+ * the mkdir lock elects one starter and everyone else waits for its record. A
+ * pod that died since the last run fails its health check and is respawned —
+ * liveness, port persistence and restart-if-dead all live in the supervisor.
+ */
+async function ensurePod(): Promise<string> {
+  const cmd = localRotorCmd();
+  const bundled = vendoredRotor();
+  const pod = await ensureLocalHarnessPod({
+    ...(bundled ?? {}),
+    ...(cmd && !bundled ? { cmd } : {}),
+    // Electron's boot is busy; a cold pod (node + SDK load) needs more than
+    // the supervisor's 15s default on a first run.
+    startTimeoutMs: 30_000,
+  });
+  return pod.url;
+}
+
 // ── Cloud pods ─────────────────────────────────────────────────────────────
 //
-// A session runs on a PROVISIONED remote pod, from the desktop exactly as it
-// does from the web: same SDK calls, same harness wire.
+// A session whose source is cloud runs on a PROVISIONED remote pod, from the
+// desktop exactly as it does from the web: same SDK calls, same harness wire.
+// The desktop is not limited to this machine — it drives cloud sessions too.
 
 /** The renderer's workspace Source, as far as a run needs to read it. */
 export interface RunSource { kind: string; repo?: string }
 
-/** Where a run's pod lives. */
-interface PodTarget { url: string; token: string }
+/** Where a run's pod lives. A cloud pod authenticates (its own runtime token);
+ *  the local one runs auth-off on loopback. */
+interface PodTarget { url: string; token?: string; cloud: boolean }
 
 export const isCloudSource = (s?: RunSource): boolean => !!s && s.kind !== "local";
 
@@ -102,16 +195,17 @@ function bindRuntime(chatId: string, runtime: { sessionId: string; url: string; 
 
 /** The chat's cloud pod: its existing binding when it has one, else a freshly
  *  provisioned session polled to `ready`. */
-async function ensureCloudPod(chatId: string, source?: RunSource): Promise<PodTarget> {
+async function ensureCloudPod(chatId: string, source: RunSource): Promise<PodTarget> {
   const bound = loadSessions().chats.find((c) => c.id === chatId)?.runtime;
-  if (bound?.url && bound.token) return { url: bound.url, token: bound.token };
+  if (bound?.url && bound.token) return { url: bound.url, token: bound.token, cloud: true };
 
   const client = getClient();
   const { session, runtimeToken } = await client.sessions.create({
-    // The user's selected agent loop.
+    // The user's selected agent loop — the same one a local run resolves its
+    // model through.
     rotor: currentLoop(),
     locus: "remote",
-    ...(source?.kind === "cloud-repo" && source.repo ? { repo: source.repo } : { newProject: true }),
+    ...(source.kind === "cloud-repo" && source.repo ? { repo: source.repo } : { newProject: true }),
   });
 
   let live = session;
@@ -128,7 +222,7 @@ async function ensureCloudPod(chatId: string, source?: RunSource): Promise<PodTa
     );
   }
   bindRuntime(chatId, { sessionId: live.id, url: live.runtimeUrl, token: runtimeToken });
-  return { url: live.runtimeUrl, token: runtimeToken };
+  return { url: live.runtimeUrl, token: runtimeToken, cloud: true };
 }
 
 /**
@@ -173,14 +267,9 @@ export async function deployAppFromCloud(
 // ── The run ────────────────────────────────────────────────────────────────
 
 /**
- * Run one tool-bearing turn on the session's CLOUD pod. Emits the SAME
- * renderer events the old in-process path emitted, on the same channels,
- * with the same payloads.
- *
- * `runWorkdir` is accepted for call-site compatibility but no longer rides
- * the run: the pod works in its own cloud workspace. (The directory GRANT —
- * the one local folder apps may reach — travels a separate path once the
- * runtime's grant transport lands.)
+ * Run one tool-bearing turn on the local pod. Emits the SAME renderer events
+ * the in-process path emits, on the same channels, with the same payloads —
+ * this function is a drop-in for `sdkRun`.
  */
 export async function harnessRun(
   wc: WebContents,
@@ -210,7 +299,7 @@ export async function harnessRun(
    *  desktop's own active loop (the `rotor` the pod runs). Absent → `currentLoop()`. */
   loopOverride?: string,
 ): Promise<void> {
-  void runWorkdir; // kept in the signature; see the doc comment above
+  const cloud = isCloudSource(source);
   // Monotonic seq for the published wire frames (broker ordering rides Redis stream
   // ids, but the frame carries its own seq for parity with the relay ring).
   let pubSeq = 0;
@@ -227,6 +316,7 @@ export async function harnessRun(
     }
   };
 
+  let lent: LentSurface | null = null;
   const cancelPauses: Array<() => void> = [];
   let finalText = "";
   let runError = "";
@@ -234,18 +324,75 @@ export async function harnessRun(
   let turnsUsed = 0;
 
   try {
-    // 1. The turn, assembled exactly as before — the path manifest in the
-    //    text, the images as real vision blocks.
-    const { system, lastUser, ask } = await composeTurn(base, chatId, attachments);
+    // 1. The credential. The pod holds none of its own (auth off), so the
+    //    USER's control-plane access token rides the run body: the gateway's
+    //    resolvePrincipal accepts gy_at_ as readily as a pod's gy_rk_, and the
+    //    metering lands on the user who asked.
+    const runtimeToken = await getClient().token();
+    if (!runtimeToken) throw new Error("sign in to run a turn — the local harness needs your access token to reach the gateway");
+
+    // 2. The turn, assembled exactly as the in-process path assembles it —
+    //    the path manifest in the text, the images as real vision blocks.
+    const { system, lastUser, ask } = await composeTurn(base, chatId, attachments, runWorkdir);
     const images = attachmentImageRefs(attachments);
 
-    // 2. The pod. Every run executes on the session's cloud pod — its
-    //    existing binding, or a freshly provisioned session. The pod brings
-    //    its own tools (and derives the control plane's app tools from
-    //    `gatewayUrl` below); nothing is lent from this machine.
-    const target = await ensureCloudPod(chatId, source);
+    // 3. The tool surface. Builtins for the mode; connectors as first-class
+    //    tools with their real schemas (code mode pays for find_tools/call_tool
+    //    instead of a catalog subset — the same trade the in-process path makes).
+    //    A CLOUD pod works in its own sandbox and cannot reach this machine's
+    //    loopback bridge, so it is lent nothing and brings its own tools.
+    //
+    //    PRE-ROUTER (turn-router.ts): the Chat/Work/Code spaces were collapsed,
+    //    so `mode` is always 'code' and every turn — even a one-line chat —
+    //    would otherwise dump the FULL builtin surface. The system, not the
+    //    user, decides tool cost per turn: for an obviously-conversational turn
+    //    we assemble a MINIMAL surface (no builtins, no connector subset) and
+    //    keep only find_tools/call_tool lent as an escape hatch, so a
+    //    mis-classified chat can still discover + call a tool mid-turn
+    //    (progressive loading). Cloud is exempt here — the pod brings its own
+    //    tools — and the same pre-router belongs in the pod's assembly as a
+    //    follow-up (TODO(cloud) in turn-router.ts).
+    const wantsTools = cloud ? true : await turnNeedsTools(lastUser, base).catch(() => true);
 
-    // 3. Start the run and translate its frames. The model is the user's pick,
+    // find_tools/call_tool are the progressive-loading escape hatch — always
+    // present so a no-tools turn that turns out to need a tool can still reach
+    // one. In the full-tools branch they ride along inside the builtins.
+    const ESCAPE_HATCH = new Set(["find_tools", "call_tool"]);
+    const fullDefs = cloud ? [] : glyphhToolDefs(mode);
+    const defs = cloud || wantsTools ? fullDefs : fullDefs.filter((d) => ESCAPE_HATCH.has(d.name));
+
+    // Wire the connector catalog even in the no-tools branch: it costs no
+    // prompt tokens (it only populates the module-level wireMap/lastWireDefs
+    // that back find_tools/call_tool), and without it the escape hatch would
+    // search a stale/empty catalog. What we skip when tools are gated off is
+    // the per-ask PRESELECT — those defs DO ride the prompt — so connDefs stays
+    // empty and find_tools discovers the rest lazily if the model reaches for it.
+    const connCatalog = cloud ? [] : await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
+    const connDefs = cloud || !wantsTools || mode === "code"
+      ? []
+      : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
+
+    // 4. Pod + bridge, in parallel — neither depends on the other.
+    const knownTools = new Set([...defs.map((d) => d.name), ...connDefs.map((d) => d.name)]);
+    const [target, surface] = await Promise.all([
+      cloud
+        ? ensureCloudPod(chatId, source as RunSource)
+        : ensurePod().then((url): PodTarget => ({ url, cloud: false })),
+      cloud ? Promise.resolve(null) : lendToolSurface({
+        wc,
+        signal: ctrl.signal,
+        ...(runWorkdir ? { workdir: runWorkdir } : {}),
+        defs,
+        connDefs,
+        // Lent-tool activity is reported HERE, in full fidelity (gate title,
+        // denial, failure, preview) — the pod's own frames for the same calls
+        // are suppressed below so the renderer sees each tool exactly once.
+        onTool: (e) => emit("glyphh-agent:tool", e as unknown as Record<string, unknown>),
+      }),
+    ]);
+    lent = surface;
+
+    // 5. Start the run and translate its frames. The model is the user's pick,
     //    already constrained to what their workspace allows (loop-selections);
     //    an unresolved one lets the pod fall back to its own default.
     // A relaying client's model wins outright; else resolve via ITS loop (or the
@@ -253,7 +400,7 @@ export async function harnessRun(
     const model = modelOverride ?? await runModel("default", loopOverride).catch(() => null);
     const pod = getClient().harness({
       url: target.url,
-      token: async (): Promise<string> => target.token,
+      ...(target.token ? { token: async (): Promise<string> => target.token as string } : {}),
     });
     const run = pod.start({
       prompt: lastUser,
@@ -266,15 +413,33 @@ export async function harnessRun(
       mode,
       permission: permissionOverride ?? glyphhMode(),
       ...(model ? { model } : {}),
+      // The SESSION'S REAL FOLDER as the run's cwd. A LOCAL (auth-off,
+      // loopback) pod honours this and anchors its OWN preset tools —
+      // Bash/Read/Edit/Glob/Grep — there; a cloud pod 400s the field, which is
+      // exactly the boundary we want. Without it those tools worked inside the
+      // pod's empty sandbox while the user's folder sat untouched.
+      ...(!cloud && runWorkdir ? { workdir: runWorkdir } : {}),
       // Pasted screenshots as vision blocks ahead of the prompt text. Pod-side
       // caps (8 × ~7.5MiB) sit above the decoder's, so an accepted turn is
       // never one the pod rejects.
       ...(images.length ? { images } : {}),
-      // The gateway is named on EVERY run. The pod needs it for two things:
-      // model egress, and deriving the control plane's app tool surface
-      // (scaffold_app/create_app_entry/build_app/deploy_app), which it lends
-      // itself so a run can actually PUBLISH what it built.
+      // The gateway is named on EVERY run, cloud included. A pod needs it for
+      // two things now: model egress, and deriving the control plane's app
+      // tool surface (scaffold_app/create_app_entry/build_app/deploy_app),
+      // which it lends itself so a run can actually PUBLISH what it built.
+      // Without it a cloud agent writes an app and has nowhere to put it.
       gatewayUrl: `${SERVER_URL}/api/gateway`,
+      // The CREDENTIAL differs, and only the credential. A cloud pod already
+      // holds its session's own `gy_rk_` (it arrives as this request's bearer
+      // and the pod falls back to it), so handing it this machine's token
+      // would re-attribute the turn to the wrong principal. A LOCAL pod runs
+      // auth-off and has none, so it is passed the user's access token — which
+      // the control plane resolves to the same person either way.
+      ...(cloud ? {} : { runtimeToken }),
+      // The desktop's own machine tools reach the pod over loopback, which a
+      // cloud pod cannot use. App tools are NOT lent here by either surface —
+      // the pod derives them from `gatewayUrl` above, so both get the same set.
+      ...(surface ? { mcpServers: [{ name: surface.name, url: surface.url, headers: surface.headers }] } : {}),
       signal: ctrl.signal,
     });
 
@@ -306,6 +471,10 @@ export async function harnessRun(
           emit("glyphh-agent:delta", { delta: frame.delta });
           return;
         case "tool": {
+          // Our own lent tools already reported themselves (start AND done)
+          // through the bridge, with the gate's title and denial state — which
+          // the pod cannot see. Drop its echo.
+          if (frame.name.startsWith(BRIDGE_TOOL_PREFIX)) return;
           // The wire carries no turn count (the pod keeps it internally), so
           // the training capture uses tool starts as its proxy for "how much
           // work did this run do" — honest as a magnitude, not as a turn count.
@@ -321,8 +490,11 @@ export async function harnessRun(
           emit("glyphh-agent:credits", { creditsMicro: frame.creditsMicro });
           return;
         case "approval": {
-          // The pod gates its own tools; the desktop renders the card and
-          // relays the answer.
+          // The pod gates its OWN sandbox tools; the desktop gates the lent
+          // ones inside executeGlyphhTool. A lent tool falls into the pod's
+          // unknown-tool bucket, whose card title IS the bare tool name — let
+          // it through so the user sees ONE card (the desktop's), not two.
+          if (knownTools.has(frame.title)) { void run.answer(frame.id, { allow: true }); return; }
           cancelPauses.push(registerRemotePause(frame.id, (reply) => void run.answer(frame.id, { allow: !!reply.allow })));
           emit("glyphh-agent:approval", { id: frame.id, kind: frame.kind, title: frame.title, detail: frame.detail });
           return;
@@ -371,6 +543,7 @@ export async function harnessRun(
   } finally {
     liveRuns.delete(runId);
     for (const cancel of cancelPauses) cancel();
+    lent?.release();
   }
 
   // The flywheel: transcript + outcome are next-era training data.

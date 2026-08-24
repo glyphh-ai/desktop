@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8">
+<title>Slides</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--surface, #101013); }
+  #gp-root { height: 100%; display: flex; flex-direction: column; }
+  /* hiddenInset traffic lights float over the content — the top bars give
+     them room and double as the window drag region. */
+  .gpoint-reader-bar, .gpoint-lib-head { padding-left: 76px; -webkit-app-region: drag; }
+  .gpoint-reader-bar button, .gpoint-lib-head button { -webkit-app-region: no-drag; }
+  .gpoint-lib { padding-top: 12px; }
+</style>
+</head><body data-gp-popout>
+<div id="gp-root" class="ws-rail-slot-body"></div>
+<script src="popout-slides.js"></script>
+</body></html>

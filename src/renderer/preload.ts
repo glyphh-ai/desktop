@@ -22,18 +22,11 @@ export interface SavedPanelApp {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  /** Who may reach it once deployed: 'public' (anyone with the link),
-   *  'members' (signed-in org members), or 'org-idp' (the customer's own IdP
-   *  via WorkOS). Enforced at the edge. */
+  /** Who may reach it once deployed: 'public' (anyone with the link) or
+   *  'members' (signed-in org members). Enforced at the edge. */
   access?: string;
-  /** org-idp binding: the WorkOS Organization the app authenticates against,
-   *  or null (empty = email-domain fallback). */
-  workosOrgId?: string | null;
   owned?: boolean;
   latestVersion?: string | null;
-  /** Where the app's worker + schedules run — its ONE execution home:
-   *  'local' (this machine's runtime) or 'regional' (the org's cloud pod). */
-  executionHome?: "local" | "regional";
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon (installed/built Glyphh apps). */
   iconUrl?: string | null;
@@ -202,12 +195,7 @@ export interface PanelAppInput {
   execPath?: string | null;
   appArchetype?: string | null;
   launchConfig?: Record<string, unknown> | null;
-  access?: "public" | "members" | "org-idp";
-  /** org-idp binding: the WorkOS Organization (null clears). */
-  workosOrgId?: string | null;
-  /** Move the app's ONE execution home (worker + schedules): this machine
-   *  ('local') or the org's cloud runtime ('regional'). */
-  executionHome?: "local" | "regional";
+  access?: "public" | "members";
 }
 
 // Marketplace wire shapes are the SDK CONTRACT (contract/apps.ts +
@@ -269,9 +257,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
-  // Attached-agent window (?solo=agent) only: forward mouse events to the app
-  // BENEATH the window except over the agent's own pixels (agent-dock.ts).
-  agentDockIgnoreMouse: (ignore: boolean) => ipcRenderer.send("agent-dock:ignore-mouse", ignore),
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },
@@ -286,7 +271,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  workspacesGrants: () => ipcRenderer.invoke("workspaces-grants") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesModelCatalog: () => ipcRenderer.invoke("workspaces-model-catalog") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   workspacesOrgConnectors: () => ipcRenderer.invoke("workspaces-org-connectors") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesOrgToolCap: () => ipcRenderer.invoke("workspaces-org-tool-cap") as Promise<{ ok: boolean; data?: Record<string, string[]>; error?: string }>,
@@ -393,7 +377,7 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // Working directory — per-chat folder the agent + files view focus on.
   getWorkingDir: () => ipcRenderer.invoke("working-dir:get") as Promise<string | null>,
-  pickWorkingDir: (opts?: { asDefault?: boolean; nullOnCancel?: boolean }) =>
+  pickWorkingDir: (opts?: { asDefault?: boolean }) =>
     ipcRenderer.invoke("working-dir:pick", opts) as Promise<string | null>,
   setWorkingDir: (dir: string) => ipcRenderer.invoke("working-dir:set", dir) as Promise<string>,
   getWorkingDirRecents: () => ipcRenderer.invoke("working-dir:recents") as Promise<string[]>,
@@ -505,6 +489,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Favicon bytes as a data URL (main-process fetch — CORS-free) for WebGL.
   webIconFetch: (url: string) => ipcRenderer.invoke("web-icon-fetch", url) as Promise<string>,
   panelAppsList: () => ipcRenderer.invoke("panel-apps-list") as Promise<SavedPanelApp[]>,
+  appsDefaults: () => ipcRenderer.invoke("apps-defaults") as Promise<Array<{ id: string; slug: string; name: string; url: string | null }>>,
   dashboardData: () => ipcRenderer.invoke("dashboard-data"),
   dashboardRuns: () => ipcRenderer.invoke("dashboard-runs") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   homeGotoSection: (section: string) => ipcRenderer.invoke("home-goto-section", section) as Promise<{ ok: boolean }>,
@@ -550,6 +535,35 @@ contextBridge.exposeInMainWorld("glyphh", {
   // yo app package (import / export)
   appImport: () => ipcRenderer.invoke("app-import") as Promise<{ ok: boolean; appId?: string; error?: string }>,
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  // Deploy (dev-host) + Production (Supabase graduation) — app-detail tabs.
+  hostingStatus: (slug: string) => ipcRenderer.invoke("hosting-status", slug) as Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>,
+  hostingDeploy: (slug: string) => ipcRenderer.invoke("hosting-deploy", slug) as Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>,
+  hostingDestroy: (id: string) => ipcRenderer.invoke("hosting-destroy", id) as Promise<{ ok: boolean; error?: string }>,
+  // Dedicated app servers + custom domains (Phase F) — deploy an app to its own
+  // machine and point a domain at it. Shapes MIRROR the SDK app-servers contract
+  // (structural, like the Files store above — no SDK import in the preload).
+  appServersList: () => ipcRenderer.invoke("app-servers-list") as Promise<{
+    ok: boolean;
+    images?: Array<{ key: string; region: string; description: string; ramMb: number; diskGb: number; monthlyCredits: number; active: boolean; sort: number }>;
+    error?: string;
+  }>,
+  appServerDeploy: (slug: string, imageKey: string, releaseId?: string) =>
+    ipcRenderer.invoke("app-server-deploy", slug, imageKey, releaseId) as Promise<{ ok: boolean; queued?: { deploymentId: string; status: string }; error?: string }>,
+  appServerDeployments: (slug: string) =>
+    ipcRenderer.invoke("app-server-deployments", slug) as Promise<{
+      ok: boolean;
+      deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>;
+      error?: string;
+    }>,
+  appServerDestroy: (slug: string, id: string) =>
+    ipcRenderer.invoke("app-server-destroy", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  appDomainsList: (slug: string) =>
+    ipcRenderer.invoke("app-domains-list", slug) as Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>,
+  appDomainAdd: (slug: string, deploymentId: string, hostname: string) =>
+    ipcRenderer.invoke("app-domain-add", slug, deploymentId, hostname) as Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>,
+  appDomainRemove: (slug: string, id: string) =>
+    ipcRenderer.invoke("app-domain-remove", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  // Marketplace listing — copy, images, and the list/unlist decision.
   appListingSet: (slug: string, patch: Record<string, unknown>) =>
     ipcRenderer.invoke("app-listing-set", slug, patch) as Promise<{ ok: boolean; error?: string }>,
   appListingImageAdd: (slug: string, kind: "icon" | "screenshot" | "video") =>
@@ -563,6 +577,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // download endpoint is server-side and not built yet, so this reports honestly.
   appUpdateInstalled: (slug: string) =>
     ipcRenderer.invoke("app-update-installed", slug) as Promise<{ ok: boolean; error?: string }>,
+  appBuildDeploy: (slug: string) =>
+    ipcRenderer.invoke("app-build-deploy", slug) as Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>,
   appReleases: (slug: string) =>
     ipcRenderer.invoke("app-releases", slug) as Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>,
   appReleaseNotes: (slug: string, releaseId: string, notes: string | null) =>
@@ -693,6 +709,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
   // an honest error; create answers with { ok, file, error }. help/files.ts
   // mirrors these shapes and owns the web target's SDK-handle transport. ──
+  filesList: () => ipcRenderer.invoke("files-list") as Promise<FileArtifactRow[]>,
+  filesGet: (id: string) => ipcRenderer.invoke("files-get", id) as Promise<FileArtifactRow>,
+  filesDelete: (id: string) => ipcRenderer.invoke("files-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  filesContent: (id: string) => ipcRenderer.invoke("files-content", id) as Promise<{ ok: boolean; content?: string; error?: string }>,
+  filesCreate: (input: FileCreateInputRow) =>
+    ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
   // MAIN-process SDK client executes these; reads REJECT, writes answer
   // { ok, …, error }. help/settings-*.ts mirror these + own the web SDK path. ──
@@ -857,9 +879,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Theme
   getTheme: () => ipcRenderer.invoke("get-theme") as Promise<string>,
   exportGlyphhSkill: (provider: string) => ipcRenderer.invoke("export-glyphh-skill", provider) as Promise<{ ok: boolean; path?: string; error?: string }>,
-  // Settings → MCP: the caller's connected cloud MCP clients (OAuth grants).
-  mcpClientsList: () => ipcRenderer.invoke("mcp-clients-list") as Promise<{ clientId: string; clientName: string; firstGrantedAt: string; lastUsedAt: string | null }[]>,
-  mcpClientsRevoke: (clientId: string) => ipcRenderer.invoke("mcp-clients-revoke", clientId) as Promise<{ ok: boolean; error?: string }>,
   setTheme: (theme: string) => ipcRenderer.invoke("set-theme", theme),
 
   // Account info
@@ -940,8 +959,13 @@ contextBridge.exposeInMainWorld("glyphh", {
   // so there's no client-token to manage; only the external (server) tokens
   // for the user's external tools.
 
-  // (Local MCP server removed — the desktop hosts no local runtime/MCP
-  // surface; there is only the cloud rrotor.)
+  // Local MCP server (127.0.0.1) — the no-cloud alternative to the relay.
+  localMcpSetEnabled: (enabled: boolean) => ipcRenderer.invoke("local-mcp-set-enabled", enabled) as Promise<{ ok: boolean; error?: string }>,
+  localMcpStatus: () => ipcRenderer.invoke("local-mcp-status") as Promise<{ running: boolean; port: number }>,
+  localMcpSetPort: (port: number) => ipcRenderer.invoke("local-mcp-set-port", port) as Promise<{ ok: boolean; error?: string }>,
+  localMcpTokensList: () => ipcRenderer.invoke("local-mcp-tokens-list") as Promise<Array<{ id: string; label: string; createdAt: string; expiresAt: string }>>,
+  localMcpTokensCreate: (label: string) => ipcRenderer.invoke("local-mcp-tokens-create", label) as Promise<{ id: string; label: string; token: string; createdAt: string; expiresAt: string }>,
+  localMcpTokensRevoke: (id: string) => ipcRenderer.invoke("local-mcp-tokens-revoke", id) as Promise<{ ok: boolean }>,
 
   // BYOK provider key — the only surviving path is the Claude Code bootstrap
   // gate (boot-gate-ui.ts) saving an Anthropic key. The Providers Settings
@@ -969,8 +993,71 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("wb:app-cmd", (_e, cmd) => cb(cmd));
   },
 
+  // Glyphh Office · Slides (the Slides panel's org deck library).
+  gpointList: () => ipcRenderer.invoke("gpoint-list") as Promise<{ ok: boolean; decks: Array<{ file: string; title: string; slides: number; mtime: number; size: number }>; error?: string }>,
+  gpointRead: (file: string) => ipcRenderer.invoke("gpoint-read", file) as Promise<{ ok: boolean; content?: string; error?: string }>,
+  gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  gpointNew: (name: string, title?: string) => ipcRenderer.invoke("gpoint-new", name, title) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
+  // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
+  officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
+  // Glyphh Office · Docs (the Docs panel's org library).
+  gdocList: () => ipcRenderer.invoke("gdoc-list") as Promise<{ ok: boolean; docs: Array<{ file: string; title: string; size: number; folderId: string | null; mtime: number }>; error?: string }>,
+  gdocRead: (file: string) => ipcRenderer.invoke("gdoc-read", file) as Promise<{ ok: boolean; markdown?: string; title?: string; error?: string }>,
+  gdocWrite: (file: string, markdown: string, folderId?: string | null) => ipcRenderer.invoke("gdoc-write", file, markdown, folderId) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gdocDelete: (file: string) => ipcRenderer.invoke("gdoc-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  gdocSuggestions: (file: string, status?: string) => ipcRenderer.invoke("gdoc-suggestions", file, status) as Promise<{ ok: boolean; suggestions: Array<{ id: string; file: string; section: string; beforeMd: string; afterMd: string; note: string; authorKind: string; status: string; createdAt: string }>; error?: string }>,
+  gdocSuggest: (file: string, input: unknown) => ipcRenderer.invoke("gdoc-suggest", file, input) as Promise<{ ok: boolean; suggestion?: unknown; error?: string }>,
+  gdocResolve: (id: string, approve: boolean) => ipcRenderer.invoke("gdoc-resolve", id, approve) as Promise<{ ok: boolean; suggestion?: { id: string; status: string }; error?: string }>,
+  // Glyphh Office · Sheets (the Sheets panel's org workbook library).
+  gsheetList: () => ipcRenderer.invoke("gsheet-list") as Promise<{ ok: boolean; sheets: Array<{ file: string; title: string; sheets: number; totalRows: number; size: number; folderId: string | null; mtime: number }>; error?: string }>,
+  gsheetRead: (file: string) => ipcRenderer.invoke("gsheet-read", file) as Promise<{ ok: boolean; title?: string; workbook?: unknown; error?: string }>,
+  gsheetWrite: (file: string, title: string, workbook: unknown) => ipcRenderer.invoke("gsheet-write", file, title, workbook) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  gsheetDelete: (file: string) => ipcRenderer.invoke("gsheet-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  designList: () => ipcRenderer.invoke("design-list") as Promise<{ ok: boolean; designs: Array<{ file: string; title: string; size: number; mtime: number }>; error?: string }>,
+  designRead: (file: string) => ipcRenderer.invoke("design-read", file) as Promise<{ ok: boolean; title?: string; document?: unknown; error?: string }>,
+  designWrite: (file: string, document: unknown) => ipcRenderer.invoke("design-write", file, document) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
+  designDelete: (file: string) => ipcRenderer.invoke("design-delete", file) as Promise<{ ok: boolean; error?: string }>,
+  designAssetUpload: (file: string, input: unknown) => ipcRenderer.invoke("design-asset-upload", file, input) as Promise<{ ok: boolean; asset?: { id: string; kind: string; title: string; contentType: string; sizeBytes: number }; error?: string }>,
+  designAssetUrl: (file: string, assetId: string) => ipcRenderer.invoke("design-asset-url", file, assetId) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  designAssetDelete: (file: string, assetId: string) => ipcRenderer.invoke("design-asset-delete", file, assetId) as Promise<{ ok: boolean; error?: string }>,
+  memoryBrowse: (threadId?: string) => ipcRenderer.invoke("memory-browse", threadId) as Promise<{ ok: boolean; facts: unknown[]; turns: string[]; window: Array<{ speaker: string; text: string }>; error?: string }>,
+  memoryGraph: (opts?: unknown) => ipcRenderer.invoke("memory-graph", opts) as Promise<{ ok: boolean; nodes: unknown[]; coords: Array<[number, number, number]>; edges: Array<{ a: number; b: number; sim: number; kind: string }>; error?: string }>,
+  memorySearch: (query: string, topK?: number) => ipcRenderer.invoke("memory-search", query, topK) as Promise<{ ok: boolean; recalled: Array<{ text: string; score: number }>; directives: string[]; error?: string }>,
+  memoryForget: (input: unknown) => ipcRenderer.invoke("memory-forget", input) as Promise<{ ok: boolean; deleted?: number; error?: string }>,
+  memoryAmend: (input: unknown) => ipcRenderer.invoke("memory-amend", input) as Promise<{ ok: boolean; written?: number; error?: string }>,
+  mediaList: (kind?: string, q?: string) => ipcRenderer.invoke("media-list", kind, q) as Promise<{ ok: boolean; assets: unknown[]; error?: string }>,
+  mediaUrl: (id: string) => ipcRenderer.invoke("media-url", id) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  mediaDelete: (id: string) => ipcRenderer.invoke("media-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  mediaGenerate: (input: unknown) => ipcRenderer.invoke("media-generate", input) as Promise<{ ok: boolean; job?: unknown; outputKind?: string; error?: string }>,
+  mediaJob: (id: string) => ipcRenderer.invoke("media-job", id) as Promise<{ ok: boolean; job?: unknown; error?: string }>,
+  mediaUploadPick: (kind?: string) => ipcRenderer.invoke("media-upload-pick", kind) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  mediaSave: (id: string) => ipcRenderer.invoke("media-save", id) as Promise<{ ok: boolean; path?: string; error?: string }>,
+  musicArtists: () => ipcRenderer.invoke("music-artists") as Promise<{ ok: boolean; artists: unknown[]; error?: string }>,
+  musicArtistSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-artist-save", id, input) as Promise<{ ok: boolean; artist?: unknown; error?: string }>,
+  musicArtistDelete: (id: string) => ipcRenderer.invoke("music-artist-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicInstruments: () => ipcRenderer.invoke("music-instruments") as Promise<{ ok: boolean; instruments: unknown[]; error?: string }>,
+  musicInstrumentSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-instrument-save", id, input) as Promise<{ ok: boolean; instrument?: unknown; error?: string }>,
+  musicInstrumentDelete: (id: string) => ipcRenderer.invoke("music-instrument-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicInstrumentGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-instrument-genlook", id, description, replaceLook) as Promise<{ ok: boolean; instrument?: unknown; credits?: number; error?: string }>,
+  musicSongs: () => ipcRenderer.invoke("music-songs") as Promise<{ ok: boolean; songs: unknown[]; error?: string }>,
+  musicSongSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-song-save", id, input) as Promise<{ ok: boolean; song?: unknown; error?: string }>,
+  musicSongDelete: (id: string) => ipcRenderer.invoke("music-song-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  musicSongRegenerate: (id: string, input?: unknown) => ipcRenderer.invoke("music-song-regenerate", id, input) as Promise<{ ok: boolean; song?: unknown; job?: unknown; error?: string }>,
+  musicArtistGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-artist-genlook", id, description, replaceLook) as Promise<{ ok: boolean; artist?: unknown; credits?: number; error?: string }>,
+  mediaProjects: () => ipcRenderer.invoke("media-projects") as Promise<{ ok: boolean; projects: unknown[]; error?: string }>,
+  mediaProjectSave: (id: string | null, input: unknown) => ipcRenderer.invoke("media-project-save", id, input) as Promise<{ ok: boolean; project?: unknown; error?: string }>,
+  mediaProjectDelete: (id: string) => ipcRenderer.invoke("media-project-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  mediaProjectGenerate: (id: string, input?: unknown) => ipcRenderer.invoke("media-project-generate", id, input) as Promise<{ ok: boolean; project?: unknown; job?: unknown; error?: string }>,
+  mediaUploadBytes: (input: unknown) => ipcRenderer.invoke("media-upload-bytes", input) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  gdriveList: (q?: string) => ipcRenderer.invoke("gdrive-list", q) as Promise<{ ok: boolean; folders: Array<{ id: string; name: string; parentId: string | null }>; files: Array<{ kind: string; ref: string; file?: string; title: string; sizeBytes: number; folderId: string | null; subkind?: string; mime?: string; updatedAt: string }>; error?: string }>,
+  gdriveMkdir: (name: string, parentId?: string | null) => ipcRenderer.invoke("gdrive-mkdir", name, parentId) as Promise<{ ok: boolean; folder?: { id: string; name: string }; error?: string }>,
+  gdriveMove: (kind: string, ref: string, folderId: string | null) => ipcRenderer.invoke("gdrive-move", kind, ref, folderId) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderRename: (id: string, name: string) => ipcRenderer.invoke("gdrive-folder-rename", id, name) as Promise<{ ok: boolean; error?: string }>,
+  gdriveFolderDelete: (id: string) => ipcRenderer.invoke("gdrive-folder-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  gdocTemplates: () => ipcRenderer.invoke("gdoc-templates") as Promise<{ ok: boolean; templates: Array<{ slug: string; name: string; category: string; description: string; markdown: string }>; error?: string }>,
   // Pop a panel off the app into a standalone OS window (traffic lights).
-  panelPopout: (req: { kind: "url"; url?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
+  panelPopout: (req: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => ipcRenderer.invoke("panel-popout", req) as Promise<{ ok: boolean; error?: string }>,
 
   // Workspace / context panel
   onContextUpdate: (cb: (entry: {id: string; source: string; created: number; workspace?: string}) => void) => {

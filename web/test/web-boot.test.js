@@ -127,7 +127,7 @@ describe('startWebBoot routing', () => {
     // workspace) — a new user gets the region choice stamped, then navigates.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalledWith({ region: 'local', tier: 'shared' });
   });
 
@@ -139,20 +139,7 @@ describe('startWebBoot routing', () => {
     // Drivers are never consulted on the login shell; a returning user just lands.
     expect(drivers.enterApp).not.toHaveBeenCalled();
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
-  });
-
-  it('remembered Builder tab (glyphhSurfaceTab=builder) → lands on /apps instead of /platform', async () => {
-    installDom({ pathname: '/' });
-    globalThis.localStorage = { getItem: vi.fn(() => 'builder'), setItem: vi.fn() };
-    try {
-      web.isAuthenticated.mockResolvedValueOnce(true);
-      web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
-      await startWebBoot();
-      expect(window.location.assign).toHaveBeenCalledWith('/apps');
-    } finally {
-      delete globalThis.localStorage;
-    }
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback token → verifyEmailLink, then first-run for a new user', async () => {
@@ -166,7 +153,7 @@ describe('startWebBoot routing', () => {
     // New user via magic link: region stamped through the SDK, then /home — no
     // tutorial on the blank login shell.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalled();
   });
 
@@ -177,7 +164,7 @@ describe('startWebBoot routing', () => {
     expect(web.exchangeCode).toHaveBeenCalledWith('c');
     expect(web.syncGating).toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback exchange failure → falls back to the login screen', async () => {
@@ -200,7 +187,7 @@ describe('startWebBoot routing', () => {
     await p;
     expect(window.dispatchEvent).toHaveBeenCalled();
     expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 });
 

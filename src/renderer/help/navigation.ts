@@ -14,12 +14,13 @@ import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { initSkills } from "./skills.js";
+import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { wireDipWatcher } from "./dip-watch.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
+import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
-import { loadMcpPanel, initMcpPanel } from "./settings-mcp.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
@@ -106,8 +107,10 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
+  else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
   else if (sec === "marketplace") loadMarketplaceSection();
+  else if (sec === "code") loadCode();
   else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
@@ -156,11 +159,8 @@ export function gotoSection(section: string, sub?: string): void {
   // Apps / Connections / Workspaces are WORKBENCH sections now (the rail's
   // panels); only the management-shaped pages (loops/skills/agents) stay in
   // the settings modal.
-  // Wall section CARDS (LAUNCH PAD cut 2026-08-22): layouts retired — its
-  // route (and the "workspaces" alias) lands on the Apps card.
-  if (["apps", "marketplace", "connections", "layouts"].includes(section)) {
-    const card = section === "layouts" ? "apps" : section;
-    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(card);
+  if (["apps", "marketplace", "connections", "layouts", "agents"].includes(section)) {
+    (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
   if (["loops", "skills"].includes(section)) {
@@ -168,6 +168,11 @@ export function gotoSection(section: string, sub?: string): void {
     void window.glyphh.setPreference?.("homeLastSub", section);
     openSettingsModal(section);
     return;
+  }
+  // Content sections need the window body — if Glyphh is collapsed to the
+  // rail, expand it (the workspace apps slide back right).
+  if (["files"].includes(section)) {
+    void window.glyphh.railCollapseSet?.(false);
   }
   void window.glyphh.setPreference?.("homeLastSection", section);
   void window.glyphh.setPreference?.("homeLastSub", sub || "");
@@ -224,16 +229,6 @@ export function isSettingsModalOpen(): boolean {
 }
 
 export function closeSettingsModal(): void {
-  // The wall's in-place full-screen Marketplace borrows platform-shell —
-  // closing hands the wall back instead of no-op'ing.
-  if (document.body.classList.contains("wall-shell-overlay")) {
-    restoreWallAfterShellOverlay();
-  } else if (document.body.classList.contains("platform-shell")) {
-    // PLATFORM shell (web /platform): the settings surface IS the page — there
-    // is nothing behind it to return to, so close is a no-op (the close button
-    // and backdrop are CSS-hidden there too; this catches Esc and data-jump).
-    return;
-  }
   const overlay = document.getElementById("settings-modal");
   if (!overlay) return;
   document.removeEventListener("keydown", onSettingsModalKey, true);
@@ -272,22 +267,7 @@ function onSettingsModalKey(e: KeyboardEvent): void {
   closeSettingsModal();
 }
 
-/** The wall's in-place full-screen surfaces (Marketplace) borrow the
- *  platform-shell classes — closing must hand the wall back. */
-function restoreWallAfterShellOverlay(): void {
-  if (document.body.classList.contains("wall-shell-overlay")) {
-    document.body.classList.remove("wall-shell-overlay", "platform-shell");
-  }
-}
-
 export function openSettingsModal(sub?: string): void {
-  // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
-  // platform shell itself, any settings open routes to the platform page.
-  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
-      && !document.body.classList.contains("platform-shell")) {
-    window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
-    return;
-  }
   // Already open — just switch the sub-panel.
   if (isSettingsModalOpen()) { selectSettingsSub(sub || "general"); return; }
 
@@ -364,9 +344,6 @@ export function openSettingsModal(sub?: string): void {
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
-  // The user chip at the rail's bottom — both the desktop modal and the web
-  // /platform shell arrive here, so one mount covers both surfaces.
-  mountSettingsUserChip();
   selectSettingsSub(sub || "general");
 }
 
@@ -419,13 +396,10 @@ const SECTION_ALIAS: Record<string, { section: string; sub: string }> = {
 };
 const settingsSubAlias = (sub: string): string => {
   const target = SETTINGS_SUB_ALIAS[sub] || sub;
-  // Desktop-machine subs have no meaning in a browser tab: Drips runs on the
-  // desktop app, and Desktop is the machine's directory grant. (MCP is NOT
-  // aliased anywhere — it manages the CLOUD connection, api.glyphh.ai/mcp,
-  // which exists on both surfaces; the old local-server panel it replaced is
-  // gone.)
-  const onWeb = document.documentElement.classList.contains("glyphh-web");
-  if ((target === "desktop" || target === "drips") && onWeb) return "general";
+  // MCP is a desktop-machine feature — a browser tab has no machine to run the
+  // 127.0.0.1 server on. The nav item + panel are CSS-hidden on web; any stale
+  // deep link (saved nav app, remembered homeLastSub) lands on General instead.
+  if (target === "mcp" && document.documentElement.classList.contains("glyphh-web")) return "general";
   return target;
 };
 
@@ -455,16 +429,16 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "apikeys") void loadApiKeys();
-  else if (sub === "mcp") void loadMcpPanel();
   else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
-  else if (sub === "marketplace") { mountSettingsSection("marketplace"); loadMarketplaceSection(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "loops") { mountSettingsSection("loops"); void loadLoops(); }
   else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
+  // Artifacts adopts the FILES section (the gallery page) — same page, second door.
+  else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
 // ── Docs-in-modal adoption ───────────────────────────────
@@ -516,7 +490,6 @@ function parkSettingsDocs(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
-  marketplace: { host: "settings-marketplace-host" },
   connections: { host: "settings-connections-host" },
   loops: { host: "settings-loops-host" },
   skills: { host: "settings-skills-host" },
@@ -551,141 +524,6 @@ function parkSettingsSection(section: string): void {
   const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${section}']`);
   const pen = settingsSectionPen[section];
   if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
-}
-
-// ── Account menu + the settings rail's user chip ─────────
-//
-// ONE account dropdown serves both rails: the wall's Account button
-// (#app-rail-user-btn) and the user chip pinned to the settings nav's bottom
-// (desktop modal AND the web /platform shell — same DOM). Items: Docs /
-// Support / About (each selects the existing settings sub through the nav's
-// own mechanism), then Logout in red. position:fixed, computed from the
-// anchor's rect, so the nav's overflow can never clip it; opens UPWARD from
-// a bottom-of-screen anchor.
-
-let userMenu: HTMLDivElement | null = null;
-let userMenuAnchor: HTMLElement | null = null;
-
-function closeUserMenu(): void {
-  userMenu?.remove();
-  userMenu = null;
-  userMenuAnchor = null;
-  window.removeEventListener("keydown", onUserMenuKey, true);
-}
-
-/** Esc closes the MENU first — on window capture so it runs (and stops)
- *  before the settings modal's own document-capture Esc handler. */
-function onUserMenuKey(e: KeyboardEvent): void {
-  if (e.key !== "Escape" || !userMenu) return;
-  e.preventDefault();
-  e.stopPropagation();
-  closeUserMenu();
-}
-
-function openAccountMenu(anchor: HTMLElement): void {
-  if (userMenu) { closeUserMenu(); return; }
-  const m = document.createElement("div");
-  m.className = "code-menu app-rail-user-menu";
-  const mk = (label: string, icon: string, cb: () => void, danger = false) => {
-    const b = document.createElement("button");
-    b.className = "code-menu-item" + (danger ? " danger" : "");
-    b.innerHTML = `${icon}<span></span>`;
-    (b.querySelector("span") as HTMLElement).textContent = label;
-    b.addEventListener("click", () => { closeUserMenu(); cb(); });
-    m.appendChild(b);
-  };
-  const DOCS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
-  const SUPPORT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-  const ABOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`;
-  const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
-  // Inside the settings surface (modal or /platform page) the item IS the
-  // nav's panel selection; from the wall rail it opens the modal on that sub.
-  const goSub = (sub: string): void => {
-    if (isSettingsModalOpen()) selectSettingsSub(sub);
-    else openSettingsModal(sub);
-  };
-  mk("Docs", DOCS_SVG, () => goSub("docs"));
-  mk("Support", SUPPORT_SVG, () => goSub("support"));
-  mk("About", ABOUT_SVG, () => goSub("about"));
-  const divider = document.createElement("div");
-  divider.className = "code-menu-divider";
-  m.appendChild(divider);
-  mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
-  document.body.appendChild(m);
-  const r = anchor.getBoundingClientRect();
-  const openUp = r.top > window.innerHeight / 2;
-  const top = openUp
-    ? Math.max(8, r.top - m.offsetHeight - 6)
-    : Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8);
-  m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
-  m.style.top = `${top}px`;
-  userMenu = m;
-  userMenuAnchor = anchor;
-  window.addEventListener("keydown", onUserMenuKey, true);
-}
-
-/** True once the chip subscribed to account updates — subscribe exactly once. */
-let userChipSubscribed = false;
-
-/** Paint the chip's avatar-initial + name/email from account info. */
-function paintUserChip(info: { email?: string; firstName?: string; lastName?: string } | null): void {
-  const chip = document.querySelector<HTMLElement>(".settings-user-chip");
-  if (!chip) return;
-  const name = info
-    ? (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account"
-    : "Account";
-  const initialSource = info?.firstName || info?.email || "?";
-  const avatar = chip.querySelector<HTMLElement>(".settings-user-avatar");
-  const nameEl = chip.querySelector<HTMLElement>(".settings-user-name");
-  const emailEl = chip.querySelector<HTMLElement>(".settings-user-email");
-  if (avatar) avatar.textContent = initialSource.charAt(0).toUpperCase();
-  if (nameEl) nameEl.textContent = name;
-  if (emailEl) emailEl.textContent = info?.email || "";
-}
-
-/**
- * The user chip PINNED to the bottom of the settings rail — mounted on every
- * settings open, into whichever surface holds the nav: the desktop's centered
- * modal and the web /platform full-page shell adopt the SAME .settings-nav
- * DOM, so one mount covers both. Guarded against double-mounts (the layout
- * travels between its section pen and the modal, chip included) and against
- * nav rebuilds via the same MutationObserver discipline as the platform
- * rail head (home.ts).
- */
-function mountSettingsUserChip(): void {
-  const nav = document.querySelector<HTMLElement>("#settings-modal .settings-nav:not(.docs-nav)");
-  if (!nav) return;
-  let chip = nav.querySelector<HTMLElement>(".settings-user-chip");
-  if (!chip) {
-    chip = document.createElement("div");
-    chip.className = "settings-user-chip";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "settings-user-chip-btn";
-    btn.setAttribute("aria-label", "Account menu");
-    btn.innerHTML = `<span class="settings-user-avatar">?</span><span class="settings-user-meta"><span class="settings-user-name">Account</span><span class="settings-user-email"></span></span>`;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openAccountMenu(btn);
-    });
-    chip.appendChild(btn);
-    nav.appendChild(chip);
-    // Re-append if a nav rebuild drops it or pushes it off the bottom slot.
-    // (The append inside the callback re-fires the observer; both branches
-    // are then false, so it settles rather than looping.)
-    const keep = chip;
-    new MutationObserver(() => {
-      if (!keep.isConnected) nav.appendChild(keep);
-      else if (nav.lastElementChild !== keep) nav.appendChild(keep);
-    }).observe(nav, { childList: true });
-  } else if (nav.lastElementChild !== chip) {
-    nav.appendChild(chip);
-  }
-  void window.glyphh.getAccountInfo?.().then(paintUserChip).catch(() => { /* signed out — placeholder stays */ });
-  if (!userChipSubscribed) {
-    userChipSubscribed = true;
-    window.glyphh.onAccountUpdated?.((info) => paintUserChip(info));
-  }
 }
 
 // ── Docs inner sub-navigation ────────────────────────────
@@ -753,10 +591,7 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   // "artifacts" is the files section's rail name.
-  // ONE marketplace interface (his rule, 2026-08-22): every door — rail link,
-  // wall tile, section route — opens the SAME full-screen storefront (the
-  // settings-shell marketplace). The workbench card marketplace is retired.
-  const RAIL_WB_SECTIONS: Record<string, string> = { marketplace: "marketplace", connections: "connections" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", marketplace: "marketplace", connections: "connections", layouts: "layouts", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
@@ -767,7 +602,40 @@ export function initHelp() {
   });
   // The More fly-out — second-tier rail destinations, every one a WORKBENCH
   // surface (Scheduled Tasks is the hidden tasks view; Agents a section card).
-  // The More fly-out died with Agents/Scheduled Tasks (Semantic Apps cut).
+  const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
+    { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
+      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
+    { label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("agents") },
+  ];
+  const moreToggle = document.getElementById("rail-more-toggle");
+  let moreMenu: HTMLDivElement | null = null;
+  const closeMore = (): void => { moreMenu?.remove(); moreMenu = null; moreToggle?.classList.remove("open"); document.removeEventListener("click", onMoreOutside, true); };
+  const onMoreOutside = (ev: MouseEvent): void => {
+    if (!(ev.target as HTMLElement).closest("#rail-more-menu, #rail-more-toggle")) closeMore();
+  };
+  moreToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (moreMenu) { closeMore(); return; }
+    const menu = document.createElement("div");
+    menu.id = "rail-more-menu";
+    menu.className = "code-menu rail-more-menu";
+    for (const it of MORE_ITEMS) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "app-rail-nav-item";
+      b.innerHTML = `${it.icon}<span>${it.label}</span>`;
+      b.addEventListener("click", () => { closeMore(); it.open(); });
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+    moreMenu = menu;
+    const r = moreToggle.getBoundingClientRect();
+    menu.style.left = `${r.right + 6}px`;
+    menu.style.top = `${Math.min(r.top, window.innerHeight - menu.offsetHeight - 8)}px`;
+    moreToggle.classList.add("open");
+    setTimeout(() => document.addEventListener("click", onMoreOutside, true), 0);
+  });
   // (Artifacts rides the same data-settings-sub path — every rail link opens
   // the settings modal; the files PAGE stays reachable via gotoSection for
   // other callers, and closing the modal parks the adopted node back.)
@@ -776,13 +644,50 @@ export function initHelp() {
   // sections live in the Settings modal now, so the rail no longer carries a
   // More toggle or its dynamic menu.
 
-  // User area — the shared account dropdown (help/user-menu section below):
-  // the wall rail's Account button and the settings rail's user chip both
-  // open it, anchored upward from the rail bottom.
+  // User area — dropdown opens upward: Settings / Account / Logout.
+  const GEAR_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  const USER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+  const LOGOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>`;
   const userBtn = document.getElementById("app-rail-user-btn");
+  let userMenu: HTMLDivElement | null = null;
+  let userMenuAnchor: HTMLElement | null = null;
+  const closeUserMenu = () => { userMenu?.remove(); userMenu = null; userMenuAnchor = null; };
+  /** The account dropdown — Docs / Settings / Account / Logout. ANCHOR-aware:
+   *  opens upward from a bottom-of-screen anchor (the retired rail button)
+   *  and downward from a top one. (No visible opener today — the retired
+   *  rail button keeps the binding; Settings/Account run through the dock's
+   *  gear → settings modal.) */
+  const openUserMenu = (anchor: HTMLElement): void => {
+    if (userMenu) { closeUserMenu(); return; }
+    const m = document.createElement("div");
+    m.className = "code-menu app-rail-user-menu";
+    const mk = (label: string, icon: string, cb: () => void, danger = false) => {
+      const b = document.createElement("button");
+      b.className = "code-menu-item" + (danger ? " danger" : "");
+      b.innerHTML = `${icon}<span></span>`;
+      (b.querySelector("span") as HTMLElement).textContent = label;
+      b.addEventListener("click", () => { closeUserMenu(); cb(); });
+      m.appendChild(b);
+    };
+    const DOCS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
+    mk("Docs", DOCS_SVG, () => gotoSection("docs"));
+    mk("Settings", GEAR_SVG, () => gotoSection("settings"));
+    mk("Account", USER_SVG, () => gotoSection("settings", "account"));
+    mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
+    document.body.appendChild(m);
+    const r = anchor.getBoundingClientRect();
+    const openUp = r.top > window.innerHeight / 2;
+    const top = openUp
+      ? Math.max(8, r.top - m.offsetHeight - 6)
+      : Math.min(r.bottom + 6, window.innerHeight - m.offsetHeight - 8);
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.offsetWidth - 8))}px`;
+    m.style.top = `${top}px`;
+    userMenu = m;
+    userMenuAnchor = anchor;
+  };
   userBtn?.addEventListener("click", (e) => {
     e.stopPropagation();
-    openAccountMenu(userBtn);
+    openUserMenu(userBtn);
   });
   document.addEventListener("mousedown", (e) => {
     if (userMenu && !userMenu.contains(e.target as Node) && !userMenuAnchor?.contains(e.target as Node)) closeUserMenu();
@@ -790,8 +695,7 @@ export function initHelp() {
   // The wall's dock gear lands here (the workbench bundle can't import this
   // module): open the SETTINGS MODAL — gotoSection("settings") is the modal
   // path. Account/Logout live inside it.
-  (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings =
-    (sub?: string) => (sub ? openSettingsModal(sub) : gotoSection("settings"));
+  (window as unknown as { __glyphhOpenSettings?: () => void }).__glyphhOpenSettings = () => gotoSection("settings");
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
   // repaints it instead of showing the previous identity all run.
@@ -818,9 +722,9 @@ export function initHelp() {
   boot("marketplace", initMarketplace);
   boot("connections", initConnections);
   boot("layouts", initLayoutsEvents);
+  boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("apikeys", initApiKeys);
-  boot("mcp", initMcpPanel);
   boot("support", initSupportPanel);
   boot("guardrails", initGuardrails);
   boot("org", initOrgPanel);
@@ -829,9 +733,8 @@ export function initHelp() {
   boot("skills-library", initSkillsLibraryEvents);
   boot("agents", initAgentsEvents);
   boot("skills", initSkills);
-  // The agent workbench ("code") no longer boots — LAUNCH PAD cut, 2026-08-22.
-  // initCode/wireGlobalDotCommands were its only entry points; with them gone
-  // the entire agent/session surface is unreachable (deletion is Stage 2).
+  boot("code", initCode);
+  boot("dot-commands", wireGlobalDotCommands);
   // Typing the exact `.dip` sequence ANYWHERE (agent input, any field, or no
   // field at all) opens the drip picker — see help/dip-watch.ts.
   wireDipWatcher();

@@ -1,0 +1,16 @@
+        <!-- Files — the ARTIFACTS gallery. A first-class object browser over the
+             user's stored artifacts (R2-backed, via the SDK's files resource):
+             code, text, markdown, images, PDFs. Read-first grid of cards; a card
+             opens by kind in the workbench (Monaco for code/text/markdown, a
+             preview panel for image/pdf). "New artifact" → files.create. -->
+        <div class="help-section" data-section="files">
+          <h2>Artifacts</h2>
+          <p class="section-desc">Your artifacts — code, notes, docs, images, and PDFs the agent and you create. Open one to view or edit it in the workbench.</p>
+          <div id="files-toolbar" class="crud-toolbar">
+            <input id="file-search" type="text" class="crud-search" placeholder="Search artifacts..." spellcheck="false" autocomplete="off" />
+            <button id="file-new-btn" class="action-btn primary">+ New artifact</button>
+          </div>
+          <div id="files-error" class="crud-form-error hidden"></div>
+          <div id="files-empty" class="crud-empty hidden">No artifacts yet — create one, or ask the agent to.</div>
+          <div id="files-gallery" class="files-gallery"></div>
+        </div>
