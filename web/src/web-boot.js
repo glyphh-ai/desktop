@@ -305,7 +305,7 @@ async function showDevice(shownAt) {
   step.append(legal);
 }
 
-function showLogin(shownAt, initialError) {
+function showLogin(shownAt, initialError, extras) {
   dismissSplash(shownAt);
   mountLogin({
     googleClientId: (typeof window !== 'undefined' && window.__GLYPHH_GOOGLE_CLIENT_ID__) || null,
@@ -314,6 +314,7 @@ function showLogin(shownAt, initialError) {
     onStartEmailLink: startEmailLink,
     onAuthed: () => enterApp(shownAt),
     initialError,
+    ...(extras || {}),
   });
 }
 
@@ -406,6 +407,28 @@ export async function startWebBoot(overrides = {}) {
   const invite = await maybeAcceptInvite(authed);
   if (invite === 'accepted') return;
   if (invite && invite.error) return showLogin(shownAt, invite.error);
+
+  // Signed OUT with an invite in hand: the login shell must SAY SO — a bare
+  // login after pasting an invite link reads as "nothing happened". Peek the
+  // invite (public endpoint) and frame the page around accepting it.
+  if (!authed) {
+    let stashToken = '';
+    try { stashToken = sessionStorage.getItem('glyphhInviteToken') || ''; } catch { /* */ }
+    if (stashToken) {
+      let peek = null;
+      try {
+        const r = await fetch(`/api/org/invites/${encodeURIComponent(stashToken)}`);
+        if (r.ok) peek = (await r.json()).data || null;
+      } catch { /* offline — the generic login still works */ }
+      return showLogin(shownAt, undefined, peek ? {
+        title: `Join ${peek.orgName}`,
+        lede: `You've been invited to ${peek.orgName}. Sign in as ${peek.email} to accept.`,
+      } : {
+        title: 'Accept your invite',
+        lede: 'Sign in with the email the invite was sent to.',
+      });
+    }
+  }
 
   const state = decideBootState({
     pathname: window.location.pathname,
