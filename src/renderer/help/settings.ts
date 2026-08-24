@@ -579,19 +579,22 @@ export async function loadUsageAppView(): Promise<void> {
   // identical on both surfaces by construction.
   const api = accountApi();
   try {
-    const [status, credits, topup] = await Promise.all([
-      api.status(),
-      api.credits(),
+    // dashboardData is the LEDGER truth on both surfaces (desktop home-ipc /
+    // the web contract): month-to-date spend from usage.summary, the plan's
+    // name + allowance off the catalog, the org balance. The old derivation
+    // (allowance − remaining grant credits) INVENTED spend after any
+    // mid-cycle plan change — a fresh Basic upgrade read as "1,800 spent".
+    const [data, topup] = await Promise.all([
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; credits?: number; allowance?: number; spendCredits?: number } | undefined>,
       api.autotopup().catch(() => null),
     ]);
-    const tier = (status?.tier || "free");
     const planEl = el("ua-plan");
-    if (planEl) planEl.textContent = `Glyphh ${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
-    // MICRO-credits on the wire. Used = the month's allowance minus what's
-    // left of the grant lot; purchased credits sit in their own lot.
-    const allowance = Math.max(0, credits?.allowance ?? 0);
-    const grants = Math.max(0, credits?.grants ?? 0);
-    const used = Math.max(0, allowance - grants);
+    if (planEl && data?.plan) {
+      planEl.textContent = data.plan.includes(" ") ? data.plan
+        : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
+    }
+    const allowance = Math.max(0, data?.allowance ?? 0);      // whole credits
+    const used = Math.max(0, Math.round(data?.spendCredits ?? 0));
     const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
     const fill = el("ua-month-fill");
     if (fill) fill.style.width = `${pct}%`;
@@ -602,11 +605,11 @@ export async function loadUsageAppView(): Promise<void> {
     const resetEl = el("ua-month-reset");
     if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
     const spentEl = el("ua-spent");
-    if (spentEl) spentEl.textContent = `${Math.floor(used / 1_000_000).toLocaleString()} credits`;
+    if (spentEl) spentEl.textContent = `${used.toLocaleString()} credits`;
     const spentReset = el("ua-spent-reset");
     if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
     const balEl = el("ua-balance");
-    if (balEl) balEl.textContent = Math.floor((credits?.balance ?? 0) / 1_000_000).toLocaleString();
+    if (balEl) balEl.textContent = Math.max(0, data?.credits ?? 0).toLocaleString();
     const t = el("ua-autotopup") as HTMLInputElement | null;
     if (t && topup) t.checked = !!topup.enabled;
     const reload = el("ua-reload-state");
