@@ -10,7 +10,7 @@
 
 import { cellValue, parseA1, type ChartSpec, type Workbook, type Worksheet } from "./sheets-engine";
 
-const PALETTE = ["#8c3bf2", "#38bdf8", "#f0a63d", "#2dd4bf", "#f472b6", "#a3e635", "#fb7185", "#c9a2ff"];
+const PALETTE = ["#af5fff", "#38bdf8", "#f0a63d", "#2dd4bf", "#f472b6", "#a3e635", "#fb7185", "#c9a2ff"];
 
 const esc = (s: unknown): string => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 

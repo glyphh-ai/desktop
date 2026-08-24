@@ -27,15 +27,15 @@
   --text-faint: #9ca3af;
   --white: #111111;
   --hover: #f0f0f0;
-  --accent: #8c3bf2;
-  --accent-hover: #a855f7;
-  --accent-text: #b975f9;
+  --accent: #af5fff;
+  --accent-hover: #c184ff;
+  --accent-text: #cda2ff;
   --accent-bg: #f5ecfd;
   --success: #16a34a;        /* connected-green (matches styles.css light) */
   --danger: #e5484d;         /* matches styles.css light */
   --warning: #f59e0b;        /* needs-input amber (matches desktop .input) */
   --overlay-bg: rgba(0, 0, 0, 0.3);
-  --grad-accent: linear-gradient(to top right, #8c3bf2, #ec4899);
+  --grad-accent: linear-gradient(to top right, #af5fff, #ec4899);
   --radius: 10px;
   --radius-sm: 8px;
   --transition: 0.15s ease;
@@ -54,9 +54,9 @@
   --text-faint: #808080;
   --white: #ffffff;
   --hover: #303035;
-  --accent: #8c3bf2;
-  --accent-hover: #a855f7;
-  --accent-text: #b975f9;
+  --accent: #af5fff;
+  --accent-hover: #c184ff;
+  --accent-text: #cda2ff;
   --accent-bg: #241a2e;
   --success: #3fb950;        /* connected-green (matches styles.css dark) */
   --danger: #f85149;         /* matches styles.css dark */
@@ -1775,7 +1775,7 @@ body {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(to top right, #8c3bf2, #ec4899);  /* --grad-accent */
+  background: linear-gradient(to top right, #af5fff, #ec4899);  /* --grad-accent */
   transform: translateX(-100%);
   transition: none;
 }
@@ -2032,8 +2032,8 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
   --border:#3a2857; --border-2:#46306a;
   --text:#f1ecf8; --text-2:#c4b6da; --text-3:#9485ad; --text-faint:#544a6a;
   --white:#ffffff; --hover:#2e2046;
-  --accent:#ad5df8; --accent-hover:#b975f9; --accent-text:#c98ffb; --accent-bg:#2a1a40;
-  --success:#28c840; --danger:#ff5f57; --overlay-bg:rgba(10,4,20,0.6);
+  --accent:#ad5df8; --accent-hover:#cda2ff; --accent-text:#c98ffb; --accent-bg:#2a1a40;
+  --success:#28c840; --danger:#ff7a70; --overlay-bg:rgba(10,4,20,0.6);
 }
 [data-theme="prism"] {
   color-scheme: light;
@@ -2063,7 +2063,7 @@ select.m-field-in { appearance: none; -webkit-appearance: none; background-image
   --white:#ffffff; --hover:#1f1f1f;
   --accent:#b066ff; --accent-hover:#c68cff; --accent-text:#c68cff; --accent-bg:#221133;
   --success:#00e676; --danger:#ff2b2b; --overlay-bg:rgba(0,0,0,0.8);
-  --grad-accent:linear-gradient(120deg,#b066ff,#8c3bf2);
+  --grad-accent:linear-gradient(120deg,#b066ff,#af5fff);
 }
 [data-theme="claude"] {
   color-scheme: light;

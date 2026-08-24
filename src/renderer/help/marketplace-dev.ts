@@ -504,7 +504,7 @@ function paintHomeCharts(host: HTMLElement, rows: MktEarningRow[]): void {
   const toCr = (micro: number): number => micro / 1_000_000;
   const ink = cssVar("--text-3") || "#868686";
   const grid = cssVar("--border") || "rgba(128,128,128,0.2)";
-  const accent = cssVar("--accent") || "#8c3bf2";
+  const accent = cssVar("--accent") || "#af5fff";
 
   const barCtx = host.querySelector<HTMLCanvasElement>("#mcc-chart-days")?.getContext("2d");
   if (barCtx) {

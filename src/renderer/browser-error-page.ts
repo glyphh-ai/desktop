@@ -373,7 +373,7 @@ export const CSS_VAR_PALETTE: ErrorPalette = {
   border: "var(--border, #2a2a32)",
   text: "var(--text, #e6e6ea)",
   dim: "var(--text-3, #8a8a95)",
-  accent: "var(--accent, #8c3bf2)",
+  accent: "var(--accent, #af5fff)",
   danger: "var(--danger, #ef4444)",
   warning: "var(--warning, #f59e0b)",
 };

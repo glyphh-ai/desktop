@@ -31,8 +31,8 @@ html[data-theme="dark"]  { --sf-edge: #454545; }
   min-width: 152px;
   max-width: 224px;
   padding: 9px 12px;
-  border: 1px solid var(--sf, #8c3bf2);
-  border-left: 3px solid var(--sf, #8c3bf2);
+  border: 1px solid var(--sf, #af5fff);
+  border-left: 3px solid var(--sf, #af5fff);
   border-radius: 8px;
   background: var(--surface-2, #1a1a1a);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.22);
@@ -82,7 +82,7 @@ html[data-theme="dark"]  { --sf-edge: #454545; }
   font-size: 9px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--sf, #8c3bf2);
+  color: var(--sf, #af5fff);
   margin-bottom: 3px;
 }
 

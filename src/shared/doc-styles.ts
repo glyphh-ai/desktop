@@ -19,7 +19,7 @@ function t(name: string, label: string, v: Partial<DocTheme["vars"]>): DocTheme 
 
 /** Built-in doc themes (the `--doc-*` vars the panel applies to the paper). */
 export const DOC_THEMES: Record<string, DocTheme> = {
-  classic: t("classic", "Classic — serif body, clean sans headings (the default)", { "font-body": SERIF, "font-head": SANS, accent: "#8c3bf2", maxw: "760px" }),
+  classic: t("classic", "Classic — serif body, clean sans headings (the default)", { "font-body": SERIF, "font-head": SANS, accent: "#af5fff", maxw: "760px" }),
   editorial: t("editorial", "Editorial — all-serif, warm and literary", { "font-body": SERIF, "font-head": SERIF, accent: "#b3541e", maxw: "720px" }),
   modern: t("modern", "Modern — all-sans, tight and product-like", { "font-body": SANS, "font-head": SANS, accent: "#2563eb", maxw: "780px" }),
   technical: t("technical", "Technical — sans body, monospaced headings", { "font-body": SANS, "font-head": MONO, accent: "#2dd4bf", maxw: "820px" }),

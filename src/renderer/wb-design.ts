@@ -88,10 +88,10 @@ function starterDoc(name: string): DesignDoc {
     name,
     brand: { tagline: "Your brand, everywhere your org builds.", tone: ["confident", "modern"] },
     colors: {
-      primary: "#8c3bf2", accent: "#ec4899", background: "#0e0e12",
+      primary: "#af5fff", accent: "#ec4899", background: "#0e0e12",
       surface: "#17171d", text: "#f5f5f7", muted: "#9a9aa4",
       palette: [
-        { name: "Primary", hex: "#8c3bf2", role: "actions" },
+        { name: "Primary", hex: "#af5fff", role: "actions" },
         { name: "Accent", hex: "#ec4899", role: "highlights" },
         { name: "Success", hex: "#10b981", role: "positive" },
       ],
@@ -102,7 +102,7 @@ function starterDoc(name: string): DesignDoc {
       mono: { family: "JetBrains Mono", fallback: "Menlo", source: "google" },
     },
     type: { baseSize: 16, scale: 1.25, headingWeight: 750, letterSpacing: -0.02 },
-    styles: { radius: 14, borderWidth: 1, shadow: "medium", density: "comfortable", gradient: { from: "#8c3bf2", to: "#ec4899", angle: 135 } },
+    styles: { radius: 14, borderWidth: 1, shadow: "medium", density: "comfortable", gradient: { from: "#af5fff", to: "#ec4899", angle: 135 } },
     sources: [{ type: "prompt", ref: "＋ New starter", extractedAt: new Date().toISOString() }],
   };
 }

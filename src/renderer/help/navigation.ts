@@ -291,7 +291,7 @@ export function openSettingsModal(sub?: string): void {
     return;
   }
   // Already open — just switch the sub-panel.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "usage";
+  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "account";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
@@ -486,7 +486,7 @@ export function openSettingsModal(sub?: string): void {
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
-  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "usage"));
+  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
 }
 
 /** Hide the admin-only surfaces for non-admins on modal open — the SAME rule

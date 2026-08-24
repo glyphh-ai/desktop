@@ -254,7 +254,7 @@ const CHARACTERS: Record<MascotKey, (c: string) => string> = {
 };
 
 /** The accent colour these cousins wear — theme-aligned, follows --accent. */
-const ACCENT = "var(--accent, #8c3bf2)";
+const ACCENT = "var(--accent, #af5fff)";
 
 /** Local-hour → time-of-day mascot. Buckets: 5–10 morning, 10–14 lunch,
  * 14–17 afternoon, 17–22 evening, else latenight. Returns the SVG string. */

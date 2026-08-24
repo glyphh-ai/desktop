@@ -72,7 +72,7 @@ export function buildDeckDocument(title: string, slidesHtml: string): string {
           transition: opacity .5s ease, transform .5s ease; }
   .slide.on .frag.show { opacity: 1; transform: none; }
   #prog { position: fixed; left: 0; bottom: 0; height: 3px; width: 0; z-index: 9;
-          background: var(--slide-accent, #8c3bf2); transition: width .3s ease; }
+          background: var(--slide-accent, #af5fff); transition: width .3s ease; }
 </style></head>
 <body>
 <div id="stage">

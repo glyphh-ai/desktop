@@ -1094,7 +1094,7 @@ function renderUsageChart(days: AdminUsageDay[]): void {
       datasets: [{
         label: "credits",
         data: days.map((d) => microToCredits(d.credits)),
-        backgroundColor: cssVar("--accent") || "#8c3bf2",
+        backgroundColor: cssVar("--accent") || "#af5fff",
         borderRadius: 3,
         maxBarThickness: 34,
       }],

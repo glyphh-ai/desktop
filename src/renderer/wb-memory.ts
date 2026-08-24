@@ -50,7 +50,7 @@ const api = () => (window as unknown as { glyphh?: {
 const TABS = ["Facts", "Semantic", "Short-term", "adaL", "Glyphh"] as const;
 
 const TIER_COLOR: Record<string, string> = { long: "#f5f5f7", mid: "#ec4899", short: "#2dd4bf" };
-const TURN_COLOR = "#8c3bf2";
+const TURN_COLOR = "#af5fff";
 
 /** "[2026-08-17] user: text" → its parts; missing prefixes degrade gracefully. */
 function parseTurn(t: string): { date: string; speaker: string; text: string } {
@@ -405,7 +405,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
       <div class="gmem-3d">
         <canvas class="gmem-3d-canvas"></canvas>
         <div class="gmem-3d-legend">
-          <span><i style="background:#8c3bf2"></i> entity</span>
+          <span><i style="background:#af5fff"></i> entity</span>
           <span><i style="background:#f5f5f7"></i> filler</span>
           <span class="gmem-hint">drag orbits · wheel zooms · shift-drag pans · click a node</span>
         </div>
@@ -486,7 +486,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
 
     interface Pick { mesh: any; name: string; kind: "entity" | "filler" }
     const picks: Pick[] = [];
-    const entityMat = new THREE.MeshStandardMaterial({ color: 0x8c3bf2, roughness: 0.3, metalness: 0.3 });
+    const entityMat = new THREE.MeshStandardMaterial({ color: 0xaf5fff, roughness: 0.3, metalness: 0.3 });
     const fillerGeo = new THREE.SphereGeometry(0.65, 14, 14);
     const entityGeo = new THREE.BoxGeometry(2.1, 2.1, 2.1);
     for (const [name, at] of epos) {
@@ -510,7 +510,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
     });
     const edgeGeo = new THREE.BufferGeometry();
     edgeGeo.setAttribute("position", new THREE.BufferAttribute(edgePos, 3));
-    scene.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x8c3bf2, transparent: true, opacity: 0.3 })));
+    scene.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0xaf5fff, transparent: true, opacity: 0.3 })));
 
     // Same hand-rolled controls as the Glyphh space.
     const target = new THREE.Vector3(0, 0, 0);
@@ -569,7 +569,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
         : facts.filter((f) => f.filler === pick.name);
       info.classList.remove("hidden");
       info.innerHTML = `
-        <div class="gmem-3d-info-kind" style="color:${pick.kind === "entity" ? "#8c3bf2" : "#d9d9e2"}">${pick.kind}</div>
+        <div class="gmem-3d-info-kind" style="color:${pick.kind === "entity" ? "#af5fff" : "#d9d9e2"}">${pick.kind}</div>
         <div class="gmem-3d-info-text"></div>
         <div class="gmem-3d-info-meta gmem-3d-info-lines"></div>`;
       (info.querySelector(".gmem-3d-info-text") as HTMLElement).textContent = pick.name;
@@ -707,7 +707,7 @@ export function initMemory(host: MemoryHost): MemoryPanel {
       geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       scene.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity })));
     };
-    band("semantic", 0x8c3bf2, 0.65);
+    band("semantic", 0xaf5fff, 0.65);
     band("neural", 0x6b7280, 0.14);
 
     // Orbit / zoom / pan — hand-rolled, no helper gizmos, no preview windows.

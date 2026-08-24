@@ -138,7 +138,7 @@ function drawWave(): void {
   canvas.parentElement?.classList.add("code-recording");   // hides the placeholder
   const ctx2d = canvas.getContext("2d");
   if (!ctx2d) return;
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#8c3bf2";
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#af5fff";
   const BARS = 32;
   const freq = new Uint8Array(analyser.frequencyBinCount);
   const step = Math.max(1, Math.floor(freq.length / BARS));

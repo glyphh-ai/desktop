@@ -648,7 +648,7 @@ export function initMusic(host: MusicHost): MusicViews {
         canvas.width = wrapW; canvas.height = h;
         const g = canvas.getContext("2d")!;
         g.clearRect(0, 0, wrapW, h);
-        g.fillStyle = "rgba(140,59,242,0.35)";
+        g.fillStyle = "rgba(175,95,255,0.35)";
         g.font = "12px sans-serif";
         g.fillText(song.audioAssetId ? "decoding…" : "no take yet — generating attaches it here when it lands (refresh)", 14, h / 2);
         return;
@@ -671,7 +671,7 @@ export function initMusic(host: MusicHost): MusicViews {
         const x = i * (barW + gap);
         const t = i * interval;
         const inSel = sel && t >= Math.min(sel.a, sel.b) && t <= Math.max(sel.a, sel.b);
-        g.fillStyle = inSel ? "#ec4899" : "#8c3bf2";
+        g.fillStyle = inSel ? "#ec4899" : "#af5fff";
         g.globalAlpha = inSel ? 0.95 : 0.8;
         g.fillRect(x, (h - bh) / 2, barW, bh);
       }
