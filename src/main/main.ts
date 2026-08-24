@@ -65,6 +65,9 @@ import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncB
 import { initRailCollapse } from "./screen-layout";
 import { McpManager } from "./mcp-manager";
 import { startMcpOAuthRefresh, stopMcpOAuthRefresh } from "./mcp-oauth-refresh";
+import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
+import { stopAllAppWorkers } from "./glyphh-app-worker";
+import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
 import { installAttachHandlers } from "./attach-handlers";
 import { installAttachRunHandlers } from "./attach-run";
@@ -81,8 +84,16 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
+import { registerFilesIpc } from "./files-ipc";
+import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
-import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
+import { registerOfficeExportIpc } from "./office-export";
+import { registerOfficeDocsIpc } from "./office-docs";
+import { registerOfficeSheetsIpc } from "./office-sheets";
+import { registerDesignIpc } from "./design";
+import { registerMemoryPanelIpc } from "./memory-panel";
+import { registerMediaPanelIpc } from "./media-panel";
+import { registerMusicPanelIpc } from "./music-panel";
 import { registerRunStreamIpc } from "./run-stream-ipc";
 import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
@@ -293,8 +304,10 @@ async function boot() {
   // server-side (connector tools + custom MCP connections).
   mcpManager = new McpManager();
 
-  // The local MCP server (127.0.0.1) is gone — the desktop hosts no local
-  // runtime/MCP surface. There is only the cloud rrotor.
+  // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
+  // LLMs. The cloud relay that let external callers reach in was removed; this
+  // is the only remaining MCP surface, and it shares the handler registry.
+  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
@@ -463,9 +476,6 @@ async function boot() {
 
   // Create window
   await createWindow();
-
-  // PROTOTYPE — the Echo agent attached to the frontmost desktop app (⌘⇧G toggles).
-  registerAgentDockIpc();
   // Background mode: rebuild the window when the tray asks, and reflect the
   // current setting (tray + launch-at-login) now.
   setReopenHandler(() => { void createWindow(); });
@@ -988,9 +998,26 @@ async function boot() {
   registerAdminIpc();
 
   // Files — the artifacts gallery's transport, same main-process SDK client.
+  registerFilesIpc();
 
-  // Panel pop-out — any web panel as a standalone OS window.
+  // Glyphh Office · Slides — the Slides panel's org deck library.
+  registerGPointIpc();
+
+  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
   registerPopoutIpc();
+
+  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
+  registerOfficeExportIpc();
+
+  // Glyphh Office · Docs — the Docs panel's org library transport.
+  registerOfficeDocsIpc();
+
+  // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
+  registerOfficeSheetsIpc();
+  registerDesignIpc();
+  registerMemoryPanelIpc();
+  registerMediaPanelIpc();
+  registerMusicPanelIpc();
 
   // Run-stream observer bridge — the renderer watches runs executing on OTHER
   // surfaces (web/cloud) through the main-process SDK client.
@@ -1254,7 +1281,6 @@ function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
-  try { disposeAgentDock(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
@@ -1280,6 +1306,9 @@ function cleanupAll(backstopMs = 4000) {
     ["agentScheduler", () => stopAgentScheduler()],
     ["connectors", () => connectorManager?.cleanup()],
     ["drips", () => dripManager?.cleanup()],
+    ["localMcpServer", () => stopLocalMcpServer()],
+    ["appWorkers", () => stopAllAppWorkers()],
+    ["schedules", () => stopAllSchedules()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],
   ];

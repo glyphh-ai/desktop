@@ -1,7 +1,0 @@
-# Point the Glyphh client at the LOCAL stack for development.
-# Without these, GLYPHH_SERVER_URL defaults to https://api.glyphh.ai (production),
-# so both login and the agent proxy hit production and the local server is
-# never used. Loaded via `import "dotenv/config"` in src/main/main.ts.
-GLYPHH_SERVER_URL=http://localhost:3001
-GLYPHH_PLATFORM_URL=http://localhost:3002
-

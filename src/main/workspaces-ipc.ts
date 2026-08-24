@@ -35,9 +35,6 @@ export function registerWorkspacesIpc(): void {
     wrap(() => getClient().workspaces.update(String(id), input)));
   ipcMain.handle("workspaces-delete", (_e, id: string) =>
     wrap(() => getClient().workspaces.delete(String(id))));
-  // The CALLER's effective grants — the app-governance surfaces (Releases-tab
-  // Access picker, marketplace install CTA) narrow their controls to it.
-  ipcMain.handle("workspaces-grants", () => wrap(() => getClient().workspaces.grants()));
 
   // ── What the tabs can grant WITHIN ──────────────────────────────────────
   // Models: the org's EFFECTIVE set (global catalog ∩ org-supported ∩ the

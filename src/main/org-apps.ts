@@ -33,18 +33,12 @@ export interface OrgAppRow {
   execPath: string | null;
   appArchetype: string | null;
   launchConfig: Record<string, unknown> | null;
-  /** Who may reach the deployed app — 'public', 'members', or 'org-idp' (the customer's own IdP via WorkOS). */
+  /** Who may reach the deployed app — 'public' or 'members'. */
   access: string;
-  /** org-idp binding: the WorkOS Organization the app authenticates against, or null. */
-  workosOrgId: string | null;
   /** True when THIS org published the app — gates the publish-side tabs. */
   owned: boolean;
   /** Newest live release version, or null — drives the auto-update check. */
   latestVersion: string | null;
-  /** WHERE the app's worker + schedules run (one execution home per (org, app),
-   *  app-runtime-spec): "local" = this desktop arms them; "regional" = the
-   *  org's regional rrotor pod does, and this desktop must stand down. */
-  executionHome: "local" | "regional";
   /** The connections the app's manifest requires, with connected status. */
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
@@ -76,10 +70,8 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   appArchetype: "glyphh-self",
   launchConfig: null,
   access: "members",
-  workosOrgId: null,
   owned: true,
   latestVersion: null,
-  executionHome: "local",
   requiredConnections: [],
   connectionIds: [],
   iconUrl: null,
@@ -134,10 +126,8 @@ function toRow(app: OrgApp): OrgAppRow {
     appArchetype: app.kind === "glyphh" ? "glyphh-app" : app.kind,
     launchConfig: app.config ?? null,
     access: app.access,
-    workosOrgId: app.workosOrgId ?? null,
     owned: app.owned,
     latestVersion: app.latestVersion,
-    executionHome: app.executionHome === "regional" ? "regional" : "local",
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     iconUrl: app.listing?.iconUrl ?? null,
@@ -177,9 +167,8 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
         system: true,                 // house-owned: not deletable as a user row
         url: d.url, isBrowser: true, execPath: null,
         appArchetype: "web", launchConfig: null,
-        access: "members", workosOrgId: null, owned: false,
-        latestVersion: null, executionHome: "local",
-        requiredConnections: [], connectionIds: [], iconUrl: null,
+        access: "members", owned: false,
+        latestVersion: null, requiredConnections: [], connectionIds: [], iconUrl: null,
         mcp: null, commands: {},
         createdAt: "", updatedAt: "",
       }));
@@ -189,8 +178,6 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
     // recents reference it — normalize its archetype, and pin it first.
     // Dropping it in favor of a synthetic row orphans those references (cells
     // render raw UUIDs and the picker loses the app).
-    // (Execution-home reconciliation removed: nothing runs locally anymore —
-    // the cloud runtime owns every app's worker and schedules.)
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };

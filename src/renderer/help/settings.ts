@@ -1,7 +1,8 @@
 /**
- * Settings section — model config, toggles.
+ * Settings section — model config, toggles, remote relay.
  */
 
+import { confirmAction } from "./shared.js";
 import { loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { initBilling, loadBilling } from "./settings-billing.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
@@ -19,34 +20,50 @@ export { loadBilling, loadProfile, loadOrg, loadMembers, loadWorkspacesPanel };
 // toggles) owns its own save.
 
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
+const settingsBrowserHome = document.getElementById("settings-browser-home") as HTMLSelectElement;
+const settingsBrowserHomeUrl = document.getElementById("settings-browser-home-url") as HTMLInputElement;
+const browserHomeCustomRow = document.getElementById("browser-home-custom-row")!;
 
-/** Settings → Desktop: the DIRECTORY GRANT — the one local folder this machine
- *  shares with the user's Glyphh apps. Electron-only (navigation.ts aliases the
- *  "desktop" sub to General on web, where there is no local folder to grant). */
+// MCP is now its own top-level dashboard tab (data-section="mcp"). The relay
+// refreshers live inside initSettings' scope, so initSettings assigns this hook
+// and loadMcp() (called by navigation on section open) invokes it.
+let mcpSectionRefresh: () => void = () => {};
+
+/** Settings → Desktop: live attach status (ported from the platform's Settings →
+ *  Desktop page). Polls attach.status() through the SDK handle on web; on the
+ *  desktop build the machine IS this app, so it reports attached locally. */
 function initDesktopPanel(): void {
-  const pathEl = document.getElementById("desktop-grant-path") as HTMLInputElement | null;
-  const changeBtn = document.getElementById("desktop-grant-change") as HTMLButtonElement | null;
+  const dot = document.getElementById("desktop-attach-dot");
+  const title = document.getElementById("desktop-attach-title");
+  const sub = document.getElementById("desktop-attach-sub");
+  const get = document.getElementById("desktop-attach-get");
+  if (!dot || !title || !sub) return;
+
+  const sdk = (window as unknown as { glyphhSdk?: { attach?: { status?: () => Promise<{ attached?: boolean; machines?: Array<{ app?: string; version?: string; capabilities?: string[] }> }> } } }).glyphhSdk;
   const isWeb = typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web");
-  if (!pathEl || !changeBtn || isWeb) return;
 
-  const paint = async (): Promise<void> => {
-    const dir = (await window.glyphh.getPreference("desktopGrantedDirectory", "")) as string;
-    pathEl.value = dir || "";
+  const paint = (attached: boolean, machine?: { app?: string; version?: string; capabilities?: string[] }) => {
+    dot.className = `connection-status-dot ${attached ? "connected" : "disconnected"}`;
+    title.textContent = attached ? "Desktop attached" : "No desktop attached";
+    sub.textContent = attached
+      ? `${machine?.app || "glyphh-desktop"} ${machine?.version || ""} · ${(machine?.capabilities?.length || 0)} capabilities`.trim()
+      : "Open the Glyphh desktop app and sign in — it connects on its own.";
+    get?.classList.toggle("hidden", attached);
   };
-  void paint();
 
-  changeBtn.addEventListener("click", () => {
-    void window.glyphh.pickWorkingDir({ nullOnCancel: true }).then((picked) => {
-      if (!picked) return;
-      window.glyphh.setPreference("desktopGrantedDirectory", picked);
-      pathEl.value = picked;
-    });
-  });
-
-  // Repaint when the grant changes elsewhere (e.g. the welcome flow).
-  window.glyphh.onPreferenceChanged((key) => {
-    if (key === "desktopGrantedDirectory") void paint();
-  });
+  if (!isWeb) {
+    // On the desktop build this IS the machine.
+    paint(true, { app: "glyphh-desktop" });
+    return;
+  }
+  const refresh = () => {
+    void sdk?.attach?.status?.()
+      .then((st) => paint(!!st?.attached, st?.machines?.[0]))
+      .catch(() => paint(false));
+  };
+  refresh();
+  // Attach state flips when the desktop app opens/closes — poll while visible.
+  setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 }
 
 function initSettings() {
@@ -58,8 +75,34 @@ function initSettings() {
   initOrg();
   initMembers();
   initWorkspaces();
-  // Compaction guidance retired (2026-08-22) — it advised the agent's context
-  // compaction; the agent is gone.
+  // Compaction guidance saves ITSELF — debounced while typing, immediately on
+  // blur — with the standard "Saved" flash. No Save button (General's rule:
+  // every control owns its own save).
+  {
+    const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+    const status = document.getElementById("glyphh-agent-compact-status");
+    let timer = 0;
+    const save = (): void => {
+      if (!wcp) return;
+      const value = wcp.value.trim();
+      // The loader stamps the stored value into data-saved — an untouched (or
+      // reverted) field neither writes nor flashes.
+      if (value === (wcp.dataset.saved ?? "")) return;
+      wcp.dataset.saved = value;
+      void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", value)).then(() => {
+        if (status) {
+          status.textContent = "Saved";
+          status.className = "set-save-state success";
+          setTimeout(() => { status.textContent = ""; }, 1600);
+        }
+      });
+    };
+    wcp?.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(save, 700);
+    });
+    wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
+  }
 
   // The General tab's Guardrails group folds — same disclosure grammar as
   // Billing's Auto top-up / Invoices (aria-expanded bar + hidden body).
@@ -115,19 +158,242 @@ function initSettings() {
   }
 
 
-  // The local MCP server (127.0.0.1) is gone — the desktop no longer hosts any
-  // local runtime/MCP surface; there is only the cloud rrotor.
+  // The cloud relay (external LLMs driving this machine) was removed. Its
+  // in-page helper survives — escapeHtmlLocal is reused by the token list below.
+  function escapeHtmlLocal(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // ── Local MCP server (127.0.0.1) — the no-cloud alternative. Available to
+  // any user (it's purely local; no org/tier involved). ──
+  const localMcpSection = document.getElementById("local-mcp-section");
+  const localMcpToggle = document.getElementById("local-mcp-toggle") as HTMLInputElement | null;
+  const localMcpStatusEl = document.getElementById("local-mcp-status");
+  const localMcpBody = document.getElementById("local-mcp-body");
+  const localMcpPortInput = document.getElementById("local-mcp-port") as HTMLInputElement | null;
+  const localMcpConfigEl = document.getElementById("local-mcp-config");
+  const localMcpTokensListEl = document.getElementById("local-mcp-tokens-list");
+  const localMcpNewTokenBox = document.getElementById("local-mcp-new-token");
+  const localMcpNewTokenValue = document.getElementById("local-mcp-new-token-value");
+  const localMcpLabelInput = document.getElementById("local-mcp-token-label") as HTMLInputElement | null;
+
+  function renderLocalMcpConfig(port: number): void {
+    if (!localMcpConfigEl) return;
+    localMcpConfigEl.textContent = `{
+  "mcpServers": {
+    "glyphh-local": {
+      "type": "http",
+      "url": "http://127.0.0.1:${port}/mcp",
+      "headers": {
+        "Authorization": "Bearer <your-token>"
+      }
+    }
+  }
+}`;
+  }
+
+  async function refreshLocalMcp(): Promise<void> {
+    const s = await window.glyphh.localMcpStatus();
+    if (localMcpStatusEl) {
+      localMcpStatusEl.textContent = s.running ? `Running on http://127.0.0.1:${s.port}` : "Stopped.";
+      localMcpStatusEl.style.color = s.running ? "var(--accent)" : "var(--text-3)";
+    }
+    if (localMcpPortInput && document.activeElement !== localMcpPortInput) localMcpPortInput.value = String(s.port);
+    renderLocalMcpConfig(s.port);
+  }
+
+  async function renderLocalMcpTokens(): Promise<void> {
+    if (!localMcpTokensListEl) return;
+    localMcpTokensListEl.innerHTML = "";
+    const tokens = await window.glyphh.localMcpTokensList();
+    if (!tokens.length) {
+      localMcpTokensListEl.innerHTML = `<div style="font-size:12px;color:var(--text-3);">No tokens yet — generate one below.</div>`;
+      return;
+    }
+    for (const t of tokens) {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:6px;margin-bottom:4px;font-size:12px;";
+      const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "";
+      const expires = t.expiresAt ? new Date(t.expiresAt).toLocaleDateString() : "";
+      row.innerHTML = `<span style="flex:1;color:var(--text);">${escapeHtmlLocal(t.label || "(unnamed)")}</span><span style="color:var(--text-3);font-size:11px;">${created} → ${expires}</span><button class="action-btn danger" data-revoke="${escapeHtmlLocal(t.id)}" style="font-size:11px;padding:3px 10px;">Revoke</button>`;
+      row.querySelector("[data-revoke]")!.addEventListener("click", async () => {
+        if (!(await confirmAction({
+          title: `Revoke “${t.label || "this token"}”?`,
+          body: "Local tools using it stop working immediately.",
+          confirmLabel: "Revoke token",
+          danger: true,
+        }))) return;
+        await window.glyphh.localMcpTokensRevoke(t.id);
+        void renderLocalMcpTokens();
+      });
+      localMcpTokensListEl.appendChild(row);
+    }
+  }
+
+  function setLocalMcpBodyVisible(on: boolean): void {
+    if (localMcpBody) localMcpBody.style.display = on ? "" : "none";
+  }
+
+  // The local MCP server runs ON THIS MACHINE (127.0.0.1) — a browser tab has
+  // no machine to run it on, and the web bridge has no localMcp* IPC (the
+  // toggle threw). Keep the whole section hidden on web.
+  const mcpOnWeb = typeof document !== "undefined" && document.documentElement.classList.contains("glyphh-web");
+  if (localMcpSection && localMcpToggle && !mcpOnWeb) {
+    localMcpSection.classList.remove("hidden");
+    void (async () => {
+      const enabled = (await window.glyphh.getPreference("localMcpEnabled", false)) as boolean;
+      localMcpToggle.checked = enabled;
+      setLocalMcpBodyVisible(enabled);
+      await refreshLocalMcp();
+      await renderLocalMcpTokens();
+    })();
+
+    localMcpToggle.addEventListener("change", async () => {
+      const on = localMcpToggle.checked;
+      setLocalMcpBodyVisible(on);
+      const res = await window.glyphh.localMcpSetEnabled(on);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "var(--danger)";
+        }
+        localMcpToggle.checked = false;
+        setLocalMcpBodyVisible(false);
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-port-save")?.addEventListener("click", async () => {
+      const port = parseInt(localMcpPortInput?.value || "", 10);
+      const res = await window.glyphh.localMcpSetPort(port);
+      if (!res.ok && res.error) {
+        if (localMcpStatusEl) {
+          localMcpStatusEl.textContent = res.error;
+          localMcpStatusEl.style.color = "var(--danger)";
+        }
+        return;
+      }
+      await refreshLocalMcp();
+    });
+
+    document.getElementById("local-mcp-gen-token")?.addEventListener("click", async () => {
+      const label = localMcpLabelInput?.value.trim() || "default";
+      const res = await window.glyphh.localMcpTokensCreate(label);
+      if (localMcpLabelInput) localMcpLabelInput.value = "";
+      if (localMcpNewTokenBox && localMcpNewTokenValue) {
+        localMcpNewTokenValue.textContent = res.token;
+        localMcpNewTokenBox.classList.remove("hidden");
+      }
+      void renderLocalMcpTokens();
+    });
+
+    document.getElementById("local-mcp-copy-token")?.addEventListener("click", () => {
+      const val = localMcpNewTokenValue?.textContent || "";
+      window.glyphh.copyToClipboard(val);
+      const btn = document.getElementById("local-mcp-copy-token") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+
+    document.getElementById("local-mcp-copy-config")?.addEventListener("click", () => {
+      const val = localMcpConfigEl?.textContent || "";
+      window.glyphh.copyToClipboard(val);
+      const btn = document.getElementById("local-mcp-copy-config") as HTMLButtonElement;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    });
+  }
+
+  // Expose the MCP refreshers so the MCP tab can refresh on open.
+  mcpSectionRefresh = () => {
+    void refreshLocalMcp();
+    void renderLocalMcpTokens();
+  };
 
   // Show URL Bar toggle removed — only the Browser panel shows a URL bar
   // now; everything else (Agent, Plan, Workbench, internal yo://) doesn't.
 
-  // Browser homepage + app-panel URL bar retired (2026-08-22) — the Browser
-  // tool died with the dev-tools cut.
+  // Browser homepage
+  settingsBrowserHome.addEventListener("change", () => {
+    const val = settingsBrowserHome.value;
+    browserHomeCustomRow.classList.toggle("hidden", val !== "custom");
+    if (val !== "custom") {
+      window.glyphh.setPreference("browserHomepage", val);
+    }
+  });
+  settingsBrowserHomeUrl.addEventListener("change", () => {
+    const url = settingsBrowserHomeUrl.value.trim();
+    if (url) {
+      window.glyphh.setPreference("browserHomepage", "custom");
+      window.glyphh.setPreference("browserHomepageUrl", url);
+    }
+  });
 
+  // Show the address bar on app panels by default (roams to the server, since
+  // it's not device-local). The workbench listens for the change to apply it
+  // to newly-opened panels live.
+  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
+  appUrlBar?.addEventListener("change", () => {
+    void window.glyphh.setPreference("showAppUrlBar", appUrlBar.checked);
+    document.dispatchEvent(new CustomEvent("glyphh:app-urlbar-default", { detail: appUrlBar.checked }));
+  });
+
+  // Dock auto-hide (default ON) — the echo surface re-reads on the event.
+  {
+    const t = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
+    t?.addEventListener("change", () => {
+      void Promise.resolve(window.glyphh.setPreference("echoAutoHideDock", t.checked)).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
+      });
+    });
+  }
   // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
   // drives the caret panel), persisted on release.
+  {
+    const o = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
+    const ov = document.getElementById("settings-echo-agent-opacity-val");
+    const paint = (): void => {
+      if (!o) return;
+      document.documentElement.style.setProperty("--echo-agent-opacity", o.value);
+      if (ov) ov.textContent = `${Math.round(Number(o.value) * 100)}%`;
+    };
+    o?.addEventListener("input", paint);
+    o?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentOpacity", Number(o.value));
+    });
+  }
   // TEXT transparency — its own var, independent of the panel's.
+  {
+    const t = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
+    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
+    const paint = (): void => {
+      if (!t) return;
+      document.documentElement.style.setProperty("--echo-agent-text-opacity", t.value);
+      if (tv) tv.textContent = `${Math.round(Number(t.value) * 100)}%`;
+    };
+    t?.addEventListener("input", paint);
+    t?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentTextOpacity", Number(t.value));
+    });
+  }
   // Max panel height (vh) — how tall the agent panel may grow.
+  {
+    const m = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
+    const mv = document.getElementById("settings-echo-agent-max-h-val");
+    const paint = (): void => {
+      if (!m) return;
+      document.documentElement.style.setProperty("--echo-agent-max-h", `${m.value}vh`);
+      if (mv) mv.textContent = `${m.value}%`;
+    };
+    m?.addEventListener("input", paint);
+    m?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentMaxH", Number(m.value));
+    });
+  }
 
   // Command center: icon size (live CSS var) + apps per page (the launcher
   // re-reads on the event and re-chunks its pages).
@@ -174,6 +440,18 @@ function initSettings() {
   }
 
   // Dock zoom (magnification strength; 1 = off) — same live re-read event.
+  {
+    const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
+    const zv = document.getElementById("settings-dock-zoom-val");
+    const paint = (): void => { if (z && zv) zv.textContent = Number(z.value) <= 1 ? "Off" : `${Math.round((Number(z.value) - 1) * 100)}%`; };
+    z?.addEventListener("input", paint);
+    z?.addEventListener("change", () => {
+      paint();
+      void Promise.resolve(window.glyphh.setPreference("echoDockZoom", Number(z.value))).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
+      });
+    });
+  }
 
   // Interface sound volume (his ask, 2026-08-19) — pref uiSoundVolume 0..1,
   // server-backed like every pref (/api/me/prefs → db). Live: dragging updates
@@ -273,6 +551,13 @@ async function loadSettings() {
   void loadMembers();
   // Workspaces hides its own nav item unless the caller is an org admin.
   void loadWorkspacesPanel();
+  // Glyphh: standing compaction guidance + training capture
+  const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+  if (wcp) {
+    wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
+    // Baseline for the auto-save (initSettings): unchanged content never writes.
+    wcp.dataset.saved = wcp.value.trim();
+  }
 
   // The Account header's ORG + PLAN chips. Name, email, role and the avatar
   // come from the server profile via loadProfile() — one painter each, so the
@@ -285,7 +570,43 @@ async function loadSettings() {
   // Load toggle states
   toggleAutoUpdate.checked = await window.glyphh.getPreference("autoUpdate", true) as boolean;
 
+  const mcpSectionWrap = document.getElementById("mcp-section-wrap")!;
+  mcpSectionWrap.classList.remove("hidden");
 
+  // Browser homepage
+  const homePref = await window.glyphh.getPreference("browserHomepage", "claude") as string;
+  settingsBrowserHome.value = homePref === "custom" ? "custom" : homePref;
+  browserHomeCustomRow.classList.toggle("hidden", homePref !== "custom");
+  if (homePref === "custom") {
+    settingsBrowserHomeUrl.value = await window.glyphh.getPreference("browserHomepageUrl", "") as string;
+  }
+  const appUrlBar = document.getElementById("settings-app-urlbar") as HTMLInputElement | null;
+  if (appUrlBar) appUrlBar.checked = await window.glyphh.getPreference("showAppUrlBar", true) as boolean;
+
+  // Dock auto-hide — defaults ON; zoom defaults 20%.
+  const ahDock = document.getElementById("settings-autohide-dock") as HTMLInputElement | null;
+  if (ahDock) ahDock.checked = (await window.glyphh.getPreference("echoAutoHideDock", true)) !== false;
+  const agTx = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
+  if (agTx) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentTextOpacity", 1));
+    agTx.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 1);
+    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
+    if (tv) tv.textContent = `${Math.round(Number(agTx.value) * 100)}%`;
+  }
+  const agMh = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
+  if (agMh) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentMaxH", 76));
+    agMh.value = String(Number.isFinite(raw) ? Math.max(20, Math.min(100, raw)) : 76);
+    const mv = document.getElementById("settings-echo-agent-max-h-val");
+    if (mv) mv.textContent = `${agMh.value}%`;
+  }
+  const agOp = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
+  if (agOp) {
+    const raw = Number(await window.glyphh.getPreference("echoAgentOpacity", 0.92));
+    agOp.value = String(Number.isFinite(raw) ? Math.max(0.25, Math.min(1, raw)) : 0.92);
+    const ov = document.getElementById("settings-echo-agent-opacity-val");
+    if (ov) ov.textContent = `${Math.round(Number(agOp.value) * 100)}%`;
+  }
   const echoSz = document.getElementById("settings-echo-icon-size") as HTMLInputElement | null;
   if (echoSz) {
     const raw = Number(await window.glyphh.getPreference("echoIconSize", 76));
@@ -315,6 +636,17 @@ async function loadSettings() {
     const zv = document.getElementById("general-ui-sound-val");
     if (zv) zv.textContent = v <= 0 ? "Off" : `${Math.round(v * 100)}%`;
   }
+  const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
+  if (zoom) {
+    const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
+    zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(1.5, zRaw)) : 1.2);
+    const zv = document.getElementById("settings-dock-zoom-val");
+    if (zv) zv.textContent = Number(zoom.value) <= 1 ? "Off" : `${Math.round((Number(zoom.value) - 1) * 100)}%`;
+  }
 }
+
+/** MCP is its own top-level dashboard tab (data-section="mcp"). navigation.ts
+ *  calls this on section open to refresh relay + expose state. */
+export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };

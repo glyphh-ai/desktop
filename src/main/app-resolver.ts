@@ -220,10 +220,10 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
 
   // ── Respect the app's declared OPEN TYPE (every caller funnels here:
   //    command center, rail, .dip, and the agent's panels.open). ──
-  // Native rows are RETIRED (his rule, 2026-08-21: apps are workpanels,
-  // full stop) — a legacy execPath row gets a plain error, never an OS launch.
+  // Native rows LAUNCH the OS app — a webview panel cannot render one.
   if (!isGlyphhAppRow(app) && (app.isBrowser === false || app.execPath)) {
-    throw new Error(`"${app.name}" is a legacy native-app row — Glyphh no longer launches desktop apps. Delete the row; apps are workpanels now.`);
+    launchNativeRow(app);
+    return { slug: app.slug, name: app.name };
   }
   // Every web app opens as a Glyphh PANEL. Handing the URL to a real browser
   // meant Glyphh then wanted to find, adopt and place that window — the OS
@@ -275,6 +275,22 @@ export function openPopupPanel(url: string): void {
   sendWbCmd({ action: "popup", url });
 }
 
+/** Launch a NATIVE library row on this machine (path first, name fallback). */
+function launchNativeRow(app: ServerApp): void {
+  if (app.execPath) {
+    if (process.platform === "darwin") {
+      spawn("open", ["-a", app.execPath], { detached: true, stdio: "ignore" }).unref();
+    } else if (process.platform === "win32") {
+      spawn("cmd", ["/c", "start", "", app.execPath], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      throw new Error(`"${app.name}" is a native app — launching is not supported on this platform.`);
+    }
+    return;
+  }
+  const installed = findInstalledApp(app.name);
+  if (!installed) throw new Error(`"${app.name}" is a native app but nothing matching it is installed here.`);
+  launchInstalledApp(installed);
+}
 
 
 /** Open a saved layout by name — every cell becomes a workbench panel. */

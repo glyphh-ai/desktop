@@ -213,22 +213,4 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
-
-  // ── Settings → MCP: the caller's connected MCP clients (cloud OAuth grants) ──
-  // No typed SDK resource covers /api/me/mcp-clients yet, so these go through
-  // the client's authed-HTTP escape hatch (bearer + refresh handled). Same
-  // read/write split as apikeys-ipc.ts: the list propagates rejection so the
-  // panel paints an honest error; the revoke returns the { ok, error } envelope.
-  ipcMain.handle("mcp-clients-list", async () => {
-    const res = await getClient().http.get<{ clients: unknown[] }>("/api/me/mcp-clients");
-    return res.clients;
-  });
-  ipcMain.handle("mcp-clients-revoke", async (_e, clientId: string) => {
-    try {
-      await getClient().http.del(`/api/me/mcp-clients/${encodeURIComponent(String(clientId || ""))}`);
-      return { ok: true as const };
-    } catch (err) {
-      return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
 }

@@ -773,7 +773,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_browser",
-    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show an app in development: run its dev server and open http://localhost:<port> here. For a finished, installed workpanel app use open_app(<slug>) instead.",
+    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show a built or deployed app: after build_app publishes it, open the returned <slug>.glyphh.app URL here. Falls back: if the page needs a login the embedded browser doesn't have (a non-public app), open the installed app with open_app instead.",
     action: (a) => ({ kind: "command", title: `Open browser at ${String(a.url ?? "")}` }),
     run: async (a) => {
       const url = String(a.url ?? "").trim();

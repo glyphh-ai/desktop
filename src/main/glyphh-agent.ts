@@ -6,10 +6,10 @@
  *
  *   chat            a plain streamed completion on the gateway's Messages edge
  *                   (chatRun, below) — no tools, no harness, no packet.
- *   cowork / code   the CLOUD rrotor pod (glyphh-harness-run.ts) — there is
- *                   only one rrotor, and it is not on this machine. The
- *                   desktop provisions/binds a session pod and translates its
- *                   harness frames onto the renderer's existing IPC.
+ *   cowork / code   the machine's LOCAL HARNESS POD (glyphh-harness-run.ts) —
+ *                   the same rrotor harness that serves cloud sessions, run on
+ *                   127.0.0.1 with the desktop's tool surface lent to it over
+ *                   loopback MCP and the session's real folder as its cwd.
  *
  * The in-process Claude Agent SDK loop (`sdkRun`) that used to live here is
  * GONE, along with the local model interceptor it needed: the pod calls the
@@ -35,9 +35,11 @@ import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyp
 import { registerThreadsIpc } from "./threads-ipc";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { getClient } from "./glyphh-client";
+import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
 import { brandError, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
 import { harnessRun, isCloudSource, setRunPermission, injectRunMessage, type RunSource } from "./glyphh-harness-run";
+import { closeBridge } from "./harness-mcp-bridge";
 
 export type { ChatMessage };
 
@@ -59,11 +61,29 @@ const activeRuns = new Map<string, { id: string; ctrl: AbortController }>();
 export function shutdownGlyphh(): void {
   for (const run of activeRuns.values()) run.ctrl.abort();
   stopEmbedServer();
+  // The lent tool surface dies with the app — its tools ARE this process.
+  // The POD does not: it is a machine service (shared with the CLI, started
+  // detached by the supervisor) and stays up for the next client.
+  closeBridge();
 }
 
-// (The external-access gate and the loopback tool bridge are gone with the
-// local MCP server and the local harness pod — every run executes on the
-// cloud rrotor now.)
+// ── External access gate ──────────────────────────────────────────────────
+//
+// Glyphh tools surfaced OUTSIDE the client (cloud relay, local MCP server)
+// must call this before running. It enforces the same master switches the
+// MCP settings expose — defense in depth: the tool checks even though a
+// disabled transport shouldn't be connected at all.
+export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
+  const enabled = via === "relay"
+    ? getPreference<boolean>("relayEnabled", true) !== false
+    : getPreference<boolean>("localMcpEnabled", false) === true;
+  if (!enabled) {
+    throw new Error(
+      `Glyphh tools are disabled here: the ${via === "relay" ? "cloud relay" : "local MCP server"} ` +
+      "is turned off in Settings → MCP Server",
+    );
+  }
+}
 
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
