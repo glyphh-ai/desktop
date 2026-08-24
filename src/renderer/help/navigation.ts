@@ -394,9 +394,15 @@ export function openSettingsModal(sub?: string): void {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
-      // MCP is its OWN group at the end (his spec, 2026-08-25).
+      // MCP is its OWN group at the end (his spec, 2026-08-25): the cloud/
+      // local General panel plus the API keys that authorize it.
       const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
-      if (mcpHead && mcpItem) { anchor.after(mcpHead); mcpHead.after(mcpItem); }
+      const akItem = nav.querySelector('.settings-nav-item[data-sub="apikeys"]');
+      if (mcpHead && mcpItem) {
+        anchor.after(mcpHead);
+        mcpHead.after(mcpItem);
+        if (akItem) mcpItem.after(akItem);
+      }
       wireAppUserChip(nav as HTMLElement);
     }
   }
