@@ -303,7 +303,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
-].filter((d) => !IS_WEB_TARGET || (d.key !== "preview" && d.key !== "drips"));
+].filter((d) => !IS_WEB_TARGET || d.key !== "drips");
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -2905,11 +2905,14 @@ async function init(): Promise<void> {
       // APP-WEB (his rule, 2026-08-24): only GLYPHH apps render in a web tab —
       // they are hosted on our servers. URL/native rows and the house defaults
       // are desktop-only surfaces there.
-      const userRows = (rows || []).filter(wallAppRow).filter((a) => !IS_WEB_TARGET || a.appArchetype === "glyphh-app");
+      // APP-WEB (his rule, 2026-08-25): every app is back on the web wall —
+      // glyphh apps open in-app; anything else opens ITS URL in a new browser
+      // tab (activateTile). URL-less native rows still can't open anywhere.
+      const userRows = (rows || []).filter(wallAppRow).filter((a) => !IS_WEB_TARGET || a.appArchetype === "glyphh-app" || !!a.url);
       const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
       const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
       const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
-        .filter((d) => !IS_WEB_TARGET && !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
+        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
         .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
       const appsAll = [...userRows, ...defaultRows];
       echoRows = (rows || []);
@@ -3796,6 +3799,7 @@ async function init(): Promise<void> {
             return;
           }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
+          if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
@@ -5124,6 +5128,16 @@ async function init(): Promise<void> {
     const activateTile = (e: TileEntry): void => {
       const t = e.tile;
       if (t.kind === "folder" && t.folderId) { openFolderModal(t.folderId); return; }
+      // APP-WEB (his rule, 2026-08-25): a webview can't render in a browser
+      // tab, so a non-glyphh app opens ITS OWN tab; glyphh apps stay in-app.
+      if (IS_WEB_TARGET && t.kind === "app" && !t.glyphh && t.url) {
+        window.open(t.url, "_blank", "noopener");
+        return;
+      }
+      if (IS_WEB_TARGET && t.navKey === "preview") {
+        window.open(browserHome(), "_blank", "noopener");
+        return;
+      }
       // A NAV tile (a dock slot traded onto the pages) routes exactly like
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
@@ -5266,6 +5280,8 @@ async function init(): Promise<void> {
         // TAB there (it used to open a plain one-webview card and overwrite
         // its src on every open, so "open 5 sites" left one page and no tabs).
         if (key === "browser") {
+          // Web: no webview — a fresh browser tab is the Browser.
+          if (IS_WEB_TARGET) { window.open(app.url || browserHome(), "_blank", "noopener"); return; }
           if (app.url) ctl.openPreviewUrl(app.url);
           else void getOrOpenTool("preview");
           return;

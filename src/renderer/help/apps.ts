@@ -1620,13 +1620,20 @@ function webPreviewFallback(message: string, openUrl: string | null): void {
  *  when not. Idempotent; the desktop <webview> is CSS-hidden on web. */
 function renderWebPreview(app: PanelApp): void {
   const url = webPreviewUrl(app);
+  // NON-GLYPHH apps never frame on the web (his rule, 2026-08-25): external
+  // sites mostly refuse framing and native rows have no web surface — the
+  // themed card says so honestly instead of a blank or broken frame.
+  if (app.appArchetype !== "glyphh-app") {
+    webPreviewFallback(
+      url
+        ? "This app can't be viewed from the web. Open it in its own tab, or on the desktop app."
+        : "This app can't be viewed from the web — it runs on the desktop app.",
+      url,
+    );
+    return;
+  }
   if (url) { webPreviewNavigate(url); return; }
-  webPreviewFallback(
-    app.appArchetype === "glyphh-app"
-      ? "This app isn't deployed yet. Deploy it from the Public hosting tab, then preview it here."
-      : "No URL configured for this app. Add one on the left to preview it.",
-    null,
-  );
+  webPreviewFallback("This app isn't deployed yet. Deploy it from the Public hosting tab, then preview it here.", null);
 }
 
 let panelLoaded = false;
