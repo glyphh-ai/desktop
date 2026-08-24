@@ -99,11 +99,10 @@ function paintTopup(): void {
     btn.className = "billing-topup-card";
     const save = topupDiscount(credits);
     btn.innerHTML =
+      `<span class="billing-topup-price">$${usdForCredits(credits)}</span>` +
       `<span class="billing-topup-credits">${escapeHtml(fmtInt(credits))}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
-      `<span class="billing-topup-price">$${usdForCredits(credits)}` +
-      (save > 0 ? ` <span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "") +
-      `</span>`;
+      (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
     btn.addEventListener("click", () => { void buyTopup(credits, btn); });
     grid.appendChild(btn);
   }
@@ -585,11 +584,10 @@ export async function openBuyCreditsModal(): Promise<void> {
     card.className = "billing-topup-card";
     const save = topupDiscount(credits);
     card.innerHTML =
+      `<span class="billing-topup-price">$${usdForCredits(credits)}</span>` +
       `<span class="billing-topup-credits">${fmtInt(credits)}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
-      `<span class="billing-topup-price">$${usdForCredits(credits)}` +
-      (save > 0 ? ` <span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "") +
-      `</span>`;
+      (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
     card.addEventListener("click", async () => {
       if (busy) return;
       busy = `bc-${credits}`; card.disabled = true; setErr("");

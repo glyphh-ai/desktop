@@ -583,14 +583,14 @@ async function loadUsageAppView(): Promise<void> {
         btn.type = "button";
         btn.className = "billing-topup-card";
         const save = topupDiscount(credits);
-        btn.innerHTML = `<span class="billing-topup-credits">${credits.toLocaleString()}</span><span class="billing-topup-unit">credits</span><span class="billing-topup-price">$${usdForCredits(credits)}${save > 0 ? ` <span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : ""}</span>`;
+        btn.innerHTML = `<span class="billing-topup-price">$${usdForCredits(credits)}</span><span class="billing-topup-credits">${credits.toLocaleString()}</span><span class="billing-topup-unit">credits</span>${save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : ""}`;
         btn.addEventListener("click", () => pick(btn, credits, false));
         grid.appendChild(btn);
       }
       const other = document.createElement("button");
       other.type = "button";
       other.className = "billing-topup-card";
-      other.innerHTML = `<span class="billing-topup-credits">Other</span><span class="billing-topup-unit">custom amount</span><span class="billing-topup-price">&nbsp;</span>`;
+      other.innerHTML = `<span class="billing-topup-price">&nbsp;</span><span class="billing-topup-credits">Other</span><span class="billing-topup-unit">custom amount</span>`;
       other.addEventListener("click", () => pick(other, customCredits(), true));
       grid.appendChild(other);
       el("ua-buy-custom")?.addEventListener("input", () => {
