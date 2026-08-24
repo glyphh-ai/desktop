@@ -891,8 +891,10 @@ export function initDashboardEvents(): void {
   // The header's primary action is the community (his order, 2026-08-25) —
   // credits are bought on Billing.
   document.getElementById("dash-discord")?.addEventListener("click", () => {
-    const invite = (window.glyphh as unknown as { discordInvite?: string }).discordInvite || "https://discord.gg/cHGZR764D";
-    window.open(invite, "_blank", "noopener");
+    // typeof guard: on web window.glyphh is a Proxy that fabricates a FUNCTION
+    // for any name — a truthy || would "open" that function, not a URL.
+    const raw = (window.glyphh as unknown as { discordInvite?: unknown }).discordInvite;
+    window.open(typeof raw === "string" && raw ? raw : "https://discord.gg/cHGZR764D", "_blank", "noopener");
   });
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
     gotoSection("settings", "apikeys");
