@@ -618,6 +618,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
   billingCredits: () => ipcRenderer.invoke("billing-credits") as Promise<AccountCredits>,
   billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
+  billingPaymentMethod: () => ipcRenderer.invoke("billing-payment-method") as Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>,
   // ── voice settings ──
   catalogModels: () => ipcRenderer.invoke("catalog-models") as Promise<Array<{ id: string; name: string; providerSlug: string; modality: string; active: boolean }>>,
   catalogVoices: (provider: string) => ipcRenderer.invoke("catalog-voices", provider) as Promise<Array<{ id: string; name: string; providerSlug: string; previewUrl?: string; category?: string }>>,

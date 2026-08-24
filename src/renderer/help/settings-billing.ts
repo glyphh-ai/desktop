@@ -881,9 +881,31 @@ export function initBilling(): void {
  * visibility (403 on the org pool) still gets their plan catalog and seats, and
  * anything that genuinely failed says so instead of showing zeros.
  */
+/** The card on file — brand + last4 from Stripe, best-effort. */
+async function paintCardOnFile(): Promise<void> {
+  const line = document.getElementById("billing-card-line");
+  const sub = document.getElementById("billing-card-sub");
+  if (!line || !sub) return;
+  try {
+    const api = window.glyphh as unknown as {
+      billingPaymentMethod?: () => Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>;
+    };
+    const card = await api.billingPaymentMethod?.();
+    if (card?.last4) {
+      const brand = card.brand ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1) : "Card";
+      line.textContent = `${brand} •••• ${card.last4}`;
+      sub.textContent = card.expMonth ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear} · managed securely by Stripe` : "Managed securely by Stripe.";
+    } else {
+      line.textContent = "No card on file";
+      sub.textContent = "Add one with Update — managed securely by Stripe.";
+    }
+  } catch { /* keep the static copy */ }
+}
+
 export async function loadBilling(): Promise<void> {
   initBilling();
   paintTopup();
+  void paintCardOnFile();
   const api = accountApi();
   const problems: string[] = [];
 

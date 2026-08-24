@@ -42,6 +42,7 @@ export function registerAccountIpc(): void {
   ipcMain.handle("billing-status", () => getClient().billing.status());
   ipcMain.handle("billing-credits", () => getClient().billing.credits());
   ipcMain.handle("billing-invoices", () => getClient().billing.invoices());
+  ipcMain.handle("billing-payment-method", () => getClient().billing.paymentMethod());
 
   // ── voice settings (STT input + TTS output + voice) ───────────────────────
   ipcMain.handle("catalog-models", () => getClient().catalog.models());

@@ -826,6 +826,7 @@ export function buildContract(client, deps) {
     // WRITES — these existed only as desktop IPC; on web the glyphh Proxy
     // fabricated them (resolved undefined) and the Models page threw on `r.ok`.
     // Same SDK calls the desktop's main process makes.
+    billingPaymentMethod: () => client.billing.paymentMethod().catch(() => null),
     orgModelsSetSupported: lib((id, supported) => client.orgModels.setSupported(id, supported)),
     orgModelsSetSupportedBulk: lib((ids) => client.orgModels.setSupportedBulk(ids)),
     orgCustomModelsSave: lib((input) => client.orgModels.saveCustom(input)),
