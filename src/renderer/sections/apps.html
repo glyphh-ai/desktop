@@ -646,9 +646,13 @@
                   </div>
                 </div>
 
-                <!-- Connections right: explainer. -->
+                <!-- Connections right: the explainer, REPLACED by the open
+                     connection's tool list (his order, 2026-08-25) — the tools
+                     pane is moved here while a connection is open, and the
+                     explainer returns when it closes. -->
                 <div class="app-tab-right" data-tab="connections">
-                  <div style="padding:12px 16px;max-width:560px;">
+                  <div id="app-conns-tools-host" class="hidden" style="padding:12px 16px;height:100%;overflow-y:auto;"></div>
+                  <div id="app-conns-explainer" style="padding:12px 16px;max-width:560px;">
                     <h3 class="settings-subheading" style="margin:0 0 8px;">What this app needs</h3>
                     <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
                       A Glyphh app is deterministic because it calls your <strong>connected accounts</strong> —

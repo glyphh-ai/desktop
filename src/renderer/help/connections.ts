@@ -53,7 +53,30 @@ function setBtnBusy(btn: HTMLButtonElement, busy: boolean, label: string): void 
 let requiredFilter: string[] | null = null;
 let adoptedHomes: Array<{ n: HTMLElement; parent: HTMLElement | null; next: Node | null }> | null = null;
 
-export function adoptConnectionsInto(host: HTMLElement, requiredSlugs: string[]): void {
+/** While adopted, the open connection's TOOLS pane is hosted separately (the
+ *  app tab's right pane) — the detail's own split is only half a page wide
+ *  there, which clipped the list to a sliver. Null = not adopted. */
+let adoptedToolsHost: HTMLElement | null = null;
+let toolsPaneHome: { parent: HTMLElement; next: Node | null } | null = null;
+
+/** Move the tools pane to the adopted host (open) or back home (close). */
+function placeToolsPane(open: boolean): void {
+  const pane = document.querySelector<HTMLElement>(".conn-tools-pane");
+  if (!pane || !adoptedToolsHost) return;
+  const explainer = document.getElementById("app-conns-explainer");
+  if (open) {
+    if (!toolsPaneHome && pane.parentElement) toolsPaneHome = { parent: pane.parentElement, next: pane.nextSibling };
+    adoptedToolsHost.appendChild(pane);
+    adoptedToolsHost.classList.remove("hidden");
+    explainer?.classList.add("hidden");
+  } else {
+    if (toolsPaneHome) toolsPaneHome.parent.insertBefore(pane, toolsPaneHome.next);
+    adoptedToolsHost.classList.add("hidden");
+    explainer?.classList.remove("hidden");
+  }
+}
+
+export function adoptConnectionsInto(host: HTMLElement, requiredSlugs: string[], toolsHost?: HTMLElement | null): void {
   // The catalog MODAL rides along too — left home it opens inside the hidden
   // Connections section, i.e. invisibly (his bug, 2026-08-25).
   const nodes = ["connections-toolbar", "connections-list", "conn-detail", "conn-modal"]
@@ -62,12 +85,16 @@ export function adoptConnectionsInto(host: HTMLElement, requiredSlugs: string[])
   if (nodes.length !== 4) return;
   if (!adoptedHomes) adoptedHomes = nodes.map((n) => ({ n, parent: n.parentElement, next: n.nextSibling }));
   host.append(...nodes);
+  adoptedToolsHost = toolsHost ?? null;
   requiredFilter = requiredSlugs.map((x) => x.toLowerCase());
   closeConnDetail();
   void loadConnections();
 }
 
 export function releaseConnections(): void {
+  placeToolsPane(false);
+  adoptedToolsHost = null;
+  toolsPaneHome = null;
   requiredFilter = null;
   if (!adoptedHomes) return;
   for (const { n, parent, next } of adoptedHomes) parent?.insertBefore(n, next);
@@ -230,6 +257,7 @@ async function openConnDetail(id: string): Promise<void> {
   listEl.classList.add("hidden");
   document.getElementById("connections-toolbar")?.classList.add("hidden");
   detailEl.classList.remove("hidden");
+  placeToolsPane(true);
 
   detailHead.innerHTML = `
     <div class="app-card-icon">${appIconInner(connIconApp(c), c.appName, "app-card-initial")}</div>
@@ -337,6 +365,7 @@ async function saveHiddenTools(): Promise<void> {
 }
 
 function closeConnDetail(): void {
+  placeToolsPane(false);
   detailEl.classList.add("hidden");
   currentConnId = null;
   currentCustomSlug = null;
@@ -367,6 +396,7 @@ function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
   listEl.classList.add("hidden");
   document.getElementById("connections-toolbar")?.classList.add("hidden");
   detailEl.classList.remove("hidden");
+  placeToolsPane(true);
   customConfigEl.classList.remove("hidden");
 
   const urlInput = document.getElementById("conn-custom-url") as HTMLInputElement;

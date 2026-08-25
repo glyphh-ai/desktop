@@ -1339,7 +1339,9 @@ async function loadAppConnectionsTab(): Promise<void> {
   if (!host) return;
   const required = requiredConnSlugs(currentApp).map((r) => r.slug);
   const m = await import("./connections.js");
-  m.adoptConnectionsInto(host, required);
+  // The tools list is hosted in the app's RIGHT pane while a connection is
+  // open — the detail's own split is half a page wide here, which clipped it.
+  m.adoptConnectionsInto(host, required, document.getElementById("app-conns-tools-host"));
 }
 
 
