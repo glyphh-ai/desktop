@@ -782,6 +782,26 @@ export function buildContract(client, deps) {
     // Deploy tab (dev-host) — the DESKTOP's hosting-* IPC, twinned (his bug,
     // 2026-08-25: deploy from the web silently no-oped — the fabricating proxy
     // swallowed the missing shims while the desktop worked).
+    // Build & deploy — the SOURCE-OF-RECORD build: the org's regional pod pulls
+    // the app's R2 snapshot head, npm install + build, and publishes via
+    // build_app — all server-proxied, so the browser needs no pod binding.
+    // (his bug, 2026-08-25: the missing shim made the web button fail flat.)
+    appBuildDeploy: async (slug) => {
+      try {
+        const r = await client.apps.buildFromSource(slug);
+        if (!r?.ok) return { ok: false, error: r?.error ? `${r.stage ? `${r.stage}: ` : ''}${r.error}` : 'cloud build failed' };
+        let info = {};
+        try {
+          const p = JSON.parse(r.result || '');
+          info = {
+            version: typeof p.version === 'string' ? p.version : undefined,
+            url: typeof p.url === 'string' ? p.url : (typeof p.deployUrl === 'string' ? p.deployUrl : undefined),
+          };
+        } catch { /* non-JSON text — no structured fields */ }
+        return { ok: true, result: info };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+
     // Releases — the web reads the SAME control-plane history the desktop does
     // (his bug, 2026-08-25: the missing shims left the web claiming "release
     // history isn't available on this surface").
