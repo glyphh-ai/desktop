@@ -779,6 +779,23 @@ export function buildContract(client, deps) {
 
     // ── Dedicated app servers + custom domains (Phase F). Straight to the SDK; the
     // main process contributes nothing, so desktop and web share one renderer.
+    // Deploy tab (dev-host) — the DESKTOP's hosting-* IPC, twinned (his bug,
+    // 2026-08-25: deploy from the web silently no-oped — the fabricating proxy
+    // swallowed the missing shims while the desktop worked).
+    hostingStatus: async (slug) => {
+      try {
+        const deployments = await client.hosting.list();
+        return { ok: true, deployment: deployments.find((x) => x.appSlug === slug) ?? null };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    hostingDeploy: async (slug) => {
+      try { return { ok: true, deployment: await client.hosting.deploy({ appSlug: slug }) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    hostingDestroy: async (id) => {
+      try { await client.hosting.destroy(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     appServersList: async () => {
       try { return { ok: true, images: await client.appServers.list() }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
