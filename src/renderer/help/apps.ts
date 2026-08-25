@@ -2177,7 +2177,8 @@ function initApps() {
         (document.getElementById("release-notes") as HTMLTextAreaElement | null)!.value = "";
         await loadReleasesTab();
       }
-      releaseStatus(`Shipped v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : ""} ✓`);
+      const note = (res as { note?: string }).note;
+      releaseStatus(note ?? `Shipped v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : ""} ✓`);
       await loadDeployTab();
     } finally { btn.disabled = false; }
   });

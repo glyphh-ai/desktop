@@ -789,6 +789,21 @@ export function buildContract(client, deps) {
     appBuildDeploy: async (slug, opts) => {
       try {
         const r = await client.apps.buildFromSource(slug, opts || {});
+        // NO SNAPSHOT (a legacy app whose source never left the desktop): the
+        // right action is still available — ship the latest BUILT release.
+        // Nothing could have changed server-side without a snapshot anyway.
+        if (!r?.ok && r?.stage === 'source') {
+          try {
+            const dep = await client.hosting.deploy({ appSlug: slug });
+            return {
+              ok: true,
+              result: { url: dep.url || undefined },
+              note: 'No source snapshot yet — deployed the latest built release instead. Build once from the machine that holds the project and web rebuilds turn on.',
+            };
+          } catch {
+            return { ok: false, error: `${r.stage}: ${r.error}` };
+          }
+        }
         if (!r?.ok) return { ok: false, error: r?.error ? `${r.stage ? `${r.stage}: ` : ''}${r.error}` : 'cloud build failed' };
         let info = {};
         try {
