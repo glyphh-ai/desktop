@@ -85,7 +85,7 @@ async function copyText(val: string, input?: HTMLInputElement | null): Promise<b
 
 /** After a create/regenerate: back on the list, the ONE-TIME token in a modal
  *  with the warning and a copy button (his spec, 2026-08-25). */
-function showTokenModal(label: string, token: string): void {
+export function showTokenModal(label: string, token: string): void {
   document.querySelectorAll(".yo-modal.ak-token-overlay").forEach((n) => n.remove());
   const overlay = document.createElement("div");
   overlay.className = "yo-modal ak-token-overlay";

@@ -105,6 +105,24 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, media: await getClient().org.uploadImage(new Uint8Array(bytes)) }; }
     catch (err) { return fail(err); }
   });
+  // ── App ingest webhooks (the Webhooks settings page) ────────────────────
+  ipcMain.handle("apps-ingest-installed", async () => {
+    try { return { ok: true as const, apps: await getClient().apps.installed() }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-ingest-list", async (_e, slug: string) => {
+    try { return { ok: true as const, ...(await getClient().apps.ingest(String(slug))) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-ingest-token-create", async (_e, slug: string, label: string) => {
+    try { return { ok: true as const, ...(await getClient().apps.createIngestToken(String(slug), String(label ?? ""))) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-ingest-token-revoke", async (_e, slug: string, id: string) => {
+    try { await getClient().apps.revokeIngestToken(String(slug), String(id)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
+
   ipcMain.handle("account-user-image", async (_e, bytes: ArrayBuffer) => {
     try { return { ok: true as const, media: await getClient().profile.uploadImage(new Uint8Array(bytes)) }; }
     catch (err) { return fail(err); }

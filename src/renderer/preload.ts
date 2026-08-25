@@ -653,6 +653,14 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("org-app-block-set", ref, blocked) as Promise<{ ok: boolean; blocked?: boolean; slug?: string; error?: string }>,
   accountOrgImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-org-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
+  appsIngestInstalled: () =>
+    ipcRenderer.invoke("apps-ingest-installed") as Promise<{ ok: boolean; apps?: Array<{ slug: string; name: string }>; error?: string }>,
+  appsIngestList: (slug: string) =>
+    ipcRenderer.invoke("apps-ingest-list", slug) as Promise<{ ok: boolean; hooks?: unknown[]; tokens?: unknown[]; error?: string }>,
+  appsIngestTokenCreate: (slug: string, label: string) =>
+    ipcRenderer.invoke("apps-ingest-token-create", slug, label) as Promise<{ ok: boolean; token?: string; row?: unknown; error?: string }>,
+  appsIngestTokenRevoke: (slug: string, id: string) =>
+    ipcRenderer.invoke("apps-ingest-token-revoke", slug, id) as Promise<{ ok: boolean; error?: string }>,
   accountUserImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-user-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>
