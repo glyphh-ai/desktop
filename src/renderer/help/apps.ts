@@ -1782,26 +1782,24 @@ async function loadPanelTab() {
 
   if (!panelLoaded) {
     if (isGlyphhApp) {
-      // ONE RULE with Echo (his order, 2026-08-25): the preview shows the
-      // SHIPPED build — the hosted URL, served from the release archive on
-      // R2 — whenever one exists. The on-disk entry is only the fallback for
-      // a purely local panel that has nothing hosted.
+      // ONE RULE with Echo (his correction, 2026-08-25): the LOCAL bundle
+      // wins. Previewing your own app should never take an internet round
+      // trip and a members auth challenge; after a deploy the on-disk build
+      // is the same bytes anyway. The hosted URL is the fallback for an app
+      // whose source lives on someone else's machine.
       const wcId = await ensurePreviewWcId();
-      if (app.url) {
-        void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
-        // Register the preview guest so the app-data seam injects the bearer.
-        if (wcId !== undefined) (window.glyphh as unknown as { rpaRegister?: (slug: string, wcId: number) => void }).rpaRegister?.(app.slug, wcId);
-        appPreview.src = app.url;
-        panelLoaded = true;
-        return;
-      }
+      // Register the preview guest so the app-data seam injects the bearer.
+      if (wcId !== undefined) (window.glyphh as unknown as { rpaRegister?: (slug: string, wcId: number) => void }).rpaRegister?.(app.slug, wcId);
       const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
-      if (!res?.ok || !res.fileUrl) {
+      if (res?.ok && res.fileUrl) { appPreview.src = res.fileUrl; }
+      else if (app.url) {
+        void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
+        appPreview.src = app.url;
+      } else {
         const errHost = document.getElementById("app-commands-list");
-        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Nothing to preview yet — Save & Deploy builds the app; the preview shows the shipped build."}</div>`;
+        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Nothing to preview yet — Save & Deploy builds the app."}</div>`;
         return;
       }
-      appPreview.src = res.fileUrl;
     } else {
       // Web app: drop any glyphh grant left on the reused preview webContents.
       void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());

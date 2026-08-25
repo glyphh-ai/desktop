@@ -95,7 +95,7 @@ async function enterApp(shownAt, nav = goHome) {
   // APP HAND-OFF: a stashed members-app return wins over entering the platform —
   // send the browser to the app hostname's session mint with our access token;
   // the edge sets the app-scoped cookie and lands on the app.
-  if (user && handOffToApp()) return;
+  if (user && await handOffToApp()) return;
   document.getElementById('onboarding-overlay')?.classList.add('hidden');
   dismissSplash(shownAt);
 
@@ -188,15 +188,24 @@ function stashAppNext() {
 
 /** Complete the members-app hand-off: browser → the app host's /.glyphh/session
  *  mint with this session's access token. True when navigation started. */
-function handOffToApp() {
+async function handOffToApp() {
   try {
     const next = sessionStorage.getItem('glyphhAppNext');
     if (!next) return false;
     sessionStorage.removeItem('glyphhAppNext');
     const u = new URL(next);
     if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) return false;
-    const raw = window.localStorage.getItem('glyphh_session');
-    const access = raw ? (JSON.parse(raw).accessToken || '') : '';
+    // A FRESH token, never the raw stored one (his bug, 2026-08-25: access
+    // tokens live 15 minutes, so a tab open longer than that handed the mint a
+    // dead credential — "This sign-in hand-off is invalid or expired" — and the
+    // edge challenged again, which reads as an endless spin).
+    let session = await glyphh().getSession().catch(() => null);
+    const nearExpiry = !session?.expiresAt || session.expiresAt - Date.now() < 60_000;
+    if (nearExpiry) {
+      await glyphh().refresh().catch(() => false);
+      session = await glyphh().getSession().catch(() => null);
+    }
+    const access = session?.accessToken || '';
     if (!access) return false;
     const mint = new URL('/.glyphh/session', u.origin);
     mint.searchParams.set('token', access);

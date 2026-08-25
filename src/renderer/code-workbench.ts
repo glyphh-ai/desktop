@@ -4793,10 +4793,14 @@ async function init(): Promise<void> {
           });
         });
         if (t.glyphh && t.slug) {
-          // THE SHIPPED BUILD FIRST (his rule, 2026-08-25): a hosted glyphh
-          // app opens at its deployed URL — the release archive on R2, the
-          // same truth every device sees. The on-disk entry is only the
-          // fallback for a purely local panel with nothing hosted.
+          // LOCAL BUNDLE FIRST (his correction, 2026-08-25): I briefly made
+          // this hosted-first, which sent a developer's OWN app out to the
+          // edge and into the members auth challenge just to preview it —
+          // slow, offline-hostile, and it surfaced as an endless login
+          // bounce. The on-disk entry IS the same build after any deploy, so
+          // when we hold it locally we open it directly. The hosted URL is
+          // for what everyone ELSE sees: marketplace installs (no local
+          // bundle) and the web.
           wv.setAttribute("src", "about:blank");
           let previewOpened = false;
           wv.addEventListener("dom-ready", () => {
@@ -4805,10 +4809,12 @@ async function init(): Promise<void> {
             const yoG = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).glyphh;
             const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
             if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
-            if (t.url) { wv.setAttribute("src", t.url); return; }
             void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
               if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", res.fileUrl);
-              else if (!res?.ok) wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
+              // No local source (a marketplace-INSTALLED app lives on the
+              // publisher's hosting, not this disk) → the hosted build.
+              else if (t.url) wv.setAttribute("src", t.url);
+              else wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
             });
           });
         } else {
