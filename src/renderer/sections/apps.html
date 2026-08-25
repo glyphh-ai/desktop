@@ -416,6 +416,13 @@
                     <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                   </div>
 
+                  <!-- PARKED (his order, 2026-08-25): dedicated servers, custom
+                       domains and the standalone-repo export are OFF this surface —
+                       glyphh apps are work-panel apps; a customer domain arrives via
+                       the WorkOS path at the ORG layer, not per-app. The machinery
+                       (app-servers Phases B–D, export.ts) stays wired underneath;
+                       this container is hidden, not removed. -->
+                  <div id="app-hosting-advanced" class="hidden">
                   <div class="app-detail-section-sep"></div>
 
                   <!-- Dedicated server: the app on its OWN machine + database, sized
@@ -457,6 +464,7 @@
                     <button id="graduate-btn" class="action-btn primary" type="button">Export standalone repo</button>
                   </div>
                   <p class="proxy-field-hint" style="margin-top:14px;font-size:11px;">Requires a built release. <a id="graduate-api-soon" href="#" style="pointer-events:none;opacity:.6;">Direct Supabase connection — coming soon.</a></p>
+                  </div>
                 </div>
 
                 <!-- Marketplace left: the listing an installer sees. Drafted by the
