@@ -658,6 +658,7 @@ function switchAppTab(tab: string) {
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") { void loadReleasesTab(); void loadDeployTab(); loadProductionTab(); }
   if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
+  if (tab === "schedule") void loadScheduleTab();
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
   // Consumer view (marketplace-installed): render from the cached store
@@ -1159,6 +1160,142 @@ function renderInstalledReleaseView(): void {
 function requiredConnSlugs(app: PanelApp | null): { slug: string; connected: boolean }[] {
   return (app?.requiredConnections || []).map((c) => ({ slug: c.slug, connected: c.connected }));
 }
+
+// ── Schedule tab — recurring agent runs against this app ─────────────────────
+
+interface AppSchedule {
+  id: string; name: string; cron: string; prompt: string; enabled: boolean;
+  createdByEmail: string | null; createdAt: string; nextRunAt: string | null;
+  lastRunAt: string | null; lastStatus: string | null; lastError: string | null;
+}
+
+let schedQuery = "";
+
+/** The console's cadence presets — cron stays visible for the fluent. */
+const CRON_PRESETS: Array<{ value: string; label: string }> = [
+  { value: "*/15 * * * *", label: "Every 15 minutes" },
+  { value: "0 * * * *", label: "Hourly" },
+  { value: "0 9 * * *", label: "Daily at 09:00 UTC" },
+  { value: "0 9 * * 1", label: "Mondays at 09:00 UTC" },
+  { value: "0 0 1 * *", label: "Monthly on the 1st" },
+];
+
+async function loadScheduleTab(): Promise<void> {
+  const listEl = document.getElementById("app-sched-list");
+  const errEl = document.getElementById("app-sched-error");
+  if (!listEl) return;
+  const slug = currentApp?.slug || currentAppId;
+  const say = (msg: string): void => {
+    if (!errEl) return;
+    errEl.textContent = msg;
+    errEl.classList.toggle("hidden", !msg);
+  };
+  say("");
+  const res = await window.glyphh.appsSchedulesList?.(slug);
+  if (!res?.ok) { say(res?.error || "Couldn't load the schedule."); return; }
+  const schedules = (res.schedules ?? []) as AppSchedule[];
+
+  const fmt = (iso: string | null): string =>
+    iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+
+  const paint = (): void => {
+    const q = schedQuery.toLowerCase();
+    const rows = q ? schedules.filter((x) => x.name.toLowerCase().includes(q) || x.prompt.toLowerCase().includes(q)) : schedules;
+    listEl.innerHTML = "";
+    const table = document.createElement("table");
+    table.className = "lib-table mbr-table";
+    table.innerHTML = `<thead><tr><th>Name</th><th>Cadence</th><th>Last run</th><th>Next run</th><th>Enabled</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--text-3);padding:14px 12px;">No schedules yet.</td></tr>`;
+    }
+    for (const sc of rows) {
+      const tr = document.createElement("tr");
+      const preset = CRON_PRESETS.find((pz) => pz.value === sc.cron);
+      const last = sc.lastRunAt
+        ? `${fmt(sc.lastRunAt)}${sc.lastStatus === "failed" ? ` · <span style="color:var(--danger)">failed</span>` : " ✓"}`
+        : "never";
+      tr.innerHTML =
+        `<td class="lib-table-name"><span class="sc-name"></span></td>` +
+        `<td class="lib-table-dim"><span class="mono" style="font-family:var(--font-mono);font-size:11.5px;"></span></td>` +
+        `<td class="lib-table-dim">${last}</td>` +
+        `<td class="lib-table-dim">${escMkt(sc.enabled ? fmt(sc.nextRunAt) : "paused")}</td>` +
+        `<td><label class="settings-toggle" style="margin:0;"><input type="checkbox" ${sc.enabled ? "checked" : ""} /><span class="toggle-switch"></span></label></td>`;
+      (tr.querySelector(".sc-name") as HTMLElement).textContent = sc.name;
+      (tr.querySelector(".mono") as HTMLElement).textContent = preset ? preset.label : sc.cron;
+      if (sc.lastStatus === "failed" && sc.lastError) tr.title = sc.lastError;
+      tr.querySelector("input")?.addEventListener("change", (ev) => {
+        const on = (ev.target as HTMLInputElement).checked;
+        void window.glyphh.appsScheduleUpdate?.(slug, sc.id, { enabled: on }).then((r) => {
+          if (!r?.ok) { (ev.target as HTMLInputElement).checked = !on; say(r?.error || "Couldn't update."); }
+          else void loadScheduleTab();
+        });
+      });
+      const { kebabCell, ROW_MENU_ICONS } = kebabBits();
+      tr.appendChild(kebabCell(() => [
+        { icon: ROW_MENU_ICONS.view, label: "Run now", onClick: () => {
+          void window.glyphh.appsScheduleRun?.(slug, sc.id).then((r) => {
+            if (!r?.ok) say(r?.error || "Couldn't run.");
+            else void loadScheduleTab();
+          });
+        } },
+        { icon: ROW_MENU_ICONS.delete, label: "Delete…", danger: true, onClick: () => {
+          void (async () => {
+            if (!(await confirmAction({
+              title: `Delete “${sc.name}”?`,
+              body: "The schedule stops firing immediately. Its conversation history stays.",
+              confirmLabel: "Delete",
+              danger: true,
+            }))) return;
+            const r = await window.glyphh.appsScheduleDelete?.(slug, sc.id);
+            if (!r?.ok) say(r?.error || "Couldn't delete.");
+            else void loadScheduleTab();
+          })();
+        } },
+      ]));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    listEl.appendChild(table);
+  };
+  paint();
+
+  const search = document.getElementById("app-sched-search") as HTMLInputElement | null;
+  if (search && !search.dataset.wired) {
+    search.dataset.wired = "1";
+    search.addEventListener("input", () => { schedQuery = search.value.trim(); paint(); });
+  }
+  const newBtn = document.getElementById("app-sched-new") as HTMLButtonElement | null;
+  if (newBtn && !newBtn.dataset.wired) {
+    newBtn.dataset.wired = "1";
+    newBtn.addEventListener("click", () => {
+      void (async () => {
+        const { dataFormModal } = await import("./settings-webhooks.js");
+        const v = await dataFormModal("New schedule", [
+          { id: "name", label: "Name", description: "What this run is for.", placeholder: "Morning sync", required: true },
+          { id: "cron", label: "Cadence", description: "When it fires (UTC).", options: [...CRON_PRESETS.map((pz) => ({ value: pz.value, label: pz.label })), { value: "custom", label: "Custom cron…" }] },
+          { id: "customCron", label: "Cron", description: "Only for Custom: five fields — minute hour day month weekday.", placeholder: "0 9 * * *" },
+          { id: "prompt", label: "Prompt", description: "What the agent does each run, against this app.", placeholder: "Pull the overnight rows and summarize them into notes.", required: true },
+        ], "Create schedule");
+        if (!v) return;
+        const cron = v.cron === "custom" ? (v.customCron ?? "").trim() : (v.cron ?? "");
+        if (!cron) { say("Pick a cadence (or fill the custom cron)."); return; }
+        const r = await window.glyphh.appsScheduleCreate?.(slug, { name: v.name!, cron, prompt: v.prompt! });
+        if (!r?.ok) say(r?.error || "Couldn't create the schedule.");
+        else void loadScheduleTab();
+      })();
+    });
+  }
+}
+
+/** Lazy kebab imports (the lib-editor module is already loaded by the page). */
+function kebabBits(): { kebabCell: typeof import("./lib-editor.js").kebabCell; ROW_MENU_ICONS: typeof import("./lib-editor.js").ROW_MENU_ICONS } {
+  const m = kebabModule;
+  if (!m) throw new Error("lib-editor not loaded");
+  return m;
+}
+let kebabModule: { kebabCell: typeof import("./lib-editor.js").kebabCell; ROW_MENU_ICONS: typeof import("./lib-editor.js").ROW_MENU_ICONS } | null = null;
+void import("./lib-editor.js").then((m) => { kebabModule = { kebabCell: m.kebabCell, ROW_MENU_ICONS: m.ROW_MENU_ICONS }; });
 
 async function loadAppConnectionsTab(): Promise<void> {
   // ONE component (his order, 2026-08-25): this tab hosts the Connections

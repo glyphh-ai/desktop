@@ -676,6 +676,16 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("apps-webhook-create", slug, input) as Promise<{ ok: boolean; webhook?: unknown; secret?: string; error?: string }>,
   appsWebhookDelete: (slug: string, id: string) =>
     ipcRenderer.invoke("apps-webhook-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  appsSchedulesList: (slug: string) =>
+    ipcRenderer.invoke("apps-schedules-list", slug) as Promise<{ ok: boolean; schedules?: unknown[]; error?: string }>,
+  appsScheduleCreate: (slug: string, input: { name: string; cron: string; prompt: string }) =>
+    ipcRenderer.invoke("apps-schedule-create", slug, input) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
+  appsScheduleUpdate: (slug: string, id: string, patch: Record<string, unknown>) =>
+    ipcRenderer.invoke("apps-schedule-update", slug, id, patch) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
+  appsScheduleDelete: (slug: string, id: string) =>
+    ipcRenderer.invoke("apps-schedule-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  appsScheduleRun: (slug: string, id: string) =>
+    ipcRenderer.invoke("apps-schedule-run", slug, id) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
   accountUserImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-user-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>

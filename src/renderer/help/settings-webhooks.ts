@@ -134,7 +134,7 @@ function copyToClipboard(text: string): void {
 
 // ── the shared create modal — SINGLE-WORD labels, description UNDER each ─────
 
-interface ModalField {
+export interface ModalField {
   id: string;
   /** One word — "Label", "Endpoint", "Expiration". */
   label: string;
@@ -146,7 +146,7 @@ interface ModalField {
   options?: Array<{ value: string; label: string }>;
 }
 
-function dataFormModal(title: string, fields: ModalField[], saveText: string): Promise<Record<string, string> | null> {
+export function dataFormModal(title: string, fields: ModalField[], saveText: string): Promise<Record<string, string> | null> {
   return new Promise((resolve) => {
     document.querySelectorAll(".yo-modal.wh-form-overlay").forEach((n) => n.remove());
     const overlay = document.createElement("div");

@@ -142,6 +142,26 @@ export function registerAccountIpc(): void {
     try { await getClient().apps.removeWebhook(String(slug), String(id)); return { ok: true as const }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("apps-schedules-list", async (_e, slug: string) => {
+    try { return { ok: true as const, ...(await getClient().apps.schedules(String(slug))) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-schedule-create", async (_e, slug: string, input: { name: string; cron: string; prompt: string }) => {
+    try { return { ok: true as const, ...(await getClient().apps.createSchedule(String(slug), input)) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-schedule-update", async (_e, slug: string, id: string, patch: Record<string, unknown>) => {
+    try { return { ok: true as const, ...(await getClient().apps.updateSchedule(String(slug), String(id), patch)) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-schedule-delete", async (_e, slug: string, id: string) => {
+    try { await getClient().apps.deleteSchedule(String(slug), String(id)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-schedule-run", async (_e, slug: string, id: string) => {
+    try { return { ok: true as const, ...(await getClient().apps.runScheduleNow(String(slug), String(id))) }; }
+    catch (err) { return fail(err); }
+  });
 
   ipcMain.handle("account-user-image", async (_e, bytes: ArrayBuffer) => {
     try { return { ok: true as const, media: await getClient().profile.uploadImage(new Uint8Array(bytes)) }; }

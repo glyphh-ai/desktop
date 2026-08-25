@@ -822,6 +822,28 @@ export function buildContract(client, deps) {
       } catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
 
+    // Schedules — recurring agent runs against an app.
+    appsSchedulesList: async (slug) => {
+      try { return { ok: true, ...(await client.apps.schedules(slug)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appsScheduleCreate: async (slug, input) => {
+      try { return { ok: true, ...(await client.apps.createSchedule(slug, input)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appsScheduleUpdate: async (slug, id, patch) => {
+      try { return { ok: true, ...(await client.apps.updateSchedule(slug, id, patch)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appsScheduleDelete: async (slug, id) => {
+      try { await client.apps.deleteSchedule(slug, id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appsScheduleRun: async (slug, id) => {
+      try { return { ok: true, ...(await client.apps.runScheduleNow(slug, id)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+
     // Releases — the web reads the SAME control-plane history the desktop does
     // (his bug, 2026-08-25: the missing shims left the web claiming "release
     // history isn't available on this surface").

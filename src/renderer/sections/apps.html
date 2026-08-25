@@ -127,6 +127,7 @@
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
               <button class="app-detail-tab tab-glyphh-only hidden" data-tab="webhooks">Integration</button>
+              <button class="app-detail-tab tab-glyphh-only hidden" data-tab="schedule">Schedule</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
@@ -277,6 +278,19 @@
                     <div id="app-data-webhooks" class="mbr-list"></div>
                   </div>
                 </div>
+                <div class="app-tab-left" data-tab="schedule">
+                  <div style="padding:0 16px 0 0;">
+                    <div id="app-sched-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Schedule</h3>
+                    <p class="proxy-field-hint" style="margin:0 0 10px;">Recurring agent runs against this app — each schedule is a conversation you can open; its history is the run log.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                      <input id="app-sched-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
+                      <button id="app-sched-new" class="action-btn primary" type="button">+ New</button>
+                    </div>
+                    <div id="app-sched-list" class="mbr-list"></div>
+                  </div>
+                </div>
+
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
                   <code id="app-mcp-endpoint" class="app-mcp-endpoint"></code>
