@@ -692,7 +692,9 @@
                       <code>GET</code> the door URL returns the data model as JSON Schema — hand that
                       to the platform so it can map its fields; <code>POST { table, rows }</code>
                       seeds data in, validated against the schema;
-                      <code>GET &lt;door&gt;/&lt;table&gt;</code> reads data out. All with
+                      <code>GET &lt;door&gt;/&lt;table&gt;</code> reads data out —
+                      <code>?expand=&lt;fkColumn&gt;</code> embeds the related row (the model lists each
+                      table's relations). All with
                       <code>Authorization: Bearer &lt;token&gt;</code> — shown once at creation.
                     </p>
                     <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
