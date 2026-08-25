@@ -13,7 +13,7 @@
  * (never a fake empty). Writes return an `{ ok, error }` envelope.
  */
 
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
 import { invalidateOrgApps } from "./org-apps";
 
@@ -44,10 +44,20 @@ export function registerMarketplaceIpc(): void {
   });
 
   // ── install / uninstall ───────────────────────────────────────────────────
+  // Tell every window the app library changed (the MCP-relay precedent in
+  // glyphh-app-host): without the broadcast, a marketplace install existed
+  // server-side but every open surface kept its stale list until a full
+  // restart — "open" then claimed the app wasn't installed.
+  const broadcastAppsChanged = (): void => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send("panel-apps-changed");
+    }
+  };
   ipcMain.handle("mkt-install", async (_e, slug: string) => {
     try {
       const app = await getClient().apps.install(String(slug));
       invalidateOrgApps();
+      broadcastAppsChanged();
       return { ok: true as const, slug: app?.slug };
     } catch (err) { return fail(err); }
   });
@@ -55,6 +65,7 @@ export function registerMarketplaceIpc(): void {
     try {
       await getClient().apps.uninstall(String(slug));
       invalidateOrgApps();
+      broadcastAppsChanged();
       return { ok: true as const };
     } catch (err) { return fail(err); }
   });
