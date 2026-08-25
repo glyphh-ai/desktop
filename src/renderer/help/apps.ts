@@ -294,6 +294,8 @@ interface PanelApp {
   latestVersion?: string | null;
   /** The app's steered NEXT version — what the next build releases. */
   version?: string;
+  /** Secret NAMES the manifest declares — drives the Config Vars tab. */
+  secretNames?: string[];
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The listing's uploaded icon — the ONE icon source (same as the command
@@ -316,7 +318,7 @@ function toPanelApp(a: {
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
-  owned?: boolean; latestVersion?: string | null; version?: string;
+  owned?: boolean; latestVersion?: string | null; version?: string; secretNames?: string[];
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
@@ -327,7 +329,7 @@ function toPanelApp(a: {
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
-    owned: a.owned, latestVersion: a.latestVersion, version: a.version, requiredConnections: a.requiredConnections,
+    owned: a.owned, latestVersion: a.latestVersion, version: a.version, secretNames: a.secretNames, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -1494,7 +1496,25 @@ async function loadConfigVarsTab() {
     return;
   }
   const secrets = res.secrets || [];
-  if (!secrets.length) {
+  // The manifest's DECLARED names lead the list: an unset declaration is the
+  // one thing the user must act on, so it renders as a row, not a guess.
+  const setKeys = new Set(secrets.map((sec) => sec.key));
+  const missing = (currentApp?.secretNames ?? []).filter((k) => !setKeys.has(k));
+  for (const k of missing) {
+    const row = document.createElement("div");
+    row.className = "config-var-row";
+    row.innerHTML = `<span class="config-var-key" style="font-family:var(--font-mono);"></span>
+      <span style="flex:1;font-size:12px;color:var(--warning);">required by the app — not set</span>
+      <button class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Set…</button>`;
+    (row.querySelector(".config-var-key") as HTMLElement).textContent = k;
+    row.querySelector("button")?.addEventListener("click", () => {
+      const kf = document.getElementById("config-var-key") as HTMLInputElement | null;
+      if (kf) { kf.value = k; }
+      (document.getElementById("config-var-value") as HTMLTextAreaElement | null)?.focus();
+    });
+    listEl.appendChild(row);
+  }
+  if (!secrets.length && !missing.length) {
     listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this app use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
     return;
   }
@@ -1748,7 +1768,19 @@ async function openPanelAppDetail(app: PanelApp) {
   currentMktDetail = null;
   document.querySelectorAll<HTMLElement>(".tab-mkt-installed").forEach((el) => el.classList.toggle("hidden", !mktInstalled));
   document.querySelector(".app-detail-tab[data-tab='dashboard']")?.classList.toggle("hidden", mktInstalled);
-  document.querySelector(".app-detail-tab[data-tab='config']")?.classList.toggle("hidden", mktInstalled);
+  // Config Vars is NEED-driven (his order, 2026-08-25): shown when the
+  // manifest declares secret names — for owners AND installers (an installed
+  // app that declares OPENAI_API_KEY is exactly where the installer must set
+  // it; values are per-org). No declaration → hidden, then un-hidden only if
+  // vars already exist (the async check below).
+  const declaresSecrets = (app.secretNames?.length ?? 0) > 0;
+  const configTab = document.querySelector(".app-detail-tab[data-tab='config']");
+  configTab?.classList.toggle("hidden", !declaresSecrets);
+  if (!declaresSecrets && app.appArchetype === "glyphh-app") {
+    void window.glyphh.appSecretsList?.(app.id).then((r) => {
+      if (currentAppId === app.id && r?.ok && (r.secrets?.length ?? 0) > 0) configTab?.classList.remove("hidden");
+    });
+  }
   document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => {
     // The consumer view keeps Connections (the grants the app needs) and
     // drops Releases (the publisher's history, not the installer's).
