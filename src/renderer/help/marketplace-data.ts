@@ -692,8 +692,8 @@ export function mktErrorText(err: unknown): string {
 /** The marketplace's inline notice banner — icon + message on a quiet surface
  *  (never a raw red text row). `kind` picks the icon color: "error" for
  *  failures, "info" for muted service states. */
-export function mktNoticeHtml(message: string, kind: "error" | "info" = "error"): string {
-  const icon = kind === "error"
+export function mktNoticeHtml(message: string, kind: "error" | "info" | "warn" = "error"): string {
+  const icon = kind === "error" || kind === "warn"
     ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
     : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
   return `

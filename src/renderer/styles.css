@@ -12928,6 +12928,8 @@ select:focus {
 }
 .mkt-notice-icon { flex-shrink: 0; display: flex; margin-top: 2px; color: var(--text-3); }
 .mkt-notice.error .mkt-notice-icon { color: var(--danger, #e5484d); }
+.mkt-notice.warn .mkt-notice-icon { color: #f5a623; }
+.mkt-notice.warn { border-color: rgba(245, 166, 35, 0.35); }
 .mkt-notice-text { min-width: 0; }
 
 /* Dashed placeholder card — the marketplace's quiet empty state (console

@@ -59,12 +59,40 @@ function fieldError(input: HTMLInputElement, errEl: HTMLElement | null, msg: str
 // Stale-load guard — the panel refetches on every show and after every write.
 let loadEpoch = 0;
 
+// ── Stripe hand-off poller ────────────────────────────────────────────────
+// Onboarding happens on Stripe's hosted page in the browser panel; Stripe's
+// webhook flips payout readiness server-side, and nothing pushes that change
+// to this pane. After the hand-off we POLL the program state (every 6s, up to
+// 5 min) and repaint the moment it moves — his bug: the Payouts page "doesn't
+// update on its own" after signup.
+let pollTimer = 0;
+function pollProgramUntilChanged(handle: string, snapshot: string): void {
+  window.clearInterval(pollTimer);
+  let tries = 0;
+  pollTimer = window.setInterval(() => {
+    if (++tries > 50 || !document.getElementById("dev-payout-body")) {
+      window.clearInterval(pollTimer);
+      return;
+    }
+    void mktProgram.state(handle).then((next) => {
+      if (next && JSON.stringify(next.payout) !== snapshot) {
+        window.clearInterval(pollTimer);
+        void loadProgramPanes();
+      }
+    }).catch(() => { /* transient — next tick retries */ });
+  }, 6000);
+}
+
 /** The two panes' MARKUP — the console injects these into its Agreement and
  *  Payouts tabs (ids unchanged from the retired settings panel). */
 export function programPanesHtml(): { agreement: string; payouts: string } {
   return {
     agreement: `
-      <h3 class="settings-subheading" style="margin-top:18px;">Developer Agreement <span id="dev-legal-status" class="set-save-state"></span></h3>
+      <h3 class="settings-subheading" style="margin-top:18px;">Developer Agreement
+        <button id="dev-agreement-refresh" class="acct-chip-refresh" title="Refresh agreement and program status" aria-label="Refresh agreement and program status">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+        </button>
+        <span id="dev-legal-status" class="set-save-state"></span></h3>
       <div class="acct-section">
         <p class="settings-hint" style="margin:0;">Publishing means agreeing to the developer agreement: sandbox rules, no data exfiltration beyond declared capabilities, payout terms, support falls to you.</p>
         <a id="dev-agreement-link" href="${AGREEMENT_URL}">Read the developer agreement ↗</a>
@@ -87,7 +115,10 @@ export function programPanesHtml(): { agreement: string; payouts: string } {
         <p class="settings-hint" style="margin:0;">What your apps have earned on the marketplace. Purchased or granted credits are never redeemable for cash — only earned revenue is payable, through this program.</p>
         <div id="dev-earnings-body"></div>
       </div>
-      <h3 class="settings-subheading">Payout connection</h3>
+      <h3 class="settings-subheading">Payout connection
+        <button id="dev-connection-refresh" class="acct-chip-refresh" title="Refresh payout connection status" aria-label="Refresh payout connection status">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><polyline points="21 3 21 8 16 8"/></svg>
+        </button></h3>
       <div class="acct-section">
         <p class="settings-hint" style="margin:0;">Earned marketplace revenue pays out monthly via Stripe Connect. Stripe collects your details on their hosted page; they never touch Glyphh.</p>
         <div id="dev-payout-body"></div>
@@ -106,6 +137,14 @@ export function initProgramPanes(): void {
   // "check again" is just a fresh program read.
   document.getElementById("dev-payout-refresh")?.addEventListener("click", () => {
     document.getElementById("dev-payout-refresh")?.classList.add("spinning");
+    void loadProgramPanes();
+  });
+  document.getElementById("dev-connection-refresh")?.addEventListener("click", () => {
+    document.getElementById("dev-connection-refresh")?.classList.add("spinning");
+    void loadProgramPanes();
+  });
+  document.getElementById("dev-agreement-refresh")?.addEventListener("click", () => {
+    document.getElementById("dev-agreement-refresh")?.classList.add("spinning");
     void loadProgramPanes();
   });
 }
@@ -133,7 +172,9 @@ export async function loadProgramPanes(): Promise<void> {
   renderStatus(state, failed, handle);
   renderLegal(state, failed, handle);
   await renderMoney(state, failed, epoch, handle);
-  document.getElementById("dev-payout-refresh")?.classList.remove("spinning");
+  for (const id of ["dev-payout-refresh", "dev-connection-refresh", "dev-agreement-refresh"]) {
+    document.getElementById(id)?.classList.remove("spinning");
+  }
 }
 
 // ── Program status (Developer Agreement tab) ──────────────────────────────
@@ -186,58 +227,67 @@ function renderLegal(state: MktProgramState | null, failed: boolean, handle: str
     body.innerHTML = `<p class="settings-hint" style="margin:0;">Consent status is unavailable right now.</p>`;
     return;
   }
-  if (!handle) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">Create a developer profile on the Developer tab first — enrollment records consent for a specific profile.</p>`;
-    return;
-  }
-  if (!state) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">Consent recording comes online with the program surface — the agreement itself is ready to read above.</p>`;
-    return;
-  }
 
-  const { currentVersion, acceptedVersion, acceptedAt, current } = state.agreement;
-  const enrolled = state.status !== "none";
+  const currentVersion = state?.agreement.currentVersion ?? "";
+  const acceptedVersion = state?.agreement.acceptedVersion ?? null;
+  const acceptedAt = state?.agreement.acceptedAt ?? null;
+  const current = state?.agreement.current ?? false;
+  const enrolled = !!state && state.status !== "none";
+
   if (enrolled && current) {
     body.innerHTML = `
       <div class="mkt-side-row"><span>Accepted version</span><b>${escMkt(acceptedVersion || "—")}</b></div>
       <div class="mkt-side-row"><span>Accepted on</span><b>${escMkt(mktDate(acceptedAt))}</b></div>`;
     return;
   }
-  // The server must name a current version before consent can be recorded
-  // against it — enrolling with an empty version is exactly the malformed
-  // request the server's schema rejects, so it never leaves the client.
-  if (!currentVersion) {
-    body.innerHTML = `<p class="settings-hint" style="margin:0;">The current agreement version hasn't been published yet — consent opens here once it is.</p>`;
-    return;
-  }
 
-  // Not enrolled, or the agreement moved on since acceptance → (re-)consent.
-  // The CHECKBOX is the commit, like every other settings toggle: checking it
-  // records consent to the server's current version and enrolls, reporting on
-  // the section heading's chip. No button row.
+  // The accept controls are ALWAYS VISIBLE (his spec, 2026-08-24) — gated,
+  // not hidden: the orange notice names what's missing, the read-acknowledgment
+  // is its own step, and Accept enables only when profile + acknowledgment +
+  // a published version all hold.
   const reconsent = enrolled && !current;
+  const blocker = !handle
+    ? "Complete your developer profile on the Developer tab first — enrollment records consent for a specific profile."
+    : !state
+      ? "The developer program is coming online — your profile is live; consent recording lights up here shortly."
+      : !currentVersion
+        ? "The current agreement version hasn't been published yet — accepting opens here once it is."
+        : "";
+  const canAcknowledge = !!handle && !!state && !!currentVersion;
   body.innerHTML = `
+    ${blocker ? mktNoticeHtml(blocker, "warn") : ""}
     ${reconsent ? `<p class="settings-hint" style="margin:0 0 10px;color:var(--accent);">The developer agreement has been updated${acceptedVersion ? ` — you accepted ${escMkt(acceptedVersion)}` : ""}. Review and accept version ${escMkt(currentVersion)} to keep publishing.</p>` : ""}
-    <div class="mkt-side-row"><span>Current version</span><b>${escMkt(currentVersion)}</b></div>
-    <label class="settings-toggle" style="margin:10px 0 0;">
-      <input type="checkbox" id="dev-consent-check" />
+    <div class="mkt-side-row"><span>Current version</span><b>${escMkt(currentVersion || "—")}</b></div>
+    <label class="settings-toggle" style="margin:10px 0 0;${canAcknowledge ? "" : "opacity:0.55;"}">
+      <input type="checkbox" id="dev-consent-check" ${canAcknowledge ? "" : "disabled"} />
       <span class="toggle-switch"></span>
-      I have read and agree to the Glyphh Developer Agreement (${escMkt(currentVersion)})${reconsent ? "" : " — checking enrolls you in the developer program"}
-    </label>`;
+      I have read the Glyphh Developer Agreement${currentVersion ? ` (${escMkt(currentVersion)})` : ""}
+    </label>
+    <div class="settings-actions" style="margin-top:12px;">
+      <div style="flex:1;"></div>
+      <button id="dev-consent-accept" class="action-btn primary" type="button" disabled>${reconsent ? "Accept the updated agreement" : "Accept & enroll"}</button>
+    </div>`;
 
   const check = body.querySelector<HTMLInputElement>("#dev-consent-check");
-  check?.addEventListener("change", async () => {
-    if (!check.checked) return; // nothing recorded yet — unchecking is a no-op
+  const accept = body.querySelector<HTMLButtonElement>("#dev-consent-accept");
+  if (!check || !accept) return;
+  check.addEventListener("change", () => { accept.disabled = !(canAcknowledge && check.checked); });
+  accept.addEventListener("click", async () => {
+    if (!handle || !currentVersion || !check.checked) return;
+    accept.disabled = true;
     check.disabled = true;
     chip("dev-legal-status", reconsent ? "Recording consent…" : "Enrolling…");
     const res = await mktProgram.enroll(handle, currentVersion);
     if (res.ok) {
       chip("dev-legal-status", reconsent ? "Consent recorded" : "Enrolled", "success");
+      // Repaint EVERYTHING off the fresh read — the Payouts tab's Stripe
+      // signup must appear NOW, not after leaving the marketplace (his bug).
       void loadProgramPanes();
       return;
     }
     check.checked = false;
     check.disabled = false;
+    accept.disabled = true;
     chip("dev-legal-status", "Not saved", "error");
     showError(res.error);
   });
@@ -388,6 +438,9 @@ async function renderMoney(state: MktProgramState | null, failed: boolean, epoch
     chip("dev-payout-status", "");
     if (!openHostedPage("Stripe onboarding", res.data, openUrlInWorkbench)) {
       chip("dev-payout-status", "Stripe sent a malformed link", "error");
+    } else {
+      // Watch for the webhook flipping readiness while they're on Stripe's page.
+      pollProgramUntilChanged(handle, JSON.stringify(state.payout));
     }
     onboardBtn.disabled = false;
   });
