@@ -184,7 +184,15 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   if (!manifest) return { ok: false, error: "manifest.json is not a valid glyphh-app manifest" };
 
   const unknown = manifest.capabilities.filter((c) => !KNOWN_CAPABILITIES.has(c));
-  if (unknown.length) return { ok: false, error: `Unknown capabilities: ${unknown.join(", ")}` };
+  // NAME THE ALTERNATIVES (his rule, 2026-08-25): a bare refusal sent an agent
+  // grepping the packaged asar for this very list. The set is small — print it.
+  if (unknown.length) {
+    return {
+      ok: false,
+      error: `Unknown capabilities: ${unknown.join(", ")}. Valid capabilities are: ${[...KNOWN_CAPABILITIES].sort().join(", ")}. ` +
+        `Connector access is declared as capability "connector.call" (plus "connector.tools"/"connector.status"), with the ACCOUNTS named in the manifest's "connectors" array — never as connector.<name>.`,
+    };
+  }
 
   // Every capability-backed tool must reference a capability the app also
   // declared; every handler-backed tool needs the manifest to ship a worker.

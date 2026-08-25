@@ -285,8 +285,21 @@ export async function connectorCall(declared: Set<string>, args: Record<string, 
   const tool = String(args.tool || "").trim();
   if (!tool) throw new Error("tool is required");
   const toolArgs = args.args && typeof args.args === "object" ? (args.args as Record<string, unknown>) : {};
-  const result = await callConnectorTool(connector, tool, toolArgs);
-  return { result };
+  // NAME THE ALTERNATIVES (his rule, 2026-08-25): an unknown tool name used to
+  // surface whatever the upstream said, teaching nothing. The catalog is right
+  // here — check first, and when it misses, LIST what this connector offers.
+  const names = await freshCatalog()
+    .then((c) => c.filter((t) => t.slug === connector).map((t) => t.name))
+    .catch(() => [] as string[]);
+  if (names.length && !names.includes(tool)) {
+    throw new Error(`'${tool}' is not a ${connector} tool. Available ${connector} tools: ${names.join(", ")}. (connector.tools { connector } returns them with their input schemas.)`);
+  }
+  try {
+    return { result: await callConnectorTool(connector, tool, toolArgs) };
+  } catch (e) {
+    const detail = (e as Error).message;
+    throw new Error(names.length ? `${detail} (${connector} tools: ${names.join(", ")})` : detail);
+  }
 }
 
 // ── notifications (notify.send) ─────────────────────────────

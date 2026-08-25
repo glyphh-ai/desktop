@@ -1156,9 +1156,20 @@ function renderInstalledReleaseView(): void {
 
 // ── Connections tab: the app's required connections + their tools ────
 
-/** The connection slugs the app requires (from the server's requiredConnections). */
+/** The connection slugs the app requires. TWO SOURCES, unioned (his bug,
+ *  2026-08-25: General read one and this read the other, so a locally
+ *  installed app showed "requires no connections" while General listed two):
+ *    • requiredConnections — the SERVER manifest's `connections:`, present for
+ *      a published app, and the only source carrying connected status;
+ *    • launchConfig.connectors — the LOCAL panel manifest's declaration, which
+ *      is what `update_app` writes for an app installed from a folder. */
 function requiredConnSlugs(app: PanelApp | null): { slug: string; connected: boolean }[] {
-  return (app?.requiredConnections || []).map((c) => ({ slug: c.slug, connected: c.connected }));
+  const out = new Map<string, boolean>();
+  for (const slug of ((app?.launchConfig?.connectors as string[] | undefined) || [])) {
+    if (slug) out.set(String(slug), false);
+  }
+  for (const c of (app?.requiredConnections || [])) out.set(c.slug, c.connected);
+  return [...out].map(([slug, connected]) => ({ slug, connected }));
 }
 
 // ── Schedule tab — recurring agent runs against this app ─────────────────────
