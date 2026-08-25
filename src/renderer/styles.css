@@ -15029,7 +15029,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-filter-btn svg { width: 14px; height: 14px; }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
 /* Members tabs breathe above their content. */
-#members-tabs { margin-bottom: 16px; }
+#members-tabs, #webhooks-tabs { margin-bottom: 16px; }
 #members-tab-invited .crud-toolbar { margin-bottom: 14px; }
 /* Tools page title row: app name left, the master toggle at the far right. */
 .ws-tools-head { display: flex; align-items: center; gap: 12px; }
