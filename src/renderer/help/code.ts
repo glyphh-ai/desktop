@@ -5174,11 +5174,18 @@ export function initCode(): void {
       peekClose.title = "Minimize";
       peekClose.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
       peekClose.addEventListener("click", (ev) => { ev.stopPropagation(); closePeek(); });
-      agent.appendChild(peekClose);
+      // INSIDE the panel (his fix, 2026-08-25): the ✕ lives at the thread's
+      // own top-right (sticky, so it holds while the transcript scrolls). The
+      // thread's innerHTML is wiped every repaint, so a MutationObserver
+      // re-seats it after each render.
+      const seatPeekClose = (): void => {
+        if (threadEl.firstChild !== peekClose) threadEl.prepend(peekClose);
+      };
+      seatPeekClose();
+      new MutationObserver(() => seatPeekClose()).observe(threadEl, { childList: true });
       const place = (): void => {
         const h = threadEl.getBoundingClientRect().height;
         grip.style.bottom = `calc(100% + ${Math.max(0, Math.round(h)) + 2}px)`;
-        peekClose.style.bottom = `calc(100% + ${Math.max(0, Math.round(h)) - 30}px)`;
       };
       new ResizeObserver(place).observe(threadEl);
       place();
