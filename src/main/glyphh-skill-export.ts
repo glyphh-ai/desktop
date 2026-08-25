@@ -146,13 +146,15 @@ tools directly (no UI needed):
 
 ## App data doors — pipelines in, webhooks out
 
-**Pipelines (inbound, n8n / make.com / Boomi):** a per-app token seeds data in.
-1. \`create_ingest_token { slug, label }\` (org admin) — the RAW token, shown
-   once; hand it to the user for the pipeline's \`Authorization: Bearer\` header.
-2. The pipeline POSTs \`{ table, rows: [...] }\` (≤200 rows/call) to
-   \`/api/ingest/<slug>\` — the table must be declared in the app schema; rows
-   land through the validated insert path. \`get_ingest { slug }\` returns the
-   door URL + token hints. A token only writes that one app's tables.
+**Pipelines (the bi-directional data API — n8n / make.com / Boomi):** a NAMED
+per-app token moves data in and out; the app schema is the contract.
+1. \`create_ingest_token { slug, label, expiresDays? }\` (org admin) — the RAW
+   token, shown once; hand it to the user for \`Authorization: Bearer\`.
+2. \`GET /api/ingest/<slug>\` returns the DATA MODEL as JSON Schema per table —
+   give it to the platform so it can map fields. \`POST { table, rows: [...] }\`
+   (≤200/call) seeds data in through the validated insert path;
+   \`GET /api/ingest/<slug>/<table>\` reads data out. \`get_ingest { slug }\`
+   returns the door + token hints. A token only touches that one app's tables.
    (A manifest may still declare named hooks \`ingest: [{ name, table?, embed? }]\`
    at \`/api/ingest/<slug>/<name>\` — \`embed\` columns index into the app's
    embeddings plane.)

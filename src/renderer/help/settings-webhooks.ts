@@ -249,7 +249,7 @@ const EXPIRY_OPTIONS: ModalField["options"] = [
 
 async function newPipelineModal(t: Transport, slug: string, appName: string): Promise<boolean> {
   const v = await dataFormModal("New pipeline", [
-    { id: "label", label: "Label", description: "Which external system holds this token — e.g. n8n production.", placeholder: "n8n production", required: true },
+    { id: "label", label: "Name", description: "Names the pipeline — which integration platform holds this token.", placeholder: "n8n production", required: true },
     { id: "expires", label: "Expiration", description: "A token that never expires stays valid until revoked — prefer an expiry." , options: EXPIRY_OPTIONS },
   ], "Create pipeline");
   if (!v) return false;

@@ -267,7 +267,7 @@
                   <div id="app-data-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
 
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-                    <h3 class="settings-subheading" style="margin:0;">Inbound <span style="font-weight:400;color:var(--text-2);">— pipelines</span></h3>
+                    <h3 class="settings-subheading" style="margin:0;">Pipelines <span style="font-weight:400;color:var(--text-2);">— data in and out</span></h3>
                     <span style="flex:1;"></span>
                     <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
                     <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New</button>
@@ -281,7 +281,7 @@
                   <div class="app-detail-section-sep"></div>
 
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-                    <h3 class="settings-subheading" style="margin:0;">Outbound <span style="font-weight:400;color:var(--text-2);">— webhooks</span></h3>
+                    <h3 class="settings-subheading" style="margin:0;">Webhooks <span style="font-weight:400;color:var(--text-2);">— we call you on changes</span></h3>
                     <span style="flex:1;"></span>
                     <input id="app-data-webhooks-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
                     <button id="app-data-new-webhook" class="action-btn primary" type="button">+ New</button>
@@ -686,12 +686,14 @@
                   <div style="padding:12px 16px;max-width:560px;">
                     <h3 class="settings-subheading" style="margin:0 0 8px;">Moving data in and out</h3>
                     <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
-                      <strong>Inbound — pipelines.</strong> A pipeline is a token an external system
-                      (n8n, make, Boomi) uses to seed data in. It POSTs
-                      <code>{ table, rows }</code> to the door URL with
-                      <code>Authorization: Bearer &lt;token&gt;</code>; rows are validated against the
-                      app schema and land in the named table. The token shows once at creation —
-                      that is the key you hand the pipeline.
+                      <strong>Pipelines — the bi-directional data API.</strong> A pipeline is a named
+                      token an integration platform (n8n, make, Boomi) uses to move data in and out.
+                      The app schema is the contract, and the door describes itself:
+                      <code>GET</code> the door URL returns the data model as JSON Schema — hand that
+                      to the platform so it can map its fields; <code>POST { table, rows }</code>
+                      seeds data in, validated against the schema;
+                      <code>GET &lt;door&gt;/&lt;table&gt;</code> reads data out. All with
+                      <code>Authorization: Bearer &lt;token&gt;</code> — shown once at creation.
                     </p>
                     <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
                       <strong>Outbound — webhooks.</strong> Register a URL and this app POSTs
