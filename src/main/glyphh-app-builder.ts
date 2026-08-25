@@ -234,19 +234,23 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   // a button-built app had no snapshot, so the web's build-from-source had
   // nothing to pull — "built locally, it should just work"). Fast-forward
   // from the current head; best-effort, the release itself already stands.
+  let sourceWarning: string | undefined;
   try {
     const head = await client.apps.sourceHead(ref).catch(() => null);
     await client.apps.pushSource(ref, new Uint8Array(packProjectSource(dir)), { baseHash: head?.head?.hash ?? null });
   } catch (e) {
-    console.warn(`[app-builder] source snapshot push failed for ${ref}:`, (e as Error).message);
+    // LOUD, not silent (his bug, 2026-08-25: a 404 here cost three round
+    // trips) — the release stands, but the user must know web rebuilds
+    // did not turn on.
+    sourceWarning = `source snapshot push failed (${(e as Error).message}) — web builds stay unavailable for this app`;
   }
 
   // "No hosting": the build is the deliverable — cut, uploaded, ready, never
   // published to an address.
-  if (opts.deploy === false) return { slug: liveSlug, version, status: "ready" };
+  if (opts.deploy === false) return { slug: liveSlug, version, status: "ready", ...(sourceWarning ? { error: sourceWarning } : {}) };
   // Deploy EXACTLY the release we just built + uploaded — pinned by id, so a
   // stale "newest ready" (e.g. an old release whose source has since been
   // lost from storage) can never be what actually ships.
   const dep = await client.hosting.deploy({ appSlug: ref, releaseId: release.id });
-  return { slug: liveSlug, version, status: "ready", url: dep.url ?? undefined };
+  return { slug: liveSlug, version, status: "ready", url: dep.url ?? undefined, ...(sourceWarning ? { error: sourceWarning } : {}) };
 }

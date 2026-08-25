@@ -2177,7 +2177,7 @@ function initApps() {
         (document.getElementById("release-notes") as HTMLTextAreaElement | null)!.value = "";
         await loadReleasesTab();
       }
-      const note = (res as { note?: string }).note;
+      const note = (res as { note?: string }).note ?? (res.result as { error?: string } | undefined)?.error;
       releaseStatus(note ?? `Shipped v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : ""} ✓`);
       await loadDeployTab();
     } finally { btn.disabled = false; }
