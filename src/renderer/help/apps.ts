@@ -1775,7 +1775,13 @@ async function openPanelAppDetail(app: PanelApp) {
   const archSel = document.getElementById("app-detail-archetype") as HTMLSelectElement | null;
   if (archSel) archSel.value = detailArchetype;
   writeLaunchConfig("app-detail", detailArchetype, app.launchConfig);
-  toggleTypeFields("app-detail", detailType);
+  // A GLYPHH app is BUILT, not launcher-configured (his rule, 2026-08-25): the
+  // native exec-path/archetype block is the NATIVE launcher's, and an installed
+  // glyphh app only rides those rails technically (entry html as execPath).
+  // Its real "path" is the source of record — never show the native fields.
+  const isGlyphhKind = app.appArchetype === "glyphh-app";
+  toggleTypeFields("app-detail", isGlyphhKind ? "browser" : detailType);
+  if (isGlyphhKind) document.getElementById("app-detail-browser-fields")?.classList.add("hidden");
   toggleArchetypeFields("app-detail", detailArchetype);
 
   // MCP + Guardrails tabs — installed apps that declare tools. The consumer
