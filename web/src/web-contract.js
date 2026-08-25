@@ -792,7 +792,12 @@ export function buildContract(client, deps) {
         // NO SNAPSHOT (a legacy app whose source never left the desktop): the
         // right action is still available — ship the latest BUILT release.
         // Nothing could have changed server-side without a snapshot anyway.
+        // NEVER when the user said "No hosting" (his bug, 2026-08-25: the
+        // fallback deployed regardless of the choice).
         if (!r?.ok && r?.stage === 'source') {
+          if (opts && opts.deploy === false) {
+            return { ok: false, error: 'No source snapshot and "No hosting" selected — there is nothing to build server-side. Build once from the machine that holds the project; after that, web builds work with or without hosting.' };
+          }
           try {
             const dep = await client.hosting.deploy({ appSlug: slug });
             return {
