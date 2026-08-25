@@ -260,18 +260,18 @@
                 <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
                      Each must be explicitly approved (allowlist) before it's
                      reachable — newly-appeared tools default to OFF. -->
-                <!-- Integration: WEBHOOKS (outbound) on the LEFT, PIPELINES (the
-                     bi-directional data API) on the RIGHT. Both create via modal. -->
+                <!-- Integration: Webhooks left, Pipelines right. Clean grammar:
+                     title, one-line description, full-width search + New,
+                     table with a permanent header. -->
                 <div class="app-tab-left" data-tab="webhooks">
                   <div style="padding:12px 16px 0 0;">
                     <div id="app-data-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                      <h3 class="settings-subheading" style="margin:0;">Webhooks <span style="font-weight:400;color:var(--text-2);">— we call you on changes</span></h3>
-                      <span style="flex:1;"></span>
-                      <input id="app-data-webhooks-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Webhooks</h3>
+                    <p class="proxy-field-hint" style="margin:0 0 10px;">Signed POSTs to your URL on every data change.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                      <input id="app-data-webhooks-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
                       <button id="app-data-new-webhook" class="action-btn primary" type="button">+ New</button>
                     </div>
-                    <p class="proxy-field-hint" style="margin:0 0 12px;">Signed POSTs to your URL on every data change.</p>
                     <div id="app-data-webhooks" class="mbr-list"></div>
                   </div>
                 </div>
@@ -357,8 +357,7 @@
                     <div class="settings-inline" style="margin-bottom:4px;align-items:center;">
                       <button id="release-build" class="action-btn primary" type="button" title="Build the app, cut a release, and deploy it">Build &amp; deploy</button>
                       <span style="font-size:12px;color:var(--text-3);">releases as</span>
-                      <input id="release-next-version" type="text" class="settings-input" placeholder="1.0.0" spellcheck="false" autocomplete="off" style="max-width:110px;" />
-                      <button id="release-version-save" class="action-btn" type="button">Set</button>
+                      <input id="release-next-version" type="text" class="settings-input" placeholder="1.0.0" spellcheck="false" autocomplete="off" style="max-width:110px;" title="Press Enter to set" />
                       <span id="release-version-status" class="set-save-state"></span>
                     </div>
                     <p class="proxy-field-hint" style="margin:0 0 6px;">Lands on <b>dev</b>; later builds bump the patch. A version a release already holds is refused.</p>
@@ -377,7 +376,7 @@
                         <option value="members">Signed-in members of your organization</option>
                         <option value="public">Anyone with the link</option>
                       </select>
-                      <button id="deploy-btn" class="action-btn" type="button">Deploy</button>
+                      <button id="deploy-btn" class="action-btn hidden" type="button">Deploy</button>
                       <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
                     </div>
                     <p class="proxy-field-hint" id="deploy-access-hint" style="margin-top:4px;">Access is checked at the edge, before anything reaches the app.</p>
@@ -669,16 +668,16 @@
                 <!-- Releases right: the history. Version, channel, date, notes. -->
                 <div class="app-tab-right" data-tab="webhooks">
                   <div style="padding:12px 16px;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                      <h3 class="settings-subheading" style="margin:0;">Pipelines <span style="font-weight:400;color:var(--text-2);">— data in and out</span></h3>
-                      <span style="flex:1;"></span>
-                      <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
-                      <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New Token</button>
+                    <div style="display:flex;align-items:center;gap:6px;margin:0 0 4px;">
+                      <h3 class="settings-subheading" style="margin:0;">Pipelines</h3>
+                      <button id="app-data-pipeline-url-copy" class="ws-icon-btn" type="button" title="Copy the door URL" style="width:22px;height:22px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      </button>
                     </div>
-                    <p class="proxy-field-hint" style="margin:0 0 12px;">Tokens for external systems: <code>GET</code> the door for the model, <code>POST { table, rows }</code> in, <code>GET /&lt;table&gt;</code> out.</p>
-                    <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
-                      <code id="app-data-pipeline-url" class="app-mcp-endpoint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></code>
-                      <button id="app-data-pipeline-url-copy" class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Copy</button>
+                    <p class="proxy-field-hint" style="margin:0 0 10px;">Tokens for external systems: <code>GET</code> the door for the model, <code>POST { table, rows }</code> in, <code>GET /&lt;table&gt;</code> out.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                      <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
+                      <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New Token</button>
                     </div>
                     <div id="app-data-pipelines" class="mbr-list"></div>
                   </div>
@@ -690,7 +689,7 @@
                       <h3 class="settings-subheading" style="margin:0;">Version history</h3>
                       <span id="release-count" class="release-count"></span>
                       <span style="flex:1;"></span>
-                      <button id="release-refresh" class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Refresh</button>
+                      <button id="release-refresh" class="ws-icon-btn" type="button" title="Refresh"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
                     </div>
                     <div id="release-list" class="release-list"></div>
                     <div id="release-empty" class="help-item-empty hidden">

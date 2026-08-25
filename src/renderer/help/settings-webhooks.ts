@@ -283,11 +283,17 @@ function renderWebhookTable(
   onDelete: (appSlug: string, appName: string, w: WebhookRow) => void,
 ): void {
   host.innerHTML = "";
-  if (!rows.length) return;
   const table = document.createElement("table");
   table.className = "lib-table mbr-table";
   table.innerHTML = `<thead><tr>${withAppColumn ? "<th>App</th>" : ""}<th>Endpoint</th><th>Created by</th><th>Created</th><th>Last fired</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
+  if (!rows.length) {
+    // The header ALWAYS stands (his order, 2026-08-25); emptiness is a row.
+    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 6 : 5}" style="color:var(--text-3);padding:14px 12px;">No webhooks yet.</td></tr>`;
+    table.appendChild(tbody);
+    host.appendChild(table);
+    return;
+  }
   const pg = paginate(rows, page, PAGE_SIZE);
   for (const { app, w } of pg.items) {
     const tr = document.createElement("tr");
@@ -327,11 +333,16 @@ function renderPipelineTable(
   onRevoke: (appSlug: string, appName: string, t: IngestTokenRow) => void,
 ): void {
   host.innerHTML = "";
-  if (!rows.length) return;
   const table = document.createElement("table");
   table.className = "lib-table mbr-table";
   table.innerHTML = `<thead><tr>${withAppColumn ? "<th>App</th>" : ""}<th>Pipeline</th><th>Created by</th><th>Created</th><th>Last used</th><th>Expires</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 7 : 6}" style="color:var(--text-3);padding:14px 12px;">No pipelines yet.</td></tr>`;
+    table.appendChild(tbody);
+    host.appendChild(table);
+    return;
+  }
   const pg = paginate(rows, page, PAGE_SIZE);
   for (const { app, t } of pg.items) {
     const tr = document.createElement("tr");
@@ -551,10 +562,13 @@ export async function renderAppData(slug: string, appName: string): Promise<void
     pipelineUrl = ing.pipelineUrl;
   } catch (e) { say((e as Error).message); return; }
 
-  // The pipeline door — the one URL every pipeline POSTs { table, rows } to.
-  const urlEl = $("app-data-pipeline-url");
-  if (urlEl) urlEl.textContent = pipelineUrl;
-  $("app-data-pipeline-url-copy")?.addEventListener("click", () => copyToClipboard(pipelineUrl), { once: true });
+  // The door URL rides the copy ICON beside the Pipelines title.
+  const copyBtn = $("app-data-pipeline-url-copy") as HTMLButtonElement | null;
+  if (copyBtn && !copyBtn.dataset.wired) {
+    copyBtn.dataset.wired = "1";
+    copyBtn.addEventListener("click", () => copyToClipboard(pipelineUrl));
+  }
+  if (copyBtn) copyBtn.title = `Copy the door URL — ${pipelineUrl}`;
 
   const paint = (): void => {
     const wq = appWebhookQuery.toLowerCase();
@@ -573,9 +587,7 @@ export async function renderAppData(slug: string, appName: string): Promise<void
           catch (e) { say((e as Error).message); }
         })();
       });
-    if (!wRows.length) {
-      webhooksEl.innerHTML = `<div class="crud-empty">${webhooks.length ? `Nothing matching "${escapeHtml(appWebhookQuery)}"` : "No webhooks yet — register a URL and we POST to it when this app's data changes."}</div>`;
-    }
+
 
     const pq = appPipelineQuery.toLowerCase();
     const pRows = tokens.filter((tk) => !pq || (tk.label || "").toLowerCase().includes(pq))
@@ -593,9 +605,7 @@ export async function renderAppData(slug: string, appName: string): Promise<void
           catch (e) { say((e as Error).message); }
         })();
       });
-    if (!pRows.length) {
-      pipelinesEl.innerHTML = `<div class="crud-empty">${tokens.length ? `Nothing matching "${escapeHtml(appPipelineQuery)}"` : "No pipelines yet — create one and point your external system at the door above."}</div>`;
-    }
+
   };
   paint();
 

@@ -990,11 +990,11 @@ async function loadReleasesTab(): Promise<void> {
   // version; setting it makes the next build release exactly there.
   {
     const input = document.getElementById("release-next-version") as HTMLInputElement | null;
-    const saveBtn = document.getElementById("release-version-save") as HTMLButtonElement | null;
     const status = document.getElementById("release-version-status");
-    if (input && saveBtn && !saveBtn.dataset.wired) {
-      saveBtn.dataset.wired = "1";
-      saveBtn.addEventListener("click", () => {
+    if (input && !input.dataset.wired) {
+      input.dataset.wired = "1";
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter") return;
         void (async () => {
           const v = input.value.trim();
           if (!/^\d+\.\d+\.\d+/.test(v)) {
@@ -1304,6 +1304,7 @@ async function loadDeployTab(): Promise<void> {
   statusEl.textContent = "Checking…";
   urlRow.classList.add("hidden");
   takedown.classList.add("hidden");
+  deployBtn.classList.add("hidden");
   deployCurrentId = null;
 
   // Who can reach it — the app's own setting, not the deployment's. Shown here
@@ -1320,11 +1321,13 @@ async function loadDeployTab(): Promise<void> {
     deployCurrentId = d.id;
     statusEl.innerHTML = `<span class="deploy-dot ${d.status === "live" ? "on" : "pending"}"></span>${d.status === "live" ? "Deployed" : d.status}`;
     if (d.url) { urlEl.textContent = d.url; urlEl.href = d.url; urlRow.classList.remove("hidden"); }
+    // ONE hosting button at a time (his order, 2026-08-25): while deployed,
+    // Take down is the only control — Build & deploy already re-ships.
     takedown.classList.remove("hidden");
-    deployBtn.textContent = "Redeploy";
   } else {
     statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
     deployBtn.textContent = "Deploy";
+    deployBtn.classList.remove("hidden");
   }
 
   // The dedicated-server + custom-domains section shares this tab.
