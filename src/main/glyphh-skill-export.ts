@@ -167,6 +167,14 @@ creation.
 Both are managed on the app (App → Data) and aggregate to Settings → Webhooks
 for org-admin oversight.
 
+**CSS alignment (strict):** a glyphh app is a panel INSIDE the product — its
+surfaces must be indistinguishable from the host workbench. Build on the house
+dark tokens the scaffold ships (\`--bg #1a1a1c\`, \`--panel #252528\`,
+\`--bg-2 #2e2e32\`, \`--line #3f3f46\`, \`--ink #f1f1f1\`, \`--muted #c4c4c4\`,
+\`--dim #828282\`, \`--accent #af5fff\`, ok \`#28c840\` / warn \`#f0a030\` /
+danger \`#ff7a70\`, Inter with system fallbacks). Never invent a palette or
+restyle buttons — alignment with the host is a review criterion.
+
 A deployed app lives at \`<slug>.glyphh.app\`. Who may open it is the app's
 **access**, set on its Deploy tab (or \`apps edit --access\`): *members* (visitors
 sign in with a Glyphh account) or *public* (anyone with the link). It is checked
