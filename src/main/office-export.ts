@@ -14,7 +14,10 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { promises as fsp } from "node:fs";
 import { join } from "node:path";
+import { marked } from "marked";
 import { readGPoint, stripHiddenSlides } from "./gpoints";
+import { gdocFileName } from "./office-docs";
+import { getClient } from "./glyphh-client";
 
 const dataUrl = (html: string): string =>
   `data:text/html;base64,${Buffer.from(html, "utf8").toString("base64")}`;
@@ -101,6 +104,25 @@ async function savePdf(pdf: Buffer, suggestedName: string): Promise<{ ok: boolea
   await fsp.writeFile(filePath, pdf);
   shell.showItemInFolder(filePath);
   return { ok: true, path: filePath };
+}
+
+/**
+ * AGENT entry points — the same rendering pipeline as the panel's File menu,
+ * minus the save dialog: bytes come back for the caller to store (the agent
+ * tool saves them as a Drive file artifact).
+ */
+export async function exportDocPdf(name: string): Promise<{ title: string; pdf: Buffer }> {
+  const doc = await getClient().officeDocs.get(gdocFileName(name));
+  const html = await marked.parse(doc.markdown ?? "");
+  const title = doc.title || name.replace(/\.md$/i, "");
+  return { title, pdf: await printHtml(docPrintDoc(title, String(html))) };
+}
+
+export async function exportSlidesPdf(name: string): Promise<{ title: string; pdf: Buffer }> {
+  const deck = await readGPoint(name);
+  const pages = await captureSlides(deck);
+  if (!pages.length) throw new Error("the deck has no visible slides");
+  return { title: name.replace(/\.html$/i, ""), pdf: await printHtml(slidesPrintDoc(pages)) };
 }
 
 export function registerOfficeExportIpc(): void {

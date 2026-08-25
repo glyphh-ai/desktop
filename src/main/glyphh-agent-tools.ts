@@ -61,6 +61,7 @@ async function statorCall(path: "recall" | "write" | "browse" | "forget", body: 
 
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
+import { exportDocPdf, exportSlidesPdf } from "./office-export";
 import { designFileName, extractSiteDesign, imagePalette } from "./design";
 import { uploadMediaFile, mediaFileUrl } from "./media-panel";
 import { genImageAsset, genLook } from "./music-panel";
@@ -676,6 +677,32 @@ const TOOLS: ToolDef[] = [
       };
       const r = await updateAppFromWorkdir(lookup);
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+    },
+  },
+  {
+    name: "export_pdf",
+    doc: "export_pdf({ doc?, slides?, folder? }) — render a Glyphh Doc (doc: its name) or Slides deck (slides: its name) to a real PDF with the BUILT-IN Office exporter, saved into Drive as a file artifact. Optional folder files it into that Drive folder by name (created if missing). ALWAYS use this for doc/deck → PDF — never pandoc, wkhtmltopdf, CUPS, headless browsers, or any hand-rolled conversion.",
+    action: (a) => ({ kind: "edit", title: `Export PDF: ${String(a.doc ?? a.slides ?? "")}` }),
+    run: async (a) => {
+      const docName = typeof a.doc === "string" ? a.doc.trim() : "";
+      const deckName = typeof a.slides === "string" ? a.slides.trim() : "";
+      if (!docName && !deckName) return "ERROR: pass doc (a Docs file name) or slides (a deck name)";
+      const { title, pdf } = docName ? await exportDocPdf(docName) : await exportSlidesPdf(deckName);
+      const artifact = await getClient().files.create({
+        name: `${title.replace(/[\\/:]/g, "-")}.pdf`,
+        mime: "application/pdf",
+        contentBase64: pdf.toString("base64"),
+      });
+      let filed = "";
+      const folderName = typeof a.folder === "string" ? a.folder.trim() : "";
+      if (folderName) {
+        const listing = await getClient().officeDrive.list();
+        const existing = listing.folders.find((f) => f.name.toLowerCase() === folderName.toLowerCase());
+        const folder = existing ?? await getClient().officeDrive.createFolder(folderName);
+        await getClient().officeDrive.move("file", artifact.id, folder.id);
+        filed = ` and filed into Drive folder "${folder.name}"`;
+      }
+      return `exported "${title}.pdf" (${Math.round(pdf.byteLength / 1024)} KB) to Drive${filed}. Artifact id: ${artifact.id}.`;
     },
   },
   // NO `deploy_app` HERE, deliberately. Publishing belongs to the control

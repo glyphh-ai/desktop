@@ -65,6 +65,8 @@ const driveApi = () => (window as unknown as { glyphh?: {
   gdriveFolderDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   gpointDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
   gdocDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  designDelete?: (file: string) => Promise<{ ok: boolean; error?: string }>;
+  musicSongDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: unknown[]; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   musicSongs?: () => Promise<{ ok: boolean; songs: unknown[]; error?: string }>;
@@ -526,10 +528,13 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
             fn: () => void (async () => { await api.gdriveMove?.(f.kind, f.ref, fo.id); void paint(); })(),
           })),
         ];
-        // Delete where a bridge exists (design/music manage deletion in their apps).
+        // EVERY kind deletes from Drive (his order, 2026-08-24): the object is
+        // removed for the whole org, not merely unfiled.
         const del = f.kind === "slides" ? () => driveApi().gpointDelete?.(f.file || f.ref)
           : f.kind === "sheets" ? () => driveApi().gsheetDelete?.(f.file || f.ref)
           : f.kind === "docs" ? () => driveApi().gdocDelete?.(f.file || f.ref)
+          : f.kind === "design" ? () => driveApi().designDelete?.(f.file || f.ref)
+          : f.kind === "music" ? () => driveApi().musicSongDelete?.(f.ref)
           : f.kind === "media" ? () => (driveApi() as { mediaDelete?: (id: string) => Promise<unknown> }).mediaDelete?.(f.ref)
           : f.kind === "file" ? () => api.filesDelete?.(f.ref)
           : null;
