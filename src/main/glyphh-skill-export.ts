@@ -144,6 +144,16 @@ tools directly (no UI needed):
 3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
    If \`get_app\` shows a release with no finished build, call \`build_app\`.
 
+## Integration — pick the lane
+
+Three lanes move data between an app and the world. **Connectors** (the 3,500+
+connected accounts): Glyphh reaching OUT into SaaS — use agent tools/loops for
+anything with a connector or needing logic. **Pipelines**: raw data in/out for
+systems we don't control (customer's n8n/make/Boomi, crons) — a token + a
+self-describing door, no model in the loop. **Webhooks**: signed change
+notifications out, so nothing polls. Logic or SaaS → loop + connectors; raw
+customer data → hand them the pipeline contract.
+
 ## App data doors — pipelines in, webhooks out
 
 **Pipelines (the bi-directional data API — n8n / make.com / Boomi):** a NAMED
