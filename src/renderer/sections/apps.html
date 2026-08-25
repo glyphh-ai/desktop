@@ -260,33 +260,18 @@
                 <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
                      Each must be explicitly approved (allowlist) before it's
                      reachable — newly-appeared tools default to OFF. -->
-                <!-- Integration: BOTH directions on the left — Inbound (pipelines
-                     seed data in) and Outbound (webhooks fire on data changes).
-                     The right pane is the explainer. Both create via modal. -->
+                <!-- Integration: WEBHOOKS (outbound) on the LEFT, PIPELINES (the
+                     bi-directional data API) on the RIGHT. Both create via modal. -->
                 <div class="app-tab-left" data-tab="webhooks">
                   <div id="app-data-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
-
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
-                    <h3 class="settings-subheading" style="margin:0;">Pipelines <span style="font-weight:400;color:var(--text-2);">— data in and out</span></h3>
-                    <span style="flex:1;"></span>
-                    <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
-                    <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New Token</button>
-                  </div>
-                  <div style="display:flex;align-items:center;gap:8px;margin:6px 0 12px;">
-                    <code id="app-data-pipeline-url" class="app-mcp-endpoint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></code>
-                    <button id="app-data-pipeline-url-copy" class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Copy</button>
-                  </div>
-                  <div id="app-data-pipelines" class="mbr-list"></div>
-
-                  <div class="app-detail-section-sep"></div>
-
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
                     <h3 class="settings-subheading" style="margin:0;">Webhooks <span style="font-weight:400;color:var(--text-2);">— we call you on changes</span></h3>
                     <span style="flex:1;"></span>
                     <input id="app-data-webhooks-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
                     <button id="app-data-new-webhook" class="action-btn primary" type="button">+ New</button>
                   </div>
-                  <div id="app-data-webhooks" class="mbr-list" style="margin-top:8px;"></div>
+                  <p class="proxy-field-hint" style="margin:2px 0 12px;">Register a URL and this app POSTs <code>{ app, table, op, at, rows }</code> to it whenever its data changes — signed <code>X-Glyphh-Signature</code> with the secret shown once at creation.</p>
+                  <div id="app-data-webhooks" class="mbr-list"></div>
                 </div>
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
@@ -683,27 +668,19 @@
 
                 <!-- Releases right: the history. Version, channel, date, notes. -->
                 <div class="app-tab-right" data-tab="webhooks">
-                  <div style="padding:12px 16px;max-width:560px;">
-                    <h3 class="settings-subheading" style="margin:0 0 8px;">Moving data in and out</h3>
-                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
-                      <strong>Pipelines — the bi-directional data API.</strong> A pipeline is a named
-                      token an integration platform (n8n, make, Boomi) uses to move data in and out.
-                      The app schema is the contract, and the door describes itself:
-                      <code>GET</code> the door URL returns the data model as JSON Schema — hand that
-                      to the platform so it can map its fields; <code>POST { table, rows }</code>
-                      seeds data in, validated against the schema;
-                      <code>GET &lt;door&gt;/&lt;table&gt;</code> reads data out —
-                      <code>?expand=&lt;fkColumn&gt;</code> embeds the related row (the model lists each
-                      table's relations). All with
-                      <code>Authorization: Bearer &lt;token&gt;</code> — shown once at creation.
-                    </p>
-                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
-                      <strong>Outbound — webhooks.</strong> Register a URL and this app POSTs
-                      <code>{ app, table, op, at, rows }</code> to it whenever its data changes,
-                      signed <code>X-Glyphh-Signature: sha256=&lt;hmac&gt;</code> with the secret shown
-                      once at creation. Verify the signature before trusting a delivery; the table's
-                      “Last fired” column shows each endpoint's latest verdict.
-                    </p>
+                  <div style="padding:12px 16px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+                      <h3 class="settings-subheading" style="margin:0;">Pipelines <span style="font-weight:400;color:var(--text-2);">— data in and out</span></h3>
+                      <span style="flex:1;"></span>
+                      <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="width:150px;height:28px;" spellcheck="false" autocomplete="off" />
+                      <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New Token</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:2px 0 8px;">A named token an integration platform (n8n, make, Boomi) uses to move data both ways: <code>GET</code> the door returns the data model as JSON Schema (hand it to the platform), <code>POST { table, rows }</code> seeds data in, <code>GET &lt;door&gt;/&lt;table&gt;?expand=&lt;fkColumn&gt;</code> reads data out with related rows embedded.</p>
+                    <div style="display:flex;align-items:center;gap:8px;margin:0 0 12px;">
+                      <code id="app-data-pipeline-url" class="app-mcp-endpoint" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></code>
+                      <button id="app-data-pipeline-url-copy" class="action-btn" type="button" style="height:24px;font-size:11px;padding:0 10px;">Copy</button>
+                    </div>
+                    <div id="app-data-pipelines" class="mbr-list"></div>
                   </div>
                 </div>
 
