@@ -144,20 +144,26 @@ tools directly (no UI needed):
 3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
    If \`get_app\` shows a release with no finished build, call \`build_app\`.
 
-## Inbound data — webhooks (n8n / make.com / Boomi)
+## App data doors — pipelines in, webhooks out
 
-An app that receives external data declares hooks in its manifest beside the
-schema: \`ingest: [{ name, table, embed?: [textColumns] }]\`. After release:
-
-1. \`get_ingest { slug }\` — each hook's public POST URL + the org's token hints.
-2. \`create_ingest_token { slug, label }\` (org admin) — the RAW token, shown
+**Pipelines (inbound, n8n / make.com / Boomi):** a per-app token seeds data in.
+1. \`create_ingest_token { slug, label }\` (org admin) — the RAW token, shown
    once; hand it to the user for the pipeline's \`Authorization: Bearer\` header.
-3. The pipeline POSTs JSON (\`{...row}\` or \`{ rows: [...] }\`, ≤200/call) to the
-   hook URL. Rows land through the validated insert path; \`embed\` columns index
-   into the app's embeddings plane. A token only writes that one app's tables.
+2. The pipeline POSTs \`{ table, rows: [...] }\` (≤200 rows/call) to
+   \`/api/ingest/<slug>\` — the table must be declared in the app schema; rows
+   land through the validated insert path. \`get_ingest { slug }\` returns the
+   door URL + token hints. A token only writes that one app's tables.
+   (A manifest may still declare named hooks \`ingest: [{ name, table?, embed? }]\`
+   at \`/api/ingest/<slug>/<name>\` — \`embed\` columns index into the app's
+   embeddings plane.)
 
-Hooks and tokens are managed on the app (App → Webhooks) and aggregate to
-Settings → Webhooks for org-admin oversight.
+**Webhooks (outbound):** the user registers a URL on the app and the platform
+POSTs \`{ app, table, op, at, rows }\` to it whenever the app's data changes,
+signed \`X-Glyphh-Signature: sha256=<hmac>\` with the secret shown once at
+creation.
+
+Both are managed on the app (App → Data) and aggregate to Settings → Webhooks
+for org-admin oversight.
 
 A deployed app lives at \`<slug>.glyphh.app\`. Who may open it is the app's
 **access**, set on its Deploy tab (or \`apps edit --access\`): *members* (visitors

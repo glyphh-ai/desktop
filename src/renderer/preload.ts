@@ -661,14 +661,20 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("apps-ingest-installed") as Promise<{ ok: boolean; apps?: Array<{ slug: string; name: string }>; error?: string }>,
   appsIngestList: (slug: string) =>
     ipcRenderer.invoke("apps-ingest-list", slug) as Promise<{ ok: boolean; hooks?: unknown[]; tokens?: unknown[]; error?: string }>,
-  appsIngestTokenCreate: (slug: string, label: string) =>
-    ipcRenderer.invoke("apps-ingest-token-create", slug, label) as Promise<{ ok: boolean; token?: string; row?: unknown; error?: string }>,
+  appsIngestTokenCreate: (slug: string, label: string, expiresDays?: number) =>
+    ipcRenderer.invoke("apps-ingest-token-create", slug, label, expiresDays) as Promise<{ ok: boolean; token?: string; row?: unknown; error?: string }>,
   appsIngestTokenRevoke: (slug: string, id: string) =>
     ipcRenderer.invoke("apps-ingest-token-revoke", slug, id) as Promise<{ ok: boolean; error?: string }>,
   appsIngestHookCreate: (slug: string, input: { name: string; table: string; embed?: string[]; description?: string }) =>
     ipcRenderer.invoke("apps-ingest-hook-create", slug, input) as Promise<{ ok: boolean; hook?: unknown; error?: string }>,
   appsIngestHookDelete: (slug: string, name: string) =>
     ipcRenderer.invoke("apps-ingest-hook-delete", slug, name) as Promise<{ ok: boolean; error?: string }>,
+  appsWebhooksList: (slug: string) =>
+    ipcRenderer.invoke("apps-webhooks-list", slug) as Promise<{ ok: boolean; webhooks?: unknown[]; error?: string }>,
+  appsWebhookCreate: (slug: string, input: { url: string; description?: string }) =>
+    ipcRenderer.invoke("apps-webhook-create", slug, input) as Promise<{ ok: boolean; webhook?: unknown; secret?: string; error?: string }>,
+  appsWebhookDelete: (slug: string, id: string) =>
+    ipcRenderer.invoke("apps-webhook-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
   accountUserImage: (bytes: ArrayBuffer) =>
     ipcRenderer.invoke("account-user-image", bytes) as Promise<{ ok: boolean; media?: unknown; error?: string }>,
   accountOrgUpdate: (patch: Record<string, unknown>) =>

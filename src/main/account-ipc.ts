@@ -114,8 +114,8 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, ...(await getClient().apps.ingest(String(slug))) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("apps-ingest-token-create", async (_e, slug: string, label: string) => {
-    try { return { ok: true as const, ...(await getClient().apps.createIngestToken(String(slug), String(label ?? ""))) }; }
+  ipcMain.handle("apps-ingest-token-create", async (_e, slug: string, label: string, expiresDays?: number) => {
+    try { return { ok: true as const, ...(await getClient().apps.createIngestToken(String(slug), String(label ?? ""), expiresDays)) }; }
     catch (err) { return fail(err); }
   });
   ipcMain.handle("apps-ingest-token-revoke", async (_e, slug: string, id: string) => {
@@ -128,6 +128,18 @@ export function registerAccountIpc(): void {
   });
   ipcMain.handle("apps-ingest-hook-delete", async (_e, slug: string, name: string) => {
     try { await getClient().apps.removeIngestHook(String(slug), String(name)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-webhooks-list", async (_e, slug: string) => {
+    try { return { ok: true as const, ...(await getClient().apps.webhooks(String(slug))) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-webhook-create", async (_e, slug: string, input: { url: string; description?: string }) => {
+    try { return { ok: true as const, ...(await getClient().apps.createWebhook(String(slug), input)) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-webhook-delete", async (_e, slug: string, id: string) => {
+    try { await getClient().apps.removeWebhook(String(slug), String(id)); return { ok: true as const }; }
     catch (err) { return fail(err); }
   });
 

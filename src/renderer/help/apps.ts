@@ -653,7 +653,7 @@ function switchAppTab(tab: string) {
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") void loadReleasesTab();
-  if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppIngest(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
+  if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
   // Consumer view (marketplace-installed): render from the cached store

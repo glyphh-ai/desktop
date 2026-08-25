@@ -1287,17 +1287,17 @@
               </div>
                             <div class="settings-panel" data-sub="webhooks">
                 <h2>Webhooks</h2>
-                <p class="section-desc">Push data into your apps from n8n, make.com, Boomi — POST JSON to a hook URL with its token.</p>
+                <p class="section-desc">Every app's data doors, org-wide: webhooks POST out when data changes; pipelines are the tokens that seed data in.</p>
                 <div id="webhooks-error" class="settings-error hidden"></div>
                 <div class="app-detail-tabs" id="webhooks-tabs" style="margin-top:22px;">
-                  <button class="app-detail-tab active" data-wtab="hooks" type="button">Hooks</button>
-                  <button class="app-detail-tab" data-wtab="tokens" type="button">Tokens</button>
+                  <button class="app-detail-tab active" data-wtab="hooks" type="button">Webhooks</button>
+                  <button class="app-detail-tab" data-wtab="tokens" type="button">Pipelines</button>
                 </div>
                 <div class="crud-toolbar">
-                  <input id="webhooks-search" type="text" class="crud-search" placeholder="Search hooks and tokens..." spellcheck="false" autocomplete="off" />
-                  <button id="webhooks-new-btn" class="action-btn primary" type="button">+ New token</button>
+                  <input id="webhooks-search" type="text" class="crud-search" placeholder="Search webhooks and pipelines..." spellcheck="false" autocomplete="off" />
+                  <button id="webhooks-new-btn" class="action-btn primary" type="button">+ New</button>
                 </div>
-                <div id="webhooks-empty" class="crud-empty hidden">No installed app declares ingest hooks yet.</div>
+                <div id="webhooks-empty" class="crud-empty hidden">Nothing here yet.</div>
                 <div id="webhooks-hooks-list" class="mbr-list"></div>
                 <div id="webhooks-tokens-list" class="mbr-list hidden"></div>
               </div>
