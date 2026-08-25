@@ -18,18 +18,23 @@ import { slugForWebContents } from "./rpa.js";
 const SEAM_RE = /^\/hosted\/[a-z0-9][a-z0-9-]*\/api\//;
 
 export function installAppSeamAuth(): void {
-  const filterUrls = [`${SERVER_URL.replace(/\/$/, "")}/hosted/*`];
+  // No urls filter: Chrome match patterns can't express a host WITH a port
+  // (localhost:3001), so a filtered subscription silently never fires on a
+  // local stack. Subscribe to everything on the partition and gate in code —
+  // the checks are three string tests.
+  const serverOrigin = SERVER_URL.replace(/\/$/, "");
   session.fromPartition("persist:yo").webRequest.onBeforeSendHeaders(
-    { urls: filterUrls },
     (details, callback) => {
       try {
-        const wcId = details.webContentsId;
-        const path = new URL(details.url).pathname;
-        if (wcId !== undefined && SEAM_RE.test(path) && slugForWebContents(wcId)) {
-          const token = readSessionFileSync()?.accessToken;
-          if (token) {
-            callback({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } });
-            return;
+        if (details.url.startsWith(`${serverOrigin}/hosted/`)) {
+          const wcId = details.webContentsId;
+          const path = new URL(details.url).pathname;
+          if (wcId !== undefined && SEAM_RE.test(path) && slugForWebContents(wcId)) {
+            const token = readSessionFileSync()?.accessToken;
+            if (token) {
+              callback({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } });
+              return;
+            }
           }
         }
       } catch { /* fall through — send unmodified */ }
