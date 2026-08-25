@@ -75,6 +75,7 @@ import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
+import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
@@ -227,6 +228,10 @@ async function boot() {
   // The RUNTIME name — the menu bar, Quit item, and About panel read this,
   // overriding package.json productName. It said "Yo" long after the rebrand.
   app.setName("Glyphh");
+
+  // The app data seam's desktop credential: glyphh-app webviews get the
+  // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
+  installAppSeamAuth();
 
   // Resolve real shell PATH once — Electron on macOS launched from Finder
   // inherits a sanitized PATH that breaks Homebrew/asdf/nvm tools. Cached for
