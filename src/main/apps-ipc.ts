@@ -702,6 +702,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // ── Deploy tab (dev-host): status + deploy + take-down ──────────────────────
   // Deploy bundles the app's newest built release and serves it at a dev URL
   // (<slug>.glyphh.app / /hosted/<slug>). Status comes from the org's deployments.
+  ipcMain.handle("app-version-set", async (_e, slug: string, version: string) => {
+    try { return { ok: true, ...(await getClient().apps.setVersion(String(slug), String(version))) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("hosting-status", async (_e, slug: string) => {
     try {
       const deployments = await getClient().hosting.list();

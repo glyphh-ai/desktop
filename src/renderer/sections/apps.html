@@ -336,6 +336,13 @@
                   <!-- Builder controls: notes + promotion. Owner only. -->
                   <div id="release-owner-view">
                     <label class="settings-label">Release</label>
+                    <label class="settings-label">Next version <span id="release-version-status" class="set-save-state"></span></label>
+                    <div class="settings-inline" style="margin-bottom:4px;">
+                      <input id="release-next-version" type="text" class="settings-input" placeholder="e.g. 2.0.0" spellcheck="false" autocomplete="off" style="max-width:160px;" />
+                      <button id="release-version-save" class="action-btn" type="button">Set</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:0 0 14px;">The next build releases as this version (major.minor.patch); builds after it bump the patch. A version an existing release holds is refused.</p>
+
                     <div id="release-selected" class="release-selected">Select a release from the history →</div>
 
                     <label class="settings-label" style="margin-top:14px;">Release notes <span style="color:var(--text-2);font-weight:400;">— what changed, in your words</span></label>

@@ -782,6 +782,10 @@ export function buildContract(client, deps) {
     // Deploy tab (dev-host) — the DESKTOP's hosting-* IPC, twinned (his bug,
     // 2026-08-25: deploy from the web silently no-oped — the fabricating proxy
     // swallowed the missing shims while the desktop worked).
+    appVersionSet: async (slug, version) => {
+      try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     hostingStatus: async (slug) => {
       try {
         const deployments = await client.hosting.list();

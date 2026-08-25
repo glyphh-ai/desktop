@@ -540,6 +540,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   appExport: (appId: string) => ipcRenderer.invoke("app-export", appId) as Promise<{ ok: boolean; path?: string; error?: string }>,
   // Deploy (dev-host) + Production (Supabase graduation) — app-detail tabs.
   hostingStatus: (slug: string) => ipcRenderer.invoke("hosting-status", slug) as Promise<{ ok: boolean; deployment?: { id: string; appSlug: string; url: string | null; status: string } | null; error?: string }>,
+  appVersionSet: (slug: string, version: string) =>
+    ipcRenderer.invoke("app-version-set", slug, version) as Promise<{ ok: boolean; version?: string; error?: string }>,
   hostingDeploy: (slug: string) => ipcRenderer.invoke("hosting-deploy", slug) as Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>,
   hostingDestroy: (id: string) => ipcRenderer.invoke("hosting-destroy", id) as Promise<{ ok: boolean; error?: string }>,
   // Dedicated app servers + custom domains (Phase F) — deploy an app to its own

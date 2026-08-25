@@ -981,6 +981,36 @@ async function loadReleasesTab(): Promise<void> {
   }
   const readOnly = releases.some((r) => r.id.startsWith("imported:"));
 
+  // Next-version steer (his order, 2026-08-25): base = the app's CURRENT
+  // version; setting it makes the next build release exactly there.
+  {
+    const input = document.getElementById("release-next-version") as HTMLInputElement | null;
+    const saveBtn = document.getElementById("release-version-save") as HTMLButtonElement | null;
+    const status = document.getElementById("release-version-status");
+    if (input && saveBtn && !saveBtn.dataset.wired) {
+      saveBtn.dataset.wired = "1";
+      saveBtn.addEventListener("click", () => {
+        void (async () => {
+          const v = input.value.trim();
+          if (!/^\d+\.\d+\.\d+/.test(v)) {
+            if (status) { status.textContent = "Use major.minor.patch"; status.className = "set-save-state error"; }
+            return;
+          }
+          if (status) { status.textContent = "Saving…"; status.className = "set-save-state"; }
+          const res = await window.glyphh.appVersionSet?.(currentApp?.slug || currentAppId, v);
+          if (res?.ok) {
+            if (status) { status.textContent = "Saved", status.className = "set-save-state success"; }
+            window.setTimeout(() => { if (status?.textContent === "Saved") status.textContent = ""; }, 2500);
+          } else if (status) {
+            status.textContent = res?.error || "Not saved";
+            status.className = "set-save-state error";
+          }
+        })();
+      });
+    }
+    if (input && !input.value) input.value = releases[0]?.version || "";
+  }
+
   countEl.textContent = releases.length
     ? `${releases.length} release${releases.length === 1 ? "" : "s"}${readOnly ? " · from the bundle" : ""}`
     : "";
