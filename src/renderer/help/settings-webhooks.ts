@@ -283,3 +283,105 @@ export function initWebhooksPanel(): void {
     document.addEventListener("mousedown", away, true);
   });
 }
+
+// ── The PER-APP view (App → edit → Webhooks): this one app's hooks + tokens,
+// the same tables, scoped. The org page above stays the admin aggregate. ──
+export async function renderAppIngest(slug: string, appName: string): Promise<void> {
+  const hooksEl = document.getElementById("app-ingest-hooks");
+  const tokensEl = document.getElementById("app-ingest-tokens");
+  const errEl = document.getElementById("app-ingest-error");
+  if (!hooksEl || !tokensEl) return;
+  const say = (msg: string): void => {
+    if (!errEl) return;
+    errEl.textContent = msg;
+    errEl.classList.toggle("hidden", !msg);
+  };
+  say("");
+  const t = transport();
+  if (!t) { say(NO_TRANSPORT); return; }
+  let data: { hooks: IngestHookRow[]; tokens: IngestTokenRow[] };
+  try { data = await t.ingest(slug); }
+  catch (e) { say((e as Error).message); return; }
+
+  hooksEl.innerHTML = "";
+  if (!data.hooks.length) {
+    hooksEl.innerHTML = `<div class="crud-empty">No hooks declared — add ingest: [{ name, table }] to the manifest and release.</div>`;
+  } else {
+    const table = document.createElement("table");
+    table.className = "lib-table mbr-table";
+    table.innerHTML = `<thead><tr><th>Hook</th><th>Table</th><th>URL</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+    for (const hk of data.hooks) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="lib-table-name"><span class="ai-hook"></span></td>` +
+        `<td class="lib-table-dim"><span class="ai-table"></span></td>` +
+        `<td class="lib-table-dim wh-url-cell"><code class="ai-url"></code></td>`;
+      (tr.querySelector(".ai-hook") as HTMLElement).textContent = hk.name;
+      (tr.querySelector(".ai-table") as HTMLElement).textContent = hk.table + (hk.embed?.length ? ` · embeds ${hk.embed.join(", ")}` : "");
+      (tr.querySelector(".ai-url") as HTMLElement).textContent = hk.url;
+      tr.appendChild(kebabCell(() => [
+        { icon: ROW_MENU_ICONS.view, label: "Copy URL", onClick: () => {
+          void navigator.clipboard.writeText(hk.url).catch(() => {
+            const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
+            if (typeof ipc === "function") void ipc(hk.url);
+          });
+        } },
+      ]));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    hooksEl.appendChild(table);
+  }
+
+  tokensEl.innerHTML = "";
+  if (!data.tokens.length) {
+    tokensEl.innerHTML = `<div class="crud-empty">No tokens yet — mint one with + New token.</div>`;
+  } else {
+    const table = document.createElement("table");
+    table.className = "lib-table mbr-table";
+    table.innerHTML = `<thead><tr><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+    for (const tk of data.tokens) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="lib-table-name"><span class="ai-label"></span></td>` +
+        `<td class="lib-table-dim"><span class="ai-hint"></span></td>` +
+        `<td class="lib-table-dim">${escapeHtml(fmtDay(tk.createdAt))}</td>` +
+        `<td class="lib-table-dim">${escapeHtml(tk.lastUsedAt ? fmtDay(tk.lastUsedAt) : "never")}</td>`;
+      (tr.querySelector(".ai-label") as HTMLElement).textContent = tk.label || "(unnamed)";
+      (tr.querySelector(".ai-hint") as HTMLElement).textContent = tk.tokenHint || tk.prefix;
+      tr.appendChild(kebabCell(() => [
+        { icon: ROW_MENU_ICONS.delete, label: "Revoke…", danger: true, onClick: () => {
+          void (async () => {
+            if (!(await confirmAction({
+              title: `Revoke “${tk.label || "this token"}”?`,
+              body: `Any pipeline posting to ${appName} with this token immediately loses access.`,
+              confirmLabel: "Revoke",
+              danger: true,
+            }))) return;
+            try { await t.revoke(slug, tk.id); await renderAppIngest(slug, appName); }
+            catch (e) { say((e as Error).message); }
+          })();
+        } },
+      ]));
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    tokensEl.appendChild(table);
+  }
+
+  const mint = document.getElementById("app-ingest-new-token") as HTMLButtonElement | null;
+  if (mint && !mint.dataset.wired) {
+    mint.dataset.wired = "1";
+    mint.addEventListener("click", () => {
+      void (async () => {
+        try {
+          const made = await transport()!.mint(slug, "");
+          showTokenModal(`${appName} webhook token`, made.token);
+          await renderAppIngest(slug, appName);
+        } catch (e) { say((e as Error).message); }
+      })();
+    });
+  }
+}

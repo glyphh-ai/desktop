@@ -651,6 +651,7 @@ function switchAppTab(tab: string) {
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") void loadReleasesTab();
+  if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppIngest(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
   // Consumer view (marketplace-installed): render from the cached store
@@ -1780,6 +1781,8 @@ async function openPanelAppDetail(app: PanelApp) {
   // glyphh app only rides those rails technically (entry html as execPath).
   // Its real "path" is the source of record — never show the native fields.
   const isGlyphhKind = app.appArchetype === "glyphh-app";
+  document.querySelectorAll<HTMLElement>(".tab-glyphh-only").forEach((el) =>
+    el.classList.toggle("hidden", !(isGlyphhKind && app.owned !== false)));
   toggleTypeFields("app-detail", isGlyphhKind ? "browser" : detailType);
   if (isGlyphhKind) document.getElementById("app-detail-browser-fields")?.classList.add("hidden");
   toggleArchetypeFields("app-detail", detailArchetype);

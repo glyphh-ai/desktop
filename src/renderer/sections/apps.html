@@ -126,6 +126,7 @@
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
+              <button class="app-detail-tab tab-glyphh-only hidden" data-tab="webhooks">Webhooks</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
@@ -259,6 +260,18 @@
                 <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
                      Each must be explicitly approved (allowlist) before it's
                      reachable — newly-appeared tools default to OFF. -->
+                <div class="app-tab-left" data-tab="webhooks">
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">This app's inbound data doors. Hooks come from the manifest (<code>ingest:</code>); tokens authenticate the pipeline POSTs. Org admins see every app's doors under Settings → Webhooks.</p>
+                  <div id="app-ingest-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <div class="crud-toolbar" style="margin-bottom:10px;">
+                    <div style="flex:1;"></div>
+                    <button id="app-ingest-new-token" class="action-btn primary" type="button">+ New token</button>
+                  </div>
+                  <label class="settings-label">Hooks</label>
+                  <div id="app-ingest-hooks" class="mbr-list"></div>
+                  <label class="settings-label" style="margin-top:14px;">Tokens</label>
+                  <div id="app-ingest-tokens" class="mbr-list"></div>
+                </div>
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
                   <code id="app-mcp-endpoint" class="app-mcp-endpoint"></code>

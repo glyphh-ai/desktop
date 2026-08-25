@@ -87,6 +87,7 @@ export interface MktDetail {
   reported?: boolean;
   listing: MktListingRecord;
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
+  hasIngest?: boolean;
 }
 
 /** One installer's review (contract AppReview / DeveloperReview). */

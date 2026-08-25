@@ -144,6 +144,21 @@ tools directly (no UI needed):
 3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
    If \`get_app\` shows a release with no finished build, call \`build_app\`.
 
+## Inbound data — webhooks (n8n / make.com / Boomi)
+
+An app that receives external data declares hooks in its manifest beside the
+schema: \`ingest: [{ name, table, embed?: [textColumns] }]\`. After release:
+
+1. \`get_ingest { slug }\` — each hook's public POST URL + the org's token hints.
+2. \`create_ingest_token { slug, label }\` (org admin) — the RAW token, shown
+   once; hand it to the user for the pipeline's \`Authorization: Bearer\` header.
+3. The pipeline POSTs JSON (\`{...row}\` or \`{ rows: [...] }\`, ≤200/call) to the
+   hook URL. Rows land through the validated insert path; \`embed\` columns index
+   into the app's embeddings plane. A token only writes that one app's tables.
+
+Hooks and tokens are managed on the app (App → Webhooks) and aggregate to
+Settings → Webhooks for org-admin oversight.
+
 A deployed app lives at \`<slug>.glyphh.app\`. Who may open it is the app's
 **access**, set on its Deploy tab (or \`apps edit --access\`): *members* (visitors
 sign in with a Glyphh account) or *public* (anyone with the link). It is checked
