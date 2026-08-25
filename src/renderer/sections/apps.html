@@ -264,7 +264,9 @@
                      title, one-line description, full-width search + New,
                      table with a permanent header. -->
                 <div class="app-tab-left" data-tab="webhooks">
-                  <div style="padding:12px 16px 0 0;">
+                  <!-- .app-builder-controls already pads 12px top — no second
+                       helping, so the two pane titles align horizontally. -->
+                  <div style="padding:0 16px 0 0;">
                     <div id="app-data-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
                     <h3 class="settings-subheading" style="margin:0 0 4px;">Webhooks</h3>
                     <p class="proxy-field-hint" style="margin:0 0 10px;">Signed POSTs to your URL on every data change.</p>
