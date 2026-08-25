@@ -15,6 +15,8 @@ import { session } from "electron";
 import { SERVER_URL, readSessionFileSync } from "./glyphh-client.js";
 import { slugForWebContents } from "./rpa.js";
 
+let loggedOnce = false;
+
 const SEAM_RE = /^\/hosted\/[a-z0-9][a-z0-9-]*\/api\//;
 
 export function installAppSeamAuth(): void {
@@ -32,6 +34,7 @@ export function installAppSeamAuth(): void {
           if (wcId !== undefined && SEAM_RE.test(path) && slugForWebContents(wcId)) {
             const token = readSessionFileSync()?.accessToken;
             if (token) {
+              if (!loggedOnce) { loggedOnce = true; console.log(`[app-seam] injecting bearer for ${path}`); }
               callback({ requestHeaders: { ...details.requestHeaders, Authorization: `Bearer ${token}` } });
               return;
             }
