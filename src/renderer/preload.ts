@@ -684,6 +684,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("apps-schedule-update", slug, id, patch) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
   appsScheduleDelete: (slug: string, id: string) =>
     ipcRenderer.invoke("apps-schedule-delete", slug, id) as Promise<{ ok: boolean; error?: string }>,
+  appsCronList: (slug: string) =>
+    ipcRenderer.invoke("apps-cron-list", slug) as Promise<{ ok: boolean; handlers?: Array<{ id: string; cron: string; handler: string }>; error?: string }>,
   appsScheduleRun: (slug: string, id: string) =>
     ipcRenderer.invoke("apps-schedule-run", slug, id) as Promise<{ ok: boolean; schedule?: unknown; error?: string }>,
   accountUserImage: (bytes: ArrayBuffer) =>

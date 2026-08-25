@@ -1202,9 +1202,17 @@ async function loadScheduleTab(): Promise<void> {
     errEl.classList.toggle("hidden", !msg);
   };
   say("");
-  const res = await window.glyphh.appsSchedulesList?.(slug);
+  const [res, cron] = await Promise.all([
+    window.glyphh.appsSchedulesList?.(slug),
+    // The app's OWN cron handlers — declared in its worker (cron.schedule),
+    // deterministic app code, no model, no credits. Read-only: they live in
+    // the app's source, not this console. Shown here so ONE surface answers
+    // "what does this app do on a timer?" (his order, 2026-08-25).
+    window.glyphh.appsCronList?.(slug).catch(() => null),
+  ]);
   if (!res?.ok) { say(res?.error || "Couldn't load the schedule."); return; }
   const schedules = (res.schedules ?? []) as AppSchedule[];
+  const handlers = (cron?.ok ? cron.handlers ?? [] : []);
 
   const fmt = (iso: string | null): string =>
     iso ? new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -1217,8 +1225,23 @@ async function loadScheduleTab(): Promise<void> {
     table.className = "lib-table mbr-table";
     table.innerHTML = `<thead><tr><th>Name</th><th>Cadence</th><th>Last run</th><th>Next run</th><th>Enabled</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
     const tbody = document.createElement("tbody");
-    if (!rows.length) {
+    const handlerRows = q ? handlers.filter((hd) => hd.id.toLowerCase().includes(q) || hd.handler.toLowerCase().includes(q)) : handlers;
+    if (!rows.length && !handlerRows.length) {
       tbody.innerHTML = `<tr><td colspan="6" style="color:var(--text-3);padding:14px 12px;">No schedules yet.</td></tr>`;
+    }
+    // The app's own cron first — code-declared, so no toggle and no kebab.
+    for (const hd of handlerRows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="lib-table-name"><span class="sc-hid"></span></td>` +
+        `<td class="lib-table-dim"><span class="mono sc-hcron" style="font-family:var(--font-mono);font-size:11.5px;"></span></td>` +
+        `<td class="lib-table-dim" colspan="2"><span class="sc-hhandler" style="color:var(--text-3);"></span></td>` +
+        `<td class="lib-table-dim">in the app</td><td></td>`;
+      (tr.querySelector(".sc-hid") as HTMLElement).textContent = hd.id;
+      (tr.querySelector(".sc-hcron") as HTMLElement).textContent = hd.cron;
+      (tr.querySelector(".sc-hhandler") as HTMLElement).textContent = `runs ${hd.handler}() — app code, no model`;
+      tr.title = "Declared by the app's own worker (cron.schedule). Deterministic, free, and edited in the app's source.";
+      tbody.appendChild(tr);
     }
     for (const sc of rows) {
       const tr = document.createElement("tr");

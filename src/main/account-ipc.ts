@@ -158,6 +158,15 @@ export function registerAccountIpc(): void {
     try { await getClient().apps.deleteSchedule(String(slug), String(id)); return { ok: true as const }; }
     catch (err) { return fail(err); }
   });
+  // The app's OWN cron handlers (declared in its worker via cron.schedule) —
+  // read-only here: they are code, not console rows. Surfaced so the Schedule
+  // tab shows EVERY recurring thing in one place (his order, 2026-08-25).
+  ipcMain.handle("apps-cron-list", async (_e, slug: string) => {
+    try {
+      const { cronList } = await import("./glyphh-app-services.js");
+      return { ok: true as const, handlers: cronList(String(slug)) };
+    } catch (err) { return fail(err); }
+  });
   ipcMain.handle("apps-schedule-run", async (_e, slug: string, id: string) => {
     try { return { ok: true as const, ...(await getClient().apps.runScheduleNow(String(slug), String(id))) }; }
     catch (err) { return fail(err); }

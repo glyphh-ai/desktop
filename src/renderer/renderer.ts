@@ -328,6 +328,7 @@ declare global {
       appsScheduleUpdate: (slug: string, id: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; schedule?: unknown; error?: string }>;
       appsScheduleDelete: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appsScheduleRun: (slug: string, id: string) => Promise<{ ok: boolean; schedule?: unknown; error?: string }>;
+      appsCronList: (slug: string) => Promise<{ ok: boolean; handlers?: Array<{ id: string; cron: string; handler: string }>; error?: string }>;
       glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") => Promise<{ updated: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;

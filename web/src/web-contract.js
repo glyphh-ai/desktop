@@ -822,6 +822,10 @@ export function buildContract(client, deps) {
       } catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
 
+    // The app's OWN cron handlers live in the DESKTOP's local app worker —
+    // the web has no such thing, so it reports none rather than fabricating.
+    appsCronList: async () => ({ ok: true, handlers: [] }),
+
     // Schedules — recurring agent runs against an app.
     appsSchedulesList: async (slug) => {
       try { return { ok: true, ...(await client.apps.schedules(slug)) }; }
