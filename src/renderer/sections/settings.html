@@ -1289,15 +1289,17 @@
                 <h2>Webhooks</h2>
                 <p class="section-desc">Push data into your apps from n8n, make.com, Boomi — POST JSON to a hook URL with its token.</p>
                 <div id="webhooks-error" class="settings-error hidden"></div>
+                <div class="app-detail-tabs" id="webhooks-tabs" style="margin-top:22px;">
+                  <button class="app-detail-tab active" data-wtab="hooks" type="button">Hooks</button>
+                  <button class="app-detail-tab" data-wtab="tokens" type="button">Tokens</button>
+                </div>
                 <div class="crud-toolbar">
                   <input id="webhooks-search" type="text" class="crud-search" placeholder="Search hooks and tokens..." spellcheck="false" autocomplete="off" />
                   <button id="webhooks-new-btn" class="action-btn primary" type="button">+ New token</button>
                 </div>
                 <div id="webhooks-empty" class="crud-empty hidden">No installed app declares ingest hooks yet.</div>
-                <h3 class="settings-subheading">Hooks</h3>
                 <div id="webhooks-hooks-list" class="mbr-list"></div>
-                <h3 class="settings-subheading">Tokens</h3>
-                <div id="webhooks-tokens-list" class="mbr-list"></div>
+                <div id="webhooks-tokens-list" class="mbr-list hidden"></div>
               </div>
               <div class="settings-panel" data-sub="apikeys">
                 <h2>API Keys</h2>

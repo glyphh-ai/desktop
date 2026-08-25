@@ -80,6 +80,7 @@ function transport(): Transport | null {
 
 const $ = (id: string) => document.getElementById(id);
 let wired = false;
+let activeTab: "hooks" | "tokens" = "hooks";
 let apps: AppHooks[] = [];
 let query = "";
 const PAGE_SIZE = 10;
@@ -96,16 +97,22 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
-async function copyText(val: string, btn: HTMLButtonElement): Promise<void> {
-  let copied = false;
-  try { await navigator.clipboard.writeText(val); copied = true; } catch { /* insecure context */ }
-  if (!copied) {
-    const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
-    if (typeof ipc === "function") { void ipc(val); copied = true; }
-  }
-  const was = btn.textContent;
-  btn.textContent = copied ? "Copied" : "Select + ⌘C";
-  setTimeout(() => { btn.textContent = was; }, 1500);
+function setTab(tab: "hooks" | "tokens"): void {
+  activeTab = tab;
+  document.querySelectorAll<HTMLElement>('#webhooks-tabs .app-detail-tab').forEach((b) => {
+    b.classList.toggle("active", b.dataset.wtab === tab);
+  });
+  $("webhooks-hooks-list")?.classList.toggle("hidden", tab !== "hooks");
+  $("webhooks-tokens-list")?.classList.toggle("hidden", tab !== "tokens");
+  render();
+}
+
+/** Tab labels carry live counts — the Invited-tab pattern on Members. */
+function paintTabCounts(hookCount: number, tokenCount: number): void {
+  const hooksBtn = document.querySelector<HTMLElement>('#webhooks-tabs [data-wtab="hooks"]');
+  const tokensBtn = document.querySelector<HTMLElement>('#webhooks-tabs [data-wtab="tokens"]');
+  if (hooksBtn) hooksBtn.textContent = hookCount ? `Hooks (${hookCount})` : "Hooks";
+  if (tokensBtn) tokensBtn.textContent = tokenCount ? `Tokens (${tokenCount})` : "Tokens";
 }
 
 function render(): void {
@@ -119,19 +126,21 @@ function render(): void {
     .filter((r) => !q || `${r.app.name} ${r.app.slug} ${r.hk.name} ${r.hk.table}`.toLowerCase().includes(q));
   const tokenRows = apps.flatMap((a) => a.tokens.map((t) => ({ app: a, t })))
     .filter((r) => !q || `${r.app.name} ${r.app.slug} ${r.t.label}`.toLowerCase().includes(q));
+  paintTabCounts(hookRows.length, tokenRows.length);
 
-  empty?.classList.toggle("hidden", hookRows.length > 0 || tokenRows.length > 0);
+  const activeEmpty = activeTab === "hooks" ? hookRows.length === 0 : tokenRows.length === 0;
+  empty?.classList.toggle("hidden", !activeEmpty);
   if (empty) {
     empty.textContent = apps.length === 0
       ? "No installed app declares ingest hooks yet — add ingest: [{ name, table }] to an app's manifest and release it."
-      : `Nothing matching "${query}"`;
+      : q ? `Nothing matching "${query}"` : (activeTab === "tokens" ? "No tokens yet — mint one with + New token." : "No hooks declared.");
   }
 
-  // ── Hooks: App / Hook / Table / URL (copy) ──
+  // ── Hooks: App / Hook / Table / URL / kebab (Copy URL) ──
   hooksList.innerHTML = "";
-  if (hookRows.length) {
+  if (hookRows.length && activeTab === "hooks") {
     const table = document.createElement("table");
-    table.className = "lib-table";
+    table.className = "lib-table mbr-table";
     table.innerHTML = `<thead><tr><th>App</th><th>Hook</th><th>Table</th><th>URL</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
     const tbody = document.createElement("tbody");
     const pg = paginate(hookRows, hookPage, PAGE_SIZE);
@@ -142,15 +151,19 @@ function render(): void {
         `<td class="lib-table-name"><span class="wh-app"></span></td>` +
         `<td><span class="wh-hook"></span></td>` +
         `<td class="lib-table-dim"><span class="wh-table"></span></td>` +
-        `<td class="lib-table-dim wh-url-cell"><code class="wh-url"></code></td>` +
-        `<td><button class="action-btn wh-copy" type="button">Copy</button></td>`;
+        `<td class="lib-table-dim wh-url-cell"><code class="wh-url"></code></td>`;
       (tr.querySelector(".wh-app") as HTMLElement).textContent = app.name || app.slug;
       (tr.querySelector(".wh-hook") as HTMLElement).textContent = hk.name;
       (tr.querySelector(".wh-table") as HTMLElement).textContent = hk.table + (hk.embed?.length ? ` · embeds ${hk.embed.join(", ")}` : "");
       (tr.querySelector(".wh-url") as HTMLElement).textContent = hk.url;
-      (tr.querySelector(".wh-copy") as HTMLButtonElement).addEventListener("click", (ev) => {
-        void copyText(hk.url, ev.currentTarget as HTMLButtonElement);
-      });
+      tr.appendChild(kebabCell(() => [
+        { icon: ROW_MENU_ICONS.view, label: "Copy URL", onClick: () => {
+          void navigator.clipboard.writeText(hk.url).catch(() => {
+            const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
+            if (typeof ipc === "function") void ipc(hk.url);
+          });
+        } },
+      ]));
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
@@ -158,11 +171,11 @@ function render(): void {
     if (pg.state.totalPages > 1) hooksList.appendChild(renderPaginationBar(pg.state, (p) => { hookPage = p; render(); }));
   }
 
-  // ── Tokens: App / Label / Key / Created / Last used / kebab(Revoke) ──
+  // ── Tokens: App / Label / Key / Created / Last used / kebab (Revoke…) ──
   tokensList.innerHTML = "";
-  if (tokenRows.length) {
+  if (tokenRows.length && activeTab === "tokens") {
     const table = document.createElement("table");
-    table.className = "lib-table";
+    table.className = "lib-table mbr-table";
     table.innerHTML = `<thead><tr><th>App</th><th>Label</th><th>Key</th><th>Created</th><th>Last used</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
     const tbody = document.createElement("tbody");
     const pg = paginate(tokenRows, tokenPage, PAGE_SIZE);
@@ -179,7 +192,7 @@ function render(): void {
       (tr.querySelector(".wh-tk-label") as HTMLElement).textContent = t.label || "(unnamed)";
       (tr.querySelector(".wh-tk-hint") as HTMLElement).textContent = t.tokenHint || t.prefix;
       tr.appendChild(kebabCell(() => [
-        { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {
+        { icon: ROW_MENU_ICONS.delete, label: "Revoke…", danger: true, onClick: () => {
           void (async () => {
             if (!(await confirmAction({
               title: `Revoke “${t.label || "this token"}”?`,
@@ -224,6 +237,9 @@ export async function loadWebhooks(): Promise<void> {
 export function initWebhooksPanel(): void {
   if (wired) return;
   wired = true;
+  document.querySelectorAll<HTMLElement>('#webhooks-tabs .app-detail-tab').forEach((b) => {
+    b.addEventListener("click", () => setTab((b.dataset.wtab as "hooks" | "tokens") || "hooks"));
+  });
   $("webhooks-search")?.addEventListener("input", () => {
     query = (($("webhooks-search") as HTMLInputElement | null)?.value || "").trim();
     hookPage = 0;
