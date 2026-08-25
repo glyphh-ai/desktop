@@ -467,6 +467,7 @@ describe('toAccountInfo', () => {
     expect(out).toEqual({
       email: 'a@b.co', firstName: 'Ada', lastName: 'Lovelace',
       role: 'org_admin', isPlatformAdmin: false, orgName: 'Acme', tier: 'pro', billingStatus: 'active',
+      avatarUrl: '',
     });
   });
   it('degrades safely when org/billing are missing', () => {
