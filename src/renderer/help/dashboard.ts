@@ -168,6 +168,21 @@ export async function loadUsageChart(): Promise<void> {
   const groupSel = document.getElementById("dash-usage-group") as HTMLSelectElement | null;
   const filterSel = document.getElementById("dash-usage-filter") as HTMLSelectElement | null;
   const memberSel = document.getElementById("dash-usage-member") as HTMLSelectElement | null;
+  // A Members-page "View usage" hand-off pre-narrows the chart to that member
+  // (his spec, 2026-08-25). Consumed once; the select then owns the state.
+  try {
+    const stash = sessionStorage.getItem("glyphhDashMemberFilter");
+    if (stash && memberSel) {
+      sessionStorage.removeItem("glyphhDashMemberFilter");
+      if (!Array.from(memberSel.options).some((o) => o.value === stash)) {
+        const o = document.createElement("option");
+        o.value = stash;
+        o.textContent = "Selected member";
+        memberSel.appendChild(o);
+      }
+      memberSel.value = stash;
+    }
+  } catch { /* private mode */ }
   const win = parseInt(daysSel?.value || "30", 10);
   const groupBy = groupSel?.value === "source" ? "source" : "model";
   // The member narrowing is org_admin-only; an empty value means "everyone",

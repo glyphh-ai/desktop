@@ -146,6 +146,27 @@ async function remove(m: Member): Promise<void> {
 const MBR_PAGE_SIZE = 10;
 let mbrPage = 0;
 
+async function setDisabled(m: Member, disabled: boolean, toggle: HTMLInputElement): Promise<void> {
+  setStatus("Saving…", "");
+  const res = await accountApi().setMemberStatus(m.userId, disabled);
+  if (!res.ok) {
+    toggle.checked = !disabled;   // the row must not claim a state the server refused
+    setError(res.error);
+    setStatus("Not saved", "error");
+    return;
+  }
+  m.disabled = disabled;
+  setError("");
+  setStatus(disabled ? "Disabled" : "Enabled", "success");
+  paintList();
+}
+
+/** View usage → the Dashboard, chart pre-narrowed to this member. */
+function viewUsage(m: Member): void {
+  try { sessionStorage.setItem("glyphhDashMemberFilter", m.userId); } catch { /* private mode */ }
+  document.querySelector<HTMLElement>('.settings-nav-item[data-sub="dash"]')?.click();
+}
+
 function paintList(): void {
   const list = $("members-list");
   if (!list) return;
@@ -163,32 +184,40 @@ function paintList(): void {
     return;
   }
 
+  // The console-style member table (his spec, 2026-08-25): Name (editable),
+  // Email, Role, an ENABLED toggle, and the kebab (View usage / Delete…).
+  const table = document.createElement("table");
+  table.className = "lib-table mbr-table";
+  table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Enabled</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+
   const pg = paginate(rows, mbrPage, MBR_PAGE_SIZE);
   mbrPage = pg.state.page;
-  if (pagerHost && pg.state.totalPages > 1) {
-    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { mbrPage = p; paintList(); }));
-  }
   for (const m of pg.items) {
-    const row = document.createElement("div");
-    row.className = "mbr-row";
     const owner = m.role === "org_admin";
+    const tr = document.createElement("tr");
+    if (m.disabled) tr.classList.add("mbr-disabled");
 
+    const nameTd = document.createElement("td");
+    nameTd.className = "lib-table-name";
     const name = document.createElement("input");
     name.className = "settings-input mbr-name";
     name.value = m.name || "";
     name.placeholder = "No name set";
     name.addEventListener("input", () => scheduleName(m.userId, name));
     name.addEventListener("blur", () => { void saveName(m.userId, name); });
+    nameTd.appendChild(name);
 
-    const email = document.createElement("span");
-    email.className = "mbr-email";
-    email.textContent = m.email;
+    const emailTd = document.createElement("td");
+    emailTd.className = "lib-table-dim";
+    emailTd.textContent = m.email;
 
-    const roleCell = document.createElement("span");
+    const roleTd = document.createElement("td");
     if (owner) {
-      // The org admin's role is not ours to change — the server owns it.
-      roleCell.className = "acct-chip";
-      roleCell.textContent = roleLabel(m.role);
+      const chip = document.createElement("span");
+      chip.className = "acct-chip";
+      chip.textContent = roleLabel(m.role);
+      roleTd.appendChild(chip);
     } else {
       const select = document.createElement("select");
       select.className = "settings-input mbr-role";
@@ -200,21 +229,38 @@ function paintList(): void {
       }
       select.value = ASSIGNABLE.some((r) => r.value === m.role) ? m.role : "user";
       select.addEventListener("change", () => { void setRole(m.userId, select.value, select); });
-      roleCell.appendChild(select);
+      roleTd.appendChild(select);
     }
 
-    row.append(name, email, roleCell);
+    const toggleTd = document.createElement("td");
     if (!owner) {
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "action-btn danger mbr-remove";
-      del.textContent = "Remove";
-      del.addEventListener("click", () => { void remove(m); });
-      row.appendChild(del);
-    } else {
-      row.appendChild(document.createElement("span"));
+      const label = document.createElement("label");
+      label.className = "settings-toggle mbr-toggle";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = !m.disabled;
+      box.addEventListener("change", () => { void setDisabled(m, !box.checked, box); });
+      const knob = document.createElement("span");
+      knob.className = "toggle-switch";
+      label.append(box, knob);
+      toggleTd.appendChild(label);
     }
-    list.appendChild(row);
+
+    tr.append(nameTd, emailTd, roleTd, toggleTd);
+    if (!owner) {
+      tr.appendChild(kebabCell(() => [
+        { icon: ROW_MENU_ICONS.view, label: "View usage", onClick: () => viewUsage(m) },
+        { icon: ROW_MENU_ICONS.delete, label: "Delete…", danger: true, onClick: () => { void remove(m); } },
+      ]));
+    } else {
+      tr.appendChild(document.createElement("td"));
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { mbrPage = p; paintList(); }));
   }
 }
 

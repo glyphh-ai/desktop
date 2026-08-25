@@ -677,6 +677,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("account-members-remove", userId) as Promise<{ ok: boolean; error?: string }>,
   accountMembersSetRole: (userId: string, role: string) =>
     ipcRenderer.invoke("account-members-set-role", userId, role) as Promise<{ ok: boolean; error?: string }>,
+  accountMembersSetStatus: (userId: string, disabled: boolean) =>
+    ipcRenderer.invoke("account-members-set-status", userId, disabled) as Promise<{ ok: boolean; error?: string }>,
   accountMembersUpdateProfile: (userId: string, patch: { firstName?: string; lastName?: string }) =>
     ipcRenderer.invoke("account-members-update-profile", userId, patch) as Promise<{ ok: boolean; error?: string }>,
   // ── Settings › Platform (super_admin console) — the MAIN-process SDK client

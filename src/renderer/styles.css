@@ -19500,6 +19500,12 @@ body.platform-shell .settings-nav span.not-on-platform { display: none; }
   font-size: 12px; font-weight: 600; flex-shrink: 0;
 }
 #app-settings-user .asu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+/* Members table: a disabled member reads dimmed; inline inputs stay compact. */
+.mbr-table .mbr-name { max-width: 220px; height: 28px; font-size: 12.5px; }
+.mbr-table .mbr-role { height: 28px; font-size: 12.5px; width: auto; }
+.mbr-table .mbr-toggle { border: none; padding: 0; margin: 0; }
+tr.mbr-disabled td { opacity: 0.45; }
+tr.mbr-disabled td:nth-last-child(-n+2) { opacity: 1; }
 #app-settings-user .asu-meta { display: flex; flex-direction: column; min-width: 0; }
 #app-settings-user .asu-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #app-settings-user .asu-plan { font-size: 11px; color: var(--text-3); }

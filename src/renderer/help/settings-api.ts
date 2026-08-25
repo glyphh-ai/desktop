@@ -116,7 +116,7 @@ export interface ProfileUpdate {
   imageUrl?: string | null;
 }
 
-export interface Member { userId: string; email: string; name: string | null; role: string }
+export interface Member { userId: string; email: string; name: string | null; role: string; disabled?: boolean }
 /** `members.updateProfile` — a member's display name, set by an org admin. */
 export interface MemberProfileUpdate { firstName?: string; lastName?: string }
 /** What `members.invite` answers with. `acceptUrl` is the shareable fallback
@@ -151,6 +151,7 @@ interface SdkAccountHandle {
     revokeInvite?: (id: string) => Promise<void>;
     remove?: (userId: string) => Promise<void>;
     setRole?: (userId: string, role: string) => Promise<Member>;
+    setStatus?: (userId: string, disabled: boolean) => Promise<unknown>;
     updateProfile?: (userId: string, patch: MemberProfileUpdate) => Promise<Member>;
   };
 }
@@ -177,6 +178,7 @@ interface DesktopAccountIpc {
   orgInviteRevoke?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   accountMembersRemove?: (userId: string) => Promise<{ ok: boolean; error?: string }>;
   accountMembersSetRole?: (userId: string, role: string) => Promise<{ ok: boolean; error?: string }>;
+  accountMembersSetStatus?: (userId: string, disabled: boolean) => Promise<{ ok: boolean; error?: string }>;
   accountMembersUpdateProfile?: (userId: string, patch: MemberProfileUpdate) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -205,6 +207,7 @@ export interface AccountApi {
   revokeInvite(id: string): Promise<WriteResult<unknown>>;
   removeMember(userId: string): Promise<WriteResult<unknown>>;
   setMemberRole(userId: string, role: string): Promise<WriteResult<unknown>>;
+  setMemberStatus(userId: string, disabled: boolean): Promise<WriteResult<unknown>>;
   updateMemberProfile(userId: string, patch: MemberProfileUpdate): Promise<WriteResult<unknown>>;
 }
 
@@ -295,6 +298,7 @@ export function accountApi(): AccountApi {
       revokeInvite: (id) => web(m?.revokeInvite && (() => m.revokeInvite!(id))),
       removeMember: (userId) => web(m?.remove && (() => m.remove!(userId))),
       setMemberRole: (userId, role) => web(m?.setRole && (() => m.setRole!(userId, role))),
+      setMemberStatus: (userId, disabled) => web(m?.setStatus && (() => m.setStatus!(userId, disabled))),
       updateMemberProfile: (userId, patch) => web(m?.updateProfile && (() => m.updateProfile!(userId, patch))),
     };
   }
@@ -325,6 +329,7 @@ export function accountApi(): AccountApi {
     revokeInvite: (id) => ipc(g?.orgInviteRevoke && (() => g.orgInviteRevoke!(id)), "ok"),
     removeMember: (userId) => ipc(g?.accountMembersRemove && (() => g.accountMembersRemove!(userId)), "removed"),
     setMemberRole: (userId, role) => ipc(g?.accountMembersSetRole && (() => g.accountMembersSetRole!(userId, role)), "member"),
+    setMemberStatus: (userId, disabled) => ipc(g?.accountMembersSetStatus && (() => g.accountMembersSetStatus!(userId, disabled)), "member"),
     updateMemberProfile: (userId, patch) => ipc(g?.accountMembersUpdateProfile && (() => g.accountMembersUpdateProfile!(userId, patch)), "member"),
   };
 }

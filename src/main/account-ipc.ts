@@ -174,6 +174,10 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, member: await getClient().members.setRole(userId, role) }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("account-members-set-status", async (_e, userId: string, disabled: boolean) => {
+    try { await getClient().members.setStatus(String(userId), !!disabled); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("account-members-update-profile", async (_e, userId: string, patch: MemberProfileUpdate) => {
     try { return { ok: true as const, member: await getClient().members.updateProfile(userId, patch) }; }
     catch (err) { return fail(err); }
