@@ -4793,9 +4793,10 @@ async function init(): Promise<void> {
           });
         });
         if (t.glyphh && t.slug) {
-          // Installed Glyphh app — the SAME preview-open flow as mountAppView:
-          // attach on about:blank, grant caps against the guest, load the
-          // on-disk entry. A failed open SAYS SO in the panel.
+          // THE SHIPPED BUILD FIRST (his rule, 2026-08-25): a hosted glyphh
+          // app opens at its deployed URL — the release archive on R2, the
+          // same truth every device sees. The on-disk entry is only the
+          // fallback for a purely local panel with nothing hosted.
           wv.setAttribute("src", "about:blank");
           let previewOpened = false;
           wv.addEventListener("dom-ready", () => {
@@ -4804,11 +4805,9 @@ async function init(): Promise<void> {
             const yoG = (window as unknown as { glyphh?: { glyphhAppPreviewOpen?: (slug: string, wcId?: number) => Promise<{ ok: boolean; fileUrl?: string; error?: string }>; rpaRegister?: (slug: string, wcId: number) => void } }).glyphh;
             const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
             if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
+            if (t.url) { wv.setAttribute("src", t.url); return; }
             void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
               if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", res.fileUrl);
-              // No local source (a marketplace-INSTALLED app lives on the
-              // developer's hosting, not this disk) → open the hosted build.
-              else if (!res?.ok && t.url) wv.setAttribute("src", t.url);
               else if (!res?.ok) wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
             });
           });

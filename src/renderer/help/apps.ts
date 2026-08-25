@@ -1609,14 +1609,23 @@ async function loadPanelTab() {
 
   if (!panelLoaded) {
     if (isGlyphhApp) {
-      // Grant the preview <webview> the app's caps (so window.glyphh.call is
-      // authorized — the preload is attached in main) and load its on-disk entry
-      // so relative ../_libs/* references resolve. Mirrors openGlyphhApp.
+      // ONE RULE with Echo (his order, 2026-08-25): the preview shows the
+      // SHIPPED build — the hosted URL, served from the release archive on
+      // R2 — whenever one exists. The on-disk entry is only the fallback for
+      // a purely local panel that has nothing hosted.
       const wcId = await ensurePreviewWcId();
+      if (app.url) {
+        void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
+        // Register the preview guest so the app-data seam injects the bearer.
+        if (wcId !== undefined) (window.glyphh as unknown as { rpaRegister?: (slug: string, wcId: number) => void }).rpaRegister?.(app.slug, wcId);
+        appPreview.src = app.url;
+        panelLoaded = true;
+        return;
+      }
       const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
       if (!res?.ok || !res.fileUrl) {
         const errHost = document.getElementById("app-commands-list");
-        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Could not load app preview."}</div>`;
+        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Nothing to preview yet — Save & Deploy builds the app; the preview shows the shipped build."}</div>`;
         return;
       }
       appPreview.src = res.fileUrl;
