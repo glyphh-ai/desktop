@@ -34,18 +34,6 @@ function refuseBuiltinWorkpanel(slug: string): void {
   }
 }
 
-/** Next unused release version — the app's own version, or the next free patch
- *  above it, so repeated deploys don't collide on an existing release. */
-function nextFreeVersion(taken: string[], base: string): string {
-  const set = new Set(taken);
-  if (!set.has(base)) return base;
-  const m = base.match(/^(\d+)\.(\d+)\.(\d+)/);
-  if (!m) { let n = 1; while (set.has(`${base}-${n}`)) n++; return `${base}-${n}`; }
-  let patch = Number(m[3]);
-  do { patch++; } while (set.has(`${m[1]}.${m[2]}.${patch}`));
-  return `${m[1]}.${m[2]}.${patch}`;
-}
-
 /** Zip a text Bundle and run it through the host's real install gate. */
 async function packageAndInstall(bundle: AppBundle): Promise<{ ok: boolean; name?: string; error?: string }> {
   const zip = new AdmZip();
@@ -209,9 +197,11 @@ export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug:
   }
   const ref = appRef || slug;   // old servers: slug keeps working
 
-  const existing = await client.apps.releases(ref).catch(() => [] as { version: string }[]);
-  const version = nextFreeVersion(existing.map((r) => r.version), manifest.version ?? "1.0.0");
-  const release = await client.apps.createRelease(ref, { version });
+  // The SERVER owns the version: it releases at the app's steered "next
+  // version" (free-patch-bumped) and advances it. Basing on the local
+  // manifest's version silently ignored the author's Set on the Releases tab.
+  const release = await client.apps.createRelease(ref, {});
+  const version = release.version;
   const outcome = await client.apps.uploadSource(ref, release.id, new Uint8Array(archive));
   if (outcome.status !== "ready") {
     return { slug: liveSlug, version, status: outcome.status, error: outcome.error ?? undefined };

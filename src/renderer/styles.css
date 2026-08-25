@@ -15030,6 +15030,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .ws-filter-btn #ws-models-filter-label { font-size: 12px; }
 /* Members tabs breathe above their content. */
 #members-tabs, #webhooks-tabs { margin-bottom: 16px; }
+
+/* App → Webhooks: hooks and tokens side by side (his order, 2026-08-25). */
+.app-ingest-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.app-ingest-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; min-height: 28px; }
 #members-tab-invited .crud-toolbar { margin-bottom: 14px; }
 /* Tools page title row: app name left, the master toggle at the far right. */
 .ws-tools-head { display: flex; align-items: center; gap: 12px; }

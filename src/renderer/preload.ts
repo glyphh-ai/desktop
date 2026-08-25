@@ -27,6 +27,8 @@ export interface SavedPanelApp {
   access?: string;
   owned?: boolean;
   latestVersion?: string | null;
+  /** The app's steered NEXT version — what the next build releases. */
+  version?: string;
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon (installed/built Glyphh apps). */
   iconUrl?: string | null;

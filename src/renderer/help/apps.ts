@@ -292,6 +292,8 @@ interface PanelApp {
   owned?: boolean;
   /** Newest live release version, or null — drives the auto-update banner. */
   latestVersion?: string | null;
+  /** The app's steered NEXT version — what the next build releases. */
+  version?: string;
   /** Connections the manifest requires, with connected status. */
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   /** The listing's uploaded icon — the ONE icon source (same as the command
@@ -314,7 +316,7 @@ function toPanelApp(a: {
   isBrowser?: boolean; execPath?: string | null;
   appArchetype?: string | null; launchConfig?: Record<string, unknown> | null;
   access?: string; iconUrl?: string | null; listing?: PanelApp["listing"];
-  owned?: boolean; latestVersion?: string | null;
+  owned?: boolean; latestVersion?: string | null; version?: string;
   requiredConnections?: { slug: string; actAs: string; connected: boolean }[];
   commands: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds: string[];
@@ -325,7 +327,7 @@ function toPanelApp(a: {
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
-    owned: a.owned, latestVersion: a.latestVersion, requiredConnections: a.requiredConnections,
+    owned: a.owned, latestVersion: a.latestVersion, version: a.version, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
 }
@@ -1000,6 +1002,7 @@ async function loadReleasesTab(): Promise<void> {
           if (status) { status.textContent = "Saving…"; status.className = "set-save-state"; }
           const res = await window.glyphh.appVersionSet?.(currentApp?.slug || currentAppId, v);
           if (res?.ok) {
+            if (currentApp) currentApp.version = v;
             if (status) { status.textContent = "Saved", status.className = "set-save-state success"; }
             window.setTimeout(() => { if (status?.textContent === "Saved") status.textContent = ""; }, 2500);
           } else if (status) {
@@ -1009,7 +1012,9 @@ async function loadReleasesTab(): Promise<void> {
         })();
       });
     }
-    if (input && !input.value) input.value = releases[0]?.version || "";
+    // Always sits at the NEXT version (apps.version — the server advances it
+    // past every cut), unless the author is mid-edit right now.
+    if (input && document.activeElement !== input) input.value = currentApp?.version || releases[0]?.version || "";
   }
 
   countEl.textContent = releases.length
@@ -1259,6 +1264,7 @@ function initReleasesTab(): void {
       const res = await window.glyphh.appBuildDeploy?.(slug);
       if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Build failed."); return; }
       releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
+      await refreshCurrentApp();
       await loadReleasesTab();
     } finally { btn.disabled = false; }
   });

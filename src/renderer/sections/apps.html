@@ -263,14 +263,20 @@
                 <div class="app-tab-left" data-tab="webhooks">
                   <p class="proxy-field-hint" style="margin:2px 0 14px;">This app's inbound data doors. Hooks come from the manifest (<code>ingest:</code>); tokens authenticate the pipeline POSTs. Org admins see every app's doors under Settings → Webhooks.</p>
                   <div id="app-ingest-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
-                  <div class="crud-toolbar" style="margin-bottom:10px;">
-                    <div style="flex:1;"></div>
-                    <button id="app-ingest-new-token" class="action-btn primary" type="button">+ New token</button>
+                  <!-- Hooks left, tokens right — two doors, one glance. -->
+                  <div class="app-ingest-grid">
+                    <div>
+                      <label class="settings-label">Hooks</label>
+                      <div id="app-ingest-hooks" class="mbr-list"></div>
+                    </div>
+                    <div>
+                      <div class="app-ingest-col-head">
+                        <label class="settings-label" style="margin:0;">API tokens</label>
+                        <button id="app-ingest-new-token" class="action-btn primary" type="button">+ New token</button>
+                      </div>
+                      <div id="app-ingest-tokens" class="mbr-list"></div>
+                    </div>
                   </div>
-                  <label class="settings-label">Hooks</label>
-                  <div id="app-ingest-hooks" class="mbr-list"></div>
-                  <label class="settings-label" style="margin-top:14px;">Tokens</label>
-                  <div id="app-ingest-tokens" class="mbr-list"></div>
                 </div>
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>

@@ -554,6 +554,8 @@ export function toLegacyPanelApps(apps) {
     access: a.access ?? 'members',
     owned: a.owned ?? true,
     latestVersion: a.latestVersion ?? null,
+    // The app's steered NEXT version — the Releases tab's next-version field.
+    version: a.version ?? '',
     requiredConnections: a.requiredConnections ?? [],
     // The listing's uploaded icon — the CC/Apps tiles' real art for Glyphh
     // apps (their launch URL has no favicon to derive one from).

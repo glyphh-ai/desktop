@@ -39,6 +39,8 @@ export interface OrgAppRow {
   owned: boolean;
   /** Newest live release version, or null — drives the auto-update check. */
   latestVersion: string | null;
+  /** The app's steered NEXT version (apps.version) — what the next build releases. */
+  version: string;
   /** The connections the app's manifest requires, with connected status. */
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
@@ -72,6 +74,7 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   access: "members",
   owned: true,
   latestVersion: null,
+  version: "",
   requiredConnections: [],
   connectionIds: [],
   iconUrl: null,
@@ -128,6 +131,7 @@ function toRow(app: OrgApp): OrgAppRow {
     access: app.access,
     owned: app.owned,
     latestVersion: app.latestVersion,
+    version: app.version,
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     iconUrl: app.listing?.iconUrl ?? null,
@@ -168,7 +172,7 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
         url: d.url, isBrowser: true, execPath: null,
         appArchetype: "web", launchConfig: null,
         access: "members", owned: false,
-        latestVersion: null, requiredConnections: [], connectionIds: [], iconUrl: null,
+        latestVersion: null, version: "", requiredConnections: [], connectionIds: [], iconUrl: null,
         mcp: null, commands: {},
         createdAt: "", updatedAt: "",
       }));

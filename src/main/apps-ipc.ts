@@ -703,7 +703,11 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // Deploy bundles the app's newest built release and serves it at a dev URL
   // (<slug>.glyphh.app / /hosted/<slug>). Status comes from the org's deployments.
   ipcMain.handle("app-version-set", async (_e, slug: string, version: string) => {
-    try { return { ok: true, ...(await getClient().apps.setVersion(String(slug), String(version))) }; }
+    try {
+      const out = await getClient().apps.setVersion(String(slug), String(version));
+      invalidateOrgApps();
+      return { ok: true, ...out };
+    }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("hosting-status", async (_e, slug: string) => {
@@ -807,6 +811,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
         return { ok: r.ok, result: r.result, error: r.error };
       }
       const r = await deployAppFromWorkdir(slug || undefined);
+      invalidateOrgApps(); // the cut advanced apps.version — the Releases tab re-reads it
       return { ok: r.status === "ready", result: r, error: r.error };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
