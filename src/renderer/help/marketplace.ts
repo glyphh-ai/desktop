@@ -472,9 +472,9 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
   const reqConnHtml = requiredConnsHtml(d.requiredConnections);
   // An ingest-declaring app RECEIVES external data — installers must know a
   // third-party pipeline (n8n / make.com / Boomi) feeds it, and what to do
-  // after install (mint a token under the app's Webhooks tab).
+  // after install (create a pipeline under the app's Integration tab).
   const ingestHtml = d.hasIngest
-    ? `<div class="mkt-notice info" role="status"><span class="mkt-notice-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span><span class="mkt-notice-text">This app receives data from an external pipeline (n8n, make.com, Boomi, …). After installing, mint an ingest token on the app's Webhooks tab and connect your pipeline to its hook URL.</span></div>`
+    ? `<div class="mkt-notice info" role="status"><span class="mkt-notice-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span><span class="mkt-notice-text">This app receives data from an external pipeline (n8n, make.com, Boomi, …). After installing, create a pipeline on the app's Integration tab and point your system at its door URL.</span></div>`
     : "";
 
   // ── CTA: install / uninstall, with the credit price on the button. ─────────
