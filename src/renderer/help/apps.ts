@@ -652,7 +652,7 @@ function switchAppTab(tab: string) {
   });
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
-  if (tab === "releases") void loadReleasesTab();
+  if (tab === "releases") { void loadReleasesTab(); void loadDeployTab(); loadProductionTab(); }
   if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
   if (tab === "connections") void loadAppConnectionsTab();
   if (tab === "marketplace") loadMarketplaceTab();
@@ -663,7 +663,7 @@ function switchAppTab(tab: string) {
   // Deploy + "own your code" share the Public hosting tab: both answer "who runs
   // this for the public", which is a different question from how it is distributed
   // inside Glyphh (Releases + Marketplace).
-  if (tab === "hosting") { void loadDeployTab(); loadProductionTab(); }
+
 }
 
 // ── Marketplace tab — the listing an installer sees ──────────────
