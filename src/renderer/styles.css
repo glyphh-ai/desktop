@@ -19305,6 +19305,19 @@ body.echo-agent-locked #code-agent-layer {
 }
 .code-root[data-anchor="center"].peeking > .code-agent:hover .code-thread-grip { opacity: 1; }
 
+/* The peek's MINIMIZE ✕ (top-right of the streaming panel): tucks the
+   transcript back down; the turn keeps streaming underneath. Hidden unless
+   peeking; positioned by code.ts alongside the grip. */
+.code-peek-close { display: none; }
+.code-root[data-anchor="center"].peeking > .code-agent > .code-peek-close {
+  display: flex; align-items: center; justify-content: center;
+  position: absolute; right: 10px; z-index: 3;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--text-3); cursor: pointer;
+}
+.code-root[data-anchor="center"].peeking > .code-agent > .code-peek-close:hover { color: var(--text); border-color: var(--border-2); }
+
 
 /* THE LOCK FREEZES GEOMETRY (his rule, 2026-08-20): while locked, the panel
    holds its exact position and size — no move, no resize affordances. */

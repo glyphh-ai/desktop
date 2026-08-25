@@ -21,7 +21,7 @@ import { initVoiceMic, onTurnComplete, maybeSpeakFirstLine, briefSteer } from ".
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
-import { initAnchor, initAnchorEvents, isPeeking, togglePeek } from "./code-anchor.js";
+import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
   canRunRemote, runRemoteTurn, answerPending, attachToActiveRun, setRemotePermission,
@@ -5164,9 +5164,21 @@ export function initCode(): void {
       const grip = document.createElement("div");
       grip.className = "code-thread-grip";
       agent.appendChild(grip);
+      // MINIMIZE ✕ riding the peek's top-right (his order, 2026-08-25): tucks
+      // the streaming panel back down to the composer — the turn keeps
+      // running; the caret (or the status line) reopens it. Lives on the
+      // AGENT for the same reason the grip does: the thread repaints.
+      const peekClose = document.createElement("button");
+      peekClose.type = "button";
+      peekClose.className = "code-peek-close";
+      peekClose.title = "Minimize";
+      peekClose.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`;
+      peekClose.addEventListener("click", (ev) => { ev.stopPropagation(); closePeek(); });
+      agent.appendChild(peekClose);
       const place = (): void => {
         const h = threadEl.getBoundingClientRect().height;
         grip.style.bottom = `calc(100% + ${Math.max(0, Math.round(h)) + 2}px)`;
+        peekClose.style.bottom = `calc(100% + ${Math.max(0, Math.round(h)) - 30}px)`;
       };
       new ResizeObserver(place).observe(threadEl);
       place();
