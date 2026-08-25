@@ -323,12 +323,20 @@ export async function harnessRun(
   /** Tool starts — the run's work magnitude for the training capture. */
   let turnsUsed = 0;
 
+  let runSessionMinted = false;
   try {
-    // 1. The credential. The pod holds none of its own (auth off), so the
-    //    USER's control-plane access token rides the run body: the gateway's
-    //    resolvePrincipal accepts gy_at_ as readily as a pod's gy_rk_, and the
-    //    metering lands on the user who asked.
-    const runtimeToken = await getClient().token();
+    // 1. The credential — RUN-SCOPED (his bug, 2026-08-25: a ~20-minute build
+    //    outlived the caller's 15-minute access token, and the gateway started
+    //    401ing mid-run: "Failed to authenticate"). The run gets its own
+    //    session: same user, same org, no new privilege, a visible revocable
+    //    device (`run:<id>`) that the finally block RELEASES — so the 12h TTL
+    //    is a ceiling, never the lifetime. Falls back to the caller's token on
+    //    an old server, which is exactly today's behaviour.
+    let runtimeToken = await getClient().sessions.createRunSession(runId)
+      .then((r) => r.accessToken)
+      .catch(() => "");
+    if (runtimeToken) runSessionMinted = true;
+    else runtimeToken = (await getClient().token()) ?? "";
     if (!runtimeToken) throw new Error("sign in to run a turn — the local harness needs your access token to reach the gateway");
 
     // 2. The turn, assembled exactly as the in-process path assembles it —
@@ -544,6 +552,11 @@ export async function harnessRun(
     liveRuns.delete(runId);
     for (const cancel of cancelPauses) cancel();
     lent?.release();
+    // The run's own session dies WITH the run — a credential that outlives its
+    // reason to exist is the only real cost of minting one.
+    if (runSessionMinted) {
+      void getClient().sessions.releaseRunSession(runId).catch(() => { /* expires on its own */ });
+    }
   }
 
   // The flywheel: transcript + outcome are next-era training data.
