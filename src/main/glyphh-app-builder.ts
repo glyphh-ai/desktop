@@ -139,6 +139,30 @@ export async function updateAppFromWorkdir(
  * serves it), and deploy it live. Returns the release outcome — `ready` with a
  * public URL, or `failed` with the build error to fix.
  */
+/** Folders never packed into the SOURCE snapshot — build products + machinery
+ *  (mirrors the pod's source-sync rules; the two must agree byte-for-byte so
+ *  identical trees hash identically). */
+const SOURCE_EXCLUDES = new Set(["node_modules", "dist", ".git", ".glyphh", "build", ".next", "coverage"]);
+
+/** Pack the PROJECT SOURCE (not dist) as the deterministic snapshot archive. */
+function packProjectSource(dir: string): Buffer {
+  const files: string[] = [];
+  const walk = (rel: string): void => {
+    for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        if (!SOURCE_EXCLUDES.has(e.name)) walk(rel ? `${rel}/${e.name}` : e.name);
+      } else if (e.isFile()) {
+        files.push(rel ? `${rel}/${e.name}` : e.name);
+      }
+    }
+  };
+  walk("");
+  files.sort();
+  const zip = new AdmZip();
+  for (const rel of files) zip.addFile(rel, fs.readFileSync(path.join(dir, rel)));
+  return zip.toBuffer();
+}
+
 export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?: boolean } = {}): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
@@ -206,6 +230,17 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   if (outcome.status !== "ready") {
     return { slug: liveSlug, version, status: outcome.status, error: outcome.error ?? undefined };
   }
+  // THE SOURCE OF RECORD rides every desktop build (his bug, 2026-08-25:
+  // a button-built app had no snapshot, so the web's build-from-source had
+  // nothing to pull — "built locally, it should just work"). Fast-forward
+  // from the current head; best-effort, the release itself already stands.
+  try {
+    const head = await client.apps.sourceHead(ref).catch(() => null);
+    await client.apps.pushSource(ref, new Uint8Array(packProjectSource(dir)), { baseHash: head?.head?.hash ?? null });
+  } catch (e) {
+    console.warn(`[app-builder] source snapshot push failed for ${ref}:`, (e as Error).message);
+  }
+
   // "No hosting": the build is the deliverable — cut, uploaded, ready, never
   // published to an address.
   if (opts.deploy === false) return { slug: liveSlug, version, status: "ready" };

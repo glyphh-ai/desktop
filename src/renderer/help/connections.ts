@@ -46,6 +46,32 @@ function setBtnBusy(btn: HTMLButtonElement, busy: boolean, label: string): void 
   btn.innerHTML = busy ? `<span class="btn-spinner"></span>${esc(label)}` : esc(label);
 }
 
+// ── ADOPTION (his order, 2026-08-25): the App → edit → Connections tab hosts
+// this page's OWN toolbar/list/detail nodes — one component, so the forms can
+// never drift. While adopted, the list filters to the app's REQUIRED
+// connection slugs, with unconnected requirements rendered as Connect cards.
+let requiredFilter: string[] | null = null;
+let adoptedHomes: Array<{ n: HTMLElement; parent: HTMLElement | null; next: Node | null }> | null = null;
+
+export function adoptConnectionsInto(host: HTMLElement, requiredSlugs: string[]): void {
+  const nodes = ["connections-toolbar", "connections-list", "conn-detail"]
+    .map((id) => document.getElementById(id))
+    .filter((n): n is HTMLElement => !!n);
+  if (nodes.length !== 3) return;
+  if (!adoptedHomes) adoptedHomes = nodes.map((n) => ({ n, parent: n.parentElement, next: n.nextSibling }));
+  host.append(...nodes);
+  requiredFilter = requiredSlugs.map((x) => x.toLowerCase());
+  closeConnDetail();
+  void loadConnections();
+}
+
+export function releaseConnections(): void {
+  requiredFilter = null;
+  if (!adoptedHomes) return;
+  for (const { n, parent, next } of adoptedHomes) parent?.insertBefore(n, next);
+  adoptedHomes = null;
+}
+
 export async function loadConnections(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
   // The org × role policy can change with any heartbeat, so re-check it on
@@ -66,13 +92,23 @@ export async function loadConnections(): Promise<void> {
 
 function renderConnectionsList(): void {
   const q = connSearch.trim().toLowerCase();
-  const items = q
-    ? connections.filter((c) => (c.label || c.appName).toLowerCase().includes(q) || c.appSlug.toLowerCase().includes(q))
+  const scoped = requiredFilter
+    ? connections.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))
     : connections;
+  const items = q
+    ? scoped.filter((c) => (c.label || c.appName).toLowerCase().includes(q) || c.appSlug.toLowerCase().includes(q))
+    : scoped;
+  // While ADOPTED into an app tab, a required-but-unconnected slug is the row
+  // the user must act on — a Connect card, straight into the same flow the
+  // catalog uses.
+  const missingRequired = (requiredFilter ?? []).filter(
+    (slug) => !connections.some((c) => c.appSlug.toLowerCase() === slug) && (!q || slug.includes(q)),
+  );
+
   // Role-gated: when custom MCP is disallowed the cards disappear entirely —
   // the rows stay on the server (inert; the catalog and call path exclude
   // them), so they reappear if the policy is turned back on.
-  const visibleCustom = customAllowed ? customServers : [];
+  const visibleCustom = customAllowed && !requiredFilter ? customServers : [];
   const customItems = q
     ? visibleCustom.filter((c) => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q))
     : visibleCustom;
@@ -83,10 +119,12 @@ function renderConnectionsList(): void {
   const wasHidden = listEl.classList.contains("hidden") || !detailEl.classList.contains("hidden");
   listEl.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
   listEl.innerHTML = "";
-  if (items.length === 0 && customItems.length === 0) {
-    listEl.innerHTML = connections.length === 0 && visibleCustom.length === 0
-      ? '<div class="crud-empty">No connections yet — click “+ New” to connect an account.</div>'
-      : `<div class="crud-empty">No connections match your search.</div>`;
+  if (items.length === 0 && customItems.length === 0 && missingRequired.length === 0) {
+    listEl.innerHTML = requiredFilter
+      ? '<div class="crud-empty">This app requires no connections.</div>'
+      : connections.length === 0 && visibleCustom.length === 0
+        ? '<div class="crud-empty">No connections yet — click “+ New” to connect an account.</div>'
+        : `<div class="crud-empty">No connections match your search.</div>`;
     return;
   }
 
@@ -135,6 +173,33 @@ function renderConnectionsList(): void {
       <div class="app-card-name">${esc(c.name)}</div>
       <div class="app-card-id">${c.kind === "org" ? "Org connection" : "Custom MCP"}</div>`;
     card.addEventListener("click", () => openCustomDetail(c.slug));
+    grid.appendChild(card);
+  }
+  for (const slug of missingRequired) {
+    const card = document.createElement("div");
+    card.className = "app-card";
+    const initial = slug.charAt(0).toUpperCase();
+    card.innerHTML = `
+      <span class="app-card-badge badge-connection">Required</span>
+      <div class="app-card-icon"><span class="app-card-initial">${esc(initial)}</span></div>
+      <div class="app-card-name">${esc(slug)}</div>
+      <div class="app-card-id">Not connected — click to connect</div>`;
+    card.addEventListener("click", () => {
+      void (async () => {
+        const nameEl = card.querySelector(".app-card-id")!;
+        nameEl.textContent = "Connecting…";
+        const beforeIds = new Set(connections.map((c) => c.id));
+        const result = await window.glyphh.connectorsConnect?.(slug);
+        if (!result?.ok) { nameEl.textContent = result?.error || "Failed"; setTimeout(() => { nameEl.textContent = "Not connected — click to connect"; }, 2500); return; }
+        showAppOverlay("Connecting");
+        try {
+          await loadConnections();
+          const fresh = connections.filter((c) => !beforeIds.has(c.id));
+          const target = fresh.find((c) => c.appSlug.toLowerCase() === slug) || fresh[0];
+          if (target) await openConnDetail(target.id);
+        } finally { hideAppOverlay(); }
+      })();
+    });
     grid.appendChild(card);
   }
   listEl.appendChild(grid);
