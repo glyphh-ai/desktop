@@ -590,16 +590,47 @@ async function init(): Promise<void> {
   // pointerdown on it snaps back to the text field it robbed.
   let lastPointerTarget: EventTarget | null = null;
   let lastPointerAt = 0;
+  /** True once the user has focused the composer — see the focusin guard. */
+  let composerHeld = false;
   document.addEventListener("pointerdown", (e) => {
     lastPointerTarget = e.target;
     lastPointerAt = Date.now();
   }, true);
   document.addEventListener("focusin", (e) => {
     const t = e.target as HTMLElement | null;
-    if (!t || t.tagName !== "WEBVIEW") return;
-    const meant = Date.now() - lastPointerAt < 600
+    if (!t) return;
+
+    // ── THE COMPOSER KEEPS THE CARET (his rule, 2026-08-25) ──
+    // A turn renders constantly — tool cards, panels, webviews mounting,
+    // previews loading — and any of it taking focus mid-sentence loses the
+    // user's typing. Once the composer has been focused it STAYS focused
+    // until the user deliberately moves (a pointer press or Tab onto another
+    // control). Programmatic steals are handed straight back.
+    if (t.id === "code-input") { composerHeld = true; return; }
+    const deliberate = Date.now() - lastPointerAt < 600
       && (t === lastPointerTarget || (lastPointerTarget instanceof Node && t.contains(lastPointerTarget)));
-    if (meant) return;
+    if (composerHeld && !deliberate) {
+      // The agent ASKING something is the one programmatic move that earns
+      // the caret — answering is the next thing the user does.
+      const asked = !!t.closest?.("#code-ask-dock");
+      if (!asked) {
+        const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
+        if (ta && document.contains(ta) && document.activeElement !== ta) {
+          const at = ta.selectionStart;
+          const to = ta.selectionEnd;
+          ta.focus({ preventScroll: true });
+          // Restore the caret exactly — refocusing otherwise jumps to the end
+          // and a mid-word steal would scramble what they were typing.
+          if (typeof at === "number" && typeof to === "number") ta.setSelectionRange(at, to);
+          return;
+        }
+      }
+    }
+    if (deliberate) composerHeld = false;
+
+    // Legacy webview guard: hand a robbed text field back even before the
+    // composer has ever been focused.
+    if (t.tagName !== "WEBVIEW" || deliberate) return;
     const robbed = (e as FocusEvent).relatedTarget as HTMLElement | null;
     if (robbed && (robbed.tagName === "TEXTAREA" || robbed.tagName === "INPUT" || robbed.isContentEditable)) {
       robbed.focus();

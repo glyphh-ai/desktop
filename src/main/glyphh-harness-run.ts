@@ -35,7 +35,7 @@ import { ensureLocalHarnessPod } from "@glyphh/sdk/runtime";
 import type { HarnessWireFrame } from "@glyphh/sdk";
 import { getClient, SERVER_URL } from "./glyphh-client";
 import { loadSessions, saveSessions } from "./glyphh-agent-context";
-import { runModel, currentLoop } from "./loop-selections";
+import { runModel, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
@@ -406,6 +406,20 @@ export async function harnessRun(
     // A relaying client's model wins outright; else resolve via ITS loop (or the
     // desktop's own when no override), so the caller's loop pick drives the model.
     const model = modelOverride ?? await runModel("default", loopOverride).catch(() => null);
+    // FAIL FAST when nothing can serve the turn (his bug, 2026-08-25: the app
+    // "just spins"). Omitting the model lets the pod use its own default,
+    // which is right when one exists — but when the caller's loop resolves
+    // NO gateway-ready model, the pod's guess only reaches the gateway to be
+    // refused, and the SDK's retry ladder turns a config error into minutes
+    // of silence. Say it now, in the words the chat path already uses.
+    if (!model) {
+      const usable = await resolveRoles(loopOverride ?? currentLoop())
+        .then((roles) => roles.some((r) => (r.choices ?? []).some((c) => c.gatewayReady !== false)))
+        .catch(() => true);   // can't tell → let the pod try, as before
+      if (!usable) {
+        throw new Error("no model available — your workspace allows none, or the ones it allows have no key configured");
+      }
+    }
     const pod = getClient().harness({
       url: target.url,
       ...(target.token ? { token: async (): Promise<string> => target.token as string } : {}),
