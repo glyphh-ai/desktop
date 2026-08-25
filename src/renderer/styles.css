@@ -17949,6 +17949,18 @@ body.gpoint-col-drag .gpoint-stage iframe { pointer-events: none; }
 .gdoc-doc { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 .gdoc-bar { display: flex; align-items: center; gap: 8px; flex: none; padding: 5px 8px; border-bottom: 1px solid var(--border); }
 .gdoc-bar .action-btn { height: 24px; padding: 3px 10px; font-size: 11.5px; flex: none; }
+
+/* Preview | Editor mode tabs — the standard tab chips, centered in the bar. */
+.gdoc-mode-tabs { display: flex; gap: 2px; flex: none; margin: 0 auto; }
+.gdoc-save-state { flex: none; font-size: 11px; }
+/* Editor mode fills the pane; Monaco (or the textarea fallback) owns it. */
+.gdoc-editor-host { flex: 1; min-height: 0; min-width: 0; display: flex; }
+.gdoc-editor-host > * { flex: 1; min-height: 0; min-width: 0; }
+.gdoc-raw-ta {
+  resize: none; border: none; outline: none; background: var(--surface);
+  color: var(--text); font: 13px/1.6 ui-monospace, monospace; padding: 14px 16px;
+}
+
 .gdoc-main { flex: 1; display: flex; min-height: 0; }
 .gdoc-toc {
   flex: 0 0 180px; overflow-y: auto; padding: 14px 8px;

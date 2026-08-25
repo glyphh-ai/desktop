@@ -29,6 +29,8 @@ export interface GDocSlotState {
   title?: string;
   /** Library page — survives re-renders. */
   page?: number;
+  /** Document view: the rendered paper or the raw-markdown Monaco editor. */
+  mode?: "preview" | "editor";
 }
 
 export interface GDocHost {
@@ -92,6 +94,36 @@ export function retitleMarkdown(md: string, title: string): string {
   return `# ${title}\n\n${md}`;
 }
 
+// ── Monaco (raw-markdown editor mode) ────────────────────────────────────────
+// The same AMD loader code-workbench.ts uses (window.require + monaco/ assets in
+// dist) — duplicated here because importing it back out of code-workbench would
+// be a module cycle. First call loads the editor; later calls resolve instantly.
+let gdocMonacoReady: Promise<void> | null = null;
+function ensureGdocMonaco(): Promise<void> {
+  if (gdocMonacoReady) return gdocMonacoReady;
+  gdocMonacoReady = new Promise<void>((resolve) => {
+    const w = window as unknown as { monaco?: unknown; require?: { config: (cfg: unknown) => void; (deps: string[], cb: () => void): void } };
+    if (w.monaco) { resolve(); return; }
+    if (!w.require) { resolve(); return; }   // no AMD host (web mobile) — the textarea fallback runs
+    w.require.config({ paths: { vs: "monaco" } });
+    w.require(["vs/editor/editor.main"], () => resolve());
+  });
+  return gdocMonacoReady;
+}
+/** Dark editor on dark surfaces — decided by the theme's actual paint. */
+function gdocMonacoTheme(): string {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()
+    || getComputedStyle(document.body).backgroundColor;
+  let r = 255, g = 255, b = 255;
+  const hex = /^#([0-9a-f]{6})$/i.exec(raw);
+  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(raw);
+  if (hex) { const n = parseInt(hex[1]!, 16); r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255; }
+  else if (rgb) { r = Number(rgb[1]); g = Number(rgb[2]); b = Number(rgb[3]); }
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128 ? "vs-dark" : "vs";
+}
+/** The open editor-mode instance — disposed before any re-render replaces its DOM. */
+let liveGdocEditor: { dispose(): void } | null = null;
+
 const fmtDate = (ms: number): string => (ms ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
 
 interface PopItem { label: string; danger?: boolean; fn: () => void }
@@ -136,6 +168,8 @@ export function initGDocs(host: GDocHost): GDocPanel {
 
   async function renderInner(body: HTMLElement, slot: GDocSlotState, wrap: HTMLElement): Promise<void> {
     body.classList.add("ws-gdoc-body");
+    liveGdocEditor?.dispose();
+    liveGdocEditor = null;
     const refresh = (): void => { if (body.isConnected) void renderIntoSlot(body, slot, wrap); };
     // Rail-slot header title tracks the open document (Echo cards just miss).
     const titleEl = wrap.querySelector(".ws-rail-slot-header .title");
@@ -288,6 +322,11 @@ export function initGDocs(host: GDocHost): GDocPanel {
             <span>Docs</span>
           </button>
           <input class="gpoint-reader-title gdoc-title" spellcheck="false" autocomplete="off" title="Click to rename" />
+          <div class="gdoc-mode-tabs">
+            <button class="app-detail-tab" data-dmode="preview" type="button">Preview</button>
+            <button class="app-detail-tab" data-dmode="editor" type="button">Editor</button>
+          </div>
+          <span class="set-save-state gdoc-save-state"></span>
           <button class="action-btn gdoc-file-menu">File ▾</button>
         </div>
         <div class="gdoc-review hidden"></div>
@@ -352,6 +391,64 @@ export function initGDocs(host: GDocHost): GDocPanel {
         })() },
       ]);
     });
+
+    // ── Preview | Editor tabs (his order, 2026-08-25): the paper is the
+    // default; Editor opens the WHOLE document's raw markdown in Monaco
+    // (autosaving), for when section-pencil editing isn't enough. ──
+    const modeNow = slot.mode === "editor" ? "editor" : "preview";
+    body.querySelectorAll<HTMLElement>(".gdoc-mode-tabs .app-detail-tab").forEach((b) => {
+      b.classList.toggle("active", b.dataset.dmode === modeNow);
+      b.addEventListener("click", () => {
+        if (b.dataset.dmode === modeNow) return;
+        slot.mode = b.dataset.dmode === "editor" ? "editor" : "preview";
+        refresh();
+      });
+    });
+    if (modeNow === "editor") {
+      const main = body.querySelector<HTMLElement>(".gdoc-main")!;
+      main.innerHTML = `<div class="gdoc-editor-host"></div>`;
+      const hostEl = main.querySelector<HTMLElement>(".gdoc-editor-host")!;
+      const saveState = body.querySelector<HTMLElement>(".gdoc-save-state");
+      let saveTimer = 0;
+      const scheduleRawSave = (value: () => string): void => {
+        window.clearTimeout(saveTimer);
+        if (saveState) { saveState.textContent = "Editing…"; saveState.className = "set-save-state gdoc-save-state"; }
+        saveTimer = window.setTimeout(() => {
+          void (async () => {
+            const okSave = await saveDoc(value());
+            if (!saveState) return;
+            saveState.textContent = okSave ? "Saved" : "Not saved";
+            saveState.className = `set-save-state gdoc-save-state${okSave ? " success" : " error"}`;
+            if (okSave) window.setTimeout(() => { if (saveState.textContent === "Saved") saveState.textContent = ""; }, 2500);
+          })();
+        }, 800);
+      };
+      await ensureGdocMonaco();
+      const monaco = (window as unknown as { monaco?: {
+        editor: { create: (el: HTMLElement, opts: Record<string, unknown>) => { getValue(): string; onDidChangeModelContent(cb: () => void): void; dispose(): void } };
+      } }).monaco;
+      if (!body.isConnected) return;
+      if (monaco) {
+        const ed = monaco.editor.create(hostEl, {
+          value: md, language: "markdown", theme: gdocMonacoTheme(),
+          automaticLayout: true, wordWrap: "on", minimap: { enabled: false },
+          fontSize: 13, lineNumbers: "on", scrollBeyondLastLine: false,
+        });
+        ed.onDidChangeModelContent(() => scheduleRawSave(() => ed.getValue()));
+        liveGdocEditor = ed;
+      } else {
+        // No AMD/monaco on this surface — a plain raw-markdown textarea still
+        // honors the tab rather than dead-ending it.
+        const ta = document.createElement("textarea");
+        ta.className = "gdoc-editor-ta gdoc-raw-ta";
+        ta.value = md;
+        ta.spellcheck = false;
+        ta.addEventListener("keydown", (e) => e.stopPropagation());
+        ta.addEventListener("input", () => scheduleRawSave(() => ta.value));
+        hostEl.appendChild(ta);
+      }
+      return;
+    }
 
     // TOC + paper, section by section.
     const toc = body.querySelector<HTMLElement>(".gdoc-toc")!;
@@ -454,7 +551,15 @@ export function initGDocs(host: GDocHost): GDocPanel {
         const item = document.createElement("button");
         item.className = `gdoc-toc-item lvl${sec.level}`;
         item.textContent = sec.heading;
-        item.addEventListener("click", () => block.scrollIntoView({ behavior: "smooth", block: "start" }));
+        // Scroll ONLY the doc's own pane. scrollIntoView walks EVERY scrollable
+        // ancestor, so it also shoved the app's outer container — the whole
+        // page lifted and left a gap under the composer (his bug, 2026-08-25).
+        item.addEventListener("click", () => {
+          const pane = body.querySelector<HTMLElement>(".gdoc-scroll");
+          if (!pane) return;
+          const top = block.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 8;
+          pane.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+        });
         toc.appendChild(item);
       }
     });
