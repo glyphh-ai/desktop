@@ -92,6 +92,10 @@ function splashStatus(msg) {
  */
 async function enterApp(shownAt, nav = goHome) {
   const user = await syncGating();
+  // APP HAND-OFF: a stashed members-app return wins over entering the platform —
+  // send the browser to the app hostname's session mint with our access token;
+  // the edge sets the app-scoped cookie and lands on the app.
+  if (user && handOffToApp()) return;
   document.getElementById('onboarding-overlay')?.classList.add('hidden');
   dismissSplash(shownAt);
 
@@ -167,6 +171,39 @@ async function handleCallback(shownAt) {
     clearCallbackUrl('/');
     showLogin(shownAt, (err && err.message) || 'This sign-in link is invalid or has expired.');
   }
+}
+
+/** Stash a members-app return target (?next=) from the login/challenge URL.
+ *  APP HOSTS ONLY — *.glyphh.app (the dev zone's *.dev.glyphh.app included);
+ *  anything else is dropped, never followed. */
+function stashAppNext() {
+  try {
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (!next) return;
+    const u = new URL(next);
+    if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) return;
+    sessionStorage.setItem('glyphhAppNext', next);
+  } catch { /* malformed next — ignored */ }
+}
+
+/** Complete the members-app hand-off: browser → the app host's /.glyphh/session
+ *  mint with this session's access token. True when navigation started. */
+function handOffToApp() {
+  try {
+    const next = sessionStorage.getItem('glyphhAppNext');
+    if (!next) return false;
+    sessionStorage.removeItem('glyphhAppNext');
+    const u = new URL(next);
+    if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) return false;
+    const raw = window.localStorage.getItem('glyphh_session');
+    const access = raw ? (JSON.parse(raw).accessToken || '') : '';
+    if (!access) return false;
+    const mint = new URL('/.glyphh/session', u.origin);
+    mint.searchParams.set('token', access);
+    mint.searchParams.set('next', u.pathname + u.search);
+    window.location.replace(mint.toString());
+    return true;
+  } catch { return false; }
 }
 
 /** Show the login screen (splash comes down behind it). */
@@ -429,6 +466,10 @@ export async function startWebBoot(overrides = {}) {
       });
     }
   }
+
+  // A members-only app sent the browser here to sign in (?next=<app url>).
+  // Stash it NOW — the auth flows rewrite the URL — and hand off after entry.
+  stashAppNext();
 
   const state = decideBootState({
     pathname: window.location.pathname,
