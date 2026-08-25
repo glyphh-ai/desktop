@@ -377,6 +377,31 @@ function showBrowserError(wv: { setAttribute: (n: string, v: string) => void }, 
   wv.setAttribute("src", browserErrorPage(info, themePalette()));
 }
 
+/** CHROME'S OWN ERROR PAGE MUST NEVER SHOW (his rule, 2026-08-25). did-fail-load
+ *  covers a navigation we watched fail, but a failure at the END of a REDIRECT
+ *  chain can leave the guest sitting on Chrome's grey "refused to connect"
+ *  document without ever firing it. So once loading settles, ask the guest
+ *  whether that is what it is showing and swap in the themed card — the one
+ *  with the mascot — if so. */
+function guardChromeErrorPage(
+  wv: HTMLElement & { executeJavaScript?: (code: string) => Promise<unknown>; getURL?: () => string },
+  urlFn: () => string,
+): void {
+  wv.addEventListener("did-stop-loading", () => {
+    void wv.executeJavaScript?.(PROBE_SRC).then((raw) => {
+      const detail = String(raw ?? "").trim();
+      if (!detail) return;
+      showBrowserError(wv as unknown as { setAttribute: (n: string, v: string) => void }, {
+        url: wv.getURL?.() || urlFn(),
+        description: detail.split(String.fromCharCode(10))[0] || "This site can't be reached",
+      });
+    }).catch(() => { /* guest gone or JS blocked — leave whatever is showing */ });
+  });
+}
+
+/** The in-guest probe: non-empty only when Chrome's error document is up. */
+const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"); return e ? (e.innerText || "").slice(0, 300) : ""; })()`;
+
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
@@ -4813,6 +4838,7 @@ async function init(): Promise<void> {
         const wv = document.createElement("webview");
         wv.setAttribute("partition", "persist:yo");
         wv.setAttribute("allowpopups", "true");
+        guardChromeErrorPage(wv as never, () => t.url || "");
         wv.addEventListener("did-fail-load", (ev) => {
           const err = ev as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
           if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
@@ -5349,7 +5375,14 @@ async function init(): Promise<void> {
         // them, and clicking a nav item reads as leaving the layout anyway.
         // The reset saves the layout's memory ("last" resumes it), same as
         // the universal chat icon.
-        if (echoGrid) resetEcho();
+        //
+        // BUT "agent"/"code"/"workspace" are NOT destinations — they ARE the
+        // working surface (openSectionCard only closes section slots there).
+        // Resetting for them tore the user's panels down when they merely
+        // switched sessions from the recents list, which routes through
+        // gotoSection("agent") (his bug, 2026-08-25).
+        const isWorkingSurface = section === "agent" || section === "code" || section === "workspace";
+        if (echoGrid && !isWorkingSurface) resetEcho();
         // SETTINGS opens ALONE, so the single card fills the wall — full
         // screen, but still a card with its own header and close.
         if (section === "settings") resetEcho();
@@ -5875,6 +5908,7 @@ async function init(): Promise<void> {
     });
     // Some sites refuse to embed (X-Frame-Options/CSP) — say so in the panel
     // AND in the main terminal, since it looks identical to "blank" otherwise.
+    guardChromeErrorPage(webview as never, () => slot.url || "");
     webview.addEventListener("did-fail-load", (e) => {
       const err = e as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
       if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
@@ -7860,6 +7894,7 @@ async function init(): Promise<void> {
       // body that turned out to be empty.
       let pendingStatus: { status: number; statusText?: string; url: string } | null = null;
       wv.addEventListener("did-start-loading", () => { pendingStatus = null; });
+      guardChromeErrorPage(wv as never, () => t.url || "");
       wv.addEventListener("did-fail-load", (e) => {
         const err = e as unknown as { errorCode?: number; errorDescription?: string; validatedURL?: string; isMainFrame?: boolean };
         if (!isRealLoadFailure(err.errorCode) || err.isMainFrame === false) return;
