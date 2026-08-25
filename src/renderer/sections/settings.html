@@ -1087,7 +1087,7 @@
                 <!-- LOCAL (desktop only): the 127.0.0.1 server this machine
                      runs for a local LLM tool. -->
                 <div class="glyphh-desktop-only">
-                <p class="section-desc">Let a local LLM tool — Claude Desktop, Cursor, the claude CLI — drive your Glyphh workspace over MCP: open apps and workspaces, click, type, read, and screenshot. Runs as a <strong>local server</strong> on this machine (lowest latency, no cloud). The server acts as you against your Glyphh cloud — it needs an API key (Organization &rarr; API Keys), used as the token in the config below.</p>
+                <p class="section-desc">Let Claude, Cursor, or any MCP client drive your workspace from this machine. Uses an API key as its token.</p>
 
                 <!-- Glyphh Skill — teaches the connected assistant how to drive
                      this workspace. Claude installs straight into
@@ -1287,7 +1287,7 @@
               </div>
                             <div class="settings-panel" data-sub="webhooks">
                 <h2>Webhooks</h2>
-                <p class="section-desc">Inbound data for your apps. Each installed app that declares ingest hooks gets a URL per hook — paste it into n8n, make.com, Boomi, or anything that can POST JSON — authenticated with a per-app token sent as a Bearer header. A token only writes that one app's declared tables.</p>
+                <p class="section-desc">Push data into your apps from n8n, make.com, Boomi — POST JSON to a hook URL with its token.</p>
                 <div id="webhooks-error" class="settings-error hidden"></div>
                 <div class="crud-toolbar">
                   <input id="webhooks-search" type="text" class="crud-search" placeholder="Search hooks and tokens..." spellcheck="false" autocomplete="off" />
