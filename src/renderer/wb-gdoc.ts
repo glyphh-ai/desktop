@@ -12,7 +12,7 @@
  * Echo cards, and (later) a popped-out window.
  */
 
-import { formatMarkdown } from "./format-markdown.js";
+import { renderDocMarkdown } from "./md-doc.js";
 import { parseDocStyle } from "../shared/doc-styles.js";
 import { officePager, officePage, mountDocThumb, invalidateDocThumb } from "./wb-office-ui.js";
 
@@ -372,7 +372,7 @@ export function initGDocs(host: GDocHost): GDocPanel {
     body.querySelector(".gdoc-file-menu")?.addEventListener("click", (ev) => {
       const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
       const exporter = gdocApi().officeExportPdf;
-      const renderedHtml = (): string => formatMarkdown(mdCache.get(file) ?? md);
+      const renderedHtml = (): string => renderDocMarkdown(mdCache.get(file) ?? md);
       popMenu(r.left, r.bottom + 4, [
         ...(exporter ? [
           { label: "Print…", fn: () => void exporter({ kind: "doc-html", title: slot.title || file, html: renderedHtml(), print: true }) },
@@ -462,7 +462,7 @@ export function initGDocs(host: GDocHost): GDocPanel {
       const block = document.createElement("div");
       block.className = "gdoc-block";
       block.dataset.sec = String(i);
-      block.innerHTML = formatMarkdown(md.slice(sec.start, sec.end));
+      block.innerHTML = renderDocMarkdown(md.slice(sec.start, sec.end));
       const edit = document.createElement("button");
       edit.className = "ws-icon-btn gdoc-block-edit";
       edit.title = "Edit this section";

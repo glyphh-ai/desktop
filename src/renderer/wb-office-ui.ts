@@ -2,7 +2,7 @@
  * wb-office-ui.ts — small shared UI for the Glyphh Office panels.
  */
 
-import { formatMarkdown } from "./format-markdown.js";
+import { renderDocMarkdown } from "./md-doc.js";
 
 /** Mount the mini white-paper preview of a document into a thumb box — the
  *  ONE implementation both the Docs library and Drive render, so they always
@@ -15,7 +15,7 @@ export function mountDocThumb(thumb: HTMLElement, file: string): void {
     sheet.className = "gdrive-docthumb";
     const inner = document.createElement("div");
     inner.className = "gdrive-docthumb-inner";
-    inner.innerHTML = formatMarkdown(md);
+    inner.innerHTML = renderDocMarkdown(md);
     sheet.appendChild(inner);
     thumb.appendChild(sheet);
   };
