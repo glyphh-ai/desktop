@@ -233,7 +233,7 @@ async function ensureCloudPod(chatId: string, source: RunSource): Promise<PodTar
  * and, since deploy/promote are server-side, push to production.
  */
 export async function deployAppFromCloud(
-  slug: string, chatId: string, source: RunSource,
+  slug: string, chatId: string, source: RunSource, opts: { deploy?: boolean } = {},
 ): Promise<{ ok: boolean; result?: { version?: string; url?: string }; error?: string }> {
   const pod = await ensureCloudPod(chatId, source);
   // Key the pod's workspace to the SAME session its runs resolve (sessionId when
@@ -242,7 +242,7 @@ export async function deployAppFromCloud(
   const res = await fetch(`${pod.url.replace(/\/+$/, "")}/apps/deploy`, {
     method: "POST",
     headers: { authorization: `Bearer ${pod.token}`, "content-type": "application/json" },
-    body: JSON.stringify({ slug, ...(sessionId ? { sessionId } : { threadId: chatId }), distDir: "dist" }),
+    body: JSON.stringify({ slug, ...(sessionId ? { sessionId } : { threadId: chatId }), distDir: "dist", ...(opts.deploy === false ? { deploy: false } : {}) }),
   });
   const json = (await res.json().catch(() => null)) as
     | { ok?: boolean; result?: string; error?: string; stage?: string }

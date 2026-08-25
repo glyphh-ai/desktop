@@ -786,9 +786,9 @@ export function buildContract(client, deps) {
     // the app's R2 snapshot head, npm install + build, and publishes via
     // build_app — all server-proxied, so the browser needs no pod binding.
     // (his bug, 2026-08-25: the missing shim made the web button fail flat.)
-    appBuildDeploy: async (slug) => {
+    appBuildDeploy: async (slug, opts) => {
       try {
-        const r = await client.apps.buildFromSource(slug);
+        const r = await client.apps.buildFromSource(slug, opts || {});
         if (!r?.ok) return { ok: false, error: r?.error ? `${r.stage ? `${r.stage}: ` : ''}${r.error}` : 'cloud build failed' };
         let info = {};
         try {

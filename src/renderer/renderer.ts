@@ -175,7 +175,7 @@ declare global {
       appListingList: (slug: string, listed: boolean) => Promise<{ ok: boolean; listed?: boolean; error?: string }>;
       // Releases — history, notes, and dev → live promotion (see preload's AppReleaseRow).
       appUpdateInstalled: (slug: string) => Promise<{ ok: boolean; error?: string }>;
-      appBuildDeploy: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>;
+      appBuildDeploy: (slug: string, opts?: { deploy?: boolean }) => Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>;
       appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;

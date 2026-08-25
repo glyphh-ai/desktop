@@ -139,7 +139,7 @@ export async function updateAppFromWorkdir(
  * serves it), and deploy it live. Returns the release outcome — `ready` with a
  * public URL, or `failed` with the build error to fix.
  */
-export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
+export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?: boolean } = {}): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
   const dir = resolveAppDir(wd);
@@ -206,6 +206,9 @@ export async function deployAppFromWorkdir(expectSlug?: string): Promise<{ slug:
   if (outcome.status !== "ready") {
     return { slug: liveSlug, version, status: outcome.status, error: outcome.error ?? undefined };
   }
+  // "No hosting": the build is the deliverable — cut, uploaded, ready, never
+  // published to an address.
+  if (opts.deploy === false) return { slug: liveSlug, version, status: "ready" };
   // Deploy EXACTLY the release we just built + uploaded — pinned by id, so a
   // stale "newest ready" (e.g. an old release whose source has since been
   // lost from storage) can never be what actually ships.

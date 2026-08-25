@@ -798,7 +798,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   // here: Build packages the working folder's compiled dist, cuts a release,
   // uploads the source, and deploys. This is also the recovery path when a
   // release's source archive is gone from storage ("rebuild the app").
-  ipcMain.handle("app-build-deploy", async (_e, slug: string) => {
+  ipcMain.handle("app-build-deploy", async (_e, slug: string, opts?: { deploy?: boolean }) => {
     try {
       // Auto by session source: a CLOUD session has no local workdir — its app
       // source lives in the pod, so build+deploy runs THERE (remote dev). A local
@@ -807,10 +807,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       const { chats, currentId } = loadSessions();
       const chat = chats.find((c) => c.id === currentId);
       if (chat && isCloudSource(chat.source)) {
-        const r = await deployAppFromCloud(slug, chat.id, chat.source ?? { kind: "cloud-new" });
+        const r = await deployAppFromCloud(slug, chat.id, chat.source ?? { kind: "cloud-new" }, opts ?? {});
         return { ok: r.ok, result: r.result, error: r.error };
       }
-      const r = await deployAppFromWorkdir(slug || undefined);
+      const r = await deployAppFromWorkdir(slug || undefined, opts ?? {});
       invalidateOrgApps(); // the cut advanced apps.version — the Releases tab re-reads it
       return { ok: r.status === "ready", result: r, error: r.error };
     } catch (err) {

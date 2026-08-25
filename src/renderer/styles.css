@@ -19831,3 +19831,8 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   box-shadow: 0 2px 8px var(--shadow);
 }
 
+
+/* Inline notes under a version row (his order, 2026-08-25): the head toggles,
+   the textarea saves on blur, Promote rides the expanded area. */
+.release-row .release-row-head { all: unset; display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; box-sizing: border-box; }
+.release-notes-inline { padding: 8px 2px 2px; }

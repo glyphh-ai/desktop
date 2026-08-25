@@ -585,8 +585,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // download endpoint is server-side and not built yet, so this reports honestly.
   appUpdateInstalled: (slug: string) =>
     ipcRenderer.invoke("app-update-installed", slug) as Promise<{ ok: boolean; error?: string }>,
-  appBuildDeploy: (slug: string) =>
-    ipcRenderer.invoke("app-build-deploy", slug) as Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>,
+  appBuildDeploy: (slug: string, opts?: { deploy?: boolean }) =>
+    ipcRenderer.invoke("app-build-deploy", slug, opts) as Promise<{ ok: boolean; result?: { slug: string; version: string; status: string; url?: string }; error?: string }>,
   appReleases: (slug: string) =>
     ipcRenderer.invoke("app-releases", slug) as Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>,
   appReleaseNotes: (slug: string, releaseId: string, notes: string | null) =>

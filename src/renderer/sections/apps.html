@@ -349,49 +349,36 @@
                     <p class="proxy-field-hint" style="margin-top:12px;">The release notes for each version are on the right.</p>
                   </div>
 
-                  <!-- Builder controls, ONE screen (his order, 2026-08-25):
-                       Ship → Hosting → the selected release. Public hosting's
-                       controls fold in here; that tab is gone. -->
+                  <!-- ONE FORM (his order, 2026-08-25): Version, Release notes
+                       (for the NEXT build), Hosting (with "No hosting"), then
+                       Undeploy + Save & Deploy. Notes per shipped version live
+                       on the history rows, inline. -->
                   <div id="release-owner-view">
-                    <label class="settings-label">Ship</label>
-                    <div class="settings-inline" style="margin-bottom:4px;align-items:center;">
-                      <button id="release-build" class="action-btn primary" type="button" title="Build the app, cut a release, and deploy it">Build &amp; deploy</button>
-                      <span style="font-size:12px;color:var(--text-3);">releases as</span>
-                      <input id="release-next-version" type="text" class="settings-input" placeholder="1.0.0" spellcheck="false" autocomplete="off" style="max-width:110px;" title="Press Enter to set" />
-                      <span id="release-version-status" class="set-save-state"></span>
-                    </div>
-                    <p class="proxy-field-hint" style="margin:0 0 6px;">Lands on <b>dev</b>; later builds bump the patch. A version a release already holds is refused.</p>
-                    <span id="release-status" style="font-size:12px;color:var(--text-3);"></span>
-                    <div id="release-error" class="crud-form-error hidden" style="margin-top:8px;"></div>
+                    <label class="settings-label">Version <span id="release-version-status" class="set-save-state"></span></label>
+                    <input id="release-next-version" type="text" class="settings-input" placeholder="1.0.0" spellcheck="false" autocomplete="off" style="max-width:160px;" />
+                    <p class="proxy-field-hint" style="margin:2px 0 14px;">The next build releases as this version; later builds bump the patch.</p>
 
-                    <div class="app-detail-section-sep"></div>
+                    <label class="settings-label">Release notes</label>
+                    <textarea id="release-notes" class="settings-input" rows="6" spellcheck="true"
+                              placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;"></textarea>
+                    <p class="proxy-field-hint" style="margin:2px 0 14px;">Markdown — ships with the next build; edit any version's notes inline in the history.</p>
 
                     <label class="settings-label">Hosting</label>
-                    <div id="deploy-status" class="deploy-status">Checking…</div>
-                    <div id="deploy-url-row" class="hidden" style="margin:8px 0;">
+                    <select id="deploy-access" class="settings-input" style="max-width:320px;">
+                      <option value="none">No hosting</option>
+                      <option value="members">Signed-in members of your organization</option>
+                      <option value="public">Anyone with the link</option>
+                    </select>
+                    <div id="deploy-url-row" class="hidden" style="margin:8px 0 0;">
                       <a id="deploy-url" class="deploy-url" target="_blank" rel="noreferrer"></a>
                     </div>
-                    <div class="settings-inline" style="margin-top:8px;align-items:center;">
-                      <select id="deploy-access" class="settings-input" style="max-width:300px;">
-                        <option value="members">Signed-in members of your organization</option>
-                        <option value="public">Anyone with the link</option>
-                      </select>
-                      <button id="deploy-btn" class="action-btn hidden" type="button">Deploy</button>
-                      <button id="deploy-takedown-btn" class="action-btn danger hidden" type="button">Take down</button>
-                    </div>
                     <p class="proxy-field-hint" id="deploy-access-hint" style="margin-top:4px;">Access is checked at the edge, before anything reaches the app.</p>
-                    <span id="deploy-access-status" style="font-size:12px;color:var(--text-3);"></span>
-                    <div id="deploy-error" class="crud-form-error hidden" style="margin-top:8px;"></div>
 
-                    <div class="app-detail-section-sep"></div>
-
-                    <div id="release-selected" class="release-selected">Select a release from the history →</div>
-                    <textarea id="release-notes" class="settings-input" rows="6" spellcheck="true"
-                              placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;margin-top:8px;"></textarea>
-                    <p class="proxy-field-hint">Markdown — what an installer reads when they upgrade.</p>
-                    <div class="settings-actions" style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:flex-end;">
-                      <button id="release-promote" class="action-btn" type="button" disabled>Promote to live</button>
-                      <button id="release-save-notes" class="action-btn primary" type="button" disabled>Save notes</button>
+                    <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                      <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                      <button id="release-undeploy" class="action-btn" type="button" disabled>Undeploy</button>
+                      <button id="release-save-deploy" class="action-btn primary" type="button">Save &amp; Deploy</button>
                     </div>
 
                     <p class="proxy-field-hint" style="margin-top:14px;">

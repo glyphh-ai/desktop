@@ -1026,70 +1026,72 @@ async function loadReleasesTab(): Promise<void> {
   listEl.innerHTML = "";
 
   for (const r of releases) {
-    const row = document.createElement("button");
-    row.type = "button";
+    const row = document.createElement("div");
     row.className = `release-row${r.id === selectedReleaseId ? " selected" : ""}`;
     row.dataset.id = r.id;
-    // A failed build is the row an author most needs to find, so it carries its
-    // compiler error inline rather than hiding it behind a click.
-    // RELEASED = live + ready: a green check says so at a glance.
+    // RELEASED = live + ready: a green check says so at a glance. A failed
+    // build carries its compiler error inline.
     const released = r.channel === "live" && r.status === "ready";
     const badge = r.channel === "live"
       ? `${released ? '<svg class="release-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-label="Released"><polyline points="20 6 9 17 4 12"/></svg>' : ""}<span class="release-badge live">live</span>`
       : `<span class="release-badge">dev</span>`;
     const state = r.status === "ready" ? "" : `<span class="release-state ${r.status}">${escMkt(r.status)}</span>`;
+    const imported = r.id.startsWith("imported:");
+    const canPromote = owned && !imported && r.status === "ready" && r.channel !== "live";
     row.innerHTML = `
-      <div class="release-row-head">
+      <button type="button" class="release-row-head">
         <span class="release-version">${escMkt(r.version)}</span>
         ${badge}${state}
         <span class="release-date">${escMkt(releaseDate(r.promotedAt || r.createdAt))}</span>
-      </div>
-      ${r.notes ? `<div class="release-notes-preview">${escMkt(r.notes.split("\n").slice(0, 3).join(" · ").slice(0, 160))}</div>` : ""}
-      ${r.status === "failed" && r.error ? `<div class="release-build-error">${escMkt(r.error.slice(0, 300))}</div>` : ""}`;
-    row.addEventListener("click", () => selectRelease(r.id));
+      </button>
+      ${r.status === "failed" && r.error ? `<div class="release-build-error">${escMkt(r.error.slice(0, 300))}</div>` : ""}
+      <div class="release-notes-inline hidden">
+        <textarea class="settings-input" rows="4" spellcheck="true" placeholder="No notes yet — what changed in ${escMkt(r.version)}?" ${imported || !owned ? "disabled" : ""} style="resize:vertical;font-size:12px;width:100%;"></textarea>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+          <span class="release-notes-state" style="flex:1;font-size:11px;color:var(--text-3);"></span>
+          ${canPromote ? `<button type="button" class="action-btn release-row-promote" style="height:24px;font-size:11px;padding:0 10px;">Promote to live</button>` : ""}
+        </div>
+      </div>`;
+    const notesArea = row.querySelector("textarea")!;
+    notesArea.value = r.notes || "";
+    const inline = row.querySelector<HTMLElement>(".release-notes-inline")!;
+    // NOTES LIVE ON THE VERSION (his order, 2026-08-25): the head toggles the
+    // inline editor — always present, just empty when nothing's written.
+    row.querySelector(".release-row-head")!.addEventListener("click", () => {
+      const open = inline.classList.toggle("hidden");
+      row.classList.toggle("selected", !open);
+      selectedReleaseId = open ? null : r.id;
+    });
+    // Inline edit, saved on blur — no button to forget.
+    notesArea.addEventListener("blur", () => {
+      const next = notesArea.value.trim();
+      if (imported || !owned || next === (r.notes || "").trim()) return;
+      const state = row.querySelector<HTMLElement>(".release-notes-state")!;
+      state.textContent = "Saving…";
+      void window.glyphh.appReleaseNotes?.(currentApp?.slug || currentAppId, r.id, next || null).then((res) => {
+        if (res?.ok) {
+          r.notes = next || null;
+          state.textContent = "Saved ✓";
+          setTimeout(() => { if (state.textContent === "Saved ✓") state.textContent = ""; }, 2000);
+        } else state.textContent = res?.error || "Not saved";
+      });
+    });
+    row.querySelector(".release-row-promote")?.addEventListener("click", () => {
+      void (async () => {
+        const confirmed = await confirmAction({
+          title: `Promote ${r.version} to live?`,
+          body: "Everyone who installs this app gets this version. Promoting an older release again is how you roll back.",
+          confirmLabel: "Promote",
+        });
+        if (!confirmed) return;
+        const res = await window.glyphh.appReleasePromote?.(currentApp?.slug || currentAppId, r.id);
+        if (!res?.ok) { releaseError(res?.error || "Couldn't promote the release."); return; }
+        await loadReleasesTab();
+      })();
+    });
     listEl.appendChild(row);
+    if (r.id === selectedReleaseId) { inline.classList.remove("hidden"); row.classList.add("selected"); }
   }
-
-  // Default to the newest release, so the pane is never empty on open.
-  if (!releases.some((r) => r.id === selectedReleaseId)) selectedReleaseId = releases[0]?.id ?? null;
-  selectRelease(selectedReleaseId);
-}
-
-function selectRelease(id: string | null): void {
-  selectedReleaseId = id;
-  const r = releases.find((x) => x.id === id) ?? null;
-  document.querySelectorAll<HTMLElement>(".release-row").forEach((el) => {
-    el.classList.toggle("selected", el.dataset.id === id);
-  });
-  const notes = document.getElementById("release-notes") as HTMLTextAreaElement | null;
-  const promote = document.getElementById("release-promote") as HTMLButtonElement | null;
-  const save = document.getElementById("release-save-notes") as HTMLButtonElement | null;
-  const head = document.getElementById("release-selected");
-  if (!notes || !promote || !save || !head) return;
-
-  if (!r) {
-    head.textContent = "Select a release from the history →";
-    notes.value = "";
-    notes.disabled = true;
-    promote.disabled = true;
-    save.disabled = true;
-    return;
-  }
-  head.innerHTML = `<strong>${escMkt(r.version)}</strong> · ${escMkt(r.channel)} · ${escMkt(releaseDate(r.createdAt))}`;
-  notes.value = r.notes || "";
-  // A release you INSTALLED is the publisher's record, not yours: readable, not editable.
-  const imported = r.id.startsWith("imported:");
-  notes.disabled = imported;
-  save.disabled = imported;
-  if (imported) {
-    promote.disabled = true;
-    promote.textContent = "Published by its author";
-    return;
-  }
-  // Only a BUILT release can go live: promoting a failed one would publish a
-  // version that cannot run, and the server refuses it anyway.
-  promote.disabled = r.status !== "ready" || r.channel === "live";
-  promote.textContent = r.channel === "live" ? "Already live" : "Promote to live";
 }
 
 function releaseError(msg: string): void {
@@ -1241,96 +1243,42 @@ function initReleasesTab(): void {
   // Connections tab: jump to the Connections page to connect/allow.
   document.getElementById("app-conns-goto")?.addEventListener("click", () => { void gotoSection("connections"); });
 
-  document.getElementById("release-save-notes")?.addEventListener("click", async () => {
-    if (!selectedReleaseId) return;
-    document.getElementById("release-error")?.classList.add("hidden");
-    const notes = (document.getElementById("release-notes") as HTMLTextAreaElement | null)?.value ?? "";
-    releaseStatus("Saving…");
-    const res = await window.glyphh.appReleaseNotes?.(currentApp?.slug || currentAppId, selectedReleaseId, notes || null);
-    if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Couldn't save the notes."); return; }
-    releaseStatus("Saved ✓");
-    await loadReleasesTab();
-  });
 
   // Build & deploy — packages the working folder's compiled dist, cuts a
   // release, uploads the source, and deploys. THE recovery for "its source is
   // gone from storage — rebuild the app": until now nothing on this tab could
-  // actually build.
-  document.getElementById("release-build")?.addEventListener("click", async () => {
-    const btn = document.getElementById("release-build") as HTMLButtonElement;
-    const slug = currentApp?.slug || currentAppId;
-    document.getElementById("release-error")?.classList.add("hidden");
-    btn.disabled = true;
-    releaseStatus("Building from your working folder…");
-    try {
-      const res = await window.glyphh.appBuildDeploy?.(slug);
-      if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Build failed."); return; }
-      releaseStatus(`Built v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : " — uploaded"} ✓`);
-      await refreshCurrentApp();
-      await loadReleasesTab();
-    } finally { btn.disabled = false; }
-  });
 
-  document.getElementById("release-promote")?.addEventListener("click", async () => {
-    if (!selectedReleaseId) return;
-    const r = releases.find((x) => x.id === selectedReleaseId);
-    if (!r) return;
-    document.getElementById("release-error")?.classList.add("hidden");
-    const confirmed = await confirmAction({
-      title: `Promote ${r.version} to live?`,
-      body: "Everyone who installs this app gets this version. Promoting an older release again is how you roll back.",
-      confirmLabel: "Promote",
-    });
-    if (!confirmed) return;
-    releaseStatus("Promoting…");
-    const res = await window.glyphh.appReleasePromote?.(currentApp?.slug || currentAppId, selectedReleaseId);
-    if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Couldn't promote the release."); return; }
-    releaseStatus("Live ✓");
-    await loadReleasesTab();
-  });
 }
 
 // ── Deploy tab (dev-host) — status + deploy + take-down ──────────
 let deployCurrentId: string | null = null;
 
 async function loadDeployTab(): Promise<void> {
-  const statusEl = document.getElementById("deploy-status");
   const urlRow = document.getElementById("deploy-url-row");
   const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement | null;
-  const takedown = document.getElementById("deploy-takedown-btn");
-  const deployBtn = document.getElementById("deploy-btn") as HTMLButtonElement | null;
-  if (!statusEl || !urlRow || !urlEl || !takedown || !deployBtn) return;
-  document.getElementById("deploy-error")?.classList.add("hidden");
-  statusEl.textContent = "Checking…";
-  urlRow.classList.add("hidden");
-  takedown.classList.add("hidden");
-  deployBtn.classList.add("hidden");
-  deployCurrentId = null;
-
-  // Who can reach it — the app's own setting, not the deployment's. Shown here
-  // because "it's live" and "who can open it" are one question to the owner.
+  const undeploy = document.getElementById("release-undeploy") as HTMLButtonElement | null;
   const accessSel = document.getElementById("deploy-access") as HTMLSelectElement | null;
-  if (accessSel) accessSel.value = currentApp?.access === "public" ? "public" : "members";
-  syncDeployAccessHint();
+  if (!urlRow || !urlEl || !undeploy || !accessSel) return;
+  urlRow.classList.add("hidden");
+  undeploy.disabled = true;
+  deployCurrentId = null;
 
   const slug = currentApp?.slug || currentAppId;
   const res = await window.glyphh.hostingStatus?.(slug);
-  if (!res?.ok) { statusEl.textContent = "Couldn't load deploy status."; return; }
-  const d = res.deployment;
+  const d = res?.ok ? res.deployment : null;
   if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
     deployCurrentId = d.id;
-    statusEl.innerHTML = `<span class="deploy-dot ${d.status === "live" ? "on" : "pending"}"></span>${d.status === "live" ? "Deployed" : d.status}`;
+    // Hosted → the select shows WHO can reach it; the live URL sits under it.
+    accessSel.value = currentApp?.access === "public" ? "public" : "members";
     if (d.url) { urlEl.textContent = d.url; urlEl.href = d.url; urlRow.classList.remove("hidden"); }
-    // ONE hosting button at a time (his order, 2026-08-25): while deployed,
-    // Take down is the only control — Build & deploy already re-ships.
-    takedown.classList.remove("hidden");
+    undeploy.disabled = false;
   } else {
-    statusEl.innerHTML = `<span class="deploy-dot"></span>Not deployed`;
-    deployBtn.textContent = "Deploy";
-    deployBtn.classList.remove("hidden");
+    // Not hosted — the select SAYS so; picking an audience + Save & Deploy hosts it.
+    accessSel.value = "none";
   }
+  syncDeployAccessHint();
 
-  // The dedicated-server + custom-domains section shares this tab.
+  // The parked dedicated-server machinery still primes its hidden selects.
   void loadServerSection();
 }
 
@@ -1447,7 +1395,13 @@ async function loadServerSection(): Promise<void> {
  *  can surprise someone, so it says so plainly. */
 function syncDeployAccessHint(): void {
   const hint = document.getElementById("deploy-access-hint");
-  const isPublic = (document.getElementById("deploy-access") as HTMLSelectElement | null)?.value === "public";
+  const v = (document.getElementById("deploy-access") as HTMLSelectElement | null)?.value;
+  if (v === "none") {
+    const h = document.getElementById("deploy-access-hint");
+    if (h) h.textContent = "Not hosted — Save & Deploy builds a release without publishing an address.";
+    return;
+  }
+  const isPublic = v === "public";
   if (hint) {
     hint.textContent = isPublic
       ? "Anyone with the link can open this app, signed in or not, and their requests spend your org's credits."
@@ -1455,21 +1409,6 @@ function syncDeployAccessHint(): void {
   }
 }
 
-/** Persist the access choice against the app entry. */
-async function saveDeployAccess(): Promise<void> {
-  if (!currentAppId) return;
-  const status = document.getElementById("deploy-access-status");
-  const sel = document.getElementById("deploy-access") as HTMLSelectElement | null;
-  if (!sel) return;
-  const access = sel.value as "public" | "members";
-  if (status) status.textContent = "Saving…";
-  const res = await window.glyphh.panelAppsUpdate?.(currentAppId, { access });
-  if (res?.ok && currentApp) currentApp.access = access;
-  if (status) {
-    status.textContent = res?.ok ? "Saved ✓" : (res?.error || "Save failed");
-    setTimeout(() => { if (status.textContent === "Saved ✓") status.textContent = ""; }, 2500);
-  }
-}
 
 async function loadProductionTab(): Promise<void> {
   document.getElementById("graduate-error")?.classList.add("hidden");
@@ -2249,31 +2188,60 @@ function initApps() {
   // a separate Save would let someone leave the page believing it took.
   document.getElementById("deploy-access")?.addEventListener("change", () => {
     syncDeployAccessHint();
-    void saveDeployAccess();
   });
 
-  // Deploy tab: deploy + take-down.
-  document.getElementById("deploy-btn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("deploy-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error");
-    err?.classList.add("hidden");
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Deploying…";
-    const res = await window.glyphh.hostingDeploy?.(currentApp?.slug || currentAppId);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Deploy failed."; err.classList.remove("hidden"); } return; }
-    await loadDeployTab();
+  // ONE FORM, ONE PRIMARY (his order, 2026-08-25): Save & Deploy applies the
+  // version, ships the build (skipping the address when hosting is "none"),
+  // applies the audience, and lands the form's notes on the fresh release.
+  document.getElementById("release-save-deploy")?.addEventListener("click", async () => {
+    const btn = document.getElementById("release-save-deploy") as HTMLButtonElement;
+    const slug = currentApp?.slug || currentAppId;
+    const versionInput = (document.getElementById("release-next-version") as HTMLInputElement | null)?.value.trim() ?? "";
+    const notes = (document.getElementById("release-notes") as HTMLTextAreaElement | null)?.value.trim() ?? "";
+    const hosting = (document.getElementById("deploy-access") as HTMLSelectElement | null)?.value ?? "none";
+    document.getElementById("release-error")?.classList.add("hidden");
+    btn.disabled = true;
+    try {
+      // 1. The version, when steered away from the server's next.
+      if (versionInput && versionInput !== (currentApp?.version || "")) {
+        if (!/^\d+\.\d+\.\d+/.test(versionInput)) { releaseError("Version must be major.minor.patch."); return; }
+        releaseStatus("Setting version…");
+        const vres = await window.glyphh.appVersionSet?.(slug, versionInput);
+        if (!vres?.ok) { releaseStatus(""); releaseError(vres?.error || "Couldn't set the version."); return; }
+        if (currentApp) currentApp.version = versionInput;
+      }
+      // 2. The audience — applied before the deploy so the edge gates the
+      //    fresh address correctly from its first request.
+      if (hosting !== "none" && currentApp?.access !== hosting) {
+        const ares = await window.glyphh.panelAppsUpdate?.(currentAppId, { access: hosting as "public" | "members" });
+        if (ares?.ok && currentApp) currentApp.access = hosting as "public" | "members";
+      }
+      // 3. The build — deploys unless hosting is "none".
+      releaseStatus(hosting === "none" ? "Building…" : "Building and deploying…");
+      const res = await window.glyphh.appBuildDeploy?.(slug, hosting === "none" ? { deploy: false } : undefined);
+      if (!res?.ok) { releaseStatus(""); releaseError(res?.error || "Build failed."); return; }
+      // 4. The form's notes land on the release just cut.
+      await refreshCurrentApp();
+      await loadReleasesTab();
+      const fresh = releases.find((r) => r.version === res.result?.version) ?? releases[0];
+      if (notes && fresh && !fresh.id.startsWith("imported:")) {
+        await window.glyphh.appReleaseNotes?.(slug, fresh.id, notes);
+        (document.getElementById("release-notes") as HTMLTextAreaElement | null)!.value = "";
+        await loadReleasesTab();
+      }
+      releaseStatus(`Shipped v${res.result?.version}${res.result?.url ? ` — live at ${res.result.url}` : ""} ✓`);
+      await loadDeployTab();
+    } finally { btn.disabled = false; }
   });
-  document.getElementById("deploy-takedown-btn")?.addEventListener("click", async () => {
+  document.getElementById("release-undeploy")?.addEventListener("click", async () => {
     if (!deployCurrentId) return;
-    const btn = document.getElementById("deploy-takedown-btn") as HTMLButtonElement;
-    const err = document.getElementById("deploy-error");
-    err?.classList.add("hidden");
-    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Taking down…";
+    const btn = document.getElementById("release-undeploy") as HTMLButtonElement;
+    document.getElementById("release-error")?.classList.add("hidden");
+    btn.disabled = true; btn.textContent = "Undeploying…";
     const res = await window.glyphh.hostingDestroy?.(deployCurrentId);
-    btn.disabled = false; btn.textContent = prev;
-    if (!res?.ok) { if (err) { err.textContent = res?.error || "Take-down failed."; err.classList.remove("hidden"); } return; }
+    btn.textContent = "Undeploy";
+    if (!res?.ok) { btn.disabled = false; releaseError(res?.error || "Undeploy failed."); return; }
     await loadDeployTab();
-    // Taken down → Delete can go active again.
     if (currentApp?.slug) void gateAppDelete(currentApp.slug);
   });
 
