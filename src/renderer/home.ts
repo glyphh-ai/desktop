@@ -233,7 +233,7 @@ void (async () => {
           menu.classList.toggle("hidden");
         });
         document.addEventListener("click", () => menu.classList.add("hidden"));
-        type AccountInfo = { firstName?: string; email?: string; tier?: string } | null;
+        type AccountInfo = { firstName?: string; email?: string; tier?: string; avatarUrl?: string } | null;
         const glyphhApi = (window as unknown as { glyphh?: { getAccountInfo?: () => Promise<AccountInfo> } }).glyphh;
         void glyphhApi?.getAccountInfo?.().then((info) => {
           if (!info) return;
@@ -241,7 +241,18 @@ void (async () => {
           const tier = (info.tier || "free").toLowerCase();
           chip.querySelector("#platform-user-name")!.textContent = first;
           chip.querySelector("#platform-user-plan")!.textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
-          chip.querySelector("#platform-user-avatar")!.textContent = first.charAt(0).toUpperCase();
+          const face = chip.querySelector("#platform-user-avatar") as HTMLElement;
+          const avatar = (info as { avatarUrl?: string } | null)?.avatarUrl || "";
+          if (avatar) {
+            face.innerHTML = "";
+            const img = document.createElement("img");
+            img.alt = "";
+            img.addEventListener("error", () => { face.textContent = first.charAt(0).toUpperCase(); });
+            img.src = avatar;
+            face.appendChild(img);
+          } else {
+            face.textContent = first.charAt(0).toUpperCase();
+          }
         }).catch(() => { /* chip stays a dash — the shell still works */ });
       }
       const railHead = buildRailHead();

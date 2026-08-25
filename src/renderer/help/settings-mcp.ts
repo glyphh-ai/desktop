@@ -18,7 +18,8 @@
  * Neither present → an honest "not available on this build" message.
  */
 
-import { escapeHtml, confirmAction } from "./shared.js";
+import { escapeHtml, confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 
 export interface McpClientRow {
   grantId: string;
@@ -73,6 +74,10 @@ function transport(): McpTransport | null {
 
 const $ = (id: string) => document.getElementById(id);
 let wired = false;
+let clients: McpClientRow[] = [];
+let query = "";
+const PAGE_SIZE = 10;
+let page = 0;
 
 function setError(msg: string): void {
   const el = $("mcp-error");
@@ -81,43 +86,75 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
-function render(clients: McpClientRow[]): void {
+const fmtDay = (iso: string | null | undefined): string =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+/** The console-style client table: Client, Connected, Last used, kebab
+ *  (Revoke → confirm) — the API-keys grammar. Search + pagination on top. */
+function render(): void {
   const list = $("mcp-clients-list");
   const empty = $("mcp-clients-empty");
   if (!list) return;
-  empty?.classList.toggle("hidden", clients.length > 0);
+  const q = query.toLowerCase();
+  const shown = q ? clients.filter((c) => `${c.clientName || ""} ${c.clientId}`.toLowerCase().includes(q)) : clients;
+  empty?.classList.toggle("hidden", shown.length > 0);
+  if (empty) empty.textContent = clients.length === 0 ? "No MCP clients connected yet." : `No clients matching "${query}"`;
   list.innerHTML = "";
-  for (const c of clients) {
-    const row = document.createElement("div");
-    row.className = "a4-row";
-    const since = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "";
-    const used = c.lastUsedAt ? new Date(c.lastUsedAt).toLocaleDateString() : "never";
-    row.innerHTML = `<span class="a4-row-main"><span class="a4-row-name">${escapeHtml(c.clientName || c.clientId)}</span><span class="a4-row-sub">${since ? `Connected ${escapeHtml(since)} · ` : ""}Last used ${escapeHtml(used)}</span></span><button class="action-btn danger" type="button">Revoke</button>`;
-    row.querySelector("button")!.addEventListener("click", async () => {
-      if (!(await confirmAction({
-        title: `Revoke “${c.clientName || c.clientId}”?`,
-        body: "This client immediately loses access to your Glyphh. You can reconnect it any time by approving it again.",
-        confirmLabel: "Revoke",
-        danger: true,
-      }))) return;
-      try { await transport()!.revoke(c.grantId); await loadMcpPanel(); }
-      catch (e) { setError((e as Error).message); }
-    });
-    list.appendChild(row);
+  if (!shown.length) return;
+
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Client</th><th>Connected</th><th>Last used</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  const pg = paginate(shown, page, PAGE_SIZE);
+  page = pg.state.page;
+  for (const c of pg.items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td class="lib-table-name"><span class="mcp-client-name"></span></td>` +
+      `<td class="lib-table-dim">${escapeHtml(fmtDay(c.createdAt))}</td>` +
+      `<td class="lib-table-dim">${escapeHtml(c.lastUsedAt ? fmtDay(c.lastUsedAt) : "never")}</td>`;
+    (tr.querySelector(".mcp-client-name") as HTMLElement).textContent = c.clientName || c.clientId;
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.delete, label: "Revoke", danger: true, onClick: () => {
+        void (async () => {
+          if (!(await confirmAction({
+            title: `Revoke “${c.clientName || c.clientId}”?`,
+            body: "This client immediately loses access to your Glyphh. You can reconnect it any time by approving it again.",
+            confirmLabel: "Revoke",
+            danger: true,
+          }))) return;
+          try { await transport()!.revoke(c.grantId); await loadMcpPanel(); }
+          catch (e) { setError((e as Error).message); }
+        })();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (pg.state.totalPages > 1) {
+    list.appendChild(renderPaginationBar(pg.state, (p) => { page = p; render(); }));
   }
 }
 
 export async function loadMcpPanel(): Promise<void> {
   setError("");
   const t = transport();
-  if (!t) { render([]); setError(NO_TRANSPORT); return; }
-  try { render(await t.list()); }
-  catch (e) { render([]); setError(`Couldn't load your connected clients — ${(e as Error).message}`); }
+  if (!t) { clients = []; render(); setError(NO_TRANSPORT); return; }
+  try { clients = await t.list(); }
+  catch (e) { clients = []; setError(`Couldn't load your connected clients — ${(e as Error).message}`); }
+  render();
 }
 
 export function initMcpPanel(): void {
   if (wired) return;
   wired = true;
+  $("mcp-clients-search")?.addEventListener("input", () => {
+    query = (($("mcp-clients-search") as HTMLInputElement | null)?.value || "").trim();
+    page = 0;
+    render();
+  });
   const input = $("mcp-endpoint") as HTMLInputElement | null;
   const apiUrl = (window.glyphh as unknown as { apiUrl?: unknown }).apiUrl;
   if (input && typeof apiUrl === "string" && apiUrl) input.value = `${apiUrl.replace(/\/$/, "")}/mcp`;

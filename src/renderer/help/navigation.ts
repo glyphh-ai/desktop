@@ -548,7 +548,19 @@ function wireAppUserChip(nav: HTMLElement): void {
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
     if (!info || !chip) return;
     const name = (info.firstName || info.email || "").trim();
-    (chip.querySelector(".asu-avatar") as HTMLElement).textContent = (name || "?").charAt(0).toUpperCase();
+    const face = chip.querySelector(".asu-avatar") as HTMLElement;
+    const avatar = (info as { avatarUrl?: string }).avatarUrl || "";
+    if (avatar) {
+      face.innerHTML = "";
+      const img = document.createElement("img");
+      img.alt = "";
+      // A dead URL falls back to the initial rather than a broken-image glyph.
+      img.addEventListener("error", () => { face.textContent = (name || "?").charAt(0).toUpperCase(); });
+      img.src = avatar;
+      face.appendChild(img);
+    } else {
+      face.textContent = (name || "?").charAt(0).toUpperCase();
+    }
     (chip.querySelector(".asu-name") as HTMLElement).textContent = name || "—";
     const tier = (info.tier || "free");
     (chip.querySelector(".asu-plan") as HTMLElement).textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
@@ -560,6 +572,15 @@ function gateAdminSubs(): void {
     const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
     for (const id of ["general-runtime-group", "general-guardrails-group", "nav-org-general"]) {
       document.getElementById(id)?.classList.toggle("hidden", !admin);
+    }
+    // Members on the PLATFORM see nothing org-financial and no catalog:
+    // Billing and Models are org_admin surfaces there (his scoping order,
+    // 2026-08-24). The server 403s the reads regardless — this hides the
+    // doors. Desktop keeps Billing personal-visible as before.
+    if (document.body.classList.contains("platform-shell")) {
+      for (const id of ["nav-billing", "nav-models", "nav-org-marketplace"]) {
+        document.getElementById(id)?.classList.toggle("hidden", !admin);
+      }
     }
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server

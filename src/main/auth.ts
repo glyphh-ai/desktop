@@ -44,6 +44,8 @@ export interface AccountInfo {
   orgSlug: string;
   tier: string;
   billingStatus: string;
+  /** The resolved avatar (uploaded image, else legacy URL, else Gravatar). */
+  avatarUrl: string;
 }
 
 export interface HeartbeatResult {
@@ -397,6 +399,7 @@ async function refreshAccountState(): Promise<HeartbeatResult | null> {
     orgSlug: orgInfo?.slug ?? "",
     tier: subscription?.tier ?? identity.tier,
     billingStatus: subscription?.billingStatus ?? "",
+    avatarUrl: (identity as { avatarUrl?: string }).avatarUrl ?? "",
   };
   cachedHeartbeat = {
     // The new server has no account-disabled heartbeat signal (a revoked

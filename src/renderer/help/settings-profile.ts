@@ -12,6 +12,7 @@
  */
 
 import { accountApi, type Profile, type ProfileUpdate } from "./settings-api.js";
+import { downscaleImage } from "./shared.js";
 
 /** The last profile the server gave us — the baseline every dirty-check
  *  measures against. Null until the first successful load. */
@@ -59,15 +60,13 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
-/** Paint the identity header's avatar from whatever URL is in the box, falling
- *  back to the server's resolved avatar (Gravatar) when the box is empty. The
- *  initials underneath stay put and show through whenever neither resolves —
- *  including when the URL is a dud, which `onerror` catches. */
+/** Paint the identity header's avatar from the server's resolved avatar (the
+ *  uploaded image, else Gravatar). The initials underneath stay put and show
+ *  through whenever it doesn't resolve, which `onerror` catches. */
 function paintAvatar(): void {
   const img = $<HTMLImageElement>("profile-avatar");
   if (!img) return;
-  const typed = field("profile-image-url")?.value.trim() || "";
-  const src = typed || saved?.avatarUrl || "";
+  const src = saved?.avatarUrl || "";
   img.classList.toggle("hidden", !src);
   if (src && img.src !== src) img.src = src;
 }
@@ -96,11 +95,9 @@ function hydrate(): void {
   hydrating = true;
   const first = field("profile-first");
   const last = field("profile-last");
-  const image = field("profile-image-url");
   const tz = $<HTMLSelectElement>("profile-timezone");
   if (first) first.value = saved.firstName || "";
   if (last) last.value = saved.lastName || "";
-  if (image) image.value = saved.imageUrl || "";
   const emailEl = $("profile-email");
   if (emailEl) emailEl.textContent = saved.email || "—";
   const roleEl = $("profile-role");
@@ -130,12 +127,10 @@ function patch(): ProfileUpdate {
   if (!saved) return out;
   const first = field("profile-first")?.value.trim() ?? "";
   const last = field("profile-last")?.value.trim() ?? "";
-  const image = field("profile-image-url")?.value.trim() ?? "";
   const tz = $<HTMLSelectElement>("profile-timezone")?.value || "UTC";
   if (first !== (saved.firstName || "")) out.firstName = first;
   if (last !== (saved.lastName || "")) out.lastName = last;
   if (tz !== (saved.timezone || "UTC")) out.timezone = tz;
-  if (image !== (saved.imageUrl || "")) out.imageUrl = image || null;
   return out;
 }
 
@@ -208,17 +203,55 @@ export function initProfile(): void {
     scheduleSave(0);
   });
   // Typing waits for a pause; picking a zone is a finished decision.
-  for (const id of ["profile-first", "profile-last", "profile-image-url"]) {
+  for (const id of ["profile-first", "profile-last"]) {
     field(id)?.addEventListener("input", () => scheduleSave());
     // Leaving a field commits it immediately rather than sitting on the timer.
     field(id)?.addEventListener("blur", () => scheduleSave(0));
   }
   $<HTMLSelectElement>("profile-timezone")?.addEventListener("change", () => scheduleSave(0));
-  field("profile-image-url")?.addEventListener("input", paintAvatar);
-  // A URL that 404s would otherwise leave a broken-image glyph sitting where
-  // the face goes; hiding it lets the initials underneath take over.
+  // An avatar URL that 404s would otherwise leave a broken-image glyph sitting
+  // where the face goes; hiding it lets the initials underneath take over.
   $<HTMLImageElement>("profile-avatar")?.addEventListener("error", () => {
     $("profile-avatar")?.classList.add("hidden");
+  });
+
+  // ── profile image UPLOAD (the org-image pattern, user-shaped) ────────────
+  const fileInput = $<HTMLInputElement>("profile-image-file");
+  $("profile-image-add")?.addEventListener("click", () => fileInput?.click());
+  fileInput?.addEventListener("change", async () => {
+    const f = fileInput.files?.[0];
+    fileInput.value = "";
+    if (!f) return;
+    setError("");
+    setStatus("Uploading…", "");
+    try {
+      // Downscale before the size gate — a phone photo bouncing off the 512KB
+      // limit would read as "nothing happened" (the org-image lesson).
+      const scaled = await downscaleImage(f);
+      if (scaled.byteLength > 512 * 1024) {
+        setError("That image couldn't be shrunk under 512 KB — try a different one.");
+        setStatus("Not saved", "error");
+        return;
+      }
+      const sdk = (window as unknown as { glyphhSdk?: { profile?: { uploadImage?: (b: Uint8Array) => Promise<unknown> } } }).glyphhSdk;
+      if (sdk?.profile?.uploadImage) {
+        await sdk.profile.uploadImage(scaled);
+      } else {
+        const g = (window as unknown as { glyphh: { accountUserImage?: (b: ArrayBuffer) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+        if (typeof g.accountUserImage !== "function") { setError("This build can't upload a profile image yet — update the app."); setStatus("Not saved", "error"); return; }
+        const bytes = scaled.buffer.slice(scaled.byteOffset, scaled.byteOffset + scaled.byteLength) as ArrayBuffer;
+        const r = await g.accountUserImage(bytes);
+        if (!r?.ok) throw new Error(r?.error || "Upload failed.");
+      }
+      // The server resolves the new avatar URL — re-read and repaint, so the
+      // header (and the rail chip on next open) show the uploaded face.
+      saved = await accountApi().profile();
+      paintAvatar();
+      setStatus("Saved", "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus("Not saved", "error");
+    }
   });
 }
 

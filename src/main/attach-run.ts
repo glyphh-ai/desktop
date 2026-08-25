@@ -76,9 +76,11 @@ export function installAttachRunHandlers(): void {
     const source = { kind: "local", ...(workdir ? { path: workdir } : {}) } as RunSource;
     // The RELAYING client's permission mode MUST be honored — the run is theirs, not
     // this machine's. Absent ⇒ harnessRun falls back to the desktop's own mode.
-    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
-    const permission = (PERMS as readonly string[]).includes(p.permission as string)
-      ? (p.permission as (typeof PERMS)[number])
+    const PERMS = ["ask", "plan", "acceptEdits", "auto"] as const;
+    // "bypass" is retired — an older surface still sending it means full auto.
+    const rawPerm = p.permission === "bypass" ? "auto" : p.permission;
+    const permission = (PERMS as readonly string[]).includes(rawPerm as string)
+      ? (rawPerm as (typeof PERMS)[number])
       : undefined;
     // The RELAYING client's loop + model MUST win over the machine's own — the
     // run is theirs (e.g. the web picker). Absent ⇒ harnessRun resolves the
@@ -135,8 +137,10 @@ export function installAttachRunHandlers(): void {
   registerRelayHandler("agent.permission", async (params) => {
     const p = (params ?? {}) as Record<string, unknown>;
     const runId = typeof p.runId === "string" ? p.runId : "";
-    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
-    const permission = (PERMS as readonly string[]).includes(p.permission as string) ? (p.permission as (typeof PERMS)[number]) : null;
+    const PERMS = ["ask", "plan", "acceptEdits", "auto"] as const;
+    // "bypass" is retired — an older surface still sending it means full auto.
+    const rawPerm = p.permission === "bypass" ? "auto" : p.permission;
+    const permission = (PERMS as readonly string[]).includes(rawPerm as string) ? (rawPerm as (typeof PERMS)[number]) : null;
     if (!runId || !permission) throw new Error("agent.permission requires { runId, permission }");
     return { updated: await setRunPermission(runId, permission) };
   });

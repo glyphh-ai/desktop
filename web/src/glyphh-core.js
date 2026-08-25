@@ -586,6 +586,7 @@ export function toAccountInfo(me, org, sub) {
     orgName: org?.name || '',
     tier: sub?.tier || me.tier || 'free',
     billingStatus: sub?.billingStatus || 'none',
+    avatarUrl: me.avatarUrl || '',
   };
 }
 

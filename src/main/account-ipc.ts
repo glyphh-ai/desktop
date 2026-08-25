@@ -105,6 +105,10 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, media: await getClient().org.uploadImage(new Uint8Array(bytes)) }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("account-user-image", async (_e, bytes: ArrayBuffer) => {
+    try { return { ok: true as const, media: await getClient().profile.uploadImage(new Uint8Array(bytes)) }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("account-org-update", async (_e, patch: OrgUpdate) => {
     try { return { ok: true as const, org: await getClient().org.update(patch) }; }
     catch (err) { return fail(err); }

@@ -151,7 +151,7 @@ export const isCloudSource = (s?: RunSource): boolean => !!s && s.kind !== "loca
 // (desktop-local) or attach dispatch (a remote surface driving this machine) can
 // reach it. Local runs pass the desktop's OWN runId; relayed runs pass the
 // caller's minted runId — both key this map.
-type PermMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+type PermMode = "ask" | "plan" | "acceptEdits" | "auto";
 interface LiveHandle { setPermission(mode: PermMode): Promise<void>; inject(text: string): Promise<void> }
 const liveRuns = new Map<string, LiveHandle>();
 
@@ -283,8 +283,8 @@ export async function harnessRun(
   source?: RunSource,
   /** Permission mode from a RELAYING client (mobile/web driving this machine). When
    *  set it OVERRIDES the desktop's own mode — the run must honor the caller's choice
-   *  (e.g. 'bypass'). Absent for a desktop-local run → the local `glyphhMode()`. */
-  permissionOverride?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass",
+   *  (e.g. 'auto'). Absent for a desktop-local run → the local `glyphhMode()`. */
+  permissionOverride?: "ask" | "plan" | "acceptEdits" | "auto",
   /** Publish this run's frames UP the attach socket (channel `run:<runId>`) so the
    *  run-stream broker captures them and ANOTHER surface (web/mobile) can watch this
    *  desktop-local turn live. The RELAY path (attach-run.ts) already publishes via its

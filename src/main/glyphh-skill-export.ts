@@ -134,10 +134,13 @@ To put a hosted app on the internet at \`<slug>.glyphh.app\`, use the control-pl
 tools directly (no UI needed):
 
 1. \`create_app_entry { kind: "glyphh", slug, name }\` — register the app once.
-2. \`build_app { slug, files: { "index.html": "…", … } }\` — send the app's source
-   as a path→content map. It cuts a release, builds it, and (unless \`deploy:false\`)
-   deploys it live, returning the \`url\` and the release \`status\` — a \`failed\`
-   status carries the compiler error to fix.
+2. \`build_app\` — upload the built app. In a Glyphh runtime session pass
+   \`{ slug, distDir: "dist" }\` and the runtime walks the built folder and uploads
+   it itself — never read built files or paste their contents into the call. From
+   an external client, send \`{ slug, files: { "index.html": "…", … } }\` — the
+   dist/ contents as a path→content map (under 16 MB total). Either way it cuts a
+   release, builds it, and (unless \`deploy:false\`) deploys it live, returning the
+   \`url\` and the release \`status\` — a \`failed\` status carries the compiler error to fix.
 3. \`deploy_app { slug }\` only RE-deploys an already-built release; it never builds.
    If \`get_app\` shows a release with no finished build, call \`build_app\`.
 

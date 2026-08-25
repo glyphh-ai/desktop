@@ -306,8 +306,7 @@ const PERMS: { id: string; name: string; desc: string }[] = [
   { id: 'ask',         name: 'Ask every time', desc: 'Approve each tool before it runs' },
   { id: 'plan',        name: 'Plan mode',      desc: 'Read-only — draft a plan, pause on edits' },
   { id: 'acceptEdits', name: 'Accept edits',   desc: 'Auto-approve edits; pause on risky actions' },
-  { id: 'auto',        name: 'Auto',           desc: 'Run unattended; pause only on dangerous actions' },
-  { id: 'bypass',      name: 'Full access',    desc: 'Run everything without asking' },
+  { id: 'auto',        name: 'Auto',           desc: 'Full auto — run everything without asking' },
 ];
 /** A model id may be provider-qualified ("anthropic::claude-opus-4-8"); show the tail. */
 function shortModelId(id: string): string { const i = id.indexOf('::'); return i >= 0 ? id.slice(i + 2) : id; }
@@ -425,7 +424,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
 /* ── The Glyphh composer (input + toolbar) — shared by new-chat & sessions.
    The chip is the permission-mode selector; model + loop live in the session
    dots menu. */
-function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, loopName, modelSummary, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
+function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus, onOpenSelector, permLabel, permId, loopName, modelSummary, onDictate, onVoiceSend, attachments, onRemoveAttachment, onPasteFiles }: CompProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow up to a cap; the box scrolls internally beyond that.
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }, [draft]);
@@ -474,7 +473,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           <button className="m-tool-btn" aria-label="Add" onClick={onPlus}><Icon name="plus" /></button>
           {/* Every session is a Code session now: the permission pill + the
               loop/model chip beside it (the most-capable composer). */}
-          <button className="m-tool-pill m-pill-cfg" onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
+          <button className={'m-tool-pill m-pill-cfg' + (permId === 'auto' ? ' m-pill-auto' : '')} onClick={() => onOpenSelector('permission')}><Icon name="shield" /><span>{permLabel}</span></button>
           <button className="m-tool-pill m-pill-cfg m-pill-loopmodel" onClick={() => onOpenSelector('sections')}><Icon name="swap" /><span>{loopName} / {modelSummary}</span></button>
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening || srvLive ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
@@ -656,6 +655,7 @@ interface CompProps {
   onPlus: () => void;
   onOpenSelector: (section: SelSection) => void;
   permLabel: string;
+  permId: string;
   modelSummary: string;   // dots "Change model" subtitle / home dropdown
   loopName: string;       // dots "Change loop" subtitle / home dropdown
   draft: string;                    // composer input value (single active composer)
@@ -3479,7 +3479,7 @@ function App() {
   const [models, setModels] = useState<ModelChoice[]>([]);             // available() pool (labels + fallback)
   // Permission mode persists — a refresh must NOT silently revert the user's
   // choice (e.g. Auto) back to the default and start prompting again.
-  const [perm, setPermState] = useState(() => { try { return localStorage.getItem('yoPerm') || 'acceptEdits'; } catch { return 'acceptEdits'; } });
+  const [perm, setPermState] = useState(() => { try { const v = localStorage.getItem('yoPerm') || 'acceptEdits'; return v === 'bypass' ? 'auto' : v; } catch { return 'acceptEdits'; } });
   const setPerm = (v: string) => { setPermState(v); try { localStorage.setItem('yoPerm', v); } catch { /* */ } };
   const [search, setSearch] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -3899,6 +3899,7 @@ function App() {
     onPlus: () => { haptic(); setAttach(true); },
     onOpenSelector: (s) => { haptic(); if (s === 'permission') setPermOpen(true); else setSelectorAt(s); },
     permLabel: PERMS.find((p) => p.id === perm)?.name ?? 'Accept edits',
+    permId: perm,
     modelSummary,
     loopName,
     draft, setDraft,

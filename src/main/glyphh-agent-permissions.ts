@@ -5,8 +5,7 @@
  *   ask         — every mutating action needs approval; reads are free
  *   plan        — read-only: Glyphh plans, nothing changes
  *   acceptEdits — file edits auto-approved; commands/network still ask
- *   auto        — workspace actions auto-approved; dangerous ones still ask
- *   bypass      — everything auto-approved (trusted sessions only)
+ *   auto        — full auto: everything runs without asking, dangerous included
  *
  * The agent loop's tool executor calls gateGlyphhAction() before every
  * action. "Ask" resolutions round-trip to the Code panel: an approval card
@@ -22,7 +21,7 @@
 import { ipcMain, type WebContents } from "electron";
 import { getPreference } from "./stores/preferences-db";
 
-export type GlyphhMode = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+export type GlyphhMode = "ask" | "plan" | "acceptEdits" | "auto";
 export type GlyphhActionKind = "read" | "edit" | "command" | "network" | "dangerous";
 
 export interface GlyphhAction {
@@ -33,11 +32,14 @@ export interface GlyphhAction {
   detail?: string;
 }
 
-const MODES: GlyphhMode[] = ["ask", "plan", "acceptEdits", "auto", "bypass"];
+const MODES: GlyphhMode[] = ["ask", "plan", "acceptEdits", "auto"];
 const APPROVAL_TIMEOUT_MS = 120_000;
 
 export function glyphhMode(): GlyphhMode {
-  const m = String(getPreference("glyphhMode", "ask")) as GlyphhMode;
+  const raw = String(getPreference("glyphhMode", "ask"));
+  // "bypass" is retired (2026-08-24): auto IS full auto now — old stored
+  // preferences read as auto.
+  const m = (raw === "bypass" ? "auto" : raw) as GlyphhMode;
   return MODES.includes(m) ? m : "ask";
 }
 
@@ -58,11 +60,11 @@ export async function gateGlyphhAction(
 ): Promise<{ allowed: boolean; reason?: string }> {
   const mode = glyphhMode();
   if (action.kind === "read") return { allowed: true };
-  if (mode === "bypass") return { allowed: true };
+  // Auto is FULL auto (his order, 2026-08-24): nothing asks, dangerous included.
+  if (mode === "auto") return { allowed: true };
   if (mode === "plan") {
     return { allowed: false, reason: "plan mode is read-only — the user must switch modes before changes can be made" };
   }
-  if (mode === "auto" && action.kind !== "dangerous") return { allowed: true };
   if (mode === "acceptEdits" && action.kind === "edit") return { allowed: true };
   return requestApproval(wc, action);
 }

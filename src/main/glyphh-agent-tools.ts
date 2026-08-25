@@ -16,7 +16,7 @@
  * for celebrations. Deterministic beats pixel-driving throughout.
  *
  * Every execution passes gateGlyphhAction() first (mode model: ask /
- * plan / acceptEdits / auto / bypass) — a denial returns "DENIED: …" as
+ * plan / acceptEdits / auto) — a denial returns "DENIED: …" as
  * the tool result so the model can re-plan instead of crashing the loop.
  */
 
@@ -179,7 +179,7 @@ const isAttachedPath = (abs: string) =>
   [...runAttachments.values()].some((paths) => paths.some((p) => abs === p || abs.startsWith(p + sep)));
 
 /** Resolve inside the working folder; escapes are flagged, not thrown —
- *  the gate decides (dangerous), so bypass mode can still allow them. */
+ *  the gate decides (dangerous), so auto mode can still allow them. */
 function resolvePath(p: unknown): { abs: string; escapes: boolean } {
   const wd = workdir();
   const abs = resolve(wd, String(p ?? "."));
@@ -662,7 +662,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "update_app",
-    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it. For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version. WORKBENCH APPS: when the user asks for a 'workbench app' — a panel that lives inside their agent workbench with no public URL — build it like any Glyphh app but register it server-side with create_app_entry (kind glyphh, config {workbench:true}, via find_tools/call_tool) and build_app; declare its MCP tools + capabilities in the manifest so the harness can call them. Workbench apps are members-only by force, show under Apps, install into Workspace slots, and render chromeless (no address bar). Keep them inside the capability sandbox — the same guards as every app: declared capabilities only, no remote assets, no agent.run tool.",
+    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it LOCALLY (a panel app on this machine — no public URL). For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version. To PUBLISH to https://<slug>.glyphh.app instead, use the control-plane flow: create_app_entry { kind: 'glyphh', slug, name } then build_app { slug, distDir: 'dist' } — the runtime uploads the built folder itself; NEVER read built files or paste their contents into a call. WORKBENCH APPS: when the user asks for a 'workbench app' — a panel that lives inside their agent workbench with no public URL — build it like any Glyphh app but register it server-side with create_app_entry (kind glyphh, config {workbench:true}, via find_tools/call_tool) and build_app; declare its MCP tools + capabilities in the manifest so the harness can call them. Workbench apps are members-only by force, show under Apps, install into Workspace slots, and render chromeless (no address bar). Keep them inside the capability sandbox — the same guards as every app: declared capabilities only, no remote assets, no agent.run tool.",
     action: () => ({ kind: "edit", title: "Update app from source" }),
     run: async () => {
       // Declared-connector validation reads the governed catalog (fresh at

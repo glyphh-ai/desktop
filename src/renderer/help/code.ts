@@ -105,8 +105,7 @@ const MODES = [
   { id: "ask", label: "Ask mode", hint: "Every action needs your approval" },
   { id: "plan", label: "Plan mode", hint: "Read-only — Glyphh plans, changes nothing" },
   { id: "acceptEdits", label: "Accept edits", hint: "File edits auto-approved; commands still ask" },
-  { id: "auto", label: "Auto mode", hint: "Workspace actions auto-approved; risky ones ask" },
-  { id: "bypass", label: "Bypass permissions", hint: "Everything auto-approved — trusted sessions only" },
+  { id: "auto", label: "Auto mode", hint: "Everything runs without asking — full auto" },
 ] as const;
 // The ⓘ explainer — what each mode ACTUALLY gates (mirrors the enforcement
 // in glyphh-agent-permissions.ts: reads are always free; the mode decides the rest).
@@ -114,8 +113,7 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   ask: "The safest mode. Glyphh can read files freely, but every change — file edits, shell commands, and calls to your connected accounts — pops an approval card above the composer before it runs. Nothing happens without your explicit yes.",
   plan: "Strictly read-only. Glyphh can explore the folder, search, and reason, but every edit, command, or account call is refused outright — it tells you what it WOULD do instead. Use it to get a plan or a review you can act on in another mode.",
   acceptEdits: "File edits inside the working folder run without asking, so refactors flow uninterrupted. Everything else — shell commands, and anything that leaves your machine (connected-account calls, network) — still stops for approval.",
-  auto: "Routine work runs unattended: edits, shell commands, and connected-account calls are auto-approved. Only actions flagged dangerous — destructive commands (rm -rf, sudo, force-push) or writes escaping the working folder — still stop and ask.",
-  bypass: "No gates at all: every action runs without asking, including dangerous commands and writes outside the working folder. Only for sessions you fully trust — prefer Auto mode for everyday unattended runs.",
+  auto: "Full auto — no gates at all. Every action runs without asking: edits, shell commands, connected-account calls, and dangerous commands alike. Use it for sessions you trust to run unattended end to end.",
 };
 // Loop: which agent loop runs the session. This chip replaced the old effort
 // dial; the dial's turn/token tiers are gone with it — an attended session is
@@ -146,7 +144,9 @@ let glyphhMode: (typeof MODES)[number]["id"] = "ask";
  *  the session never set one. */
 function currentMode(): (typeof MODES)[number]["id"] {
   const c = current();
-  const m = c?.permission;
+  // Legacy sessions stamped "bypass" (the retired fifth mode) read as auto —
+  // auto IS full auto now.
+  const m = (c?.permission as string) === "bypass" ? "auto" : c?.permission;
   return m && MODES.some((x) => x.id === m) ? m : defaultMode;
 }
 
@@ -235,6 +235,7 @@ function cycleMode(): void {
  *  or the local pod echoing one) — update the session + chip WITHOUT re-pushing to
  *  the run (that would loop). Persists so the change survives a reload. */
 function adoptSessionMode(chatId: string, mode: string): void {
+  if (mode === "bypass") mode = "auto";  // retired mode off other surfaces
   if (!MODES.some((x) => x.id === mode)) return;
   const c = chats.find((ch) => ch.id === chatId);
   if (!c || c.permission === mode) return;
@@ -5474,7 +5475,8 @@ export function initCode(): void {
   initWorkdirGate();
   initComposerControls();
   void (async () => {
-    const m = String((await window.glyphh.getPreference?.("glyphhMode", "ask")) || "ask");
+    const raw = String((await window.glyphh.getPreference?.("glyphhMode", "ask")) || "ask");
+    const m = raw === "bypass" ? "auto" : raw;  // retired mode, stored on old builds
     // The stored preference is the DEVICE DEFAULT (seeds new sessions); the chip
     // then reflects whichever session is on screen (currentMode via paintChips).
     if (MODES.some((x) => x.id === m)) { defaultMode = m as typeof glyphhMode; glyphhMode = defaultMode; }

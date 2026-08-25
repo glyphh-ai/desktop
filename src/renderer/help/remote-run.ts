@@ -60,7 +60,7 @@ interface HarnessRunHandle {
  *  enforced by glyphh-agent-permissions.ts locally / rrotor harness/gate.ts in
  *  the pod). Sent per RUN: the pod's own default is `auto`, so a session left
  *  in Ask mode would silently run unattended if we didn't say so. */
-export type RemotePermission = "ask" | "plan" | "acceptEdits" | "auto" | "bypass";
+export type RemotePermission = "ask" | "plan" | "acceptEdits" | "auto";
 
 /** The LOOP's memory policy for a turn (mirrors the SDK's HarnessMemoryPolicy):
  *  whether the turn rotates around the stator and how. Absent = runtime default. */

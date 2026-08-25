@@ -90,7 +90,7 @@ export function registerGlyphhIpc(): void {
   registerGlyphhContextIpc();
   // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto" | "bypass"; steer?: string; model?: string; loop?: string; source?: RunSource }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");
     // Only the SAME session serializes — other sessions run concurrently.
@@ -140,9 +140,11 @@ export function registerGlyphhIpc(): void {
     // payload. Absent (older renderer) → harnessRun falls back to the device
     // `glyphhMode()` preference, as before. A mid-run change is pushed separately
     // (glyphh-agent-set-permission → the live pod).
-    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
-    const startPermission = (PERMS as readonly string[]).includes(String(payload?.permission))
-      ? (String(payload?.permission) as (typeof PERMS)[number])
+    const PERMS = ["ask", "plan", "acceptEdits", "auto"] as const;
+    // "bypass" is retired — an older renderer still sending it means full auto.
+    const rawStart = String(payload?.permission) === "bypass" ? "auto" : String(payload?.permission);
+    const startPermission = (PERMS as readonly string[]).includes(rawStart)
+      ? (rawStart as (typeof PERMS)[number])
       : undefined;
     // The SESSION's own model binding (per-session, his rule 2026-08-20) —
     // overrides the ambient loop resolution exactly like a relaying client's.
@@ -193,8 +195,9 @@ export function registerGlyphhIpc(): void {
   // at start no longer governs). No live run for the chat → a silent no-op.
   ipcMain.handle("glyphh-agent-set-permission", async (_e, p?: { chatId?: string; permission?: string }) => {
     const chatId = String(p?.chatId || "");
-    const PERMS = ["ask", "plan", "acceptEdits", "auto", "bypass"] as const;
-    const permission = (PERMS as readonly string[]).includes(String(p?.permission)) ? (String(p?.permission) as (typeof PERMS)[number]) : null;
+    const PERMS = ["ask", "plan", "acceptEdits", "auto"] as const;
+    const rawSet = String(p?.permission) === "bypass" ? "auto" : String(p?.permission);
+    const permission = (PERMS as readonly string[]).includes(rawSet) ? (rawSet as (typeof PERMS)[number]) : null;
     if (!chatId || !permission) return { updated: false };
     const runId = activeRuns.get(chatId)?.id;
     if (!runId) return { updated: false };

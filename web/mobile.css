@@ -820,6 +820,8 @@ body {
 .m-composer-spacer { flex: 1; }
 /* Single config chip (loop / model) — one line, ellipsizes, never wraps. */
 .m-pill-cfg { flex: 0 1 auto; min-width: 0; justify-content: flex-start; }
+/* Auto = FULL auto (no gates) — the pill warns in the danger red. */
+.m-pill-auto { color: #ff7a70; border-color: rgba(255, 122, 112, 0.45); }
 /* The 2nd (loop/model) chip beside permission is tablet-only; phone keeps it in
    the top dropdown / dots menu where there's no room in the composer row. */
 .m-pill-loopmodel { display: none; }
