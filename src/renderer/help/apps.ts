@@ -643,6 +643,8 @@ function renderMktSupportTab(): void {
 
 function switchAppTab(tab: string) {
   activeAppTab = tab as typeof activeAppTab;
+  // Leaving Connections returns the adopted page nodes home.
+  if (tab !== "connections") void import("./connections.js").then((m) => m.releaseConnections());
   document.querySelectorAll<HTMLButtonElement>(".app-detail-tab[data-tab]").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tab);
   });
@@ -1159,67 +1161,16 @@ function requiredConnSlugs(app: PanelApp | null): { slug: string; connected: boo
 }
 
 async function loadAppConnectionsTab(): Promise<void> {
-  const listEl = document.getElementById("app-conns-list");
-  const emptyEl = document.getElementById("app-conns-empty");
-  if (!listEl || !emptyEl) return;
-  const required = requiredConnSlugs(currentApp);
-  emptyEl.classList.toggle("hidden", required.length > 0);
-  listEl.innerHTML = "";
-  if (!required.length) return;
-
-  // Map required slugs → the user's actual connection (for the id → tools lookup).
-  let byslug = new Map<string, { id: string; hiddenTools: string[] }>();
-  try {
-    const res = await window.glyphh.connectionsList?.();
-    byslug = new Map((res?.connections || []).map((c) => [c.appSlug, { id: c.id, hiddenTools: c.hiddenTools }]));
-  } catch { /* offline — everything renders as not connected */ }
-
-  for (const { slug, connected } of required) {
-    const conn = byslug.get(slug);
-    const row = document.createElement("div");
-    row.className = "app-conn-row";
-    row.innerHTML = `
-      <button class="app-conn-head" type="button">
-        <span class="app-conn-chev">▸</span>
-        ${mktConnChip({ name: connLabel(slug), slug })}
-        <span class="app-conn-name">${escMkt(connLabel(slug))}</span>
-        <span class="app-conn-status ${connected ? "ok" : "missing"}">${connected ? "Connected" : "Not connected"}</span>
-      </button>
-      <div class="app-conn-tools hidden"></div>`;
-    const head = row.querySelector<HTMLButtonElement>(".app-conn-head")!;
-    const tools = row.querySelector<HTMLDivElement>(".app-conn-tools")!;
-    const chev = row.querySelector<HTMLElement>(".app-conn-chev")!;
-    head.addEventListener("click", async () => {
-      const open = tools.classList.toggle("hidden");
-      chev.textContent = open ? "▸" : "▾";
-      if (open || tools.dataset.loaded) return;
-      tools.dataset.loaded = "1";
-      if (!conn) { tools.innerHTML = `<div class="app-conn-tool-empty">Connect ${escMkt(connLabel(slug))} to see its tools.</div>`; return; }
-      tools.innerHTML = `<div class="app-conn-tool-empty">Loading tools…</div>`;
-      const tres = await window.glyphh.connectionToolsList?.(conn.id)?.catch(() => ({ ok: false as const, tools: [] }));
-      if (!tres?.ok || !tres.tools?.length) { tools.innerHTML = `<div class="app-conn-tool-empty">No tools.</div>`; return; }
-      // A tool the user/org has hidden is BLOCKED — the app can't call it, so the
-      // dependency is unmet even though the account is connected.
-      tools.innerHTML = tres.tools.map((t) => `
-        <div class="app-conn-tool">
-          <span class="app-conn-tool-name">${escMkt(t.name)}</span>
-          <span class="app-conn-tool-state ${t.hidden ? "blocked" : "allowed"}">${t.hidden ? "Blocked" : "Allowed"}</span>
-        </div>`).join("");
-    });
-    listEl.appendChild(row);
-    // Any required connection that's connected but has all tools blocked is a
-    // silent failure — surface it on the row without needing expansion.
-    if (conn) void window.glyphh.connectionToolsList?.(conn.id)?.then((tres) => {
-      if (tres?.ok && tres.tools?.length && tres.tools.every((t) => t.hidden)) {
-        const st = row.querySelector<HTMLElement>(".app-conn-status");
-        if (!st) return;
-        st.textContent = "Tools blocked";
-        st.className = "app-conn-status missing";
-      }
-    }).catch(() => {});
-  }
-  primeConnectedIcons(mktConnIconApps(required.map(({ slug }) => ({ slug }))), () => {});
+  // ONE component (his order, 2026-08-25): this tab hosts the Connections
+  // page's OWN toolbar/list/detail nodes, filtered to the app's required
+  // slugs — the forms can never drift because they are the same DOM.
+  const host = document.getElementById("app-conns-host");
+  if (!host) return;
+  const required = requiredConnSlugs(currentApp).map((r) => r.slug);
+  const m = await import("./connections.js");
+  m.adoptConnectionsInto(host, required);
 }
+
 
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
@@ -1239,9 +1190,6 @@ function initReleasesTab(): void {
     if (res?.ok) { await refreshCurrentApp(); loadReleasesTab(); }
     else if (res?.error) releaseError(res.error);
   });
-
-  // Connections tab: jump to the Connections page to connect/allow.
-  document.getElementById("app-conns-goto")?.addEventListener("click", () => { void gotoSection("connections"); });
 
 
   // Build & deploy — packages the working folder's compiled dist, cuts a

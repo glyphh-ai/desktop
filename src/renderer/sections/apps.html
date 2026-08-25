@@ -410,16 +410,12 @@
                   <div id="mkt-inst-support"><div class="inline-empty">Loading…</div></div>
                 </div>
 
-                <!-- Connections left: the connections this app requires, connected
-                     status, and (expandable) the tools it depends on. -->
+                <!-- Connections: hosts the Connections PAGE's own nodes (adopted
+                     by loadAppConnectionsTab), filtered to this app's required
+                     slugs — same list, same detail form, one component. -->
                 <div class="app-tab-left" data-tab="connections">
-                  <label class="settings-label">Required connections</label>
-                  <p class="settings-hint" style="margin-top:2px;">This app calls these connected accounts. It won't work until each is connected and its tools are allowed.</p>
-                  <div id="app-conns-list" class="app-conns-list"></div>
-                  <div id="app-conns-empty" class="help-item-empty hidden">This app requires no connections.</div>
-                  <div class="settings-actions" style="margin-top:14px;">
-                    <button id="app-conns-goto" class="action-btn" type="button">Open Connections</button>
-                  </div>
+                  <p class="settings-hint" style="margin:2px 0 10px;">This app calls these connected accounts. It won't work until each is connected and its tools are allowed.</p>
+                  <div id="app-conns-host"></div>
                 </div>
 
                 <!-- Public hosting folded into Releases (his order, 2026-08-25).
