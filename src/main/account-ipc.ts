@@ -122,6 +122,14 @@ export function registerAccountIpc(): void {
     try { await getClient().apps.revokeIngestToken(String(slug), String(id)); return { ok: true as const }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("apps-ingest-hook-create", async (_e, slug: string, input: { name: string; table: string; embed?: string[]; description?: string }) => {
+    try { return { ok: true as const, hook: await getClient().apps.createIngestHook(String(slug), input) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("apps-ingest-hook-delete", async (_e, slug: string, name: string) => {
+    try { await getClient().apps.removeIngestHook(String(slug), String(name)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
 
   ipcMain.handle("account-user-image", async (_e, bytes: ArrayBuffer) => {
     try { return { ok: true as const, media: await getClient().profile.uploadImage(new Uint8Array(bytes)) }; }

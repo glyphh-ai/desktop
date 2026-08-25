@@ -260,23 +260,17 @@
                 <!-- MCP left: the tools this app exposes at <slug>.glyphh.app/mcp.
                      Each must be explicitly approved (allowlist) before it's
                      reachable — newly-appeared tools default to OFF. -->
+                <!-- Webhooks: hooks in the LEFT pane, API tokens in the RIGHT pane
+                     (the page's split, like Releases). Both create via modal. -->
                 <div class="app-tab-left" data-tab="webhooks">
-                  <p class="proxy-field-hint" style="margin:2px 0 14px;">This app's inbound data doors. Hooks come from the manifest (<code>ingest:</code>); tokens authenticate the pipeline POSTs. Org admins see every app's doors under Settings → Webhooks.</p>
-                  <div id="app-ingest-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
-                  <!-- Hooks left, tokens right — two doors, one glance. -->
-                  <div class="app-ingest-grid">
-                    <div>
-                      <label class="settings-label">Hooks</label>
-                      <div id="app-ingest-hooks" class="mbr-list"></div>
-                    </div>
-                    <div>
-                      <div class="app-ingest-col-head">
-                        <label class="settings-label" style="margin:0;">API tokens</label>
-                        <button id="app-ingest-new-token" class="action-btn primary" type="button">+ New token</button>
-                      </div>
-                      <div id="app-ingest-tokens" class="mbr-list"></div>
-                    </div>
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
+                    <h3 class="settings-subheading" style="margin:0;">Hooks</h3>
+                    <span style="flex:1;"></span>
+                    <button id="app-ingest-new-hook" class="action-btn primary" type="button">+ New hook</button>
                   </div>
+                  <p class="proxy-field-hint" style="margin:2px 0 12px;">Inbound data doors: external pipelines (n8n, make, Boomi) POST rows to a hook's URL and they land in the app's table. Org admins see every app's doors under Settings → Webhooks.</p>
+                  <div id="app-ingest-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <div id="app-ingest-hooks" class="mbr-list"></div>
                 </div>
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
@@ -672,6 +666,18 @@
                 </div>
 
                 <!-- Releases right: the history. Version, channel, date, notes. -->
+                <div class="app-tab-right" data-tab="webhooks">
+                  <div style="padding:12px 16px;">
+                    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+                      <h3 class="settings-subheading" style="margin:0;">API tokens</h3>
+                      <span style="flex:1;"></span>
+                      <button id="app-ingest-new-token" class="action-btn primary" type="button">+ New token</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:0 0 12px;">A token authenticates the pipeline's POSTs to this app's hooks. The value shows once at mint.</p>
+                    <div id="app-ingest-tokens" class="mbr-list"></div>
+                  </div>
+                </div>
+
                 <div class="app-tab-right" data-tab="releases">
                   <div style="padding:12px 16px;">
                     <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">

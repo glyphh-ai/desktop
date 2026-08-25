@@ -782,6 +782,21 @@ export function buildContract(client, deps) {
     // Deploy tab (dev-host) — the DESKTOP's hosting-* IPC, twinned (his bug,
     // 2026-08-25: deploy from the web silently no-oped — the fabricating proxy
     // swallowed the missing shims while the desktop worked).
+    // Releases — the web reads the SAME control-plane history the desktop does
+    // (his bug, 2026-08-25: the missing shims left the web claiming "release
+    // history isn't available on this surface").
+    appReleases: async (slug) => {
+      try { return { ok: true, releases: await client.apps.releases(slug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), releases: [] }; }
+    },
+    appReleaseNotes: async (slug, releaseId, notes) => {
+      try { return { ok: true, release: await client.apps.updateReleaseNotes(slug, releaseId, notes) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appReleasePromote: async (slug, releaseId) => {
+      try { return { ok: true, release: await client.apps.promoteRelease(slug, releaseId) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     appVersionSet: async (slug, version) => {
       try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }

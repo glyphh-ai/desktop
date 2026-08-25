@@ -21,17 +21,22 @@ interface IngestHookRow { name: string; table: string; embed: string[]; descript
 interface IngestTokenRow { id: string; label: string; prefix: string; tokenHint: string; createdAt: string; lastUsedAt: string | null }
 interface AppHooks { slug: string; name: string; hooks: IngestHookRow[]; tokens: IngestTokenRow[] }
 
+interface HookInput { name: string; table: string; embed?: string[]; description?: string }
 interface SdkApps {
   installed?: () => Promise<Array<{ slug: string; name: string }>>;
   ingest?: (slug: string) => Promise<{ hooks: IngestHookRow[]; tokens: IngestTokenRow[] }>;
   createIngestToken?: (slug: string, label?: string) => Promise<{ token: string; row: IngestTokenRow }>;
   revokeIngestToken?: (slug: string, id: string) => Promise<unknown>;
+  createIngestHook?: (slug: string, input: HookInput) => Promise<unknown>;
+  removeIngestHook?: (slug: string, name: string) => Promise<unknown>;
 }
 interface DesktopIpc {
   appsIngestInstalled?: () => Promise<{ ok: boolean; apps?: Array<{ slug: string; name: string }>; error?: string }>;
   appsIngestList?: (slug: string) => Promise<{ ok: boolean; hooks?: IngestHookRow[]; tokens?: IngestTokenRow[]; error?: string }>;
   appsIngestTokenCreate?: (slug: string, label: string) => Promise<{ ok: boolean; token?: string; row?: IngestTokenRow; error?: string }>;
   appsIngestTokenRevoke?: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
+  appsIngestHookCreate?: (slug: string, input: HookInput) => Promise<{ ok: boolean; error?: string }>;
+  appsIngestHookDelete?: (slug: string, name: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 interface Transport {
@@ -39,6 +44,8 @@ interface Transport {
   ingest(slug: string): Promise<{ hooks: IngestHookRow[]; tokens: IngestTokenRow[] }>;
   mint(slug: string, label: string): Promise<{ token: string; row: IngestTokenRow }>;
   revoke(slug: string, id: string): Promise<void>;
+  createHook(slug: string, input: HookInput): Promise<void>;
+  deleteHook(slug: string, name: string): Promise<void>;
 }
 
 const NO_TRANSPORT = "Webhooks aren't available on this build.";
@@ -51,6 +58,14 @@ function transport(): Transport | null {
       ingest: (slug) => s.ingest!(slug),
       mint: (slug, label) => s.createIngestToken!(slug, label),
       revoke: async (slug, id) => { await s.revokeIngestToken!(slug, id); },
+      createHook: async (slug, input) => {
+        if (!s.createIngestHook) throw new Error("Creating hooks isn't available on this build yet — refresh.");
+        await s.createIngestHook(slug, input);
+      },
+      deleteHook: async (slug, name) => {
+        if (!s.removeIngestHook) throw new Error("Deleting hooks isn't available on this build yet — refresh.");
+        await s.removeIngestHook(slug, name);
+      },
     };
   }
   const g = (window as unknown as { glyphh?: DesktopIpc }).glyphh;
@@ -74,6 +89,14 @@ function transport(): Transport | null {
     revoke: async (slug, id) => {
       const r = await g.appsIngestTokenRevoke!(slug, id);
       if (!r?.ok) throw new Error(r?.error || "Couldn't revoke.");
+    },
+    createHook: async (slug, input) => {
+      const r = await g.appsIngestHookCreate?.(slug, input);
+      if (!r?.ok) throw new Error(r?.error || "Couldn't create the hook.");
+    },
+    deleteHook: async (slug, name) => {
+      const r = await g.appsIngestHookDelete?.(slug, name);
+      if (!r?.ok) throw new Error(r?.error || "Couldn't delete the hook.");
     },
   };
 }
@@ -162,6 +185,18 @@ function render(): void {
             const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
             if (typeof ipc === "function") void ipc(hk.url);
           });
+        } },
+        { icon: ROW_MENU_ICONS.delete, label: "Delete…", danger: true, onClick: () => {
+          void (async () => {
+            if (!(await confirmAction({
+              title: `Delete hook “${hk.name}”?`,
+              body: "Any pipeline POSTing to this URL starts failing immediately. The table and its rows stay.",
+              confirmLabel: "Delete",
+              danger: true,
+            }))) return;
+            try { await t.deleteHook(slug, hk.name); await renderAppIngest(slug, appName); }
+            catch (e) { say((e as Error).message); }
+          })();
         } },
       ]));
       tbody.appendChild(tr);
@@ -284,6 +319,89 @@ export function initWebhooksPanel(): void {
   });
 }
 
+/** A small form modal in the yo-modal grammar. Resolves the field values on
+ *  save, null on cancel. Both webhook creates (hook + token) ride this. */
+function ingestFormModal(
+  title: string,
+  fields: Array<{ id: string; label: string; placeholder?: string; hint?: string; required?: boolean }>,
+  saveText: string,
+): Promise<Record<string, string> | null> {
+  return new Promise((resolve) => {
+    document.querySelectorAll(".yo-modal.wh-form-overlay").forEach((n) => n.remove());
+    const overlay = document.createElement("div");
+    overlay.className = "yo-modal wh-form-overlay";
+    const backdrop = document.createElement("div");
+    backdrop.className = "yo-modal-backdrop";
+    const panel = document.createElement("div");
+    panel.className = "yo-modal-panel";
+    panel.style.maxWidth = "420px";
+
+    const head = document.createElement("div");
+    head.className = "yo-modal-title";
+    head.textContent = title;
+    panel.appendChild(head);
+
+    const inputs = new Map<string, HTMLInputElement>();
+    for (const f of fields) {
+      const lab = document.createElement("label");
+      lab.className = "settings-label";
+      lab.textContent = f.label;
+      if (f.hint) {
+        const hint = document.createElement("span");
+        hint.className = "settings-hint";
+        hint.textContent = ` ${f.hint}`;
+        lab.appendChild(hint);
+      }
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "settings-input";
+      inp.placeholder = f.placeholder ?? "";
+      inp.spellcheck = false;
+      inp.autocomplete = "off";
+      inputs.set(f.id, inp);
+      panel.append(lab, inp);
+    }
+    const err = document.createElement("div");
+    err.className = "crud-form-error hidden";
+    err.style.marginTop = "8px";
+    panel.appendChild(err);
+
+    const row = document.createElement("div");
+    row.className = "yo-modal-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "action-btn";
+    cancel.textContent = "Cancel";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "action-btn primary";
+    save.textContent = saveText;
+    row.append(cancel, save);
+    panel.appendChild(row);
+
+    const close = (value: Record<string, string> | null): void => { overlay.remove(); resolve(value); };
+    cancel.addEventListener("click", () => close(null));
+    backdrop.addEventListener("click", () => close(null));
+    save.addEventListener("click", () => {
+      const out: Record<string, string> = {};
+      for (const f of fields) {
+        const v = (inputs.get(f.id)?.value ?? "").trim();
+        if (f.required && !v) {
+          err.textContent = `${f.label} is required.`;
+          err.classList.remove("hidden");
+          return;
+        }
+        out[f.id] = v;
+      }
+      close(out);
+    });
+
+    overlay.append(backdrop, panel);
+    document.body.appendChild(overlay);
+    inputs.values().next().value?.focus();
+  });
+}
+
 // ── The PER-APP view (App → edit → Webhooks): this one app's hooks + tokens,
 // the same tables, scoped. The org page above stays the admin aggregate. ──
 export async function renderAppIngest(slug: string, appName: string): Promise<void> {
@@ -305,7 +423,7 @@ export async function renderAppIngest(slug: string, appName: string): Promise<vo
 
   hooksEl.innerHTML = "";
   if (!data.hooks.length) {
-    hooksEl.innerHTML = `<div class="crud-empty">No hooks declared — add ingest: [{ name, table }] to the manifest and release.</div>`;
+    hooksEl.innerHTML = `<div class="crud-empty">No hooks yet — create one with + New hook. Rows land in a table the app schema declares.</div>`;
   } else {
     const table = document.createElement("table");
     table.className = "lib-table mbr-table";
@@ -326,6 +444,18 @@ export async function renderAppIngest(slug: string, appName: string): Promise<vo
             const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
             if (typeof ipc === "function") void ipc(hk.url);
           });
+        } },
+        { icon: ROW_MENU_ICONS.delete, label: "Delete…", danger: true, onClick: () => {
+          void (async () => {
+            if (!(await confirmAction({
+              title: `Delete hook “${hk.name}”?`,
+              body: "Any pipeline POSTing to this URL starts failing immediately. The table and its rows stay.",
+              confirmLabel: "Delete",
+              danger: true,
+            }))) return;
+            try { await t.deleteHook(slug, hk.name); await renderAppIngest(slug, appName); }
+            catch (e) { say((e as Error).message); }
+          })();
         } },
       ]));
       tbody.appendChild(tr);
@@ -371,13 +501,41 @@ export async function renderAppIngest(slug: string, appName: string): Promise<vo
     tokensEl.appendChild(table);
   }
 
+  const newHook = document.getElementById("app-ingest-new-hook") as HTMLButtonElement | null;
+  if (newHook && !newHook.dataset.wired) {
+    newHook.dataset.wired = "1";
+    newHook.addEventListener("click", () => {
+      void (async () => {
+        const v = await ingestFormModal("New hook", [
+          { id: "name", label: "Name", placeholder: "orders", hint: "kebab-case — becomes the URL", required: true },
+          { id: "table", label: "Table", placeholder: "orders", hint: "a table the app schema declares", required: true },
+          { id: "embed", label: "Embed columns", placeholder: "subject, body", hint: "optional — comma-separated, indexed for search" },
+          { id: "description", label: "Description", placeholder: "What this feed carries" },
+        ], "Create hook");
+        if (!v) return;
+        try {
+          await transport()!.createHook(slug, {
+            name: v.name!, table: v.table!,
+            embed: (v.embed ?? "").split(",").map((c) => c.trim()).filter(Boolean),
+            ...(v.description ? { description: v.description } : {}),
+          });
+          await renderAppIngest(slug, appName);
+        } catch (e) { say((e as Error).message); }
+      })();
+    });
+  }
+
   const mint = document.getElementById("app-ingest-new-token") as HTMLButtonElement | null;
   if (mint && !mint.dataset.wired) {
     mint.dataset.wired = "1";
     mint.addEventListener("click", () => {
       void (async () => {
+        const v = await ingestFormModal("New token", [
+          { id: "label", label: "Label", placeholder: "n8n production", hint: "who holds this token" },
+        ], "Mint token");
+        if (!v) return;
         try {
-          const made = await transport()!.mint(slug, "");
+          const made = await transport()!.mint(slug, v.label ?? "");
           showTokenModal(`${appName} webhook token`, made.token);
           await renderAppIngest(slug, appName);
         } catch (e) { say((e as Error).message); }
