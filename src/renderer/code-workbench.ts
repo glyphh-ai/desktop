@@ -2861,10 +2861,12 @@ async function init(): Promise<void> {
         orderKey: `app:${slug}`,
       };
     };
-    /** APPS ONLY — the wall's app filter (no self row, no nav page tiles; a
-     *  glyphh app rides its archetype: it has no url until deployed). */
+    /** APPS ONLY — the wall's app filter (no self row, no nav page tiles). A
+     *  glyphh app appears ONLY once deployed (his rule, 2026-08-25): its url
+     *  is the brand origin, minted by deploy — an app still in development
+     *  belongs on the Apps page, not the consumption wall. */
     const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
-      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
+      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && !!a.url;
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = [bands.flat().map((t) => makeTileEntry(t))];
       renderPages();
@@ -2908,7 +2910,7 @@ async function init(): Promise<void> {
       // APP-WEB (his rule, 2026-08-25): every app is back on the web wall —
       // glyphh apps open in-app; anything else opens ITS URL in a new browser
       // tab (activateTile). URL-less native rows still can't open anywhere.
-      const userRows = (rows || []).filter(wallAppRow).filter((a) => !IS_WEB_TARGET || a.appArchetype === "glyphh-app" || !!a.url);
+      const userRows = (rows || []).filter(wallAppRow);
       const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
       const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
       const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
