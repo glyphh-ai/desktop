@@ -54,10 +54,12 @@ let requiredFilter: string[] | null = null;
 let adoptedHomes: Array<{ n: HTMLElement; parent: HTMLElement | null; next: Node | null }> | null = null;
 
 export function adoptConnectionsInto(host: HTMLElement, requiredSlugs: string[]): void {
-  const nodes = ["connections-toolbar", "connections-list", "conn-detail"]
+  // The catalog MODAL rides along too — left home it opens inside the hidden
+  // Connections section, i.e. invisibly (his bug, 2026-08-25).
+  const nodes = ["connections-toolbar", "connections-list", "conn-detail", "conn-modal"]
     .map((id) => document.getElementById(id))
     .filter((n): n is HTMLElement => !!n);
-  if (nodes.length !== 3) return;
+  if (nodes.length !== 4) return;
   if (!adoptedHomes) adoptedHomes = nodes.map((n) => ({ n, parent: n.parentElement, next: n.nextSibling }));
   host.append(...nodes);
   requiredFilter = requiredSlugs.map((x) => x.toLowerCase());
