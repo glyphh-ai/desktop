@@ -101,8 +101,8 @@ type AdminOrgPatch = { name?: string; tier?: string; billingStatus?: string };
 interface SdkAdmin {
   models?: () => Promise<{ models: AdminModel[] }>;
   updateModel?: (provider: string, model: string, patch: AdminModelPatch) => Promise<{ model: AdminModel }>;
-  createProvider?: (input: { slug: string; name: string; kind: "proxied" | "open_weight"; alias?: string | null; baseUrl?: string | null }) => Promise<unknown>;
-  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied" | "open_weight"; modality?: string; rateUnit?: string; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
+  createProvider?: (input: { slug: string; name: string; kind: "proxied"; alias?: string | null; baseUrl?: string | null }) => Promise<unknown>;
+  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied"; modality?: string; rateUnit?: string; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
@@ -357,7 +357,7 @@ function paintCatalog(): void {
     name.textContent = p.name;
     const chip = document.createElement("span");
     chip.className = "mdl-type-chip glyphh";
-    chip.textContent = p.kind === "open_weight" ? "Open weight" : "Proxied";
+    chip.textContent = "Proxied";   // the only kind there is (2026-08-26)
     name.appendChild(chip);
     const sub = document.createElement("div");
     sub.className = "mdl-td-sub";
@@ -450,8 +450,6 @@ function openProviderEditor(p: CatalogProvider): void {
   set("pa-pc-slug", p.slug);
   set("pa-pc-name", p.name);
   set("pa-pc-url", p.baseUrl || "");
-  const kind = $<HTMLSelectElement>("pa-pc-kind");
-  if (kind) kind.value = p.kind === "open_weight" ? "open_weight" : "proxied";
   const slug = $<HTMLInputElement>("pa-pc-slug");
   if (slug) slug.readOnly = true;
   const save = $<HTMLButtonElement>("pa-pc-save");
@@ -697,7 +695,7 @@ function wireCatalogCreate(): void {
       const input = {
         slug: (editingProviderSlug ?? inputVal("pa-pc-slug").trim().toLowerCase()),
         name: inputVal("pa-pc-name").trim(),
-        kind: (inputVal("pa-pc-kind") || "proxied") as "proxied" | "open_weight",
+        kind: "proxied" as const,   // every provider is served over an API now
         // POST /api/admin/providers upserts: omitted baseUrl KEEPS the stored
         // one, null CLEARS it — an edit that empties the field means "clear".
         ...(url ? { baseUrl: url } : editingProviderSlug ? { baseUrl: null } : {}),
