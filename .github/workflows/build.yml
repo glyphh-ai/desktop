@@ -257,9 +257,97 @@ jobs:
             release/*.exe
             release/latest.yml
 
+  build-linux:
+    # UBUNTU (2026-08-26). Nothing to sign and nothing to notarize here, so
+    # this is the mac/win job minus the whole credential tail. AppImage is the
+    # artifact electron-updater can actually update; the .deb ships beside it
+    # for apt-managed installs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # ── Vendor the SDK ── same self-heal as the other jobs: package.json
+      # depends on `@glyphh/sdk: file:../sdk`, a sibling checkout CI lacks.
+      - uses: actions/checkout@v4
+        with:
+          repository: glyphh-ai/sdk
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .sdk-src
+
+      - name: Build the SDK (file:../sdk dependency)
+        shell: bash
+        run: |
+          cd .sdk-src
+          npm ci
+          npm run build
+          cd ..
+          rm -rf ../sdk
+          mkdir -p ../sdk
+          cp .sdk-src/package.json ../sdk/package.json
+          cp -R .sdk-src/dist ../sdk/dist
+          rm -rf .sdk-src
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Vendor the LOCAL HARNESS POD ── without it a packaged build has no
+      # pod at all (a desktop launch's PATH cannot resolve `rrotor`).
+      - uses: actions/checkout@v4
+        with:
+          repository: glyphh-ai/rrotor
+          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
+          path: .rrotor-src
+
+      - name: Vendor the rrotor harness pod (vendor/rrotor)
+        shell: bash
+        run: |
+          cd .rrotor-src
+          npm ci
+          npm run build
+          npm prune --omit=dev
+          rm -rf node_modules/better-sqlite3
+          cd ..
+          rm -rf vendor/rrotor
+          mkdir -p vendor/rrotor
+          cp .rrotor-src/package.json vendor/rrotor/package.json
+          cp -R .rrotor-src/dist vendor/rrotor/dist
+          cp -R .rrotor-src/node_modules vendor/rrotor/node_modules
+          rm -rf .rrotor-src
+          test -f vendor/rrotor/dist/cli.js || { echo "vendored rrotor is missing dist/cli.js" >&2; exit 1; }
+
+      - name: Build
+        run: npm run build
+
+      # asar refuses files outside the app dir, and node_modules/@glyphh/sdk
+      # is a SYMLINK to ../sdk — replace it with a real copy.
+      - name: Materialize @glyphh/sdk (asar cannot follow ../sdk)
+        shell: bash
+        run: |
+          rm -rf node_modules/@glyphh/sdk
+          mkdir -p node_modules/@glyphh/sdk
+          cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
+          cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
+
+      - name: Package Linux (AppImage + deb)
+        run: npx electron-builder --linux --publish never
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: yo-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-mac, build-win]
+    needs: [build-mac, build-win, build-linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -276,13 +364,14 @@ jobs:
           files: |
             artifacts/yo-mac/*
             artifacts/yo-win/*
+            artifacts/yo-linux/*
 
   mirror-release:
     if: startsWith(github.ref, 'refs/tags/v')
     # Depend only on the builds — NOT the `release` job. A flaky failure
     # creating the (cosmetic) yo-client draft release must not block
     # publishing to the actual update feed.
-    needs: [build-mac, build-win]
+    needs: [build-mac, build-win, build-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -306,7 +395,10 @@ jobs:
                 artifacts/yo-mac/*.zip \
                 artifacts/yo-mac/latest-mac.yml \
                 artifacts/yo-win/*.exe \
-                artifacts/yo-win/latest.yml; then
+                artifacts/yo-win/latest.yml \
+                artifacts/yo-linux/*.AppImage \
+                artifacts/yo-linux/*.deb \
+                artifacts/yo-linux/latest-linux.yml; then
               echo "Published $TAG to glyphh-releases (attempt $attempt)"
               exit 0
             fi
@@ -315,6 +407,7 @@ jobs:
               gh release upload "$TAG" --repo glyphh-ai/glyphh-releases --clobber \
                 artifacts/yo-mac/*.dmg artifacts/yo-mac/*.zip artifacts/yo-mac/latest-mac.yml \
                 artifacts/yo-win/*.exe artifacts/yo-win/latest.yml \
+                artifacts/yo-linux/*.AppImage artifacts/yo-linux/*.deb artifacts/yo-linux/latest-linux.yml \
                 && { echo "Uploaded assets to existing $TAG"; exit 0; }
             fi
             echo "Publish attempt $attempt failed; retrying in $((attempt * 15))s..."
