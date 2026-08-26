@@ -30,11 +30,13 @@ win:
   icon: assets/icon.png
   artifactName: "Glyphh-Setup.${ext}"
 
-# UBUNTU / Linux (2026-08-26). AppImage is the primary artifact because it is
-# the ONE Linux format electron-updater can auto-update (deb cannot), so a
-# Linux install stays on the same update feed as mac/win; the .deb rides along
-# for people who want apt-managed installs and will simply not self-update.
-# No signing or notarization exists on this platform.
+# UBUNTU / Linux (2026-08-26). AppImage ONLY, deliberately: it is the one Linux
+# format electron-updater can auto-update, so a Linux install rides the SAME
+# feed as mac/win (latest-linux.yml). A .deb is a one-line addition here, but
+# Debian packaging REQUIRES a maintainer email and package.json's author has
+# none — that address ships inside every published package and lands a support
+# inbox, so it is a decision to make, not a value to invent. Nothing to sign or
+# notarize on this platform.
 linux:
   category: Development
   # The 512x512 PNG is what electron-builder wants here; it derives the rest.
@@ -42,9 +44,6 @@ linux:
   synopsis: The agent workbench
   target:
     - target: AppImage
-      arch:
-        - x64
-    - target: deb
       arch:
         - x64
   artifactName: "Glyphh-${arch}.${ext}"

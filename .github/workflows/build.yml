@@ -260,8 +260,9 @@ jobs:
   build-linux:
     # UBUNTU (2026-08-26). Nothing to sign and nothing to notarize here, so
     # this is the mac/win job minus the whole credential tail. AppImage is the
-    # artifact electron-updater can actually update; the .deb ships beside it
-    # for apt-managed installs.
+    # artifact electron-updater can actually update, so Linux rides the same
+    # feed as mac/win. (A .deb needs a maintainer email — see
+    # electron-builder.yml.)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -333,7 +334,7 @@ jobs:
           cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
           cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
-      - name: Package Linux (AppImage + deb)
+      - name: Package Linux (AppImage)
         run: npx electron-builder --linux --publish never
 
       - name: Upload Linux artifacts
@@ -342,7 +343,6 @@ jobs:
           name: yo-linux
           path: |
             release/*.AppImage
-            release/*.deb
             release/latest-linux.yml
 
   release:
@@ -397,7 +397,6 @@ jobs:
                 artifacts/yo-win/*.exe \
                 artifacts/yo-win/latest.yml \
                 artifacts/yo-linux/*.AppImage \
-                artifacts/yo-linux/*.deb \
                 artifacts/yo-linux/latest-linux.yml; then
               echo "Published $TAG to glyphh-releases (attempt $attempt)"
               exit 0
@@ -407,7 +406,7 @@ jobs:
               gh release upload "$TAG" --repo glyphh-ai/glyphh-releases --clobber \
                 artifacts/yo-mac/*.dmg artifacts/yo-mac/*.zip artifacts/yo-mac/latest-mac.yml \
                 artifacts/yo-win/*.exe artifacts/yo-win/latest.yml \
-                artifacts/yo-linux/*.AppImage artifacts/yo-linux/*.deb artifacts/yo-linux/latest-linux.yml \
+                artifacts/yo-linux/*.AppImage artifacts/yo-linux/latest-linux.yml \
                 && { echo "Uploaded assets to existing $TAG"; exit 0; }
             fi
             echo "Publish attempt $attempt failed; retrying in $((attempt * 15))s..."
