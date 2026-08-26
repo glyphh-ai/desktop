@@ -2517,6 +2517,8 @@ async function init(): Promise<void> {
     };
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
     const moveKeyToPage = (key: string, at: TileEntry | null): void => {
+      // Settings stays put (his order, 2026-08-26) — see the dock reconcile.
+      if (key === "settings" || key === "dock:settings") return;
       const band = wallBands[0]!;
       let entry = entriesByKey().get(key) ?? null;
       if (!entry) {
@@ -3141,6 +3143,12 @@ async function init(): Promise<void> {
           if (d.key === "glyphh") dockKeys.unshift(d.key);
           else dockKeys.push(d.key);
         }
+        // SETTINGS IS NOT TRADEABLE (his order, 2026-08-26). On app-web the
+        // dock is the ONLY door into the app's own settings, and the dock is
+        // rebuilt from a SAVED order — so a pref written before Settings
+        // shipped, or one that traded it onto the pages, dropped it for good.
+        // It is a fixed system control, not an app icon: always in the dock.
+        if (!dockKeys.includes("settings")) dockKeys.push("settings");
       }
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
@@ -3159,6 +3167,7 @@ async function init(): Promise<void> {
       const pageTiles: EchoTile[] = [];
       const seenK = new Set<string>();
       for (const k of savedPageOrder) {
+        if (k === "dock:settings") continue;  // fixed in the dock — never a page tile
         if (filed.has(k)) continue;   // lives inside a folder, not on the pages
         const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
         if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;

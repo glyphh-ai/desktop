@@ -274,6 +274,13 @@ async function newWebhookModal(t: Transport, slug: string, appName: string): Pro
 const PAGE_SIZE = 10;
 
 /** Webhooks: [App] | Endpoint | Created by | Created | Last fired | kebab. */
+/** The single empty state, in the table body. Search misses say so; otherwise
+ *  the plain "nothing yet" line. */
+function emptyCellText(nothingYet: string): string {
+  const q = query.trim();
+  return q ? `Nothing matching "${escapeHtml(q)}"` : nothingYet;
+}
+
 function renderWebhookTable(
   host: HTMLElement,
   rows: Array<{ app: { slug: string; name: string }; w: WebhookRow }>,
@@ -288,8 +295,10 @@ function renderWebhookTable(
   table.innerHTML = `<thead><tr>${withAppColumn ? "<th>App</th>" : ""}<th>Endpoint</th><th>Created by</th><th>Created</th><th>Last fired</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   if (!rows.length) {
-    // The header ALWAYS stands (his order, 2026-08-25); emptiness is a row.
-    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 6 : 5}" style="color:var(--text-3);padding:14px 12px;">No webhooks yet.</td></tr>`;
+    // The header ALWAYS stands (his order, 2026-08-25); emptiness is a row —
+    // and it is the ONLY empty state. A banner above the table said the same
+    // thing twice on one page.
+    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 6 : 5}" style="color:var(--text-3);padding:14px 12px;">${emptyCellText("No webhooks yet.")}</td></tr>`;
     table.appendChild(tbody);
     host.appendChild(table);
     return;
@@ -338,7 +347,7 @@ function renderPipelineTable(
   table.innerHTML = `<thead><tr>${withAppColumn ? "<th>App</th>" : ""}<th>Pipeline</th><th>Created by</th><th>Created</th><th>Last used</th><th>Expires</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 7 : 6}" style="color:var(--text-3);padding:14px 12px;">No pipelines yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${withAppColumn ? 7 : 6}" style="color:var(--text-3);padding:14px 12px;">${emptyCellText("No pipelines yet.")}</td></tr>`;
     table.appendChild(tbody);
     host.appendChild(table);
     return;
@@ -404,7 +413,6 @@ function paintTabCounts(webhookCount: number, pipelineCount: number): void {
 function render(): void {
   const hooksList = $("webhooks-hooks-list");
   const tokensList = $("webhooks-tokens-list");
-  const empty = $("webhooks-empty");
   if (!hooksList || !tokensList) return;
 
   const q = query.toLowerCase();
@@ -413,16 +421,6 @@ function render(): void {
   const tokenRows = apps.flatMap((a) => a.tokens.map((t) => ({ app: a, t })))
     .filter((r) => !q || `${r.app.name} ${r.app.slug} ${r.t.label}`.toLowerCase().includes(q));
   paintTabCounts(webhookRows.length, tokenRows.length);
-
-  const activeEmpty = activeTab === "hooks" ? webhookRows.length === 0 : tokenRows.length === 0;
-  empty?.classList.toggle("hidden", !activeEmpty);
-  if (empty) {
-    empty.textContent = q
-      ? `Nothing matching "${query}"`
-      : activeTab === "hooks"
-        ? "No webhooks yet — register one with + New and we POST to it when an app's data changes."
-        : "No pipelines yet — create one with + New and point your external system at its door.";
-  }
 
   const t = transport();
   if (!t) return;
