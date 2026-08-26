@@ -269,8 +269,8 @@ function paintModelChip(): void {
   mc.className = "code-chip";
 }
 
-/** Where the active session EXECUTES — a cloud source resolves models without
- *  the on-device set (their weights only exist on this machine). */
+/** Where the active session EXECUTES. (The context still rides model
+ *  resolution; on-device models are gone, so it no longer changes the SET.) */
 function modelContext(): "local" | "cloud" {
   return String((activeSource() as { kind?: string })?.kind || "").startsWith("cloud") ? "cloud" : "local";
 }
@@ -1271,8 +1271,7 @@ function ensureCodeSection(): void {
     syncThinking();   // this session's own run state, not the last one's
     renderHistory();
     renderThread();
-    // The switched-to session's OWN source drives the chip/locus/run — and the
-    // model set (a cloud session offers no on-device models).
+    // The switched-to session's OWN source drives the chip/locus/run.
     repaintSourceUi();
     paintChips();        // the loop chip follows THIS session's binding
     renderLoopMenu();
@@ -1893,13 +1892,13 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
 
 /** A styled card for a gateway decline (out of credits / role / rate) — replaces
  *  the raw "API Error: 400 …" text with a title, explanation, and one-click
- *  actions (buy credits / manage plan; and switch to a free on-device model). */
+ *  actions (buy credits / manage plan). */
 function declineCardEl(d: { kind: string; url: string }): HTMLElement {
   const COPY: Record<string, { title: string; body: string; cta: string }> = {
-    credits: { title: "Out of credits", body: "The Claude model you picked needs gateway credits to run. Buy more, or switch to an on-device model — those run free on your machine.", cta: "Buy more credits" },
-    role: { title: "Model not allowed", body: "This model isn't enabled for your account or role. Manage your plan, or switch to a free on-device model.", cta: "Manage plan" },
-    rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or switch to a free on-device model.", cta: "Open account" },
-    generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or switch to a free on-device model.", cta: "Open account" },
+    credits: { title: "Out of credits", body: "The model you picked needs gateway credits to run. Buy more to keep going.", cta: "Buy more credits" },
+    role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
+    rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
+    generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or pick a different one.", cta: "Open account" },
   };
   const c = COPY[d.kind] || COPY.generic;
   const card = document.createElement("div");
@@ -1911,7 +1910,7 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
       <div class="decline-card-body"></div>
       <div class="decline-card-actions">
         ${d.url ? `<button class="decline-card-cta" type="button"></button>` : ""}
-        <button class="decline-card-alt" type="button">Pick an on-device model</button>
+        <button class="decline-card-alt" type="button">Pick another model</button>
       </div>
     </div>`;
   (card.querySelector(".decline-card-title") as HTMLElement).textContent = c.title;
@@ -2394,8 +2393,8 @@ function pickSource(next: Source): void {
   void window.glyphh.setPreference?.(SOURCE_PREF, next);
   if (cur && cur.messages.length === 0) { cur.source = next; void saveStore(); }
   sourceChip?.setSource(next);
-  // A local↔cloud flip changes which models are offered (on-device models only
-  // exist on this machine) — re-resolve so the chip and menu match the source.
+  // A local↔cloud flip re-resolves the loop's slots so the chip and menu
+  // match the source this session actually runs on.
   void refreshModelList();
 }
 

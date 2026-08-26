@@ -57,8 +57,7 @@ export function overlayRoleSelections(models?: Record<string, string> | null): v
 }
 
 /** Pull this loop's slots from the server. Safe to call on every loop change.
- *  `context: "cloud"` resolves for a pod-executed session — the server excludes
- *  on-device models, whose weights only exist on the user's machine. */
+ *  `context: "cloud"` resolves for a pod-executed session. */
 export async function refreshRoles(loop: string, force?: boolean, context?: "local" | "cloud"): Promise<RoleView[]> {
   try {
     const r = await window.glyphh.loopRoles?.(loop, force, context);

@@ -615,12 +615,57 @@ async function init(): Promise<void> {
   // pointerdown on it snaps back to the text field it robbed.
   let lastPointerTarget: EventTarget | null = null;
   let lastPointerAt = 0;
+  let pointerDown = false;
   /** True once the user has focused the composer — see the focusin guard. */
   let composerHeld = false;
+  /** The composer's caret, mirrored so a restore survives the node being replaced. */
+  let caretAt = 0;
+  let caretTo = 0;
   document.addEventListener("pointerdown", (e) => {
     lastPointerTarget = e.target;
     lastPointerAt = Date.now();
+    pointerDown = true;
   }, true);
+  document.addEventListener("pointerup", () => { pointerDown = false; }, true);
+
+  const composerEl = (): HTMLTextAreaElement | null =>
+    document.getElementById("code-input") as HTMLTextAreaElement | null;
+
+  // Mirror the caret while the composer holds it. A streaming turn can replace
+  // the composer's node outright, and the replacement starts at offset 0 — the
+  // mirror is what puts the caret back mid-word instead of at the start.
+  const mirrorCaret = (): void => {
+    const ta = composerEl();
+    if (!ta || document.activeElement !== ta) return;
+    caretAt = ta.selectionStart ?? 0;
+    caretTo = ta.selectionEnd ?? caretAt;
+  };
+  document.addEventListener("selectionchange", mirrorCaret);
+  document.addEventListener("input", mirrorCaret, true);
+  document.addEventListener("keyup", mirrorCaret, true);
+
+  /** Hand the caret back to the composer, mid-word, without scrolling. */
+  const restoreComposer = (): boolean => {
+    const ta = composerEl();
+    if (!ta || !document.contains(ta) || document.activeElement === ta) return false;
+    const at = typeof ta.selectionStart === "number" && ta.selectionStart > 0 ? ta.selectionStart : caretAt;
+    const to = typeof ta.selectionEnd === "number" && ta.selectionEnd > 0 ? ta.selectionEnd : caretTo;
+    ta.focus({ preventScroll: true });
+    // Restore the caret exactly — refocusing otherwise jumps to the end and a
+    // mid-word steal would scramble what they were typing.
+    const max = ta.value.length;
+    ta.setSelectionRange(Math.min(at, max), Math.min(to, max));
+    return true;
+  };
+
+  // Controls that legitimately need the keyboard. Everything else — buttons,
+  // chips, cards, plain divs — can be CLICKED without taking the caret: a click
+  // is an action, not a request to type somewhere else.
+  const wantsKeyboard = (t: HTMLElement): boolean =>
+    t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT"
+    || t.tagName === "WEBVIEW" || t.isContentEditable
+    || !!t.closest?.('[class*="modal"], [role="dialog"], #code-ask-dock');
+
   document.addEventListener("focusin", (e) => {
     const t = e.target as HTMLElement | null;
     if (!t) return;
@@ -628,30 +673,18 @@ async function init(): Promise<void> {
     // ── THE COMPOSER KEEPS THE CARET (his rule, 2026-08-25) ──
     // A turn renders constantly — tool cards, panels, webviews mounting,
     // previews loading — and any of it taking focus mid-sentence loses the
-    // user's typing. Once the composer has been focused it STAYS focused
-    // until the user deliberately moves (a pointer press or Tab onto another
-    // control). Programmatic steals are handed straight back.
+    // user's typing. Once the composer has been focused it STAYS focused until
+    // the user deliberately moves to something that actually takes typing.
+    // Programmatic steals are handed straight back.
     if (t.id === "code-input") { composerHeld = true; return; }
     const deliberate = Date.now() - lastPointerAt < 600
       && (t === lastPointerTarget || (lastPointerTarget instanceof Node && t.contains(lastPointerTarget)));
-    if (composerHeld && !deliberate) {
-      // The agent ASKING something is the one programmatic move that earns
-      // the caret — answering is the next thing the user does.
-      const asked = !!t.closest?.("#code-ask-dock");
-      if (!asked) {
-        const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
-        if (ta && document.contains(ta) && document.activeElement !== ta) {
-          const at = ta.selectionStart;
-          const to = ta.selectionEnd;
-          ta.focus({ preventScroll: true });
-          // Restore the caret exactly — refocusing otherwise jumps to the end
-          // and a mid-word steal would scramble what they were typing.
-          if (typeof at === "number" && typeof to === "number") ta.setSelectionRange(at, to);
-          return;
-        }
-      }
-    }
-    if (deliberate) composerHeld = false;
+    // Surrender ONLY to a deliberate press on a real keyboard target. Clicking
+    // Send, a chip, or a tool card used to hand the caret away and leave the
+    // guard disarmed for the rest of the turn — that was the hole.
+    const surrender = deliberate && wantsKeyboard(t);
+    if (composerHeld && !surrender && restoreComposer()) return;
+    if (surrender) composerHeld = false;
 
     // Legacy webview guard: hand a robbed text field back even before the
     // composer has ever been focused.
@@ -661,6 +694,24 @@ async function init(): Promise<void> {
       robbed.focus();
     }
   }, true);
+
+  // ── The body-drop watchdog ───────────────────────────────────────────────
+  // The focusin guard only fires when some OTHER element takes the caret.
+  // Chromium fires NO blur/focusout when the focused node is simply removed
+  // from the DOM, so a re-render that rebuilds the composer's subtree mid-turn
+  // drops focus to <body> silently and nothing above ever runs. This is the
+  // path his report is on: text generating above, caret gone, no thief to
+  // catch. Poll for the dropped state and take it back.
+  window.setInterval(() => {
+    if (!composerHeld || pointerDown) return;
+    const a = document.activeElement;
+    if (a && a !== document.body && a !== document.documentElement) return;
+    // A drag-select in the transcript also parks focus on <body>; refocusing
+    // would collapse the selection out from under them.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    restoreComposer();
+  }, 120);
 
   // ── Rails state ──
   const rails: Rail[] = [];
