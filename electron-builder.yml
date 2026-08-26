@@ -40,8 +40,6 @@ linux:
   # The 512x512 PNG is what electron-builder wants here; it derives the rest.
   icon: assets/icon.png
   synopsis: The agent workbench
-  desktop:
-    StartupWMClass: Glyphh Desktop
   target:
     - target: AppImage
       arch:
