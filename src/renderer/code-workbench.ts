@@ -21,6 +21,7 @@ import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type Error
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
+import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, flushUiState } from "./help/ui-state.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -858,13 +859,13 @@ async function init(): Promise<void> {
                 : s.view),
         })).filter((r) => r.views.length > 0),
       };
-      localStorage.setItem(layoutKey(), JSON.stringify(data));
+      uiStateSet(layoutKey(), JSON.stringify(data));
       // A named layout's arrangement is ITS OWN memory.
       if (activeLayoutName && data.rails.length) {
-        localStorage.setItem(namedLayoutKey(activeLayoutName), JSON.stringify(data));
+        uiStateSet(namedLayoutKey(activeLayoutName), JSON.stringify(data));
       }
       if (rails.length === 0) activeLayoutName = null;
-    } catch { /* localStorage may be unavailable in some contexts */ }
+    } catch { /* the store is best-effort — never break a render over it */ }
   }
 
   /** Rebuild the rails from a saved snapshot — shared by the per-folder
@@ -915,7 +916,7 @@ async function init(): Promise<void> {
   function loadLayout(): void {
     rails.length = 0;
     let raw: string | null = null;
-    try { raw = localStorage.getItem(layoutKey()); } catch { /* noop */ }
+    try { raw = uiStateGet(layoutKey()); } catch { /* noop */ }
     if (!raw) { pushDefaultLayout(); renderRails(); return; }
     let data: SavedLayout;
     try { data = JSON.parse(raw); } catch { pushDefaultLayout(); renderRails(); return; }
@@ -3480,7 +3481,7 @@ async function init(): Promise<void> {
       let prior: Map<string, EchoCellState> | null = null;
       if (keepState) {
         try {
-          const raw = localStorage.getItem(echoMemKey(echoLayoutName));
+          const raw = uiStateGet(echoMemKey(echoLayoutName));
           const old = raw ? (JSON.parse(raw) as { cells?: Array<{ key: string; state?: EchoCellState }> }) : null;
           prior = new Map((old?.cells ?? []).filter((c) => c.state).map((c) => [c.key, c.state!]));
         } catch { prior = null; }
@@ -3497,7 +3498,7 @@ async function init(): Promise<void> {
           };
         }),
       };
-      try { localStorage.setItem(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
+      try { uiStateSet(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
     };
     // Shadow can be HELD (⌃⌥) or PINNED (the composer band's CC button) — a
     // pin survives modifier keyups; opening/closing the last card or Esc
@@ -4617,7 +4618,7 @@ async function init(): Promise<void> {
         let mem: EchoLayoutMem | null = null;
         echoLayoutSig = layoutSig(layout);
         try {
-          const raw = echoLayoutName ? localStorage.getItem(echoMemKey(echoLayoutName)) : null;
+          const raw = echoLayoutName ? uiStateGet(echoMemKey(echoLayoutName)) : null;
           if (raw) mem = JSON.parse(raw) as EchoLayoutMem;
           // Memory from a DIFFERENT shape is not this layout's memory. (A
           // pre-signature memory has no sig at all — treat it the same way:
@@ -4767,8 +4768,8 @@ async function init(): Promise<void> {
           } else if (sess && mode === "last" && layout.name) {
             let last: string | null = null;
             try {
-              last = localStorage.getItem(layoutSessionKey(layout.name, space))
-                ?? localStorage.getItem(layoutSessionKeyLegacy(layout.name));
+              last = uiStateGet(layoutSessionKey(layout.name, space))
+                ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
             } catch { last = null; }
             // resume ONLY a session that belongs to THIS space — the same
             // layout opened from another tab rode a different conversation
@@ -8576,7 +8577,14 @@ async function init(): Promise<void> {
 
   // ── Initial paint + cwd change subscription ──
   void paintWorkdirBar(cwd);
-  loadLayout();
+  // The arrangement lives server-side now, so the first paint WAITS for it.
+  // Painting first and restoring after would flash the default placement over
+  // whatever the user actually left open.
+  void loadUiState().then(() => loadLayout());
+  // The debounce coalesces a drag into one PATCH; closing mid-debounce would
+  // otherwise drop the last arrangement of the session.
+  window.addEventListener("pagehide", flushUiState);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) flushUiState(); });
 
   // New session: close every rail and reset the folder selection (visual
   // reset only — each folder's saved layout is untouched).
@@ -8694,7 +8702,7 @@ async function init(): Promise<void> {
     if (!cells.length) return;
     let saved: SavedLayout | null = null;
     try {
-      const raw = localStorage.getItem(namedLayoutKey(layout.name));
+      const raw = uiStateGet(namedLayoutKey(layout.name));
       if (raw) saved = JSON.parse(raw) as SavedLayout;
     } catch { /* no remembered geometry */ }
     activeLayoutName = layout.name;
@@ -8729,8 +8737,8 @@ async function init(): Promise<void> {
         if (mode === "new") { sess.startNew(); stamp(); return; }
         let last: string | null = null;
         try {
-          last = localStorage.getItem(layoutSessionKey(layout.name, space))
-            ?? localStorage.getItem(layoutSessionKeyLegacy(layout.name));
+          last = uiStateGet(layoutSessionKey(layout.name, space))
+            ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
         } catch { /* no memory */ }
         const target = last ? (sess.list() as Array<{ id: string; mode?: string }>).find((c) => c.id === last) : undefined;
         const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
@@ -8976,6 +8984,7 @@ async function init(): Promise<void> {
     return true;
   };
   wbApp.__wbOpenLayoutByName = async (name: string): Promise<boolean> => {
+    await loadUiState();   // its remembered geometry is server-side
     const yo = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<PanelAppRow[]>; layoutsList?: () => Promise<LayoutRow[]> } }).glyphh;
     const [rows, layouts] = await Promise.all([yo?.panelAppsList?.() ?? [], yo?.layoutsList?.() ?? []]).catch(() => [[], []] as [PanelAppRow[], LayoutRow[]]);
     const key = name.trim().toLowerCase();
@@ -9083,7 +9092,7 @@ async function init(): Promise<void> {
       type Listed = { id: string; mode?: string };
       const listed = ((sess as unknown as { list?: () => Listed[] }).list?.() ?? []).find((c) => c.id === cur);
       const space = listed?.mode === "code" ? "code" : listed?.mode === "chat" ? "chat" : "cowork";
-      try { localStorage.setItem(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
+      try { uiStateSet(layoutSessionKey(riding, space), cur); } catch { /* best effort */ }
     }
   });
 

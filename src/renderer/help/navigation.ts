@@ -6,6 +6,7 @@ import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, 
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
+import { clearUiState } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
@@ -535,6 +536,9 @@ function wireAppUserChip(nav: HTMLElement): void {
     out.setAttribute("role", "menuitem");
     out.addEventListener("click", () => {
       menu.classList.add("hidden");
+      // The workbench arrangement is the OUTGOING user's — drop it before the
+      // next sign-in can read it (and cancel any pending write).
+      clearUiState();
       void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
     });
     menu.appendChild(out);
@@ -903,7 +907,7 @@ export function initHelp() {
     mk("Docs", DOCS_SVG, () => gotoSection("docs"));
     mk("Settings", GEAR_SVG, () => gotoSection("settings"));
     mk("Account", USER_SVG, () => gotoSection("settings", "account"));
-    mk("Logout", LOGOUT_SVG, () => { void window.glyphh.logout(); }, true);
+    mk("Logout", LOGOUT_SVG, () => { clearUiState(); void window.glyphh.logout(); }, true);
     document.body.appendChild(m);
     const r = anchor.getBoundingClientRect();
     const openUp = r.top > window.innerHeight / 2;

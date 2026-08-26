@@ -6,6 +6,7 @@ import { paginate, renderPaginationBar, confirmAction, clearInvalid } from "./sh
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
+import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
 
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
@@ -841,10 +842,9 @@ async function saveLayout() {
   // named-layout snapshot recalls the OLD geometry whenever the panel set is
   // unchanged, which is exactly the common edit (resize rows/cols, re-place
   // the same panels). Definition wins after a save. (Rename drops both keys.)
+  await loadUiState();   // the arrangement is server-side; forget it there
   for (const n of new Set([name, editingLayoutName].filter(Boolean) as string[])) {
-    try {
-      localStorage.removeItem(`workbench:namedlayout:${n.trim().toLowerCase()}`);
-    } catch { /* storage unavailable — recall just goes stale */ }
+    uiStateRemovePrefix(`workbench:namedlayout:${n.trim().toLowerCase()}`);
   }
   await window.glyphh.layoutsSaveGrid({
     name,
@@ -878,10 +878,15 @@ async function deleteLayout() {
     danger: true,
   });
   if (!confirmed) return;
-  try {
-    localStorage.removeItem(`workbench:namedlayout:${editingLayoutName.trim().toLowerCase()}`);
-    localStorage.removeItem(`workbench:layoutsession:${editingLayoutName.trim().toLowerCase()}`);
-  } catch { /* best effort */ }
+  // A deleted layout forgets EVERYTHING it owned. The session binding is
+  // per-space (`...:<name>:code`) and the Echo panel memory is its own family,
+  // so this drops each prefix rather than three exact keys — the old cleanup
+  // removed only the legacy un-suffixed session key and orphaned the rest.
+  await loadUiState();
+  const gone = editingLayoutName.trim().toLowerCase();
+  uiStateRemovePrefix(`workbench:namedlayout:${gone}`);
+  uiStateRemovePrefix(`workbench:layoutsession:${gone}`);
+  uiStateRemovePrefix(`echo:layout:${gone}`);
   await window.glyphh.layoutsDelete(editingLayoutName);
   cancelLayout();
   setTimeout(() => { if (layoutEditor.classList.contains("hidden")) void loadLayouts(); }, 1200);
