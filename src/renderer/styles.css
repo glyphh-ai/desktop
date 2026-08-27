@@ -19549,16 +19549,16 @@ body.platform-shell .settings-panel .dash-head.platform-only:not(.hidden) { disp
 .dash-head-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .dash-head-actions .action-btn svg { width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
 body.platform-shell .settings-nav-group.platform-only { display: block; }
-.apps-builder-launch {
+.rail-row-launch {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   opacity: 0.5;
   transition: opacity 0.15s;
 }
-.apps-builder-launch svg { width: 13px; height: 13px; }
-.apps-builder-launch:hover { opacity: 1; }
-body.platform-rail-collapsed .apps-builder-launch { display: none; }
+.rail-row-launch svg { width: 13px; height: 13px; }
+.rail-row-launch:hover { opacity: 1; }
+body.platform-rail-collapsed .rail-row-launch { display: none; }
 
 /* ── Agent hosted in a LAYOUT: the head row reads (his spec, 2026-08-21)
    <session-name, inline editable> ......... <drips><recents><new><⋮ menu>

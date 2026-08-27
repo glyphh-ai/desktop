@@ -47,7 +47,9 @@ export const PLATFORM_PATH = '/platform';
  *  only — never touches auth/device/mobile routing (phones never run this
  *  module; serve.mjs routes them to /m before the bridge loads). */
 export function surfacePath() {
-  return PLATFORM_PATH;
+  // Default the app into DESKTOP — the command center wall (his call,
+  // 2026-08-27). The platform dashboard stays one toggle away.
+  return '/home';
 }
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the

@@ -129,12 +129,14 @@ void (async () => {
           try { window.history.replaceState(null, "", "/platform"); } catch { /* cosmetic */ }
         }
       }
-      // The Apps row's far-right launcher: open the Builder in a NEW TAB
-      // without switching the row itself (the row still opens the Apps panel).
-      document.getElementById("apps-builder-launch")?.addEventListener("click", (ev) => {
+      // The Dashboard row is a TOGGLE between the two surfaces (his call,
+      // 2026-08-27): the row itself is the Dashboard side; the far-right
+      // monitor segment is "Desktop" — the command center — in the SAME tab.
+      // (This replaces the Apps row's old new-tab Builder launcher.)
+      document.getElementById("dash-desktop-launch")?.addEventListener("click", (ev) => {
         ev.stopPropagation();
         ev.preventDefault();
-        window.open("/home", "_blank", "noopener");
+        window.location.assign("/home");
       });
       // ── Rail-bottom USER CHIP (his spec, 2026-08-24): first name with the
       // plan under it; its popup menu carries Docs / Support / About (their

@@ -115,7 +115,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('authed + regionChosen=false (NEW user) → first-run shown once, then navigates to Chat tab on completion', async () => {
+  it('authed + regionChosen=false (NEW user) → first-run shown once, then navigates to the Desktop on completion', async () => {
     const { els, drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'new@b.co', regionChosen: false });
@@ -127,11 +127,11 @@ describe('startWebBoot routing', () => {
     // workspace) — a new user gets the region choice stamped, then navigates.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalledWith({ region: 'local', tier: 'shared' });
   });
 
-  it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to Chat tab, NO first-run', async () => {
+  it('authed + regionChosen=true (RETURNING user) → straight into app, navigates to the Desktop, NO first-run', async () => {
     const { drivers } = installDom({ pathname: '/' });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
@@ -139,17 +139,17 @@ describe('startWebBoot routing', () => {
     // Drivers are never consulted on the login shell; a returning user just lands.
     expect(drivers.enterApp).not.toHaveBeenCalled();
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
-  it('a remembered Builder tab no longer diverts — sign-in always lands on /platform', async () => {
+  it('sign-in always lands on /home — the Desktop is the default surface (2026-08-27)', async () => {
     installDom({ pathname: '/' });
     globalThis.localStorage = { getItem: vi.fn(() => 'builder'), setItem: vi.fn() };
     try {
       web.isAuthenticated.mockResolvedValueOnce(true);
       web.syncGating.mockResolvedValueOnce({ email: 'ret@b.co', regionChosen: true });
       await startWebBoot();
-      expect(window.location.assign).toHaveBeenCalledWith('/platform');
+      expect(window.location.assign).toHaveBeenCalledWith('/home');
     } finally {
       delete globalThis.localStorage;
     }
@@ -166,7 +166,7 @@ describe('startWebBoot routing', () => {
     // New user via magic link: region stamped through the SDK, then /home — no
     // tutorial on the blank login shell.
     expect(drivers.showFirstRun).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/platform'));
+    await vi.waitFor(() => expect(window.location.assign).toHaveBeenCalledWith('/home'));
     expect(infra.chooseInfra).toHaveBeenCalled();
   });
 
@@ -177,7 +177,7 @@ describe('startWebBoot routing', () => {
     expect(web.exchangeCode).toHaveBeenCalledWith('c');
     expect(web.syncGating).toHaveBeenCalled();
     expect(drivers.enterApp).not.toHaveBeenCalled();
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 
   it('callback exchange failure → falls back to the login screen', async () => {
@@ -191,7 +191,7 @@ describe('startWebBoot routing', () => {
     expect(drivers.enterApp).not.toHaveBeenCalled();
   });
 
-  it('drivers never appear → dispatches yo-onboarding-done AND navigates to Chat tab so the app still lands', async () => {
+  it('drivers never appear → dispatches yo-onboarding-done AND navigates to the Desktop so the app still lands', async () => {
     installDom({ pathname: '/', webBoot: false });
     web.isAuthenticated.mockResolvedValueOnce(true);
     web.syncGating.mockResolvedValueOnce({ email: 'x@b.co', regionChosen: true });
@@ -200,7 +200,7 @@ describe('startWebBoot routing', () => {
     await p;
     expect(window.dispatchEvent).toHaveBeenCalled();
     expect(window.dispatchEvent.mock.calls[0][0].type).toBe('yo-onboarding-done');
-    expect(window.location.assign).toHaveBeenCalledWith('/platform');
+    expect(window.location.assign).toHaveBeenCalledWith('/home');
   });
 });
 
