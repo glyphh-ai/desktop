@@ -3773,10 +3773,12 @@ async function init(): Promise<void> {
         if (r.height > 0) top = Math.max(top, r.bottom - stageR.top + margin);
       }
       let bottom = h - margin;
-      // Over open cards the agent is TUCKED (overlay, no reserved height); on
-      // the visible command center it is seated and keeps its room.
+      // Anytime the WALL is off screen (cards fully covering it, or a layout
+      // without an agent cell) the composer is TUCKED — overlay, no reserved
+      // height. Seated with room only on the visible command center. (A
+      // layout hosting the agent re-homes it out of this selector entirely.)
       const agent = document.querySelector<HTMLElement>('.code-root[data-anchor="center"] > .code-agent');
-      if (agent && !document.body.classList.contains("echo-wall-covered")) {
+      if (agent && !document.body.classList.contains("echo-wall-hidden")) {
         const r = agent.getBoundingClientRect();
         if (r.height > 0) bottom = Math.min(bottom, r.top - stageR.top - margin);
       }

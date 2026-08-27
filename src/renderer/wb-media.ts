@@ -58,13 +58,18 @@ const VIEWS: Record<MediaView, { title: string; kinds: string[]; empty: string; 
   gsound: { title: "Sounds", kinds: ["audio", "voice"], empty: 'No sounds yet — ask Glyphh for music, a sound effect, or narration.', searchPh: "Search sounds…" },
 };
 
-const urlCache = new Map<string, string>();
-async function assetUrl(id: string): Promise<string | null> {
+/** Presigned GETs expire server-side in 300s (file-store DOWNLOAD_URL_TTL) —
+ *  cached forever, a video would START from browser-cached bytes and then die
+ *  on the first range request against the dead signature ("plays a moment,
+ *  then stops", his report 2026-08-27). Re-mint after 4 minutes. */
+const URL_TTL_MS = 4 * 60 * 1000;
+const urlCache = new Map<string, { url: string; at: number }>();
+async function assetUrl(id: string, fresh = false): Promise<string | null> {
   const hit = urlCache.get(id);
-  if (hit) return hit;
+  if (hit && !fresh && Date.now() - hit.at < URL_TTL_MS) return hit.url;
   const res = await api().mediaUrl?.(id);
-  if (!res?.ok || !res.url) return null;
-  urlCache.set(id, res.url);
+  if (!res?.ok || !res.url) return hit?.url ?? null; // offline blip — a stale URL beats none
+  urlCache.set(id, { url: res.url, at: Date.now() });
   return res.url;
 }
 
@@ -350,6 +355,20 @@ export function initMedia(host: MediaHost): MediaPanel {
       vid.src = url;
       vid.controls = true;
       vid.autoplay = false;
+      // A signature that dies MID-PLAY (tab left open past the TTL) surfaces
+      // as a media error — re-mint once and resume from where it stopped.
+      let healed = false;
+      vid.addEventListener("error", () => {
+        if (healed) return;
+        healed = true;
+        const at = vid.currentTime;
+        void assetUrl(id, true).then((u2) => {
+          if (!u2 || !vid.isConnected) return;
+          vid.src = u2;
+          vid.currentTime = at;
+          void vid.play().catch(() => { /* user gesture needed — controls remain */ });
+        });
+      });
       stage.appendChild(vid);
     } else {
       const wrapEl = document.createElement("div");

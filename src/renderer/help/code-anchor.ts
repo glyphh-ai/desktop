@@ -138,7 +138,13 @@ export function initAnchorEvents(): void {
   // the peek is an overlay, closing it just lowers the dialog.)
   document.addEventListener("pointerdown", (ev) => {
     if (!isPeeking()) return;
-    if (!(ev.target as HTMLElement).closest(".code-agent")) closePeek();
+    const t = ev.target as HTMLElement;
+    // Switching sessions is USING the peek, not leaving it (his rule,
+    // 2026-08-27): a click in the rail — a recents row, the search, the
+    // disclosure — keeps the dialog up streaming the newly picked thread.
+    if (t.closest(".code-agent") || t.closest("#code-history")
+      || t.closest("#recents-toggle") || t.closest(".app-rail-search")) return;
+    closePeek();
   }, true);
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && isPeeking()) { ev.stopPropagation(); closePeek(); }

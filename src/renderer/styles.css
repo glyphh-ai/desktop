@@ -17516,29 +17516,31 @@ body.echo-card-fullscreen .code-root[data-anchor="center"] > .code-agent { visib
    so the cards take the full height beneath it. */
 .code-root[data-anchor="center"] > .code-agent { transition: transform 0.24s ease; }
 /* NEVER hidden while the echo panel shows (his rule, 2026-08-19): the
-   composer tucks to the page bottom ONLY when cards fully cover the wall
-   (body.echo-wall-covered, workbench-driven). BOTH states keep the
+   composer tucks to the page bottom when cards fully cover the wall — and
+   (2026-08-27) when a LAYOUT without an agent cell owns the surface: the
+   composer floats tucked on top instead of reserving a bottom band. A layout
+   HOSTING the agent is exempt (echo-agent-in-layout). BOTH states keep the
    translateX(-50%) centering — the base positioning is left:50% + translateX,
    so a Y-only transform here shoved it hard right. */
-body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent {
+body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"] > .code-agent {
   transform: translate(-50%, calc(100% - 16px));
 }
-body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:hover,
-body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:focus-within,
-body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent,
-body.echo-wall-covered.glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent {
+body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"] > .code-agent:hover,
+body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"] > .code-agent:focus-within,
+body.echo-wall-hidden:not(.echo-agent-in-layout).peek-open .code-root[data-anchor="center"] > .code-agent,
+body.echo-wall-hidden:not(.echo-agent-in-layout).glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent {
   transform: translateX(-50%);
 }
 /* Tucked: the agent-output row (status line) hides with it — only the
    grabber marks the sliver; summoning brings the row back. */
-body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within) .code-agent-toprow {
+body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within) .code-agent-toprow {
   opacity: 0;
   transition: opacity 0.18s ease;
 }
-body.echo-wall-covered.peek-open .code-root[data-anchor="center"] > .code-agent .code-agent-toprow,
-body.echo-wall-covered.glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent .code-agent-toprow { opacity: 1; }
+body.echo-wall-hidden:not(.echo-agent-in-layout).peek-open .code-root[data-anchor="center"] > .code-agent .code-agent-toprow,
+body.echo-wall-hidden:not(.echo-agent-in-layout).glyphh-ask-pending .code-root[data-anchor="center"] > .code-agent .code-agent-toprow { opacity: 1; }
 /* The grabber — a small bar marking the hidden composer's hover sliver. */
-body.echo-wall-covered .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within)::after {
+body.echo-wall-hidden:not(.echo-agent-in-layout) .code-root[data-anchor="center"] > .code-agent:not(:hover):not(:focus-within)::after {
   content: "";
   position: absolute;
   top: 4px;
