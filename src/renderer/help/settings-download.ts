@@ -8,7 +8,7 @@
 
 import { escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 
-const RELEASES_API = "https://api.github.com/repos/glyphh-ai/glyphh-releases/releases?per_page=30";
+const RELEASES_API = "https://api.github.com/repos/glyphh-ai/glyphh-releases/releases?per_page=100";
 
 interface GhAsset { name: string; browser_download_url: string; size: number }
 interface GhRelease { tag_name: string; published_at: string | null; body?: string | null; assets: GhAsset[] }
@@ -44,8 +44,15 @@ function fmtDay(iso: string | null): string {
 
 let releases: GhRelease[] = [];
 let page = 1;
+let query = "";
 
+let searchWired = false;
 export async function loadDownload(): Promise<void> {
+  const search = document.getElementById("dl-search") as HTMLInputElement | null;
+  if (search && !searchWired) {
+    searchWired = true;
+    search.addEventListener("input", () => { query = search.value; page = 1; render(); });
+  }
   const latestEl = document.getElementById("dl-latest");
   const listEl = document.getElementById("dl-list");
   const errEl = document.getElementById("dl-error");
@@ -53,9 +60,17 @@ export async function loadDownload(): Promise<void> {
   errEl?.classList.add("hidden");
   if (!releases.length) latestEl.innerHTML = `<div class="crud-empty">Loading releases…</div>`;
   try {
-    const res = await fetch(RELEASES_API, { cache: "no-store" });
-    if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-    releases = (await res.json()) as GhRelease[];
+    // FULL history: page until a short page (100/page; the cap is a runaway
+    // guard, not a truncation anyone should ever hit).
+    const all: GhRelease[] = [];
+    for (let pg = 1; pg <= 10; pg++) {
+      const res = await fetch(`${RELEASES_API}&page=${pg}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+      const batch = (await res.json()) as GhRelease[];
+      all.push(...batch);
+      if (batch.length < 100) break;
+    }
+    releases = all;
     // GitHub orders by row-creation, and mirror-released rows can be created
     // out of publish order (v1.1.0-beta.16 sat below beta.2 in the raw list).
     releases.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
@@ -98,7 +113,8 @@ function render(): void {
   }
 
   // ── Previous releases — the standard table, header always standing ──
-  const prior = releases.slice(1);
+  const q = query.trim().toLowerCase();
+  const prior = releases.slice(1).filter((r) => !q || r.tag_name.toLowerCase().includes(q));
   const { items, state } = paginate(prior, page);
   page = state.page;
   listEl.innerHTML = "";
@@ -107,7 +123,7 @@ function render(): void {
   table.innerHTML = `<thead><tr><th>Version</th><th>Released</th><th>Downloads</th></tr></thead>`;
   const tbody = document.createElement("tbody");
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-3);padding:14px 12px;">No previous releases.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-3);padding:14px 12px;">${q ? `Nothing matching “${escapeHtml(query.trim())}”` : "No previous releases."}</td></tr>`;
   }
   for (const r of items) {
     const tr = document.createElement("tr");
