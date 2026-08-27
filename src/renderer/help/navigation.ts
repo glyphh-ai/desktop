@@ -38,6 +38,52 @@ const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
 
 // ── Open / close ─────────────────────────────────────────
 
+// THE user-menu rows — one list, every anchor (his question, 2026-08-27:
+// two hand-built menus had drifted; About made one and missed the other).
+// Order: identity first, help next, About (version + updates) last before
+// the sign-out. Rendered by buildUserMenuInto for BOTH the rail's Account
+// chip and the settings shell's bottom-left chip.
+const USER_MENU_ROWS: ReadonlyArray<{ label: string; sub: string; icon: string }> = [
+  { label: "Account", sub: "account", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>` },
+  { label: "Docs", sub: "docs", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` },
+  { label: "Support", sub: "support", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>` },
+  { label: "About", sub: "about", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>` },
+];
+/** Render the shared rows + Log out into `menu`. `go` routes a sub. */
+const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicked: () => void): void => {
+  for (const r of USER_MENU_ROWS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "code-menu-item";
+    b.setAttribute("role", "menuitem");
+    b.innerHTML = `${r.icon}<span></span>`;
+    (b.querySelector("span") as HTMLElement).textContent = r.label;
+    b.addEventListener("click", () => { onPicked(); go(r.sub); });
+    menu.appendChild(b);
+  }
+  void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> } })
+    .glyphh?.getUpdateStatus?.().then((st) => {
+      if (!st?.ready) return;
+      Array.from(menu.querySelectorAll<HTMLElement>(".code-menu-item span"))
+        .find((sp) => sp.textContent === "About")
+        ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
+    }).catch(() => {});
+  const sep = document.createElement("div");
+  sep.className = "menu-sep";
+  menu.appendChild(sep);
+  const out = document.createElement("button");
+  out.type = "button";
+  out.className = "code-menu-item danger menu-danger";
+  out.setAttribute("role", "menuitem");
+  out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
+  out.addEventListener("click", () => {
+    onPicked();
+    clearUiState();
+    void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
+  });
+  menu.appendChild(out);
+};
+
 export function openHelp() {
   if (getHelpTransitioning()) return;
   setHelpTransitioning(true);
@@ -507,51 +553,11 @@ function wireAppUserChip(nav: HTMLElement): void {
     menu.id = "app-settings-user-menu";
     menu.className = "hidden";
     menu.setAttribute("role", "menu");
-    const ICONS: Record<string, string> = {
-      account: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>`,
-      docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-      support: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>`,
-      about: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`,
-    };
-    // About rides THIS menu — the chip the user actually opens (his report,
-    // 2026-08-27: the first About landed on the retired rail menu, which has
-    // no visible opener). Its hidden nav row still routes the click.
-    for (const [label, sub] of [["Account", "account"], ["Docs", "docs"], ["Support", "support"], ["About", "about"]] as const) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.innerHTML = `${ICONS[sub]}<span></span>`;
-      (b.lastElementChild as HTMLElement).textContent = label;
-      b.setAttribute("role", "menuitem");
-      b.addEventListener("click", () => {
-        menu.classList.add("hidden");
-        nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`)?.click();
-      });
-      menu.appendChild(b);
-    }
-    // The update dot rides the About row when a release is downloaded.
-    void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> } })
-      .glyphh?.getUpdateStatus?.().then((st) => {
-        if (!st?.ready) return;
-        const rows = Array.from(menu.querySelectorAll<HTMLElement>("button span"));
-        rows.find((sp) => sp.textContent === "About")
-          ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
-      }).catch(() => {});
-    const sep = document.createElement("div");
-    sep.className = "menu-sep";
-    menu.appendChild(sep);
-    const out = document.createElement("button");
-    out.type = "button";
-    out.className = "menu-danger";
-    out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
-    out.setAttribute("role", "menuitem");
-    out.addEventListener("click", () => {
-      menu.classList.add("hidden");
-      // The workbench arrangement is the OUTGOING user's — drop it before the
-      // next sign-in can read it (and cancel any pending write).
-      clearUiState();
-      void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
-    });
-    menu.appendChild(out);
+    buildUserMenuInto(menu, (sub) => {
+      // Route through the (possibly hidden) nav rows so panel switching stays
+      // the one existing path — same trick the platform chip uses.
+      nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`)?.click();
+    }, () => menu.classList.add("hidden"));
     chip.addEventListener("click", (ev) => {
       ev.stopPropagation();
       menu.classList.toggle("hidden");
@@ -914,24 +920,10 @@ export function initHelp() {
       b.addEventListener("click", () => { closeUserMenu(); cb(); });
       m.appendChild(b);
     };
-    const DOCS_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`;
-    mk("Docs", DOCS_SVG, () => gotoSection("docs"));
-    mk("Settings", GEAR_SVG, () => gotoSection("settings"));
-    mk("Account", USER_SVG, () => gotoSection("settings", "account"));
-    // About = version + CHECK FOR UPDATES (his report, 2026-08-27: the panel
-    // existed with the full updater UI but nothing linked to it — users had
-    // no place to check for a release). A dot rides the row when an update
-    // is already downloaded and waiting.
-    const ABOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`;
-    mk("About", ABOUT_SVG, () => gotoSection("settings", "about"));
-    void (window.glyphh as unknown as { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> })
-      .getUpdateStatus?.().then((st) => {
-        if (!st?.ready) return;
-        const rows = Array.from(m.querySelectorAll<HTMLElement>(".code-menu-item span"));
-        const about = rows.find((sp) => sp.textContent === "About");
-        about?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
-      }).catch(() => {});
-    mk("Logout", LOGOUT_SVG, () => { clearUiState(); void window.glyphh.logout(); }, true);
+    buildUserMenuInto(m, (sub) => {
+      if (sub === "docs") gotoSection("docs");
+      else gotoSection("settings", sub);
+    }, closeUserMenu);
     document.body.appendChild(m);
     const r = anchor.getBoundingClientRect();
     const openUp = r.top > window.innerHeight / 2;
