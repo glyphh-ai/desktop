@@ -153,6 +153,7 @@ export function startWallTour(): void {
         </marker>
       </defs>
       <path class="wtour-dim" fill-rule="evenodd"></path>
+      <g class="wtour-rings"></g>
       <g class="wtour-arrows"></g>
     </svg>
     <div class="wtour-labels"></div>
@@ -174,6 +175,7 @@ export function startWallTour(): void {
 
   const svg = root.querySelector<SVGSVGElement>(".wtour-svg")!;
   const dim = root.querySelector<SVGPathElement>(".wtour-dim")!;
+  const rings = root.querySelector<SVGGElement>(".wtour-rings")!;
   const arrows = root.querySelector<SVGGElement>(".wtour-arrows")!;
   const labels = root.querySelector<HTMLElement>(".wtour-labels")!;
   const card = root.querySelector<HTMLElement>(".wtour-card")!;
@@ -183,8 +185,10 @@ export function startWallTour(): void {
 
   /** One rounded-rect hole, as path segments for the even-odd dim. */
   const hole = (r: DOMRect, pad: number): string => {
-    const x = rr(r.left - pad), y = rr(r.top - pad), w = rr(r.width + pad * 2), h = rr(r.height + pad * 2), rad = 14;
-    return `M${x + rad} ${y} h${w - rad * 2} a${rad} ${rad} 0 0 1 ${rad} ${rad} v${h - rad * 2} a${rad} ${rad} 0 0 1 -${rad} ${rad} h-${rad * 2 - w} a${rad} ${rad} 0 0 1 -${rad} -${rad} v-${h - rad * 2} a${rad} ${rad} 0 0 1 ${rad} -${rad} z`;
+    const x = rr(r.left - pad), y = rr(r.top - pad), w = rr(r.width + pad * 2), h = rr(r.height + pad * 2);
+    const rad = Math.min(14, w / 2, h / 2);
+    const hw = w - rad * 2, vh2 = h - rad * 2;
+    return `M${x + rad} ${y} h${hw} a${rad} ${rad} 0 0 1 ${rad} ${rad} v${vh2} a${rad} ${rad} 0 0 1 -${rad} ${rad} h-${hw} a${rad} ${rad} 0 0 1 -${rad} -${rad} v-${vh2} a${rad} ${rad} 0 0 1 ${rad} -${rad} z`;
   };
 
   const paint = (): void => {
@@ -210,6 +214,32 @@ export function startWallTour(): void {
     const rects = found.map((f) => f.el.getBoundingClientRect());
 
     dim.setAttribute("d", `M0 0 H${vw} V${vh} H0 z ` + rects.map((r) => hole(r, 8)).join(" "));
+    rings.innerHTML = rects.map((r) => {
+      const rad = Math.min(16, (r.width + 16) / 2, (r.height + 16) / 2);
+      return `<rect class="wtour-ring" x="${rr(r.left - 8)}" y="${rr(r.top - 8)}" width="${rr(r.width + 16)}" height="${rr(r.height + 16)}" rx="${rr(rad)}"></rect>`;
+    }).join("");
+
+    // Park the card NEAR the targets without COVERING any of them — a step
+    // about the dock should not point across the whole screen, and a card
+    // over the second anchor hides exactly what the arrow introduces. Sit
+    // below the LOWEST anchor when the primary is top-half, above the
+    // HIGHEST when it is bottom-half; clamped to the viewport either way.
+    const prime = rects[0];
+    if (prime) {
+      const cw = card.offsetWidth || 460;
+      const left = Math.min(Math.max(prime.left + prime.width / 2 - cw / 2, 24), vw - cw - 24);
+      card.style.left = `${rr(left)}px`;
+      card.style.transform = "none";
+      if (prime.top + prime.height / 2 < vh / 2) {
+        const low = Math.max(...rects.map((r) => r.bottom));
+        card.style.top = `${rr(Math.min(low + 72, vh - (card.offsetHeight || 320) - 24))}px`;
+        card.style.bottom = "auto";
+      } else {
+        const high = Math.min(...rects.map((r) => r.top));
+        card.style.top = "auto";
+        card.style.bottom = `${rr(Math.min(vh - high + 48, vh - 120))}px`;
+      }
+    }
 
     // Arrows: from the card's nearest edge to each hole's nearest edge.
     const c = card.getBoundingClientRect();

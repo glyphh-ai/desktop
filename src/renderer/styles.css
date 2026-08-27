@@ -19905,3 +19905,4 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   border-radius: 999px; padding: 8px 14px;
 }
 .wtour-mock-send { color: var(--text-3); font-size: 13px; }
+.wtour-ring { fill: none; stroke: var(--accent, #8c3bf2); stroke-width: 2; opacity: 0.9; }
