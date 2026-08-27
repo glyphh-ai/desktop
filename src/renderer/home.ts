@@ -129,13 +129,15 @@ void (async () => {
           try { window.history.replaceState(null, "", "/platform"); } catch { /* cosmetic */ }
         }
       }
-      // The Dashboard row is a TOGGLE between the two surfaces (his call,
-      // 2026-08-27): the row itself is the Dashboard side; the far-right
-      // monitor segment is "Desktop" — the command center — in the SAME tab.
-      // (This replaces the Apps row's old new-tab Builder launcher.)
-      document.getElementById("dash-desktop-launch")?.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        ev.preventDefault();
+      // The SURFACE TABS (his spec, 2026-08-27): a literal two-tab control
+      // at the top of the rail — Dashboard | Desktop, word + icon each. On
+      // the platform the Dashboard tab is the active surface; Desktop flips
+      // to the command center in the SAME tab. (Replaces the Apps row's old
+      // new-tab Builder launcher.)
+      document.getElementById("rail-tab-dashboard")?.addEventListener("click", () => {
+        openSettingsModal("dash");
+      });
+      document.getElementById("rail-tab-desktop")?.addEventListener("click", () => {
         window.location.assign("/home");
       });
       // ── Rail-bottom USER CHIP (his spec, 2026-08-24): first name with the
@@ -378,10 +380,15 @@ void (() => {
   if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
   if (/^\/platform\/?$/.test(window.location.pathname)) return;
   if (document.getElementById("builder-back-platform")) return;
-  const a = document.createElement("a");
+  // The same surface tabs as the platform rail, Desktop side active here.
+  const a = document.createElement("div");
   a.id = "builder-back-platform";
-  a.href = "/platform";
-  a.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg><span>Platform</span>`;
+  a.className = "rail-surface-tabs rail-surface-tabs-floating";
+  a.innerHTML =
+    '<button id="float-tab-dashboard" type="button" class="rail-surface-tab" title="The platform dashboard">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>' +
+    '<button type="button" class="rail-surface-tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>';
+  a.querySelector("#float-tab-dashboard")?.addEventListener("click", () => window.location.assign("/platform"));
   document.body.appendChild(a);
 })();
 
