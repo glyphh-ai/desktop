@@ -19927,3 +19927,16 @@ body.platform-rail-collapsed .rail-surface-tab span { display: none; }
    an open app or layout covers the wall, and the tabs go with it.
    echo-wall-hidden, not -covered: covered excludes live LAYOUTS by design. */
 body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
+/* ── Download page (platform rail) ──────────────────────────────────────── */
+.dl-hero {
+  border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface-2); padding: 20px 22px; margin-bottom: 26px;
+}
+.dl-hero-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+.dl-hero-ver { font: 700 22px var(--font-sans); color: var(--text); }
+.dl-hero-date { font: 500 12.5px var(--font-sans); color: var(--text-3); }
+.dl-hero-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.dl-hero-btns .action-btn { text-decoration: none; }
+.dl-prev-title { font: 650 15px var(--font-sans); color: var(--text); margin: 0 0 10px; }
+.dl-asset-link { color: var(--text-2); text-decoration: none; }
+.dl-asset-link:hover { color: var(--text); text-decoration: underline; }

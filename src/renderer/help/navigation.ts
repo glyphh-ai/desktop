@@ -27,6 +27,7 @@ import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
+import { loadDownload } from "./settings-download.js";
 import { loadWebhooks, initWebhooksPanel } from "./settings-webhooks.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
 import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
@@ -662,6 +663,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-plans") loadAdminPlans();
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
+  else if (sub === "download") void loadDownload();
   else if (sub === "apikeys") void loadApiKeys();
   else if (sub === "webhooks") { initWebhooksPanel(); void loadWebhooks(); }
   else if (sub === "voice") void loadVoiceSettings();
