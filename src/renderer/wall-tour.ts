@@ -64,7 +64,7 @@ const STEPS: TourStep[] = [
       </div>`,
     anchors: [
       { selector: '.echo-dock-btn[data-dock="marketplace"]', label: "Marketplace" },
-      { selector: '.echo-app-btn[data-key="tool:design"]', label: "An installed app" },
+      { selector: '.echo-app-btn[data-key="tool:gdesign"]', label: "An installed app" },
     ],
   },
   {
@@ -227,18 +227,34 @@ export function startWallTour(): void {
     const prime = rects[0];
     if (prime) {
       const cw = card.offsetWidth || 460;
-      const left = Math.min(Math.max(prime.left + prime.width / 2 - cw / 2, 24), vw - cw - 24);
-      card.style.left = `${rr(left)}px`;
-      card.style.transform = "none";
+      const ch = card.offsetHeight || 320;
+      const cx = rects.reduce((n, r) => n + r.left + r.width / 2, 0) / rects.length;
+      let left = Math.min(Math.max(cx - cw / 2, 24), vw - cw - 24);
+      let top: number;
       if (prime.top + prime.height / 2 < vh / 2) {
         const low = Math.max(...rects.map((r) => r.bottom));
-        card.style.top = `${rr(Math.min(low + 72, vh - (card.offsetHeight || 320) - 24))}px`;
-        card.style.bottom = "auto";
+        top = Math.min(low + 72, vh - ch - 24);
       } else {
         const high = Math.min(...rects.map((r) => r.top));
-        card.style.top = "auto";
-        card.style.bottom = `${rr(Math.min(vh - high + 48, vh - 120))}px`;
+        top = Math.max(high - 48 - ch, 24);
       }
+      // The vertical clamp can slide the card back OVER an anchor (small
+      // windows, a target near a corner). Dodge sideways past the offender —
+      // covering the thing an arrow introduces is the one hard failure.
+      for (const r of rects) {
+        const padT = r.top - 12, padB = r.bottom + 48; // ring + label pill
+        const overlapsY = top < padB && top + ch > padT;
+        const overlapsX = left < r.right + 16 && left + cw > r.left - 16;
+        if (!overlapsY || !overlapsX) continue;
+        const anchorCx = r.left + r.width / 2;
+        left = anchorCx < vw / 2
+          ? Math.min(r.right + 28, vw - cw - 24)
+          : Math.max(r.left - cw - 28, 24);
+      }
+      card.style.left = `${rr(left)}px`;
+      card.style.top = `${rr(top)}px`;
+      card.style.bottom = "auto";
+      card.style.transform = "none";
     }
 
     // Arrows: from the card's nearest edge to each hole's nearest edge.
@@ -249,24 +265,29 @@ export function startWallTour(): void {
       const r = rects[i]!;
       const tx = r.left + r.width / 2;
       const above = r.top + r.height / 2 < c.top;
-      const ty = above ? r.bottom + 12 : r.top - 12;
-      const sx = Math.min(Math.max(tx, c.left + 36), c.right - 36);
+      const lab = found[i]!.a.label;
+      const labTop = above ? r.bottom + 16 : r.top - 42;
+      if (lab) {
+        const el = document.createElement("div");
+        el.className = "wtour-arrow-label";
+        el.textContent = lab;
+        el.style.left = `${rr(tx)}px`;
+        el.style.top = `${rr(labTop)}px`;
+        labels.appendChild(el);
+      }
+      // The arrow lands at the PILL, not on the target edge the pill already
+      // occupies — and a run shorter than ~36px reads as a smudge, so the
+      // ring + pill carry those on their own.
+      const ty = above ? labTop + 34 : labTop - 8;
       const sy = above ? c.top - 8 : c.bottom + 8;
+      if ((above && sy - ty < 36) || (!above && ty - sy < 36)) continue;
+      const sx = Math.min(Math.max(tx, c.left + 36), c.right - 36);
       const mx = (sx + tx) / 2, my = (sy + ty) / 2 + (above ? 24 : -24);
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", `M${rr(sx)} ${rr(sy)} Q${rr(mx)} ${rr(my)} ${rr(tx)} ${rr(ty)}`);
       p.setAttribute("class", "wtour-arrow");
       p.setAttribute("marker-end", "url(#wtour-arrowhead)");
       arrows.appendChild(p);
-      const lab = found[i]!.a.label;
-      if (lab) {
-        const el = document.createElement("div");
-        el.className = "wtour-arrow-label";
-        el.textContent = lab;
-        el.style.left = `${rr(tx)}px`;
-        el.style.top = `${rr(above ? r.bottom + 18 : r.top - 40)}px`;
-        labels.appendChild(el);
-      }
     }
   };
 
