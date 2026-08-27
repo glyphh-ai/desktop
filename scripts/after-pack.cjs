@@ -22,7 +22,18 @@ exports.default = async function afterPack(context) {
     : path.join(context.appOutDir, "resources");
   const dest = path.join(resources, "rrotor", "node_modules");
   fs.rmSync(dest, { recursive: true, force: true });
-  fs.cpSync(src, dest, { recursive: true });
+  // NO SYMLINKS and no .bin shims: npm's .bin links go broken after pruning,
+  // and `codesign --verify --deep --strict` refuses to seal a bundle holding
+  // them (the mac beta.5 build died exactly there). The pod imports by
+  // package name only — bin shims are installer plumbing it never runs.
+  fs.cpSync(src, dest, {
+    recursive: true,
+    filter: (p) => {
+      if (path.basename(p) === ".bin") return false;
+      try { if (fs.lstatSync(p).isSymbolicLink()) return false; } catch { return false; }
+      return true;
+    },
+  });
   // Fail the BUILD, not a user's machine: the pod's hard imports must resolve.
   for (const dep of ["ajv", "ajv-formats", "yaml", "@modelcontextprotocol/sdk"]) {
     if (!fs.existsSync(path.join(dest, dep))) {
