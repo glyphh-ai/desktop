@@ -12885,8 +12885,9 @@ select:focus {
 .mkt-card:hover { border-color: var(--border-3, var(--accent)); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.14); }
 .mkt-card-top { display: flex; align-items: flex-start; gap: 11px; }
 /* Icon matches the My-apps page card icon (32px). */
-.mkt-card-icon { width: 32px; height: 32px; border-radius: 7px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-.mkt-card-icon img { width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; }
+/* 52px, up from 32 (his call, 2026-08-27 — the storefront cards read tiny). */
+.mkt-card-icon { width: 52px; height: 52px; border-radius: 12px; overflow: hidden; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.mkt-card-icon img { width: 100%; height: 100%; object-fit: contain; padding: 5px; box-sizing: border-box; }
 .mkt-card-initial { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
 .mkt-card-head { min-width: 0; flex: 1; }
 .mkt-card-name { font-size: 14.5px; font-weight: 650; color: var(--text); line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
