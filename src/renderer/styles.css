@@ -19942,3 +19942,17 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 .dl-asset-link:hover { color: var(--text); text-decoration: underline; }
 /* The user menu's update dot — About carries it when a release is downloaded. */
 .user-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent, #8c3bf2); margin-left: auto; flex: none; }
+/* ── Media viewer navigation — chevrons flank the stage, arrows step ────── */
+.gmedia-stagewrap { display: flex; align-items: stretch; flex: 1 1 auto; min-height: 0; }
+.gmedia-stagewrap .gmedia-stage { flex: 1 1 auto; min-width: 0; }
+.gmedia-nav {
+  flex: 0 0 44px; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: var(--text-3); cursor: pointer;
+  opacity: 0.55; transition: opacity 0.12s ease, color 0.12s ease;
+}
+.gmedia-nav:hover { opacity: 1; color: var(--text); }
+.gmedia-nav svg { width: 26px; height: 26px; }
+/* The song's attached videos — a strip of playable thumbs under the band. */
+.gmus-videos { display: flex; flex-wrap: wrap; gap: 10px; }
+.gmus-videos:empty { display: none; }
+.gmus-video-cell { width: 220px; border-radius: 10px; background: #000; border: 1px solid var(--border); }

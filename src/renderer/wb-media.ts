@@ -309,7 +309,11 @@ export function initMedia(host: MediaHost): MediaPanel {
           </button>
           <button class="ws-icon-btn gmem-del gmedia-viewer-del" title="Delete"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
         </div>
-        <div class="gmedia-stage"><div class="gdoc-empty">Loading…</div></div>
+        <div class="gmedia-stagewrap">
+          <button class="gmedia-nav gmedia-nav-prev" title="Previous (←/↑)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <div class="gmedia-stage"><div class="gdoc-empty">Loading…</div></div>
+          <button class="gmedia-nav gmedia-nav-next" title="Next (→/↓)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+        </div>
         <div class="gmedia-meta"></div>
       </div>`;
     body.querySelector(".gmedia-back")?.addEventListener("click", () => { delete slot.assetId; refresh(); });
@@ -324,7 +328,32 @@ export function initMedia(host: MediaHost): MediaPanel {
     const stage = body.querySelector<HTMLElement>(".gmedia-stage");
     const titleNode = body.querySelector<HTMLElement>(".gmedia-viewer-title");
     if (!stage || !titleNode || !body.isConnected) return;
-    const asset = lists.flatMap((r) => (r?.ok ? r.assets : [])).find((x) => x.id === id);
+    const ordered = lists.flatMap((r) => (r?.ok ? r.assets : []));
+    const asset = ordered.find((x) => x.id === id);
+    // ── ONE-BY-ONE NAVIGATION (his spec, 2026-08-27): ←/→ and ↑/↓ step
+    // through the library in grid order; the chevrons flanking the stage do
+    // the same by click. Wraps at the ends. ──
+    {
+      const at = ordered.findIndex((x) => x.id === id);
+      const step = (d: number): void => {
+        if (ordered.length < 2 || at < 0) return;
+        slot.assetId = ordered[(at + d + ordered.length) % ordered.length]!.id;
+        refresh();
+      };
+      body.querySelector(".gmedia-nav-prev")?.addEventListener("click", () => step(-1));
+      body.querySelector(".gmedia-nav-next")?.addEventListener("click", () => step(1));
+      const onKey = (ev: KeyboardEvent): void => {
+        // The viewer owns the arrows only while it is on screen and the user
+        // isn't typing somewhere (the composer keeps its caret keys).
+        if (!body.isConnected || slot.assetId !== id) { document.removeEventListener("keydown", onKey, true); return; }
+        const t = ev.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        if (ev.key === "ArrowLeft" || ev.key === "ArrowUp") { ev.preventDefault(); step(-1); }
+        else if (ev.key === "ArrowRight" || ev.key === "ArrowDown") { ev.preventDefault(); step(1); }
+      };
+      document.addEventListener("keydown", onKey, true);
+      if (ordered.length < 2) body.querySelectorAll<HTMLElement>(".gmedia-nav").forEach((b) => { b.style.display = "none"; });
+    }
     if (!asset) {
       stage.innerHTML = `<div class="gdoc-empty">This asset is gone.</div>`;
       return;

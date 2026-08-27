@@ -64,7 +64,7 @@ import { getClient, appCache } from "./glyphh-client";
 import { exportDocPdf, exportSlidesPdf } from "./office-export";
 import { designFileName, extractSiteDesign, imagePalette } from "./design";
 import { uploadMediaFile, mediaFileUrl } from "./media-panel";
-import { genImageAsset, genLook } from "./music-panel";
+import { genImageAsset, genLook, addLookToInstrumentLibrary } from "./music-panel";
 import type { DesignSystem } from "@glyphh/sdk";
 import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
@@ -1827,6 +1827,9 @@ const TOOLS: ToolDef[] = [
         );
         credits += img.credits;
         instRows.push({ instrument: kind, tweak, lookAssetId: img.id });
+        // The Band panel sources instrument looks from the LIBRARY — without
+        // this the image existed but never showed on the band.
+        await addLookToInstrumentLibrary(kind, tweak, img.id).catch(() => { /* library write is best-effort */ });
         lines.push(`${kind}: look image ${img.id}`);
       }
       const song = await getClient().music.createSong({
@@ -1873,7 +1876,8 @@ const TOOLS: ToolDef[] = [
       );
       row.lookAssetId = img.id;
       await music.updateSong(song.id, { instruments: song.instruments });
-      return `${row.instrument} look regenerated — ${img.credits.toFixed(2)} credits. open_image("${img.id}") shows it.`;
+      await addLookToInstrumentLibrary(row.instrument, row.tweak, img.id).catch(() => { /* best-effort */ });
+      return `${row.instrument} look regenerated and added to the instrument library (active) — ${img.credits.toFixed(2)} credits. open_image("${img.id}") shows it.`;
     },
   },
   {

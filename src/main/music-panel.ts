@@ -11,6 +11,25 @@ import type { MediaKind } from "@glyphh/sdk";
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** One metered IMAGE job, structured — the band builder's brush. */
+/**
+ * Land a generated instrument look in the INSTRUMENT LIBRARY — the rows the
+ * Band panel actually sources looks from (meta.looks + activeLook). The song
+ * row's lookAssetId alone never surfaced in the band UI (his report,
+ * 2026-08-27: "the agent is not linking the images -> instruments").
+ * Upserts by case-insensitive name; the new look appends and becomes active.
+ */
+export async function addLookToInstrumentLibrary(name: string, tweak: string, assetId: string): Promise<void> {
+  const music = getClient().music;
+  const lib = await music.instruments();
+  const existing = lib.find((li) => li.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    const looks = [...(((existing.meta ?? {}).looks as Array<{ assetId: string }> | undefined) ?? []), { assetId }];
+    await music.updateInstrument(existing.id, { meta: { ...existing.meta, looks, activeLook: looks.length - 1 } });
+  } else {
+    await music.createInstrument({ name, description: tweak, meta: { looks: [{ assetId }], activeLook: 0 } });
+  }
+}
+
 export async function genImageAsset(prompt: string, title: string): Promise<{ id: string; credits: number }> {
   const models = await getClient().models.available();
   const model = models.find((m) => String((m as { modality?: string }).modality ?? "") === "image");

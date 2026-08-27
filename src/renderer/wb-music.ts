@@ -439,6 +439,8 @@ export function initMusic(host: MusicHost): MusicViews {
             <div class="gmus-members-pick"></div>
             <label class="gmus-label">Instruments <span class="gmem-hint">catalog left · in the band right (tweak each)</span></label>
             <div class="gmus-instruments-pick"></div>
+            <label class="gmus-label gmus-videos-label hidden">Videos</label>
+            <div class="gmus-videos"></div>
           </div>
           <div class="gmus-right">
             <div class="gmus-wave-bar">
@@ -483,6 +485,24 @@ export function initMusic(host: MusicHost): MusicViews {
       paintTeam();
     };
     bandTypeIn.addEventListener("change", () => { song.bandType = bandTypeIn.value.trim(); saveBand(); });
+
+    // ── THE SONG'S VIDEOS (his report, 2026-08-27): song.visuals held the
+    // attached music videos but NOTHING rendered them — the agent's "linked
+    // the video to the band" was invisible. A strip of playable thumbs. ──
+    {
+      const strip = pane.querySelector<HTMLElement>(".gmus-videos")!;
+      const label = pane.querySelector<HTMLElement>(".gmus-videos-label");
+      const vids = Array.isArray(song.visuals) ? song.visuals : [];
+      if (vids.length) label?.classList.remove("hidden");
+      for (const vid of vids) {
+        const cell = document.createElement("video");
+        cell.className = "gmus-video-cell";
+        cell.controls = true;
+        cell.preload = "metadata";
+        void mediaUrlOf(vid).then((u) => { if (u) cell.src = u; });
+        strip.appendChild(cell);
+      }
+    }
 
     // THE SONG TEAM — every member and instrument, faces first, above the song.
     const teamEl = pane.querySelector<HTMLElement>(".gmus-team")!;
