@@ -996,6 +996,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   },
   updateInstall: () => ipcRenderer.send("update-install"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates") as Promise<string | null>,
+  // ── GitHub (desktop): the source chip's repo picker + local clone ──
+  gitStatus: () => ipcRenderer.invoke("git-status") as Promise<{ ok: boolean; status?: { connected: boolean; login?: string | null }; error?: string }>,
+  gitRepos: () => ipcRenderer.invoke("git-repos") as Promise<{ ok: boolean; repos?: Array<{ fullName: string; private: boolean; defaultBranch: string }>; error?: string }>,
+  gitConnect: () => ipcRenderer.invoke("git-connect") as Promise<{ ok: boolean; error?: string }>,
+  gitCloneInto: (repo: string, dir: string) => ipcRenderer.invoke("git-clone-into", repo, dir) as Promise<{ ok: boolean; error?: string }>,
   // Current pending update (null when none) — lets the About page show the
   // "Relaunch to Update" prompt on load, not only when a live event arrives.
   getUpdateStatus: () => ipcRenderer.invoke("get-update-status") as Promise<{ version: string; ready: boolean } | null>,

@@ -723,6 +723,20 @@ async function listMachines(): Promise<AttachedMachine[]> {
   return [];
 }
 
+/** The DESKTOP's git bridge (preload IPC) — the renderer has no SDK handle
+ *  there. Present ⇒ the picker runs on it and a pick CLONES into the local
+ *  folder ("create from git locally", his spec 2026-08-27). */
+type DesktopGit = {
+  gitStatus?: () => Promise<{ ok: boolean; status?: { connected: boolean }; error?: string }>;
+  gitRepos?: () => Promise<{ ok: boolean; repos?: Repo[]; error?: string }>;
+  gitConnect?: () => Promise<{ ok: boolean; error?: string }>;
+  gitCloneInto?: (repo: string, dir: string) => Promise<{ ok: boolean; error?: string }>;
+};
+const desktopGit = (): DesktopGit | null => {
+  const g = (window as unknown as { glyphh?: DesktopGit }).glyphh;
+  return g?.gitCloneInto ? g : null;
+};
+
 // ── Cloud → GitHub repo picker ───────────────────────────────────────────
 function renderRepos(
   menu: HTMLElement,
@@ -736,10 +750,11 @@ function renderRepos(
   body.insertAdjacentHTML("beforeend", `<div class="drop-empty">Loading…</div>`);
 
   const s = sdk();
-  if (!s?.git?.status) {
+  const dg = s?.git?.status ? null : desktopGit();
+  if (!s?.git?.status && !dg) {
     body.textContent = "";
     body.insertAdjacentHTML("beforeend",
-      `<div class="ws-note"><div class="ws-note-title">GitHub repos need the web app</div><div class="ws-note-body">Connecting a GitHub repository runs against the cloud runtime — open Glyphh on the web to pick a repo, or use a local folder here.</div></div>`);
+      `<div class="ws-note"><div class="ws-note-title">GitHub needs an update</div><div class="ws-note-body">This build can't reach GitHub yet — update the Glyphh desktop app.</div></div>`);
     return;
   }
 
@@ -774,7 +789,22 @@ function renderRepos(
       for (const r of shown) {
         const it = drillItem(r.fullName, `${r.private ? "private" : "public"} · ${r.defaultBranch}`, r.fullName === current ? CHECK : "");
         if (r.fullName === current) it.classList.add("selected");
-        it.addEventListener("click", () => pick({ kind: "cloud-repo", repo: r.fullName }));
+        it.addEventListener("click", () => {
+          if (!dg) { pick({ kind: "cloud-repo", repo: r.fullName }); return; }
+          // DESKTOP: clone into the current working folder — the empty-folder
+          // check lives in main; a non-empty folder answers with exactly why.
+          void (async () => {
+            it.classList.add("busy");
+            const cwd = String(await (window as unknown as { wb?: { getCwd?: () => Promise<string> } }).wb?.getCwd?.() ?? "");
+            if (!cwd) { paintNote("Pick a working folder first — the repo clones into it."); return; }
+            const res = await dg.gitCloneInto!(r.fullName, cwd);
+            if (!res.ok) { paintNote(res.error || "Clone failed."); return; }
+            onBack();
+            // The folder just became a repo — the workbench repaints the
+            // workdir bar + git dot off this event.
+            window.dispatchEvent(new CustomEvent("glyphh:cwd-content-changed"));
+          })();
+        });
         list.appendChild(it);
       }
     };
@@ -783,11 +813,16 @@ function renderRepos(
     requestAnimationFrame(() => search.focus());
   };
 
+  const paintNote = (msg: string): void => {
+    body.querySelector(".ws-clone-note")?.remove();
+    body.insertAdjacentHTML("beforeend", `<div class="ws-note ws-clone-note"><div class="ws-note-body"></div></div>`);
+    (body.querySelector(".ws-clone-note .ws-note-body") as HTMLElement).textContent = msg;
+  };
   const load = async (): Promise<boolean> => {
     try {
-      const st = await s.git!.status!();
+      const st = dg ? (await dg.gitStatus!()).status : await s!.git!.status!();
       if (!st?.connected) return false;
-      const repos = s.git!.repos ? await s.git!.repos() : [];
+      const repos = dg ? ((await dg.gitRepos!()).repos ?? []) : (s!.git!.repos ? await s!.git!.repos!() : []);
       paintRepos(Array.isArray(repos) ? repos : []);
       // ── account rows under the list ─────────────────────────────────────
       // A GitHub App only lists repos its INSTALLATION was granted — a short
@@ -798,7 +833,7 @@ function renderRepos(
       body.appendChild(manage);
       const disc = drillItem("Disconnect GitHub", "Unlink this account (repos stop listing here)", "");
       disc.addEventListener("click", () => {
-        if (!s.git?.disconnect) return;
+        if (!s?.git?.disconnect) return;
         void s.git.disconnect()
           .then(() => { body.textContent = ""; connectRow(); })
           .catch(() => { /* the row stays; a failed unlink changes nothing */ });
@@ -812,15 +847,25 @@ function renderRepos(
     body.textContent = "";
     const row = drillItem("Connect GitHub…", "Link your account to clone a repository", "");
     row.addEventListener("click", () => {
-      if (!s.git?.connect) return;
-      void s.git.connect().then((link) => {
-        if (!link?.url) return;
-        window.open(link.url, "glyphh-git-oauth", "width=600,height=760");
+      const arm = (): void => {
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(() => {
           void load().then((ok) => { if (ok && pollTimer) { clearInterval(pollTimer); pollTimer = null; } });
         }, 2500);
         setTimeout(() => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }, 180000);
+      };
+      if (dg) {
+        // Desktop: main opens the OAuth link in the default browser; the
+        // callback's self-closing page ends there, and the poll picks the
+        // fresh connection up here.
+        void dg.gitConnect!().then((r) => { if (r.ok) arm(); });
+        return;
+      }
+      if (!s?.git?.connect) return;
+      void s.git.connect().then((link) => {
+        if (!link?.url) return;
+        window.open(link.url, "glyphh-git-oauth", "width=600,height=760");
+        arm();
       });
     });
     body.appendChild(row);

@@ -104,6 +104,7 @@ import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
 import { registerLibraryIpc } from "./library-ipc";
+import { registerGitIpc } from "./git-ipc";
 import { startAgentScheduler, stopAgentScheduler } from "./agent-scheduler";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
@@ -434,6 +435,7 @@ async function boot() {
     registerGlyphhIpc();
     // The library pages: loops, skills, agents.
     registerLibraryIpc();
+    registerGitIpc();
     // Live agents' scheduled tasks fire while the app runs.
     startAgentScheduler();
   }

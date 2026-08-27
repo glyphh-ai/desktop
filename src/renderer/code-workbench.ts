@@ -8602,6 +8602,9 @@ async function init(): Promise<void> {
 
   // ── Initial paint + cwd change subscription ──
   void paintWorkdirBar(cwd);
+  // A clone (or any bulk write) changed the folder's CONTENTS without changing
+  // its path — no cwd event fires, so the chip's clone flow announces it.
+  window.addEventListener("glyphh:cwd-content-changed", () => { void paintWorkdirBar(cwd); });
   // The arrangement lives server-side now, so the first paint WAITS for it.
   // Painting first and restoring after would flash the default placement over
   // whatever the user actually left open.
