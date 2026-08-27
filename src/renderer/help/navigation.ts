@@ -511,8 +511,12 @@ function wireAppUserChip(nav: HTMLElement): void {
       account: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>`,
       docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
       support: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>`,
+      about: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`,
     };
-    for (const [label, sub] of [["Account", "account"], ["Docs", "docs"], ["Support", "support"]] as const) {
+    // About rides THIS menu — the chip the user actually opens (his report,
+    // 2026-08-27: the first About landed on the retired rail menu, which has
+    // no visible opener). Its hidden nav row still routes the click.
+    for (const [label, sub] of [["Account", "account"], ["Docs", "docs"], ["Support", "support"], ["About", "about"]] as const) {
       const b = document.createElement("button");
       b.type = "button";
       b.innerHTML = `${ICONS[sub]}<span></span>`;
@@ -524,6 +528,14 @@ function wireAppUserChip(nav: HTMLElement): void {
       });
       menu.appendChild(b);
     }
+    // The update dot rides the About row when a release is downloaded.
+    void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> } })
+      .glyphh?.getUpdateStatus?.().then((st) => {
+        if (!st?.ready) return;
+        const rows = Array.from(menu.querySelectorAll<HTMLElement>("button span"));
+        rows.find((sp) => sp.textContent === "About")
+          ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
+      }).catch(() => {});
     const sep = document.createElement("div");
     sep.className = "menu-sep";
     menu.appendChild(sep);
