@@ -759,10 +759,10 @@ function renderRepos(
     search.spellcheck = false;
     search.autocomplete = "off";
     search.addEventListener("mousedown", (ev) => ev.stopPropagation());
-    // The search sits at the BOTTOM of the drop, closest to the chip it opened
-    // from — the list grows away from your hand rather than pushing past it.
-    body.appendChild(list);
+    // Search at the TOP, like every other popup (his call, 2026-08-27 —
+    // replacing the bottom seat this drop-up experimented with).
     body.appendChild(search);
+    body.appendChild(list);
     const draw = (): void => {
       list.textContent = "";
       const q = (search?.value || "").trim().toLowerCase();

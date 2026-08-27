@@ -14280,7 +14280,7 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 }
 .dash-wd-chips .code-wd-btn svg, .code-source-slot .code-wd-btn svg { width: 13px; height: 13px; }
 /* Search pinned to the bottom of a flex drop, list scrolling above it. */
-.ws-drop-flex .repo-drop-search, .ws-drop-flex .ws-fs-search { margin: 6px 0 0; flex: 0 0 auto; }
+.ws-drop-flex .repo-drop-search, .ws-drop-flex .ws-fs-search { margin: 0 0 6px; flex: 0 0 auto; }
 .cl-runtime-chip:hover { border-color: var(--border-2); color: var(--text); }
 .cl-runtime-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .cl-runtime-dot {
