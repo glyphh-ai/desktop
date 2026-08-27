@@ -19900,8 +19900,12 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
 }
 .wtour-key-wide { min-width: 96px; }
 /* ── Surface tabs — Dashboard | Desktop (his spec, 2026-08-27) ──────────── */
+/* WEB-ONLY (his correction, 2026-08-27): the Dashboard | Desktop toggle is an
+   APP-WEB concept — the desktop app keeps the plain Dashboard row it always
+   had. The tabs mount hidden; the web root class reveals them and hides the
+   plain row. */
 .rail-surface-tabs {
-  display: flex; margin: 6px 10px 12px;
+  display: none; margin: 6px 10px 12px;
   border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); overflow: hidden;
 }
@@ -19956,3 +19960,6 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 .gmus-videos { display: flex; flex-wrap: wrap; gap: 10px; }
 .gmus-videos:empty { display: none; }
 .gmus-video-cell { width: 220px; border-radius: 10px; background: #000; border: 1px solid var(--border); }
+
+html.glyphh-web .rail-surface-tabs { display: flex; }
+html.glyphh-web .settings-nav-item.dash-plain { display: none; }
