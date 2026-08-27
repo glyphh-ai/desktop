@@ -285,13 +285,10 @@ function onSettingsModalKey(e: KeyboardEvent): void {
 }
 
 export function openSettingsModal(sub?: string): void {
-  // WEB (his rule, 2026-08-21): the web has no settings dialog. Outside the
-  // platform shell itself, any settings open routes to the platform page.
-  if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__
-      && !document.body.classList.contains("platform-shell")) {
-    window.location.assign("/platform" + (sub ? `?sub=${encodeURIComponent(sub)}` : ""));
-    return;
-  }
+  // WEB (his rule, 2026-08-26, replacing 2026-08-21's redirect): app-web gets
+  // the SAME settings modal as desktop. The platform page keeps its own
+  // settings surface — the two are separate on purpose; never route the app's
+  // gear to /platform.
   // Already open — just switch the sub-panel.
   const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "account";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }

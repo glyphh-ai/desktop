@@ -13643,6 +13643,16 @@ select:focus {
   animation: code-mic-pulse 1.2s ease-in-out infinite;
 }
 .code-chip.code-mic-chip.transcribing { opacity: 0.55; }
+/* The caret that opens the mic device/mode drop-up — a slim sibling of the chip. */
+.code-chip.code-mic-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  margin-left: -2px;
+  color: var(--text-3);
+}
+.code-chip.code-mic-caret:hover { color: var(--text); }
 @keyframes code-mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); } 50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); } }
 /* The caret that opens the mic device/mode drop-up — a slim sibling of the chip. */
 /* Mic drop-up extras: a divider + the "Hold to record" toggle row. */
@@ -19790,10 +19800,6 @@ body.platform-shell.platform-rail-collapsed .settings-modal-body > .settings-lay
   padding: 0;
   overflow: hidden;
 }
-
-/* WEB: settings lives on the /platform surface — the dock drops its slot
-   (his rule, 2026-08-21). Desktop keeps it. */
-.glyphh-web .echo-dock-btn[data-dock="settings"] { display: none !important; }
 
 /* Platform rail header: the wordmark alone (the surface switch is gone —
    the Builder opens from the Apps row's launcher). FIXED out of the

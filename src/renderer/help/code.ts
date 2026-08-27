@@ -17,7 +17,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
-import { initVoiceMic, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
+import { initVoiceMic, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
@@ -758,8 +758,28 @@ function initComposerControls(): void {
     cpop.classList.toggle("hidden");
     if (opening) { openChipDropUp(cpop); void renderCtxPop(); }
   });
-  // (The mic's device/mode drop-up is GONE — Settings › Voice owns the
-  // config; the composer keeps just the mic button.)
+  // The mic's device/mode drop-up (restored 2026-08-26 — the pill-composer
+  // rewrite dropped the caret, and with it the only way to pick a microphone
+  // or flip hold-to-record from the composer).
+  {
+    const micWrap = el("code-mic-wrap");
+    if (micWrap) {
+      const mpop = document.createElement("div");
+      mpop.id = "code-mic-menu";
+      mpop.className = "code-drop-up hidden";
+      micWrap.appendChild(mpop);
+      el("code-mic-caret")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        el("code-mode-menu")?.classList.add("hidden");
+        el("code-effort-pop")?.classList.add("hidden");
+        el("code-model-menu")?.classList.add("hidden");
+        el("code-ctx-pop")?.classList.add("hidden");
+        const opening = mpop.classList.contains("hidden");
+        mpop.classList.toggle("hidden");
+        if (opening) void renderMicMenu(mpop).then(() => { if (!mpop.classList.contains("hidden")) openChipDropUp(mpop); });
+      });
+    }
+  }
   // "Stop" chip — visible only while the agent is speaking a reply aloud.
   onSpeaking((on) => el("code-speak-wrap")?.classList.toggle("hidden", !on));
   el("code-speak-stop")?.addEventListener("click", (e) => { e.stopPropagation(); stopReply(); });

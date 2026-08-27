@@ -324,6 +324,81 @@ async function chipClick(): Promise<void> {
 // (The composer's device/mode drop-up is GONE — Settings › Voice owns the
 // config. The chip is just the mic.)
 
+// ── The device / mode drop-up (populated on open by code.ts) ───────────────────
+async function micDevices(): Promise<MediaDeviceInfo[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  try {
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    // Real mics have a non-empty deviceId. Before permission is granted the
+    // browser returns ONE blank placeholder (empty id + label) — dropping it
+    // avoids the "System default" collision that double-checked the list.
+    const mics = (): MediaDeviceInfo[] => devices.filter((d) => d.kind === "audioinput" && d.deviceId);
+    // Labels + ids only populate after mic permission — ask once so the list reads.
+    if (!mics().length || mics().every((d) => !d.label)) {
+      try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach((t) => t.stop()); devices = await navigator.mediaDevices.enumerateDevices(); } catch { /* denied */ }
+    }
+    return mics();
+  } catch { return []; }
+}
+
+function checkSvg(): string {
+  return `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+}
+
+/** Build the mic drop-up: a device list (checkmark on the chosen one) + a
+ *  "Hold to record" toggle that flips push-to-talk ⇄ hands-free. Rebuilt each open. */
+export async function renderMicMenu(menu: HTMLElement): Promise<void> {
+  const p = await voicePref();
+  menu.textContent = "";
+  const head = document.createElement("div");
+  head.className = "code-drop-head";
+  const label = document.createElement("span");
+  label.textContent = "Microphone";
+  head.appendChild(label);
+  menu.appendChild(head);
+
+  const devices = await micDevices();
+  const rows: Array<{ id: string; name: string }> = [{ id: "", name: "System default" }, ...devices.map((d, i) => ({ id: d.deviceId, name: d.label || `Microphone ${i + 1}` }))];
+  // The chosen device is only valid if it's still present; otherwise fall back to
+  // System default so exactly ONE row is ever checked.
+  const chosen = devices.some((d) => d.deviceId === p.deviceId) ? p.deviceId : "";
+  let marked = false;
+  for (const r of rows) {
+    const item = document.createElement("button");
+    item.className = "code-drop-item";
+    item.type = "button";
+    const name = document.createElement("span");
+    name.textContent = r.name;
+    item.appendChild(name);
+    if (!marked && r.id === chosen) { marked = true; item.classList.add("selected"); item.insertAdjacentHTML("beforeend", checkSvg()); }
+    item.addEventListener("click", () => { void setPref({ deviceId: r.id || null }); void renderMicMenu(menu); });
+    menu.appendChild(item);
+  }
+
+  // "Hold to record" toggle — ON = push-to-talk (hold), OFF = hands-free.
+  const sep = document.createElement("div");
+  sep.className = "code-drop-sep";
+  menu.appendChild(sep);
+  const toggleRow = document.createElement("button");
+  toggleRow.className = "code-drop-item code-drop-toggle";
+  toggleRow.type = "button";
+  const tlabel = document.createElement("span");
+  tlabel.textContent = "Hold to record";
+  const sw = document.createElement("span");
+  const holdOn = p.mode !== "continuous";
+  sw.className = "code-drop-switch" + (holdOn ? " on" : "");
+  toggleRow.append(tlabel, sw);
+  toggleRow.addEventListener("click", () => {
+    const nowHold = !sw.classList.contains("on");
+    sw.classList.toggle("on", nowHold);
+    void setPref({ mode: nowHold ? "push-to-talk" : "continuous" }).then(refreshMicChip);
+  });
+  menu.appendChild(toggleRow);
+
+  // Populate the OS device labels asynchronously if they arrive after first paint.
+  void refreshMicChip();
+}
+
 /** Wire the mic chip once. Down/up drive hold-to-talk; click drives hands-free. */
 export function initVoiceMic(): void {
   const chip = el("code-mic-chip");
