@@ -32,9 +32,12 @@ interface TourStep {
   /** Inline HTML for the mock screenshot area (theme-var CSS only). */
   mock: string;
   anchors: TourAnchor[];
+  /** Park the card mid-page instead of beside its anchors. */
+  center?: boolean;
 }
 
 const PREF_KEY = "wallTourDone";
+const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform);
 
 const STEPS: TourStep[] = [
   {
@@ -83,6 +86,18 @@ const STEPS: TourStep[] = [
       { selector: '.echo-dock-btn[data-dock="layouts"]', label: "Workspaces" },
       { selector: '.echo-app-btn[data-key^="layout:"]', label: "Click to open" },
     ],
+    center: true,
+  },
+  {
+    title: "Open it from anywhere",
+    copy: IS_MAC
+      ? "In the desktop app, press ⌘⇧Space in any app — Glyphh fronts and the command center opens over whatever you're doing."
+      : "In the desktop app, press Ctrl+Shift+Space in any app — Glyphh fronts and the command center opens over whatever you're doing.",
+    mock: IS_MAC
+      ? `<div class="wtour-mock wtour-mock-keys"><span class="wtour-key">⌘</span><span class="wtour-key">⇧</span><span class="wtour-key wtour-key-wide">Space</span></div>`
+      : `<div class="wtour-mock wtour-mock-keys"><span class="wtour-key">Ctrl</span><span class="wtour-key">Shift</span><span class="wtour-key wtour-key-wide">Space</span></div>`,
+    anchors: [],
+    center: true,
   },
   {
     title: "Ask the agent to do anything",
@@ -225,22 +240,29 @@ export function startWallTour(): void {
     // below the LOWEST anchor when the primary is top-half, above the
     // HIGHEST when it is bottom-half; clamped to the viewport either way.
     const prime = rects[0];
-    if (prime) {
+    {
       const cw = card.offsetWidth || 460;
       const ch = card.offsetHeight || 320;
-      const cx = rects.reduce((n, r) => n + r.left + r.width / 2, 0) / rects.length;
-      let left = Math.min(Math.max(cx - cw / 2, 24), vw - cw - 24);
-      let top: number;
-      if (prime.top + prime.height / 2 < vh / 2) {
-        const low = Math.max(...rects.map((r) => r.bottom));
-        top = Math.min(low + 72, vh - ch - 24);
+      let left: number, top: number;
+      if (s.center || !prime) {
+        left = Math.max((vw - cw) / 2, 24);
+        top = Math.max((vh - ch) / 2, 24);
       } else {
-        const high = Math.min(...rects.map((r) => r.top));
-        top = Math.max(high - 48 - ch, 24);
+        const cx = rects.reduce((n, r) => n + r.left + r.width / 2, 0) / rects.length;
+        left = Math.min(Math.max(cx - cw / 2, 24), vw - cw - 24);
+        if (prime.top + prime.height / 2 < vh / 2) {
+          const low = Math.max(...rects.map((r) => r.bottom));
+          top = Math.min(low + 72, vh - ch - 24);
+        } else {
+          const high = Math.min(...rects.map((r) => r.top));
+          top = Math.max(high - 48 - ch, 24);
+        }
       }
-      // The vertical clamp can slide the card back OVER an anchor (small
-      // windows, a target near a corner). Dodge sideways past the offender —
-      // covering the thing an arrow introduces is the one hard failure.
+      // The clamps can slide the card OVER an anchor (small windows, a
+      // target near a corner). Covering the thing an arrow introduces is the
+      // one hard failure, so the card gives way — a CENTERED card nudges
+      // vertically (staying in the middle, per his call), an anchor-parked
+      // card dodges sideways past the offender.
       for (const r of rects) {
         // Corridor = ring + pill + room for a READABLE arrow. A card merely
         // grazing the pill zone hides the arrow behind itself (the SVG paints
@@ -249,10 +271,16 @@ export function startWallTour(): void {
         const overlapsY = top < padB && top + ch > padT;
         const overlapsX = left < r.right + 16 && left + cw > r.left - 16;
         if (!overlapsY || !overlapsX) continue;
-        const anchorCx = r.left + r.width / 2;
-        left = anchorCx < vw / 2
-          ? Math.min(r.right + 28, vw - cw - 24)
-          : Math.max(r.left - cw - 28, 24);
+        if (s.center || !prime) {
+          top = r.top + r.height / 2 < vh / 2
+            ? Math.min(padB + 8, vh - ch - 24)
+            : Math.max(padT - ch - 8, 24);
+        } else {
+          const anchorCx = r.left + r.width / 2;
+          left = anchorCx < vw / 2
+            ? Math.min(r.right + 28, vw - cw - 24)
+            : Math.max(r.left - cw - 28, 24);
+        }
       }
       card.style.left = `${rr(left)}px`;
       card.style.top = `${rr(top)}px`;
