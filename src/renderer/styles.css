@@ -19921,5 +19921,6 @@ body.platform-rail-collapsed .rail-surface-tab span { display: none; }
 }
 .rail-surface-tabs-floating .rail-surface-tab { padding: 7px 12px; }
 /* The surface tabs belong to the COMMAND CENTER only (his rule, 2026-08-27):
-   an open app or layout covers the wall, and the tabs go with it. */
-body.echo-wall-covered .rail-surface-tabs-floating { display: none; }
+   an open app or layout covers the wall, and the tabs go with it.
+   echo-wall-hidden, not -covered: covered excludes live LAYOUTS by design. */
+body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }

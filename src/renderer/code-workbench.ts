@@ -3881,6 +3881,11 @@ async function init(): Promise<void> {
       const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
+      // A separate signal for "the WALL is not on screen" regardless of WHY —
+      // covered excludes live layouts on purpose (other consumers key off
+      // that), but chrome that belongs to the command center alone (the
+      // Dashboard | Desktop surface tabs) must hide for layouts too.
+      document.body.classList.toggle("echo-wall-hidden", hidden);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
       // leaves focus inside the agent — :focus-within then pins it up until a
       // hover cycle releases it ("doesn't hide right away"). The moment the
