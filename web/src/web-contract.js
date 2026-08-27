@@ -166,6 +166,13 @@ export function buildContract(client, deps) {
     // Injected at build time (esbuild --define, same as mobile.tsx) — the
     // typeof guard keeps vitest (no define) from a ReferenceError.
     getAppVersion: async () => (typeof __GLYPHH_VERSION__ !== 'undefined' ? __GLYPHH_VERSION__ : ''),
+    // Updater shims (parity law): the web IS always the latest deploy, so a
+    // check honestly answers "up to date" and the rest are inert. Without
+    // these the About panel (user menu → About) threw at onUpdateStatus.
+    checkForUpdates: async () => null,
+    getUpdateStatus: async () => null,
+    onUpdateStatus: () => {},
+    updateInstall: () => {},
     // Timezone (users.timezone) is edited only through Settings › Account,
     // which goes straight at client.profile.update via the account API.
 

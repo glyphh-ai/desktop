@@ -906,6 +906,19 @@ export function initHelp() {
     mk("Docs", DOCS_SVG, () => gotoSection("docs"));
     mk("Settings", GEAR_SVG, () => gotoSection("settings"));
     mk("Account", USER_SVG, () => gotoSection("settings", "account"));
+    // About = version + CHECK FOR UPDATES (his report, 2026-08-27: the panel
+    // existed with the full updater UI but nothing linked to it — users had
+    // no place to check for a release). A dot rides the row when an update
+    // is already downloaded and waiting.
+    const ABOUT_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>`;
+    mk("About", ABOUT_SVG, () => gotoSection("settings", "about"));
+    void (window.glyphh as unknown as { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> })
+      .getUpdateStatus?.().then((st) => {
+        if (!st?.ready) return;
+        const rows = Array.from(m.querySelectorAll<HTMLElement>(".code-menu-item span"));
+        const about = rows.find((sp) => sp.textContent === "About");
+        about?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
+      }).catch(() => {});
     mk("Logout", LOGOUT_SVG, () => { clearUiState(); void window.glyphh.logout(); }, true);
     document.body.appendChild(m);
     const r = anchor.getBoundingClientRect();

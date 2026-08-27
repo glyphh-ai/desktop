@@ -19940,3 +19940,5 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 .dl-prev-title { font: 650 15px var(--font-sans); color: var(--text); margin: 0 0 10px; }
 .dl-asset-link { color: var(--text-2); text-decoration: none; }
 .dl-asset-link:hover { color: var(--text); text-decoration: underline; }
+/* The user menu's update dot — About carries it when a release is downloaded. */
+.user-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent, #8c3bf2); margin-left: auto; flex: none; }
