@@ -65,6 +65,10 @@ nsis:
 # script (assets/installer.nsh) can install the runtime kuzu's native module
 # needs. No-op on macOS.
 beforePack: scripts/before-pack.cjs
+# extraResources SILENTLY DROPS node_modules (hardcoded default exclude) — the
+# hook copies the vendored pod's deps in after the file-sets ran. Without it
+# beta.3 shipped a pod that died on boot (ERR_MODULE_NOT_FOUND: ajv).
+afterPack: scripts/after-pack.cjs
 
 directories:
   output: release
