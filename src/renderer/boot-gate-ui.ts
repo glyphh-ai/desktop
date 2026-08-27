@@ -70,7 +70,12 @@ let bootCb: BootGateCallbacks | null = null;
  *  workspace is empty in a browser). `webEnterApp` is the returning-user path, which
  *  navigates straight there via the same callback. */
 export function webShowFirstRun(onComplete?: () => void): void {
-  if (bootCb) showTutorial(bootCb, onComplete);
+  // 2026-08-27: the static card tutorial is retired as the first-run door —
+  // the WALL TOUR (wall-tour.ts) orients new users on the live UI instead,
+  // gated by the server-side `wallTourDone` pref. First run just enters the
+  // app; the tour fires once the wall paints. (showTutorial stays for any
+  // explicit re-entry point — hidden, not deleted.)
+  webEnterApp(onComplete);
 }
 export function webEnterApp(onComplete?: () => void): void {
   if (bootCb) bootCb.showPanels();

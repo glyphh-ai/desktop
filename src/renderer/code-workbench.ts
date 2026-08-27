@@ -22,6 +22,7 @@ import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-te
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, flushUiState } from "./help/ui-state.js";
+import { maybeStartWallTour } from "./wall-tour.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -2707,6 +2708,10 @@ async function init(): Promise<void> {
           btn.type = "button";
           btn.className = "echo-app-btn" + (removableTile(e.tile) ? " removable" : "");
           if (e.tile.navKey) btn.dataset.nav = e.tile.navKey;
+          // Stable identity on the DOM node — the wall tour (and tests) target
+          // tiles by key ("tool:design", "layout:dev") instead of label text.
+          const tileKey = keyOf(e.tile);
+          if (tileKey) btn.dataset.key = tileKey;
           btn.innerHTML = `<span class="echo-app-ic"></span><span class="echo-app-name"></span>`;
           if (removableTile(e.tile)) {
             const del = document.createElement("button");
@@ -3179,6 +3184,10 @@ async function init(): Promise<void> {
       buildWall([[...pageTiles, ...rest]]);
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
+      // First run: the guided tour points at the live dock + tiles, once per
+      // USER (server pref) — after the wall has painted, never over a restore
+      // that re-opened panels (the tour orients the EMPTY landing).
+      void maybeStartWallTour();
     }).catch(() => buildWall([[]]));
 
     // ── Wall-state persistence (save + restore) ──────────────────────────────

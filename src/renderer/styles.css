@@ -19843,3 +19843,65 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
    the textarea saves on blur, Promote rides the expanded area. */
 .release-row .release-row-head { all: unset; display: flex; align-items: center; gap: 8px; width: 100%; cursor: pointer; box-sizing: border-box; }
 .release-notes-inline { padding: 8px 2px 2px; }
+
+/* ── Wall tour — the first-run guided overlay (wall-tour.ts) ─────────────── */
+.wtour { position: fixed; inset: 0; z-index: 9500; }
+.wtour-svg { position: absolute; inset: 0; pointer-events: none; }
+.wtour-dim { fill: rgba(0, 0, 0, 0.62); pointer-events: auto; }
+.wtour-arrow { fill: none; stroke: var(--accent, #8c3bf2); stroke-width: 2.5; stroke-linecap: round; }
+.wtour-labels { position: absolute; inset: 0; pointer-events: none; }
+.wtour-arrow-label {
+  position: absolute; transform: translateX(-50%);
+  font: 600 12px var(--font-sans); color: #fff;
+  background: var(--accent, #8c3bf2); padding: 4px 10px; border-radius: 999px;
+  white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.wtour-card {
+  position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
+  width: min(460px, calc(100vw - 48px));
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 16px; padding: 20px 22px 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+.wtour-step-num { font: 600 11px var(--font-sans); color: var(--text-3); letter-spacing: 0.04em; }
+.wtour-title { margin: 6px 0 6px; font: 700 19px var(--font-sans); color: var(--text); }
+.wtour-copy { margin: 0 0 14px; font: 400 13.5px/1.5 var(--font-sans); color: var(--text-2); }
+.wtour-visual { margin-bottom: 14px; }
+.wtour-foot { display: flex; align-items: center; gap: 10px; }
+.wtour-dots { display: flex; gap: 6px; margin: 0 auto; }
+.wtour-dot-nav { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); }
+.wtour-dot-nav.active { background: var(--accent, #8c3bf2); }
+.wtour-nav { display: flex; gap: 8px; }
+/* The mock screenshots — CSS-drawn minis, themed, no bitmaps to go stale. */
+.wtour-mock {
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: var(--surface-3);
+}
+.wtour-mock-bar { display: flex; gap: 5px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.wtour-mock-bar span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-2); }
+.wtour-mock-row {
+  display: flex; align-items: center; gap: 9px; padding: 8px 12px;
+  font: 500 12px var(--font-sans); color: var(--text-2);
+  border-bottom: 1px solid var(--border);
+}
+.wtour-mock-row:last-child { border-bottom: none; }
+.wtour-mock-row b { color: var(--text); font-weight: 600; }
+.wtour-mock-row em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-3); }
+.wtour-mock-row em.on { color: #22c55e; }
+.wtour-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.wtour-mock-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; }
+.wtour-mock-app {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  font: 500 10.5px var(--font-sans); color: var(--text-2);
+}
+.wtour-mock-app i { width: 30px; height: 30px; border-radius: 8px; }
+.wtour-mock-ghost { justify-content: center; color: var(--text-3); border: 1px dashed var(--border-2); border-radius: 8px; padding: 4px; }
+.wtour-mock-splits { display: grid; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; gap: 7px; padding: 12px; height: 96px; }
+.wtour-mock-splits div { background: var(--surface-2); border: 1px solid var(--border-2); border-radius: 7px; }
+.wtour-mock-agent { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.wtour-mock-prompt {
+  flex: 1; font: 400 12px var(--font-sans); color: var(--text-2);
+  background: var(--surface-2); border: 1px solid var(--accent, #8c3bf2);
+  border-radius: 999px; padding: 8px 14px;
+}
+.wtour-mock-send { color: var(--text-3); font-size: 13px; }
