@@ -242,7 +242,10 @@ export function startWallTour(): void {
       // windows, a target near a corner). Dodge sideways past the offender —
       // covering the thing an arrow introduces is the one hard failure.
       for (const r of rects) {
-        const padT = r.top - 12, padB = r.bottom + 48; // ring + label pill
+        // Corridor = ring + pill + room for a READABLE arrow. A card merely
+        // grazing the pill zone hides the arrow behind itself (the SVG paints
+        // under the card), which presents as "the second arrow is missing".
+        const padT = r.top - 12, padB = r.bottom + 96;
         const overlapsY = top < padB && top + ch > padT;
         const overlapsX = left < r.right + 16 && left + cw > r.left - 16;
         if (!overlapsY || !overlapsX) continue;
@@ -276,12 +279,20 @@ export function startWallTour(): void {
         labels.appendChild(el);
       }
       // The arrow lands at the PILL, not on the target edge the pill already
-      // occupies — and a run shorter than ~36px reads as a smudge, so the
-      // ring + pill carry those on their own.
+      // occupies. A target beside the card (or too close above/below it for a
+      // vertical run to read) is approached from the card's SIDE — an arrow
+      // is only ever skipped when start and end practically touch.
       const ty = above ? labTop + 34 : labTop - 8;
-      const sy = above ? c.top - 8 : c.bottom + 8;
-      if ((above && sy - ty < 36) || (!above && ty - sy < 36)) continue;
-      const sx = Math.min(Math.max(tx, c.left + 36), c.right - 36);
+      let sx: number, sy: number;
+      if (tx > c.right + 16 || tx < c.left - 16
+          || (above && c.top - 8 - ty < 36) || (!above && ty - c.bottom - 8 < 36)) {
+        sx = tx > (c.left + c.right) / 2 ? c.right + 6 : c.left - 6;
+        sy = Math.min(Math.max(ty, c.top + 28), c.bottom - 28);
+      } else {
+        sx = Math.min(Math.max(tx, c.left + 36), c.right - 36);
+        sy = above ? c.top - 8 : c.bottom + 8;
+      }
+      if (Math.hypot(tx - sx, ty - sy) < 28) continue;
       const mx = (sx + tx) / 2, my = (sy + ty) / 2 + (above ? 24 : -24);
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", `M${rr(sx)} ${rr(sy)} Q${rr(mx)} ${rr(my)} ${rr(tx)} ${rr(ty)}`);
