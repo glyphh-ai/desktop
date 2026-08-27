@@ -87,7 +87,7 @@ interface AdminUsageByRuntime {
   region: string; mode: string; tier: string;
   runtimes: number; orgs: number; users: number; requests: number; credits: number;
 }
-interface AdminOrgRow { id: string; name: string; tier: string; billing_status: string; member_count: number }
+interface AdminOrgRow { id: string; name: string; tier: string; billing_status: string; member_count: number; credits_purchased: number; credits_spent: number }
 interface AdminOrgMember { id: string; first_name: string; last_name: string; email: string; role: string; status: string }
 interface AdminOrgDetail extends AdminOrgRow {
   max_seats: number; created_at: string;
@@ -1245,14 +1245,15 @@ function paintOrgs(): void {
   }
   const { items, state } = paginate(orgs, orgsPage);
   orgsPage = state.page;
-  const { table, tbody } = mkTable(["Organization", "Tier", "Billing", "Members"], true);
+  const { table, tbody } = mkTable(["Organization", "Tier", "Billing", "Members", "Credits"], true);
   for (const o of items) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
       <td></td>
-      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>`;
+      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>
+      <td class="lib-table-dim" title="purchased / spent">${fmtInt(microToCredits(o.credits_purchased ?? 0))} / ${fmtInt(microToCredits(o.credits_spent ?? 0))}</td>`;
     const name = tr.querySelector(".lib-table-name");
     if (name) name.textContent = o.name;
     const tier = tr.querySelector(".lib-table-desc");
