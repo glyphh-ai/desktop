@@ -19972,20 +19972,24 @@ html.glyphh-web .settings-nav-item.dash-plain { display: none; }
 .echo-dock-btn[data-dock="cc"] { display: none; }
 body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-flex; }
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
-/* WHENEVER the wall is off screen the dock rides FIXED at z-130 — above the
-   app layer (120) and the agent layer (118) that were burying it (his
-   report ×2: 'STILL BEHIND the agent'). Tucked (auto-hide on) it also
-   slides off-top; peek slides it back. */
-body.echo-wall-hidden .ws-echo-body .echo-topbar,
-body.echo-dock-tucked .ws-echo-body .echo-topbar {
-  position: fixed; top: calc(var(--wb-top-inset, 0px) + 10px); left: 50%; transform: translate(-50%, 0);
+/* The PARKED bar (dock-portal.ts moved it into the body-level layer while
+   panels are up). Same icon sizing variables as at rest — the bar must look
+   IDENTICAL to its wall seat (his rule: no spread, no zoom change) — plus a
+   real backdrop so it reads as a bar over the panels. */
+#echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2000; }
+#echo-dock-layer .echo-topbar {
+  position: fixed; top: calc(var(--wb-top-inset, 0px) + 8px); left: 50%;
+  transform: translate(-50%, 0);
   transition: transform 0.22s ease;
-  z-index: 130;
-  visibility: visible;
+  pointer-events: auto;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 16px; padding: 8px 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
-body.echo-dock-tucked:not(.echo-dock-peek) .ws-echo-body .echo-topbar {
+body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
 }
+.echo-topbar-home { display: none; }
 /* The hint — the same "something is hidden here" sliver the composer tuck
    uses, at the top center. Gone while the dock is peeked out. */
 body.echo-dock-tucked:not(.echo-dock-peek)::after {

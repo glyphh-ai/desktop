@@ -23,6 +23,7 @@ import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, flushUiState } from "./help/ui-state.js";
 import { maybeStartWallTour } from "./wall-tour.js";
+import { initDockPortal } from "./dock-portal.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
 import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
@@ -8690,6 +8691,9 @@ async function init(): Promise<void> {
   // Painting first and restoring after would flash the default placement over
   // whatever the user actually left open.
   void loadUiState().then(() => loadLayout());
+  // The dock's body-level portal — fully isolated (dock-portal.ts): a
+  // failure there degrades to "dock stays in the stage", never a dead wall.
+  initDockPortal();
   // The debounce coalesces a drag into one PATCH; closing mid-debounce would
   // otherwise drop the last arrangement of the session.
   window.addEventListener("pagehide", flushUiState);
