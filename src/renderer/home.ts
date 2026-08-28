@@ -499,6 +499,18 @@ void (async () => {
       document.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } });
       document.title = "Glyphh Ghost";
       gotoSection("code");
+      // THE AGENT PRESENTS EXACTLY AS IT DOES OVER A COVERED WALL (his spec,
+      // 2026-08-28: "just like it does in the glyphh echo panel"): docked to
+      // the bottom, collapsed to the composer, expanding on hover/focus —
+      // all of it the echo-wall-hidden styling and whatever the user's
+      // settings configure, not a ghost-specific presentation. The target
+      // app behind the glass IS the covering panel, so the class simply
+      // states the truth; the workbench's own sync (which sees no panels
+      // here) would strip it, so a body-class observer holds it on.
+      document.body.classList.add("echo-wall-hidden");
+      new MutationObserver(() => {
+        if (!document.body.classList.contains("echo-wall-hidden")) document.body.classList.add("echo-wall-hidden");
+      }).observe(document.body, { attributes: true, attributeFilter: ["class"] });
       // Summon context ("@an-fable ship it"): once the agent mounts, start a
       // fresh session with the prompt seeded and select the mentioned model on
       // the current loop's primary role.
