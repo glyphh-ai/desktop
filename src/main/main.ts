@@ -777,7 +777,6 @@ async function boot() {
 
   // Global hotkey: Cmd+Y / Ctrl+Y
   registerHotkey(mainWindow!);
-  // Ghost Mode: Cmd+Shift+G / Ctrl+Shift+G — coding agent as a translucent overlay.
 
   // App menu (Cmd+Q, Cmd+W, etc.)
   Menu.setApplicationMenu(

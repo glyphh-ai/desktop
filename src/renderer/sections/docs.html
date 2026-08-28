@@ -2,15 +2,19 @@
           <div class="settings-layout">
             <nav class="settings-nav docs-nav">
               <button class="settings-nav-item active" data-doc="start">Getting started</button>
+              <button class="settings-nav-item" data-doc="cc">Command center</button>
               <button class="settings-nav-item" data-doc="agent">The Agent</button>
+              <button class="settings-nav-item" data-doc="sessions">Sessions &amp; devices</button>
               <button class="settings-nav-item" data-doc="models">Models</button>
+              <button class="settings-nav-item" data-doc="loops">Loops &amp; automation</button>
               <button class="settings-nav-item" data-doc="credits">Credits &amp; billing</button>
-              <button class="settings-nav-item" data-doc="mentions">Mentions &amp; Ghost</button>
-              <button class="settings-nav-item" data-doc="workspace">Workspace</button>
-              <button class="settings-nav-item" data-doc="apps">Apps</button>
+              <button class="settings-nav-item" data-doc="workspace">Panels &amp; tools</button>
               <button class="settings-nav-item" data-doc="layouts">Workspaces</button>
+              <button class="settings-nav-item" data-doc="apps">Apps</button>
+              <button class="settings-nav-item" data-doc="commands">Commands</button>
               <button class="settings-nav-item" data-doc="building">Build &amp; publish</button>
               <button class="settings-nav-item" data-doc="connections">Connections</button>
+              <button class="settings-nav-item" data-doc="git">GitHub</button>
               <button class="settings-nav-item" data-doc="cli">CLI</button>
               <button class="settings-nav-item" data-doc="mcp">MCP</button>
               <button class="settings-nav-item" data-doc="links">Links</button>
@@ -19,46 +23,93 @@
 
             <div class="docs-panel active" data-doc="start">
               <h3>Getting started</h3>
-              <p>Glyphh Desktop is an AI workspace: a coding agent, your everyday web apps, and the tools to build and publish your own — in one window.</p>
+              <p>Glyphh is a workspace you configure for your way of working: an agent, your everyday web apps, an office suite, and the tools to build and publish your own — on desktop, web, and mobile.</p>
 
               <h4>Sign in</h4>
               <p>Signing in opens your browser at <code>platform.glyphh.ai</code> — approve the device code shown in the app (Google, Apple, or email). Your session is stored locally under <code>~/.glyphh</code> and follows you into the CLI too.</p>
 
               <h4>Your workspace comes furnished</h4>
-              <p>A new account starts with the apps most people already live in — Gmail, Calendar, Drive, Docs, Sheets, Slack, GitHub, Notion, the AI chats, and more — plus two starter workspaces:</p>
-              <ul class="docs-list">
-                <li><strong>Email</strong> — Gmail on the left, Calendar on the right</li>
-                <li><strong>Dev</strong> — Files and Diff on the left, Editor over Terminal in the center, Glyphh on the right</li>
-              </ul>
-              <p>Everything is yours to rename, delete, or rearrange.</p>
+              <p>A new account starts with the apps most people already live in — Gmail, Calendar, Drive, Docs, Sheets, Slack, GitHub, Notion, the AI chats, and more — plus starter workspaces you can rename, delete, or rearrange.</p>
 
               <h4>First prompt</h4>
               <p>Pick a <strong>working folder</strong> (the agent header) and just ask. The agent reads and writes files there, runs commands, and streams every step as a receipt you can expand. New here? Start in <strong>ask</strong> mode — every action waits for your approval.</p>
 
               <h4>Two shortcuts worth learning on day one</h4>
-              <div class="cmd-row"><code>&#8984;&#8679;G</code><span>Ghost Mode — summon the agent over whatever app you're in</span></div>
-              <div class="cmd-row"><code>@an-fable fix this</code><span>An @-mention in any input opens a fresh session on that model</span></div>
+              <div class="cmd-row"><code>&#8984;&#8679;Space</code><span>From anywhere on your system — front Glyphh and open the command center</span></div>
+              <div class="cmd-row"><code>.dip &lt;name&gt;</code><span>In the composer — open any panel, app, or workspace by name</span></div>
+
+              <h4>The other surfaces</h4>
+              <p><a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a> runs the same workspace in your browser (the <strong>Desktop</strong> tab), and on a phone it becomes the mobile app — same sessions, same account. See <strong>Sessions &amp; devices</strong>.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="cc">
+              <h3>The command center</h3>
+              <p>The wall is home: every app, workspace, and tool as an icon. Click to open; what you open covers the wall, and the wall is one keystroke away the whole time.</p>
+
+              <h4>The wall</h4>
+              <ul class="docs-list">
+                <li><strong>Pages</strong> — icons flow across pages; swipe or use the edge arrows.</li>
+                <li><strong>Arrange</strong> — drag icons to reorder; press-and-hold for edit mode (the wiggle). Order is saved to your account, not the machine.</li>
+                <li><strong>Folders</strong> — drag one icon onto another wall group to file it; an empty folder deletes with the standard confirm.</li>
+                <li><strong>Multi-select</strong> — ⇧/⌘-click icons to move several at once.</li>
+              </ul>
+
+              <h4>The dock</h4>
+              <p>The row at the top: New session, Apps, Marketplace, Connections, Workspaces, Scheduled Tasks, Agents, Loops, Skills, Browser, Settings, Sign out — plus <strong>Command center</strong> and <strong>Close all</strong>, which light up while anything is open. Drag dock and wall icons between the two rows to trade slots; the magnification arc and hover tick are yours to tune in Settings &rarr; Appearance.</p>
+
+              <h4>Auto-hide</h4>
+              <p>Settings &rarr; Appearance &rarr; <strong>Auto-hide dock</strong> tucks the dock off the top while panels are open; a sliver marks where it hides, and hovering the top edge peeks it back over everything. With auto-hide off, the top of the page reserves the dock's space instead.</p>
+
+              <h4>Getting back to the wall</h4>
+              <div class="cmd-row"><code>&#8984;&#8679;Space</code><span>From anywhere on the system</span></div>
+              <div class="cmd-row"><code>&#8963;&#8997;</code> (hold)<span>Show the wall over open panels; release drops back</span></div>
+              <div class="cmd-row"><code>.dip back</code><span>From any composer</span></div>
             </div>
 
             <div class="docs-panel" data-doc="agent">
               <h3>The Glyphh Agent</h3>
-              <p>The same engine as the CLI: real local tools (files, shell, web), streamed answers, and tool receipts you can audit. Sessions live in the left history; <strong>+</strong> starts a fresh one.</p>
+              <p>The same engine as the CLI: real local tools (files, shell, web), streamed answers, and tool receipts you can audit. <strong>+</strong> starts a fresh session; recents live in the rail and the header dropdown.</p>
 
               <h4>Permission modes</h4>
-              <p>The mode chip in the composer controls how far the agent goes without you:</p>
+              <p>The mode chip in the composer controls how far the agent goes without you (Shift+Tab cycles it):</p>
               <div class="cmd-row"><code>ask</code><span>Every write, edit, and shell command waits for approval (default)</span></div>
               <div class="cmd-row"><code>auto</code><span>Reads run free; the agent acts, and you watch the receipts</span></div>
               <div class="cmd-row"><code>plan</code><span>No tools run — the agent outlines what it would do</span></div>
               <div class="cmd-row"><code>read-only</code><span>Reads only; nothing on disk changes</span></div>
 
-              <h4>Loops</h4>
-              <p>A <strong>loop</strong> is the agent's program: its roles (planner, worker, &hellip;) and the model bound to each. Switch loops from the loop chip; edit them (or build new ones) on the platform's Loops page. Workspaces can carry a loop, so opening "Dev" can also mean "plan with Fable, work with a local model".</p>
+              <h4>Talking while it works</h4>
+              <p>Type during a run and Enter queues your message as a <strong>note on the card</strong> — it sends as the next turn when the run ends. The note's <strong>&times;</strong> takes it back; its <strong>Interrupt</strong> button stops the agent now, so it reads what's waiting and continues. Stopping by hand with notes queued does the same thing.</p>
 
               <h4>Context</h4>
-              <p>The context meter shows how full the model's window is and where compaction kicks in. The agent folds older turns automatically; your working-folder choice, plans, and receipts survive it.</p>
+              <p>The context meter shows how full the model's window is and where compaction kicks in. The agent folds older turns automatically; click the meter — or type <code>.compact [focus]</code> — to fold now, optionally steering what the summary must keep.</p>
 
               <h4>Working folder</h4>
-              <p>Sessions inherit the last working folder. The workbench's file tree, terminal, diff, and editor are all rooted there, and saved arrangements are remembered <em>per folder</em>.</p>
+              <p>Sessions inherit the last working folder; the file tree, terminal, diff, and editor are all rooted there. The header's source chip can also point a session at a <strong>GitHub repo</strong> (cloned for you — see GitHub) or a <strong>cloud workspace</strong> (see Sessions &amp; devices).</p>
+
+              <h4>Voice</h4>
+              <p>Settings &rarr; Voice enables the composer mic: click to record, click to stop — transcribed into the composer. The agent can speak replies aloud, and hands-free mode hands the mic back after each answer. Esc (or the Stop chip) cuts a spoken reply short.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="sessions">
+              <h3>Sessions &amp; devices</h3>
+              <p>A session belongs to your account, not a machine. Start it anywhere; open it anywhere else and watch the live turn stream in.</p>
+
+              <h4>Where a session runs</h4>
+              <ul class="docs-list">
+                <li><strong>This machine</strong> — the desktop runs the agent locally in your working folder.</li>
+                <li><strong>Cloud</strong> — the session runs in its own cloud workspace with a persistent filesystem; bind it to a GitHub repo and the repo is cloned there before the first turn.</li>
+                <li><strong>A connected desktop</strong> — from mobile or web, pick one of your desktops and a folder on it; the turn runs <em>on that machine</em>.</li>
+              </ul>
+              <p>The choice is fixed when the session starts — a session never silently moves between machines.</p>
+
+              <h4>Following along</h4>
+              <p>Open a running session from another surface and you see the live turn, tool receipts included. Desktop panels (Files, Diff, Editor) can follow a <em>cloud</em> session too, browsing its cloud filesystem in place.</p>
+
+              <h4>Security model</h4>
+              <p>Your desktop holds an <strong>outbound</strong> connection to the cloud. Nothing dials into your machine — mobile and web reach a desktop only through that link, and only for your own account.</p>
+
+              <h4>Mobile</h4>
+              <p>On a phone, <code>platform.glyphh.ai</code> is the mobile app (add it to your home screen): sessions, voice, connections, and the same working-folder choices — cloud, a GitHub repo, or a folder on a connected desktop.</p>
             </div>
 
             <div class="docs-panel" data-doc="models">
@@ -75,6 +126,31 @@
               <p>Org admins can add a provider API key on the platform (Workspace &rarr; Connections &rarr; provider). With a key set, that provider's calls use it directly; without one, calls ride the Glyphh gateway and meter as credits.</p>
             </div>
 
+            <div class="docs-panel" data-doc="loops">
+              <h3>Loops &amp; automation</h3>
+              <p>A <strong>loop</strong> is the agent's pipeline: named roles (planner, worker, &hellip;), the model bound to each, and the deterministic program that runs them. The same prompt behaves differently under different loops — that's the point.</p>
+
+              <h4>Loops</h4>
+              <ul class="docs-list">
+                <li>Switch loops from the composer's loop chip; each role's model is picked in the same sheet.</li>
+                <li>Browse and edit loops on the <strong>Loops</strong> page (dock or rail).</li>
+                <li>A <strong>workspace</strong> can carry a loop and its model bindings — opening "Dev" can also mean "plan with Fable, work with a local model".</li>
+                <li>Loops follow <a class="docs-ext" data-href="https://github.com/glyphh-ai/rrotor">RotorSpec</a>, the open standard for deterministic agent loops; rrotor is the reference runtime.</li>
+              </ul>
+
+              <h4>Scheduled tasks</h4>
+              <p>The <strong>Scheduled Tasks</strong> page is your standing work in one place: every task, when it fires next, how the last run went, and each task's full run history.</p>
+
+              <h4>Agents</h4>
+              <p>An <strong>agent</strong> (Agents page) is a standing worker: a name, a loop, and the scheduled tasks it fires. Where a session is you driving, an agent is the same machinery running without you.</p>
+
+              <h4>Skills</h4>
+              <p>A <strong>skill</strong> (Skills page) packages instructions the agent loads for a particular kind of task — a manifest, a prompt, and optionally a program. Org admins can publish skills for the whole team.</p>
+
+              <h4>Drips</h4>
+              <p>Drips are full-screen effects — <code>.drip &lt;name&gt;</code> plays one (bare <code>.drip</code> is fireworks). <code>&#8984;&#8679;.</code> kills every playing effect from anywhere, even when an overlay covers the screen.</p>
+            </div>
+
             <div class="docs-panel" data-doc="credits">
               <h3>Credits &amp; billing</h3>
               <p>One prepaid currency for everything: model calls, tools, compute. Every charge is itemized per call in your usage feed — never billed in arrears.</p>
@@ -87,93 +163,100 @@
                 <li><strong>Compute</strong> (hosted runs) — metered by wall-clock time.</li>
               </ul>
 
-              <h4>Plans</h4>
-              <p><strong>Free</strong> starts you with 100 credits. Paid tiers add monthly credits, seats, connected services, and cloud sync. Top up any time — manage billing, invoices, and the live usage feed at <a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a>.</p>
+              <h4>Plans &amp; top-ups</h4>
+              <p><strong>Free</strong> starts you with 100 credits. Paid tiers add monthly credits, seats, connected services, and cloud sync. Top up without leaving the app (the credits modal), or manage billing, invoices, and the live usage feed at <a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a>.</p>
 
               <h4>Stretching credits</h4>
               <p>Point your loop's worker role at an on-device or open-weight model and save the frontier model for planning — most of an agent session's tokens are worker traffic.</p>
             </div>
 
-            <div class="docs-panel" data-doc="mentions">
-              <h3>@-mentions &amp; Ghost Mode</h3>
-
-              <h4>Summon a model from anywhere</h4>
-              <p>Type <code>@&lt;provider&gt;-&lt;model&gt; your prompt</code> in <em>any</em> text input — the shell, an app panel, even Gmail's compose box — and press Enter. The text never reaches the app; instead the Ghost overlay opens with a <strong>fresh session</strong>, that model selected, and your prompt ready to send.</p>
-              <div class="cmd-row"><code>@an-fable ship it</code><span>Fable 5, new session, prompt seeded</span></div>
-              <div class="cmd-row"><code>@oai-gpt51 summarize this doc</code><span>GPT-5.1</span></div>
-              <div class="cmd-row"><code>@local-q7 draft a reply</code><span>Qwen 7B on-device — zero credits</span></div>
-              <p>Aliases are set per provider and model on the platform's admin Models page. The provider part never contains a hyphen; the model part may.</p>
-
-              <h4>Ghost Mode</h4>
-              <p><code>&#8984;&#8679;G</code> (Ctrl+Shift+G on Windows) from anywhere — app focused or in the background — floats the agent over the window you're working in, sized to it, on a see-through dark veil. Type, get your answer, and dismiss with <strong>Esc</strong> or the agent's <strong>&times;</strong>; focus returns to where you were. New workspace panels opened from the ghost land <em>beside</em> the agent, never under it.</p>
-            </div>
-
             <div class="docs-panel" data-doc="workspace">
-              <h3>Workspace</h3>
-              <p>The workbench tiles live tools next to the agent. Open them from the header toggles or a workspace; drag headers to rearrange; drag edges to resize. Arrangements are remembered per working folder, and named workspaces remember exactly how you left them.</p>
+              <h3>Panels &amp; tools</h3>
+              <p>Everything opens as a panel beside the agent. Drag headers to rearrange, drag edges to resize; arrangements are remembered per working folder, and named workspaces remember exactly how you left them.</p>
 
-              <h4>Tiles</h4>
+              <h4>Dev tools</h4>
               <ul class="docs-list">
-                <li><strong>Files</strong> — the working folder's tree. The search box searches the <em>whole folder</em> (not just what's expanded) — results are click-to-open paths.</li>
+                <li><strong>Files</strong> — the working folder's tree. The search box searches the <em>whole folder</em>, not just what's expanded.</li>
                 <li><strong>Editor</strong> — a Monaco editor over the tree's files.</li>
                 <li><strong>Terminal</strong> — a real shell in the working folder.</li>
                 <li><strong>Diff</strong> — what changed, as the agent works.</li>
-                <li><strong>Browser</strong> — web preview with an address bar; right-click a page to save it as an app.</li>
+                <li><strong>Browser</strong> — tabs, an address bar, and right-click to save any page as an app.</li>
                 <li><strong>Plan</strong> — the agent's plan files, live.</li>
-                <li><strong>Glyphh</strong> — the agent itself, hostable as a tile in any workspace.</li>
+                <li><strong>Releases</strong> — release management for your built apps.</li>
               </ul>
 
-              <h4>Apps beside the agent</h4>
-              <p>Any app from the rail opens as a panel in the workspace. Panels are live — signed-in sessions, notifications, everything — and the agent can read from and act through them.</p>
+              <h4>The office suite</h4>
+              <ul class="docs-list">
+                <li><strong>Slides</strong>, <strong>Docs</strong>, <strong>Sheets</strong> — decks, documents, and workbooks the agent can write with you.</li>
+                <li><strong>Drive</strong> — folders and pointers over every office file.</li>
+                <li><strong>Design</strong> — design documents and assets.</li>
+                <li><strong>Image / Video / Sounds</strong> — generated media, one panel, three views.</li>
+                <li><strong>Band</strong> — songs, artists, and music videos.</li>
+                <li><strong>Memory</strong> — the agent's memory, visualized.</li>
+              </ul>
+
+              <h4>Panels remember their document</h4>
+              <p>Close a workspace with a deck open in Slides and an image open in Image, and reopening it brings back <em>that deck</em> and <em>that image</em> — every panel reopens on what it had open. Terminals restart (a shell can't be frozen), and Settings always opens at its front page.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="layouts">
+              <h3>Workspaces</h3>
+              <p>A workspace is a saved arrangement — which tools and apps, in what grid — restorable in one click from the wall, the Workspaces page, or <code>.dip &lt;name&gt;</code>.</p>
+
+              <h4>What a workspace can carry</h4>
+              <ul class="docs-list">
+                <li><strong>Panels + tools</strong> — any mix of apps, dev tools, office panels, and Glyphh (the agent).</li>
+                <li><strong>App setup per panel</strong> — the Browser cell opens <em>at a URL</em> you set; the Terminal cell runs a <em>first command</em>. Set both in the workspace editor&rsquo;s App setup section.</li>
+                <li><strong>A working folder</strong> — opening the workspace switches the agent to it.</li>
+                <li><strong>Session behavior</strong> — keep the current session, start fresh, or resume this workspace&rsquo;s own last session.</li>
+                <li><strong>A loop + its models</strong> — opening the workspace activates that loop with those model bindings.</li>
+              </ul>
+
+              <h4>Your changes stick</h4>
+              <p>Rearrange or resize inside an open workspace and it remembers — reopening brings back exactly what you left, open documents included, not the original definition. Starting a new agent session never resets an open workspace.</p>
             </div>
 
             <div class="docs-panel" data-doc="apps">
               <h3>Apps</h3>
-              <p>Apps live on the left rail. Three kinds: <strong>web</strong> (any URL, opens as a live panel), <strong>native</strong> (launches a local application), and <strong>glyphh</strong> (apps built on the Glyphh runtime — see Build &amp; publish).</p>
+              <p>Apps live on the wall and the Apps page. Three kinds: <strong>web</strong> (any URL, opens as a live panel), <strong>native</strong> (launches a local application; desktop only), and <strong>glyphh</strong> (apps built on the Glyphh runtime — see Build &amp; publish).</p>
 
               <h4>Adding your own</h4>
-              <p>Apps page &rarr; <strong>+ New</strong>: a slug, a name, and a URL (or a native app path). Org-visible by default so your team gets it too.</p>
+              <p>Apps page &rarr; <strong>+ New</strong>: a slug, a name, and a URL (or a native app path). Org-visible by default so your team gets it too. Or right-click any page in the Browser panel and save it as an app.</p>
 
-              <h4>Panel commands</h4>
-              <p>Inside any app panel, dot-commands drive the workspace without leaving the keyboard:</p>
-              <div class="cmd-row"><code>@&lt;model&gt; &lt;ask&gt;</code><span>Summon the agent from any input (see Mentions)</span></div>
-              <div class="cmd-row"><code>.sup</code><span>Capture the panel's content to the clipboard</span></div>
-              <div class="cmd-row"><code>.sup ..</code><span>Capture the agent's last result</span></div>
-              <div class="cmd-row"><code>.dip &lt;panel|app|workspace|url&gt;</code><span>Open it</span></div>
-              <div class="cmd-row"><code>.dip split &lt;a&gt; &lt;b&gt; …</code><span>Open each, side by side</span></div>
-              <div class="cmd-row"><code>.dip grid &lt;a&gt; &lt;b&gt; …</code><span>Open each, then even grid</span></div>
-              <div class="cmd-row"><code>.dip add &lt;url&gt;</code><span>Open a URL as a panel</span></div>
-              <div class="cmd-row"><code>.dip close &lt;name&gt;</code><span>Close one panel</span></div>
-              <div class="cmd-row"><code>.dip clear</code><span>Close every panel</span></div>
-              <div class="cmd-row"><code>.dip list</code><span>What&rsquo;s open, and what can be opened</span></div>
-              <div class="cmd-row"><code>.dip refresh</code><span>Reload the panel on top</span></div>
-              <div class="cmd-row"><code>.dip back</code><span>Back to the command center</span></div>
-              <div class="cmd-row"><code>.drip</code><span>Fireworks. You earned it.</span></div>
-              <p>The command text is intercepted before the app sees it — nothing leaks into the page.</p>
+              <h4>Live panels</h4>
+              <p>App panels are live — signed-in sessions, notifications, everything — and the agent can read from and act through them. Dot-commands typed in any panel drive the workspace without leaving the keyboard; see <strong>Commands</strong>.</p>
 
               <h4>Marketplace</h4>
               <p>The Marketplace lists published Glyphh apps — public and your org's own. Installs auto-update by default; pin a version from the app's Releases tab.</p>
             </div>
 
-            <div class="docs-panel" data-doc="layouts">
-              <h3>Workspaces</h3>
-              <p>A workspace is a saved arrangement — which tools and apps, in what grid — restorable in one click from the rail, the command palette, or <code>.dip layout &lt;name&gt;</code>.</p>
+            <div class="docs-panel" data-doc="commands">
+              <h3>Commands</h3>
+              <p>Dot-commands work from the agent composer and from any input in any app panel — the text is intercepted before the app sees it, so nothing leaks into the page. They work mid-run too.</p>
 
-              <h4>What a workspace can carry</h4>
-              <ul class="docs-list">
-                <li><strong>Panels + tools</strong> — any mix of apps, Files, Editor, Terminal, Diff, Browser, Plan, and Glyphh (the agent).</li>
-                <li><strong>App setup per panel</strong> — the Browser cell opens <em>at a URL</em> you set; the Terminal cell runs a <em>first command</em> (after the working folder is set). Set both in the workspace editor&rsquo;s App setup section.</li>
-                <li><strong>A working folder</strong> — opening the workspace switches the agent to it.</li>
-                <li><strong>Session behavior</strong> — keep the current session, start fresh, or resume this workspace&rsquo;s own last session.</li>
-                <li><strong>A loop + its models</strong> — opening the workspace activates that loop with those model bindings.</li>
-                <li><strong>A target</strong> — <em>glyphh</em> (tiles inside the window) or <em>desktop</em> (panels open as positioned OS windows; native apps launch).</li>
-              </ul>
+              <h4>.dip — navigate</h4>
+              <div class="cmd-row"><code>.dip &lt;panel|app|workspace|url&gt;</code><span>Open it — tool names (files, terminal, browser, slides, sheets&hellip;) resolve first, then workspaces, then apps, then URLs</span></div>
+              <div class="cmd-row"><code>.dip split &lt;a&gt; &lt;b&gt; …</code><span>Open each, side by side</span></div>
+              <div class="cmd-row"><code>.dip grid &lt;a&gt; &lt;b&gt; …</code><span>Open each, then even grid</span></div>
+              <div class="cmd-row"><code>.dip add &lt;url&gt;</code><span>Open a URL as a panel</span></div>
+              <div class="cmd-row"><code>.dip close &lt;name&gt;</code><span>Close one panel</span></div>
+              <div class="cmd-row"><code>.dip clear</code><span>Close every panel</span></div>
+              <div class="cmd-row"><code>.dip list</code><span>What&rsquo;s open, and the workspaces that exist</span></div>
+              <div class="cmd-row"><code>.dip refresh</code><span>Reload the panel on top</span></div>
+              <div class="cmd-row"><code>.dip back</code><span>Back to the command center</span></div>
 
-              <h4>Your changes stick</h4>
-              <p>Rearrange or resize inside an open workspace and it remembers — reopening brings back exactly what you left, not the original definition. Starting a new agent session never resets an open workspace.</p>
+              <h4>The rest</h4>
+              <div class="cmd-row"><code>.drip [name]</code><span>Play a full-screen effect (bare = fireworks)</span></div>
+              <div class="cmd-row"><code>.compact [focus]</code><span>Fold the session's older turns now, optionally steering the summary</span></div>
 
-              <h4>Starters</h4>
-              <p>Every account begins with <strong>Email</strong> (Gmail | Calendar) and <strong>Dev</strong> (Files/Diff | Editor/Terminal | Glyphh) as working examples.</p>
+              <h4>Keyboard</h4>
+              <div class="cmd-row"><code>&#8984;&#8679;Space</code><span>Front Glyphh and open the command center — from anywhere on the system</span></div>
+              <div class="cmd-row"><code>&#8984;Y</code><span>Summon / dismiss the app (global)</span></div>
+              <div class="cmd-row"><code>&#8984;&#8679;.</code><span>Kill every playing drip effect (global)</span></div>
+              <div class="cmd-row"><code>&#8963;&#8997;</code> (hold)<span>Peek the wall over open panels</span></div>
+              <div class="cmd-row"><code>Shift+Tab</code><span>Cycle the permission mode</span></div>
+              <div class="cmd-row"><code>&#8984;W</code><span>Close the top panel; with nothing open, the window</span></div>
+              <div class="cmd-row"><code>Esc</code><span>Close the current overlay; stop a spoken reply</span></div>
             </div>
 
             <div class="docs-panel" data-doc="building">
@@ -201,10 +284,28 @@
                 <li><strong>Org connectors</strong> — shared by an admin; members use them without doing their own auth. Governed per workspace, down to individual tools.</li>
                 <li><strong>Personal connections</strong> — your own accounts, connected by you, usable only by you.</li>
               </ul>
-              <p>Manage both under <strong>Workspace &rarr; Connections</strong> on the platform, or from the desktop's Connections page.</p>
+              <p>Manage both under <strong>Workspace &rarr; Connections</strong> on the platform, or from the Connections page here.</p>
 
               <h4>Custom MCP connections</h4>
               <p>Point a connection at any remote MCP server URL — OAuth or headers — and its tools join the agent's toolkit. Custom MCP executes server-side under your org's governance; nothing runs on or dials into your machine.</p>
+            </div>
+
+            <div class="docs-panel" data-doc="git">
+              <h3>GitHub</h3>
+              <p>Link GitHub once and every surface can put the agent inside a repo.</p>
+
+              <h4>Connect</h4>
+              <p>The agent header's source chip (or the mobile Working-folder sheet) offers <strong>Connect GitHub</strong> — approve the GitHub App and pick which repos it covers. Disconnect any time from the same place.</p>
+
+              <h4>What it unlocks</h4>
+              <ul class="docs-list">
+                <li><strong>Desktop</strong> — clone a repo into an empty local folder straight from the source chip ("create from git"). Private repos clone with a short-lived, repo-scoped token that is never written to the remote or the logs.</li>
+                <li><strong>Cloud sessions</strong> — bind a session to a repo and its cloud workspace has it cloned before the first turn; "clone the repo" is never a step you type.</li>
+                <li><strong>Mobile</strong> — pick any covered repo as a new session's working folder.</li>
+              </ul>
+
+              <h4>Security</h4>
+              <p>Clone tokens are minted per repo, expire in minutes, and are injected server-side for cloud runs — the client never holds long-lived Git credentials.</p>
             </div>
 
             <div class="docs-panel" data-doc="cli">
@@ -248,7 +349,7 @@ glyphh</pre>
               <h3>Links</h3>
               <h4>Product</h4>
               <ul class="docs-list">
-                <li><a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a> — account, billing, usage, loops, models, workspace governance</li>
+                <li><a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a> — account, billing, usage, the web workspace, downloads</li>
                 <li><a class="docs-ext" data-href="https://glyphh.ai">glyphh.ai</a> — the site; <a class="docs-ext" data-href="https://glyphh.ai/pricing">pricing</a>, <a class="docs-ext" data-href="https://glyphh.ai/research">research</a></li>
                 <li><a class="docs-ext" data-href="https://www.npmjs.com/package/@glyphh-ai/cli">@glyphh-ai/cli on npm</a></li>
               </ul>
@@ -258,6 +359,11 @@ glyphh</pre>
                 <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/ada">ada</a> — the engine: ingest, query, stream</li>
                 <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/models">models</a> — pure-HDC models, no GPU in the loop</li>
                 <li><a class="docs-ext" data-href="https://github.com/glyphh-ai/rrotor">rrotor</a> — the open runtime for RotorSpec deterministic agent loops</li>
+              </ul>
+              <h4>Updates</h4>
+              <ul class="docs-list">
+                <li><strong>Check for updates</strong> — the user menu (your avatar); About shows the version you're on.</li>
+                <li><strong>Downloads</strong> — every platform installer at <a class="docs-ext" data-href="https://platform.glyphh.ai">platform.glyphh.ai</a> &rarr; Download.</li>
               </ul>
               <h4>Help</h4>
               <ul class="docs-list">
