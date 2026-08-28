@@ -36,6 +36,9 @@ function ensureLayer(): HTMLDivElement {
 
 function sync(): void {
   try {
+    // A drag is in flight — re-parenting the bar now would cancel it (the
+    // node under the pointer disappears). The next tick reconciles.
+    if (document.body.classList.contains("echo-icon-dragging")) return;
     const stageBar = document.querySelector<HTMLElement>(".ws-echo-body .echo-topbar");
     const parked = layer?.querySelector<HTMLElement>(".echo-topbar") ?? null;
     // The wall re-rendered while a bar was parked — the parked one is stale.

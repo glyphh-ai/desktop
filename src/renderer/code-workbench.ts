@@ -2534,6 +2534,11 @@ async function init(): Promise<void> {
         // ⇧/⌃/⌘ presses belong to multi-select, never a move.
         if (ev.shiftKey || ev.ctrlKey || ev.metaKey) { ev.preventDefault(); return; }
         dragIconKey = key;
+        // A DRAG IS IN FLIGHT — announced on the body so code outside this
+        // module (dock-portal's reconcile) leaves the DOM alone. Rebuilding
+        // or re-parenting the dragged node mid-drag destroys the drag: the
+        // pointer is still down, but the element it belonged to is gone.
+        document.body.classList.add("echo-icon-dragging");
         // Dragging a SELECTED icon moves the whole selection (folder filing).
         const selKeys = [...multiSel].map((x) => keyOf(x.tile)).filter((k): k is string => !!k);
         dragGroupKeys = selKeys.includes(key) && selKeys.length > 1 ? selKeys : null;
@@ -2542,7 +2547,13 @@ async function init(): Promise<void> {
         ev.dataTransfer?.setData("text/plain", key);
         if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
       });
-      el.addEventListener("dragend", () => { el.classList.remove("dock-dragging"); dragIconKey = null; dragGroupKeys = null; });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dock-dragging");
+        dragIconKey = null; dragGroupKeys = null;
+        document.body.classList.remove("echo-icon-dragging");
+        // Anything a repaint deferred while the drag was live runs now.
+        if (pendingPagesRender) { pendingPagesRender = false; renderPages(); }
+      });
     };
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
     const moveKeyToPage = (key: string, at: TileEntry | null): void => {
@@ -2719,7 +2730,14 @@ async function init(): Promise<void> {
       return items;
     };
     // ── The pages: chunk the list, render icon grids, dots, snap scroll. ──
+    /** A repaint asked for during a drag — replayed on dragend. */
+    let pendingPagesRender = false;
     const renderPages = (): void => {
+      // NEVER rebuild the wall mid-drag: the dragged button would be replaced
+      // under the pointer and the browser would cancel the drag silently
+      // (his report, 2026-08-28: dragging icons stopped working). The repaint
+      // is not lost — dragend replays it.
+      if (dragIconKey != null) { pendingPagesRender = true; return; }
       const list = (wallBands[0] ?? []).filter((e) => { const k = keyOf(e.tile); return !k || !dockKeys.includes(k); });
       const pages: TileEntry[][] = [];
       for (let i = 0; i < list.length; i += perPage) pages.push(list.slice(i, i + perPage));
