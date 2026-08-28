@@ -19963,7 +19963,12 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 .gmus-videos:empty { display: none; }
 .gmus-video-cell { width: 220px; border-radius: 10px; background: #000; border: 1px solid var(--border); }
 
-html.glyphh-web .rail-surface-tabs { display: flex; }
+/* The web surface tabs — shown on the COMMAND CENTER only. :not() here is
+   load-bearing (his report, 2026-08-28): this rule ties on specificity with
+   the wall-hidden hide rule above and, coming later, was overriding it — so
+   the tabs sat over every open app and layout on web. */
+html.glyphh-web body:not(.echo-wall-hidden) .rail-surface-tabs { display: flex; }
+html.glyphh-web body.echo-wall-hidden .rail-surface-tabs { display: none; }
 html.glyphh-web .settings-nav-item.dash-plain { display: none; }
 /* The dock's Command-center slot shows ONLY with auto-hide OFF (his spec,
    2026-08-28): with auto-hide on, the dock vanishes with the wall and the
