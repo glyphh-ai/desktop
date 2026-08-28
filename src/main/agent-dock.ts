@@ -204,6 +204,16 @@ export function captureAttachedWindow(): Promise<{ ok: boolean; path?: string; p
   });
 }
 
+/** True when this webContents is the attached-agent (dock) window. */
+export function isDockSender(wc: { id: number } | null | undefined): boolean {
+  return !!wc && !!dockWin && !dockWin.isDestroyed() && dockWin.webContents.id === wc.id;
+}
+
+/** The app the pill is riding right now (null when not attached). */
+export function attachedTargetProc(): string | null {
+  return lastTarget?.proc ?? null;
+}
+
 export function registerAgentDockIpc(): void {
   if (process.platform !== "darwin") return;
 

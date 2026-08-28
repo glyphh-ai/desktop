@@ -35,6 +35,7 @@ import { stopEmbedServer } from "./glyphh-agent-embeddings";
 import { assemblePrompt, compactIfNeeded, compactNow, loadSessions, registerGlyphhContextIpc } from "./glyphh-agent-context";
 import { registerThreadsIpc } from "./threads-ipc";
 import { getExplicitWorkingDirectory } from "./working-directory";
+import { isDockSender, attachedTargetProc } from "./agent-dock";
 import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
@@ -138,6 +139,19 @@ export function registerGlyphhIpc(): void {
     // runtime up first so counting and completion share one warm process.
     const replyBudget = await runMaxOutputTokens();
     const messages = await assemblePrompt(chatId, replyBudget, typeof payload?.steer === "string" ? payload.steer : undefined);
+    // THE ATTACHED AGENT KNOWS IT IS ATTACHED (his repro, 2026-08-28: asked
+    // to 'capture this panel' while riding an app, the agent listed workspace
+    // panels, found none, and never reached for capture_attached_window —
+    // nothing in its context said it was attached). A turn from the dock
+    // window carries the fact and the app's name, so 'this window / this
+    // panel / my screen' resolves to the capture tool on the first try.
+    if (isDockSender(e.sender)) {
+      const proc = attachedTargetProc();
+      messages.unshift({
+        role: "system",
+        content: `You are the ATTACHED agent, floating over another desktop application${proc ? ` — "${proc}"` : ""}. When the user says "this window", "this panel", "this app", or "my screen", they mean that application: use capture_attached_window() and READ the returned PNG to see it. read_panel is only for Glyphh workspace panels opened beside you.`,
+      });
+    }
     const id = `run-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
     setRunAttachments(id, attachments.map((a) => a.path));
     const ctrl = new AbortController();
