@@ -2240,6 +2240,8 @@ async function init(): Promise<void> {
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
     interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
+      /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
+      pendingSlotState?: Record<string, unknown>;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
       /** WEB: the card's streamed-panel handle. Card teardown must dispose it
@@ -4845,7 +4847,17 @@ async function init(): Promise<void> {
               // the DEFINITION says whether this terminal survives the
               // layout closing ("Maintain on close", default yes)
               if (v === "terminal") entry.keepTermsAlive = cell.config?.keepAlive !== false;
+              // THE REMEMBERED DOCUMENT SEEDS THE SLOT BEFORE THE FIRST
+              // RENDER (his repro, 2026-08-28: every office panel in a
+              // reopened workspace died on null.addEventListener). The old
+              // shape grafted AFTER activateTile and re-rendered — two async
+              // renders racing on one body, the loser querying elements the
+              // winner had just replaced. Seeded here, mountToolIntoCard
+              // applies it as the slot is minted: ONE render, straight into
+              // the document.
+              if (st?.slot && holdsDocState(v)) entry.pendingSlotState = st.slot;
               activateTile(entry);
+              entry.pendingSlotState = undefined;
               pendingParkedTerms = null;   // never leak into the next cell
               if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
@@ -4896,10 +4908,6 @@ async function init(): Promise<void> {
             // image) — the slot fields it tracks are grafted back before the
             // body paints, so the panel mounts straight into the document
             // instead of its library.
-            if (st?.slot && entry.toolSlot && holdsDocState(entry.toolSlot.view)) {
-              Object.assign(entry.toolSlot as unknown as Record<string, unknown>, st.slot);
-              rerenderToolBody(entry);
-            }
             // the Browser gets its tabs back
             if (st?.tabs?.length && entry.toolSlot?.view === "preview") {
               const pv = entry.toolSlot as PreviewSlot;
@@ -5198,6 +5206,12 @@ async function init(): Promise<void> {
           slot.terminals = pendingParkedTerms.terminals;
           slot.activeIdx = pendingParkedTerms.activeIdx;
           pendingParkedTerms = null;
+        }
+        // A restored workspace's remembered document lands on the slot NOW,
+        // before the renderer runs — one render, no post-mount re-render race.
+        if (e.pendingSlotState) {
+          Object.assign(slot as unknown as Record<string, unknown>, e.pendingSlotState);
+          e.pendingSlotState = undefined;
         }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
