@@ -25,14 +25,6 @@
 
 let layer: HTMLDivElement | null = null;
 let home: HTMLDivElement | null = null;
-// The icon size measured while the wall is VISIBLE. In the stage the slots
-// flex-shrink to the seat's width; a parked bar sizes against the viewport
-// and would relax wider — his rule is the parked dock keeps the EXACT wall
-// geometry, so the at-rest size is cached here and frozen onto every slot
-// at park time (offsetWidth: layout size, immune to the hover zoom's
-// transforms). The wall is display:none once panels cover it, so this can
-// only be measured ahead of time — never at park time.
-let restSize = 0;
 
 function ensureLayer(): HTMLDivElement {
   if (layer && layer.isConnected) return layer;
@@ -51,26 +43,18 @@ function sync(): void {
     const bar = stageBar ?? parked;
     if (!bar) return;
     const overPanels = document.body.classList.contains("echo-wall-hidden");
-    if (!overPanels && bar === stageBar) {
-      const probe = bar.querySelector<HTMLElement>(".echo-dock-btn");
-      if (probe && probe.offsetWidth > 20) restSize = probe.offsetWidth;
-    }
     if (overPanels && bar === stageBar) {
       if (!home || !home.isConnected) {
         home = document.createElement("div");
         home.className = "echo-topbar-home";
         bar.before(home);
       }
-      // Freeze at-rest geometry: clear any magnification the zoom left
-      // behind, and pin every slot (the CC-only ones included) to the
-      // cached wall size so nothing relaxes wider than its wall seat.
-      bar.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => {
-        b.style.transform = "";
-        if (restSize > 20) { b.style.width = `${restSize}px`; b.style.height = `${restSize}px`; }
-      });
+      // Clear any magnification the zoom left behind. NOTHING here resizes:
+      // the slots keep their stylesheet size — the same clamp() the wall
+      // uses — so the parked bar matches the CC exactly, by construction.
+      bar.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => { b.style.transform = ""; });
       ensureLayer().appendChild(bar);
     } else if (!overPanels && bar === parked && home?.isConnected) {
-      bar.querySelectorAll<HTMLElement>(".echo-dock-btn").forEach((b) => { b.style.width = ""; b.style.height = ""; });
       home.after(bar);
     }
   } catch { /* degrade to in-stage — never take the wall down */ }
