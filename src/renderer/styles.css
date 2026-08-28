@@ -15562,6 +15562,109 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   font-family: var(--font-mono); font-size: 10.5px; white-space: pre-wrap; word-break: break-word;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   GHOST MODE — the coding agent as an ethereal overlay (?solo=ghost).
+   The window matches the target app's bounds and is transparent; these rules
+   dress the agent as a ghost: transparent panels, frosted-glass bubbles, and
+   glowing text so it stays legible over ANY app showing through behind it.
+   ══════════════════════════════════════════════════════════════════════ */
+/* The FULL ancestor chain must go transparent, or any one opaque layer makes
+   the window look solid: body → #help-overlay → .help-section → code shell →
+   workbench rails → slot → slot body → the reparented .code-agent. Also
+   re-point the workbench surface vars so slot chrome built from them follows. */
+[data-ghost="1"] body,
+[data-ghost="1"] #home-root,
+[data-ghost="1"] #help-overlay,
+[data-ghost="1"] .help-section,
+[data-ghost="1"] .code-workbench,
+[data-ghost="1"] .ws-right-rails,
+[data-ghost="1"] .ws-right-rail,
+[data-ghost="1"] .ws-rail-slot,
+[data-ghost="1"] .ws-rail-slot-body,
+[data-ghost="1"] .ws-coding-body,
+[data-ghost="1"] .code-agent,
+[data-ghost="1"] .code-thread,
+[data-ghost="1"] .code-thread-inner { background: transparent !important; }
+[data-ghost="1"] {
+  --ws-bg-card: transparent;
+  --ws-bg-rail: transparent;
+}
+/* Ghost mode: no opaque header bar over the desktop showing through. */
+[data-ghost="1"] #shell-drag-strip { background: transparent !important; border-bottom-color: transparent !important; }
+/* Slot header becomes a faint glass strip instead of a solid surface. */
+[data-ghost="1"] .ws-rail-slot-header {
+  background: rgba(14, 11, 22, 0.28) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Header — a faint, blurred ghost bar (still the window drag region). */
+[data-ghost="1"] .code-agent-head {
+  background: rgba(14, 11, 22, 0.28) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+/* Assistant transcript — bright, softly glowing so it reads over whatever app
+   shows through the transparent panel. */
+[data-ghost="1"] .code-agent-text,
+[data-ghost="1"] .code-agent-text .yo-md-p,
+[data-ghost="1"] .code-agent-text li,
+[data-ghost="1"] .code-agent-text .yo-md-h1, [data-ghost="1"] .code-agent-text .yo-md-h2,
+[data-ghost="1"] .code-agent-text .yo-md-h3, [data-ghost="1"] .code-agent-text .yo-md-h4 {
+  color: rgba(244, 243, 255, 0.97) !important;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.95);
+}
+
+/* User message — a frosted-glass capsule, not the solid accent fill. */
+[data-ghost="1"] .code-msg.user {
+  background: rgba(255, 255, 255, 0.10) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+}
+
+/* Code blocks stay dark glass so code doesn't wash out over a light app. */
+[data-ghost="1"] .code-agent-text .yo-md-pre,
+[data-ghost="1"] .code-agent-text .yo-md-codeblock {
+  background: rgba(0, 0, 0, 0.55) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  text-shadow: none;
+}
+
+/* Composer — a floating glass input bar. */
+[data-ghost="1"] .code-composer {
+  background: rgba(14, 11, 22, 0.42) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.10) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.25);
+  backdrop-filter: blur(22px) saturate(1.25);
+}
+[data-ghost="1"] .code-input {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+}
+[data-ghost="1"] .code-input::placeholder { color: rgba(255, 255, 255, 0.5); }
+[data-ghost="1"] .code-input:focus {
+  border-color: rgba(196, 132, 252, 0.6) !important;
+  box-shadow: 0 0 0 1px rgba(196, 132, 252, 0.4) !important;
+}
+
+/* A ghostly purple aura around the whole panel. */
+[data-ghost="1"] .code-root {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10) inset, 0 24px 90px rgba(120, 90, 210, 0.22) !important;
+}
+/* Slim, faint scrollbar. */
+[data-ghost="1"] .code-thread::-webkit-scrollbar { width: 8px; }
+[data-ghost="1"] .code-thread::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 4px; }
+
 
 
 /* ── Models (org admin) — desktop mirror of platform Configure → Models ── */

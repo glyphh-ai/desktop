@@ -6,7 +6,7 @@
  */
 
 import { initHelp, gotoSection, openSettingsModal } from "./help/index.js";
-import { seedNewSession } from "./help/code.js";
+import { seedNewSession, openCommandCenter } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
 import { installAutofillGuard } from "./autofill-guard.js";
 
