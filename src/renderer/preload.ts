@@ -263,6 +263,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Attached-agent window (?solo=agent) only: forward mouse events to the app
   // BENEATH the window except over the agent's own pixels (agent-dock.ts).
   agentDockIgnoreMouse: (ignore: boolean) => ipcRenderer.send("agent-dock:ignore-mouse", ignore),
+  // "Record this window" — capture the attached app's window as a PNG.
+  agentDockCaptureTarget: () => ipcRenderer.invoke("agent-dock:capture-target") as Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>,
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },

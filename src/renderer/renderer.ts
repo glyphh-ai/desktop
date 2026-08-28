@@ -118,6 +118,7 @@ declare global {
       getPathForFile: (file: File) => string;
       windowClose: () => void;
       agentDockIgnoreMouse?: (ignore: boolean) => void;
+      agentDockCaptureTarget?: () => Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;
