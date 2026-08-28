@@ -2966,6 +2966,14 @@ async function init(): Promise<void> {
       return {
         name: layoutRow.name,
         slug: `layout:${(layoutRow.name || "").toLowerCase()}`,
+        // THE DRAG KEY (his report, 2026-08-28: a workspace made mid-session
+        // couldn't be moved until a restart). keyOf() reads orderKey, and
+        // everything that makes a tile draggable hangs off it — wireIconDrag
+        // bails on a null key, the DOM node loses its data-key, and reorder
+        // drops have nothing to target. The boot path stamps this on every
+        // tile it builds, which is why a restart "fixed" it; appTileOf sets
+        // its own, so only layouts fell through. Same format as boot's.
+        orderKey: `layout:${(layoutRow.name || "").toLowerCase()}`,
         layoutName: layoutRow.name,
         cells, layoutRow, kind: "layout",
       };
