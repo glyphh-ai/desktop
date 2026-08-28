@@ -50,6 +50,38 @@ function target(params: unknown): WebContents {
 /** JSON-safe string literal for injection into executeJavaScript. */
 const q = (s: string): string => JSON.stringify(s);
 
+// ── Panel read cores — shared by the relay handlers (programs) and the
+// agent's read_panel tool (glyphh-agent-tools). One implementation, two
+// callers, so the agent and the RPA surface can never drift apart. ──
+
+/** The open, registered panels — slug plus whether the webContents is live. */
+export function rpaTargetSlugs(): string[] {
+  const out: string[] = [];
+  for (const [slug, id] of targets) {
+    const wc = webContents.fromId(id);
+    if (wc && !wc.isDestroyed()) out.push(slug);
+  }
+  return out;
+}
+
+/** A panel's text or HTML — the whole page, or one selector's subtree. */
+export async function panelRead(slug: string, selector?: string, as: "text" | "html" = "text"): Promise<string> {
+  const wc = target({ app: slug });
+  const expr = selector
+    ? `(() => { const el = document.querySelector(${q(selector)}); return el ? (${as === "html" ? "el.outerHTML" : "el.innerText"}) : null; })()`
+    : (as === "html" ? "document.documentElement.outerHTML" : "document.body ? document.body.innerText : ''");
+  const out = await wc.executeJavaScript(expr);
+  if (out === null) throw new Error(`no element matched ${selector}`);
+  return String(out ?? "").slice(0, 500_000);
+}
+
+/** A panel's current frame as PNG bytes. */
+export async function panelScreenshot(slug: string): Promise<Buffer> {
+  const wc = target({ app: slug });
+  const img = await wc.capturePage();
+  return img.toPNG();
+}
+
 export function installRpaHandlers(): void {
   // Click — a CSS selector (clicked in-page) or absolute x/y coords (real
   // input event, so canvas/native handlers fire).
@@ -94,22 +126,17 @@ export function installRpaHandlers(): void {
 
   // Read — a selector's text (default innerText) or the whole page text/html.
   registerRelayHandler("rpa.read", async (params) => {
-    const wc = target(params);
-    const selector = str(params, "selector");
-    const as = str(params, "as") || "text"; // text | html
-    const expr = selector
-      ? `(() => { const el = document.querySelector(${q(selector)}); return el ? (${as === "html" ? "el.outerHTML" : "el.innerText"}) : null; })()`
-      : (as === "html" ? "document.documentElement.outerHTML" : "document.body ? document.body.innerText : ''");
-    const out = await wc.executeJavaScript(expr);
-    if (out === null) throw new Error(`no element matched ${selector}`);
-    return { as, value: String(out ?? "").slice(0, 500_000) };
+    const slug = str(params, "app") || str(params, "slug") || str(params, "panelId");
+    const as = (str(params, "as") || "text") as "text" | "html";
+    const value = await panelRead(slug, str(params, "selector") || undefined, as);
+    return { as, value };
   });
 
   // Screenshot — the panel's current frame as a PNG data URL.
   registerRelayHandler("rpa.screenshot", async (params) => {
-    const wc = target(params);
-    const img = await wc.capturePage();
-    return { dataUrl: `data:image/png;base64,${img.toPNG().toString("base64")}` };
+    const slug = str(params, "app") || str(params, "slug") || str(params, "panelId");
+    const png = await panelScreenshot(slug);
+    return { dataUrl: `data:image/png;base64,${png.toString("base64")}` };
   });
 
   // Navigate the panel to a URL.

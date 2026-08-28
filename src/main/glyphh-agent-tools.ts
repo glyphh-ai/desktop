@@ -25,6 +25,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { promises as fsp } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
@@ -74,6 +75,7 @@ import { updateAppFromWorkdir } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
+import { panelRead, panelScreenshot, rpaTargetSlugs } from "./rpa";
 
 const OUTPUT_CAP = 8000;
 const READ_CAP = 24000;
@@ -1519,6 +1521,30 @@ const TOOLS: ToolDef[] = [
     doc: "extract_site_design(url) — fetch a page (+ its first stylesheets) and COUNT the colors, font families, radii, and Google Fonts it actually uses. Returns evidence ranked by frequency (neutrals flagged) — pick the true brand colors from it, then create_design.",
     action: (a) => ({ kind: "read", title: `Extract design from ${String(a.url ?? "")}` }),
     run: async (a) => cap(JSON.stringify(await extractSiteDesign(String(a.url ?? "")), null, 1), READ_CAP),
+  },
+  {
+    name: "read_panel",
+    doc: "read_panel(app, as?, selector?) — read an OPEN workspace panel: what the user is looking at in the Browser, a web app, or any panel beside you. as: 'text' (default — the page's visible text), 'html' (a subtree's markup; pass selector to scope it, ALWAYS scope html reads), or 'screenshot' (saves a PNG, returns its path). app = the panel's slug; call with no app to list what's open. Panels are live — read again after actions change them.",
+    action: (a) => ({ kind: "read", title: a.app ? `Read panel ${String(a.app)}` : "List open panels" }),
+    run: async (a) => {
+      const slug = String(a.app ?? "").trim();
+      const open = rpaTargetSlugs();
+      if (!slug) return open.length ? `Open panels: ${open.join(", ")}` : "No panels are open.";
+      const as = String(a.as ?? "text");
+      try {
+        if (as === "screenshot") {
+          const png = await panelScreenshot(slug);
+          const file = join(tmpdir(), `glyphh-panel-${slug.replace(/[^\w-]/g, "_")}-${Date.now()}.png`);
+          writeFileSync(file, png);
+          return `Saved a screenshot of "${slug}" to ${file} (${Math.round(png.length / 1024)}kb).`;
+        }
+        const selector = typeof a.selector === "string" && a.selector.trim() ? a.selector.trim() : undefined;
+        return cap(await panelRead(slug, selector, as === "html" ? "html" : "text"), READ_CAP);
+      } catch (e) {
+        const hint = open.length ? ` Open panels: ${open.join(", ")}.` : " No panels are open.";
+        return `ERROR: ${(e as Error).message}.${hint}`;
+      }
+    },
   },
   {
     name: "read_image_palette",
