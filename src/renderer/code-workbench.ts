@@ -3399,6 +3399,9 @@ async function init(): Promise<void> {
       const strip = document.createElement("div");
       strip.className = "echo-dock-hotstrip";
       document.body.appendChild(strip);
+      // Desktop's window drag strip owns the top ~38px and eats mouse events;
+      // the hover zone (and the peeked dock) start below it. Web has no strip.
+      if (!IS_WEB_TARGET) document.body.classList.add("wb-has-dragstrip");
       strip.addEventListener("mouseenter", () => {
         if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
       });
@@ -3813,9 +3816,12 @@ async function init(): Promise<void> {
       const margin = 7;
       let top = margin;
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (bar && bar.style.visibility !== "hidden") {
+      // A TUCKED dock is off screen — reserving its band left a dead strip
+      // above every panel (his report, 2026-08-28). Reserve only when the
+      // bar actually occupies the stage.
+      if (bar && !document.body.classList.contains("echo-dock-tucked")) {
         const r = bar.getBoundingClientRect();
-        if (r.height > 0) top = Math.max(top, r.bottom - stageR.top + margin);
+        if (r.height > 0 && r.bottom > 0) top = Math.max(top, r.bottom - stageR.top + margin);
       }
       let bottom = h - margin;
       // Anytime the WALL is off screen (cards fully covering it, or a layout

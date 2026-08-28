@@ -19978,7 +19978,7 @@ body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-f
    slides off-top; peek slides it back. */
 body.echo-wall-hidden .ws-echo-body .echo-topbar,
 body.echo-dock-tucked .ws-echo-body .echo-topbar {
-  position: fixed; top: 16px; left: 50%; transform: translate(-50%, 0);
+  position: fixed; top: calc(var(--wb-top-inset, 0px) + 10px); left: 50%; transform: translate(-50%, 0);
   transition: transform 0.22s ease;
   z-index: 130;
   visibility: visible;
@@ -19989,7 +19989,7 @@ body.echo-dock-tucked:not(.echo-dock-peek) .ws-echo-body .echo-topbar {
 /* The hint — the same "something is hidden here" sliver the composer tuck
    uses, at the top center. Gone while the dock is peeked out. */
 body.echo-dock-tucked:not(.echo-dock-peek)::after {
-  content: ""; position: fixed; top: 6px; left: 50%; transform: translateX(-50%);
+  content: ""; position: fixed; top: calc(var(--wb-top-inset, 0px) + 6px); left: 50%; transform: translateX(-50%);
   width: 110px; height: 4px; border-radius: 999px;
   background: var(--text-3); opacity: 0.45; z-index: 130; pointer-events: none;
 }
@@ -19998,7 +19998,7 @@ body.echo-dock-tucked:not(.echo-dock-peek)::after {
    while the dock is tucked, so it never steals clicks otherwise. */
 .echo-dock-hotstrip { display: none; }
 body.echo-dock-tucked .echo-dock-hotstrip {
-  display: block; position: fixed; top: 0; left: 0; right: 0; height: 12px;
+  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: 0; right: 0; height: 16px;
   z-index: 131; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
@@ -20010,3 +20010,7 @@ body.echo-has-panels .echo-dock-btn[data-dock="closeall"] { display: inline-flex
    the dock's hover zone and double-served the new Close-all slot. Hidden,
    not deleted. */
 .echo-layout-bar { display: none !important; }
+
+/* Desktop: the window drag strip owns the top of the page — the tucked-dock
+   chrome (sliver, hot zone, peeked bar) starts below it. */
+body.wb-has-dragstrip { --wb-top-inset: 38px; }
