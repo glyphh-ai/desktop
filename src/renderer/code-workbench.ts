@@ -304,6 +304,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
+  { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
 ].filter((d) => !IS_WEB_TARGET || d.key !== "drips");
 
@@ -2518,8 +2519,8 @@ async function init(): Promise<void> {
     };
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
     const moveKeyToPage = (key: string, at: TileEntry | null): void => {
-      // Settings stays put (his order, 2026-08-26) — see the dock reconcile.
-      if (key === "settings" || key === "dock:settings") return;
+      // Settings + CC stay put (his orders) — see the dock reconcile.
+      if (key === "settings" || key === "dock:settings" || key === "cc" || key === "dock:cc") return;
       const band = wallBands[0]!;
       let entry = entriesByKey().get(key) ?? null;
       if (!entry) {
@@ -3148,6 +3149,10 @@ async function init(): Promise<void> {
           if (d.key === "glyphh") dockKeys.unshift(d.key);
           else dockKeys.push(d.key);
         }
+        // CC is a fixed control too (his order, 2026-08-28) — same rules as
+        // Settings below. It only RENDERS with auto-hide off (CSS), but its
+        // dock seat is permanent so flipping the setting never re-orders.
+        if (!dockKeys.includes("cc")) dockKeys.splice(Math.max(dockKeys.length - 1, 0), 0, "cc");
         // SETTINGS IS NOT TRADEABLE (his order, 2026-08-26). On app-web the
         // dock is the ONLY door into the app's own settings, and the dock is
         // rebuilt from a SAVED order — so a pref written before Settings
@@ -3172,7 +3177,7 @@ async function init(): Promise<void> {
       const pageTiles: EchoTile[] = [];
       const seenK = new Set<string>();
       for (const k of savedPageOrder) {
-        if (k === "dock:settings") continue;  // fixed in the dock — never a page tile
+        if (k === "dock:settings" || k === "dock:cc") continue;  // fixed in the dock — never page tiles
         if (filed.has(k)) continue;   // lives inside a folder, not on the pages
         const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
         if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;
@@ -3954,6 +3959,7 @@ async function init(): Promise<void> {
             void openAgentPanel();
             return;
           }
+          if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();

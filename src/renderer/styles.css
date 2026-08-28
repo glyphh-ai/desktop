@@ -19965,3 +19965,9 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 
 html.glyphh-web .rail-surface-tabs { display: flex; }
 html.glyphh-web .settings-nav-item.dash-plain { display: none; }
+/* The dock's Command-center slot shows ONLY with auto-hide OFF (his spec,
+   2026-08-28): with auto-hide on, the dock vanishes with the wall and the
+   composer's CC button is the summoner; pinned always-on, the dock needs its
+   own way back to the wall. */
+.echo-dock-btn[data-dock="cc"] { display: none; }
+body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-flex; }
