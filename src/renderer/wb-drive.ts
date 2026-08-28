@@ -171,7 +171,9 @@ export function initGDrive(host: GDriveHost): GDrivePanel {
       if (body.isConnected) {
         body.innerHTML = `<div class="gdoc-empty">Drive hit an error rendering.<br><code class="gpoint-err"></code></div>`;
         const code = body.querySelector(".gpoint-err");
-        if (code) code.textContent = err instanceof Error ? err.message : String(err);
+        if (code) // The MESSAGE alone made every null-deref look identical (his report,
+        // 2026-08-28) — the top stack frames name the actual line.
+        code.textContent = err instanceof Error ? `${err.message}\n${(err.stack || "").split("\n").slice(1, 4).join("\n")}` : String(err);
       }
     }
   }
