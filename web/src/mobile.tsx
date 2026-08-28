@@ -57,7 +57,7 @@ const remoteChats = new Map<string, RemoteChat>();
  *  connection STATUS (alive/idle) is dynamic and derived separately. The machine is
  *  keyed by NAME (its per-connection id changes on every reconnect — keying on that
  *  caused the flicker). */
-type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string } | { kind: 'cloud' };
+type SavedLocus = { kind: 'local'; machineId?: string; machineName?: string; path: string } | { kind: 'cloud'; repo?: string };
 const LOCUS_KEY = 'yoSources';
 function loadLocus(): Record<string, SavedLocus> {
   try { return JSON.parse(localStorage.getItem(LOCUS_KEY) || '{}'); } catch { return {}; }
@@ -65,6 +65,11 @@ function loadLocus(): Record<string, SavedLocus> {
 function locusOf(id: string): SavedLocus | undefined { return loadLocus()[id]; }
 function saveLocus(id: string, l: SavedLocus): void {
   try { const all = loadLocus(); if (all[id]) return; all[id] = l; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } catch { /* */ }
+}
+/** Set the locus BEFORE the first send, when it is still a choice — saveLocus
+ *  refuses to overwrite (the locus is immutable once a session has run). */
+function replaceLocus(id: string, l: SavedLocus): void {
+  try { const all = loadLocus(); all[id] = l; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } catch { /* */ }
 }
 function forgetLocus(id: string): void {
   try { const all = loadLocus(); if (all[id]) { delete all[id]; localStorage.setItem(LOCUS_KEY, JSON.stringify(all)); } } catch { /* */ }
@@ -76,6 +81,10 @@ function chatFor(id: string): RemoteChat {
     c = { id, mode: 'code' };
     const l = locusOf(id);
     if (l?.kind === 'local') c.source = { kind: 'local', ...(l.machineId ? { machineId: l.machineId } : {}), path: l.path };
+    // A cloud session bound to a GitHub repo — the pod clones it and the agent
+    // works IN it (remote-run forwards `repo`); restored here so a reload keeps
+    // the working folder the user picked.
+    else if (l?.kind === 'cloud' && l.repo) c.source = { kind: 'cloud-repo', repo: l.repo };
     remoteChats.set(id, c);
   }
   return c;
@@ -1228,14 +1237,18 @@ function SessionView({ session, msgs, connecting, pinned, subtitle, onBack, onMe
       {isNew ? (
         /* New-chat header — the home loop/model dropdown (menu ⇄ centered dropdown). */
         <header className="m-sv-head m-home-head">
-          <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
+          {/* BACK, not the menu (his report, 2026-08-28: a new session had no
+              way back to the list). The drawer moves to the right slot, so
+              nothing is lost and the left control means the same thing on
+              every screen. */}
+          <button className="m-chats-icon" aria-label="Back" onClick={onBack}><Icon name="back" /></button>
           <div className="m-home-center">
             <button className="m-home-loop" onClick={() => comp.onOpenSelector('sections')}>
               <span>{comp.loopName} / {comp.modelSummary}</span>
               <Icon name="caret" />
             </button>
           </div>
-          <span className="m-home-head-spacer" aria-hidden="true" />
+          <button className="m-chats-icon" aria-label="Open menu" onClick={onMenu}><Icon name="menu" /></button>
         </header>
       ) : (
       <header className="m-sv-head">
@@ -2799,7 +2812,9 @@ function OptionList({ items, selected, onPick }: { items: { id: string; name: st
   );
 }
 
-function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, roleSel, setRoleSel, models }: {
+function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, roleSel, setRoleSel, models,
+  sourceLabel, sourceLocked, sourceRepo, repos, gitState, onLoadRepos, onPickCloud, onPickRepo, onConnectGit,
+  desktops, onPickDesktop }: {
   open: boolean;
   section: 'loop' | 'models' | null;   // deep-link entry point
   onClose: () => void;
@@ -2808,9 +2823,23 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
   roles: RoleItem[] | null;
   roleSel: Record<string, string>; setRoleSel: (fn: (m: Record<string, string>) => Record<string, string>) => void;
   models: ModelChoice[];
+  /** WHERE the session works — cloud, a cloud clone of a GitHub repo, or a
+   *  folder on a connected desktop (his report, 2026-08-28: mobile had no way
+   *  to choose either). Locked once the session has run: a locus is immutable. */
+  sourceLabel: string;
+  sourceLocked: boolean;
+  sourceRepo: string;
+  repos: { id: string; fullName: string; private: boolean }[] | null;
+  gitState: 'unknown' | 'off' | 'on';
+  onLoadRepos: () => void;
+  onPickCloud: () => void;
+  onPickRepo: (repo: string) => void;
+  onConnectGit: () => void;
+  desktops: AttachedMachine[];
+  onPickDesktop: (d: AttachedMachine) => void;
 }) {
   // Depth track: 0 = sections, 1 = a section tray, 2 = More models (per role).
-  const [tray, setTray] = useState<'loop' | 'models'>('models');
+  const [tray, setTray] = useState<'loop' | 'models' | 'source'>('models');
   const [depth, setDepth] = useState(0);
   const [moreRole, setMoreRole] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});   // undefined → expanded
@@ -2831,8 +2860,11 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
     return models.find((m) => m.id === id)?.name ?? shortModelId(id);
   };
   const loopName = (loops ?? []).find((l) => l.slug === loop)?.name ?? '';
-  const openTray = (t: 'loop' | 'models') => { haptic(); setTray(t); setDepth(1); };
-  const trayTitle = tray === 'loop' ? 'Loop' : 'Models';
+  const openTray = (t: 'loop' | 'models' | 'source') => {
+    haptic(); setTray(t); setDepth(1);
+    if (t === 'source' && !sourceLocked) onLoadRepos();
+  };
+  const trayTitle = tray === 'loop' ? 'Loop' : tray === 'source' ? 'Working folder' : 'Models';
   const modelsSummary = roleList.length === 1 ? modelName(selectedFor(roleList[0])) : roleList.length ? `${roleList.length} models` : '';
   const setRoleModel = (roleName: string, id: string) => { haptic(); setRoleSel((m) => ({ ...m, [roleName]: id })); };
   const toggleRole = (roleName: string) => { haptic(); setExpanded((e) => ({ ...e, [roleName]: !(e[roleName] ?? true) })); };
@@ -2861,6 +2893,9 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
                 <button className="m-sel-row" onClick={() => openTray('models')}>
                   <span className="m-sel-row-label">Models</span><span className="m-sel-row-val">{modelsSummary}</span><Icon name="chevron" />
                 </button>
+                <button className="m-sel-row" onClick={() => openTray('source')}>
+                  <span className="m-sel-row-label">Working folder</span><span className="m-sel-row-val">{sourceLabel}</span><Icon name="chevron" />
+                </button>
               </div>
             </div>
           </section>
@@ -2878,6 +2913,52 @@ function SelectorSheet({ open, section, onClose, loops, loop, setLoop, roles, ro
                   : loopItems.length === 0
                   ? <div className="m-list-note">No loops available.</div>
                   : <OptionList items={loopItems} selected={loop} onPick={(id) => { haptic(); setLoop(id); setDepth(0); }} />
+              )}
+              {tray === 'source' && (
+                sourceLocked
+                  ? <div className="m-list-note">This session works in {sourceLabel}. A session&rsquo;s working folder is fixed when it starts — start a new session to work somewhere else.</div>
+                  : (
+                <>
+                  <div className="m-sel-group">
+                    <button className="m-sel-row" onClick={() => { haptic(); onPickCloud(); setDepth(0); }}>
+                      <span className="m-sel-row-label">Cloud</span>
+                      <span className="m-sel-row-val">{!sourceRepo ? 'Current' : ''}</span>
+                    </button>
+                  </div>
+                  {/* A GitHub repo — the pod clones it and the agent works in it. */}
+                  {gitState === 'off' ? (
+                    <div className="m-sel-group">
+                      <button className="m-sel-row" onClick={() => { haptic(); onConnectGit(); }}>
+                        <span className="m-sel-row-label">Connect GitHub</span><Icon name="chevron" />
+                      </button>
+                    </div>
+                  ) : repos === null ? (
+                    <div className="m-list-note">Loading repositories&hellip;</div>
+                  ) : repos.length === 0 ? (
+                    <div className="m-list-note">No repositories on the connected account.</div>
+                  ) : (
+                    <div className="m-sel-group">
+                      {repos.map((r) => (
+                        <button key={r.id} className="m-sel-row" onClick={() => { haptic(); onPickRepo(r.fullName); setDepth(0); }}>
+                          <span className="m-sel-row-label">{r.fullName}</span>
+                          <span className="m-sel-row-val">{sourceRepo === r.fullName ? 'Current' : r.private ? 'Private' : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* A folder on a connected desktop — the existing picker tray. */}
+                  {desktops.length > 0 && (
+                    <div className="m-sel-group">
+                      {desktops.map((d) => (
+                        <button key={d.id} className="m-sel-row" onClick={() => { haptic(); onPickDesktop(d); }}>
+                          <span className="m-sel-row-label">{d.name || d.app}</span>
+                          <span className="m-sel-row-val">Pick a folder</span><Icon name="chevron" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+                  )
               )}
               {tray === 'models' && (
                 roles === null
@@ -4137,6 +4218,55 @@ function App() {
    *  switch, no remount, no iOS keyboard drop. The placeholder is NOT added to
    *  Recents (setThreads) until that first send, so an abandoned new chat leaves
    *  nothing behind. Its immutable cloud locus is stamped on first send too. */
+  // ── WORKING FOLDER (his report, 2026-08-28) ───────────────────────────────
+  // A session runs in the cloud, in a cloud clone of a GitHub repo, or in a
+  // folder on a connected desktop. remote-run already forwards `repo` for a
+  // cloud-repo source, so choosing one here is the whole feature.
+  const [repos, setRepos] = useState<{ id: string; fullName: string; private: boolean }[] | null>(null);
+  const [gitState, setGitState] = useState<'unknown' | 'off' | 'on'>('unknown');
+  const loadRepos = () => {
+    if (gitState === 'on' && repos) return;
+    void (async () => {
+      try {
+        const st = await glyphh().git.status();
+        if (!st?.connected) { setGitState('off'); setRepos(null); return; }
+        setGitState('on');
+        setRepos(await glyphh().git.repos());
+      } catch { setGitState('off'); }
+    })();
+  };
+  const connectGit = () => {
+    void (async () => {
+      try {
+        const link = await glyphh().git.connect();
+        if (link?.url) window.open(link.url, '_blank', 'noopener');
+      } catch { /* the row stays as it was */ }
+    })();
+  };
+  /** The session's source, while it is still a choice (before the first send). */
+  const sourceRepo = session ? ((chatFor(session.id).source as { kind?: string; repo?: string } | undefined)?.kind === 'cloud-repo'
+    ? String((chatFor(session.id).source as { repo?: string }).repo || '') : '') : '';
+  // Locked once the session has actually run — the locus never flips.
+  const sourceLocked = !!session && !!msgs && msgs.length > 0;
+  const sourceLabel = (() => {
+    if (!session) return 'Cloud';
+    const l = locusOf(session.id);
+    if (l?.kind === 'local') return l.machineName || 'Local machine';
+    return sourceRepo ? sourceRepo.split('/').pop() || 'Cloud' : 'Cloud';
+  })();
+  const pickCloud = () => {
+    if (!session) return;
+    delete (chatFor(session.id) as { source?: unknown }).source;
+    replaceLocus(session.id, { kind: 'cloud' });
+    setSession({ ...session });
+  };
+  const pickRepo = (repo: string) => {
+    if (!session) return;
+    (chatFor(session.id) as { source?: unknown }).source = { kind: 'cloud-repo', repo };
+    replaceLocus(session.id, { kind: 'cloud', repo });
+    setSession({ ...session });
+  };
+
   const newSession = () => {
     haptic();
     stopObserving();
@@ -4244,6 +4374,11 @@ function App() {
         loops={loops} loop={loop} setLoop={setLoop}
         roles={roles} roleSel={roleSel} setRoleSel={setRoleSel}
         models={models}
+        sourceLabel={sourceLabel} sourceLocked={sourceLocked} sourceRepo={sourceRepo}
+        repos={repos} gitState={gitState} onLoadRepos={loadRepos}
+        onPickCloud={pickCloud} onPickRepo={pickRepo} onConnectGit={connectGit}
+        desktops={desktops}
+        onPickDesktop={(d) => { setSelectorAt(null); setFolderPick(d); }}
       />
       <PermissionSheet open={permOpen} onClose={() => { haptic(); setPermOpen(false); }} perm={perm} setPerm={setPerm} />
       {/* Apps: the installed-app list + the streamed desktop app tray. */}
