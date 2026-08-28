@@ -14,6 +14,14 @@
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
+    <!-- Microphone + camera: hardened-runtime apps are DENIED capture without
+         these — getUserMedia threw with no TCC prompt, so voice input died
+         silently in every signed build (his report, 2026-08-28). The Info.plist
+         usage descriptions were already present; these are their other half. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    <key>com.apple.security.device.camera</key>
+    <true/>
     <!-- Allow spawning child processes (claude CLI for /login, agent runtime). -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
