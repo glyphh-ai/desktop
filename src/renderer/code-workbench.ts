@@ -477,6 +477,21 @@ new MutationObserver(() => {
   try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+/** Resolved when init's synchronous wiring is COMPLETE. The wall's boot
+ *  promise must not run its .then before this: with warm (microtask-fast)
+ *  preference reads the callback fired inside one of init's await gaps and
+ *  hit `layoutCards` in its temporal dead zone — the ReferenceError aborted
+ *  init mid-flight and every later handler never bound ("nothing opens",
+ *  his report ×3; reproduced in the harness 2026-08-28). */
+let settleWbInit: () => void = () => {};
+const wbInitSettled = new Promise<void>((r) => { settleWbInit = r; });
+/** True once init's body has executed past the echo cluster's declarations.
+ *  Early closures (pref .thens, ResizeObservers) fire in init's await gaps
+ *  and used to hit `layoutCards`/`dividerLayer` in their temporal dead zone —
+ *  the ReferenceError aborted init and killed every later handler ("nothing
+ *  opens", reproduced in the harness + his prod stack trace, 2026-08-28).
+ *  Guarded, an early call is a no-op; the settle replay repaints once. */
+let echoWired = false;
 async function init(): Promise<void> {
   if (!window.wb) {
     console.error("[code-workbench] window.wb bridge missing — preload not loaded; workdir controls and rails are dead.");
@@ -2564,7 +2579,7 @@ async function init(): Promise<void> {
     /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
      *  icons render as dock slots. Click routing is delegated (topbar). */
     const reconcileDock = (): void => {
-      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
       if (!dockEl) return;
       const byKey = entriesByKey();
       const have = new Map<string, HTMLElement>();
@@ -3014,7 +3029,8 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-    ]).then(([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+      await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
       // The HOUSE DEFAULTS (the glyphh launcher set) join the org's own rows —
@@ -3335,7 +3351,7 @@ async function init(): Promise<void> {
     let dockZoomRaf = 0;
     const applyDockZoomAt = (clientX: number | null): void => {
       dockZoomRaf = 0;
-      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
       if (!dockEl) return;
       const kids = Array.from(dockEl.children) as HTMLElement[];
       if (!kids.length) return;
@@ -3383,7 +3399,7 @@ async function init(): Promise<void> {
         || document.body.classList.contains("wb-mouse-drag")
         || document.body.classList.contains("echo-drag");
       if (dragging) { queueDockZoom(null); return; }
-      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"));
       if (!dockEl) return;
       if (document.body.classList.contains("echo-dock-tucked")
         && !document.body.classList.contains("echo-dock-peek")) { queueDockZoom(null); return; }
@@ -3809,7 +3825,7 @@ async function init(): Promise<void> {
      *  wall's top bar (dock + search) and above the floating composer, with
      *  side margins. Cards NEVER overlap either. Stage-relative pixels,
      *  measured live so a taller composer (chips, notes) pushes the band up. */
-    const buildBand = (): { left: number; top: number; width: number; height: number } => {
+    function buildBand(): { left: number; top: number; width: number; height: number } {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       const stageR = stage.getBoundingClientRect();
       // The band's outer margins MATCH the 7px inter-panel gap — panels sit
@@ -3838,7 +3854,7 @@ async function init(): Promise<void> {
       if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
       const side = 7;
       return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
-    };
+    }
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
       // CENTER-SCREEN BUILD PATTERN inside the band: the first app opens as a
       // comfortable centered card; more apps BUILD outward (the existing
@@ -3900,7 +3916,8 @@ async function init(): Promise<void> {
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
-    const syncWallVisibility = (): void => {
+    function syncWallVisibility(): void {
+      if (!echoWired) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
       // ANY open panel retires the launcher pages — the ⌃⌥ / eye peek lifts.
       const cardsUp = openList.some((e) => e.card);
@@ -3961,7 +3978,7 @@ async function init(): Promise<void> {
           && !(active instanceof HTMLTextAreaElement) && !(active instanceof HTMLInputElement)
           && !active.isContentEditable) active.blur();
       }
-    };
+    }
     // The lock flipped mid-session: recompute the tuck + card band right away.
     window.addEventListener("glyphh:agent-lock-changed", () => { syncWallVisibility(); layoutCards(); });
     // ── Top bar: JUST the dock now (fixed nav slots, sitting high on the
@@ -3974,7 +3991,7 @@ async function init(): Promise<void> {
       // traded icons open exactly like their page selves. Slots can NEVER be
       // deleted — only MOVED (dock ⇄ pages); membership + order persist
       // (echoDockOrder, owned by the launcher's reconcileDock).
-      const dockEl = document.querySelector<HTMLElement>(".echo-dock")!;
+      const dockEl = (body.querySelector<HTMLElement>(".echo-dock") ?? document.querySelector<HTMLElement>(".echo-dock"))!;
       for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
       dockEl.addEventListener("click", (ev) => {
         const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");
@@ -4061,7 +4078,8 @@ async function init(): Promise<void> {
         (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
       });
     let layoutBarIntro = 0;
-    const paintLayoutBar = (): void => {
+    function paintLayoutBar(): void {
+      if (!echoWired) return;
       // THE WORKSPACE BAR is on EVERY page except the bare command center
       // (his rule, 2026-08-19): a layout titles it by name; loose panels
       // title it by their names — five or more reads "Multi".
@@ -4086,8 +4104,9 @@ async function init(): Promise<void> {
       } else if (!show) {
         layoutBar.classList.remove("intro");
       }
-    };
-    const layoutCards = (): void => {
+    }
+    function layoutCards(): void {
+      if (!echoWired) return;
       const n = openList.length;
       // COMPOSER VISIBILITY FIRST — the band measures the composer live, so
       // this must land BEFORE any rect math. A layout HOSTING the agent
@@ -4137,14 +4156,14 @@ async function init(): Promise<void> {
       syncWallVisibility();
       paintSectionToggles();   // an echo card IS the tool's open state
       paintLayoutBar();
-    };
+    }
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
      *  handles): dragging one reshapes the layout by shifting the fraction
      *  between the two neighbors, and the shape is remembered. */
     const dividerLayer = document.createElement("div");
     dividerLayer.className = "echo-dividers";
     cardsLayer.appendChild(dividerLayer);
-    const paintDividers = (on: boolean): void => {
+    function paintDividers(on: boolean): void {
       dividerLayer.innerHTML = "";
       if (!on || !echoGrid) return;
       // MUST match gridRects: the grid lives in the BUILD BAND.
@@ -4221,7 +4240,7 @@ async function init(): Promise<void> {
           dividerLayer.appendChild(el);
         }
       });
-    };
+    }
     /** Slideable seams for the FLOW (accumulated panels) — the grid's
      *  dividers, driving flowColFr/flowRowFr instead of the layout's fracs.
      *  Same visuals (.echo-div), same live no-anim reshape. */
@@ -8691,9 +8710,11 @@ async function init(): Promise<void> {
   // Painting first and restoring after would flash the default placement over
   // whatever the user actually left open.
   void loadUiState().then(() => loadLayout());
-  // The dock's body-level portal — DISABLED while the click-death it
-  // coincides with is diagnosed (2026-08-28); re-enable = uncomment.
-  // initDockPortal();
+  // The dock's body-level portal (dock-portal.ts) — isolated; a failure
+  // degrades to "dock stays in the stage", never a dead wall. (The click
+  // death it was blamed for was the document-scoped dock lookup running
+  // against a DETACHED render subtree — fixed with body-first lookups.)
+  initDockPortal();
   // The debounce coalesces a drag into one PATCH; closing mid-debounce would
   // otherwise drop the last arrangement of the session.
   window.addEventListener("pagehide", flushUiState);
@@ -9349,5 +9370,15 @@ let inited = false;
 (window as unknown as { __initCodeWorkbench?: () => void }).__initCodeWorkbench = () => {
   if (inited) return;
   inited = true;
-  void init();
+  // Settle the boot gate on init's OWN promise — placement-proof: an inline
+  // settle call proved impossible to seat correctly in a 9k-line function.
+  void init().finally(() => {
+    echoWired = true;
+    settleWbInit();
+    // One replay paint: whatever the guarded early calls skipped.
+    try {
+      (window as unknown as { __wbSyncAgent?: () => void }).__wbSyncAgent?.();
+      window.dispatchEvent(new Event("resize"));
+    } catch { /* painting is best-effort here */ }
+  });
 };
