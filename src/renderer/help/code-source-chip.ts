@@ -790,8 +790,14 @@ function renderRepos(
         const it = drillItem(r.fullName, `${r.private ? "private" : "public"} · ${r.defaultBranch}`, r.fullName === current ? CHECK : "");
         if (r.fullName === current) it.classList.add("selected");
         it.addEventListener("click", () => {
-          if (!dg) { pick({ kind: "cloud-repo", repo: r.fullName }); return; }
-          // DESKTOP: clone into the current working folder — the empty-folder
+          // THE PICK HONORS THE SESSION'S LOCUS (his rule, 2026-08-28: "they
+          // should be able to do this from anywhere"). A CLOUD session gets
+          // the repo as its cloud checkout — desktop and web identically; the
+          // desktop-only extra is that a LOCAL session clones the repo into
+          // the working folder instead.
+          const locus = opts.getSource().kind;
+          if (!dg || locus !== "local") { pick({ kind: "cloud-repo", repo: r.fullName }); return; }
+          // LOCAL: clone into the current working folder — the empty-folder
           // check lives in main; a non-empty folder answers with exactly why.
           void (async () => {
             it.classList.add("busy");
