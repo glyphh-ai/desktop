@@ -3832,7 +3832,12 @@ async function init(): Promise<void> {
       // as close to the edges as they sit to each other.
       const margin = 7;
       let top = margin;
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      // The bar may be PARKED in the body-level portal layer (panels up,
+      // auto-hide off) — it still sits fixed across the top, so its band
+      // must still be reserved (his report, 2026-08-28: panels rode up
+      // underneath it when only the stage was searched).
+      const bar = body.querySelector<HTMLElement>(".echo-topbar")
+        ?? document.querySelector<HTMLElement>("#echo-dock-layer .echo-topbar");
       // A TUCKED dock is off screen — reserving its band left a dead strip
       // above every panel (his report, 2026-08-28). Reserve only when the
       // bar actually occupies the stage.
