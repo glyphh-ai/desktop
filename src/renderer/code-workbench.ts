@@ -8232,6 +8232,7 @@ async function init(): Promise<void> {
       tabs.push({ id: nextPreviewTabId++ });
       activate(tabs.length - 1);
       urlInput.focus();
+      urlInput.select();   // typing replaces, never appends (a new tab is a fresh address)
     };
     const closeTab = (idx: number): void => {
       const tabs = previewTabs(slot);
@@ -8316,6 +8317,20 @@ async function init(): Promise<void> {
       paintTabs();
       paintFrames();
     }
+    // CLICKING THE ADDRESS SELECTS IT (his report, 2026-08-28) — every browser
+    // does this, and without it a click dropped a caret mid-url and typing
+    // spliced into the old address. `focus` covers the keyboard route too;
+    // the guard lets a SECOND click place a caret, so editing part of a long
+    // url is still possible.
+    let urlWasFocused = false;
+    urlInput.addEventListener("focus", () => { urlWasFocused = false; });
+    urlInput.addEventListener("mouseup", (e) => {
+      if (urlWasFocused) return;
+      urlWasFocused = true;
+      // A drag-select must survive — only a plain click selects everything.
+      if (urlInput.selectionStart === urlInput.selectionEnd) { e.preventDefault(); urlInput.select(); }
+    });
+    urlInput.addEventListener("blur", () => { urlWasFocused = false; });
     urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") navigate(); });
     urlInput.addEventListener("blur", () => { if (urlInput.value.trim() && urlInput.value !== (active().url || "")) navigate(); });
     openFileBtn.addEventListener("click", async () => {
