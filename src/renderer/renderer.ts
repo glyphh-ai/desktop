@@ -119,6 +119,13 @@ declare global {
       windowClose: () => void;
       windowMinimize: () => void;
       windowMaximize: () => void;
+      // Ghost Mode (desktop): overlay window controls + the @-mention summon.
+      ghostClose: () => Promise<unknown>;
+      ghostBounds: () => Promise<{ x: number; y: number; width: number; height: number } | null>;
+      ghostSnap: (half: string) => Promise<{ ok: boolean; half?: string }>;
+      ghostResize: (size: { width?: number; height?: number }) => Promise<{ ok: boolean }>;
+      mentionCatalog: () => Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>;
+      ghostSummon: (model: string, prompt: string) => Promise<{ ok: boolean }>;
       panelsHide: () => void;
       panelsShow: () => void;
       panelsRefresh: () => void;
