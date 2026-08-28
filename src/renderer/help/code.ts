@@ -2937,22 +2937,35 @@ function paintPendingNotes(): void {
       paintPendingNotes();
     });
 
-    row.append(text, del);
+    // BOTTOM-RIGHT of the note (his spec, 2026-08-28): stop the agent and let
+    // it read this now. The run ends, flushPendingNotes sends every waiting
+    // note as the next turn, and the agent carries on from there — the same
+    // path as stopping by hand, one click instead of two.
+    const act = document.createElement("div");
+    act.className = "cpn-actions";
+    const interrupt = document.createElement("button");
+    interrupt.className = "cpn-act";
+    interrupt.type = "button";
+    interrupt.textContent = "Interrupt";
+    interrupt.title = "Stop the agent now — it reads what's waiting, then continues";
+    interrupt.addEventListener("click", () => { if (thinking) stopThinking(); });
+    act.appendChild(interrupt);
+
+    row.append(text, del, act);
     wrap.appendChild(row);
   }
 }
 
-/** Mid-run send: INJECT the composer's text into the live run — it lands as
- *  a user bubble now and starts the run's next turn at the between-turn
- *  boundary. Falls back to the pending-notes queue when the run can't take
- *  input (settling, or a run this surface has no inject handle for). */
-async function injectOrQueue(): Promise<void> {
+/** Mid-run Enter. Dot-commands are LOCAL and must still run here — ".drip rain"
+ *  typed during a run played nothing and confused the model when it went in as
+ *  prose. Everything else becomes a VISIBLE queued note (his spec, 2026-08-28):
+ *  it shows on the card with an × to take it back and an Interrupt to have the
+ *  agent read it now. Nothing is injected into the live turn behind the user's
+ *  back — if it is on screen, they can still change their mind about it. */
+function queueMidRun(): void {
   const ta = input();
   const text = ta?.value.trim();
   if (!ta || !text) return;
-  // Dot-commands are LOCAL — typed mid-run they must still run here, never be
-  // injected into the turn as prose (".drip rain" during a run played nothing
-  // and confused the model instead).
   const drip = /^\.drip(?:\s+(.+))?$/is.exec(text);
   if (drip) {
     ta.value = "";
@@ -2967,21 +2980,6 @@ async function injectOrQueue(): Promise<void> {
     autoGrow(ta);
     runDip(dip[1].trim());
     return;
-  }
-  const c = current();
-  const inject = (window.glyphh as unknown as { glyphhInject?: (chatId: string, text: string) => Promise<{ injected: boolean }> }).glyphhInject;
-  if (c && inject) {
-    try {
-      const r = await inject(c.id, text);
-      if (r?.injected) {
-        ta.value = "";
-        autoGrow(ta);
-        c.messages.push({ role: "user", text, at: Date.now() });
-        void saveStore();
-        if (c.id === currentId) { renderThread(); pinThreadToBottom(); }
-        return;
-      }
-    } catch { /* fall through to the queue */ }
   }
   queueNote();
 }
@@ -5548,11 +5546,12 @@ export function initCode(): void {
   ta?.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Mid-run, Enter INJECTS the message into the live run (the pod picks
-      // it up at the next between-turn boundary) — the button beside it stays
-      // the stop control. Injection refused (run settling, or no local
-      // handle) → queue as a note that sends when the run ends, as before.
-      if (thinking) void injectOrQueue();
+      // Mid-run, Enter QUEUES the message as a VISIBLE note (his report,
+      // 2026-08-28: the interrupt regressed). Injecting it silently into the
+      // live run left nothing on screen — no × to take it back, no way to
+      // make the agent read it now. The note card owns both: × drops it, and
+      // Interrupt stops the run so it is read and the agent continues.
+      if (thinking) queueMidRun();
       else send();
     } else if (e.key === "Tab" && e.shiftKey) {
       // Shift+Tab cycles the permission mode from the composer.
