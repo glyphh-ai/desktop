@@ -326,6 +326,15 @@ void (async () => {
           background: color-mix(in srgb, var(--bg) 82%, transparent) !important;
         }
         [data-home-scope="agent-dock"] .echo-stage canvas { display: none !important; }
+        /* The wall's TILES only ever get COVERED by cards in the app — never
+           hidden — so over a transparent frame they painted mid-window at
+           attach (his report, 2026-08-28). Hidden here until the CC lifts
+           (echo-shadow); visibility keeps the geometry the zoom math reads,
+           and hidden elements take no hits, so the field stays the app's. */
+        [data-home-scope="agent-dock"] .ws-echo-body:not(:has(.echo-cards.echo-shadow)) .echo-pages,
+        [data-home-scope="agent-dock"] .ws-echo-body:not(:has(.echo-cards.echo-shadow)) .echo-page-arrow {
+          visibility: hidden !important;
+        }
         [data-home-scope="agent-dock"], [data-home-scope="agent-dock"] body,
         [data-home-scope="agent-dock"] #home-root, [data-home-scope="agent-dock"] #help-overlay,
         [data-home-scope="agent-dock"] #help-layout, [data-home-scope="agent-dock"] #help-content,
