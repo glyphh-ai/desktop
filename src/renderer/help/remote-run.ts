@@ -399,6 +399,19 @@ function dispatchFrame(
  *  doesn't try to provision a cloud pod on open. */
 const RELAY_RUNTIME = (chat: RemoteChat): RuntimeBinding => ({ sessionId: chat.id, url: "relay", token: "relay" });
 
+// The id a run THREADS on — the same id the server keys the thread's active-run
+// pointer by, and thus the id every surface must OBSERVE by. A cloud-space session
+// re-enters an existing workspace, so it threads on the space's original id (not the
+// local chat id); everything else threads on the chat id. Both the producer (runRemoteTurn)
+// and the observer (attachToActiveRun) MUST derive this identically or a reattach polls the
+// wrong key and never finds the live run (his bug: web/mobile can't reattach to an off-desktop
+// session in progress).
+export function runThreadId(chat: RemoteChat): string {
+  return chat.source?.kind === "cloud-space"
+    ? String((chat.source as { space?: string }).space || chat.id)
+    : chat.id;
+}
+
 
 
 /**
@@ -438,9 +451,7 @@ export async function runRemoteTurn(
   // A cloud-space session RE-ENTERS an existing workspace: the run threads on
   // the space's original id so the pod resolves the same folder the space was
   // born with (and the fs panels scope identically — cloud-fs-router/wb-pod).
-  const threadId = chat.source?.kind === "cloud-space"
-    ? String((chat.source as { space?: string }).space || chat.id)
-    : chat.id;
+  const threadId = runThreadId(chat);
 
   let run: HarnessRunHandle;
   try {
@@ -597,7 +608,10 @@ export function attachToActiveRun(
   // stub handle is never dereferenced.
   const stubRun = {} as unknown as HarnessRunHandle;
   let state = { text: "", error: null as string | null };
-  const h = rs.attach(chat.id, { from: "0" });
+  // Observe by the SAME id the run threaded on — a cloud-space session's active-run
+  // pointer is keyed by its space id, not chat.id, so attaching by chat.id would poll
+  // the wrong key and never discover the live off-desktop run.
+  const h = rs.attach(runThreadId(chat), { from: "0" });
   h.onRun((runId) => { state = { text: "", error: null }; onRun?.(runId); });
   h.on((frame) => {
     dispatchFrame(frame, callbacks, state, stubRun);
