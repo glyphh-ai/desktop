@@ -14076,6 +14076,18 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
   padding: 0 4px;
 }
 .code-chipwrap { position: relative; min-width: 0; }
+/* A CHIP NEVER GROWS PAST ITS OWN SLOT (his report + screenshot, 2026-08-28:
+   a two-seat model label — "First seat: … / Second seat: …" — ran straight
+   over the Loop chip and the send spinner, and shoved the mic out of place).
+   The chip is not the flex item; its wrap is. The wrap could shrink, but the
+   chip inside kept its content width and simply OVERFLOWED, so the ellipsis
+   the max-width rules promised never kicked in. Bounding the chip to its wrap
+   makes it collapse in place instead of pushing its neighbours. */
+.code-chipwrap > .code-chip { max-width: 100%; }
+/* Text chips give way; ICONS never do — the mic, the +, the meter and the
+   speak-stop keep their size and their seat no matter how long a label gets. */
+#code-model-wrap, #code-effort-wrap, #code-mode-wrap { flex: 0 1 auto; }
+#code-mic-wrap, #code-speak-wrap, #code-plus-wrap, #code-ctx-wrap { flex: 0 0 auto; }
 .code-bar-left { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; }
 .code-bar-right { display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; min-width: 0; }
 
