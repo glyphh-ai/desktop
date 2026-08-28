@@ -3985,7 +3985,11 @@ async function init(): Promise<void> {
       // dock off the top — fixed and above EVERY layer (the agent panel was
       // burying it) — leaving the hint sliver; hovering the top edge peeks
       // the dock back over the panels. Pinned (auto-hide off) it stays put.
-      const dockTucked = hidden && autoHideOn;
+      // ATTACHED MODE (his spec, 2026-08-28): the dock is ALWAYS tucked over
+      // a foreign app, whatever the auto-hide setting says — the attached
+      // app reads as an open window, and open windows don't wear the dock.
+      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
+      const dockTucked = agentDock || (hidden && autoHideOn);
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
       if (!dockTucked) document.body.classList.remove("echo-dock-peek");
@@ -4004,10 +4008,9 @@ async function init(): Promise<void> {
       // covered proceeds as ever, cards take the FULL band, and the lock's
       // CSS pin (body.echo-agent-locked, !important) simply overrides the
       // tuck transform so the agent floats OVER the cards instead of hiding.
-      // ?solo=agent (the attached-agent window): the foreign app beneath the
-      // window IS the covering surface — covered is permanent there, and the
-      // lock pin overrides the tuck exactly as it does over cards.
-      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
+      // ?solo=agent: the foreign app beneath the window IS the covering
+      // surface — covered is permanent there (agentDock hoisted above), and
+      // the lock pin overrides the tuck exactly as it does over cards.
       const covered = agentDock || (hidden && !layoutUp);
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);

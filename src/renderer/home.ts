@@ -319,6 +319,12 @@ void (async () => {
         [data-home-scope="agent-dock"] .ws-echo-body,
         [data-home-scope="agent-dock"] .echo-veil,
         [data-home-scope="agent-dock"] .echo-stage { background: transparent !important; }
+        /* OPENING THE CC over the attached app (his spec, 2026-08-28): a
+           mildly transparent THEME wash over the whole window so the wall
+           reads — the app dims behind it instead of fighting the tiles. */
+        [data-home-scope="agent-dock"] .ws-echo-body:has(.echo-cards.echo-shadow) {
+          background: color-mix(in srgb, var(--bg) 82%, transparent) !important;
+        }
         [data-home-scope="agent-dock"] .echo-stage canvas { display: none !important; }
         [data-home-scope="agent-dock"], [data-home-scope="agent-dock"] body,
         [data-home-scope="agent-dock"] #home-root, [data-home-scope="agent-dock"] #help-overlay,
@@ -338,6 +344,9 @@ void (async () => {
       // …and -hidden: the tuck (the pill sliding away until hovered) keys off
       // THIS class — covered alone leaves the agent pinned open.
       document.body.classList.add("echo-wall-hidden");
+      // The dock starts tucked no matter the setting (attached mode only) —
+      // syncWallVisibility keeps enforcing it, this covers the first paint.
+      document.body.classList.add("echo-dock-tucked");
       gotoSection("code");
       // Click-through: only the agent's own surfaces take the mouse — a
       // POSITIVE scope; everything else forwards to the app beneath.
@@ -350,8 +359,11 @@ void (async () => {
         + ".echo-dock-hotstrip, .code-drop-up, .echo-folder-modal, .echo-page-arrow";
       let ignoring = true;
       document.addEventListener("mousemove", (e) => {
+        // The CC up over the app = the whole window is Glyphh's (the theme
+        // wash is showing) — every pixel is interactive until it closes.
+        const ccUp = !!document.querySelector(".echo-cards.echo-shadow");
         const el = document.elementFromPoint(e.clientX, e.clientY);
-        const interactive = !!el && !!(el as HTMLElement).closest(HIT);
+        const interactive = ccUp || (!!el && !!(el as HTMLElement).closest(HIT));
         if (interactive === ignoring) {
           ignoring = !interactive;
           window.glyphh.agentDockIgnoreMouse?.(ignoring);
