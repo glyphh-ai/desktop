@@ -365,7 +365,11 @@ void (async () => {
       // mouse; the transparent field between them forwards to the app.
       const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog, "
         + ".echo-topbar, #echo-dock-layer, .echo-card, .echo-div, "
-        + ".echo-dock-hotstrip, .code-drop-up, .echo-folder-modal, .echo-page-arrow";
+        + ".echo-dock-hotstrip, .code-drop-up, .echo-folder-modal, .echo-page-arrow, "
+        // Modals mount at body level OUTSIDE every listed surface — without
+        // these the settings modal (and any yo-modal) opened in the attached
+        // window forwarded its clicks to the app beneath: visible, dead.
+        + ".yo-modal, #settings-modal, #confirm-modal, .settings-modal-panel";
       let ignoring = true;
       document.addEventListener("mousemove", (e) => {
         // The CC up over the app = the whole window is Glyphh's (the theme
