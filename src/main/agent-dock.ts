@@ -201,8 +201,12 @@ export function registerAgentDockIpc(): void {
 
   globalShortcut.register("CommandOrControl+Shift+G", () => setEnabled(!enabled));
 
-  // Prototype: attach mode starts ON so the behavior is immediately visible.
-  setEnabled(true);
+  // Attach mode starts OFF — ⌘⇧G summons it. (The Aug 21 prototype started
+  // ON, which was safe then because every IPC handler registered before
+  // createWindow; today the dock window would boot at line ~490 of main's
+  // boot and spray 'No handler registered' for everything that registers
+  // later. Off-until-summoned kills the race and stops a surprise overlay
+  // on every launch.)
 }
 
 export function disposeAgentDock(): void {
