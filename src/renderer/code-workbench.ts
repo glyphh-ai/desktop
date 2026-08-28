@@ -2106,6 +2106,10 @@ async function init(): Promise<void> {
    * ⟲ resets. That's it — ordering via layouts comes later.
    */
   function renderEchoIntoSlot(body: HTMLElement, wrap: HTMLElement): void {
+    // A re-render mints a FRESH topbar — a stale one parked in the body layer
+    // would ghost beside it (his screenshot: doubled dock icons). Clear it.
+    document.getElementById("echo-dock-layer")?.replaceChildren();
+    dockHomeAnchor = null;
     body.classList.add("ws-echo-body");
     body.innerHTML = `
       <div class="echo-stage"><div class="echo-pages"></div><div class="echo-page-dots"></div></div>
@@ -2563,7 +2567,7 @@ async function init(): Promise<void> {
     /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
      *  icons render as dock slots. Click routing is delegated (topbar). */
     const reconcileDock = (): void => {
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       const byKey = entriesByKey();
       const have = new Map<string, HTMLElement>();
@@ -3334,8 +3338,12 @@ async function init(): Promise<void> {
     let dockZoomRaf = 0;
     const applyDockZoomAt = (clientX: number | null): void => {
       dockZoomRaf = 0;
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
+      // Over panels the dock keeps its EXACT at-rest size (his rule,
+      // 2026-08-28) — the magnification arc is a wall-surface flourish.
+      if (document.body.classList.contains("echo-wall-hidden")
+        || document.body.classList.contains("echo-dock-tucked")) clientX = null;
       const kids = Array.from(dockEl.children) as HTMLElement[];
       if (!kids.length) return;
       if (clientX == null || dockZoom <= 1.001) {
@@ -3382,7 +3390,7 @@ async function init(): Promise<void> {
         || document.body.classList.contains("wb-mouse-drag")
         || document.body.classList.contains("echo-drag");
       if (dragging) { queueDockZoom(null); return; }
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       if (document.body.classList.contains("echo-dock-tucked")
         && !document.body.classList.contains("echo-dock-peek")) { queueDockZoom(null); return; }
@@ -3913,7 +3921,7 @@ async function init(): Promise<void> {
       // showing (bare wall, or the shadow peek over open panels) the dock
       // shows; when the CC is covered it hides — UNLESS auto-hide is OFF,
       // which pins it always-on.
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      const bar = dockBarEl();
       const autoHideOn = document.body.classList.contains("echo-dock-autohide");
       // TUCK, don't vanish (his spec, 2026-08-28): auto-hide now slides the
       // dock off the top — fixed and above EVERY layer (the agent panel was
@@ -3923,6 +3931,21 @@ async function init(): Promise<void> {
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
       if (!dockTucked) document.body.classList.remove("echo-dock-peek");
+      // PARK the bar at body level while it must ride over panels; bring it
+      // home when the wall is the surface again. Same size either way (his
+      // rule: the dock never spreads when it unhides).
+      if (bar) {
+        if (hidden && bar.parentElement !== ensureDockLayer()) {
+          if (!dockHomeAnchor || !dockHomeAnchor.isConnected) {
+            dockHomeAnchor = document.createElement("div");
+            dockHomeAnchor.className = "echo-topbar-home";
+            bar.before(dockHomeAnchor);
+          }
+          ensureDockLayer().appendChild(bar);
+        } else if (!hidden && dockHomeAnchor?.isConnected && bar.parentElement !== dockHomeAnchor.parentElement) {
+          dockHomeAnchor.after(bar);
+        }
+      }
       // The CC + reset buttons live in the COMPOSER'S side band now (help/
       // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
       // live LAYOUT owns the surface (no dock, no wall reveal) and the layout
@@ -3973,7 +3996,7 @@ async function init(): Promise<void> {
       // traded icons open exactly like their page selves. Slots can NEVER be
       // deleted — only MOVED (dock ⇄ pages); membership + order persist
       // (echoDockOrder, owned by the launcher's reconcileDock).
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock")!;
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock")!;
       for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
       dockEl.addEventListener("click", (ev) => {
         const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");
@@ -5759,6 +5782,21 @@ async function init(): Promise<void> {
   // homes — the overlay holder (rail-hosted) and `.code-root` (docked/hidden) —
   // and this reconciler moves it between just those two, driven by one question:
   // is a coding-seat / echo-card placeholder visible while the anchor is `rail`?
+  /** The dock's body-level layer — the ONLY way the bar reliably beats the
+   *  agent (z-118) and app (z-120) layers. */
+  let dockLayer: HTMLDivElement | null = null;
+  let dockHomeAnchor: HTMLDivElement | null = null;
+  function ensureDockLayer(): HTMLDivElement {
+    if (dockLayer && dockLayer.isConnected) return dockLayer;
+    dockLayer = document.createElement("div");
+    dockLayer.id = "echo-dock-layer";
+    document.body.appendChild(dockLayer);
+    return dockLayer;
+  }
+  /** The topbar, wherever it currently lives (stage or the body layer). */
+  function dockBarEl(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(".echo-topbar");
+  }
   let agentLayer: HTMLDivElement | null = null;
   let agentHolder: HTMLDivElement | null = null;
   let agentSyncRaf = 0;
