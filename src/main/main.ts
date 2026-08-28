@@ -40,7 +40,6 @@ import { glyphhPath } from "./app-paths.js";
 import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
-import { registerGhostMode, destroyGhostMode } from "./ghost-mode";
 import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
@@ -778,9 +777,6 @@ async function boot() {
 
   // Global hotkey: Cmd+Y / Ctrl+Y
   registerHotkey(mainWindow!);
-  // Ghost Mode (restored 2026-08-28, his order): ⌘⇧G floats the agent over
-  // whatever app is frontmost. Desktop only — this is main-process by nature.
-  registerGhostMode();
 
   // App menu (Cmd+Q, Cmd+W, etc.)
   Menu.setApplicationMenu(
@@ -1309,7 +1305,6 @@ function cleanupAll(backstopMs = 4000) {
   // the background handles + hidden app-worker windows that otherwise keep the
   // Node event loop alive and window-all-closed from firing.
   const steps: Array<[string, () => void]> = [
-    ["ghostMode", () => destroyGhostMode()],
     ["globalShortcut", () => globalShortcut.unregisterAll()],
     ["mcpOAuthRefresh", () => stopMcpOAuthRefresh()],
     ["authTimers", () => cleanupAuthTimers()],

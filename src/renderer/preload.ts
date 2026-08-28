@@ -260,14 +260,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
-  // Ghost Mode overlay (desktop): dismiss, self-driven resize grips, snap
-  // halves, and the @-mention summon + alias table.
-  ghostClose: () => ipcRenderer.invoke("ghost-close"),
-  ghostBounds: () => ipcRenderer.invoke("ghost-bounds") as Promise<{ x: number; y: number; width: number; height: number } | null>,
-  ghostSnap: (half: string) => ipcRenderer.invoke("ghost-snap", half) as Promise<{ ok: boolean; half?: string }>,
-  ghostResize: (size: { width?: number; height?: number }) => ipcRenderer.invoke("ghost-resize", size) as Promise<{ ok: boolean }>,
-  mentionCatalog: () => ipcRenderer.invoke("mention-catalog") as Promise<{ ok: boolean; pairs?: Record<string, string>; error?: string }>,
-  ghostSummon: (model: string, prompt: string) => ipcRenderer.invoke("ghost-summon", model, prompt) as Promise<{ ok: boolean }>,
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },

@@ -6160,47 +6160,6 @@ async function init(): Promise<void> {
       });
     });
 
-    // @-mention summon inside app webviews (desktop; restored 2026-08-28):
-    // inject a matcher on every load ("@<provider>-<model> prompt…" + Enter →
-    // clear the input, message out) and route matches to the ghost overlay.
-    // A per-injection token keeps page scripts from forging the console
-    // message. On web the bridge methods don't exist and this is inert.
-    const mentionApi = (window as unknown as { glyphh?: { mentionCatalog?: () => Promise<{ ok: boolean; pairs?: Record<string, string> }>; ghostSummon?: (m: string, p: string) => Promise<unknown> } }).glyphh;
-    const mentionToken = `t${Math.random().toString(36).slice(2)}`;
-    webview.addEventListener("dom-ready", () => {
-      void mentionApi?.mentionCatalog?.().then((r) => {
-        if (!r?.ok || !r.pairs) return;
-        const js = `(function(){
-          if(window.__yoMention)return;window.__yoMention=true;
-          var P=${JSON.stringify(r.pairs)},TK=${JSON.stringify(mentionToken)};
-          var RE=/^@([^\s-]+)-(\S+)(?:\s+([\s\S]*))?$/;
-          document.addEventListener('keydown',function(e){
-            if(e.key!=='Enter'||e.shiftKey)return;
-            var a=document.activeElement;if(!a)return;
-            var field=a.tagName==='INPUT'||a.tagName==='TEXTAREA';
-            if(!field&&!a.isContentEditable)return;
-            var t=(field?a.value:(a.innerText||a.textContent||'')).trim();
-            var m=t.match(RE);if(!m)return;
-            var id=P[(m[1]+'-'+m[2]).toLowerCase()];if(!id)return;
-            e.preventDefault();e.stopImmediatePropagation();e.stopPropagation();
-            if(field){a.value='';a.dispatchEvent(new Event('input',{bubbles:true}));}
-            else{a.textContent='';}
-            console.log('__YO_MENTION__'+JSON.stringify({t:TK,model:id,prompt:(m[3]||'').trim()}));
-          },true);
-        })();`;
-        void webview.executeJavaScript?.(js);
-      }).catch(() => { /* signed out / offline — no mentions this load */ });
-    });
-    webview.addEventListener("console-message", (e) => {
-      const msg = (e as unknown as { message?: string }).message;
-      if (typeof msg !== "string" || !msg.startsWith("__YO_MENTION__")) return;
-      try {
-        const d = JSON.parse(msg.slice("__YO_MENTION__".length)) as { t?: string; model?: string; prompt?: string };
-        if (d.t !== mentionToken || !d.model) return;
-        void mentionApi?.ghostSummon?.(String(d.model), String(d.prompt || "").slice(0, 4000));
-      } catch { /* malformed — ignore */ }
-    });
-
     // Browser chrome: back / fwd / reload + address bar. It lives inside the
     // holder (which persists across renderRails) so it stays wired to the
     // webview it drives.
