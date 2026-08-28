@@ -3512,19 +3512,28 @@ async function init(): Promise<void> {
       activeIdx?: number;
       tabs?: Array<{ url: string; title?: string }>;
       activeTab?: number;
-      /** THE NATIVE GLYPHH PANELS (Slides, Docs, Sheets, Design, Memory,
-       *  Image/Video/Sound, Band, Drive) — his report, 2026-08-28: a workspace
-       *  that opened deck A and image B came back on their libraries. Those
-       *  panels already track what they have open ON THEIR SLOT (file/title/
-       *  slide, assetId/page), so the identifying state travels as a bag and
-       *  is grafted back onto the fresh slot at open. Plain JSON data, no DOM
-       *  or handles — the volatile keys (id, view, sticky) are dropped. */
+      /** WHAT A PANEL HAD OPEN — his report, 2026-08-28: a workspace that
+       *  opened deck A and image B came back on their libraries. Panels track
+       *  their open document ON THEIR SLOT (Slides file/title/slide, media
+       *  assetId/page, Releases slug, Tasks taskId, Plan mode…), so the
+       *  identifying scalars travel as a bag and are grafted back onto the
+       *  fresh slot at open. Plain JSON only — the volatile keys (id, view,
+       *  sticky) and every object/handle are dropped. */
       slot?: Record<string, unknown>;
     }
-    /** The panels whose open document rides its slot. Monaco and Preview are
-     *  NOT here — they carry richer state (file contents, tab objects) through
-     *  their own `files` / `tabs` fields above. */
-    const NATIVE_DOC_VIEWS = new Set(["gpoint", "gdoc", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband", "gdrive"]);
+    /** EVERY internal panel remembers what it had open (his order,
+     *  2026-08-28: "all of them"), so the rule is an EXCLUSION list — a panel
+     *  added later is covered without anyone remembering to enlist it.
+     *
+     *  Out, and why:
+     *   monaco / preview — richer state of their own (file contents, tab
+     *     objects) through `files` / `tabs` above;
+     *   terminal — a pty cannot be frozen, so a terminal always restarts;
+     *   echo — the wall IS the surface a workspace opens over, never a
+     *     document;
+     *   settings — his exception: it always opens at its front page. */
+    const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings", "section"]);
+    const holdsDocState = (view: string): boolean => !NO_DOC_STATE.has(view);
     /** Copy a native panel's slot minus the keys that must never be restored. */
     const slotDocState = (slot: Record<string, unknown>): Record<string, unknown> | undefined => {
       const out: Record<string, unknown> = {};
@@ -3536,7 +3545,7 @@ async function init(): Promise<void> {
       return Object.keys(out).length ? out : undefined;
     };
     const captureCellState = (e: TileEntry): EchoCellState | undefined => {
-      if (e.toolSlot && NATIVE_DOC_VIEWS.has(e.toolSlot.view)) {
+      if (e.toolSlot && holdsDocState(e.toolSlot.view)) {
         const st = slotDocState(e.toolSlot as unknown as Record<string, unknown>);
         return st ? { slot: st } : undefined;
       }
@@ -4868,7 +4877,7 @@ async function init(): Promise<void> {
             // image) — the slot fields it tracks are grafted back before the
             // body paints, so the panel mounts straight into the document
             // instead of its library.
-            if (st?.slot && entry.toolSlot && NATIVE_DOC_VIEWS.has(entry.toolSlot.view)) {
+            if (st?.slot && entry.toolSlot && holdsDocState(entry.toolSlot.view)) {
               Object.assign(entry.toolSlot as unknown as Record<string, unknown>, st.slot);
               rerenderToolBody(entry);
             }
