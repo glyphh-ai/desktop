@@ -291,9 +291,19 @@ export class HomeView {
    *  No-op while locked — the lockout overlay must stay visible. */
   show(win: BrowserWindow): void {
     if (win.isDestroyed() || this.locked) return;
-    this.hidden = false;
     this.ensureCreated(win);
     const view = this.view!;
+    // RE-SHOWING AN ALREADY-ATTACHED VIEW WEDGES INPUT (his report,
+    // 2026-08-28: after closing settings, clicks and zoom were dead until a
+    // window resize). closeSettingsModal calls panelsShow unconditionally;
+    // re-running setBrowserView + setAutoResize on an attached view breaks
+    // Electron's hit-testing until the next real resize recomputes bounds.
+    // A show of a shown view is focus-only.
+    if (!this.hidden && win.getBrowserViews().includes(view)) {
+      view.webContents.focus();
+      return;
+    }
+    this.hidden = false;
     win.setBrowserView(view);
     const [w, h] = win.getContentSize();
     view.setBounds({ x: 0, y: 0, width: w, height: h });
