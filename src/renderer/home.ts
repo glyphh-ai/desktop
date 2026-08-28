@@ -320,6 +320,9 @@ void (async () => {
       // Assert the covered state NOW — syncWallVisibility only re-runs when
       // cards open/close, which never happens in this window.
       document.body.classList.add("echo-wall-covered");
+      // …and -hidden: the tuck (the pill sliding away until hovered) keys off
+      // THIS class — covered alone leaves the agent pinned open.
+      document.body.classList.add("echo-wall-hidden");
       gotoSection("code");
       // Click-through: only the agent's own surfaces take the mouse — a
       // POSITIVE scope; everything else forwards to the app beneath.

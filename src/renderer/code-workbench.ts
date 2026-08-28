@@ -4015,7 +4015,11 @@ async function init(): Promise<void> {
       // covered excludes live layouts on purpose (other consumers key off
       // that), but chrome that belongs to the command center alone (the
       // Dashboard | Desktop surface tabs) must hide for layouts too.
-      document.body.classList.toggle("echo-wall-hidden", hidden);
+      // agentDock forces this one too (his report, 2026-08-28: the pill
+      // stopped hiding over external windows) — the covered/hidden split
+      // postdates the Aug 21 dock code, and the TUCK's CSS keys off
+      // echo-wall-hidden, not -covered.
+      document.body.classList.toggle("echo-wall-hidden", agentDock || hidden);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
       // leaves focus inside the agent — :focus-within then pins it up until a
       // hover cycle releases it ("doesn't hide right away"). The moment the
