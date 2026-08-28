@@ -19987,8 +19987,8 @@ body.echo-dock-autohide.echo-has-panels .echo-dock-btn[data-dock="cc"] { display
   transition: transform 0.22s ease;
   pointer-events: auto;
   /* TRANSPARENT over the panels (his order) — the icons carry themselves,
-     exactly as they do on the wall, at their exact wall size (the portal
-     freezes each slot's measured width; padding here would shift them). */
+     exactly as they do on the wall, at their stylesheet size (padding here
+     would shift them). */
   background: transparent; border: none; padding: 0;
 }
 body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {

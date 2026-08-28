@@ -15,9 +15,9 @@
  *     returning it to its stage home when the wall is the surface;
  *   - a stale parked bar (the wall re-rendered and minted a fresh one) is
  *     removed on the next tick — no ghosts;
- *   - parking freezes the dock at its EXACT at-rest size (his rule): the
- *     zoom code looks the dock up through the STAGE, so a parked dock is
- *     invisible to it, and any transforms it left behind are cleared here.
+ *   - parking never resizes anything (his rule): the slots keep their
+ *     stylesheet size — the same clamp() the wall uses — and any transforms
+ *     the zoom left behind are cleared on the way over.
  *
  * Everything is wrapped so a failure degrades to "dock stays in the stage"
  * — never to a dead wall.
