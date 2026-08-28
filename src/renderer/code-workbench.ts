@@ -3670,7 +3670,12 @@ async function init(): Promise<void> {
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
-      if (!openList.length) return;
+      // ATTACHED MODE: the CC lifts over the foreign app even with nothing
+      // open — the app IS the covering surface, so an empty frame is the
+      // normal resting state, not a reason to refuse (his report,
+      // 2026-08-28: the CC icon did nothing).
+      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
+      if (!openList.length && !agentDock) return;
       setShadow(!shadowPinned, !shadowPinned);
     };
     // ESC closes the lifted command center when apps/a layout are open behind
@@ -4070,8 +4075,11 @@ async function init(): Promise<void> {
           }
           // CC and Close all are permanent slots that go INERT with nothing
           // open (his order, 2026-08-28) — dim in the row, but never acting.
+          // ATTACHED MODE exempts the CC: over a foreign app it is the way
+          // to the wall, live from the first summon.
           if ((key === "cc" || key === "closeall")
-            && !document.body.classList.contains("echo-has-panels")) return;
+            && !document.body.classList.contains("echo-has-panels")
+            && !(key === "cc" && document.documentElement.getAttribute("data-home-scope") === "agent-dock")) return;
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "closeall") {
             if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();

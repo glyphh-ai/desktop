@@ -20011,6 +20011,11 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"],
 body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"] {
   opacity: 0.34; cursor: default;
 }
+/* ATTACHED MODE: the CC slot is live from the first summon — over a foreign
+   app it is the way to the wall, panels open or not. */
+html[data-home-scope="agent-dock"] body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"] {
+  opacity: 1; cursor: pointer;
+}
 /* Dim = inert: no hover ring, no hover zoom (the arc still carries them so
    the row never breaks its rhythm). */
 body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"]:hover,
