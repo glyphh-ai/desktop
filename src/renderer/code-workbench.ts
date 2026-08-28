@@ -2154,7 +2154,7 @@ async function init(): Promise<void> {
     // the command center clicks softly. Delegated on the whole wall body so
     // page tiles AND dock slots share it; entering a button fires once
     // (relatedTarget guard), and ui-sounds.ts floors burst rate.
-    body.addEventListener("mouseover", (ev) => {
+    document.addEventListener("mouseover", (ev) => {
       const btn = (ev.target as HTMLElement | null)?.closest?.(".echo-app-btn, .echo-dock-btn");
       if (!btn) return;
       const from = (ev as MouseEvent).relatedTarget as HTMLElement | null;
@@ -2564,7 +2564,7 @@ async function init(): Promise<void> {
     /** Sync the DOCK DOM to dockKeys: nav buttons reorder/hide, traded page
      *  icons render as dock slots. Click routing is delegated (topbar). */
     const reconcileDock = (): void => {
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       const byKey = entriesByKey();
       const have = new Map<string, HTMLElement>();
@@ -3335,7 +3335,7 @@ async function init(): Promise<void> {
     let dockZoomRaf = 0;
     const applyDockZoomAt = (clientX: number | null): void => {
       dockZoomRaf = 0;
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       const kids = Array.from(dockEl.children) as HTMLElement[];
       if (!kids.length) return;
@@ -3378,12 +3378,12 @@ async function init(): Promise<void> {
     // ONE pointer check drives the dock ZOOM. (The hover-peek is gone —
     // syncWallVisibility owns dock visibility now: CC showing → dock shows;
     // covered → hidden unless auto-hide is off.) Drags suspend the zoom.
-    body.addEventListener("mousemove", (ev) => {
+    document.addEventListener("mousemove", (ev) => {
       const dragging = dragIconKey != null
         || document.body.classList.contains("wb-mouse-drag")
         || document.body.classList.contains("echo-drag");
       if (dragging) { queueDockZoom(null); return; }
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock");
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
       if (document.body.classList.contains("echo-dock-tucked")
         && !document.body.classList.contains("echo-dock-peek")) { queueDockZoom(null); return; }
@@ -3391,7 +3391,7 @@ async function init(): Promise<void> {
       const near = r.width > 0 && r.bottom > 0 && ev.clientY >= r.top - 26 && ev.clientY <= r.bottom + 26;
       queueDockZoom(near ? ev.clientX : null);
     });
-    body.addEventListener("mouseleave", () => { queueDockZoom(null); });
+    document.addEventListener("mouseleave", () => { queueDockZoom(null); });
     // The tucked dock's hot zone. Document mousemove can't be the trigger —
     // a WEBVIEW under the cursor swallows host mouse events, and covered-wall
     // panels reach the top edge — so a host-level strip (above every panel
@@ -3974,7 +3974,7 @@ async function init(): Promise<void> {
       // traded icons open exactly like their page selves. Slots can NEVER be
       // deleted — only MOVED (dock ⇄ pages); membership + order persist
       // (echoDockOrder, owned by the launcher's reconcileDock).
-      const dockEl = body.querySelector<HTMLElement>(".echo-dock")!;
+      const dockEl = document.querySelector<HTMLElement>(".echo-dock")!;
       for (const b of Array.from(dockEl.children) as HTMLElement[]) wireIconDrag(b, b.dataset.dock || null);
       dockEl.addEventListener("click", (ev) => {
         const b = (ev.target as HTMLElement).closest<HTMLElement>(".echo-dock-btn");

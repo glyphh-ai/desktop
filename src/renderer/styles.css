@@ -19969,8 +19969,8 @@ html.glyphh-web .settings-nav-item.dash-plain { display: none; }
    2026-08-28): with auto-hide on, the dock vanishes with the wall and the
    composer's CC button is the summoner; pinned always-on, the dock needs its
    own way back to the wall. */
-.echo-dock-btn[data-dock="cc"] { display: none; }
-body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-flex; }
+/* CC is ALWAYS in the dock (his order, 2026-08-28 — supersedes the
+   auto-hide-off-only gate from earlier the same day). */
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
 /* The PARKED bar (dock-portal.ts moved it into the body-level layer while
    panels are up). Same icon sizing variables as at rest — the bar must look
@@ -19982,9 +19982,9 @@ body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-f
   transform: translate(-50%, 0);
   transition: transform 0.22s ease;
   pointer-events: auto;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 16px; padding: 8px 14px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  /* TRANSPARENT over the panels (his order) — the icons carry themselves,
+     exactly as they do on the wall. */
+  background: transparent; border: none; padding: 8px 14px;
 }
 body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
