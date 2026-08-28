@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { disposeAgentDock } from "./agent-dock";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
 import fs from "fs";
 import os from "os";
@@ -129,6 +130,12 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     const mainWindow = getMainWindow();
     logout();
     hidePanels();
+    // The ATTACHED-AGENT overlay is a second renderer with the whole session
+    // surface in memory (his report, 2026-08-28: "can't be logged out — the
+    // user never resets"). Reloading only the main window left it live and
+    // signed-in over whatever app it rode. Sign-out tears it down with
+    // everything else; ⌘⇧G after the next login starts it fresh.
+    try { disposeAgentDock(); } catch { /* already down */ }
     // The identity chips reset immediately — without this the rail kept the
     // previous user's name while signed out (and, before the home-view send
     // existed, for the whole next login too).
