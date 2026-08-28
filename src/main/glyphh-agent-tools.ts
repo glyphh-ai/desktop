@@ -76,6 +76,7 @@ import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
 import { panelRead, panelScreenshot, rpaTargetSlugs } from "./rpa";
+import { captureAttachedWindow } from "./agent-dock";
 
 const OUTPUT_CAP = 8000;
 const READ_CAP = 24000;
@@ -1544,6 +1545,16 @@ const TOOLS: ToolDef[] = [
         const hint = open.length ? ` Open panels: ${open.join(", ")}.` : " No panels are open.";
         return `ERROR: ${(e as Error).message}.${hint}`;
       }
+    },
+  },
+  {
+    name: "capture_attached_window",
+    doc: "capture_attached_window() — when you are the ATTACHED agent riding another desktop app (the ⌘⇧G pill), capture THAT app's window to a PNG and return its path — then use your file-reading tool on the path to actually look at it. This is the external window beneath you, NOT a workspace panel (those are read_panel). Captures the current viewport only; scrolled-away content is not in it. macOS may ask for Screen Recording permission on first use.",
+    action: () => ({ kind: "read", title: "Capture the attached window" }),
+    run: async () => {
+      const r = await captureAttachedWindow();
+      if (!r.ok || !r.path) return `ERROR: ${r.error || "capture failed"}`;
+      return `Captured the attached window (${r.proc || "unknown app"}) to ${r.path} — read that file to see it.`;
     },
   },
   {

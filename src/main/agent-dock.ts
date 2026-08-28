@@ -179,6 +179,29 @@ function setEnabled(on: boolean): void {
   }
 }
 
+/**
+ * Capture the ATTACHED window (the app the pill rides) to a temp PNG — the
+ * window's own layer via its CGWindow id, so the pill and anything overlapping
+ * never appear. Shared by the + menu's "Record this window" and the agent's
+ * capture_attached_window tool. Needs the one-time Screen Recording grant;
+ * macOS raises that prompt itself on the first attempt.
+ */
+export function captureAttachedWindow(): Promise<{ ok: boolean; path?: string; proc?: string; error?: string }> {
+  const t = lastTarget;
+  if (!t?.cgid) return Promise.resolve({ ok: false, error: "no attached window — is the pill riding an app right now?" });
+  const file = path.join(app.getPath("temp"), `glyphh-window-${Date.now()}.png`);
+  return new Promise((resolve) => {
+    // -l<id> captures that window's layer; -o drops the shadow; -x mutes.
+    execFile("screencapture", [`-l${t.cgid}`, "-o", "-x", file], { timeout: 8000 }, (err) => {
+      if (err || !fs.existsSync(file) || fs.statSync(file).size < 1024) {
+        resolve({ ok: false, error: "capture failed — grant Screen Recording to Glyphh in System Settings → Privacy & Security, then try again" });
+        return;
+      }
+      resolve({ ok: true, path: file, proc: t.proc });
+    });
+  });
+}
+
 export function registerAgentDockIpc(): void {
   if (process.platform !== "darwin") return;
 
@@ -207,19 +230,7 @@ export function registerAgentDockIpc(): void {
   // useless — the renderer tells the user where to grant it.
   ipcMain.handle("agent-dock:capture-target", async (event) => {
     if (!dockWin || dockWin.isDestroyed() || event.sender !== dockWin.webContents) return { ok: false, error: "not the dock" };
-    const t = lastTarget;
-    if (!t?.cgid) return { ok: false, error: "no attached window" };
-    const file = path.join(app.getPath("temp"), `glyphh-window-${Date.now()}.png`);
-    return await new Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>((resolve) => {
-      // -l<id> captures that window's layer; -o drops the shadow; -x mutes.
-      execFile("screencapture", [`-l${t.cgid}`, "-o", "-x", file], { timeout: 8000 }, (err) => {
-        if (err || !fs.existsSync(file) || fs.statSync(file).size < 1024) {
-          resolve({ ok: false, error: "capture failed — grant Screen Recording to Glyphh in System Settings → Privacy & Security, then try again" });
-          return;
-        }
-        resolve({ ok: true, path: file, proc: t.proc });
-      });
-    });
+    return captureAttachedWindow();
   });
 
   globalShortcut.register("CommandOrControl+Shift+G", () => setEnabled(!enabled));
