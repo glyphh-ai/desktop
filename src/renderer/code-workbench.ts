@@ -4014,6 +4014,10 @@ async function init(): Promise<void> {
             void openAgentPanel();
             return;
           }
+          // CC and Close all are permanent slots that go INERT with nothing
+          // open (his order, 2026-08-28) — dim in the row, but never acting.
+          if ((key === "cc" || key === "closeall")
+            && !document.body.classList.contains("echo-has-panels")) return;
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "closeall") {
             if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();

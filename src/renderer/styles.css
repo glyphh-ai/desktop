@@ -19972,11 +19972,29 @@ html.glyphh-web .settings-nav-item.dash-plain { display: none; }
 /* CC shows ONLY while auto-hide is ON and panels are open (his order,
    2026-08-28, third revision — supersedes always-visible): tucked/peeked
    over panels, CC is the way back to the wall; on the bare wall it is
-   redundant. Sits RIGHT of Sign out. Gated exactly like Close all (his
-   correction, 2026-08-28): ANY app or layout open — the auto-hide state
-   has nothing to do with it. */
-.echo-dock-btn[data-dock="cc"] { display: none; }
-body.echo-has-panels .echo-dock-btn[data-dock="cc"] { display: inline-flex; }
+   redundant. Sits RIGHT of Sign out.
+
+   ALWAYS PRESENT (his order, 2026-08-28): CC and Close all are permanent
+   dock slots — hiding them reshuffled the row and moved wherever the user
+   had dragged them. With nothing open they simply go DIM and inert; the
+   context menu offers no delete for fixed nav slots, so they can be
+   reordered but never removed. */
+.echo-dock-btn[data-dock="cc"],
+.echo-dock-btn[data-dock="closeall"] { display: inline-flex; }
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"],
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"] {
+  opacity: 0.34; cursor: default;
+}
+/* Dim = inert: no hover ring, no hover zoom (the arc still carries them so
+   the row never breaks its rhythm). */
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"]:hover,
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover {
+  box-shadow: none;
+}
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="cc"]:hover:not([style*="transform"]),
+body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style*="transform"]) {
+  transform: none;
+}
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
 /* The PARKED bar (dock-portal.ts moved it into the body-level layer while
    panels are up). Same icon sizing variables as at rest — the bar must look
@@ -20014,9 +20032,7 @@ body.echo-dock-tucked .echo-dock-hotstrip {
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
 
-/* Close-all: only while something is open. */
-.echo-dock-btn[data-dock="closeall"] { display: none; }
-body.echo-has-panels .echo-dock-btn[data-dock="closeall"] { display: inline-flex; }
+/* (Close-all's always-present + dim-when-idle rules live with CC's above.) */
 /* The layout bar RETIRES (his order, 2026-08-28): its pill + tooltip sat in
    the dock's hover zone and double-served the new Close-all slot. Hidden,
    not deleted. */
