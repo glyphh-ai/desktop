@@ -19972,17 +19972,20 @@ html.glyphh-web .settings-nav-item.dash-plain { display: none; }
 .echo-dock-btn[data-dock="cc"] { display: none; }
 body:not(.echo-dock-autohide) .echo-dock-btn[data-dock="cc"] { display: inline-flex; }
 /* ── Auto-hidden dock: tucked off-top, hint sliver, hover peek ──────────── */
-/* Tucked: FIXED at the viewport top so no panel layer can bury it —
-   #code-wb-applayer rides z-120 and the agent layer z-118; the dock peeks
-   at 130, above both. */
+/* WHENEVER the wall is off screen the dock rides FIXED at z-130 — above the
+   app layer (120) and the agent layer (118) that were burying it (his
+   report ×2: 'STILL BEHIND the agent'). Tucked (auto-hide on) it also
+   slides off-top; peek slides it back. */
+body.echo-wall-hidden .ws-echo-body .echo-topbar,
 body.echo-dock-tucked .ws-echo-body .echo-topbar {
-  position: fixed; top: 16px; left: 50%;
-  transform: translate(-50%, calc(-100% - 24px));
+  position: fixed; top: 16px; left: 50%; transform: translate(-50%, 0);
   transition: transform 0.22s ease;
   z-index: 130;
   visibility: visible;
 }
-body.echo-dock-tucked.echo-dock-peek .ws-echo-body .echo-topbar { transform: translate(-50%, 0); }
+body.echo-dock-tucked:not(.echo-dock-peek) .ws-echo-body .echo-topbar {
+  transform: translate(-50%, calc(-100% - 24px));
+}
 /* The hint — the same "something is hidden here" sliver the composer tuck
    uses, at the top center. Gone while the dock is peeked out. */
 body.echo-dock-tucked:not(.echo-dock-peek)::after {
@@ -19999,3 +20002,11 @@ body.echo-dock-tucked .echo-dock-hotstrip {
   z-index: 131; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
+
+/* Close-all: only while something is open. */
+.echo-dock-btn[data-dock="closeall"] { display: none; }
+body.echo-has-panels .echo-dock-btn[data-dock="closeall"] { display: inline-flex; }
+/* The layout bar RETIRES (his order, 2026-08-28): its pill + tooltip sat in
+   the dock's hover zone and double-served the new Close-all slot. Hidden,
+   not deleted. */
+.echo-layout-bar { display: none !important; }

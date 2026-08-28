@@ -306,7 +306,8 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
-].filter((d) => !IS_WEB_TARGET || d.key !== "drips");
+  { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
+  ].filter((d) => !IS_WEB_TARGET || d.key !== "drips");
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -2519,8 +2520,8 @@ async function init(): Promise<void> {
     };
     /** Land a dragged key ON THE PAGES at (optionally) a target entry. */
     const moveKeyToPage = (key: string, at: TileEntry | null): void => {
-      // Settings + CC stay put (his orders) — see the dock reconcile.
-      if (key === "settings" || key === "dock:settings" || key === "cc" || key === "dock:cc") return;
+      // Settings + CC + Close-all stay put (his orders) — see the reconcile.
+      if (["settings", "dock:settings", "cc", "dock:cc", "closeall", "dock:closeall"].includes(key)) return;
       const band = wallBands[0]!;
       let entry = entriesByKey().get(key) ?? null;
       if (!entry) {
@@ -3149,16 +3150,12 @@ async function init(): Promise<void> {
           if (d.key === "glyphh") dockKeys.unshift(d.key);
           else dockKeys.push(d.key);
         }
-        // CC is a fixed control too (his order, 2026-08-28) — same rules as
-        // Settings below. It only RENDERS with auto-hide off (CSS), but its
-        // dock seat is permanent so flipping the setting never re-orders.
-        if (!dockKeys.includes("cc")) dockKeys.splice(Math.max(dockKeys.length - 1, 0), 0, "cc");
-        // SETTINGS IS NOT TRADEABLE (his order, 2026-08-26). On app-web the
-        // dock is the ONLY door into the app's own settings, and the dock is
-        // rebuilt from a SAVED order — so a pref written before Settings
-        // shipped, or one that traded it onto the pages, dropped it for good.
-        // It is a fixed system control, not an app icon: always in the dock.
-        if (!dockKeys.includes("settings")) dockKeys.push("settings");
+        // THE FIXED TAIL (his orders, 2026-08-26/28): Settings, then CC,
+        // then Sign out, then Close all — in that order, whatever a saved
+        // pref says. These are system controls, not app icons; stale orders
+        // kept re-seating them (cc landed RIGHT of the power button).
+        const TAIL = ["settings", "cc", "logout", "closeall"];
+        dockKeys = [...dockKeys.filter((k) => !TAIL.includes(k)), ...TAIL];
       }
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
@@ -3177,7 +3174,7 @@ async function init(): Promise<void> {
       const pageTiles: EchoTile[] = [];
       const seenK = new Set<string>();
       for (const k of savedPageOrder) {
-        if (k === "dock:settings" || k === "dock:cc") continue;  // fixed in the dock — never page tiles
+        if (k === "dock:settings" || k === "dock:cc" || k === "dock:closeall") continue;  // fixed in the dock — never page tiles
         if (filed.has(k)) continue;   // lives inside a folder, not on the pages
         const t = byK.get(k) ?? (k.startsWith("dock:") ? navTileFor(k.slice(5)) : null);
         if (!t || !t.orderKey || seenK.has(t.orderKey)) continue;
@@ -3989,6 +3986,11 @@ async function init(): Promise<void> {
             return;
           }
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
+          if (key === "closeall") {
+            if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();
+            else resetEcho();   // loose panels: close everything, back to the CC
+            return;
+          }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
@@ -4088,7 +4090,9 @@ async function init(): Promise<void> {
       // (the old order) painted each state with the other's geometry.
       const agentInLayout = openList.some((e) => e.layoutId != null && e.tile.kind === "agent");
       document.body.classList.toggle("echo-agent-in-layout", agentInLayout);
-      if (!n) { paintDividers(false); syncWallVisibility(); paintLayoutBar(); return; }   // no panels ⇒ no seams
+      // Close-all shows only while there is something TO close.
+      document.body.classList.toggle("echo-has-panels", openList.length > 0);
+      if (!n) { document.body.classList.remove("echo-has-panels"); paintDividers(false); syncWallVisibility(); paintLayoutBar(); return; }   // no panels ⇒ no seams
       const grid = gridRects();
       const flow = flowRects(openList.filter((e) => !(grid && grid.has(e))));
       openList.forEach((e) => {
