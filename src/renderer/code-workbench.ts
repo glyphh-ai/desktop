@@ -9206,6 +9206,13 @@ async function init(): Promise<void> {
     openLayoutRow(layout, rows);
     return true;
   };
+  /** `.dip refresh` — reload whatever webview is on top (a panel card first,
+   *  then a rail slot). A native panel has nothing to reload; it is left be. */
+  (window as unknown as { __wbReloadFocused?: () => void }).__wbReloadFocused = () => {
+    const wv = (document.querySelector(".echo-card webview") ?? document.querySelector(".ws-rail-slot webview")) as
+      ({ reload?: () => void } | null);
+    wv?.reload?.();
+  };
   wbApp.__wbListApps = () => [...appSlots().map((s) => ({ slug: s.slug, name: s.name })), ...(echoCtl?.list() ?? [])];
   wbApp.__wbCloseApp = (slug) => (echoCtl?.close(slug) || closeWbApp(slug));
   wbApp.__wbFocusApp = (slug) => {

@@ -3251,6 +3251,59 @@ export function showWorkspaceSurface(): void {
   go();
 }
 
+/** The panel/app/layout a bare ref resolves to. Tool views first (they are
+ *  exact names), then a saved workspace, then an app, then a URL. */
+async function dipOpenRef(ref: string): Promise<boolean> {
+  const w = window as unknown as {
+    __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
+    __wbOpenTool?: (v: string) => void;
+    __wbOpenPopup?: (url: string) => void;
+  };
+  const key = ref.trim().toLowerCase();
+  if (!key) return false;
+  // A URL opens in a Browser panel — ".dip https://…" is navigation too.
+  if (/^https?:\/\//i.test(ref) || /^[\w-]+(\.[\w-]+)+(\/|$)/.test(ref)) {
+    w.__wbOpenPopup?.(/^https?:/i.test(ref) ? ref : `https://${ref}`);
+    return true;
+  }
+  const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor",
+    "releases", "tasks", "gpoint", "slides", "gdoc", "docs", "gdrive", "drive", "gsheet", "sheets",
+    "gdesign", "design", "gmemory", "memory", "gimage", "image", "gvideo", "video", "gsound", "sound", "gband", "band"]);
+  if (TOOLS.has(key)) {
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", slides: "gpoint", docs: "gdoc",
+      drive: "gdrive", sheets: "gsheet", design: "gdesign", memory: "gmemory", image: "gimage", video: "gvideo",
+      sound: "gsound", band: "gband" };
+    w.__wbOpenTool?.(ALIAS[key] ?? key);
+    return true;
+  }
+  if (await w.__wbOpenLayoutByName?.(ref).catch(() => false)) return true;
+  const yo2 = window.glyphh as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
+  const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean });
+  return !!asApp?.ok;
+}
+
+/** Say something back in the thread — a command that did nothing silently is
+ *  indistinguishable from a broken one. */
+function dipSay(text: string): void {
+  if (!current()) newChat();
+  current()!.messages.push({ role: "assistant", text, at: Date.now() });
+  void saveStore(); renderHistory(); renderThread();
+}
+
+/**
+ * `.dip` — THE navigation verb (docs/COMMANDS.md). A bare ref opens a panel,
+ * workspace, app or URL; the verbs below arrange what is open.
+ *
+ *   .dip <panel|workspace|app|url>   open it
+ *   .dip split <a> <b> …             open each, side by side
+ *   .dip grid [<a> <b> …]            open each (if given), then even grid
+ *   .dip add <url>                   open a URL as a panel
+ *   .dip close <name>                close one panel
+ *   .dip clear                       close every panel
+ *   .dip list                        what is open, and what can be opened
+ *   .dip refresh                     reload the focused panel
+ *   .dip back                        the command center (where you came from)
+ */
 export function runDip(ref: string): void {
   showWorkspaceSurface();
   const w = window as unknown as {
@@ -3258,6 +3311,9 @@ export function runDip(ref: string): void {
     __wbOpenLayoutByName?: (name: string) => Promise<boolean>;
     __wbClearPanels?: () => void;
     __wbGridPanels?: () => boolean;
+    __wbListApps?: () => Array<{ slug: string; name: string }>;
+    __wbCloseApp?: (slug: string) => boolean;
+    __wbOpenEchoHome?: () => void;
   };
   w.__initCodeWorkbench?.();
   void (async () => {
@@ -3265,28 +3321,58 @@ export function runDip(ref: string): void {
     for (let i = 0; i < 40 && !w.__wbOpenLayoutByName; i++) {
       await new Promise((r) => requestAnimationFrame(r));
     }
-    // Workbench verbs come before name lookup — `clear` closes every panel,
-    // `grid` re-flows the open ones into an even grid.
-    const verb = ref.toLowerCase();
+    const parts = ref.trim().split(/\s+/);
+    const verb = (parts[0] || "").toLowerCase();
+    const rest = parts.slice(1);
+
     if (verb === "clear") { w.__wbClearPanels?.(); return; }
-    if (verb === "grid") { w.__wbGridPanels?.(); return; }
-    // A layouts-list failure (offline, server hiccup) must not kill the
-    // whole .dip — fall through to the app path.
-    if (await w.__wbOpenLayoutByName?.(ref).catch(() => false)) return;
-    const yo2 = window.glyphh as unknown as { appLaunch?: (s: { slug: string; name: string }) => Promise<{ ok: boolean; error?: string }> };
-    const asApp = await yo2.appLaunch?.({ slug: ref, name: ref }).catch(() => ({ ok: false }) as { ok: boolean; error?: string });
-    if (asApp?.ok) return;
+    if (verb === "back") { w.__wbOpenEchoHome?.(); return; }
+    if (verb === "list") {
+      const open = w.__wbListApps?.() ?? [];
+      const layouts = await window.glyphh.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
+      dipSay([
+        open.length ? `Open: ${open.map((a) => a.name || a.slug).join(", ")}` : "Nothing open.",
+        layouts?.length ? `Workspaces: ${layouts.join(", ")}` : "",
+      ].filter(Boolean).join("\n"));
+      return;
+    }
+    if (verb === "refresh") {
+      // The focused panel reloads itself; no ref = whatever is on top.
+      (window as unknown as { __wbReloadFocused?: () => void }).__wbReloadFocused?.();
+      return;
+    }
+    if (verb === "close") {
+      const name = rest.join(" ").trim();
+      if (!name) { dipSay("⚠ .dip close: name a panel."); return; }
+      if (!w.__wbCloseApp?.(name.toLowerCase())) dipSay(`⚠ .dip close: nothing open named "${name}".`);
+      return;
+    }
+    if (verb === "add") {
+      const url = rest.join(" ").trim();
+      if (!url) { dipSay("⚠ .dip add: give a URL."); return; }
+      if (!(await dipOpenRef(url))) dipSay(`⚠ .dip add: could not open "${url}".`);
+      return;
+    }
+    // SPLIT / GRID — open every ref, then lay them out. Split and grid differ
+    // only in intent today: the workbench flows panels into an even grid, which
+    // IS the side-by-side arrangement for two.
+    if (verb === "split" || verb === "grid") {
+      const refs = rest.filter(Boolean);
+      const missed: string[] = [];
+      for (const r of refs) if (!(await dipOpenRef(r))) missed.push(r);
+      w.__wbGridPanels?.();
+      if (missed.length) dipSay(`⚠ .dip ${verb}: couldn't open ${missed.join(", ")}.`);
+      return;
+    }
+
+    // No verb — the whole ref is a thing to open.
+    if (await dipOpenRef(ref)) return;
     if (!current()) newChat();
-    // Name the layouts the resolver actually sees — "not found" with no
+    // Name the workspaces the resolver actually sees — "not found" with no
     // context turns into a support question; this answers it in place.
     const known = await window.glyphh.layoutsList?.().then((ls) => ls.map((l) => l.name)).catch(() => [] as string[]);
     const hint = known?.length ? ` Workspaces: ${known.join(", ")}.` : "";
-    current()!.messages.push({
-      role: "assistant",
-      text: `⚠ .dip: ${asApp?.error || `no app or workspace named "${ref}"`}.${hint}`,
-      at: Date.now(),
-    });
-    void saveStore(); renderHistory(); renderThread();
+    dipSay(`⚠ .dip: no panel, app or workspace named "${ref}".${hint}`);
   })();
 }
 
