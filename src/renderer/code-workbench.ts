@@ -2220,7 +2220,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
@@ -3452,6 +3452,10 @@ async function init(): Promise<void> {
      *  tabs. Terminals restart (a pty can't be frozen). */
     interface EchoCellState {
       url?: string;
+      /** GLYPHH apps: the in-app route (path?query#hash for hosted, ?query#hash
+       *  for a local file entry) — origin-independent so the same workspace
+       *  restores against the local bundle OR the hosted origin. */
+      route?: string;
       files?: Array<{ name: string; path: string; mode?: "preview" | "code" }>;
       activeIdx?: number;
       tabs?: Array<{ url: string; title?: string }>;
@@ -3473,10 +3477,27 @@ async function init(): Promise<void> {
         const tabs = (pv.tabs ?? []).filter((t) => t.url).map((t) => ({ url: t.url!, ...(t.title ? { title: t.title } : {}) }));
         return tabs.length ? { tabs, activeTab: pv.activeTab ?? 0 } : undefined;
       }
+      if (e.tile.glyphh && e.card) {
+        // GLYPHH APPS persist their in-app ROUTE, not an absolute URL (his
+        // spec, 2026-08-28: what each app RENDERS follows the workspace).
+        // The origin varies by surface — local file entry on desktop, the
+        // brand origin on web — so only the route travels; restore grafts it
+        // onto whatever origin resolves at open.
+        const wv = e.card.querySelector("webview") as (WebviewEl & HTMLElement) | null;
+        let u = "";
+        try { u = wv?.getURL?.() || ""; } catch { u = ""; }
+        if (!u || u === "about:blank") return undefined;
+        try {
+          const parsed = new URL(u);
+          const route = parsed.protocol === "file:"
+            ? `${parsed.search}${parsed.hash}`
+            : `${parsed.pathname}${parsed.search}${parsed.hash}`;
+          return route && route !== "/" ? { route } : undefined;
+        } catch { return undefined; }
+      }
       if (e.tile.url && e.card) {
         // where the user actually navigated — a NotebookLM card comes back on
-        // its notebook, not the app's front page (glyphh apps resolve their
-        // own entry and are skipped)
+        // its notebook, not the app's front page
         const wv = e.card.querySelector("webview") as (WebviewEl & HTMLElement) | null;
         let u = "";
         try { u = wv?.getURL?.() || ""; } catch { u = ""; }
@@ -4709,6 +4730,9 @@ async function init(): Promise<void> {
                 : null;
             // reopen on the page the user was on, not the app's front door
             if (base?.url && st?.url) base = { ...base, url: st.url };
+            // glyphh apps: the remembered ROUTE grafts onto whatever origin
+            // resolves at mount (local entry or hosted) — per workspace.
+            if (base?.glyphh && st?.route) base = { ...base, routeHint: st.route };
             if (base) {
               entry = adHoc(base);
               activateTile(entry);
@@ -4836,6 +4860,18 @@ async function init(): Promise<void> {
       });
       head.insertBefore(btn, head.querySelector(".echo-card-expand"));
     };
+    /** Graft a remembered in-app route onto a resolved origin. Full-path
+     *  routes ride https origins; a FILE entry can only take ?query#hash. */
+    const withRoute = (baseUrl: string, route?: string): string => {
+      if (!route) return baseUrl;
+      try {
+        if (baseUrl.startsWith("file:")) {
+          const qh = route.match(/[?#].*$/)?.[0] ?? "";
+          return qh ? baseUrl + qh : baseUrl;
+        }
+        return new URL(route, baseUrl).toString();
+      } catch { return baseUrl; }
+    };
     /** Build an app's live content (webview + browser bar) into a card. */
     const mountAppIntoCard = (e: TileEntry, card: HTMLElement): void => {
       const t = e.tile;
@@ -4859,7 +4895,7 @@ async function init(): Promise<void> {
           // The SERVER owns the app's reachable address (prodUrl): the brand
           // origin in prod, the /hosted dev route locally. Hardcoding the
           // brand origin here iframed the edge's no-match page on dev.
-          const appUrl = t.url;
+          const appUrl = withRoute(t.url, t.routeHint);
           frame.src = appUrl;
           frame.style.cssText = "flex:1;min-height:0;width:100%;border:0;background:var(--bg-2)";
           body.appendChild(frame);
@@ -4944,10 +4980,10 @@ async function init(): Promise<void> {
             const wcId = (wv as unknown as WebviewEl).getWebContentsId?.();
             if (wcId !== undefined) yoG?.rpaRegister?.(t.slug!, wcId);
             void yoG?.glyphhAppPreviewOpen?.(t.slug!, wcId).then((res) => {
-              if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", res.fileUrl);
+              if (res?.ok && res.fileUrl && wv.getAttribute("src") === "about:blank") wv.setAttribute("src", withRoute(res.fileUrl, t.routeHint));
               // No local source (a marketplace-INSTALLED app lives on the
               // publisher's hosting, not this disk) → the hosted build.
-              else if (t.url) wv.setAttribute("src", t.url);
+              else if (t.url) wv.setAttribute("src", withRoute(t.url, t.routeHint));
               else wv.setAttribute("src", glyphhAppErrorPage(t.name, res?.error));
             });
           });
