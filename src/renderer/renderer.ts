@@ -117,6 +117,7 @@ declare global {
       copyToClipboard: (text: string) => void;
       getPathForFile: (file: File) => string;
       windowClose: () => void;
+      agentDockIgnoreMouse?: (ignore: boolean) => void;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;

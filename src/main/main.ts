@@ -88,6 +88,7 @@ import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
+import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
 import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
@@ -483,6 +484,10 @@ async function boot() {
 
   // Create window
   await createWindow();
+
+  // The Echo agent attached to the frontmost desktop app (⌘⇧G toggles) —
+  // restored 2026-08-28 from the pre-pivot tree (agent-dock, Aug 21).
+  registerAgentDockIpc();
   // Background mode: rebuild the window when the tray asks, and reflect the
   // current setting (tray + launch-at-login) now.
   setReopenHandler(() => { void createWindow(); });
@@ -1287,6 +1292,7 @@ function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
+  try { disposeAgentDock(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on

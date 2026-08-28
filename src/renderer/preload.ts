@@ -260,6 +260,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // removed File.path; webUtils.getPathForFile is the supported replacement.
   getPathForFile: (file: File): string => { try { return webUtils.getPathForFile(file); } catch { return ""; } },
   windowClose: () => ipcRenderer.send("window-close"),
+  // Attached-agent window (?solo=agent) only: forward mouse events to the app
+  // BENEATH the window except over the agent's own pixels (agent-dock.ts).
+  agentDockIgnoreMouse: (ignore: boolean) => ipcRenderer.send("agent-dock:ignore-mouse", ignore),
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },

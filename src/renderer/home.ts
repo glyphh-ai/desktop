@@ -292,6 +292,51 @@ void (async () => {
     // workbench tools as their own OS windows. The full home page loads, but
     // only the workbench shows, booted with exactly one slot.
     const solo = params.get("solo");
+    // ATTACHED AGENT window (?solo=agent) — the real Echo agent floating over
+    // ANOTHER window's bottom band (agent-dock.ts sizes/positions this window;
+    // the native helper tracks the frontmost window). The full home page
+    // loads, but only the agent paints, over a transparent page. The foreign
+    // window plays the role cards play in Echo: the wall is permanently
+    // "covered", so the agent tucks and hover-reveals exactly as it does over
+    // panels — and the lock (echoAgentLock) pins it up, same control, same pref.
+    if (solo === "agent") {
+      document.documentElement.setAttribute("data-home-scope", "agent-dock");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="agent-dock"] .code-root > :not(.code-agent) { display: none !important; }
+        [data-home-scope="agent-dock"], [data-home-scope="agent-dock"] body,
+        [data-home-scope="agent-dock"] #home-root, [data-home-scope="agent-dock"] #help-overlay,
+        [data-home-scope="agent-dock"] #help-layout, [data-home-scope="agent-dock"] #help-content,
+        [data-home-scope="agent-dock"] #page-body, [data-home-scope="agent-dock"] .help-section,
+        [data-home-scope="agent-dock"] #section-code, [data-home-scope="agent-dock"] .code-root {
+          background: transparent !important; box-shadow: none !important; }`;
+      document.head.appendChild(style);
+      document.title = "Glyphh";
+      // The boot veil (body.wb-booting) is lifted by the wall-settle loop in
+      // the DEFAULT boot path, which this branch returns before — drop it now
+      // or this window keeps the opaque booting state forever.
+      document.body.classList.remove("wb-booting");
+      // Assert the covered state NOW — syncWallVisibility only re-runs when
+      // cards open/close, which never happens in this window.
+      document.body.classList.add("echo-wall-covered");
+      gotoSection("code");
+      // Click-through: only the agent's own surfaces take the mouse — a
+      // POSITIVE scope; everything else forwards to the app beneath.
+      // (.code-menu / #code-history / .confirm-overlay are the pill's
+      // popovers that mount at body level, outside .code-agent.)
+      const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog";
+      let ignoring = true;
+      document.addEventListener("mousemove", (e) => {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const interactive = !!el && !!(el as HTMLElement).closest(HIT);
+        if (interactive === ignoring) {
+          ignoring = !interactive;
+          window.glyphh.agentDockIgnoreMouse?.(ignoring);
+        }
+      }, { passive: true });
+      return;
+    }
     // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
     // workbench tools as their own OS windows.
     if (solo && solo.startsWith("tool:")) {
