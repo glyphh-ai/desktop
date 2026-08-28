@@ -3387,13 +3387,35 @@ async function init(): Promise<void> {
       if (dragging) { queueDockZoom(null); return; }
       const dockEl = body.querySelector<HTMLElement>(".echo-dock");
       if (!dockEl) return;
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      if (bar && bar.style.visibility === "hidden") { queueDockZoom(null); return; }
+      if (document.body.classList.contains("echo-dock-tucked")
+        && !document.body.classList.contains("echo-dock-peek")) { queueDockZoom(null); return; }
       const r = dockEl.getBoundingClientRect();
       const near = r.width > 0 && r.bottom > 0 && ev.clientY >= r.top - 26 && ev.clientY <= r.bottom + 26;
       queueDockZoom(near ? ev.clientX : null);
     });
     body.addEventListener("mouseleave", () => { queueDockZoom(null); });
+    // The tucked dock's hot zone. Document mousemove can't be the trigger —
+    // a WEBVIEW under the cursor swallows host mouse events, and covered-wall
+    // panels reach the top edge — so a host-level strip (above every panel
+    // layer) catches the hover instead, and leaving the BAR re-tucks.
+    {
+      const strip = document.createElement("div");
+      strip.className = "echo-dock-hotstrip";
+      document.body.appendChild(strip);
+      strip.addEventListener("mouseenter", () => {
+        if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
+      });
+      const bar = body.querySelector<HTMLElement>(".echo-topbar");
+      bar?.addEventListener("mouseleave", () => {
+        if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.remove("echo-dock-peek");
+      });
+      // Host surfaces still help where events DO reach the document.
+      document.addEventListener("mousemove", (ev) => {
+        if (!document.body.classList.contains("echo-dock-tucked")) return;
+        if (ev.clientY <= 14) document.body.classList.add("echo-dock-peek");
+        else if (ev.clientY > 200) document.body.classList.remove("echo-dock-peek");
+      }, { passive: true });
+    }
     const readAutoHide = (): void => {
       void Promise.all([
         yoApi?.getPreference?.("echoAutoHideDock", true) ?? true,
@@ -3890,7 +3912,14 @@ async function init(): Promise<void> {
       // which pins it always-on.
       const bar = body.querySelector<HTMLElement>(".echo-topbar");
       const autoHideOn = document.body.classList.contains("echo-dock-autohide");
-      if (bar) bar.style.visibility = (!hidden || !autoHideOn) ? "" : "hidden";
+      // TUCK, don't vanish (his spec, 2026-08-28): auto-hide now slides the
+      // dock off the top — fixed and above EVERY layer (the agent panel was
+      // burying it) — leaving the hint sliver; hovering the top edge peeks
+      // the dock back over the panels. Pinned (auto-hide off) it stays put.
+      const dockTucked = hidden && autoHideOn;
+      if (bar) bar.style.visibility = "";
+      document.body.classList.toggle("echo-dock-tucked", dockTucked);
+      if (!dockTucked) document.body.classList.remove("echo-dock-peek");
       // The CC + reset buttons live in the COMPOSER'S side band now (help/
       // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
       // live LAYOUT owns the surface (no dock, no wall reveal) and the layout
