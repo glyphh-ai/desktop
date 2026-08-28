@@ -8691,9 +8691,9 @@ async function init(): Promise<void> {
   // Painting first and restoring after would flash the default placement over
   // whatever the user actually left open.
   void loadUiState().then(() => loadLayout());
-  // The dock's body-level portal — fully isolated (dock-portal.ts): a
-  // failure there degrades to "dock stays in the stage", never a dead wall.
-  initDockPortal();
+  // The dock's body-level portal — DISABLED while the click-death it
+  // coincides with is diagnosed (2026-08-28); re-enable = uncomment.
+  // initDockPortal();
   // The debounce coalesces a drag into one PATCH; closing mid-debounce would
   // otherwise drop the last arrangement of the session.
   window.addEventListener("pagehide", flushUiState);
