@@ -33,6 +33,12 @@ interface SettingsIpcDeps {
   /** Deliver an event to EVERY renderer that paints identity (main window +
    *  home view) — the rail's chip lives in home.html, not index.html. */
   broadcastAccountUpdated?: (info: unknown) => void;
+  /** Reload the home view — SIGN-IN calls it so the workspace boots pristine
+   *  for the user who just authenticated (his report, 2026-08-28: user B saw
+   *  user A's wall until a page refetch). Logout reloads on its way OUT; this
+   *  is the same law on the way IN, covering every path that reaches a login
+   *  without tearing the renderer down. */
+  reloadHome?: () => void;
 }
 
 export function registerSettingsIpc(deps: SettingsIpcDeps): void {
@@ -76,7 +82,14 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   ipcMain.handle("get-app-version", () => app.getVersion());
 
-  ipcMain.handle("start-auth", async (_e, mode: "register" | "login") => startAuthFlow(mode));
+  ipcMain.handle("start-auth", async (_e, mode: "register" | "login") => {
+    const ok = await startAuthFlow(mode);
+    // A fresh sign-in boots the workspace pristine — the renderer may still
+    // hold the PREVIOUS user's wall, apps, and caches in memory (the logout
+    // reload only covers flows that went through logout).
+    if (ok) deps.reloadHome?.();
+    return ok;
+  });
   ipcMain.handle("is-authenticated", () => isAuthenticated());
 
   // Device-flow sign-in: the browser opens on the platform's approval page;
@@ -84,9 +97,13 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // them while the poll is in flight. Starting again replaces the in-flight
   // grant (a fresh code); cancel aborts it outright.
   ipcMain.handle("start-device-login", async (e) => {
-    return startDeviceLogin((prompt) => {
+    const res = await startDeviceLogin((prompt) => {
       try { e.sender.send("device-login-prompt", prompt); } catch { /* window gone */ }
     });
+    // Same pristine-boot law as start-auth: the user changed — the home
+    // renderer must never carry the previous user's surface across.
+    if ((res as { ok?: boolean } | null)?.ok) deps.reloadHome?.();
+    return res;
   });
   ipcMain.handle("cancel-device-login", () => { cancelDeviceLogin(); return { ok: true }; });
   // Re-open the approval page for an already-displayed code (the browser

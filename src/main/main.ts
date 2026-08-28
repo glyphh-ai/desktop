@@ -43,7 +43,7 @@ import { registerHotkey } from "./hotkey";
 import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
-import { getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
+import { clearPreferences, getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
 import { getLocalDb } from "./local-db";
 import { SessionCache } from "./session-cache";
 import { resolveShellPath } from "./shell-path";
@@ -318,13 +318,25 @@ async function boot() {
 
   // Identity switch → hard renderer reload so no DOM/JS state from the
   // previous account survives (per-user stores re-scope in user-scope.ts).
-  setUserScopeReloader(() => { mainWindow?.webContents.reload(); });
+  // BOTH renderers (his report, 2026-08-28: user B booted onto user A's wall
+  // and apps). The workspace — echo wall, apps, workspaces, every cache — is
+  // the HOME VIEW's renderer; reloading only the shell window left it intact
+  // across a user switch.
+  setUserScopeReloader(() => {
+    mainWindow?.webContents.reload();
+    homeView.reload();
+  });
   // …and reset every main-process singleton holding per-user state in memory
   // (closures over the `let` bindings — all assigned long before any switch).
   onUserChange(() => {
     layoutManager?.resetForUserChange();
     connectorManager?.clearUserState();
     mcpManager?.setConnectorCatalog([]);
+    // The server prefs map is per-USER (wall state, icon order, dock order,
+    // workbench UI state). Left warm, the next user's loadPreferences()
+    // no-ops on its `loaded` flag and every pref-driven surface renders the
+    // previous user's map — the stale wall he reported.
+    clearPreferences();
   });
 
   // Pipedream Connectors — managed OAuth connections (Advanced tier)
@@ -992,6 +1004,7 @@ async function boot() {
     execCommand,
     getMainWindow: () => mainWindow,
     hidePanels: () => { if (mainWindow) homeView.hide(mainWindow); },
+    reloadHome: () => homeView.reload(),
     broadcastAccountUpdated: (info) => {
       mainWindow?.webContents.send("account-updated", info);
       const home = homeView.webContents;
