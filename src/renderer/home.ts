@@ -304,7 +304,22 @@ void (async () => {
       const style = document.createElement("style");
       style.textContent = `
         [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
-        [data-home-scope="agent-dock"] .code-root > :not(.code-agent) { display: none !important; }
+        /* THE APP IS THE FRAME (his call, 2026-08-28): the whole workbench
+           runs here — the dock parks at the top (the body-level portal it
+           already uses), the agent rides the bottom, and panels opened from
+           the dock render inside the attached app's bounds, the app standing
+           in for the Electron window. Every SURFACE goes transparent so the
+           app shows through wherever a panel isn't; the wall's tiles are
+           already gone via echo-wall-hidden, and its canvas is cut. */
+        [data-home-scope="agent-dock"] .code-workbench,
+        [data-home-scope="agent-dock"] .ws-right-rails,
+        [data-home-scope="agent-dock"] .ws-right-rail,
+        [data-home-scope="agent-dock"] .ws-rail-slot,
+        [data-home-scope="agent-dock"] .ws-rail-slot-body,
+        [data-home-scope="agent-dock"] .ws-echo-body,
+        [data-home-scope="agent-dock"] .echo-veil,
+        [data-home-scope="agent-dock"] .echo-stage { background: transparent !important; }
+        [data-home-scope="agent-dock"] .echo-stage canvas { display: none !important; }
         [data-home-scope="agent-dock"], [data-home-scope="agent-dock"] body,
         [data-home-scope="agent-dock"] #home-root, [data-home-scope="agent-dock"] #help-overlay,
         [data-home-scope="agent-dock"] #help-layout, [data-home-scope="agent-dock"] #help-content,
@@ -328,7 +343,11 @@ void (async () => {
       // POSITIVE scope; everything else forwards to the app beneath.
       // (.code-menu / #code-history / .confirm-overlay are the pill's
       // popovers that mount at body level, outside .code-agent.)
-      const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog";
+      // The dock, its parked bar, open cards, panels and their seams take the
+      // mouse; the transparent field between them forwards to the app.
+      const HIT = ".code-agent, .code-menu, #code-history, .confirm-overlay, dialog, "
+        + ".echo-topbar, #echo-dock-layer, .echo-card, .echo-div, "
+        + ".echo-dock-hotstrip, .code-drop-up, .echo-folder-modal, .echo-page-arrow";
       let ignoring = true;
       document.addEventListener("mousemove", (e) => {
         const el = document.elementFromPoint(e.clientX, e.clientY);

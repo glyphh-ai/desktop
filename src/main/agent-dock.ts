@@ -102,15 +102,17 @@ function ensureDockWindow(): BrowserWindow {
   return dockWin;
 }
 
-/** Cover the target window's bottom band. CG and Electron share the same
- *  top-left-origin global point coordinates on macOS, so the rect maps
- *  straight through. The agent centers itself inside via its own CSS
- *  (--echo-agent-x/--echo-agent-w), exactly as it does over the Echo wall. */
+/** Cover the target window — THE APP IS THE FRAME (his call, 2026-08-28:
+ *  the dock rides its top, the agent its bottom, and panels opened from the
+ *  dock render inside the app's own bounds, the attached app standing in for
+ *  the Electron window). CG and Electron share the same top-left-origin
+ *  global point coordinates on macOS, so the rect maps straight through.
+ *  Only the title bar stays outside: whatever the hit-test logic does, the
+ *  app's close/zoom controls must stay physically reachable. */
 function position(target: TargetInfo): void {
   const w = ensureDockWindow();
-  // Never cover the target's title bar: whatever the hit-test logic does, the
-  // close/zoom controls must stay physically outside this window.
-  const height = Math.min(BAND_HEIGHT, target.height - 40);
+  const TITLEBAR = 28;
+  const height = Math.max(200, target.height - TITLEBAR);
   w.setBounds({
     x: target.x,
     y: target.y + target.height - height,
