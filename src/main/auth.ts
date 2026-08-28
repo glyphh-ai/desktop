@@ -234,6 +234,12 @@ export function logout(): void {
   cachedHeartbeat = null;
   clearIdentitySidecar();
   setActiveUser(null);
+  // THE CROSS-USER LEAK (his report, 2026-08-28: after sign-out/sign-in the
+  // wall showed the PREVIOUS user's stuff): only the server-driven signed-out
+  // handler cleared the prefs map — a user-clicked Sign out left it warm with
+  // `loaded=true`, so the next user's loadPreferences() no-opped and they
+  // booted from the prior user's wall state, icon order, and UI state.
+  clearPreferences();
   attachStop();
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory
