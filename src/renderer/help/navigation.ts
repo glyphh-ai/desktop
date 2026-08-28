@@ -309,6 +309,9 @@ export function closeSettingsModal(): void {
     settingsModalPanelsHidden = false;
     settingsModalHidePromise = null;
     try { window.glyphh.panelsShow?.(); } catch { /* */ }
+    // The wall came back with STALE geometry (clicks/zoom dead until a real
+    // window resize) — run the stage's own resize repaint on the way out.
+    try { (window as unknown as { __wbEchoRepaint?: () => void }).__wbEchoRepaint?.(); } catch { /* */ }
   });
 }
 

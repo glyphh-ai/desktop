@@ -2218,15 +2218,23 @@ async function init(): Promise<void> {
     // cards track the resize instead of rubber-banding behind it. (The old
     // 3D wall's ResizeObserver owned this and died with it.)
     let resizeAnimT = 0;
-    const chromeRo = new ResizeObserver(() => {
+    const repaintStage = (): void => {
       positionPageChrome();
       cardsLayer.classList.add("echo-no-anim");
       window.clearTimeout(resizeAnimT);
       resizeAnimT = window.setTimeout(() => cardsLayer.classList.remove("echo-no-anim"), 180);
       layoutCards();
       scrollToPage(pageIndex, false);
-    });
+    };
+    const chromeRo = new ResizeObserver(repaintStage);
     chromeRo.observe(stage);
+    // THE SETTINGS-CLOSE DEAD WALL (his report, 2026-08-28: after settings,
+    // clicks and zoom were dead until a window resize "def fixes it
+    // immediately"). The modal's open/close leaves the stage's geometry
+    // stale, and only a real resize re-fired the observer. This is the SAME
+    // repaint the observer runs, callable by the modal's close (and anything
+    // else that un-hides the wall without changing its size).
+    (window as unknown as { __wbEchoRepaint?: () => void }).__wbEchoRepaint = repaintStage;
     /** Icons per page — the "set number" (default 8 × 7); the Appearance
      *  slider (echoIconsPerPage) overrides it, DB-persisted like the rest. */
     let perPage = 56;
