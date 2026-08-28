@@ -625,7 +625,17 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
 }
 
 async function loadLayouts() {
+  // OPENING THE PAGE ALWAYS LANDS ON THE LIST (his report, 2026-08-28:
+  // edit a workspace, close the page from the editor, and the section came
+  // back blank with no way into a workspace). The section markup is a
+  // persistent singleton, so closing the panel leaves the editor's chrome
+  // exactly as it was — hiding the editor alone is not enough; the list,
+  // the toolbar and the heading it hid have to come back with it.
   layoutEditor.classList.add("hidden");
+  layoutsList.classList.remove("hidden");
+  layoutsToolbar.classList.remove("hidden");
+  document.getElementById("layouts-heading")?.classList.remove("hidden");
+  editingLayoutName = null;
   layoutFormError.classList.add("hidden");
   await ensureAppNames();
   allLayouts = await window.glyphh.layoutsList();
@@ -647,10 +657,11 @@ function renderLayoutsList() {
   const filtered = query ? bySpace.filter((l) => l.name.toLowerCase().includes(query)) : bySpace;
 
   // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
-  // Preserve the hidden state — async icon re-renders must not pop the list
-  // back over an open editor.
-  const wasHidden = layoutsList.classList.contains("hidden") || !layoutEditor.classList.contains("hidden");
-  layoutsList.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  // Async icon re-renders must not pop the list back over an open editor, so
+  // visibility follows THE EDITOR — never the list's own current class, which
+  // made the hidden state self-perpetuating across page opens.
+  const editorOpen = !layoutEditor.classList.contains("hidden");
+  layoutsList.className = editorOpen ? "app-list-wrap hidden" : "app-list-wrap";
   layoutsList.innerHTML = "";
 
   if (allLayouts.length === 0) {
