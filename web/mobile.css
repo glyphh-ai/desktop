@@ -591,11 +591,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* Bottom pad clears the floating composer + a few lines of breathing room. The
-     composer's REAL height is measured into --composer-h (it varies with the
-     chips row, attachment strip, multi-line input) so the last message always
-     rests above it and can be scrolled fully into view. */
-  padding: calc(var(--safe-top) + 74px) 16px calc(max(var(--composer-h, 200px), 120px) + 28px) calc(var(--safe-left) + 16px);
+  /* Bottom pad clears whichever bottom overlay is TALLER — the floating composer
+     (its REAL height, measured into --composer-h, varies with the chips row,
+     attachment strip, multi-line input; it already includes safe-bottom) OR the
+     frosted fade band (.m-sv-fade = safe-bottom + 118px, which on iPhone is TALLER
+     than a single-line composer). Clearing only the composer left the last lines
+     buried in the fade/home-indicator zone (his bug: can't see the output summary).
+     +28px breathing room so the summary always rests fully above the band. */
+  padding: calc(var(--safe-top) + 74px) 16px calc(max(var(--composer-h, 200px), var(--safe-bottom) + 118px) + 28px) calc(var(--safe-left) + 16px);
 }
 /* Session composer FLOATS over the transcript + frosted band (like the chats
    New chat / search), and the box is translucent-frosted so text fuzzes behind. */
@@ -800,6 +803,16 @@ body {
 .m-tray-err { margin-top: 6px; padding: 10px 12px; background: color-mix(in srgb, var(--danger) 10%, transparent); border-radius: 10px; color: var(--danger); font: 400 13.5px/1.5 ui-monospace, monospace; white-space: pre-wrap; overflow-x: auto; }
 
 .m-composer { flex: 0 0 auto; padding: 8px 12px calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px); }
+/* Mic failure notice — floats above the composer box; tap to dismiss. */
+.m-mic-err {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px;
+  padding: 9px 12px; border-radius: 12px; cursor: pointer;
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+  color: var(--text); font-size: 13px; line-height: 1.35;
+}
+.m-mic-err svg { width: 16px; height: 16px; flex: 0 0 auto; opacity: 0.75; }
+.m-mic-err span { flex: 1; min-width: 0; }
 .m-composer-box {
   position: relative;   /* anchors the mic drop-up (.m-micmenu) */
   display: flex;

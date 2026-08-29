@@ -440,8 +440,15 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
   const voice = useVoice(onDictate);
   // Server voice (desktop parity): live state + callback bind for this composer.
   const [srvLive, setSrvLive] = useState(false);
+  const [micErr, setMicErr] = useState('');
   const [micMenu, setMicMenu] = useState(false);
-  useEffect(() => voiceCtl.subscribe(() => setSrvLive(voiceCtl.isListening() || voiceCtl.isTranscribing())), []);
+  useEffect(() => {
+    voiceCtl.prime();  // cache the voice pref so the mic tap doesn't await before getUserMedia (iOS)
+    return voiceCtl.subscribe(() => {
+      setSrvLive(voiceCtl.isListening() || voiceCtl.isTranscribing());
+      setMicErr(voiceCtl.error());
+    });
+  }, []);
   useEffect(() => { voiceCtl.bind({ onText: onDictate, onSend: onVoiceSend }); });
   const canSend = (!!draft.trim() || attachments.length > 0) && !sending && !connecting;
   const submit = () => { if (canSend) onSend(); };
@@ -460,6 +467,11 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
   };
   return (
     <div className="m-composer">
+      {micErr && (
+        <div className="m-mic-err" role="alert" onClick={() => voiceCtl.clearError()}>
+          <Icon name="mic" /><span>{micErr}</span><Icon name="close" />
+        </div>
+      )}
       <div className="m-composer-box">
         {attachments.length > 0 && (
           <div className="m-attach-strip">
@@ -487,7 +499,7 @@ function Composer({ draft, setDraft, onSend, onStop, sending, connecting, onPlus
           <span className="m-composer-spacer" />
           <button className={`m-tool-mic${voice.listening || srvLive ? ' m-mic-live' : ''}`} aria-label="Voice" onClick={onMic}><Icon name="mic" /></button>
           <button className="m-tool-mic m-tool-mic-caret" aria-label="Voice options" onClick={() => { haptic(); setMicMenu((v) => !v); }}><Icon name="chevron" /></button>
-          {micMenu && <MicMenu onClose={() => setMicMenu(false)} />}
+          {micMenu && <MicMenu onClose={() => { setMicMenu(false); voiceCtl.prime(); }} />}
           {sending
             ? <button className="m-composer-send m-composer-stop" aria-label="Stop" onClick={() => onStop?.()}><span className="m-stop-sq" aria-hidden="true" /></button>
             : <button className="m-composer-send" aria-label="Send" disabled={!canSend} onClick={submit}><Icon name="send" /></button>}
@@ -753,6 +765,13 @@ const voiceCtl = (() => {
   let onSend: (t: string) => void = () => {};
   const subs = new Set<() => void>();
   const emit = () => { for (const s of [...subs]) { try { s(); } catch { /* */ } } };
+  // Voice pref CACHE — read SYNCHRONOUSLY at mic-tap so getUserMedia stays inside
+  // the tap's transient activation on iOS (any await before it drops the gesture and
+  // Safari silently refuses the mic — his bug: mic dead on iPhone though Voice is on).
+  // Primed on Composer mount, refreshed after the mic menu / Voice settings change.
+  let cachedPref: VoicePrefM | null = null;
+  let micErr = '';
+  async function primePref(): Promise<VoicePrefM> { cachedPref = await voicePrefM(); emit(); return cachedPref; }
 
   /** The desktop's cue tones, verbatim (help/voice-out.ts). */
   let cueCtx: AudioContext | null = null;
@@ -806,14 +825,28 @@ const voiceCtl = (() => {
 
   const stopReply = () => { if (playing) { try { playing.pause(); } catch { /* */ } playing = null; } };
 
-  async function startRecording(): Promise<boolean> {
-    const p = await voicePrefM();
+  async function startRecording(p: VoicePrefM): Promise<boolean> {
     if (!p.inputModel || p.mode === 'off' || recorder) return false;
     stopReply();                       // never capture the agent's own voice
-    if (!navigator.mediaDevices?.getUserMedia) return false;
+    // getUserMedia MUST be the first await after the tap (see cachedPref) — the pref
+    // is passed in, never fetched here, so nothing awaits before this call.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      micErr = 'This browser can’t reach the microphone — it needs a secure (https) context.';
+      console.warn('[voice] getUserMedia unavailable — insecure context?'); emit(); return false;
+    }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: p.deviceId ? { deviceId: { exact: p.deviceId } } : true });
-    } catch { handsFree = false; emit(); return false; }
+    } catch (e) {
+      const name = (e as { name?: string })?.name || '';
+      micErr = name === 'NotAllowedError' || name === 'SecurityError'
+        ? 'Microphone access is blocked. Allow the mic for this site in Safari — on iPhone, add Glyphh to your Home Screen first, then reopen and try again.'
+        : name === 'NotFoundError'
+          ? 'No microphone was found on this device.'
+          : 'Couldn’t start the microphone' + (name ? ' (' + name + ').' : '.');
+      console.error('[voice] getUserMedia failed', e);
+      handsFree = false; emit(); return false;
+    }
+    micErr = '';
     try { recorder = new MediaRecorder(stream); }
     catch { stream.getTracks().forEach((t) => t.stop()); stream = null; handsFree = false; emit(); return false; }
     chunks = [];
@@ -849,7 +882,7 @@ const voiceCtl = (() => {
     if (!handsFree) { if (text.trim()) onText(text.trim()); emit(); return; }
     // Hands-free: a real utterance submits the turn; silence just re-listens.
     if (text.trim()) { awaitingReply = true; cue('submit'); onSend(text.trim()); }
-    else if (handsFree) { void startRecording(); }
+    else if (handsFree && cachedPref) { void startRecording(cachedPref); }
     emit();
   }
 
@@ -859,15 +892,24 @@ const voiceCtl = (() => {
     subscribe(cb: () => void): () => void { subs.add(cb); return () => subs.delete(cb); },
     isListening: () => !!recorder && recorder.state === 'recording',
     isTranscribing: () => transcribing,
+    /** Load + cache the voice pref (call on mount / after settings change) so the
+     *  next mic tap can start recording without an await before getUserMedia. */
+    prime(): void { void primePref(); },
+    /** The last mic failure, for the composer to surface (empty = none). */
+    error: () => micErr,
+    clearError(): void { if (micErr) { micErr = ''; emit(); } },
     /** Mic tap. True = the server path handled it; false = unconfigured (fall
-     *  back to Web Speech / keyboard dictation). */
+     *  back to Web Speech / keyboard dictation). Reads the CACHED pref synchronously
+     *  so getUserMedia runs inside the tap's transient activation on iOS. */
     async toggle(): Promise<boolean> {
       if (recorder && recorder.state === 'recording') { handsFree = false; awaitingReply = false; stopRecording(); return true; }
       if (recorder) return true;                     // mid-transcribe — ignore stray taps
-      const p = await voicePrefM();
+      const p = cachedPref;
+      if (!p) { void primePref(); return false; }    // not primed yet — this tap falls back, next has it
       if (!p.inputModel || p.mode === 'off') return false;
       handsFree = p.mode === 'continuous';
-      return startRecording();
+      micErr = '';
+      return startRecording(p);
     },
     /** A turn settled — speak the reply (autoplay), then re-listen hands-free. */
     async onTurnComplete(text: string): Promise<void> {
@@ -887,7 +929,7 @@ const voiceCtl = (() => {
           });
         } catch { /* TTS unavailable — stay silent */ }
       }
-      if (handsFree && awaitingReply) { awaitingReply = false; void startRecording(); }
+      if (handsFree && awaitingReply && cachedPref) { awaitingReply = false; void startRecording(cachedPref); }
     },
   };
 })();
@@ -2644,16 +2686,179 @@ function RuntimeTray() {
   );
 }
 
+/* ── Platform admin (super_admin only): Usage, Plans, Orgs — the desktop
+   Platform settings section (padmin-*), ported to mobile trays. All three read
+   from the same web-reachable /api/admin/* endpoints via glyphh().admin. ── */
+type AdminApi = {
+  usageDaily: (q: { from: string; to: string }) => Promise<{ days: Array<{ credits: number; requests: number }> }>;
+  usageByUser: (days?: number) => Promise<{ users: Array<{ userId: string; email: string; name: string; requests: number; credits: number }> }>;
+  plans: () => Promise<{ plans: Array<{ tier: string; display_name: string; monthly_usd_cents: number; included_credits: number; max_seats: number; active: boolean; org_id: string | null; org_name: string | null }> }>;
+  orgs: (q?: { q?: string; limit?: number }) => Promise<{ orgs: Array<{ id: string; name: string; tier: string; billing_status: string; member_count: number; credits_purchased: number; credits_spent: number }>; total: number }>;
+  org: (id: string) => Promise<{ id: string; name: string; tier: string; billing_status: string; member_count: number; max_seats: number; credits: { balance: number; used: number }; members: Array<{ email: string; name: string | null; role: string }> }>;
+  updateOrg: (id: string, patch: { tier?: string }) => Promise<unknown>;
+  grantCredits: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
+};
+const adminApi = (): AdminApi => (glyphh() as unknown as { admin: AdminApi }).admin;
+const ymd = (d: Date): string => d.toISOString().slice(0, 10);
+
+function PlatformUsageTray() {
+  const [days, setDays] = useState<Array<{ credits: number; requests: number }> | null>(null);
+  const [users, setUsers] = useState<Array<{ userId: string; email: string; name: string; credits: number }>>([]);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let on = true;
+    const to = new Date();
+    const from = new Date(to.getTime() - 29 * 864e5);
+    adminApi().usageDaily({ from: ymd(from), to: ymd(to) })
+      .then((r) => { if (on) setDays(r.days); })
+      .catch(() => { if (on) { setDays([]); setErr('Could not load platform usage.'); } });
+    adminApi().usageByUser(30).then((r) => { if (on) setUsers(r.users); }).catch(() => { /* top-spenders optional */ });
+    return () => { on = false; };
+  }, []);
+  if (!days) return err ? <div className="m-field-err">{err}</div> : <div className="m-set-loading">Loading…</div>;
+  const totalCredits = days.reduce((a, d) => a + (d.credits || 0), 0);
+  const totalReq = days.reduce((a, d) => a + (d.requests || 0), 0);
+  const top = users.slice().sort((a, b) => b.credits - a.credits).slice(0, 8);
+  return (
+    <>
+      <div className="m-set-label">Last 30 days</div>
+      <div className="m-bill-cards">
+        <div className="m-bill-card"><span className="m-bill-v">{wholeCredits(totalCredits)}</span><span className="m-bill-l">Credits</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{totalReq.toLocaleString()}</span><span className="m-bill-l">Requests</span></div>
+      </div>
+      <div className="m-set-label">Top spenders</div>
+      {!top.length ? <div className="m-conn-empty">No usage in this window.</div> : (
+        <div className="m-sel-group">
+          {top.map((u) => (
+            <div key={u.userId} className="m-sel-row"><span className="m-sel-row-label">{u.name || u.email}</span><span className="m-sel-row-val">{wholeCredits(u.credits)}</span></div>
+          ))}
+        </div>
+      )}
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function PlatformPlansTray() {
+  const [plans, setPlans] = useState<Array<{ tier: string; display_name: string; monthly_usd_cents: number; included_credits: number; active: boolean; org_id: string | null; org_name: string | null }> | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let on = true;
+    adminApi().plans().then((r) => { if (on) setPlans(r.plans); }).catch(() => { if (on) { setPlans([]); setErr('Could not load plans.'); } });
+    return () => { on = false; };
+  }, []);
+  if (!plans) return err ? <div className="m-field-err">{err}</div> : <div className="m-set-loading">Loading…</div>;
+  const money = (c: number): string => (c ? '$' + (c % 100 ? (c / 100).toFixed(2) : String(c / 100)) + '/seat' : 'Free');
+  const global = plans.filter((p) => !p.org_id);
+  const bespoke = plans.filter((p) => p.org_id);
+  const row = (p: typeof plans[number]) => (
+    <div key={p.tier + (p.org_id || '')} className="m-sel-row">
+      <span className="m-sel-row-label">{p.display_name}{p.active ? '' : ' · inactive'}{p.org_name ? ' · ' + p.org_name : ''}</span>
+      <span className="m-sel-row-val">{money(p.monthly_usd_cents)} · {wholeCredits(p.included_credits)} cr</span>
+    </div>
+  );
+  return (
+    <>
+      <div className="m-set-label">Plans</div>
+      <div className="m-sel-group">{global.map(row)}</div>
+      {bespoke.length > 0 && (
+        <>
+          <div className="m-set-label">Bespoke (per-org)</div>
+          <div className="m-sel-group">{bespoke.map(row)}</div>
+        </>
+      )}
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function PlatformOrgDetail({ id, onBack }: { id: string; onBack: () => void }) {
+  type Detail = { name: string; tier: string; member_count: number; max_seats: number; credits: { balance: number; used: number }; members: Array<{ email: string; name: string | null; role: string }> };
+  const [d, setD] = useState<Detail | null>(null);
+  const [tiers, setTiers] = useState<string[]>([]);
+  const [grant, setGrant] = useState('');
+  const [saved, setSaved] = useState('');
+  const [err, setErr] = useState('');
+  const flash = (m: string) => { setSaved(m); setTimeout(() => setSaved(''), 1300); };
+  const load = () => adminApi().org(id).then((o) => setD(o as Detail)).catch(() => setErr('Could not load this organization.'));
+  useEffect(() => { load(); adminApi().plans().then((r) => setTiers(r.plans.filter((p) => !p.org_id).map((p) => p.tier))).catch(() => { /* selector falls back to current */ }); }, [id]);
+  const setTier = (tier: string) => { setErr(''); adminApi().updateOrg(id, { tier }).then(() => { flash('Plan updated'); load(); }).catch(() => setErr('Could not update the plan.')); };
+  const doGrant = () => { const n = Math.round(Number(grant)); if (!n || n <= 0) return; setErr(''); adminApi().grantCredits(id, n).then(() => { setGrant(''); flash('Credits granted'); load(); }).catch(() => setErr('Could not grant credits.')); };
+  if (!d) return err ? <div className="m-field-err">{err}</div> : <div className="m-set-loading">Loading…</div>;
+  const options = tiers.length ? tiers : [d.tier];
+  return (
+    <>
+      <button className="m-field-btn" onClick={() => { haptic(); onBack(); }}>← All organizations</button>
+      <div className="m-set-label">{d.name} {saved && <span className="m-saved">{saved}</span>}</div>
+      <div className="m-bill-cards">
+        <div className="m-bill-card"><span className="m-bill-v">{wholeCredits(d.credits?.balance)}</span><span className="m-bill-l">Balance</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{d.member_count}/{d.max_seats || '—'}</span><span className="m-bill-l">Seats</span></div>
+      </div>
+      <div className="m-set-label">Plan</div>
+      <div className="m-sel-group">
+        {options.map((t) => (
+          <button key={t} className="m-sel-row" onClick={() => setTier(t)}>
+            <span className="m-sel-row-label">{cap(t)}</span>
+            {d.tier === t && <Icon name="check" />}
+          </button>
+        ))}
+      </div>
+      <div className="m-set-label">Grant credits</div>
+      <div className="m-set-form">
+        <input className="m-field-in" inputMode="numeric" placeholder="Credits to add" value={grant} onChange={(e) => setGrant(e.currentTarget.value)} />
+        <button className="m-login-primary" disabled={!grant.trim()} onClick={doGrant}>Grant credits</button>
+      </div>
+      <div className="m-set-label">Members</div>
+      <div className="m-sel-group">
+        {d.members.map((m) => (
+          <div key={m.email} className="m-sel-row"><span className="m-sel-row-label">{m.name || m.email}</span><span className="m-sel-row-val">{cap(m.role)}</span></div>
+        ))}
+      </div>
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function PlatformOrgsTray() {
+  type Row = { id: string; name: string; tier: string; member_count: number };
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+  const [err, setErr] = useState('');
+  const search = (term: string) => { adminApi().orgs({ q: term, limit: 30 }).then((r) => setRows(r.orgs)).catch(() => { setRows([]); setErr('Could not load organizations.'); }); };
+  useEffect(() => { const t = setTimeout(() => search(q.trim()), q ? 260 : 0); return () => clearTimeout(t); }, [q]);
+  if (sel) return <PlatformOrgDetail id={sel} onBack={() => { setSel(null); search(q.trim()); }} />;
+  return (
+    <>
+      <div className="m-sel-search"><Icon name="search" /><input className="m-conn-in" placeholder="Search organizations" value={q} onChange={(e) => setQ(e.currentTarget.value)} /></div>
+      {!rows ? <div className="m-set-loading">Loading…</div> : !rows.length ? <div className="m-conn-empty">No organizations found.</div> : (
+        <div className="m-sel-group">
+          {rows.map((o) => (
+            <button key={o.id} className="m-set-row" onClick={() => { haptic(); setSel(o.id); }}>
+              <span className="m-set-name">{o.name}</span>
+              <span className="m-set-val">{cap(o.tier || '—')} · {o.member_count} {o.member_count === 1 ? 'member' : 'members'}</span>
+              <Icon name="chevron" />
+            </button>
+          ))}
+        </div>
+      )}
+      {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
 type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
   | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
   | 'apps'   // never a tray — the row hands off to the Apps sheet
-  | 'artifacts' | 'voice';
+  | 'artifacts' | 'voice'
+  | 'padmin-usage' | 'padmin-plans' | 'padmin-orgs';   // super_admin platform section
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
   runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
   apps: 'Apps',   // never a tray — the row hands off to the Apps sheet
   artifacts: 'Artifacts', voice: 'Voice',
+  'padmin-usage': 'Platform usage', 'padmin-plans': 'Plans', 'padmin-orgs': 'Organizations',
 };
 function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialSub, onOpenApps }: { open: boolean; onClose: () => void; user: DisplayUser; onSignOut: () => void; onUserChanged: () => void; initialSub?: SettingsSub | null; onOpenApps: () => void }) {
   const [sub, setSub] = useState<SettingsSub>('profile');
@@ -2679,7 +2884,8 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
     return () => clearTimeout(t);
   }, [open]);
   const openSub = (s: SettingsSub) => { haptic(); setSub(s); setSubOpen(true); };
-  const isAdmin = user.role === 'org_admin' || user.role === 'super_admin';
+  const isSuper = user.role === 'super_admin';
+  const isAdmin = user.role === 'org_admin' || isSuper;
   const title = SUB_TITLE[sub];
 
   const legalRow = (href: string, label: string) => (
@@ -2703,7 +2909,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
             <div className="m-sheet-scroll">
               <div className="m-set-email">{user.email}</div>
               {SETTINGS_GROUPS.map((g) => {
-                const rows = g.rows.filter((r) => !r.admin || isAdmin);
+                const rows = g.rows.filter((r) => (!r.admin || isAdmin) && (!r.super || isSuper));
                 if (!rows.length) return null;
                 return (
                   <div key={g.label} className="m-set-section">
@@ -2753,6 +2959,9 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
               {sub === 'artifacts' && <ArtifactsTray />}
               {sub === 'appearance' && <AppearanceTray />}
               {sub === 'voice' && <VoiceTray />}
+              {sub === 'padmin-usage' && <PlatformUsageTray />}
+              {sub === 'padmin-plans' && <PlatformPlansTray />}
+              {sub === 'padmin-orgs' && <PlatformOrgsTray />}
               {sub === 'help' && <HelpTray />}
             </div>
           </section>

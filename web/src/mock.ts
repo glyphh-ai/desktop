@@ -16,15 +16,17 @@ export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
  *  detail (e.g. the plan). */
 export type SettingSub =
   | 'profile' | 'billing' | 'usage' | 'general' | 'apikeys' | 'runtime'
-  | 'connections' | 'appearance' | 'help'
+  | 'connections' | 'appearance' | 'help' | 'voice'
   | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
-  | 'apps' | 'artifacts';   // 'apps' opens the Apps sheet, not a tray; 'org*/models/workspaces' = admin
+  | 'apps' | 'artifacts'   // 'apps' opens the Apps sheet, not a tray; 'org*/models/workspaces' = admin
+  | 'padmin-usage' | 'padmin-plans' | 'padmin-orgs';   // super_admin platform section
 export interface SettingRow {
   icon: string;
   label: string;
   value?: string;
   sub: SettingSub;
-  admin?: boolean;   // org_admin-only
+  admin?: boolean;   // org_admin-only (also visible to super_admin)
+  super?: boolean;   // super_admin-only (platform administration)
 }
 export interface SettingGroup {
   label: string;
@@ -55,6 +57,11 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
     { icon: 'sliders', label: 'Models', sub: 'models', admin: true },
     { icon: 'grid', label: 'Workspaces', sub: 'workspaces', admin: true },
     { icon: 'shield', label: 'Guardrails', sub: 'guardrails', admin: true },
+  ] },
+  { label: 'Platform', rows: [
+    { icon: 'chart', label: 'Usage', sub: 'padmin-usage', super: true },
+    { icon: 'dollar', label: 'Plans', sub: 'padmin-plans', super: true },
+    { icon: 'building', label: 'Organizations', sub: 'padmin-orgs', super: true },
   ] },
   { label: 'Support', rows: [
     { icon: 'help', label: 'Help & Support', sub: 'help' },
