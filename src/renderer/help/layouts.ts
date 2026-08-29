@@ -237,7 +237,11 @@ async function refreshFolderModeRow(): Promise<void> {
 
 /** Fill the loop dropdown once — "Leave as-is" plus every loop the caller has. */
 async function ensureLoopOptions(): Promise<void> {
-  if (!layoutLoopSelect || layoutLoopSelect.dataset.filled) return;
+  // REFETCHED EVERY TIME THE EDITOR OPENS (his report, 2026-08-29: a new loop
+  // never appeared here without restarting). The old dataset.filled guard was
+  // a SESSION-lifetime cache — right for one paint, wrong for a list the user
+  // edits on another page and comes straight back to.
+  if (!layoutLoopSelect) return;
   try {
     const res = await window.glyphh.loopsList();
     const opts = [`<option value="">Leave as-is</option>`];
@@ -257,7 +261,9 @@ async function renderLoopModels(): Promise<void> {
   if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
   let roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
-  try { roles = (await window.glyphh.loopRoles(builderLoop)).roles; }
+  // force: drop main's 60s roles cache, so a provider/model added on the
+  // platform shows in the slots without an app restart (his report).
+  try { roles = (await window.glyphh.loopRoles(builderLoop, true)).roles; }
   catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
   if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = roles.map((r) => {

@@ -3365,6 +3365,31 @@ async function init(): Promise<void> {
             shifted = true;
           }
         }
+        // THE DOCK FOLLOWS THE CATALOG TOO (his report, 2026-08-29: renaming
+        // a workspace left the OLD one in the dock until a restart). dockKeys
+        // is persisted membership — a renamed layout's key simply stopped
+        // resolving, and reconcileDock keeps any button whose key is still in
+        // the list, so the dead tile sat there forever. Prune keys whose row
+        // is gone; the survivor re-enters from the wall.
+        if (Array.isArray(fresh) || Array.isArray(rows)) {
+          const liveKeys = new Set<string>();
+          if (Array.isArray(fresh)) for (const l of fresh) liveKeys.add(`layout:${(l.name || "").toLowerCase()}`);
+          if (Array.isArray(rows)) for (const a of rows.filter(wallAppRow)) liveKeys.add(`app:${(a.slug || a.id).toLowerCase()}`);
+          const kept = dockKeys.filter((k) => {
+            // Only OUR two dynamic families are prunable — nav slots, folders
+            // and anything else the dock carries are none of this code's
+            // business, and a partial fetch must never drop them.
+            if (k.startsWith("layout:")) return !Array.isArray(fresh) || liveKeys.has(k);
+            if (k.startsWith("app:")) return !Array.isArray(rows) || liveKeys.has(k);
+            return true;
+          });
+          if (kept.length !== dockKeys.length) {
+            dockKeys = kept;
+            persistDock();
+            reconcileDock();
+            shifted = true;
+          }
+        }
         if (shifted) positionWall();
       }).catch(() => { /* next visit refetches */ });
     };

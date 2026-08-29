@@ -339,12 +339,13 @@ export function initBootGate(cb: BootGateCallbacks): void {
       return;
     }
 
-    // Show tutorial on first launch (skip if going through onboarding — handled by yo-onboarding-done)
-    if (!data.needsOnboarding) {
-      window.glyphh.getPreference("hasSeenTutorial", false).then((seen) => {
-        if (!seen) showTutorial(cb);
-      });
-    }
+    // FIRST RUN IS THE WALL TOUR, ON EVERY SURFACE (his report, 2026-08-29:
+    // "the old flow showed up again on desktop — are there two flows?"). Yes,
+    // there were: web moved to the wall tour on 2026-08-27 while desktop kept
+    // calling the static card carousel here, keyed off the per-DEVICE
+    // hasSeenTutorial pref. The tour (wall-tour.ts, fired by the workbench)
+    // is gated by the per-USER server pref wallTourDone, so it follows the
+    // account across machines. Desktop now enters the app like web does.
 
     cb.onBootReady(data);
   });
@@ -396,13 +397,9 @@ export function initBootGate(cb: BootGateCallbacks): void {
   // web-boot.js via webShowFirstRun/webEnterApp) — so on web this desktop path, which
   // keys off the per-device `hasSeenTutorial` prefs (a no-op stub on web that would
   // otherwise misfire the tutorial every boot), is skipped entirely.
-  window.addEventListener("yo-onboarding-done", async () => {
-    if ((window as any).__GLYPHH_WEB__) return;
-    const seen = await window.glyphh.getPreference("hasSeenTutorial", false);
-    if (!seen) {
-      showTutorial(cb);
-    } else {
-      cb.showPanels();
-    }
+  window.addEventListener("yo-onboarding-done", () => {
+    if ((window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
+    // Straight into the workspace — the wall tour takes it from here.
+    cb.showPanels();
   });
 }
