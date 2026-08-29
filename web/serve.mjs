@@ -105,14 +105,17 @@ const SHELL_ROUTES = new Set([
   '/auth/callback', '/auth/callback/',
   '/auth/device', '/auth/device/',
   '/auth/accept-invite', '/auth/accept-invite/',
+  // The OAuth consent screen /oauth/authorize redirects to. It was handled by
+  // isNestedShellRoute below (for <base>) but never listed HERE, which is the set
+  // that actually selects the shell — so it fell through to a static file lookup
+  // and 404'd, dead-ending every MCP client trying to connect.
+  '/settings/mcp', '/settings/mcp/',
 ]);
 /** A shell route BELOW the root needs <base href="/"> for its relative assets.
  *  /settings/mcp is two levels deep — without <base>, home.html's relative
  *  src="home.js" resolves to /settings/home.js (404) and the consent page
  *  never boots (stuck on the wb-booting veil, blank). */
-const isNestedShellRoute = (p) =>
-  (SHELL_ROUTES.has(p) && p !== '/' && p !== '/login')
-  || p === '/settings/mcp' || p === '/settings/mcp/';
+const isNestedShellRoute = (p) => SHELL_ROUTES.has(p) && p !== '/' && p !== '/login';
 
 // Client-safe config script, injected before the bridge so window.__GLYPHH_* exist
 // when the SDK client + login screen initialise. Only public values are exposed.
@@ -236,7 +239,11 @@ const server = http.createServer(async (req, res) => {
       res.end();
       return;
     }
-    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute
+    // The OAuth consent screen is web-boot's, on every device: the mobile shell has
+    // no consent view, so handing a phone mobile.html here would swallow the
+    // authorization request and strand the MCP client mid-flow.
+    const isConsentRoute = p === '/settings/mcp' || p === '/settings/mcp/';
+    const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isConsentRoute
       && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
     if (isMobileShell) {

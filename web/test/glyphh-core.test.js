@@ -9,6 +9,7 @@ import {
   decideBootState,
   shouldShowFirstRun,
   CALLBACK_PATH,
+  CONSENT_PATH,
   isPhoneViewport,
   applyPhoneClass,
   PHONE_MAX,
@@ -57,6 +58,24 @@ describe('resolveApiUrl', () => {
 describe('parseCallbackParams / decideBootState (web boot)', () => {
   it('CALLBACK_PATH is the platform-parity /auth/callback', () => {
     expect(CALLBACK_PATH).toBe('/auth/callback');
+  });
+  // The MCP dead-end: /oauth/authorize sends the user to this exact path, so it has
+  // to stay in step with the server's redirect target.
+  it('CONSENT_PATH is where /oauth/authorize sends the user', () => {
+    expect(CONSENT_PATH).toBe('/settings/mcp');
+  });
+  it('routes the consent screen by PATH, trailing slash and all', () => {
+    const q = '?client_id=gy_cl_x&redirect_uri=https%3A%2F%2Fclaude.ai%2Fapi%2Fmcp%2Fauth_callback'
+      + '&code_challenge=abc&code_challenge_method=S256&response_type=code&state=s&scope=mcp';
+    expect(decideBootState({ pathname: CONSENT_PATH, search: q, authenticated: true })).toBe('consent');
+    expect(decideBootState({ pathname: CONSENT_PATH + '/', search: q, authenticated: false })).toBe('consent');
+  });
+  it('does NOT let a magic-link return to consent be swallowed as a callback', () => {
+    // ?token=… on this page is a returning sign-in for an IN-FLIGHT authorization
+    // request; handing it to the callback branch redeems it and drops the user at
+    // the app, losing the request they came back to finish.
+    expect(decideBootState({ pathname: CONSENT_PATH, search: '?token=t&client_id=gy_cl_x', authenticated: false }))
+      .toBe('consent');
   });
   it('parses token, code, and a safe in-app redirect', () => {
     expect(parseCallbackParams('?token=t')).toMatchObject({ token: 't', code: null });

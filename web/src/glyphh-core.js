@@ -20,6 +20,14 @@ export const CALLBACK_PATH = '/auth/callback';
  *  in place here so the pathname survives to decideBootState(). */
 export const DEVICE_PATH = '/auth/device';
 
+/** The OAuth CONSENT screen — where /oauth/authorize sends the user so an MCP
+ *  client (Claude, Cursor, any MCP-capable IDE) can be approved. The whole
+ *  authorization request rides in the query string and must survive to the
+ *  approve POST, so serve.mjs serves the shell IN PLACE here rather than
+ *  redirecting. Kept in step with the server's redirect target in
+ *  server/src/domains/oauth/routes.ts. */
+export const CONSENT_PATH = '/settings/mcp';
+
 /** Path compare that ignores a trailing slash (`/auth/device/` === `/auth/device`). */
 function samePath(pathname, route) {
   const p = typeof pathname === 'string' ? pathname.replace(/\/+$/, '') : '';
@@ -104,6 +112,7 @@ export function parseCallbackParams(search) {
  * session resolved. Pure so the whole boot state machine is unit-testable with no
  * browser, SDK, or server (glyphh-core.js style).
  *   - 'device'   — the /auth/device approval page (its `?code=` is a DEVICE code)
+ *   - 'consent'  — the /settings/mcp OAuth consent screen (an MCP client asking)
  *   - 'callback' — a returning OAuth/magic-link with a token/code to exchange
  *   - 'app'      — a live session exists → dismiss splash, enter the app
  *   - 'login'    — no session → show the platform-style Google + magic-link screen
@@ -111,7 +120,7 @@ export function parseCallbackParams(search) {
  * exchanged (the user may have no session yet on this device — that's the point), and
  * the device page owns its own signed-out sign-in.
  * @param {{ pathname:string, search:string, authenticated:boolean }} input
- * @returns {'device'|'callback'|'app'|'login'}
+ * @returns {'device'|'consent'|'callback'|'app'|'login'}
  */
 export function decideBootState({ pathname, search, authenticated }) {
   // DEVICE FIRST — by PATH, and ahead of the payload heuristic below. `?code=` on
@@ -119,6 +128,11 @@ export function decideBootState({ pathname, search, authenticated }) {
   // without this branch the callback heuristic swallows it and tries to redeem it
   // as a sign-in, which always fails. serve.mjs keeps this pathname intact.
   if (samePath(pathname, DEVICE_PATH)) return 'device';
+  // CONSENT likewise by PATH, ahead of the payload heuristic: a magic-link return
+  // to this page arrives as ?token=…, and the callback branch would redeem it and
+  // then drop the user at the app — losing the authorization request it came back
+  // to finish. showConsent redeems that token itself, in place.
+  if (samePath(pathname, CONSENT_PATH)) return 'consent';
   // Otherwise the callback is identified by its PAYLOAD, not its path: a magic link
   // may land at the root (/?token=…) as well as at /auth/callback. Any other page
   // carrying a token/code is a returning sign-in.

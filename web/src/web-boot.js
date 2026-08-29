@@ -25,7 +25,7 @@
  * in glyphh-core.js (unit-tested); this file is the thin browser wiring around it.
  */
 
-import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH } from './glyphh-core.js';
+import { decideBootState, parseCallbackParams, shouldShowFirstRun, CALLBACK_PATH, CONSENT_PATH } from './glyphh-core.js';
 import {
   isAuthenticated, syncGating, serverReachable,
   signInWithGoogle, startEmailLink, verifyEmailLink, exchangeCode, approveDevice, signOut,
@@ -353,6 +353,136 @@ async function showDevice(shownAt) {
   step.append(legal);
 }
 
+/**
+ * OAUTH CONSENT (/settings/mcp?client_id=…&redirect_uri=…&code_challenge=…) — an
+ * MCP client (Claude, Cursor) was sent here by /oauth/authorize to be approved.
+ * Signed OUT: the login shell with the request intact, re-entering this view after
+ * sign-in. Signed IN: name the client, name the account, and on approve POST the
+ * whole authorization request back and follow the code home.
+ *
+ * Every protocol param is carried through UNTOUCHED — the server re-validates the
+ * redirect_uri and PKCE challenge at /oauth/consent, so anything dropped or renamed
+ * here fails there, after the user has already said yes.
+ */
+async function showConsent(shownAt) {
+  dismissSplash(shownAt);
+  const params = new URLSearchParams(window.location.search);
+
+  // A magic link aimed back at THIS page arrives as ?token=… alongside the request —
+  // redeem it here (decideBootState routed by path, so handleCallback never sees it),
+  // then strip it so a reload cannot double-redeem.
+  const token = params.get('token') || '';
+  if (token) {
+    try { await verifyEmailLink(token); } catch { /* expired — the check below shows login */ }
+    params.delete('token');
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+  }
+
+  const req = {
+    clientId: params.get('client_id') || '',
+    redirectUri: params.get('redirect_uri') || '',
+    codeChallenge: params.get('code_challenge') || '',
+    codeChallengeMethod: params.get('code_challenge_method') || 'S256',
+    state: params.get('state') || '',
+    scope: params.get('scope') || '',
+    resource: params.get('resource') || '',
+  };
+
+  const step = document.getElementById('onboarding-step-auth');
+  const overlay = document.getElementById('onboarding-overlay');
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  };
+  const panel = (title, lede) => {
+    if (overlay) overlay.classList.remove('hidden');
+    if (!step) return null;
+    step.innerHTML = '';
+    step.classList.add('auth-device');
+    step.append(el('h1', 'auth-shell-title', title), el('p', 'auth-shell-lede', lede));
+    return step;
+  };
+
+  // Landing here without a request means the user opened the URL by hand.
+  if (!req.clientId || !req.redirectUri || !req.codeChallenge) {
+    panel('Nothing to approve', 'Start the connection from your MCP client and it will send you back here.');
+    return;
+  }
+
+  // Verify the session for REAL — a cached user can outlive a dead session and drop
+  // the user on an approve button that just 401s.
+  let user = null;
+  try { user = await syncGating(); } catch { user = null; }
+
+  if (!user) {
+    mountLogin({
+      googleClientId: (typeof window !== 'undefined' && window.__GLYPHH_GOOGLE_CLIENT_ID__) || null,
+      origin: window.location.origin,
+      onGoogle: signInWithGoogle,
+      onStartEmailLink: startEmailLink,
+      title: 'Connect to Glyphh',
+      lede: 'Sign in to approve the app requesting access to your workspace.',
+      // The magic link must come BACK HERE with the whole request, not to /auth/callback.
+      redirectUri: `${window.location.origin}${CONSENT_PATH}?${params.toString()}`,
+      onAuthed: () => { void showConsent(shownAt); },
+    });
+    return;
+  }
+
+  // Who is asking. A client that cannot be read is not one to approve blind.
+  let info = null;
+  try { info = await glyphh().oauth.client(req.clientId); } catch { info = null; }
+  if (!info) {
+    panel('Unknown app', 'This app is not registered with Glyphh. Nothing was approved — close this tab and start again from your MCP client.');
+    return;
+  }
+
+  const name = info.clientName || 'An application';
+  if (!panel('Connect ' + name, name + ' wants to use Glyphh tools and memory on your behalf.')) return;
+
+  let host = req.redirectUri;
+  try { host = new URL(req.redirectUri).host; } catch { /* show it raw */ }
+  step.append(el('p', 'auth-shell-lede', 'It will be sent back to ' + host + ' when you approve.'));
+
+  // WHO approves — same trap the device page kills: this browser may hold a
+  // different account than the user expects, and a silent approve binds the grant
+  // to it. Name the account and offer the switch right here.
+  const who = el('p', 'auth-shell-lede device-approve-as');
+  who.append(document.createTextNode('Approving as '));
+  who.append(el('strong', '', user.email || user.name || 'this account'));
+  who.append(document.createTextNode(' — '));
+  const switchLink = el('a', 'device-switch-account', 'use a different account');
+  switchLink.href = '#';
+  switchLink.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    void (async () => {
+      try { await signOut(); } catch { /* local clear still happened */ }
+      void showConsent(shownAt); // re-enters signed-out → login, request intact
+    })();
+  });
+  who.append(switchLink);
+
+  const err = el('p', 'auth-shell-error'); err.style.display = 'none';
+  const btn = el('button', 'btn btn-primary btn-lg btn-full', 'Approve');
+  btn.type = 'button';
+  const actions = el('div', 'auth-shell-actions'); actions.append(btn);
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; btn.textContent = 'Approving…'; err.style.display = 'none';
+    try {
+      const { redirectTo } = await glyphh().oauth.consent(req);
+      window.location.replace(redirectTo);
+    } catch (ex) {
+      btn.disabled = false; btn.textContent = 'Approve';
+      err.textContent = (ex && ex.message) || 'Could not approve this request.';
+      err.style.display = '';
+    }
+  });
+
+  step.append(who, err, actions);
+}
+
 function showLogin(shownAt, initialError, extras) {
   dismissSplash(shownAt);
   mountLogin({
@@ -489,6 +619,7 @@ export async function startWebBoot(overrides = {}) {
   });
 
   if (state === 'device') return showDevice(shownAt);
+  if (state === 'consent') return showConsent(shownAt);
   if (state === 'callback') return handleCallback(shownAt);
   if (state === 'app') return enterApp(shownAt);
   return showLogin(shownAt);
