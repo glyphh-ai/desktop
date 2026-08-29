@@ -61,6 +61,9 @@ const api = () => (window as unknown as { glyphh?: {
 } }).glyphh ?? {};
 
 const docCache = new Map<string, DesignDoc>();
+/** Drop a design's cached document so the next read hits the server — the
+ *  Refresh control's whole job (a cached doc would refresh to itself). */
+function invalidateDoc(file: string): void { docCache.delete(file); }
 async function loadDoc(file: string): Promise<DesignDoc | null> {
   const hit = docCache.get(file);
   if (hit) return hit;
@@ -373,7 +376,14 @@ export function initDesign(host: DesignHost): DesignPanel {
     if (!body.isConnected) return;
     if (!doc) {
       body.innerHTML = `<div class="gdoc-empty">Couldn't load this design.<br><button class="action-btn gdz-back">‹ Designs</button></div>`;
-      body.querySelector(".gdz-back")?.addEventListener("click", () => { delete slot.file; delete slot.title; refresh(); });
+      // The open design refreshes like every other panel's library does (his
+    // report, 2026-08-29: new images never appeared without reopening) —
+    // the agent adds mockups and assets to a design while it sits open.
+    body.querySelector(".gdz-refresh")?.addEventListener("click", () => {
+      invalidateDoc(file);
+      refresh();
+    });
+    body.querySelector(".gdz-back")?.addEventListener("click", () => { delete slot.file; delete slot.title; refresh(); });
       return;
     }
 
@@ -383,6 +393,9 @@ export function initDesign(host: DesignHost): DesignPanel {
           <button class="action-btn gdz-back">‹ Designs</button>
           <input class="gdz-name" spellcheck="false" autocomplete="off" />
           <span class="gdz-savestate" title="All changes save automatically"></span>
+          <button class="ws-icon-btn office-refresh gdz-refresh" title="Refresh — pick up images and edits made since this opened">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
+          </button>
         </div>
         <div class="gdz-split">
           <div class="gdz-stage gdz-canvas">
