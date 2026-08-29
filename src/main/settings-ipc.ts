@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
 import { disposeAgentDock } from "./agent-dock";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
 import fs from "fs";
@@ -81,6 +81,32 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   });
 
   ipcMain.handle("get-app-version", () => app.getVersion());
+
+  // THE MIC'S OS-LEVEL STATE (his report, 2026-08-29: the mic button flashes
+  // then goes cold without recording). getUserMedia's NotAllowedError cannot
+  // tell "the user denied us in System Settings" from "no device" — macOS can,
+  // so ask it. 'not-determined' triggers the OS prompt right here; 'denied'
+  // is unrecoverable in-app and the renderer says so with a way out.
+  ipcMain.handle("mic-access-status", async () => {
+    if (process.platform !== "darwin") return { status: "granted" as const };
+    try {
+      let status = systemPreferences.getMediaAccessStatus("microphone");
+      if (status === "not-determined") {
+        await systemPreferences.askForMediaAccess("microphone").catch(() => false);
+        status = systemPreferences.getMediaAccessStatus("microphone");
+      }
+      return { status };
+    } catch (e) {
+      return { status: "unknown" as const, error: (e as Error).message };
+    }
+  });
+  // The only route out of a denial: the OS pane that owns the switch.
+  ipcMain.handle("mic-open-settings", () => {
+    if (process.platform === "darwin") {
+      void shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone");
+    }
+    return { ok: true };
+  });
 
   ipcMain.handle("start-auth", async (_e, mode: "register" | "login") => {
     const ok = await startAuthFlow(mode);

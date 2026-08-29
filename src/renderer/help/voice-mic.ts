@@ -195,17 +195,45 @@ async function startRecording(): Promise<boolean> {
   if (!p.inputModel || recorder) return false;
   stopReply();                       // never capture the agent's own voice
   if (!navigator.mediaDevices?.getUserMedia) { micError("This browser can't access the microphone."); handsFree = false; return false; }
+  // DESKTOP: settle the OS permission BEFORE asking Chromium for the stream
+  // (his report, 2026-08-29: the button flashed and went cold). A macOS TCC
+  // denial surfaces from getUserMedia as a bare NotAllowedError — the same
+  // error a web page gets — so the old message told the user to allow access
+  // "for this site", which is not where the switch lives. Ask the OS first
+  // and name the real state.
+  const osMic = (window.glyphh as unknown as { micAccessStatus?: () => Promise<{ status: string }> }).micAccessStatus;
+  if (osMic) {
+    try {
+      const { status } = await osMic();
+      if (status === "denied" || status === "restricted") {
+        micError("macOS is blocking the microphone for Glyphh — click here to open Privacy & Security › Microphone.", true);
+        handsFree = false;
+        return false;
+      }
+    } catch { /* status unavailable — fall through and let getUserMedia decide */ }
+  }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: p.deviceId ? { deviceId: { exact: p.deviceId } } : true });
   } catch (e) {
-    // The #1 cause on web: permission denied / blocked by policy. Surface it —
-    // a silent failure reads as "the button does nothing".
     const name = (e as { name?: string })?.name;
-    micError(name === "NotAllowedError" || name === "SecurityError"
-      ? "Microphone blocked — allow mic access for this site, then click again."
-      : `Microphone unavailable (${name || "error"}).`);
-    console.error("[voice] getUserMedia failed", e);
-    handsFree = false; el("code-mic-chip")?.classList.remove("recording"); return false;
+    // A SAVED DEVICE THAT IS GONE (unplugged mic, changed default) throws
+    // OverconstrainedError — retry once on the system default rather than
+    // making the user go find the setting.
+    if (name === "OverconstrainedError" || name === "NotFoundError") {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (e2) {
+        micError(`Microphone unavailable (${(e2 as { name?: string })?.name || "error"}).`, true);
+        console.error("[voice] getUserMedia retry failed", e2);
+        handsFree = false; el("code-mic-chip")?.classList.remove("recording"); return false;
+      }
+    } else {
+      micError(name === "NotAllowedError" || name === "SecurityError"
+        ? (osMic ? "Microphone blocked — open Privacy & Security › Microphone and allow Glyphh." : "Microphone blocked — allow mic access for this site, then click again.")
+        : `Microphone unavailable (${name || "error"}).`, true);
+      console.error("[voice] getUserMedia failed", e);
+      handsFree = false; el("code-mic-chip")?.classList.remove("recording"); return false;
+    }
   }
   micError("");                       // clear any prior error
   try { recorder = new MediaRecorder(stream); }
@@ -223,15 +251,23 @@ async function startRecording(): Promise<boolean> {
 
 /** Surface a mic problem where the user can see it: the chip tooltip + a brief
  *  error flash. Empty string clears it. */
-function micError(msg: string): void {
+function micError(msg: string, sticky = false): void {
   const chip = el("code-mic-chip");
   if (!chip) return;
   if (msg) {
     chip.title = msg;
     chip.classList.add("mic-error");
-    setTimeout(() => chip.classList.remove("mic-error"), 2600);
+    // A REAL failure STAYS lit (his report: it "flashes then disables" — the
+    // 2.6s auto-clear erased the only evidence). It clears on the next
+    // successful start, or when the user clicks through to the OS settings.
+    if (!sticky) setTimeout(() => chip.classList.remove("mic-error"), 2600);
+    // The chip has ONE click handler (chipClick) — it reads this flag rather
+    // than us stacking a second listener on the same button.
+    osDenied = sticky && /Privacy & Security/.test(msg);
+    console.warn("[voice] mic:", msg);
   } else {
     chip.classList.remove("mic-error");
+    osDenied = false;
   }
 }
 
@@ -308,7 +344,14 @@ export async function onTurnComplete(text: string): Promise<void> {
 // click starts; the next stops. In CONTINUOUS mode it also auto-stops on silence
 // (VAD), submits, and re-listens; in push-to-talk it just drops the text in the
 // composer for the user to send.
+/** Set when macOS itself is blocking the mic: the click opens the OS pane. */
+let osDenied = false;
+
 async function chipClick(): Promise<void> {
+  if (osDenied) {
+    void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.();
+    return;
+  }
   // Already recording → the user is stopping.
   if (recorder && recorder.state === "recording") {
     handsFree = false; awaitingReply = false;

@@ -119,6 +119,8 @@ declare global {
       windowClose: () => void;
       agentDockIgnoreMouse?: (ignore: boolean) => void;
       agentDockCaptureTarget?: () => Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>;
+      micAccessStatus?: () => Promise<{ status: string; error?: string }>;
+      micOpenSettings?: () => Promise<{ ok: boolean }>;
       windowMinimize: () => void;
       windowMaximize: () => void;
       panelsHide: () => void;

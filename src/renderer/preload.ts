@@ -265,6 +265,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   agentDockIgnoreMouse: (ignore: boolean) => ipcRenderer.send("agent-dock:ignore-mouse", ignore),
   // "Record this window" — capture the attached app's window as a PNG.
   agentDockCaptureTarget: () => ipcRenderer.invoke("agent-dock:capture-target") as Promise<{ ok: boolean; path?: string; proc?: string; error?: string }>,
+  // The mic's OS-level permission (macOS TCC) + the door to its settings pane.
+  micAccessStatus: () => ipcRenderer.invoke("mic-access-status") as Promise<{ status: string; error?: string }>,
+  micOpenSettings: () => ipcRenderer.invoke("mic-open-settings") as Promise<{ ok: boolean }>,
   /** The menu's ⌘W — the workbench closes the top panel first, and only
    *  falls back to windowClose when nothing is open. */
   onCloseGesture: (cb: () => void) => { ipcRenderer.on("close-gesture", () => cb()); },
