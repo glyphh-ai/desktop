@@ -652,13 +652,31 @@ function renderMktDetail(d: MktDetail, installed: boolean, isAdmin: boolean): vo
           <button class="action-btn mkt-report-app-btn" type="button">Report this app</button>
         </div>
       </aside>
-    </div>`;
+    </div>
+    <div class="mkt-lightbox hidden" id="mkt-lightbox"><img alt="" /></div>`;
 
   wireMktDetail(d, installed);
 }
 
 function wireMktDetail(d: MktDetail, installed: boolean): void {
   mktDetailEl.querySelector(".mkt-back")?.addEventListener("click", closeMktDetail);
+
+  // Tap-to-expand: any clamped image (description-body screenshot or the gallery's
+  // main shot) opens fullscreen; tap the backdrop to close. Delegated on .mkt-dt-main
+  // (rebuilt each render) so the gallery's swapped-in <img> is covered and listeners
+  // never accumulate across detail opens.
+  const lb = mktDetailEl.querySelector("#mkt-lightbox") as HTMLElement | null;
+  const lbImg = lb?.querySelector("img") as HTMLImageElement | null;
+  lb?.addEventListener("click", () => lb.classList.add("hidden"));
+  mktDetailEl.querySelector(".mkt-dt-main")?.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.tagName !== "IMG") return;
+    if (t.id !== "mkt-shot-main" && !t.closest(".mkt-md")) return;   // only clamped content images
+    const src = (t as HTMLImageElement).src;
+    if (!lb || !lbImg || !src) return;
+    lbImg.src = src;
+    lb.classList.remove("hidden");
+  });
   mktDetailEl.querySelector(".mkt-crumb-cat")?.addEventListener("click", (e) => {
     e.preventDefault();
     mktCategory = d.listing.category || ""; mktQuery = ""; mktPage = 1;

@@ -12986,7 +12986,7 @@ select:focus {
   background: var(--surface-2); aspect-ratio: 16 / 10; display: flex;
   min-width: 0; min-height: 0;
 }
-.mkt-gallery-main img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mkt-gallery-main img { width: 100%; height: 100%; object-fit: cover; display: block; cursor: zoom-in; }
 .mkt-gallery-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
 .mkt-gallery-caption { font-size: 12.5px; color: var(--text-3); margin: 10px 2px 12px; }
 .mkt-gallery-thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -15479,6 +15479,23 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .mkt-md pre { background: var(--surface-2); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0 0 10px; }
 .mkt-md pre code { background: none; padding: 0; }
 .mkt-md a { color: var(--accent); }
+/* Description-body images (markdown screenshots publishers paste into About) had
+   NO clamp — they rendered at intrinsic size and filled the page (his bug). Clamp
+   to the column width, keep aspect (no distortion), cap height, and make them
+   expandable (tap → lightbox). */
+.mkt-md img {
+  max-width: 100%; height: auto; max-height: 70vh; object-fit: contain;
+  display: block; margin: 12px 0; border-radius: 10px; border: 1px solid var(--border-2);
+  cursor: zoom-in;
+}
+/* Fullscreen image viewer — tap any clamped image to see it large; tap to close. */
+.mkt-lightbox {
+  position: fixed; inset: 0; z-index: 9600; padding: 24px;
+  background: rgba(0,0,0,.86); display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.mkt-lightbox.hidden { display: none; }
+.mkt-lightbox img { max-width: 94vw; max-height: 94vh; border-radius: 10px; box-shadow: 0 8px 40px rgba(0,0,0,.5); }
 
 /* ── App-detail Connections tab: required connections + their tools ── */
 .app-conns-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
