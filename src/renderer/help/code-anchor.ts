@@ -79,6 +79,20 @@ function fitPeek(): void {
   thread.style.transform = "none";                                  // beats the CSS centering fallback
   thread.style.bottom = `${Math.round(a.bottom - c.bottom + 8)}px`; // bottom edge BEHIND the pill
   thread.style.paddingBottom = `${Math.round(c.height + 10)}px`;    // content clears the overlapping pill
+  // NEVER grow into the dock (his report, 2026-08-30: bubbles rendered
+  // through the dock's gaps). While the dock is VISIBLE — in the stage or
+  // parked in the body-level portal, and not tucked off the top — the panel's
+  // ceiling is the dock's bottom edge. CSS min() keeps the user's height
+  // slider (--echo-agent-max-h) and the 860px cap in force alongside it.
+  const dock = document.querySelector<HTMLElement>(".echo-topbar");
+  const tucked = document.body.classList.contains("echo-dock-tucked") && !document.body.classList.contains("echo-dock-peek");
+  let ceiling = 0;
+  if (dock && !tucked) {
+    const r = dock.getBoundingClientRect();
+    if (r.height > 0 && r.bottom > 0) ceiling = r.bottom + 8;
+  }
+  const avail = Math.max(160, Math.round((c.bottom - 8) - ceiling));
+  thread.style.maxHeight = `min(var(--echo-agent-max-h, 76vh), 860px, ${avail}px)`;
 }
 const refitPeek = (): void => { if (isPeeking()) fitPeek(); };
 window.addEventListener("resize", refitPeek);
@@ -86,6 +100,9 @@ window.addEventListener("resize", refitPeek);
 // input — width/X drags fire this event, and a ResizeObserver on the card
 // catches growth the drags don't (chips, autoGrow).
 window.addEventListener("glyphh:agent-geometry", refitPeek);
+// Dock tuck/peek flips ride BODY CLASSES (no resize, no geometry event) —
+// watch them so an appearing dock immediately pushes the panel's ceiling down.
+new MutationObserver(refitPeek).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 {
   const card = root()?.querySelector<HTMLElement>(".code-input-card");
   if (card) new ResizeObserver(refitPeek).observe(card);
@@ -96,7 +113,7 @@ export function closePeek(): void {
   document.body.classList.remove("peek-open");
   // Drop the measured geometry so the closed thread returns to its CSS state.
   const thread = byId("code-thread");
-  if (thread) { thread.style.left = ""; thread.style.width = ""; thread.style.transform = ""; thread.style.bottom = ""; thread.style.paddingBottom = ""; }
+  if (thread) { thread.style.left = ""; thread.style.width = ""; thread.style.transform = ""; thread.style.bottom = ""; thread.style.paddingBottom = ""; thread.style.maxHeight = ""; }
 }
 
 export function togglePeek(): void {

@@ -47,9 +47,10 @@ export const PLATFORM_PATH = '/platform';
  *  only — never touches auth/device/mobile routing (phones never run this
  *  module; serve.mjs routes them to /m before the bridge loads). */
 export function surfacePath() {
-  // Default the app into DESKTOP — the command center wall (his call,
-  // 2026-08-27). The platform dashboard stays one toggle away.
-  return '/home';
+  // The Platform IS the web surface (his call, 2026-08-29): the app-web command
+  // center was removed, so there is no Desktop surface to default into on the
+  // web — sign-in lands on the platform dashboard, period.
+  return PLATFORM_PATH;
 }
 
 /** True when we're on the LOGIN shell (index.html / the /auth page) — it carries the

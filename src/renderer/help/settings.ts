@@ -146,6 +146,40 @@ function initSettings() {
   }
 
 
+  // Default workspace — what a fresh boot opens when there's nothing to
+  // restore (code-workbench restoreWallOnce reads the same pref). Options are
+  // the user's layouts; the three shipped defaults (Vibe/Dev/Design) are
+  // always offered — a missing one backfills from its template on first open.
+  const defWs = document.getElementById("settings-default-workspace") as HTMLSelectElement | null;
+  if (defWs) {
+    void (async () => {
+      const current = String((await window.glyphh.getPreference?.("defaultWorkspace", "Vibe")) ?? "Vibe");
+      let names: string[] = [];
+      try { names = ((await window.glyphh.layoutsList?.()) ?? []).map((l) => String((l as { name?: string }).name || "")).filter(Boolean); } catch { /* offline */ }
+      const seen = new Set<string>();
+      const opts: string[] = [];
+      for (const n of ["Vibe", "Dev", "Design", ...names]) {
+        const k = n.toLowerCase();
+        if (!seen.has(k)) { seen.add(k); opts.push(n); }
+      }
+      defWs.innerHTML = "";
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = "None";
+      defWs.appendChild(none);
+      for (const n of opts) {
+        const o = document.createElement("option");
+        o.value = n;
+        o.textContent = n;
+        defWs.appendChild(o);
+      }
+      defWs.value = opts.some((n) => n.toLowerCase() === current.toLowerCase()) ? opts.find((n) => n.toLowerCase() === current.toLowerCase())! : "";
+      defWs.addEventListener("change", () => {
+        void window.glyphh.setPreference?.("defaultWorkspace", defWs.value);
+      });
+    })();
+  }
+
   // The cloud relay (external LLMs driving this machine) was removed. Its
   // in-page helper survives — escapeHtmlLocal is reused by the token list below.
   function escapeHtmlLocal(s: string): string {

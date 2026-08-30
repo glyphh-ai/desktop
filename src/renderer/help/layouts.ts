@@ -111,6 +111,9 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   { id: "tool:files",    label: "Files", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
   { id: "tool:plan",     label: "Plan", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   { id: "tool:terminal", label: "Terminal", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>` },
+  // Rail — the app's left rail as a panel: menu, Recents, Apps, Workspaces,
+  // account footer. Its sections are per-cell toggles in the setup pane.
+  { id: "tool:rail", label: "Rail", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   // Releases — release management for built apps (deploy, promote, notes).
   { id: "tool:releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   // Echo — the command center as a 3D wall (moved here from the agent's
@@ -289,6 +292,21 @@ function escLayout(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+/** Per-cell app setup a workspace applies on open. Flat by design — it
+ *  round-trips verbatim through the desktop IPC, the web bridge and the
+ *  server's opaque `data` JSON, so a new key needs no migration. (Mirrored in
+ *  code-workbench.ts and main/layout-manager.ts — separate bundles, one shape.) */
+interface CellConfig {
+  url?: string;
+  cmd?: string;
+  keepAlive?: boolean;
+  railMenu?: boolean;
+  railRecents?: boolean;
+  railLayouts?: boolean;
+  railHideLeft?: boolean;
+  railHideRight?: boolean;
+}
+
 interface BuilderCell {
   panelId: string;
   col: number;
@@ -299,8 +317,8 @@ interface BuilderCell {
    *  per layout is sticky; if none, the workbench falls back to the first. */
   sticky?: boolean;
   /** Per-cell app setup: the Browser cell's URL, the Terminal cell's first
-   *  command (runs after the working folder is set). */
-  config?: { url?: string; cmd?: string; keepAlive?: boolean };
+   *  command (runs after the working folder is set), the Rail's sections. */
+  config?: CellConfig;
 }
 
 /** Mark exactly one cell sticky (or clear it). Enforces single-sticky. */
@@ -308,6 +326,9 @@ function setStickyCell(idx: number, on: boolean): void {
   builderCells.forEach((c, i) => { c.sticky = on && i === idx; });
 }
 
+/** True for the tick after a grid drag's mouseup — that gesture must not
+ *  double as a cell click (which would open the picker over the fresh drop). */
+let gridDragConsumedClick = false;
 let builderCols = 2;
 let builderRows = 1;
 let builderCells: BuilderCell[] = [];
@@ -318,6 +339,28 @@ function initBuilderCells() {
   for (let r = 0; r < builderRows; r++) {
     for (let c = 0; c < builderCols; c++) {
       builderCells.push({ panelId: "", col: c, row: r, colSpan: 1, rowSpan: 1 });
+    }
+  }
+  builderSelected = -1;
+}
+
+/** Resize the grid IN PLACE — assignments survive (his bug, long-standing:
+ *  changing Cols/Rows re-initialized the grid and wiped every placed panel,
+ *  its sticky pin and its configs). Cells whose anchor still fits stay, spans
+ *  clamped to the new edges; only cells a shrink pushes out entirely drop.
+ *  Newly exposed positions arrive as fresh empty 1×1 cells. */
+function resizeBuilderGrid(): void {
+  const kept: BuilderCell[] = [];
+  for (const c of builderCells) {
+    if (c.col >= builderCols || c.row >= builderRows) continue;
+    c.colSpan = Math.min(c.colSpan, builderCols - c.col);
+    c.rowSpan = Math.min(c.rowSpan, builderRows - c.row);
+    kept.push(c);
+  }
+  builderCells = kept;
+  for (let r = 0; r < builderRows; r++) {
+    for (let c = 0; c < builderCols; c++) {
+      if (cellAt(c, r) === -1) builderCells.push({ panelId: "", col: c, row: r, colSpan: 1, rowSpan: 1 });
     }
   }
   builderSelected = -1;
@@ -422,6 +465,90 @@ const CELL_CONFIG_SPECS: Record<string, { key: "url" | "cmd"; label: string; pla
   "tool:preview": { key: "url", label: "Browser URL", placeholder: "https://…" },
   "tool:terminal": { key: "cmd", label: "Terminal command", placeholder: "npm run dev" },
 };
+/** Cells configured by SWITCHES rather than a text field. Each toggle is ON by
+ *  default and only ever writes `false` — a workspace saved before the panel
+ *  existed opens with everything showing. */
+type RailToggleKey = "railMenu" | "railRecents" | "railLayouts" | "railHideLeft" | "railHideRight";
+interface CellToggle { key: RailToggleKey; label: string; desc?: string; default: boolean }
+const CELL_TOGGLE_SPECS: Record<string, { label: string; toggles: CellToggle[] }> = {
+  "tool:rail": {
+    label: "Rail",
+    toggles: [
+      { key: "railMenu", label: "Show menu", default: true },
+      { key: "railRecents", label: "Show recents", default: true },
+      { key: "railLayouts", label: "Show layouts", default: true },
+      // The collapse affordances are OFF by default — enabling one adds its
+      // edge icon to the panel header, left of the expand icon.
+      { key: "railHideLeft", label: "Left rail hide", desc: "Adds a header icon that collapses the rail to icons on the left.", default: false },
+      { key: "railHideRight", label: "Right rail hide", desc: "Adds a header icon that collapses the rail to icons on the right.", default: false },
+    ],
+  },
+};
+
+/** The app's ONE switch row (settings.html's grammar, verbatim): title (and
+ *  optional description) left, the pill switch hard right. `.settings-toggle`
+ *  hides the checkbox and `input:checked + .toggle-switch` paints it, so the
+ *  span MUST stay the input's immediate next sibling. */
+function settingsToggle(title: string, desc: string | null, checked: boolean, onChange: (on: boolean) => void): HTMLLabelElement {
+  const label = document.createElement("label");
+  label.className = "settings-toggle";
+  const text = document.createElement("div");
+  text.className = "set-pref-text";
+  const t = document.createElement("div");
+  t.className = "set-pref-title";
+  t.textContent = title;
+  text.appendChild(t);
+  if (desc) {
+    const d = document.createElement("div");
+    d.className = "set-pref-desc";
+    d.textContent = desc;
+    text.appendChild(d);
+  }
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = checked;
+  cb.addEventListener("change", () => onChange(cb.checked));
+  const sw = document.createElement("span");
+  sw.className = "toggle-switch";
+  label.append(text, cb, sw);
+  return label;
+}
+
+/** Write (or clear) one boolean cell-config key. The key's DEFAULT value is
+ *  never stored — matching it deletes the key (an emptied config drops off
+ *  the cell entirely), so a default-shaped cell saves no config at all. */
+function setCellFlag(index: number, key: RailToggleKey | "keepAlive", on: boolean, defaultOn: boolean): void {
+  const cell = builderCells[index];
+  if (!cell) return;
+  if (on === defaultOn) {
+    if (!cell.config) return;
+    delete cell.config[key];
+    if (!Object.keys(cell.config).length) delete cell.config;
+    return;
+  }
+  cell.config = { ...(cell.config || {}), [key]: on };
+}
+
+/** One switch per section of a toggle-configured panel (the Rail). */
+function renderCellToggles(
+  spec: { label: string; toggles: CellToggle[] },
+  cell: BuilderCell,
+  index: number,
+): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "layout-cell-config-row";
+  const label = document.createElement("span");
+  label.className = "layout-cell-config-label";
+  label.textContent = `${spec.label} · cell ${cell.col + 1},${cell.row + 1}`;
+  const stack = document.createElement("div");
+  stack.className = "settings-toggles";
+  for (const t of spec.toggles) {
+    const checked = cell.config?.[t.key] ?? t.default;
+    stack.appendChild(settingsToggle(t.label, t.desc ?? null, checked, (on) => setCellFlag(index, t.key, on, t.default)));
+  }
+  row.append(label, stack);
+  return row;
+}
 
 function renderCellConfigs(): void {
   const list = document.getElementById("layout-cell-config-list");
@@ -430,6 +557,12 @@ function renderCellConfigs(): void {
   list.innerHTML = "";
   let fields = 0;
   builderCells.forEach((c, i) => {
+    const toggleSpec = CELL_TOGGLE_SPECS[c.panelId];
+    if (toggleSpec) {
+      fields++;
+      list.appendChild(renderCellToggles(toggleSpec, c, i));
+      return;
+    }
     const spec = CELL_CONFIG_SPECS[c.panelId];
     if (!spec) return;
     fields++;
@@ -458,26 +591,16 @@ function renderCellConfigs(): void {
       // Maintain on close (default ON): navigating away from the layout
       // PARKS this terminal — the shell and whatever it's running (a CLI
       // agent, a dev server) stay alive, and reopening the layout
-      // re-attaches. Unchecked → leaving the layout kills the terminal.
-      const keep = document.createElement("label");
-      keep.className = "layout-cell-config-keep";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = c.config?.keepAlive !== false;
-      cb.addEventListener("change", () => {
-        const cell = builderCells[i];
-        if (!cell) return;
-        if (cb.checked) {
-          if (cell.config) {
-            delete cell.config.keepAlive;
-            if (!Object.keys(cell.config).length) delete cell.config;
-          }
-        } else {
-          cell.config = { ...(cell.config || {}), keepAlive: false };
-        }
-      });
-      keep.append(cb, document.createTextNode(" Maintain on close — keeps the terminal (and anything running in it) alive when the workspace closes"));
-      row.append(keep);
+      // re-attaches. Off → leaving the layout kills the terminal.
+      const stack = document.createElement("div");
+      stack.className = "settings-toggles";
+      stack.appendChild(settingsToggle(
+        "Maintain on close",
+        "Keeps the terminal (and anything running in it) alive when the workspace closes.",
+        c.config?.keepAlive !== false,
+        (on) => setCellFlag(i, "keepAlive", on, true),
+      ));
+      row.append(stack);
     }
     list.appendChild(row);
   });
@@ -503,9 +626,17 @@ function renderGridPreview() {
       const pin = cell.sticky
         ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
         : "";
-      return `<div class="${cls.join(" ")}" data-index="${i}"
+      // Assigned cells DRAG — the whole cell, not just the grip (the grip is
+      // the affordance; a hover-only 16px target was undiscoverable). Drop
+      // zones: the middle of another cell SWAPS the two; its left/right
+      // edges INSERT before/after it in reading order, flowing every panel
+      // between along — the layout-manager feel.
+      const grip = cell.panelId
+        ? `<span class="grid-cell-handle" title="Drag to move"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="10" r="1.4"/><circle cx="12" cy="10" r="1.4"/><circle cx="16" cy="10" r="1.4"/><circle cx="8" cy="14" r="1.4"/><circle cx="12" cy="14" r="1.4"/><circle cx="16" cy="14" r="1.4"/></svg></span>`
+        : "";
+      return `<div class="${cls.join(" ")}${cell.panelId ? " draggable-cell" : ""}" data-index="${i}"
         style="grid-column: ${cell.col + 1} / span ${cell.colSpan}; grid-row: ${cell.row + 1} / span ${cell.rowSpan}">
-        ${pin}${label}
+        ${grip}${pin}${label}
       </div>`;
     })
     .join("");
@@ -513,8 +644,140 @@ function renderGridPreview() {
   gridPreview.querySelectorAll(".grid-cell").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.stopPropagation();
+      if (gridDragConsumedClick) return;   // that mouseup ended a drag, not a pick
       const idx = parseInt((el as HTMLElement).dataset.index!, 10);
       showCellPicker(idx, el as HTMLElement);
+    });
+  });
+  // Drag-to-rearrange — POINTER-based, the same gesture the live layout
+  // manager uses (HTML5 DnD proved unreliable here and felt nothing like it).
+  // Contents move, geometry stays: positions are the grid's fixed slots
+  // (reading order — top row left to right, then down); dropping mid-cell
+  // SWAPS two slots, dropping on a cell's leading/trailing edge INSERTS the
+  // dragged panel before/after it, flowing everything between along. The
+  // receiving edge lights up while hovering, before the drop commits.
+  const clearDropMarks = (): void => {
+    gridPreview.querySelectorAll(".drop-swap, .drop-before, .drop-after").forEach((c) =>
+      c.classList.remove("drop-swap", "drop-before", "drop-after"));
+  };
+  /** leading edge (left/top ~28%) → before, trailing → after, middle → swap. */
+  const dropModeAt = (el: HTMLElement, x: number, y: number): "before" | "after" | "swap" => {
+    const r = el.getBoundingClientRect();
+    const fx = (x - r.left) / Math.max(1, r.width);
+    const fy = (y - r.top) / Math.max(1, r.height);
+    if (fx < 0.28 || fy < 0.28) return "before";
+    if (fx > 0.72 || fy > 0.72) return "after";
+    return "swap";
+  };
+  /** Cell indices in reading order — the order "in between / front / back"
+   *  refers to. */
+  const readingOrder = (): number[] =>
+    builderCells.map((_, i) => i).sort((a, b) =>
+      (builderCells[a].row - builderCells[b].row) || (builderCells[a].col - builderCells[b].col));
+  const applyDrop = (fromIdx: number, toIdx: number, mode: "before" | "after" | "swap"): void => {
+    type Contents = { panelId: string; sticky?: boolean; config?: CellConfig };
+    // A FULL-HEIGHT cell dropped on an edge moves AS A COLUMN — its span
+    // travels with it (his report, 2026-08-30: dragging the full-height Rail
+    // to the front must make the FIRST column the full-height Rail, not pour
+    // the rail into a half-height slot). The column splices out, everything
+    // between shifts, and it splices back in before/after the target's
+    // column. Merged cells spanning across either boundary make a clean
+    // splice impossible — those fall through to the contents flow below.
+    if (mode !== "swap") {
+      const c = builderCells[fromIdx];
+      const t = builderCells[toIdx];
+      if (c && t && c.colSpan === 1 && c.rowSpan >= builderRows) {
+        const from = c.col;
+        let to = mode === "before" ? t.col : t.col + t.colSpan;
+        if (to > from) to--;   // the removal shifts everything past the source left
+        const crossesBoundary = builderCells.some((o) =>
+          o !== c && ((o.col < from && o.col + o.colSpan > from) || (o.col < to && o.col + o.colSpan > to)));
+        if (!crossesBoundary && to !== from) {
+          for (const o of builderCells) if (o !== c && o.col > from) o.col--;
+          for (const o of builderCells) if (o !== c && o.col >= to) o.col++;
+          c.col = to;
+          return;
+        }
+        if (to === from) return;
+      }
+    }
+    const order = readingOrder();
+    const contents: Contents[] = order.map((ci) => ({
+      panelId: builderCells[ci].panelId, sticky: builderCells[ci].sticky, config: builderCells[ci].config,
+    }));
+    const src = order.indexOf(fromIdx);
+    let dst = order.indexOf(toIdx);
+    if (src < 0 || dst < 0) return;
+    if (mode === "swap") {
+      [contents[src], contents[dst]] = [contents[dst], contents[src]];
+    } else {
+      const [moved] = contents.splice(src, 1);
+      if (src < dst) dst--;
+      contents.splice(mode === "before" ? dst : dst + 1, 0, moved);
+    }
+    order.forEach((ci, p) => {
+      builderCells[ci].panelId = contents[p].panelId;
+      builderCells[ci].sticky = contents[p].sticky;
+      builderCells[ci].config = contents[p].config;
+    });
+  };
+  /** The cell + zone under the pointer (the ghost is pointer-transparent). */
+  const zoneAt = (x: number, y: number): { el: HTMLElement; idx: number; mode: "before" | "after" | "swap" } | null => {
+    const el = (document.elementFromPoint(x, y) as HTMLElement | null)?.closest<HTMLElement>(".grid-cell");
+    if (!el || !gridPreview.contains(el)) return null;
+    return { el, idx: parseInt(el.dataset.index!, 10), mode: dropModeAt(el, x, y) };
+  };
+  gridPreview.querySelectorAll<HTMLElement>(".grid-cell.draggable-cell").forEach((el) => {
+    const idx = parseInt(el.dataset.index!, 10);
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      // Kill text selection NOW — a selection under the pointer turns the
+      // gesture into a native text-drag that swallows every mousemove this
+      // tracker needs (the "drag just stops working" failure).
+      e.preventDefault();
+      const startX = e.clientX, startY = e.clientY;
+      let started = false;
+      let ghost: HTMLElement | null = null;
+      const move = (ev: MouseEvent): void => {
+        if (!started) {
+          // A 5px threshold keeps plain clicks (the picker) intact.
+          if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 5) return;
+          started = true;
+          el.classList.add("dragging");
+          document.body.classList.add("grid-cell-dragging");
+          ghost = el.cloneNode(true) as HTMLElement;
+          ghost.classList.add("grid-drag-ghost");
+          ghost.style.width = `${el.offsetWidth}px`;
+          ghost.style.height = `${el.offsetHeight}px`;
+          document.body.appendChild(ghost);
+        }
+        ghost!.style.left = `${ev.clientX + 10}px`;
+        ghost!.style.top = `${ev.clientY + 8}px`;
+        clearDropMarks();
+        const z = zoneAt(ev.clientX, ev.clientY);
+        if (z && z.idx !== idx) {
+          z.el.classList.add(z.mode === "swap" ? "drop-swap" : z.mode === "before" ? "drop-before" : "drop-after");
+        }
+      };
+      const up = (ev: MouseEvent): void => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        ghost?.remove();
+        document.body.classList.remove("grid-cell-dragging");
+        clearDropMarks();
+        el.classList.remove("dragging");
+        if (!started) return;   // plain click — the click handler opens the picker
+        // The mouseup that ends a drag must not double as a picker click.
+        gridDragConsumedClick = true;
+        window.setTimeout(() => { gridDragConsumedClick = false; }, 0);
+        const z = zoneAt(ev.clientX, ev.clientY);
+        if (!z || z.idx === idx) return;
+        applyDrop(idx, z.idx, z.mode);
+        builderSelected = z.idx;
+        renderGridPreview();
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
     });
   });
 
@@ -723,8 +986,8 @@ async function editLayout(name: string) {
         cell.colSpan = s.colSpan ?? 1;
         cell.rowSpan = s.rowSpan ?? 1;
         cell.sticky = !!(s as { sticky?: boolean }).sticky;
-        const cfg = (s as { config?: { url?: string; cmd?: string; keepAlive?: boolean } }).config;
-        if (cfg && (cfg.url || cfg.cmd)) cell.config = { ...cfg };
+        const cfg = (s as { config?: CellConfig }).config;
+        if (cfg && Object.keys(cfg).length) cell.config = { ...cfg };
       }
     }
     // Drop the freshly-initialized 1×1 cells that a merged cell's span now
@@ -944,12 +1207,12 @@ export function initLayoutsEvents() {
   // Grid builder dimension controls
   gridColsSelect.addEventListener("change", () => {
     builderCols = parseInt(gridColsSelect.value, 10);
-    initBuilderCells();
+    resizeBuilderGrid();   // NEVER initBuilderCells — placed panels survive
     renderGridPreview();
   });
   gridRowsSelect.addEventListener("change", () => {
     builderRows = parseInt(gridRowsSelect.value, 10);
-    initBuilderCells();
+    resizeBuilderGrid();
     renderGridPreview();
   });
   mergeRightBtn.addEventListener("click", () => {

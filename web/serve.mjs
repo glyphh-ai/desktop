@@ -246,11 +246,22 @@ const server = http.createServer(async (req, res) => {
     const phoneWantsApp = isPhoneUA && authedCookie && !isAuthRoute && !isConsentRoute
       && (SHELL_ROUTES.has(p) || p === '/home' || p === '/home/' || isPlatformRoute);
     const isMobileShell = MOBILE_ROUTES.has(p) || phoneWantsApp;
+    // The app-web command center (/home) was removed (his call, 2026-08-29): the
+    // Platform is the only desktop-browser web surface now (mobile keeps /m).
+    // Bounce a desktop-browser /home → /platform, query intact. Phones are
+    // exempt — phoneWantsApp already routed them to the mobile shell above.
+    if (!isMobileShell && (p === '/home' || p === '/home/')) {
+      const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+      res.statusCode = 302;
+      res.setHeader('Location', `/platform${qs}`);
+      res.end();
+      return;
+    }
     if (isMobileShell) {
       p = '/mobile.html';
     } else if (SHELL_ROUTES.has(p)) {
       p = (await exists(join(ROOT, 'index.html'))) ? '/index.html' : '/home.html';
-    } else if (p === '/home' || p === '/home/' || isPlatformRoute) {
+    } else if (isPlatformRoute) {
       p = (await exists(join(ROOT, 'home.html'))) ? '/home.html' : '/index.html';
     }
     const file = normalize(join(ROOT, p));

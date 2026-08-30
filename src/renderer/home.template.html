@@ -86,7 +86,7 @@
         <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
              Layouts (each opens the modal at that section; the pages live in
              the modal). Everything else stays modal-only. -->
-        <nav class="app-rail-nav">
+        <nav class="app-rail-nav" data-rail-section="menu">
           <button class="app-rail-nav-item" data-settings-sub="apps">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
             <span>Apps</span>
@@ -114,14 +114,42 @@
             <span>More</span>
           </button>
         </nav>
-        <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button">
+        <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button" data-rail-section="recents">
           <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           <span>Recents</span>
         </button>
-        <div class="app-rail-search">
+        <div class="app-rail-search" data-rail-section="recents">
           <input id="recents-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
         </div>
-        <div id="code-history" class="code-history"></div>
+        <div id="code-history" class="code-history" data-rail-section="recents"></div>
+        <!-- Apps + Layouts quick-launch trays — the grids help/code.ts paints
+             through registerRailGridHost. Restored for the Rail PANEL (the
+             shell rail stays hidden); the panel's config toggles hide any of
+             menu / recents / layouts per workspace cell. -->
+        <div class="code-rail-label app-rail-section-head" data-rail-section="apps">
+          <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Apps</span>
+          </button>
+        </div>
+        <div id="rail-apps-body" class="app-rail-section-body" data-rail-section="apps">
+          <div class="app-rail-search">
+            <input id="recent-apps-search" class="rail-recents-search" type="text" placeholder="Search apps…" spellcheck="false" autocomplete="off" />
+          </div>
+          <div id="recent-apps-list" class="app-rail-grid"></div>
+        </div>
+        <div class="code-rail-label app-rail-section-head" data-rail-section="layouts">
+          <button id="rail-layouts-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Workspaces</span>
+          </button>
+        </div>
+        <div id="rail-layouts-body" class="app-rail-section-body" data-rail-section="layouts">
+          <div class="app-rail-search">
+            <input id="recent-layouts-search" class="rail-recents-search" type="text" placeholder="Search workspaces…" spellcheck="false" autocomplete="off" />
+          </div>
+          <div id="recent-layouts-list" class="app-rail-grid"></div>
+        </div>
         <div class="app-rail-user">
           <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>

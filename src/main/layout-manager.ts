@@ -24,7 +24,7 @@ export interface ServerLayout {
   name: string;
   cols: number;
   rows: number;
-  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean } }>;
+  cells: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean } }>;
   folderMode: "single" | "multi";
   target: "glyphh" | "desktop";
   /** The loop this layout activates on open — its program AND its models. Absent
@@ -108,8 +108,9 @@ export interface GridCell {
   /** At most one cell per layout: the app-switch target ("sticky" panel). */
   sticky?: boolean;
   /** Per-cell app setup the layout applies on open: the Browser cell's URL,
-   *  the Terminal cell's first command (runs after the folder is set). */
-  config?: { url?: string; cmd?: string; keepAlive?: boolean };
+   *  the Terminal cell's first command (runs after the folder is set), the
+   *  Rail panel's section toggles. Opaque to the store — passed through. */
+  config?: { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean };
 }
 
 /** Folder-binding mode for layouts that contain any folder-bound app

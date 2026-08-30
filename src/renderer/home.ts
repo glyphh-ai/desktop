@@ -129,17 +129,10 @@ void (async () => {
           try { window.history.replaceState(null, "", "/platform"); } catch { /* cosmetic */ }
         }
       }
-      // The SURFACE TABS (his spec, 2026-08-27): a literal two-tab control
-      // at the top of the rail — Dashboard | Desktop, word + icon each. On
-      // the platform the Dashboard tab is the active surface; Desktop flips
-      // to the command center in the SAME tab. (Replaces the Apps row's old
-      // new-tab Builder launcher.)
-      document.getElementById("rail-tab-dashboard")?.addEventListener("click", () => {
-        openSettingsModal("dash");
-      });
-      document.getElementById("rail-tab-desktop")?.addEventListener("click", () => {
-        window.location.assign("/home");
-      });
+      // The Dashboard | Desktop surface toggle was removed (his call,
+      // 2026-08-29): app-web is the Platform only, so there is no Desktop
+      // command center to flip to on the web. The rail keeps the plain
+      // Dashboard row (.dash-plain).
       // ── Rail-bottom USER CHIP (his spec, 2026-08-24): first name with the
       // plan under it; its popup menu carries Docs / Support / About (their
       // rail rows are hidden in the platform shell — .not-platform). Fixed to
@@ -461,27 +454,6 @@ void (async () => {
     requestAnimationFrame(lift);
   };
   lift();
-})();
-
-// ── "← Platform" (web Builder only) ─────────────────────────────────────────
-// The Builder opens from the platform's Apps-row launcher in a NEW TAB; this
-// fixed top-left link is the way back. Renders ONLY under the web bridge
-// (window.__GLYPHH_WEB__) and never on /platform itself; on desktop
-// (Electron) nothing mounts, and the mobile app never loads this bundle.
-void (() => {
-  if (!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__) return;
-  if (/^\/platform\/?$/.test(window.location.pathname)) return;
-  if (document.getElementById("builder-back-platform")) return;
-  // The same surface tabs as the platform rail, Desktop side active here.
-  const a = document.createElement("div");
-  a.id = "builder-back-platform";
-  a.className = "rail-surface-tabs rail-surface-tabs-floating";
-  a.innerHTML =
-    '<button id="float-tab-dashboard" type="button" class="rail-surface-tab" title="The platform dashboard">' +
-    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>' +
-    '<button type="button" class="rail-surface-tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="12.5" rx="2"/><line x1="8.5" y1="20.5" x2="15.5" y2="20.5"/><line x1="12" y1="16.5" x2="12" y2="20.5"/></svg><span>Desktop</span></button>';
-  a.querySelector("#float-tab-dashboard")?.addEventListener("click", () => window.location.assign("/platform"));
-  document.body.appendChild(a);
 })();
 
 // ── Pending-update badge (bottom-right, every page) ─────────────────────────

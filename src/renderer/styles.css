@@ -5263,6 +5263,11 @@ ol.docs-list li::before {
 .layout-cell-config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .layout-cell-config-label { font-size: 12px; color: var(--text-2); }
 .layout-cell-config-row .settings-input { width: 100%; }
+/* The setup pane reuses the Settings switch row (.settings-toggle) and its
+   stack container — only the page-level margin/width caps come off, so the
+   pane can never drift from the toggles everywhere else. */
+.layout-cell-config-row .settings-toggles { margin-top: 2px; max-width: none; gap: 8px; }
+.layout-cell-config-row .settings-toggle { padding: 8px 12px; }
 
 /* Working-folder field — the picker + clear ride INSIDE the input's right edge. */
 .layout-folder-row { position: relative; max-width: 480px; }
@@ -5365,6 +5370,33 @@ ol.docs-list li::before {
   color: var(--accent);
 }
 .grid-cell-sticky svg { width: 13px; height: 13px; }
+/* The grip — drag a panel to another cell to swap the two. Hidden until the
+   cell is hovered so the tiny cells stay legible. */
+.grid-cell-handle {
+  position: absolute; top: 0; left: 0; right: 0; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: grab; color: var(--text-3); opacity: 0; transition: opacity 0.12s;
+}
+.grid-cell-handle:active { cursor: grabbing; }
+.grid-cell-handle svg { width: 16px; height: 16px; }
+.grid-cell:hover .grid-cell-handle { opacity: 0.9; }
+.grid-cell { user-select: none; }
+.grid-cell.draggable-cell { cursor: grab; }
+body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important; }
+/* The dragged cell dims in place; its ghost rides the cursor. */
+.grid-cell.dragging { opacity: 0.35; }
+.grid-drag-ghost {
+  position: fixed;
+  z-index: 3000;
+  pointer-events: none;
+  opacity: 0.85;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+/* Drop zones: mid-cell = swap (full ring); the edges = insert before/after
+   in reading order (an accent bar on the receiving edge). */
+.grid-cell.drop-swap { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.grid-cell.drop-before { box-shadow: inset 3px 0 0 var(--accent); border-color: var(--accent); }
+.grid-cell.drop-after { box-shadow: inset -3px 0 0 var(--accent); border-color: var(--accent); }
 .grid-cell { position: relative; }
 
 /* Cell panel picker dropdown */
@@ -11222,6 +11254,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    background alone was enough to blank out a dialog. */
 body.wb-modal-open webview,
 body.wb-modal-open #code-wb-applayer,
+body.wb-modal-open #code-rail-layer,
 body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-right-rail {
   background: var(--ws-bg-rail);
@@ -11695,6 +11728,89 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
   background: var(--bg);
 }
 .ws-agent-holder > .code-agent { flex: 1 1 auto; min-height: 0; min-width: 0; max-width: none; width: auto; height: auto; }
+
+/* ── The Rail panel — the ONE #app-rail, hosted by a workbench slot ─────
+   Same pattern as the agent overlay: a Rail slot renders only a
+   .ws-rail-placeholder; the live #app-rail (menu, Recents, Apps, Workspaces,
+   account footer — all still wired by help/code.ts + navigation.ts) sits in
+   the fixed #code-rail-layer and follows whichever placeholder is showing.
+   The shell's own left rail stays retired (display:none above); only a holder
+   un-hides it, so the two can never both claim the node. */
+.ws-rail-placeholder { flex: 1 1 auto; align-self: stretch; width: 100%; height: 100%; min-width: 0; min-height: 0; background: var(--surface-2); }
+/* Below the agent layer (z-118) — a Rail panel never covers the agent. */
+#code-rail-layer { position: fixed; inset: 0; pointer-events: none; z-index: 117; }
+.ws-rail-holder {
+  position: fixed;
+  pointer-events: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+/* Hosted: the rail fills the holder and drops the shell chrome it only had as
+   a left column (fixed width, right border, the web top inset). */
+.ws-rail-holder > #app-rail {
+  display: flex !important;
+  width: auto !important;
+  min-width: 0 !important;
+  flex: 1 1 auto;
+  border-right: none;
+  padding-top: 0 !important;
+  transition: none;
+  /* Menu + Recents + both trays + the footer can outgrow a short panel — the
+     rail scrolls rather than crushing the tray minimums. */
+  overflow-y: auto;
+}
+/* A COLLAPSED Rail panel (.rail-strip) is the icon strip: its header keeps
+   only the rail-hide toggle (which now expands) — title, drag affordance and
+   the other controls don't fit 64px and go. Rails surface + Echo card. */
+.ws-rail-slot.rail-strip .ws-rail-slot-header > :not(.slot-rail-hide),
+.echo-card.rail-strip .echo-card-head > :not(.echo-rail-hide) { display: none !important; }
+.ws-rail-slot.rail-strip .ws-rail-slot-header,
+.echo-card.rail-strip .echo-card-head { justify-content: center; padding: 4px 0; }
+.slot-rail-hide.active, .echo-rail-hide.active { color: var(--accent); }
+
+/* Per-cell configs (Workspaces → the panel's setup pane): each toggle hides
+   one section of the hosted rail. Apps has no toggle — it is the tray the
+   panel exists for. */
+#app-rail.rail-hide-menu [data-rail-section="menu"],
+#app-rail.rail-hide-recents [data-rail-section="recents"],
+#app-rail.rail-hide-layouts [data-rail-section="layouts"] { display: none !important; }
+
+/* ── ICONS MODE — the collapsed Rail (the panel's rail-hide affordance) ──
+   The hosting column narrows to the icon strip (RAIL_STRIP_W); the rail keeps
+   only what reads at that width: the + button, the nav icons, the tray tile
+   icons, and the account icon. Text, searches, Recents and the section
+   headers go — a 64px recents list is noise, not navigation. */
+#app-rail.rail-icons .code-new-session-rail span,
+#app-rail.rail-icons .app-rail-nav-item span,
+#app-rail.rail-icons .app-rail-user-btn span,
+#app-rail.rail-icons .app-rail-tile .tile-name { display: none; }
+/* WORKSPACES keep a very small name under their mini-icon stack — a layout's
+   icon collage isn't identifiable alone the way an app icon is. Apps stay
+   icon-only (his spec, 2026-08-30). */
+#app-rail.rail-icons #recent-layouts-list .app-rail-tile .tile-name {
+  display: block;
+  font-size: 8.5px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+#app-rail.rail-icons .code-new-session-rail { padding: 7px 0; margin: 8px 6px 4px; }
+#app-rail.rail-icons .app-rail-nav-item { justify-content: center; padding: 7px 0; }
+#app-rail.rail-icons .app-rail-user-btn { justify-content: center; }
+#app-rail.rail-icons #recents-toggle,
+#app-rail.rail-icons .app-rail-search,
+#app-rail.rail-icons #code-history,
+#app-rail.rail-icons .app-rail-section-head,
+#app-rail.rail-icons .rail-grid-pager { display: none !important; }
+/* The trays stay: one icon per row. Collapsed tray state still applies —
+   a .hidden body stays hidden. */
+#app-rail.rail-icons .app-rail-grid { grid-template-columns: 1fr; padding: 2px 6px 8px; gap: 4px; }
+#app-rail.rail-icons .app-rail-section-body { min-height: 0; }
+#app-rail.rail-icons .app-rail-relaunch span { display: none; }
 /* Per-panel browser chrome — back/fwd/reload + address bar + hide toggle. */
 .ws-app-chrome {
   flex-shrink: 0;
@@ -11760,12 +11876,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 /* Space badge — same glyph chip the echo tiles wear, upper-right of the mini. */
 
 /* "Maintain on close" — the terminal cell's keep-alive toggle in App Setup. */
-.layout-cell-config-keep {
-  display: flex; align-items: center; gap: 7px;
-  margin-top: 6px; font-size: 12px; color: var(--text-2); cursor: pointer;
-}
-.layout-cell-config-keep input { accent-color: var(--accent); }
-
 /* Space filter beside the layouts search — funnel button + check dropdown. */
 .cc-mini {
   position: relative; width: 150px; height: 94px; border-radius: 10px;
@@ -17082,6 +17192,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    <body> — so the veil covers BOTH containers until home.ts lifts it. */
 .wb-booting .code-workbench,
 .wb-booting #code-wb-applayer,
+.wb-booting #code-rail-layer,
 .wb-booting #code-agent-layer { visibility: hidden !important; }
 
 /* ── Composer sizing by SURFACE ──────────────────────────────────────────
@@ -19379,13 +19490,6 @@ body.echo-agent-locked .code-root[data-anchor="center"] .code-agent-toprow { cur
 body.echo-agent-locked .code-agent-edge,
 body.echo-agent-locked .code-thread-grip { display: none; }
 
-/* ── "← Platform" (web Builder only — home.ts mounts it under
-   window.__GLYPHH_WEB__ on non-/platform pages; Electron never renders it).
-   The way back to the admin shell from a Builder tab the platform's
-   Apps-row launcher opened. */
-/* #builder-back-platform is the surface tabs now — .rail-surface-tabs-floating
-   styles it; the old chip rules would fight the segmented layout. */
-
 /* Platform-only nav rows (Connections, Apps): hidden in the desktop settings
    modal, shown in the web platform shell. The Apps row's far-right launcher
    opens the Builder in a new tab. */
@@ -19939,38 +20043,9 @@ body.platform-shell.platform-rail-collapsed #platform-rail-toggle {
   border-bottom-width: 3px; border-radius: 9px;
 }
 .wtour-key-wide { min-width: 96px; }
-/* ── Surface tabs — Dashboard | Desktop (his spec, 2026-08-27) ──────────── */
-/* WEB-ONLY (his correction, 2026-08-27): the Dashboard | Desktop toggle is an
-   APP-WEB concept — the desktop app keeps the plain Dashboard row it always
-   had. The tabs mount hidden; the web root class reveals them and hides the
-   plain row. */
-.rail-surface-tabs {
-  display: none; margin: 6px 10px 12px;
-  border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); overflow: hidden;
-}
-.rail-surface-tab {
-  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 8px 4px; border: none; background: transparent; cursor: pointer;
-  font: 600 12.5px var(--font-sans); color: var(--text-3);
-}
-.rail-surface-tab svg { width: 14px; height: 14px; }
-.rail-surface-tab:hover { color: var(--text-2); }
-.rail-surface-tab.active { background: var(--surface-3); color: var(--text); }
-.rail-surface-tab + .rail-surface-tab { border-left: 1px solid var(--border); }
-/* Collapsed rail: the words fold away, the two icons stay a working toggle. */
-body.platform-rail-collapsed .rail-surface-tab span { display: none; }
-/* The builder's floating variant — same control, fixed where the old
-   "‹ Platform" chip lived. */
-.rail-surface-tabs-floating {
-  position: fixed; top: 10px; left: 12px; z-index: 400;
-  margin: 0; box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-}
-.rail-surface-tabs-floating .rail-surface-tab { padding: 7px 12px; }
-/* The surface tabs belong to the COMMAND CENTER only (his rule, 2026-08-27):
-   an open app or layout covers the wall, and the tabs go with it.
-   echo-wall-hidden, not -covered: covered excludes live LAYOUTS by design. */
-body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
+/* The Dashboard | Desktop surface toggle was removed (his call, 2026-08-29):
+   app-web is the Platform only, so both surfaces and the toggle are gone. The
+   rail keeps the plain Dashboard row (.dash-plain) on every surface. */
 /* ── Download page (platform rail) ──────────────────────────────────────── */
 .dl-hero {
   border: 1px solid var(--border); border-radius: 14px;
@@ -20001,13 +20076,8 @@ body.echo-wall-hidden .rail-surface-tabs-floating { display: none; }
 .gmus-videos:empty { display: none; }
 .gmus-video-cell { width: 220px; border-radius: 10px; background: #000; border: 1px solid var(--border); }
 
-/* The web surface tabs — shown on the COMMAND CENTER only. :not() here is
-   load-bearing (his report, 2026-08-28): this rule ties on specificity with
-   the wall-hidden hide rule above and, coming later, was overriding it — so
-   the tabs sat over every open app and layout on web. */
-html.glyphh-web body:not(.echo-wall-hidden) .rail-surface-tabs { display: flex; }
-html.glyphh-web body.echo-wall-hidden .rail-surface-tabs { display: none; }
-html.glyphh-web .settings-nav-item.dash-plain { display: none; }
+/* The surface toggle was removed (his call, 2026-08-29): app-web shows the
+   plain Dashboard row (.dash-plain), same as desktop — no per-surface override. */
 /* The dock's Command-center slot shows ONLY with auto-hide OFF (his spec,
    2026-08-28): with auto-hide on, the dock vanishes with the wall and the
    composer's CC button is the summoner; pinned always-on, the dock needs its

@@ -1293,6 +1293,7 @@ function ensureCodeSection(): void {
     renderThread();
     // The switched-to session's OWN source drives the chip/locus/run.
     repaintSourceUi();
+    applySessionFolder(target);   // the workbench follows the thread's folder
     paintChips();        // the loop chip follows THIS session's binding
     renderLoopMenu();
     void refreshModelList();
@@ -1329,10 +1330,13 @@ function ensureCodeSection(): void {
   /** Bind the CURRENT session to a folder (layout opens + folder picks).
    *  With no session yet — the lazy landing — the folder is held and applied
    *  to the one the next send creates. */
-  stampWorkdir: (dir: string): void => {
+  stampWorkdir: (dir: string, weak = false): void => {
     if (!dir) return;
     const c = current();
-    if (!c) { pendingWorkdir = dir; return; }
+    if (!c) { if (!weak || !pendingWorkdir) pendingWorkdir = dir; return; }
+    // WEAK (a workspace's folder): only fills a blank — an existing thread's
+    // own folder ALWAYS wins (his rule, 2026-08-30).
+    if (weak && c.workdir) return;
     c.workdir = dir;
     void saveStore();
   },
@@ -1377,6 +1381,24 @@ function ensureCodeSection(): void {
 /** A folder a layout asked for while no session existed — applied to the
  *  session the next send creates. */
 let pendingWorkdir = "";
+/** While set (a short window), cwd changes are PROGRAMMATIC — a workspace or
+ *  a thread open re-rooting the workbench — and must not be stamped onto the
+ *  current session as if the user picked a folder. Only real picks stamp. */
+let cwdStampSuppressedUntil = 0;
+(window as unknown as { __glyphhSuppressCwdStamp?: () => void }).__glyphhSuppressCwdStamp = () => {
+  cwdStampSuppressedUntil = Date.now() + 1500;
+};
+
+/** Re-root the WORKBENCH to an opened thread's own folder — Files, Diff,
+ *  terminals, everything follows the thread (his report, 2026-08-30: opening
+ *  a thread left the previous folder up). Local sources only; cloud sources
+ *  re-root through the source chip's own machinery. */
+function applySessionFolder(c: CodeChat | null | undefined): void {
+  const dir = c?.workdir || (c?.source?.kind === "local" ? c.source.path || "" : "");
+  if (!dir) return;
+  cwdStampSuppressedUntil = Date.now() + 1500;   // this change IS the thread's folder
+  void (window as unknown as { wb?: { setCwd?: (d: string) => Promise<string> } }).wb?.setCwd?.(dir);
+}
 /** Model bindings a LAYOUT asked for while no session existed — applied to
  *  the session the next send creates (same lazy contract as pendingWorkdir). */
 let pendingModels: Record<string, string> | null = null;
@@ -1415,6 +1437,14 @@ function newChat(): void {
   // so the run targets that folder.
   c.source = pendingSource;
   if (c.source.kind === "local" && c.source.path && !c.workdir) c.workdir = c.source.path;
+  // Still nothing? Adopt the workbench's LIVE folder — a thread is tied to
+  // its folder from birth (his rule, 2026-08-30), never left floating on
+  // whatever the global folder later becomes.
+  if (c.source.kind === "local" && !c.workdir) {
+    void (window as unknown as { wb?: { getCwd?: () => Promise<string> } }).wb?.getCwd?.().then((d) => {
+      if (d && !c.workdir) { c.workdir = d; void saveStore(); }
+    });
+  }
   chats.unshift(c);
   currentId = c.id;
   lastSession = c.id;
@@ -1838,6 +1868,7 @@ function historyRow(c: CodeChat): HTMLDivElement {
     renderThread();
     refreshCtxMeter();
     void checkWorkdirGate();
+    applySessionFolder(c);   // the workbench follows the thread's folder
     // The opened session's OWN source drives the chip, the head locus and the
     // run — without this the chip stays on the previous (pending) source and
     // every rail-opened session looked like it ran in the cloud.
@@ -2015,6 +2046,7 @@ function openLocalSession(id: string): void {
   currentId = id;
   const c = current();
   if (c) { lastSession = c.id; void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id); }
+  applySessionFolder(c);   // the workbench follows the thread's folder
   threadPinned = true;
   void saveStore();
   ensureCodeSection();
@@ -3251,6 +3283,20 @@ function stopThinking(): void {
     const observedRunId = observers.get(currentId)?.runId || liveRuns.get(currentId)?.runId;
     if (observedRunId && !observedRunId.startsWith("r-remote-")) void stopRunById(observedRunId);
   }
+  // STOP MUST STOP (his report, 2026-08-30: "the user cannot stop the agent").
+  // A run whose backend already died — an auth failure at turn start, a
+  // crashed subprocess, a retry burst — answers NONE of the aborts above, and
+  // the view spun forever with Stop wired to a corpse. Watchdog: if THIS run
+  // is still live shortly after a stop was asked, settle it locally as
+  // stopped. The real done{stopped} arriving first deletes the run, so the
+  // identity check makes the watchdog a no-op on every healthy path.
+  const chatId = currentId;
+  const runAtStop = liveRuns.get(chatId);
+  if (runAtStop) {
+    window.setTimeout(() => {
+      if (liveRuns.get(chatId) === runAtStop) finishRun(chatId, runAtStop.text || "", true);
+    }, 2500);
+  }
 }
 
 /** `.dip <app-or-layout>` — the ONE mechanism, callable from any input in the
@@ -4238,13 +4284,46 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
   syncRailLayout();
 }
 
-// (The rail's Apps/Workspaces tray sections are REMOVED all the way to the
-// DB — settings toggles gone, prefs swept by migration 0034. The recents
-// list owns the rail stack.)
+// ── Rail tray sections (Apps, Workspaces) ────────────────────────────────
+// The trays are back for the RAIL PANEL (the shell's own rail stays hidden).
+// Each header is a disclosure whose open/closed state is remembered; the pref
+// keys are new — the v1/v2 keys were swept by migration 0034 and honoring a
+// stale value would decide the panel's shape for him.
+interface RailSectionDef { toggle: string; body: string; pref: string }
+const RAIL_SECTIONS: RailSectionDef[] = [
+  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
+  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
+];
+
+function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
+  el(def.toggle)?.classList.toggle("closed", !open);
+  el(def.body)?.classList.toggle("hidden", !open);
+  if (persist) void window.glyphh.setPreference?.(def.pref, open);
+  syncRailLayout();
+}
+
+/** Bind each tray's disclosure + restore its remembered state (default open). */
+function initRailSections(): void {
+  for (const def of RAIL_SECTIONS) {
+    const toggle = el(def.toggle);
+    if (!toggle) continue;
+    toggle.addEventListener("click", () => {
+      setRailSectionOpen(def, toggle.classList.contains("closed"), true);
+    });
+    void window.glyphh.getPreference?.(def.pref, true).then((v) => setRailSectionOpen(def, v !== false, false));
+  }
+}
+
+/** One authority over the rail stack's vertical share: with a tray open,
+ *  Recents keeps its capped height and the trays take the rest; with every
+ *  tray closed (or absent, as in the hidden shell rail) Recents fills. */
 function syncRailLayout(): void {
   const hist = el("code-history");
-  el("recents-vsplit")?.classList.add("hidden");
-  if (hist && !hist.classList.contains("hidden")) hist.style.flex = "1 1 auto";
+  const anyTrayOpen = RAIL_SECTIONS.some((d) => {
+    const body = el(d.body);
+    return !!body && !body.classList.contains("hidden");
+  });
+  if (hist && !hist.classList.contains("hidden")) hist.style.flex = anyTrayOpen ? "0 1 170px" : "1 1 auto";
 }
 
 // ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
@@ -4663,10 +4742,8 @@ function initRailApps(): void {
     ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
-  void (async () => {
-    const recentsH = Number(await window.glyphh.getPreference?.("codeRecentsH", 0)) || 0;
-    syncRailLayout();
-  })();
+  initRailSections();
+  syncRailLayout();
   void loadRecentApps();
   // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
   // sections open via the rail nav / settings modal now, and the trays below
@@ -5437,6 +5514,7 @@ export function initCode(): void {
       { view: "diff",     label: "Diff",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
       { view: "plan",     label: "Plan",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
       { view: "releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
+      { view: "rail",     label: "Rail",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
     ];
     const wrap = el("code-tools-wrap");
     const moreBtn = el("code-tools-more");
@@ -5712,6 +5790,10 @@ export function initCode(): void {
   (window as unknown as { wb?: { onCwdChanged?: (cb: (dir: string | null) => void) => void } }).wb?.onCwdChanged?.((dir) => {
     const c = current();
     if (!dir) return;
+    // A programmatic re-root (workspace open, thread open) is NOT a pick —
+    // stamping it here is what let a workspace's folder overwrite every
+    // thread's own folder.
+    if (Date.now() < cwdStampSuppressedUntil) return;
     if (c) { c.workdir = dir; void saveStore(); return; }
     pendingWorkdir = dir;
     if (pendingSource.kind === "local") {
