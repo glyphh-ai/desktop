@@ -3371,12 +3371,13 @@ async function init(): Promise<void> {
           }
           return;
         }
-        // NOTHING to restore — a fresh boot opens the DEFAULT WORKSPACE
-        // (Settings → General; "Vibe" out of the box, "" = none). A default
-        // that predates this account's seed backfills from its template
-        // first, then opens through the one true layout-open.
+        // NOTHING to restore — a fresh boot opens the user's DEFAULT WORKSPACE
+        // (Settings → General). Out of the box it is NONE ("") for first-time
+        // users — they boot to the bare landing and pick their own default;
+        // "" = none. A default that predates this account's seed backfills from
+        // its template first, then opens through the one true layout-open.
         void (async () => {
-          const name = String((await yoApi?.getPreference?.("defaultWorkspace", DEFAULT_WORKSPACE_NAME)) ?? DEFAULT_WORKSPACE_NAME).trim();
+          const name = String((await yoApi?.getPreference?.("defaultWorkspace", "")) ?? "").trim();
           if (!name) return;
           // A BOOT open lands on the fresh + New Session landing — same
           // contract as booting without a layout ("don't auto-select a
@@ -5903,8 +5904,12 @@ async function init(): Promise<void> {
           flash(existing.card);   // flash() lifts shadow too
           return;
         }
-        const tile: EchoTile | undefined = findTile(key)?.tile
+        let tile: EchoTile | undefined = findTile(key)?.tile
           ?? ((app.url || app.glyphh) ? { name: app.name || app.slug, slug: key, url: app.url || undefined, glyphh: app.glyphh, workbench: app.workbench, kind: "app" } : undefined);
+        // A GLYPHH app (owned/dev or installed) is a LOCAL panel — never navigate it
+        // to a URL, even if a persisted wall tile still carries a stale published
+        // <slug>.glyphh.app. Force it local so it opens in place by slug.
+        if (tile && app.glyphh) tile = { ...tile, glyphh: true, url: undefined };
         if (!tile) return;
         const pinned = openList.find((x) => x.tile.sticky && x.card);
         if (pinned) { retargetCard(pinned, tile); return; }

@@ -666,7 +666,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "update_app",
-    doc: "update_app() — build-then-ship the app in the working folder: packages the compiled dist/ (Vite project) or the folder's files (legacy single-file app) and installs it LOCALLY (a panel app on this machine — no public URL). For a Vite project, run `npm run build` FIRST. Call after every change or tool calls run the OLD version. To PUBLISH to https://<slug>.glyphh.app instead, use the control-plane flow: create_app_entry { kind: 'glyphh', slug, name } then build_app { slug, distDir: 'dist' } — the runtime uploads the built folder itself; NEVER read built files or paste their contents into a call. WORKBENCH APPS: when the user asks for a 'workbench app' — a panel that lives inside their agent workbench with no public URL — build it like any Glyphh app but register it server-side with create_app_entry (kind glyphh, config {workbench:true}, via find_tools/call_tool) and build_app; declare its MCP tools + capabilities in the manifest so the harness can call them. Workbench apps are members-only by force, show under Apps, install into Workspace slots, and render chromeless (no address bar). Keep them inside the capability sandbox — the same guards as every app: declared capabilities only, no remote assets, no agent.run tool.",
+    doc: "update_app() — THE develop loop: build-then-install the app in the working folder LOCALLY on this machine (a panel app — no public URL, no login). Packages the compiled dist/ (Vite project — run `npm run build` FIRST) or the folder's files (legacy single-file app). Call after every change or tools run the OLD version. To VIEW what you built, use open_app(slug) — it opens locally as a file:// panel; developing and opening NEVER touch a public URL. PUBLISHING is a SEPARATE, explicit step and ONLY when the user asks to put the app on the public web at https://<slug>.glyphh.app — then (and only then) use the control-plane flow: create_app_entry { kind:'glyphh', slug, name } then build_app { slug, distDir:'dist' } (via find_tools/call_tool; the runtime uploads the built folder itself — NEVER read built files or paste their contents). WORKBENCH APPS (a panel inside the workbench, members-only, no URL): build locally with update_app and register with create_app_entry (kind glyphh, config {workbench:true}); declare MCP tools + capabilities in the manifest; they show under Apps, install into Workspace slots, render chromeless. Keep every app inside the capability sandbox — declared capabilities only, no remote assets, no agent.run tool.",
     action: () => ({ kind: "edit", title: "Update app from source" }),
     run: async () => {
       // Declared-connector validation reads the governed catalog (fresh at
@@ -794,7 +794,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_app",
-    doc: "open_app(name) — open an INSTALLED app from the user's library (or 'terminal') as a panel beside this conversation. To show something you built or deployed, use open_browser(url) instead — EXCEPT workbench apps (config workbench:true), which have no URL by design and are previewed with open_app itself.",
+    doc: "open_app(name) — open a LOCAL app from the user's library (or 'terminal') as a panel beside this conversation. This is how you show an app you just built with update_app AND any installed app: they run locally (a file:// panel), never a public URL, never a login. open_browser is only for EXTERNAL web pages / a published app someone else opens at <slug>.glyphh.app — never for the user's own app.",
     action: (a) => ({ kind: "command", title: `Open app "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const r = await openAppByRef(String(a.name ?? ""));
@@ -803,7 +803,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "open_browser",
-    doc: "open_browser(url) — open the tabbed Browser panel at a URL beside this conversation (address bar, tabs, DevTools). THE way to show a built or deployed app: after build_app publishes it, open the returned <slug>.glyphh.app URL here. Falls back: if the page needs a login the embedded browser doesn't have (a non-public app), open the installed app with open_app instead.",
+    doc: "open_browser(url) — open the tabbed Browser panel at an EXTERNAL web URL (address bar, tabs, DevTools). Use this for third-party sites. Do NOT use it to show an app the user built or installed — those run LOCALLY; open them with open_app(slug). Only reach for open_browser + a <slug>.glyphh.app URL when viewing an app that is PUBLISHED to the public web and NOT installed locally.",
     action: (a) => ({ kind: "command", title: `Open browser at ${String(a.url ?? "")}` }),
     run: async (a) => {
       const url = String(a.url ?? "").trim();

@@ -90,8 +90,8 @@ export async function workspaceExtras(workdirOverride?: string): Promise<string>
     // glyphh-apps.ts), so the scaffold → build → create_app_entry → build_app
     // flow is stated ONCE, in the place both the desktop and a cloud pod read
     // it. Repeating it here is how the two surfaces would drift.
-    "RULE: to SHOW the user an app, open it in the Browser panel — open_browser(<published URL>) — never the raw app panel. Only fall back to open_app(<slug>) when there is no reachable URL (a local-only install, or a published app that needs a login the embedded browser lacks).",
-    "RULE: NEVER start a local web server to show something — no `python3 -m http.server`, no `npx serve`, no `vite preview`. Publish the app and open its URL instead.",
+    "RULE: to SHOW the user an app they are building or have installed, open it LOCALLY with open_app(<slug>) — it runs as a local file:// panel on this machine (no URL, no login). NEVER publish an app or open a <slug>.glyphh.app / *.dev.glyphh.app URL just to show it during development — a locally-developed or installed app is ALWAYS its local install, never a public/dev URL. open_browser(<url>) is ONLY for external web pages, or a PUBLISHED app being viewed externally that the user has NOT installed.",
+    "RULE: NEVER start a local web server to show something — no `python3 -m http.server`, no `npx serve`, no `vite preview` — and do NOT deploy to a dev/preview URL to preview either. To show the app you built, call update_app() then open_app(<slug>); the local panel IS the preview. Publishing to the public web is a SEPARATE, explicit step, only when the user asks.",
     "RULE: shipping goes through the tools — never a CLI, never npx, and NEVER any login/device-auth flow. Your session is already authenticated; initiating authentication is forbidden.",
     GLYPHH_APP_SPEC,
     "Ada is your catalog: ada_recall(\"find email\") finds tools/apps/workspaces by meaning; ada_ask({op:\"who\", conditions:{\"entity.kind\":\"tool\",\"relational.object\":\"gmail\"}}) lists a connector's tools exactly.",

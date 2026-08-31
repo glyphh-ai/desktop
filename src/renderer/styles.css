@@ -17653,7 +17653,8 @@ body.echo-agent-in-layout .code-root[data-anchor="center"] > .code-agent { displ
 /* The raised wall (⌘⇧Space over a layout/cards) must never sit UNDER the
    layout-docked agent — the holder rides a body-level layer above the
    workbench, so it hides while the wall is lifted. */
-body.echo-wall-lifted .ws-agent-holder { visibility: hidden; pointer-events: none; }
+body.echo-wall-lifted .ws-agent-holder,
+body.echo-wall-lifted .ws-rail-holder { visibility: hidden; pointer-events: none; }
 /* A FULLSCREEN card covers every panel — the docked agent included. */
 body.echo-card-fullscreen .ws-agent-holder { visibility: hidden; pointer-events: none; }
 body.echo-card-fullscreen .code-root[data-anchor="center"] > .code-agent { visibility: hidden; pointer-events: none; }

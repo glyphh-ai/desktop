@@ -18,8 +18,11 @@ const BODY = `## What Glyphh is
 Glyphh is the user's workspace on their own machine. Over this MCP connection you
 drive it: open their apps and saved layouts as native OS windows, run the tools
 their installed apps expose, call their 3,500+ connected accounts, and even
-**build and deploy brand-new apps** onto their machine. Everything executes
-locally — you send commands, Glyphh runs them and returns the result.
+**build brand-new apps that run on their machine**, and — only when they ask —
+publish an app to a public URL. Building and opening execute LOCALLY (apps run on
+their machine, never a public URL, never a login); publishing to the public web is
+a separate, explicit step (see Publishing below). You send commands, Glyphh runs
+them locally and returns the result.
 
 ## Connect
 

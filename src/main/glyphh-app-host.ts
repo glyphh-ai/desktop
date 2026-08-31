@@ -131,6 +131,61 @@ function customAppsDir(): string {
   return glyphhPath("custom-apps");
 }
 
+/** Directories that hold a registered Glyphh app's UI and must get the app-session
+ *  egress-sandbox CSP — the copy-install root (custom-apps/) PLUS any IN-PLACE dev
+ *  build (a working folder's dist/). Keying the sandbox by REGISTERED APP ROOT, not
+ *  a single dir prefix, is what lets a developer's own app run where it lives. */
+const REGISTERED_APP_ROOTS = new Set<string>();
+
+/**
+ * Register the WORKING FOLDER's built app to run IN PLACE — no copy. This is the
+ * develop loop for an app's OWNER: the saved row's execPath points at the built
+ * entry inside the working folder (<dir>/dist/index.html), so open_app opens the
+ * developer's ACTUAL build and a rebuild shows on the next open. Copy-install
+ * (installGlyphhAppBundle) is reserved for installing SOMEONE ELSE's published app,
+ * which has no working folder on this machine.
+ */
+export async function registerAppInPlace(appProjectDir: string, manifestJson: string): Promise<{ ok: boolean; name?: string; error?: string }> {
+  const manifest = readGlyphhAppManifest(manifestJson);
+  if (!manifest) return { ok: false, error: "invalid glyphh.app.json manifest" };
+  const distDir = path.join(appProjectDir, "dist");
+  const entryPath = path.join(distDir, "index.html");
+  if (!fs.existsSync(entryPath)) return { ok: false, error: "no build found — run `npm run build` first (dist/index.html missing)" };
+  if (manifest.capabilities.some((c) => c.startsWith("connector.")) && !(manifest.connectors || []).length) {
+    return { ok: false, error: "manifest declares connector.* capabilities but lists no connectors[]" };
+  }
+  // The built dist IS a sandboxed app root: the session CSP (connect-src 'none')
+  // stamps any file:// under a registered root, so an in-place dev build gets the
+  // SAME egress lockdown as a copy-installed app.
+  REGISTERED_APP_ROOTS.add(distDir);
+  const fields = {
+    name: manifest.name, slug: manifest.slug, url: null, isBrowser: false,
+    execPath: entryPath, appArchetype: "glyphh-app",
+    launchConfig: {
+      capabilities: manifest.capabilities, connectors: manifest.connectors ?? [],
+      tools: manifest.tools ?? [], window: manifest.window ?? null, worker: manifest.worker ?? null,
+      ...(manifest.release ? { release: manifest.release } : {}),
+    },
+  };
+  try {
+    const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === manifest.slug)).catch(() => undefined);
+    const client = getClient();
+    if (existing) {
+      // Config vars (secrets) are USER data — preserve them across a re-register.
+      const secrets = (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets;
+      if (secrets && typeof secrets === "object") (fields.launchConfig as Record<string, unknown>).secrets = secrets;
+      await client.apps.updateEntry(existing.slug, { name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+    } else {
+      await client.apps.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+    }
+    invalidateOrgApps();
+    for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+  } catch (e) {
+    return { ok: false, error: `register failed: ${(e as Error).message}` };
+  }
+  return { ok: true, name: manifest.name };
+}
+
 /** Parse + validate a glyphh-app manifest ("" slug etc. rejected). */
 export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   let m: GlyphhAppManifest;
@@ -647,9 +702,13 @@ function hardenAppSession(ses: Electron.Session): void {
   ses.webRequest.onHeadersReceived({ urls: ["file://*/*"] }, (details, callback) => {
     const headers = details.responseHeaders || {};
     if (details.resourceType === "mainFrame" && !details.url.includes(".glyphh-worker.html")) {
-      let underCustomApps = false;
-      try { underCustomApps = fileURLToPath(details.url).startsWith(root); } catch { /* not a plain file path */ }
-      if (underCustomApps) {
+      let underAppRoot = false;
+      try {
+        const fp = fileURLToPath(details.url);
+        // Copy-install root (custom-apps/) OR any registered in-place dev build dir.
+        underAppRoot = fp.startsWith(root) || [...REGISTERED_APP_ROOTS].some((r) => fp === r || fp.startsWith(r + path.sep));
+      } catch { /* not a plain file path */ }
+      if (underAppRoot) {
         for (const k of Object.keys(headers)) {
           if (/^content-security-policy/i.test(k)) delete headers[k];
         }
@@ -732,6 +791,10 @@ export function registerGlyphhAppHost(): void {
     if (!entryPath || !fs.existsSync(entryPath)) {
       return { ok: false, error: "App bundle is missing on this machine — re-install it" };
     }
+    // Cover this app's dir with the egress-sandbox CSP — custom-apps/ apps are
+    // already under the copy-install root; an IN-PLACE dev build (execPath in a
+    // working folder's dist/) is registered here so its file:// gets the CSP too.
+    REGISTERED_APP_ROOTS.add(path.dirname(entryPath));
     // Only grant to a webContents that is genuinely a webview guest of the
     // calling window — never an arbitrary id handed in by the renderer.
     const guest = typeof previewWcId === "number" ? webContents.fromId(previewWcId) : undefined;

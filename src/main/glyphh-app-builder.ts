@@ -18,7 +18,7 @@ import fs from "node:fs";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/sdk";
 import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
-import { installGlyphhAppBundle } from "./glyphh-app-host";
+import { installGlyphhAppBundle, registerAppInPlace } from "./glyphh-app-host";
 import { getClient } from "./glyphh-client";
 
 // The ten built-in work panels (Office / Design / Memory / Media) are
@@ -107,8 +107,12 @@ export async function updateAppFromWorkdir(
 
     const m = JSON.parse(built.manifestJson) as { slug: string; name: string };
     refuseBuiltinWorkpanel(m.slug);
-    const r = await packageBuiltAndInstall(built.files, built.manifestJson);
-    if (!r.ok) throw new Error(r.error || "install failed");
+    // RUN IN PLACE (his rule, 2026-08-30): register the working folder's build where
+    // it lives — no copy into custom-apps. open_app then opens the developer's ACTUAL
+    // build (a rebuild shows on the next open); copy-install (installGlyphhAppBundle)
+    // is reserved for installing someone else's PUBLISHED app.
+    const r = await registerAppInPlace(dir, built.manifestJson);
+    if (!r.ok) throw new Error(r.error || "register failed");
     return { slug: m.slug, name: r.name || m.name, warnings: [] };
   }
 
