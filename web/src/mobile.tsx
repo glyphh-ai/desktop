@@ -2240,6 +2240,25 @@ function OrganizationTray() {
   const [addr, setAddr] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
+  // Custom domain (org white-label — server docs/custom-domains.md P1).
+  type OrgDomain = { id: string; domain: string; status: string; error: string | null; dns: Array<{ type: string; name: string; value: string }>; hostnames: Record<string, string> };
+  const [domains, setDomains] = useState<OrgDomain[]>([]);
+  const [domIn, setDomIn] = useState('');
+  const [domErr, setDomErr] = useState('');
+  const [domBusy, setDomBusy] = useState(false);
+  const orgApi = () => (glyphh().org as unknown as {
+    domains?: () => Promise<OrgDomain[]>; addDomain?: (d: string) => Promise<OrgDomain>;
+    verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
+  });
+  const refreshDomains = () => { orgApi().domains?.().then(setDomains).catch(() => { /* older server — section stays empty */ }); };
+  useEffect(() => { refreshDomains(); }, []);
+  const domAct = async (fn: (() => Promise<unknown>) | undefined, after?: () => void) => {
+    if (!fn) { setDomErr('This build cannot manage domains yet.'); return; }
+    setDomErr(''); setDomBusy(true);
+    try { await fn(); after?.(); refreshDomains(); }
+    catch (e) { setDomErr((e as Error).message || 'That did not work.'); }
+    finally { setDomBusy(false); }
+  };
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1300); };
   useEffect(() => {
     glyphh().org.get().then((o: Record<string, unknown>) => { setOrg(o); setAddr((o.address as Record<string, string>) || {}); }).catch(() => setErr('Could not load your organization.'));
@@ -2271,6 +2290,34 @@ function OrganizationTray() {
         {af('country', 'Country')}
       </div>
       {err && <div className="m-field-err">{err}</div>}
+      <div className="m-set-label">Custom domain</div>
+      <div className="m-set-form">
+        {domains.map((d) => (
+          <div key={d.id} style={{ border: '1px solid var(--border-2, #333)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <b>{d.domain}</b>
+              <span className="m-bill-l">{d.status === 'active' ? 'Active' : d.status === 'pending' ? 'Waiting for DNS' : d.status}</span>
+              <span style={{ flex: 1 }} />
+              {d.status !== 'active' && (
+                <button className="btn btn-primary" disabled={domBusy} onClick={() => void domAct(orgApi().verifyDomain && (() => orgApi().verifyDomain!(d.id)))}>Verify</button>
+              )}
+              <button className="btn" disabled={domBusy} onClick={() => void domAct(orgApi().removeDomain && (() => orgApi().removeDomain!(d.id)))}>Remove</button>
+            </div>
+            {d.error && <div className="m-field-err">{d.error}</div>}
+            {d.status !== 'active' && d.dns.map((r) => (
+              <div key={r.name} style={{ fontSize: 12, marginTop: 6 }}><code>{r.type}</code> <code>{r.name}</code> → <code>{r.value}</code></div>
+            ))}
+            {Object.entries(d.hostnames).map(([h, st]) => (
+              <div key={h} style={{ fontSize: 12, marginTop: 4 }}><code>{h}</code> <span className="m-bill-l">{st}</span></div>
+            ))}
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input className="m-field-in" value={domIn} placeholder="acme.com" spellCheck={false} onChange={(e) => setDomIn(e.currentTarget.value)} />
+          <button className="btn btn-primary" disabled={domBusy || !domIn.trim()} onClick={() => void domAct(orgApi().addDomain && (() => orgApi().addDomain!(domIn.trim())), () => setDomIn(''))}>Add</button>
+        </div>
+        {domErr && <div className="m-field-err">{domErr}</div>}
+      </div>
     </>
   );
 }
