@@ -776,9 +776,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle("app-domain-add", async (_e, slug: string, deploymentId: string, hostname: string) => {
+  ipcMain.handle("app-domain-add", async (_e, slug: string, deploymentId: string | null, hostname: string) => {
     try {
-      return { ok: true, domain: await getClient().hosting.addDomain(slug, { deploymentId, hostname }) };
+      // No deploymentId → the domain binds to the APP's hosted deployment (P2).
+      return { ok: true, domain: await getClient().hosting.addDomain(slug, { ...(deploymentId ? { deploymentId } : {}), hostname }) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

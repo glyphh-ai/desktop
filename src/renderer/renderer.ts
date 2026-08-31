@@ -171,7 +171,7 @@ declare global {
       appServerDeployments: (slug: string) => Promise<{ ok: boolean; deployments?: Array<{ id: string; imageKey: string; region: string; status: string; url: string | null; error: string | null; createdAt: string }>; error?: string }>;
       appServerDestroy: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appDomainsList: (slug: string) => Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>;
-      appDomainAdd: (slug: string, deploymentId: string, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
+      appDomainAdd: (slug: string, deploymentId: string | null, hostname: string) => Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>;
       appDomainRemove: (slug: string, id: string) => Promise<{ ok: boolean; error?: string }>;
       appListingSet: (slug: string, patch: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
       appListingImageAdd: (slug: string, kind: "icon" | "screenshot") => Promise<{ ok: boolean; key?: string; error?: string }>;

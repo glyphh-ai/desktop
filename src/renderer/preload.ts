@@ -575,7 +575,7 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-server-destroy", slug, id) as Promise<{ ok: boolean; error?: string }>,
   appDomainsList: (slug: string) =>
     ipcRenderer.invoke("app-domains-list", slug) as Promise<{ ok: boolean; domains?: CustomDomainWire[]; error?: string }>,
-  appDomainAdd: (slug: string, deploymentId: string, hostname: string) =>
+  appDomainAdd: (slug: string, deploymentId: string | null, hostname: string) =>
     ipcRenderer.invoke("app-domain-add", slug, deploymentId, hostname) as Promise<{ ok: boolean; domain?: CustomDomainWire; error?: string }>,
   appDomainRemove: (slug: string, id: string) =>
     ipcRenderer.invoke("app-domain-remove", slug, id) as Promise<{ ok: boolean; error?: string }>,

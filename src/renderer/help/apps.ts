@@ -1496,9 +1496,11 @@ async function loadServerSection(): Promise<void> {
 
   // A domain can only target a server that is up (or coming up).
   const targetable = deps.filter((d) => d.status === "live" || SERVER_PROVISIONING.has(d.status));
-  domSel.innerHTML = targetable.length
-    ? targetable.map((d) => `<option value="${escMkt(d.id)}">${escMkt(d.imageKey)} · ${escMkt(d.status)}</option>`).join("")
-    : `<option value="">No running server yet</option>`;
+  // First option = the APP's own hosting (P2: no dedicated server required);
+  // dedicated servers list after it as explicit targets.
+  domSel.innerHTML = [`<option value="">This app's hosting (no dedicated server)</option>`]
+    .concat(targetable.map((d) => `<option value="${escMkt(d.id)}">${escMkt(d.imageKey)} · ${escMkt(d.status)}</option>`))
+    .join("");
 
   const domRes = await window.glyphh.appDomainsList?.(slug);
   const domains = domRes?.ok ? (domRes.domains ?? []) : [];
@@ -2413,9 +2415,10 @@ function initApps() {
     const hostInput = document.getElementById("domain-hostname") as HTMLInputElement | null;
     const err = document.getElementById("domain-error");
     err?.classList.add("hidden");
-    const deploymentId = depSel?.value;
+    // Empty select = bind the domain to THIS APP's hosted deployment (P2) —
+    // no dedicated server required.
+    const deploymentId = depSel?.value || null;
     const hostname = hostInput?.value.trim().toLowerCase();
-    if (!deploymentId) { if (err) { err.textContent = "Deploy a server first, then point a domain at it."; err.classList.remove("hidden"); } return; }
     if (!hostname) { if (err) { err.textContent = "Enter a hostname."; err.classList.remove("hidden"); } return; }
     btn.disabled = true; const prev = btn.textContent; btn.textContent = "Adding…";
     const res = await window.glyphh.appDomainAdd?.(currentApp?.slug || currentAppId, deploymentId, hostname);
