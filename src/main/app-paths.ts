@@ -26,6 +26,32 @@ export function glyphhPath(...segments: string[]): string {
   return path.join(GLYPHH_DIR, ...segments);
 }
 
+// ── App storage layout ───────────────────────────────────────
+//
+// The canonical model (owner spec): an app a user HAS — developing OR
+// installed — always lives + runs LOCALLY, never a public URL, never the
+// rrotor runtime. Its local home is org-scoped by the AUTHOR'S org id so the
+// same app resolves at the same relative path on every machine that has it:
+//   ~/.glyphh/apps/<org-id>/<slug>/
+// (Publishing is the ONLY thing that ever puts an app on rrotor / <slug>.glyphh.app.)
+//
+// The legacy flat root ~/.glyphh/custom-apps/<slug> still holds pre-existing
+// installs + the shared _libs; both keep working (they stay CSP-covered) and
+// new installs land under the org-scoped root.
+
+/** Root of all locally-held apps: ~/.glyphh/apps (org subfolders beneath). */
+export function appsRoot(): string {
+  return path.join(GLYPHH_DIR, "apps");
+}
+
+/** An app's org-scoped local home: ~/.glyphh/apps/<orgId>/<slug>. Both segments
+ *  are flattened to a single safe path component (a manifest slug and an org id
+ *  never contain separators, but never trust them into the fs). */
+export function appDir(orgId: string, slug: string): string {
+  const safe = (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, "-");
+  return path.join(appsRoot(), safe(orgId), safe(slug));
+}
+
 // ── Per-user scoping ─────────────────────────────────────────
 //
 // The client respects the authenticated user: everything user-owned

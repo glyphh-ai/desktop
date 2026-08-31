@@ -40,7 +40,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { glyphhPath } from "./app-paths.js";
+import { glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import { getClient } from "./glyphh-client.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
@@ -93,6 +93,11 @@ export interface GlyphhAppManifest {
   /** The release this bundle was cut from. Carried so an imported app arrives
    *  with its version and notes instead of a bare version string. */
   release?: { version: string; notes?: string | null; channel?: "dev" | "live"; releasedAt?: string | null };
+  /** The AUTHOR'S org id — stamped at publish time (Phase 3). An installed app's
+   *  local home is `apps/<publisherOrgId>/<slug>`, so the same app resolves at
+   *  the same relative path on every machine that installs it. Absent on legacy
+   *  bundles (they fall back to the installing user's org). */
+  publisherOrgId?: string;
   description?: string;
 }
 
@@ -129,6 +134,21 @@ const DARWIN_ONLY_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
 
 function customAppsDir(): string {
   return glyphhPath("custom-apps");
+}
+
+/** The active account's org id — the namespace for locally-held apps. Cached
+ *  after the first resolve; best-effort (a pre-auth or offline call returns
+ *  null and the caller falls back to the legacy flat root). */
+let cachedOrgId: string | null = null;
+async function currentOrgId(): Promise<string | null> {
+  if (cachedOrgId) return cachedOrgId;
+  try {
+    const org = await getClient().org.get();
+    cachedOrgId = org?.id || null;
+    return cachedOrgId;
+  } catch {
+    return null;
+  }
 }
 
 /** Directories that hold a registered Glyphh app's UI and must get the app-session
@@ -281,7 +301,13 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
   const remote = lintRemoteAssets(textEntries);
   if (remote.length) return { ok: false, error: `Bundle references remote assets (bundle them at build time): ${remote[0]}` };
 
-  const dir = path.join(customAppsDir(), manifest.slug);
+  // Install lands in the app's org-scoped local home apps/<author-org>/<slug>.
+  // The author's org rides in the bundle (publisherOrgId, Phase 3); a legacy
+  // bundle without it installs under THIS user's org. If the org can't be
+  // resolved (pre-auth/offline), fall back to the legacy flat root so an install
+  // never hard-fails on a path decision.
+  const ownerOrg = manifest.publisherOrgId || (await currentOrgId());
+  const dir = ownerOrg ? appDir(ownerOrg, manifest.slug) : path.join(customAppsDir(), manifest.slug);
   fs.mkdirSync(dir, { recursive: true });
   zip.extractAllTo(dir, true);
   const entryPath = path.join(dir, manifest.entry);
@@ -690,6 +716,49 @@ const APP_UI_CSP = [
   "form-action 'none'",
 ].join("; ");
 
+/**
+ * One-time relocation of legacy flat installs (custom-apps/<slug>) into the
+ * org-scoped layout (apps/<org>/<slug>), repointing each saved row's execPath.
+ * Best-effort + idempotent: an app whose org can't be resolved, or whose target
+ * already exists, is left where it is (it keeps working — custom-apps stays
+ * CSP-covered). Runs post-auth from registerGlyphhAppHost; a pre-auth boot just
+ * migrates on the next launch. `_libs` and non-glyphh rows are skipped.
+ */
+async function migrateCustomAppsToOrgScoped(): Promise<void> {
+  try {
+    const legacyRoot = customAppsDir();
+    if (!fs.existsSync(legacyRoot)) return;
+    const orgId = await currentOrgId();
+    if (!orgId) return;
+    const legacyPrefix = legacyRoot + path.sep;
+    const rows = await fetchOrgApps().catch(() => []);
+    let moved = 0;
+    for (const row of rows) {
+      const execPath = String(row.execPath || "");
+      if (!execPath.startsWith(legacyPrefix) || !isGlyphhAppRow(row)) continue;
+      const sourceDir = path.join(legacyRoot, row.slug);
+      if (!fs.existsSync(sourceDir)) continue;
+      const targetDir = appDir(orgId, row.slug);
+      if (fs.existsSync(targetDir)) continue; // already migrated or a name clash — leave the legacy copy
+      try {
+        fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+        fs.renameSync(sourceDir, targetDir);
+        const newExec = path.join(targetDir, path.relative(sourceDir, execPath));
+        await getClient().apps.updateEntry(row.slug, { nativeRef: newExec });
+        moved++;
+      } catch (e) {
+        console.error(`[glyphh-app] migrate ${row.slug} → org-scoped failed:`, e instanceof Error ? e.message : e);
+      }
+    }
+    if (moved) {
+      invalidateOrgApps();
+      for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+    }
+  } catch (e) {
+    console.error("[glyphh-app] org-scope migration failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 const hardenedAppSessions = new WeakSet<Electron.Session>();
 
 /** Inject APP_UI_CSP onto installed-app UI documents loaded in `ses`. Idempotent
@@ -698,15 +767,20 @@ const hardenedAppSessions = new WeakSet<Electron.Session>();
 function hardenAppSession(ses: Electron.Session): void {
   if (hardenedAppSessions.has(ses)) return;
   hardenedAppSessions.add(ses);
-  const root = customAppsDir() + path.sep;
+  // Every dir that can hold a locally-held app's UI must get the sandbox CSP:
+  // the org-scoped root (apps/<org>/<slug>), the legacy flat root (custom-apps/),
+  // and any registered in-place dev build. Widening here is strictly ADDITIVE —
+  // it only ever ADDS the egress lockdown to more file:// documents.
+  const prefixRoots = [appsRoot() + path.sep, customAppsDir() + path.sep];
   ses.webRequest.onHeadersReceived({ urls: ["file://*/*"] }, (details, callback) => {
     const headers = details.responseHeaders || {};
     if (details.resourceType === "mainFrame" && !details.url.includes(".glyphh-worker.html")) {
       let underAppRoot = false;
       try {
         const fp = fileURLToPath(details.url);
-        // Copy-install root (custom-apps/) OR any registered in-place dev build dir.
-        underAppRoot = fp.startsWith(root) || [...REGISTERED_APP_ROOTS].some((r) => fp === r || fp.startsWith(r + path.sep));
+        underAppRoot =
+          prefixRoots.some((r) => fp.startsWith(r)) ||
+          [...REGISTERED_APP_ROOTS].some((r) => fp === r || fp.startsWith(r + path.sep));
       } catch { /* not a plain file path */ }
       if (underAppRoot) {
         for (const k of Object.keys(headers)) {
@@ -753,6 +827,9 @@ export function registerGlyphhAppHost(): void {
   // default session; in-app preview = persist:yo) with the app CSP.
   hardenAppSession(session.defaultSession);
   hardenAppSession(session.fromPartition("persist:yo"));
+  // Relocate any legacy flat installs into the org-scoped layout (best-effort,
+  // post-auth). Legacy apps keep working either way — custom-apps stays covered.
+  void migrateCustomAppsToOrgScoped();
 
   initAppServices({
     resolveApp: async (slug) => {
