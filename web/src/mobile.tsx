@@ -2270,6 +2270,24 @@ function OrganizationTray() {
   const [domIn, setDomIn] = useState('');
   const [domErr, setDomErr] = useState('');
   const [domBusy, setDomBusy] = useState(false);
+  // Verify retries while DNS propagates: 6 attempts, 10s apart; spinner on the
+  // button; first success reloads, the last failure surfaces its reason.
+  const [verifying, setVerifying] = useState<{ id: string; attempt: number } | null>(null);
+  const verifyLoop = async (id: string) => {
+    const fn = orgApi().verifyDomain;
+    if (!fn) { setDomErr('This build cannot manage domains yet.'); return; }
+    setDomErr('');
+    const ATTEMPTS = 6;
+    let lastError = 'Could not verify the domain.';
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      setVerifying({ id, attempt });
+      try { await fn(id); setVerifying(null); refreshDomains(); return; }
+      catch (e) { lastError = (e as Error).message || lastError; }
+      if (attempt < ATTEMPTS) await new Promise((res) => setTimeout(res, 10_000));
+    }
+    setVerifying(null);
+    setDomErr(lastError);
+  };
   const orgApi = () => (glyphh().org as unknown as {
     domains?: () => Promise<OrgDomain[]>; addDomain?: (d: string) => Promise<OrgDomain>;
     verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
@@ -2323,7 +2341,14 @@ function OrganizationTray() {
               <span className="m-bill-l">{d.status === 'active' ? 'Active' : d.status === 'pending' ? 'Waiting for DNS' : d.status}</span>
               <span style={{ flex: 1 }} />
               {d.status !== 'active' && (
-                <button className="btn btn-primary" disabled={domBusy} onClick={() => void domAct(orgApi().verifyDomain && (() => orgApi().verifyDomain!(d.id)))}>Verify</button>
+                <button className="btn btn-primary" disabled={domBusy || verifying !== null} onClick={() => void verifyLoop(d.id)}>
+                  {verifying?.id === d.id ? (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ verticalAlign: -1, marginRight: 5 }}><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" /></path></svg>
+                      Verifying…{verifying.attempt > 1 ? ` (${verifying.attempt}/6)` : ''}
+                    </>
+                  ) : 'Verify'}
+                </button>
               )}
               <button className="btn" disabled={domBusy} onClick={() => void domAct(orgApi().removeDomain && (() => orgApi().removeDomain!(d.id)))}>Remove</button>
             </div>

@@ -165,6 +165,7 @@ function domainsStatus(msg: string): void {
 }
 
 const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const SPIN_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></svg>`;
 const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
 /** A tiny copy button for a DNS record value — flips to a green check on success. */
@@ -216,13 +217,25 @@ function paintDomains(domains: OrgDomain[]): void {
       ${hostRows.map(([h, st]) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0;"><code>${esc(h)}</code><span class="mkt-listed-chip ${st === "active" ? "on" : ""}">${esc(st)}</span></div>`).join("")}` : ""}
     `;
     wireCopyButtons(row);
-    row.querySelector<HTMLButtonElement>(".od-verify")?.addEventListener("click", async () => {
+    // Verify retries while DNS propagates (his spec, 2026-08-31): 6 attempts,
+    // 10s apart, spinner on the button; the first success reloads, the last
+    // failure surfaces its reason.
+    const verifyBtn = row.querySelector<HTMLButtonElement>(".od-verify");
+    verifyBtn?.addEventListener("click", async () => {
       domainsError("");
-      domainsStatus("Checking DNS…");
-      const r = await accountApi().verifyOrgDomain(d.id);
-      domainsStatus("");
-      if (!r.ok) { domainsError(r.error); return; }
-      void loadDomains();
+      verifyBtn.disabled = true;
+      const ATTEMPTS = 6;
+      let lastError = "Couldn't verify the domain.";
+      for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        verifyBtn.innerHTML = `${SPIN_SVG} Verifying…${attempt > 1 ? ` (${attempt}/${ATTEMPTS})` : ""}`;
+        const r = await accountApi().verifyOrgDomain(d.id);
+        if (r.ok) { void loadDomains(); return; }
+        lastError = r.error;
+        if (attempt < ATTEMPTS) await new Promise((res) => setTimeout(res, 10_000));
+      }
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = "Verify";
+      domainsError(lastError);
     });
     row.querySelector<HTMLButtonElement>(".od-remove")?.addEventListener("click", async () => {
       domainsError("");
