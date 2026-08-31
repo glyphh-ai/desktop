@@ -433,8 +433,11 @@ async function showConsent(shownAt) {
   }
 
   // Who is asking. A client that cannot be read is not one to approve blind.
+  // (SDK method is clientInfo — a stale `.client(...)` call here threw
+  // undefined-is-not-a-function into this catch and rendered EVERY consent
+  // as "Unknown app". The catch masks errors by design; keep the name right.)
   let info = null;
-  try { info = await glyphh().oauth.client(req.clientId); } catch { info = null; }
+  try { info = await glyphh().oauth.clientInfo(req.clientId); } catch { info = null; }
   if (!info) {
     panel('Unknown app', 'This app is not registered with Glyphh. Nothing was approved — close this tab and start again from your MCP client.');
     return;
