@@ -224,6 +224,7 @@ function paintDomains(domains: OrgDomain[]): void {
     verifyBtn?.addEventListener("click", async () => {
       domainsError("");
       verifyBtn.disabled = true;
+      verifyBtn.style.color = "#fff";
       const ATTEMPTS = 6;
       let lastError = "Couldn't verify the domain.";
       for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
@@ -234,6 +235,7 @@ function paintDomains(domains: OrgDomain[]): void {
         if (attempt < ATTEMPTS) await new Promise((res) => setTimeout(res, 10_000));
       }
       verifyBtn.disabled = false;
+      verifyBtn.style.color = "";
       verifyBtn.textContent = "Verify";
       domainsError(lastError);
     });

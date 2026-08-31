@@ -2341,7 +2341,7 @@ function OrganizationTray() {
               <span className="m-bill-l">{d.status === 'active' ? 'Active' : d.status === 'pending' ? 'Waiting for DNS' : d.status}</span>
               <span style={{ flex: 1 }} />
               {d.status !== 'active' && (
-                <button className="btn btn-primary" disabled={domBusy || verifying !== null} onClick={() => void verifyLoop(d.id)}>
+                <button className="btn btn-primary" disabled={domBusy || verifying !== null} style={verifying?.id === d.id ? { color: '#fff' } : undefined} onClick={() => void verifyLoop(d.id)}>
                   {verifying?.id === d.id ? (
                     <>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ verticalAlign: -1, marginRight: 5 }}><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" /></path></svg>
