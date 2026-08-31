@@ -849,11 +849,7 @@
                              DNS records → verify; every published app then
                              answers at <app>.yourdomain.com. Wired by
                              settings-org-panel.ts; org_admin via the panel gate. -->
-                        <!-- HIDDEN (his order, 2026-08-31): domain management
-                             lives on ONE surface — the PLATFORM's Organization
-                             tray — not duplicated per app. Wiring stays
-                             (remove = hide, never tear out). -->
-                        <div id="org-domains-group" class="hidden">
+                        <div id="org-domains-group">
                           <h4 class="acct-row-head">Custom domain <span id="org-domains-status" class="set-save-state"></span></h4>
                           <p class="section-desc">Point your own domain at Glyphh and every published app answers at <code>&lt;app&gt;.yourdomain.com</code>. Add the domain, publish the two DNS records it shows, then press Verify.</p>
                           <div id="org-domains-error" class="settings-error hidden"></div>
