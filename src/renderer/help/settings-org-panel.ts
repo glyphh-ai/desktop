@@ -102,7 +102,8 @@ export async function loadOrgPanel(): Promise<void> {
   showPanel(true);
   try { org = await accountApi().org(); paint(); }
   catch (e) { setError(`Couldn't load your organization — ${(e as Error).message}`); }
-  void loadDomains();
+  // Domain management lives on the PLATFORM only (his order, 2026-08-31 — one
+  // surface). The group is hidden in settings.html; skip the fetch too.
 }
 
 export function initOrgPanel(): void {
