@@ -267,6 +267,44 @@ export function lockDeckSections(html: string): string {
   return out;
 }
 
+/**
+ * Import an EXISTING HTML deck (any document with `<section class="slide">`
+ * pages) into the canonical Glyphh shell — its slides, CSS and animations
+ * PRESERVED, not re-authored:
+ *   - the source's global <style> blocks (head/body chrome, fonts, keyframes)
+ *     are lifted and scoped to #stage so they style the slides but can never
+ *     fight the shell; `#stage html/body` remaps to #stage so page-level
+ *     background/font rules survive;
+ *   - the sections ride through unchanged — the structure lock then scopes
+ *     any per-slide <style> to its #sN, strips scripts, and keeps @keyframes,
+ *     so the imported deck presents with its own look and motion;
+ *   - the source's own nav script/progress chrome is simply not lifted — the
+ *     canonical shell provides those.
+ */
+export function importDeckHtml(html: string, fallbackTitle: string): { doc: string; title: string; slides: number } | { error: string } {
+  const spans = slideSpans(html);
+  if (!spans.length) {
+    return { error: 'no <section class="slide"> pages found — the file must be an HTML slide deck (each slide a <section class="slide"> block). To build a deck from scratch use create_slides.' };
+  }
+  // <title> text arrives entity-escaped; decode it or buildDeckDocument's own
+  // escaping double-encodes ("&amp;amp;").
+  const rawTitle = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || "";
+  const title = rawTitle
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    || fallbackTitle;
+  const inSection = (at: number): boolean => spans.some((sp) => at >= sp.start && at < sp.end);
+  let globalCss = "";
+  for (const m of html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) {
+    if (m.index !== undefined && !inSection(m.index)) globalCss += m[1] + "\n";
+  }
+  let scoped = scopeCss(globalCss, "#stage");
+  // Page-level selectors land on the stage instead of dying under it.
+  scoped = scoped.replace(/#stage (html|body)\b/g, "#stage");
+  const sections = spans.map((sp) => html.slice(sp.start, sp.end)).join("\n");
+  const slidesHtml = `${scoped.trim() ? `<style id="gp-import">${scoped}</style>\n` : ""}${sections}`;
+  return { doc: buildDeckDocument(title, slidesHtml), title, slides: spans.length };
+}
+
 // ── Per-slide surgery (string level — a DOM round-trip could mangle a
 // hand-authored deck). A slide's span runs from its <section class="slide">
 // open tag to the first </section> after it (the format never nests

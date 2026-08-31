@@ -33,7 +33,7 @@ import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheet
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell, type ChartSpec, type CondFormat, type NamedRange, type DataValidation, type CellStyle } from "../shared/sheets-engine";
 import { randomUUID } from "node:crypto";
-import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
+import { listGPoints, readGPoint, writeGPoint, deleteGPoint, gpointFileName, buildDeckDocument, importDeckHtml, slideSpans, removeSlideAt, replaceSlideAt, insertSlideAt, setSlideHiddenAt, setDeckTitle } from "./gpoints";
 import { renderDeck, renderSection, validateDeck, validateSlideSpec, layoutCatalog, themeCatalog, type SlideSpec, type RenderOptions } from "@glyphh/sdk/slides";
 import { gdocFileName as docsFileName } from "./office-docs";
 import { docThemeCss, docStyleFromDesign, writeDocStyle, DOC_THEMES } from "../shared/doc-styles";
@@ -846,7 +846,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "list_slide_layouts",
-    doc: "list_slide_layouts() — the controlled slide LAYOUTS you slot content into (title, bullets, two-column, image-left/right, quote, big-stat, cards, comparison, timeline, agenda, chart, code, full-bleed-image, team, closing, …). Each entry gives its required fields and a copyable sample. ALWAYS pick a layout + fill its fields rather than authoring HTML.",
+    doc: "list_slide_layouts() — the slide LAYOUTS you slot content into (title, hero, image, gallery, logo-wall, split, statement, bullets, two-column, image-left/right, quote, big-stat, cards, comparison, timeline, agenda, chart, code, full-bleed-image, team, closing, custom, …). Each entry gives its fields + a copyable sample, INCLUDING the universal motion fields: enter (slide-entrance animation) and fx (build-step reveal effect) work on EVERY layout, and footer adds a footer + page number. Prefer a layout; when none fits, the `custom` layout takes your own HTML + CSS (scoped, @keyframes welcome) for a fully bespoke animated slide.",
     action: () => ({ kind: "read", title: "List slide layouts" }),
     run: async () => cap(JSON.stringify(layoutCatalog(), null, 1), READ_CAP),
   },
@@ -858,7 +858,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "create_slides",
-    doc: 'create_slides(name, title, slides, theme?, design?) — create or overwrite a Glyphh Slides deck by SLOTTING CONTENT INTO CONTROLLED LAYOUTS. `slides` is an array of typed specs, one per slide: [{layout, …fields}] (see list_slide_layouts for each layout\'s fields + samples). Pick a theme (list_slide_themes) or a design-system name to match the org brand. Reference media-library images by asset id (list_media). The tool renders professional, design-consistent HTML — you never write HTML/CSS. (Escape hatch: pass slides_html — raw <section class="slide"> blocks — only when no layout fits.)',
+    doc: 'create_slides(name, title, slides, theme?, design?) — create or overwrite a Glyphh Slides deck by SLOTTING CONTENT INTO LAYOUTS. `slides` is an array of typed specs, one per slide: [{layout, …fields}] (see list_slide_layouts — 25 layouts incl. hero/image/gallery/logo-wall/split/statement/custom). Every layout also takes enter (entrance animation), fx (build-step reveal effect) and footer. Pick a theme (list_slide_themes) or a design-system name to match the org brand. Reference media-library images by asset id (list_media). For a slide no layout covers, use layout "custom" with your own html + css (scoped; @keyframes animate). To bring in an EXISTING deck .html file use import_slides — never retype it. (Escape hatch: slides_html — raw <section class="slide"> blocks.)',
     action: (a) => ({
       kind: "edit",
       title: `Create deck "${String(a.name ?? "")}"`,
@@ -884,6 +884,21 @@ const TOOLS: ToolDef[] = [
       if (!/<section[^>]*class="[^"]*\bslide\b/i.test(doc)) return 'ERROR: not a slide deck — it needs <section class="slide"> pages';
       const r = await writeGPoint(a.name, doc);
       return `created ${r.path} (${r.slides} slide${r.slides === 1 ? "" : "s"}) — open_slides("${r.file}") jumps to it`;
+    },
+  },
+  {
+    name: "import_slides",
+    doc: 'import_slides(name, path, title?) — import an EXISTING HTML slide deck FILE into the Glyphh Slides library AS-IS: its <section class="slide"> pages, CSS, fonts and animations are PRESERVED (styles auto-scoped, structure-locked). When the user hands you a deck .html file, THIS is the tool — never re-author it slide-by-slide with create_slides (that loses the design). `path` resolves in the working folder.',
+    action: (a) => ({ kind: "edit", title: `Import deck "${String(a.name ?? "")}"`, detail: String(a.path ?? "") }),
+    run: async (a) => {
+      const { abs, escapes } = resolveReadPath(a.path);
+      if (escapes) return `ERROR: ${String(a.path)} is outside the working folder`;
+      let html = "";
+      try { html = await fsp.readFile(abs, "utf8"); } catch (err) { return `ERROR: ${err instanceof Error ? err.message : String(err)}`; }
+      const imported = importDeckHtml(html, String(a.title ?? a.name ?? "Deck"));
+      if ("error" in imported) return `ERROR: ${imported.error}`;
+      const r = await writeGPoint(a.name, imported.doc);
+      return `imported ${r.path} (${imported.slides} slide${imported.slides === 1 ? "" : "s"}, styles + animations preserved) — open_slides("${r.file}") jumps to it`;
     },
   },
   {
