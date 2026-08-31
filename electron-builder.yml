@@ -90,6 +90,14 @@ files:
 extraResources:
   - from: vendor/rrotor
     to: rrotor
+  # The compiled agent-dock helper (⌘⇧G attach mode) — CI prebuilds it on the
+  # mac job (build.yml step) since native/ never ships in the asar and a
+  # packaged app has no swiftc. The filter makes this a no-op on builds where
+  # the binary wasn't produced (win/linux — the dock is darwin-only).
+  - from: native/agent-dock-helper
+    to: agent-dock-helper
+    filter:
+      - agent-dock-helper
 
 asarUnpack:
   - node_modules/better-sqlite3/**/*

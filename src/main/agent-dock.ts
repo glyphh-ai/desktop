@@ -51,6 +51,12 @@ let enabled = false;
 let lastTarget: TargetInfo | null = null;
 
 function helperBinary(): string | null {
+  // Packaged app: CI prebuilds the universal binary and electron-builder ships
+  // it in Resources (extraResources) — native/ never rides in the asar and a
+  // user machine has no swiftc, so without this ⌘⇧G silently did nothing in
+  // installed builds while working fine from a dev checkout.
+  const packaged = path.join(process.resourcesPath ?? "", "agent-dock-helper", "agent-dock-helper");
+  if (app.isPackaged && fs.existsSync(packaged)) return packaged;
   const dir = path.join(app.getAppPath(), "native", "agent-dock-helper");
   const bin = path.join(dir, "agent-dock-helper");
   if (fs.existsSync(bin)) return bin;
@@ -245,7 +251,19 @@ export function registerAgentDockIpc(): void {
     return captureAttachedWindow();
   });
 
-  globalShortcut.register("CommandOrControl+Shift+G", () => setEnabled(!enabled));
+  // ⌘⇧G is a GLOBAL shortcut — if another app (most commonly a SECOND running
+  // Glyphh build: packaged + dev side by side) registered it first, register()
+  // returns false. That used to be silent, which read as "the shortcut stopped
+  // working". Log it, and retry on every window focus so the moment the other
+  // holder quits, this instance picks the key back up.
+  const DOCK_ACCEL = "CommandOrControl+Shift+G";
+  const registerDockShortcut = (): void => {
+    if (globalShortcut.isRegistered(DOCK_ACCEL)) return; // ours already
+    const ok = globalShortcut.register(DOCK_ACCEL, () => setEnabled(!enabled));
+    if (!ok) console.warn("[agent-dock] ⌘⇧G registration failed — another app (or a second running Glyphh) holds it; will retry on focus");
+  };
+  registerDockShortcut();
+  app.on("browser-window-focus", registerDockShortcut);
 
   // Attach mode starts OFF — ⌘⇧G summons it. (The Aug 21 prototype started
   // ON, which was safe then because every IPC handler registered before

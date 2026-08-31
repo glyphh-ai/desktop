@@ -108,6 +108,20 @@ jobs:
           cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
           cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
 
+      # The agent-dock helper (⌘⇧G attach mode) exists in the repo only as
+      # main.swift — dev builds compile it on first run, but a PACKAGED app has
+      # no swiftc and native/ never ships in the asar, so ⌘⇧G silently did
+      # nothing in installed builds. Prebuild it universal here; electron-builder
+      # ships it via extraResources and the deep-sign walk signs it.
+      - name: Build agent-dock helper (universal)
+        run: |
+          cd native/agent-dock-helper
+          swiftc -O -target arm64-apple-macos12 -o helper-arm64 main.swift
+          swiftc -O -target x86_64-apple-macos12 -o helper-x64 main.swift
+          lipo -create -output agent-dock-helper helper-arm64 helper-x64
+          rm helper-arm64 helper-x64
+          file agent-dock-helper
+
       - name: Package macOS (signed + notarized)
         run: npx electron-builder --mac --publish never
         env:
