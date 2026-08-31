@@ -47,6 +47,10 @@ export interface OrgAppRow {
   requiredConnections: { slug: string; actAs: string; connected: boolean }[];
   /** The marketplace listing's uploaded icon — the app's real art. */
   iconUrl: string | null;
+  /** The FULL marketplace listing (copy, media, rating, listed state). Carried
+   *  through so the app-detail Marketplace tab reads back what a save stored —
+   *  without it the read-back blanks every field but the title. */
+  listing: OrgApp["listing"] | null;
   connectionIds: string[];
   mcp: null;
   commands: Record<string, never>;
@@ -81,6 +85,7 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
   requiredConnections: [],
   connectionIds: [],
   iconUrl: null,
+  listing: null,
   mcp: null,
   commands: {},
   createdAt: "1970-01-01T00:00:00.000Z",
@@ -139,6 +144,7 @@ function toRow(app: OrgApp): OrgAppRow {
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
     iconUrl: app.listing?.iconUrl ?? null,
+    listing: app.listing ?? null,
     mcp: null,
     commands: {},
     createdAt: app.createdAt,
@@ -177,6 +183,7 @@ export function fetchOrgApps(): Promise<OrgAppRow[]> {
         appArchetype: "web", launchConfig: null,
         access: "members", owned: false,
         latestVersion: null, version: "", secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null,
+        listing: null,
         mcp: null, commands: {},
         createdAt: "", updatedAt: "",
       }));

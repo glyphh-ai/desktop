@@ -684,15 +684,13 @@ function listingEls() {
     category: document.getElementById("listing-category") as HTMLSelectElement | null,
     body: document.getElementById("listing-body") as HTMLTextAreaElement | null,
     video: document.getElementById("listing-video") as HTMLInputElement | null,
-    website: document.getElementById("listing-website") as HTMLInputElement | null,
-    support: document.getElementById("listing-support") as HTMLInputElement | null,
   };
 }
 
 /** All listing form fields, or null when the tab's markup isn't present. */
 function listingElsChecked(): { [K in keyof ReturnType<typeof listingEls>]: NonNullable<ReturnType<typeof listingEls>[K]> } | null {
   const el = listingEls();
-  if (!el.title || !el.tagline || !el.category || !el.body || !el.video || !el.website || !el.support) return null;
+  if (!el.title || !el.tagline || !el.category || !el.body || !el.video) return null;
   return el as { [K in keyof ReturnType<typeof listingEls>]: NonNullable<ReturnType<typeof listingEls>[K]> };
 }
 
@@ -706,8 +704,6 @@ function loadMarketplaceTab(): void {
   el.category.value = l?.category || "";
   el.body.value = l?.body || "";
   el.video.value = l?.videoUrl || "";
-  el.website.value = l?.website || "";
-  el.support.value = l?.supportEmail || "";
 
   // Icon + screenshots.
   const icon = document.getElementById("listing-icon-preview");
@@ -844,8 +840,6 @@ async function saveListing(): Promise<void> {
     tagline: el.tagline.value.trim() || undefined,
     category: el.category.value || undefined,
     body: el.body.value.trim() || undefined,
-    website: el.website.value.trim() || undefined,
-    supportEmail: el.support.value.trim() || undefined,
     // Empty means CLEAR, which is null on the wire — undefined would leave it.
     videoUrl: el.video.value.trim() || null,
   };
@@ -919,6 +913,14 @@ function initMarketplaceTab(): void {
   document.getElementById("listing-unlist-btn")?.addEventListener("click", () => { void setListed(false); });
   document.getElementById("listing-program-gate-btn")?.addEventListener("click", () => {
     gotoSection("settings", "developer");
+  });
+  // Submit-for-review lives in the developer console's listing builder (its
+  // Releases fold), not on this tab. Jump straight there for the current app.
+  document.getElementById("listing-submit-review")?.addEventListener("click", () => {
+    const slug = currentApp?.slug;
+    if (!slug) return;
+    gotoSection("marketplace");
+    void import("./marketplace-dev.js").then((m) => m.openListingBuilder(slug)).catch(() => {});
   });
 }
 
