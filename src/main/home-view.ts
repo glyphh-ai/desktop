@@ -188,17 +188,37 @@ export class HomeView {
     this.view = view;
     const wc = view.webContents;
 
-    // Popups from the home surface itself: web protocols only.
+    // THE HOME VIEW IS THE APP UI — it must never navigate away from
+    // home.html. A plain <a href> in agent chat output used to do exactly
+    // that: one click sailed the ENTIRE workbench off to the external site,
+    // full screen, no chrome, no way back but force-quit (his report,
+    // 2026-08-31). Any real navigation to anywhere but our own document is
+    // cancelled and re-routed into a workspace browser panel.
+    wc.on("will-navigate", (e, url) => {
+      if (url.startsWith("file://") && url.includes("home.html")) return;
+      e.preventDefault();
+      if (url.startsWith("http://") || url.startsWith("https://")) openPopupPanel(url);
+    });
+
+    // Popups from the home surface itself follow the same rule as guest
+    // popups below: a link NEVER becomes a floating OS window — it lands in
+    // a workspace panel (an Echo card when Echo is up), closable like every
+    // other slot. about:blank stays a real window (sign-in handoffs write
+    // into it); everything non-web is denied.
     wc.setWindowOpenHandler(({ url }) => {
-      if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        openPopupPanel(url);
         return { action: "deny" };
       }
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: {
-          webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
-        },
-      };
+      if (url.startsWith("about:")) {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
+          },
+        };
+      }
+      return { action: "deny" };
     });
 
     // Workbench <webview> guests: the glyphh-app bridge preload must be set at

@@ -20,12 +20,16 @@ export function formatMarkdown(text: string): string {
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match: string, text: string, url: string) => {
         const trimmed = url.trim().toLowerCase();
         if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:")) {
-          return `<a class="yo-md-link" href="${url}" title="${url}">${text}</a>`;
+          // target=_blank is LOAD-BEARING: a plain href top-level-navigates the
+          // home view (the whole app UI) away to the site — unrecoverable. As a
+          // window-open it routes into a workspace browser panel instead (the
+          // home view's handler denies the OS window). Guarded main-side too.
+          return `<a class="yo-md-link" href="${url}" target="_blank" rel="noreferrer" title="${url}">${text}</a>`;
         }
         return `<span class="yo-md-link" title="[blocked: unsafe URL]">${text}</span>`;
       })
       .replace(/(^|[^"=])(https?:\/\/[^\s<>&]+)/g, (_match: string, prefix: string, url: string) =>
-        `${prefix}<a class="yo-md-link" href="${url}" title="${url}">${url}</a>`
+        `${prefix}<a class="yo-md-link" href="${url}" target="_blank" rel="noreferrer" title="${url}">${url}</a>`
       );
 
   // Some models emit a whole pipe table on ONE LINE (rows joined with spaces:
