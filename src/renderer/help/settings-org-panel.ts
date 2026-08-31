@@ -164,6 +164,26 @@ function domainsStatus(msg: string): void {
   if (el) el.textContent = msg;
 }
 
+const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+/** A tiny copy button for a DNS record value — flips to a green check on success. */
+function copyBtnHtml(value: string): string {
+  return `<button class="action-btn od-copy" type="button" data-copy="${esc(value)}" title="Copy" style="height:22px;width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;">${COPY_SVG}</button>`;
+}
+
+function wireCopyButtons(root: HTMLElement): void {
+  for (const btn of Array.from(root.querySelectorAll<HTMLButtonElement>(".od-copy"))) {
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy || "");
+        btn.innerHTML = CHECK_SVG;
+        setTimeout(() => { btn.innerHTML = COPY_SVG; }, 1500);
+      } catch { /* clipboard denied — leave the icon */ }
+    });
+  }
+}
+
 const DOMAIN_CHIP: Record<string, string> = {
   pending: "Waiting for DNS", verifying: "Verifying", active: "Active", error: "Error",
 };
@@ -189,12 +209,13 @@ function paintDomains(domains: OrgDomain[]): void {
       ${d.status !== "active" ? `
       <p class="settings-hint" style="margin:10px 0 6px;">Publish these DNS records, then press Verify:</p>
       <table class="yo-md-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
-        <tbody>${d.dns.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code></td><td><code>${esc(r.value)}</code></td></tr>`).join("")}</tbody>
+        <tbody>${d.dns.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code> ${copyBtnHtml(r.name)}</td><td><code>${esc(r.value)}</code> ${copyBtnHtml(r.value)}</td></tr>`).join("")}</tbody>
       </table>` : ""}
       ${hostRows.length ? `
       <p class="settings-hint" style="margin:10px 0 4px;">App hostnames:</p>
       ${hostRows.map(([h, st]) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0;"><code>${esc(h)}</code><span class="mkt-listed-chip ${st === "active" ? "on" : ""}">${esc(st)}</span></div>`).join("")}` : ""}
     `;
+    wireCopyButtons(row);
     row.querySelector<HTMLButtonElement>(".od-verify")?.addEventListener("click", async () => {
       domainsError("");
       domainsStatus("Checking DNS…");

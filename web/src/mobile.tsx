@@ -2235,6 +2235,30 @@ function ApiKeysTray() {
   );
 }
 
+/** Tiny copy button for a DNS record — flips to a green check on success. */
+function CopyBtn({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      className="btn"
+      title="Copy"
+      style={{ height: 20, width: 24, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
+      onClick={() => {
+        void navigator.clipboard.writeText(value).then(() => {
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        }).catch(() => { /* clipboard denied — leave the icon */ });
+      }}
+    >
+      {done ? (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      ) : (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+      )}
+    </button>
+  );
+}
+
 function OrganizationTray() {
   const [org, setOrg] = useState<Record<string, unknown> | null>(null);
   const [addr, setAddr] = useState<Record<string, string>>({});
@@ -2305,7 +2329,9 @@ function OrganizationTray() {
             </div>
             {d.error && <div className="m-field-err">{d.error}</div>}
             {d.status !== 'active' && d.dns.map((r) => (
-              <div key={r.name} style={{ fontSize: 12, marginTop: 6 }}><code>{r.type}</code> <code>{r.name}</code> → <code>{r.value}</code></div>
+              <div key={r.name} style={{ fontSize: 12, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <code>{r.type}</code> <code>{r.name}</code> <CopyBtn value={r.name} /> → <code style={{ wordBreak: 'break-all' }}>{r.value}</code> <CopyBtn value={r.value} />
+              </div>
             ))}
             {Object.entries(d.hostnames).map(([h, st]) => (
               <div key={h} style={{ fontSize: 12, marginTop: 4 }}><code>{h}</code> <span className="m-bill-l">{st}</span></div>
