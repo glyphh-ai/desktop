@@ -1448,8 +1448,11 @@ function renderServerRow(d: { id: string; imageKey: string; status: string; url:
 function renderDomainRow(dm: CustomDomainWire): string {
   const dot = dm.status === "active" ? "on" : dm.status === "error" ? "" : "pending";
   const error = dm.error ? ` · <span style="color:var(--danger,#e5484d);">${escMkt(dm.error)}</span>` : "";
+  // Bare apex can't hold a CNAME (DNS rule) — the Heroku-standard play (his
+  // call, 2026-08-31): serve on www, forward the apex to it at the registrar.
+  const wwwHost = `www.${dm.hostname.replace(/^www\./, "")}`;
   const apex = dm.dnsInstructions?.apexUnsupported
-    ? `<p class="proxy-field-hint" style="color:var(--danger,#e5484d);margin-top:6px;">Bare apex domains aren't supported yet — use a subdomain like <code>www</code>.</p>` : "";
+    ? `<p class="proxy-field-hint" style="margin-top:6px;">A bare domain can't hold a CNAME. Add <code>${escMkt(wwwHost)}</code> here instead, then set up <b>domain forwarding</b> at your registrar: <code>${escMkt(dm.hostname)}</code> → <code>https://${escMkt(wwwHost)}</code> (GoDaddy: Domain → Forwarding). DNS hosts with ALIAS/flattening (Cloudflare, Route53) can point the bare domain straight at the CNAME target instead.</p>` : "";
   const records = (dm.dnsInstructions?.records ?? []).map((r) =>
     `<div style="font-family:var(--font-mono,monospace);font-size:11px;line-height:1.7;">
        <span style="display:inline-block;width:52px;color:var(--text-3);">${escMkt(r.type)}</span>${escMkt(r.name)} → ${escMkt(r.value)}</div>`).join("");
