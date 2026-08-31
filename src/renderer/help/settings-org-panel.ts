@@ -12,7 +12,7 @@ import { downscaleImage } from "./shared.js";
  * folded into the Account panel for continuity; this is the dedicated page.)
  */
 
-import { accountApi, type Org, type Address, type OrgUpdate, type BillingContact } from "./settings-api.js";
+import { accountApi, type Org, type Address, type OrgUpdate, type BillingContact, type OrgDomain } from "./settings-api.js";
 
 const $ = (id: string) => document.getElementById(id);
 let org: Org | null = null;
@@ -102,6 +102,7 @@ export async function loadOrgPanel(): Promise<void> {
   showPanel(true);
   try { org = await accountApi().org(); paint(); }
   catch (e) { setError(`Couldn't load your organization — ${(e as Error).message}`); }
+  void loadDomains();
 }
 
 export function initOrgPanel(): void {
@@ -141,4 +142,94 @@ export function initOrgPanel(): void {
   for (const [, id] of ADDR_FIELDS) {
     ($(id) as HTMLInputElement | null)?.addEventListener("blur", () => void save({ address: readAddress() }));
   }
+}
+
+// ── Custom domain (org white-label — server docs/custom-domains.md P1) ──────
+// Add → the row shows the TWO DNS records to publish → Verify → active, with
+// per-app hostname states beneath. All writes ride accountApi()'s dual
+// transport (desktop IPC / web SDK); org_admin is the panel's existing gate.
+
+const esc = (v: unknown): string =>
+  String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function domainsError(msg: string): void {
+  const el = $("org-domains-error");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("hidden", !msg);
+}
+
+function domainsStatus(msg: string): void {
+  const el = $("org-domains-status");
+  if (el) el.textContent = msg;
+}
+
+const DOMAIN_CHIP: Record<string, string> = {
+  pending: "Waiting for DNS", verifying: "Verifying", active: "Active", error: "Error",
+};
+
+function paintDomains(domains: OrgDomain[]): void {
+  const list = $("org-domains-list");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const d of domains) {
+    const row = document.createElement("div");
+    row.className = "acct-section";
+    row.style.cssText = "border:1px solid var(--border-2);border-radius:10px;padding:14px 16px;margin:10px 0;";
+    const hostRows = Object.entries(d.hostnames);
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;">
+        <b style="font-size:14px;">${esc(d.domain)}</b>
+        <span class="mkt-listed-chip ${d.status === "active" ? "on" : ""}">${esc(DOMAIN_CHIP[d.status] ?? d.status)}</span>
+        <span style="flex:1;"></span>
+        ${d.status !== "active" ? `<button class="action-btn primary od-verify" type="button">Verify</button>` : ""}
+        <button class="action-btn danger od-remove" type="button">Remove</button>
+      </div>
+      ${d.error ? `<p class="settings-error" style="margin:8px 0 0;">${esc(d.error)}</p>` : ""}
+      ${d.status !== "active" ? `
+      <p class="settings-hint" style="margin:10px 0 6px;">Publish these DNS records, then press Verify:</p>
+      <table class="yo-md-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+        <tbody>${d.dns.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code></td><td><code>${esc(r.value)}</code></td></tr>`).join("")}</tbody>
+      </table>` : ""}
+      ${hostRows.length ? `
+      <p class="settings-hint" style="margin:10px 0 4px;">App hostnames:</p>
+      ${hostRows.map(([h, st]) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0;"><code>${esc(h)}</code><span class="mkt-listed-chip ${st === "active" ? "on" : ""}">${esc(st)}</span></div>`).join("")}` : ""}
+    `;
+    row.querySelector<HTMLButtonElement>(".od-verify")?.addEventListener("click", async () => {
+      domainsError("");
+      domainsStatus("Checking DNS…");
+      const r = await accountApi().verifyOrgDomain(d.id);
+      domainsStatus("");
+      if (!r.ok) { domainsError(r.error); return; }
+      void loadDomains();
+    });
+    row.querySelector<HTMLButtonElement>(".od-remove")?.addEventListener("click", async () => {
+      domainsError("");
+      const r = await accountApi().removeOrgDomain(d.id);
+      if (!r.ok) { domainsError(r.error); return; }
+      void loadDomains();
+    });
+    list.appendChild(row);
+  }
+}
+
+let domainsWired = false;
+async function loadDomains(): Promise<void> {
+  if (!domainsWired) {
+    domainsWired = true;
+    $("org-domain-add")?.addEventListener("click", async () => {
+      const input = $("org-domain-input") as HTMLInputElement | null;
+      const domain = input?.value.trim() || "";
+      if (!domain) return;
+      domainsError("");
+      domainsStatus("Adding…");
+      const r = await accountApi().addOrgDomain(domain);
+      domainsStatus("");
+      if (!r.ok) { domainsError(r.error); return; }
+      if (input) input.value = "";
+      void loadDomains();
+    });
+  }
+  try { paintDomains(await accountApi().orgDomains()); }
+  catch { /* older build / server — the section just stays empty */ }
 }

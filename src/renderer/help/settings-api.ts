@@ -142,7 +142,11 @@ interface SdkAccountHandle {
     config?: () => Promise<{ publishableKey: string | null }>;
     portal?: () => Promise<{ url: string }>;
   };
-  org?: { get?: () => Promise<Org>; update?: (patch: OrgUpdate) => Promise<Org> };
+  org?: {
+    get?: () => Promise<Org>; update?: (patch: OrgUpdate) => Promise<Org>;
+    domains?: () => Promise<OrgDomain[]>; addDomain?: (domain: string) => Promise<OrgDomain>;
+    verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
+  };
   profile?: { get?: () => Promise<Profile>; update?: (patch: ProfileUpdate) => Promise<Profile> };
   members?: {
     list?: () => Promise<Member[]>;
@@ -154,6 +158,19 @@ interface SdkAccountHandle {
     setStatus?: (userId: string, disabled: boolean) => Promise<unknown>;
     updateProfile?: (userId: string, patch: MemberProfileUpdate) => Promise<Member>;
   };
+}
+
+/** One org white-label domain (server docs/custom-domains.md). */
+export interface OrgDomain {
+  id: string;
+  domain: string;
+  status: string;
+  sso: string | null;
+  error: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  dns: Array<{ type: string; name: string; value: string }>;
+  hostnames: Record<string, string>;
 }
 
 interface DesktopAccountIpc {
@@ -169,6 +186,10 @@ interface DesktopAccountIpc {
   billingConfig?: () => Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>;
   billingPortal?: () => Promise<{ ok: boolean; url?: string; error?: string }>;
   accountOrgGet?: () => Promise<Org>;
+  orgDomainsList?: () => Promise<OrgDomain[]>;
+  orgDomainAdd?: (domain: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainVerify?: (id: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainRemove?: (id: string) => Promise<{ ok: boolean; removed?: boolean; error?: string }>;
   accountOrgUpdate?: (patch: OrgUpdate) => Promise<{ ok: boolean; org?: Org; error?: string }>;
   accountProfileGet?: () => Promise<Profile>;
   accountProfileUpdate?: (patch: ProfileUpdate) => Promise<{ ok: boolean; profile?: Profile; error?: string }>;
@@ -199,6 +220,10 @@ export interface AccountApi {
   portal(): Promise<WriteResult<string>>;
   org(): Promise<Org>;
   updateOrg(patch: OrgUpdate): Promise<WriteResult<Org>>;
+  orgDomains(): Promise<OrgDomain[]>;
+  addOrgDomain(domain: string): Promise<WriteResult<OrgDomain>>;
+  verifyOrgDomain(id: string): Promise<WriteResult<OrgDomain>>;
+  removeOrgDomain(id: string): Promise<WriteResult<unknown>>;
   profile(): Promise<Profile>;
   updateProfile(patch: ProfileUpdate): Promise<WriteResult<Profile>>;
   members(): Promise<Member[]>;
@@ -290,6 +315,10 @@ export function accountApi(): AccountApi {
       },
       org: () => need(o?.get, o),
       updateOrg: (patch) => web(o?.update && (() => o.update!(patch))),
+      orgDomains: () => need(o?.domains, o),
+      addOrgDomain: (domain) => web(o?.addDomain && (() => o.addDomain!(domain))),
+      verifyOrgDomain: (id) => web(o?.verifyDomain && (() => o.verifyDomain!(id))),
+      removeOrgDomain: (id) => web(o?.removeDomain && (() => o.removeDomain!(id))),
       profile: () => need(p?.get, p),
       updateProfile: (patch) => web(p?.update && (() => p.update!(patch))),
       members: () => need(m?.list, m),
@@ -321,6 +350,10 @@ export function accountApi(): AccountApi {
     portal: () => ipc(g?.billingPortal && (() => g.billingPortal!()), "url"),
     org: () => need(g?.accountOrgGet, g),
     updateOrg: (patch) => ipc(g?.accountOrgUpdate && (() => g.accountOrgUpdate!(patch)), "org"),
+    orgDomains: () => need(g?.orgDomainsList, g),
+    addOrgDomain: (domain) => ipc(g?.orgDomainAdd && (() => g.orgDomainAdd!(domain)), "domain"),
+    verifyOrgDomain: (id) => ipc(g?.orgDomainVerify && (() => g.orgDomainVerify!(id)), "domain"),
+    removeOrgDomain: (id) => ipc(g?.orgDomainRemove && (() => g.orgDomainRemove!(id)), "removed"),
     profile: () => need(g?.accountProfileGet, g),
     updateProfile: (patch) => ipc(g?.accountProfileUpdate && (() => g.accountProfileUpdate!(patch)), "profile"),
     members: () => need(g?.accountMembersList, g),

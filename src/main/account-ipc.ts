@@ -190,6 +190,24 @@ export function registerAccountIpc(): void {
     catch (err) { return fail(err); }
   });
 
+  // ── Org custom domains (org_admin — the server enforces) ────────────────
+  // The white-label domain: add → publish two DNS records → verify → every
+  // published app answers at <slug>.<domain>. Reads throw through; writes ride
+  // the ok/error envelope like every other org mutation.
+  ipcMain.handle("account-org-domains", () => getClient().org.domains());
+  ipcMain.handle("account-org-domain-add", async (_e, domain: string) => {
+    try { return { ok: true as const, domain: await getClient().org.addDomain(String(domain || "")) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("account-org-domain-verify", async (_e, id: string) => {
+    try { return { ok: true as const, domain: await getClient().org.verifyDomain(String(id || "")) }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("account-org-domain-remove", async (_e, id: string) => {
+    try { await getClient().org.removeDomain(String(id || "")); return { ok: true as const, removed: true }; }
+    catch (err) { return fail(err); }
+  });
+
   // ── Org guardrails (org_admin) ──────────────────────────────────────────
   // guardrails() reads the policy; setGuardrails replaces it wholesale (null
   // clears). The server enforces org_admin on the write.

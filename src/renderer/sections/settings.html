@@ -844,6 +844,28 @@
                           </div>
                         </div>
 
+                        <!-- Custom domain (org white-label — server
+                             docs/custom-domains.md P1): add → publish the two
+                             DNS records → verify; every published app then
+                             answers at <app>.yourdomain.com. Wired by
+                             settings-org-panel.ts; org_admin via the panel gate. -->
+                        <div id="org-domains-group">
+                          <h4 class="acct-row-head">Custom domain <span id="org-domains-status" class="set-save-state"></span></h4>
+                          <p class="section-desc">Point your own domain at Glyphh and every published app answers at <code>&lt;app&gt;.yourdomain.com</code>. Add the domain, publish the two DNS records it shows, then press Verify.</p>
+                          <div id="org-domains-error" class="settings-error hidden"></div>
+                          <div id="org-domains-list"></div>
+                          <div class="set-pref-row">
+                            <div class="set-pref-text">
+                              <div class="set-pref-title">Add a domain</div>
+                              <div class="set-pref-desc">The bare domain — e.g. acme.com.</div>
+                            </div>
+                            <div class="set-pref-value" style="display:flex;gap:8px;">
+                              <input id="org-domain-input" type="text" class="settings-input" placeholder="acme.com" spellcheck="false" autocomplete="off" />
+                              <button id="org-domain-add" class="action-btn primary" type="button">Add</button>
+                            </div>
+                          </div>
+                        </div>
+
                         <!-- Runtime limits (Guardrails) — moved in from
                              Settings › General (his spec, 2026-08-25): no
                              fold, the row grammar. Ids unchanged so

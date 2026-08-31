@@ -790,6 +790,14 @@ contextBridge.exposeInMainWorld("glyphh", {
   orgGuardrailsGet: () => ipcRenderer.invoke("account-org-guardrails") as Promise<GuardrailsRow>,
   orgGuardrailsSet: (policy: Record<string, number> | null) =>
     ipcRenderer.invoke("account-org-set-guardrails", policy) as Promise<{ ok: boolean; guardrails?: GuardrailsRow; error?: string }>,
+  // Org white-label domains (org_admin): <slug>.<domain> for every published app.
+  orgDomainsList: () => ipcRenderer.invoke("account-org-domains") as Promise<unknown[]>,
+  orgDomainAdd: (domain: string) =>
+    ipcRenderer.invoke("account-org-domain-add", domain) as Promise<{ ok: boolean; domain?: unknown; error?: string }>,
+  orgDomainVerify: (id: string) =>
+    ipcRenderer.invoke("account-org-domain-verify", id) as Promise<{ ok: boolean; domain?: unknown; error?: string }>,
+  orgDomainRemove: (id: string) =>
+    ipcRenderer.invoke("account-org-domain-remove", id) as Promise<{ ok: boolean; removed?: boolean; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
