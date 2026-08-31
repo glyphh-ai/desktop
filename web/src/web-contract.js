@@ -909,7 +909,12 @@ export function buildContract(client, deps) {
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     appDomainAdd: async (slug, deploymentId, hostname) => {
-      try { return { ok: true, domain: await client.hosting.addDomain(slug, { deploymentId, hostname }) }; }
+      try {
+        // OMIT deploymentId when null/empty — the zod schema is .optional()
+        // (undefined), and a literal null 400s as "invalid request body".
+        // No deploymentId = the domain binds to the app's hosted deployment.
+        return { ok: true, domain: await client.hosting.addDomain(slug, { ...(deploymentId ? { deploymentId } : {}), hostname }) };
+      }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     appDomainRemove: async (slug, id) => {
