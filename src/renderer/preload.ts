@@ -70,8 +70,30 @@ export interface AppReleaseRow {
   notes: string | null;
   channel: "dev" | "live";
   promotedAt: string | null;
+  /** The ORG approval ladder (co-working) — null until submitted to the org admins. */
+  orgReview?: "submitted" | "approved" | "rejected" | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A collaborator seat on a user-owned app (co-working). */
+export interface AppCollaboratorRow {
+  userId: string;
+  role: "read" | "edit" | "admin";
+  email: string;
+  name: string | null;
+  addedAt: string;
+}
+
+/** One submitted release in the org admin's approval queue. */
+export interface OrgPendingReleaseRow {
+  appId: string;
+  slug: string;
+  name: string;
+  releaseId: string;
+  version: string;
+  submittedAt: string;
+  ownerEmail: string | null;
 }
 
 // ── Account surfaces (Settings › Billing / Organization / Account) ──────────
@@ -601,6 +623,17 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-release-notes", slug, releaseId, notes) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
   appReleasePromote: (slug: string, releaseId: string) =>
     ipcRenderer.invoke("app-release-promote", slug, releaseId) as Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>,
+  // Co-working — collaborators on a user-owned app + per-release org approval.
+  appCollaborators: (slug: string) =>
+    ipcRenderer.invoke("app-collaborators", slug) as Promise<{ ok: boolean; collaborators: AppCollaboratorRow[]; error?: string }>,
+  appCollaboratorSet: (slug: string, userId: string, role: "read" | "edit" | "admin") =>
+    ipcRenderer.invoke("app-collaborator-set", slug, userId, role) as Promise<{ ok: boolean; collaborators?: AppCollaboratorRow[]; error?: string }>,
+  appCollaboratorRemove: (slug: string, userId: string) =>
+    ipcRenderer.invoke("app-collaborator-remove", slug, userId) as Promise<{ ok: boolean; error?: string }>,
+  appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") =>
+    ipcRenderer.invoke("app-release-org-review", slug, releaseId, action) as Promise<{ ok: boolean; error?: string }>,
+  appOrgPendingReleases: () =>
+    ipcRenderer.invoke("app-org-pending-releases") as Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>,
   appGraduate: (slug: string) => ipcRenderer.invoke("app-graduate", slug) as Promise<{ ok: boolean; path?: string; error?: string }>,
 
   // Onboarding complete — triggers panel restore

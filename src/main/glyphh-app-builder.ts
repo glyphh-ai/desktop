@@ -258,3 +258,62 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   const dep = await client.hosting.deploy({ appSlug: ref, releaseId: release.id });
   return { slug: liveSlug, version, status: "ready", url: dep.url ?? undefined, ...(sourceWarning ? { error: sourceWarning } : {}) };
 }
+
+/**
+ * Co-working pull (docs/app-ownership.md): fetch the app's SOURCE-OF-RECORD
+ * snapshot from the control plane into the working folder, so a collaborator
+ * (or the owner on another machine) picks up the latest tree and enters the
+ * normal edit → build → update_app loop. Read access is the server's call —
+ * owner, any collaborator, or an org admin of the publisher org.
+ */
+export async function pullAppSource(slug: string): Promise<{ slug: string; hash: string; dir: string; files: number }> {
+  refuseBuiltinWorkpanel(slug);
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) throw new Error("no working folder is set — set one first, the source extracts there");
+
+  const client = getClient();
+  const head = await client.apps.sourceHead(slug);
+  if (!head.head) {
+    throw new Error(`'${slug}' has no source snapshot yet — a desktop build (its owner's deploy) creates the first one`);
+  }
+  const bytes = await client.apps.pullSource(slug, head.head.hash);
+  const zip = new AdmZip(Buffer.from(bytes));
+
+  // Destination: the working folder itself when it IS this app's project;
+  // otherwise <workdir>/<slug>. A non-empty destination must already be this
+  // app (its manifest names the slug) — never overwrite a stranger's tree.
+  let dest = path.join(wd, slug);
+  const wdManifest = manifestPathIn(wd);
+  if (wdManifest) {
+    try {
+      const m = JSON.parse(fs.readFileSync(wdManifest, "utf8")) as { slug?: string };
+      if (m.slug === slug) dest = wd;
+      else throw new Error(`the working folder holds '${m.slug ?? "another app"}', not '${slug}' — open a different folder`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("working folder holds")) throw e;
+      // unreadable manifest — fall through to the <workdir>/<slug> subfolder
+    }
+  }
+  if (dest !== wd && fs.existsSync(dest)) {
+    const destManifest = manifestPathIn(dest);
+    const nonEmpty = fs.readdirSync(dest).length > 0;
+    if (nonEmpty && !destManifest) {
+      throw new Error(`'${dest}' already exists and is not a Glyphh app project — move it aside or pull into an empty folder`);
+    }
+    if (destManifest) {
+      try {
+        const m = JSON.parse(fs.readFileSync(destManifest, "utf8")) as { slug?: string };
+        if (m.slug && m.slug !== slug) {
+          throw new Error(`'${dest}' holds '${m.slug}', not '${slug}' — move it aside first`);
+        }
+      } catch (e) {
+        if (e instanceof Error && (e.message.includes("move it aside") || e.message.includes("not a Glyphh app"))) throw e;
+        // unreadable manifest — same-named folder, treat as this app's stale copy
+      }
+    }
+  }
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = zip.getEntries().filter((e) => !e.isDirectory);
+  zip.extractAllTo(dest, true);
+  return { slug, hash: head.head.hash, dir: dest, files: entries.length };
+}

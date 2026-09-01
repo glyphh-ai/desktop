@@ -23,6 +23,11 @@
             </button>
           </div>
 
+          <!-- Org approval queue (co-working): releases submitted to the org
+               admins. Renders only when the caller is an org admin AND the
+               queue is non-empty; filled by loadOrgApprovals(). -->
+          <div id="apps-approvals" class="hidden" style="margin:0 0 14px;"></div>
+
           <!-- ONE grid for every app. The ten built-in work panels (Office /
                Design / Memory / Media — fixed fixtures: no editor, no kebab,
                The org's apps are rendered by renderAppsList() — ONLY what the
@@ -222,6 +227,27 @@
                     <div id="app-req-conns-warn" class="app-req-conns-warn hidden">
                       This app will <strong>not work</strong> until the accounts above are connected.
                       <a id="app-req-conns-goto" href="#">Open Connections</a>
+                    </div>
+                  </div>
+                  <!-- Co-working: collaborator seats on a user-owned app.
+                       Same-org members only; roles gate powers (read = see +
+                       pull source, edit = build, admin = publish, never
+                       delete). Shown for built glyphh apps the caller may
+                       manage; filled by loadCollabSection(). -->
+                  <div id="app-collab-section" class="hidden">
+                    <div class="app-detail-section-sep"></div>
+                    <label class="settings-label">Collaborators</label>
+                    <p class="proxy-field-hint" style="margin:2px 0 10px;">Invite members of your organization to co-work on this app. <strong>Read</strong> sees the app and pulls its source, <strong>Edit</strong> builds it, <strong>Admin</strong> also publishes — only you can delete it.</p>
+                    <div id="app-collab-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                    <div id="app-collab-list"></div>
+                    <div id="app-collab-add-row" style="display:flex;gap:6px;margin-top:10px;align-items:center;">
+                      <select id="app-collab-member" class="settings-input" style="flex:1;margin:0;"></select>
+                      <select id="app-collab-role" class="settings-input" style="width:110px;margin:0;">
+                        <option value="read">Read</option>
+                        <option value="edit" selected>Edit</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                      <button id="app-collab-add" class="action-btn" type="button">Add</button>
                     </div>
                   </div>
                   <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">

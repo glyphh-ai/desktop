@@ -382,6 +382,8 @@ async function loadApps() {
   // carry a Pipedream connection (Connections are their own tab now), so their
   // icon comes from the url favicon or the executable icon.
   void primeNativeIcons(panelApps, renderAppsList);
+  // Org admins: the co-working approval queue above the grid (empty → hidden).
+  void loadOrgApprovals();
 }
 
 function renderAppsList() {
@@ -1043,10 +1045,16 @@ async function loadReleasesTab(): Promise<void> {
     const state = r.status === "ready" ? "" : `<span class="release-state ${r.status}">${escMkt(r.status)}</span>`;
     const imported = r.id.startsWith("imported:");
     const canPromote = owned && !imported && r.status === "ready" && r.channel !== "live";
+    // Co-working: the release's org-approval standing + the submit action
+    // (docs/app-ownership.md). Approved rides green; the rest read neutral.
+    const orgBadge = r.orgReview
+      ? `<span class="release-badge${r.orgReview === "approved" ? " live" : ""}" title="Organization approval">org ${escMkt(r.orgReview)}</span>`
+      : "";
+    const canOrgSubmit = owned && !imported && r.status === "ready" && (!r.orgReview || r.orgReview === "rejected");
     row.innerHTML = `
       <button type="button" class="release-row-head">
         <span class="release-version">${escMkt(r.version)}</span>
-        ${badge}${state}
+        ${badge}${orgBadge}${state}
         <span class="release-date">${escMkt(releaseDate(r.promotedAt || r.createdAt))}</span>
       </button>
       ${r.status === "failed" && r.error ? `<div class="release-build-error">${escMkt(r.error.slice(0, 300))}</div>` : ""}
@@ -1054,6 +1062,7 @@ async function loadReleasesTab(): Promise<void> {
         <textarea class="settings-input" rows="4" spellcheck="true" placeholder="No notes yet — what changed in ${escMkt(r.version)}?" ${imported || !owned ? "disabled" : ""} style="resize:vertical;font-size:12px;width:100%;"></textarea>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
           <span class="release-notes-state" style="flex:1;font-size:11px;color:var(--text-3);"></span>
+          ${canOrgSubmit ? `<button type="button" class="action-btn release-row-org-submit" style="height:24px;font-size:11px;padding:0 10px;">Submit to org</button>` : ""}
           ${canPromote ? `<button type="button" class="action-btn release-row-promote" style="height:24px;font-size:11px;padding:0 10px;">Promote to live</button>` : ""}
         </div>
       </div>`;
@@ -1080,6 +1089,19 @@ async function loadReleasesTab(): Promise<void> {
           setTimeout(() => { if (state.textContent === "Saved ✓") state.textContent = ""; }, 2000);
         } else state.textContent = res?.error || "Not saved";
       });
+    });
+    row.querySelector(".release-row-org-submit")?.addEventListener("click", () => {
+      void (async () => {
+        const confirmed = await confirmAction({
+          title: `Submit ${r.version} to your organization?`,
+          body: "An organization admin reviews it; approving publishes the app to every member. You'll see its standing here.",
+          confirmLabel: "Submit",
+        });
+        if (!confirmed) return;
+        const res = await window.glyphh.appReleaseOrgReview?.(currentApp?.slug || currentAppId, r.id, "submit");
+        if (!res?.ok) { releaseError(res?.error || "Couldn't submit the release."); return; }
+        await loadReleasesTab();
+      })();
     });
     row.querySelector(".release-row-promote")?.addEventListener("click", () => {
       void (async () => {
@@ -1111,6 +1133,170 @@ function releaseStatus(msg: string): void {
   if (!el) return;
   el.textContent = msg;
   if (msg.endsWith("✓")) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2500);
+}
+
+// ── Co-working: collaborators + the org approval queue ───────────
+//
+// Collaborator seats live on the General tab of a user-owned glyphh app
+// (docs/app-ownership.md): same-org members, read/edit/admin roles. The org
+// admin's approval queue renders at the top of the Apps page — submitted
+// releases across the org's apps, approve/reject inline.
+
+type CollabRole = "read" | "edit" | "admin";
+interface CollabRow { userId: string; role: CollabRole; email: string; name: string | null; addedAt: string }
+
+function collabError(msg: string): void {
+  const el = document.getElementById("app-collab-error");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("hidden", !msg);
+}
+
+async function loadCollabSection(): Promise<void> {
+  const sec = document.getElementById("app-collab-section");
+  if (!sec) return;
+  sec.classList.add("hidden");
+  collabError("");
+  const app = currentApp;
+  // Built glyphh apps the caller PUBLISHED — an installed app's seats belong
+  // to its developer, and legacy launcher rows have nothing to co-work on.
+  if (!app || app.appArchetype !== "glyphh-app" || app.owned === false) return;
+  const slug = app.slug;
+  const res = await window.glyphh.appCollaborators?.(slug);
+  if (currentApp?.slug !== slug) return;   // he moved on — never paint stale
+  if (!res?.ok) return;                    // no access / no seam here — stay hidden
+  sec.classList.remove("hidden");
+  renderCollabList(slug, res.collaborators || []);
+  void primeCollabPicker(res.collaborators || []);
+  wireCollabAdd(slug);
+}
+
+function renderCollabList(slug: string, rows: CollabRow[]): void {
+  const list = document.getElementById("app-collab-list");
+  if (!list) return;
+  list.innerHTML = rows.length ? "" : `<div class="inline-empty" style="padding:6px 0;">Just you so far.</div>`;
+  for (const c of rows) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);";
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.name || c.email)}</div>
+        ${c.name ? `<div style="font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.email)}</div>` : ""}
+      </div>
+      <select class="settings-input collab-role-sel" style="width:100px;margin:0;height:26px;font-size:12px;">
+        <option value="read"${c.role === "read" ? " selected" : ""}>Read</option>
+        <option value="edit"${c.role === "edit" ? " selected" : ""}>Edit</option>
+        <option value="admin"${c.role === "admin" ? " selected" : ""}>Admin</option>
+      </select>
+      <button type="button" class="ws-icon-btn collab-remove" title="Remove collaborator" aria-label="Remove collaborator">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>`;
+    row.querySelector<HTMLSelectElement>(".collab-role-sel")!.addEventListener("change", (ev) => {
+      const sel = ev.currentTarget as HTMLSelectElement;
+      void window.glyphh.appCollaboratorSet?.(slug, c.userId, sel.value as CollabRole).then((r) => {
+        if (!r?.ok) { collabError(r?.error || "Couldn't change the role."); sel.value = c.role; return; }
+        collabError("");
+        void loadCollabSection();
+      });
+    });
+    row.querySelector(".collab-remove")!.addEventListener("click", () => {
+      void (async () => {
+        const ok = await confirmAction({
+          title: `Remove ${c.name || c.email}?`,
+          body: "They lose access to this app and its source. You can add them back any time.",
+          confirmLabel: "Remove",
+          danger: true,
+        });
+        if (!ok) return;
+        const r = await window.glyphh.appCollaboratorRemove?.(slug, c.userId);
+        if (!r?.ok) { collabError(r?.error || "Couldn't remove the collaborator."); return; }
+        collabError("");
+        void loadCollabSection();
+      })();
+    });
+    list.appendChild(row);
+  }
+}
+
+/** Fill the member picker with org members not already seated. */
+async function primeCollabPicker(seated: CollabRow[]): Promise<void> {
+  const sel = document.getElementById("app-collab-member") as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.innerHTML = `<option value="">Loading members…</option>`;
+  try {
+    const { accountApi } = await import("./settings-api.js");
+    const members = await accountApi().members();
+    const taken = new Set(seated.map((c) => c.userId));
+    const options = members.filter((m) => !taken.has(m.userId) && !m.disabled);
+    sel.innerHTML = options.length
+      ? `<option value="">Add a member…</option>` + options.map((m) =>
+          `<option value="${escMkt(m.userId)}">${escMkt(m.name || m.email)}</option>`).join("")
+      : `<option value="">Everyone in your org is already here</option>`;
+  } catch {
+    sel.innerHTML = `<option value="">Couldn't load members</option>`;
+  }
+}
+
+function wireCollabAdd(slug: string): void {
+  const btn = document.getElementById("app-collab-add") as HTMLButtonElement | null;
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () => {
+    const member = (document.getElementById("app-collab-member") as HTMLSelectElement | null)?.value || "";
+    const role = ((document.getElementById("app-collab-role") as HTMLSelectElement | null)?.value || "edit") as CollabRole;
+    if (!member) { collabError("Pick a member to add."); return; }
+    const live = currentApp?.slug || slug;
+    btn.disabled = true;
+    void window.glyphh.appCollaboratorSet?.(live, member, role).then((r) => {
+      btn.disabled = false;
+      if (!r?.ok) { collabError(r?.error || "Couldn't add the collaborator."); return; }
+      collabError("");
+      void loadCollabSection();
+    });
+  });
+}
+
+/** The org admin's approval queue at the top of the Apps page. Non-admins and
+ *  an empty queue render nothing — the server's refusal stays quiet here. */
+async function loadOrgApprovals(): Promise<void> {
+  const host = document.getElementById("apps-approvals");
+  if (!host) return;
+  const res = await window.glyphh.appOrgPendingReleases?.();
+  const pending = res?.ok ? res.pending || [] : [];
+  if (!pending.length) { host.classList.add("hidden"); host.innerHTML = ""; return; }
+  host.classList.remove("hidden");
+  host.innerHTML = `<label class="settings-label">Awaiting your approval</label>
+    <p class="proxy-field-hint" style="margin:2px 0 8px;">Releases submitted to your organization. Approving publishes the app to every member.</p>`;
+  for (const p of pending) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);";
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <span style="font-size:13px;color:var(--text-1);">${escMkt(p.name)}</span>
+        <span style="font-size:12px;color:var(--text-3);margin-left:6px;">v${escMkt(p.version)}${p.ownerEmail ? ` — by ${escMkt(p.ownerEmail)}` : ""} · ${escMkt(mktDate(p.submittedAt))}</span>
+      </div>
+      <button type="button" class="action-btn org-rel-reject" style="height:26px;font-size:12px;">Reject</button>
+      <button type="button" class="action-btn primary org-rel-approve" style="height:26px;font-size:12px;">Approve</button>`;
+    const review = async (action: "approve" | "reject"): Promise<void> => {
+      const ok = await confirmAction(action === "approve"
+        ? { title: `Approve ${p.name} v${p.version}?`, body: "The app becomes available to everyone in your organization.", confirmLabel: "Approve" }
+        : { title: `Reject ${p.name} v${p.version}?`, body: "The author can revise and submit again.", confirmLabel: "Reject", danger: true });
+      if (!ok) return;
+      const r = await window.glyphh.appReleaseOrgReview?.(p.slug, p.releaseId, action);
+      if (!r?.ok) {
+        const err = document.createElement("div");
+        err.className = "crud-form-error";
+        err.textContent = r?.error || `Couldn't ${action} the release.`;
+        row.appendChild(err);
+        return;
+      }
+      await loadOrgApprovals();
+      if (action === "approve") void loadApps();   // visibility may have flipped to org
+    };
+    row.querySelector(".org-rel-approve")!.addEventListener("click", () => void review("approve"));
+    row.querySelector(".org-rel-reject")!.addEventListener("click", () => void review("reject"));
+    host.appendChild(row);
+  }
 }
 
 // ── Installed-app release view: version + update availability ────
@@ -1925,6 +2111,9 @@ async function openPanelAppDetail(app: PanelApp) {
   // the app's tools still reach the org's agents through the install.
   if (mktInstalled) document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
   else syncMcpTabs(app);
+
+  // Co-working seats (General tab) — async; hides itself when not applicable.
+  void loadCollabSection();
 
   // Shared edit header: icon + name + slug, with the app's PUBLISHED address
   // (or an honest "Not Published") underneath (his order, 2026-09-01). The

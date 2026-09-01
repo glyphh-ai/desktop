@@ -71,7 +71,7 @@ import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed } from "./tool-vectors";
-import { updateAppFromWorkdir } from "./glyphh-app-builder";
+import { updateAppFromWorkdir, pullAppSource } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
@@ -680,6 +680,17 @@ const TOOLS: ToolDef[] = [
       };
       const r = await updateAppFromWorkdir(lookup);
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+    },
+  },
+  {
+    name: "pull_app",
+    doc: "pull_app({ slug }) — fetch an app's latest SOURCE snapshot from the control plane into the working folder, for CO-WORKING: the owner shares an app with collaborators, and each collaborator pulls the source here to edit it. Extracts into <workdir>/<slug> (or the workdir itself when it already holds this app's project — local files are overwritten by the snapshot, so commit or stash local-only work first). After pulling: edit → `npm run build` → update_app to run it locally; publishing stays the owner/admin-collaborator's explicit step. Access follows the server's co-working roles — owner, collaborators, or an org admin of the publishing org; anyone else gets a not-found.",
+    action: (a) => ({ kind: "edit", title: `Pull app source: ${String(a.slug ?? "")}` }),
+    run: async (a) => {
+      const slug = String(a.slug ?? "").trim();
+      if (!slug) return "ERROR: pull_app needs { slug }";
+      const r = await pullAppSource(slug);
+      return `pulled "${r.slug}" @ ${r.hash.slice(0, 12)} — ${r.files} files into ${r.dir}. Edit there, build, then update_app to run your copy.`;
     },
   },
   {
@@ -2587,7 +2598,7 @@ const CODE_EXCLUDED = new Set([
   "app_list_tools", "app_call_tool",
 ]);
 const COWORK_EXCLUDED = new Set([
-  "run_command", "update_app",
+  "run_command", "update_app", "pull_app",
   "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
 ]);
 
@@ -2652,7 +2663,7 @@ async function runRolePacket(
   const PACKET_TOOLS = new Set([
     "list_dir", "read_file", "write_file", "search_files", "run_command",
     "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
-    "update_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
+    "update_app", "pull_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
   ]);
   const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,

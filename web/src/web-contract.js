@@ -870,6 +870,29 @@ export function buildContract(client, deps) {
       try { return { ok: true, release: await client.apps.promoteRelease(slug, releaseId) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
+    // Co-working — collaborators + per-release org approval (same surface as desktop).
+    appCollaborators: async (slug) => {
+      try { return { ok: true, collaborators: await client.apps.collaborators(slug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), collaborators: [] }; }
+    },
+    appCollaboratorSet: async (slug, userId, role) => {
+      try {
+        await client.apps.setCollaborator(slug, userId, role);
+        return { ok: true, collaborators: await client.apps.collaborators(slug) };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appCollaboratorRemove: async (slug, userId) => {
+      try { await client.apps.removeCollaborator(slug, userId); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appReleaseOrgReview: async (slug, releaseId, action) => {
+      try { await client.apps.orgReview(slug, releaseId, action); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    appOrgPendingReleases: async () => {
+      try { return { ok: true, pending: await client.apps.pendingOrgReleases() }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), pending: [] }; }
+    },
     appVersionSet: async (slug, version) => {
       try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }

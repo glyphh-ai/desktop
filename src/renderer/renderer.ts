@@ -89,8 +89,30 @@ type AppReleaseRow = {
   notes: string | null;
   channel: "dev" | "live";
   promotedAt: string | null;
+  /** The ORG approval ladder (co-working) — null until submitted to the org admins. */
+  orgReview?: "submitted" | "approved" | "rejected" | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Mirrors preload.ts AppCollaboratorRow — a co-working seat on a user-owned app. */
+type AppCollaboratorRow = {
+  userId: string;
+  role: "read" | "edit" | "admin";
+  email: string;
+  name: string | null;
+  addedAt: string;
+};
+
+/** Mirrors preload.ts OrgPendingReleaseRow — the org admin's approval queue. */
+type OrgPendingReleaseRow = {
+  appId: string;
+  slug: string;
+  name: string;
+  releaseId: string;
+  version: string;
+  submittedAt: string;
+  ownerEmail: string | null;
 };
 
 declare global {
@@ -183,6 +205,12 @@ declare global {
       appReleases: (slug: string) => Promise<{ ok: boolean; releases: AppReleaseRow[]; error?: string }>;
       appReleaseNotes: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
       appReleasePromote: (slug: string, releaseId: string) => Promise<{ ok: boolean; release?: AppReleaseRow; error?: string }>;
+      // Co-working — collaborators on a user-owned app + per-release org approval.
+      appCollaborators: (slug: string) => Promise<{ ok: boolean; collaborators: AppCollaboratorRow[]; error?: string }>;
+      appCollaboratorSet: (slug: string, userId: string, role: "read" | "edit" | "admin") => Promise<{ ok: boolean; collaborators?: AppCollaboratorRow[]; error?: string }>;
+      appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
+      appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
+      appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 
       // Layouts

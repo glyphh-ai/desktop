@@ -834,6 +834,33 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
+  // ── Co-working: collaborators + per-release org approval ────────────────────
+  ipcMain.handle("app-collaborators", async (_e, slug: string) => {
+    try { return { ok: true, collaborators: await getClient().apps.collaborators(slug) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), collaborators: [] }; }
+  });
+  ipcMain.handle("app-collaborator-set", async (_e, slug: string, userId: string, role: "read" | "edit" | "admin") => {
+    try {
+      await getClient().apps.setCollaborator(slug, userId, role);
+      return { ok: true, collaborators: await getClient().apps.collaborators(slug) };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-collaborator-remove", async (_e, slug: string, userId: string) => {
+    try { await getClient().apps.removeCollaborator(slug, userId); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-release-org-review", async (_e, slug: string, releaseId: string, action: "submit" | "approve" | "reject") => {
+    try {
+      await getClient().apps.orgReview(slug, releaseId, action);
+      invalidateOrgApps(); // approval may flip visibility private → org
+      return { ok: true };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-org-pending-releases", async () => {
+    try { return { ok: true, pending: await getClient().apps.pendingOrgReleases() }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), pending: [] }; }
+  });
+
   // ── Marketplace tab: the listing + its images ───────────────────────────────
   ipcMain.handle("app-listing-set", async (_e, slug: string, patch: Record<string, unknown>) => {
     try {
