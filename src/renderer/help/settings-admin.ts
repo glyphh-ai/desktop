@@ -47,6 +47,11 @@ interface AdminModel {
   active: boolean;
   /** Live per-org default: orgs with no explicit override follow this. */
   default_on: boolean;
+  /** Long-context tier: whole-request multipliers above the prompt-token
+   *  threshold. Null = flat pricing. */
+  long_context_threshold: number | null;
+  long_context_input_mult: number | null;
+  long_context_output_mult: number | null;
 }
 interface AdminModelPatch {
   display_name?: string;
@@ -59,6 +64,9 @@ interface AdminModelPatch {
   output_credits_per_mtok?: number | null;
   context_window?: number | null;
   max_output_tokens?: number | null;
+  long_context_threshold?: number | null;
+  long_context_input_mult?: number | null;
+  long_context_output_mult?: number | null;
 }
 interface AdminPlan {
   tier: string;
@@ -579,6 +587,9 @@ function openModelEditor(m: AdminModel): void {
   set("pa-model-out", m.output_credits_per_mtok == null ? "" : String(microToCredits(m.output_credits_per_mtok)));
   set("pa-model-ctx", m.context_window == null ? "" : String(m.context_window));
   set("pa-model-max", m.max_output_tokens == null ? "" : String(m.max_output_tokens));
+  set("pa-model-lc-threshold", m.long_context_threshold == null ? "" : String(m.long_context_threshold));
+  set("pa-model-lc-in", m.long_context_input_mult == null ? "" : String(m.long_context_input_mult));
+  set("pa-model-lc-out", m.long_context_output_mult == null ? "" : String(m.long_context_output_mult));
   const active = $<HTMLInputElement>("pa-model-active");
   if (active) active.checked = m.active;
   const defaultOn = $<HTMLInputElement>("pa-model-default-on");
@@ -597,7 +608,7 @@ function openModelCreate(providerSlug: string): void {
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
   set("pa-model-provider", providerSlug);
   set("pa-model-id", "");
-  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-in", "pa-model-out", "pa-model-ctx", "pa-model-max"]) set(id, "");
+  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-in", "pa-model-out", "pa-model-ctx", "pa-model-max", "pa-model-lc-threshold", "pa-model-lc-in", "pa-model-lc-out"]) set(id, "");
   const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = "chat";
   const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = "mtok";
   relabelModelRates("mtok");
@@ -663,6 +674,10 @@ async function saveModel(): Promise<void> {
     // 0 or blank clears to "unrecorded".
     context_window: ctx || null,
     max_output_tokens: max || null,
+    // Long-context tier — blank clears back to flat pricing.
+    long_context_threshold: numOrNull(inputVal("pa-model-lc-threshold")) || null,
+    long_context_input_mult: numOrNull(inputVal("pa-model-lc-in")) || null,
+    long_context_output_mult: numOrNull(inputVal("pa-model-lc-out")) || null,
   };
   const btn = $<HTMLButtonElement>("pa-model-save");
   if (btn) btn.disabled = true;

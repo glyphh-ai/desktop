@@ -29,6 +29,9 @@ interface AdminModelPatch {
   output_credits_per_mtok?: number | null;
   context_window?: number | null;
   max_output_tokens?: number | null;
+  long_context_threshold?: number | null;
+  long_context_input_mult?: number | null;
+  long_context_output_mult?: number | null;
 }
 interface AdminPlanPatch {
   display_name?: string;

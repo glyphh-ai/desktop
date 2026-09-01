@@ -1542,6 +1542,21 @@
                     <input id="pa-model-ctx" type="number" min="0" class="settings-input" placeholder="—" />
                     <label class="settings-label" for="pa-model-max">Max output tokens</label>
                     <input id="pa-model-max" type="number" min="0" class="settings-input" placeholder="—" />
+                    <!-- Long-context tier: the vendor bills the WHOLE request at the
+                         multipliers once the prompt crosses the threshold (Gemini Pro's
+                         >200K shape). All three blank = flat pricing. -->
+                    <label class="settings-label" for="pa-model-lc-threshold">Long-context threshold <span class="mdl-hint">(prompt tokens; blank = flat pricing)</span></label>
+                    <input id="pa-model-lc-threshold" type="number" min="0" class="settings-input" placeholder="e.g. 200000" />
+                    <div style="display:flex;gap:10px;">
+                      <div style="flex:1;">
+                        <label class="settings-label" for="pa-model-lc-in">Input ×</label>
+                        <input id="pa-model-lc-in" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 2" />
+                      </div>
+                      <div style="flex:1;">
+                        <label class="settings-label" for="pa-model-lc-out">Output ×</label>
+                        <input id="pa-model-lc-out" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 1.5" />
+                      </div>
+                    </div>
                     <label class="settings-toggle" style="margin-top:12px;">
                       <input type="checkbox" id="pa-model-active" />
                       <span class="toggle-switch"></span>
