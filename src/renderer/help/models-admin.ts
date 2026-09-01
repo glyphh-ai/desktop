@@ -22,6 +22,8 @@ interface OrgModelRow {
   outputCreditsPerMTok: number;
   supported: boolean;
   providerEnabled: boolean;
+  /** False when the org's PLAN excludes this model (free-tier gate). */
+  planAllowed?: boolean;
 }
 
 interface ProviderRow {
@@ -415,7 +417,7 @@ function listEntries(): ListEntry[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function modelLine(name: string, sub: string, toggle: { on: boolean; onChange: (on: boolean) => void }, icons?: HTMLElement[]): HTMLElement {
+function modelLine(name: string, sub: string, toggle: { on: boolean; onChange: (on: boolean) => void; disabled?: boolean; disabledTitle?: string }, icons?: HTMLElement[]): HTMLElement {
   const row = document.createElement("div");
   row.className = "mdl-model-line";
   const info = document.createElement("div");
@@ -432,7 +434,8 @@ function modelLine(name: string, sub: string, toggle: { on: boolean; onChange: (
   const lab = document.createElement("label");
   lab.className = "settings-toggle mdl-toggle";
   lab.title = "Supported — roles can pick this model";
-  lab.innerHTML = `<input type="checkbox" ${toggle.on ? "checked" : ""} /><span class="toggle-switch"></span>`;
+  lab.innerHTML = `<input type="checkbox" ${toggle.on ? "checked" : ""} ${toggle.disabled ? "disabled" : ""} /><span class="toggle-switch"></span>`;
+  if (toggle.disabled && toggle.disabledTitle) lab.title = toggle.disabledTitle;
   const box = lab.querySelector("input") as HTMLInputElement;
   box.addEventListener("change", () => toggle.onChange(box.checked));
   row.appendChild(lab);
@@ -527,8 +530,12 @@ function renderList(): void {
         const list = models.filter((m) => m.kind === "proxied" && m.providerSlug === e.gateway!.slug);
         if (!list.length) body.innerHTML = `<div class="crud-empty">No catalog models for this provider yet.</div>`;
         for (const m of list) {
-          body.appendChild(modelLine(m.name, `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok`, {
-            on: m.supported,
+          const gated = m.planAllowed === false;
+          body.appendChild(modelLine(m.name,
+            gated ? `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok · paid plans` : `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok`, {
+            on: gated ? false : m.supported,
+            disabled: gated,
+            disabledTitle: "Upgrade to a paid plan to use this model.",
             onChange: (on) => {
               void window.glyphh.orgModelsSetSupported(m.id, on).then((r) => {
                 if (!r?.ok) { showError(r.error || "Update failed"); renderList(); return; }
@@ -594,6 +601,10 @@ async function refresh(): Promise<void> {
   const firstError = [m, p, cp, c].find((r) => !r.ok)?.error;
   showError(firstError ? `Couldn't load: ${firstError}` : "");
   if (m.ok && m.data) models = m.data as OrgModelRow[];
+  // The plan-gate nudge (his spec, 2026-09-01, same grammar as the members
+  // seat note): visible whenever the org's plan excludes any catalog model.
+  document.getElementById("models-plan-note")?.classList.toggle(
+    "hidden", !models.some((x) => x.planAllowed === false));
   if (p.ok && p.data) providers = p.data as ProviderRow[];
   if (cp.ok && cp.data) customProviders = cp.data as CustomProviderRow[];
   if (c.ok && c.data) custom = c.data as CustomModelRow[];
