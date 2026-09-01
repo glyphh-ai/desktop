@@ -624,39 +624,10 @@
                    enforces every write and the base workspace's undeletability. -->
               <div class="settings-panel" data-sub="domains">
                 <div id="dom-admin-only" class="crud-empty hidden">Only an organization admin can manage domains.</div>
-
-                <div id="dom-body">
-                  <div id="dom-error" class="settings-error hidden"></div>
-
-                  <!-- LIST — the standard list-page grammar (Roles/Skills/Loops):
-                       crud-toolbar with search + the add action, a lib-table of
-                       rows (rendered by settings-domains.ts), crud-empty. -->
-                  <div id="dom-list-view">
-                    <h2>Domains <span id="dom-status" class="set-save-state"></span></h2>
-                    <p class="section-desc">Point your own domains at Glyphh. Add a domain, publish the DNS records it shows, then Verify — every published app answers at <code>&lt;app&gt;.yourdomain</code>, and the bare domain can serve a flagship app.</p>
-                    <div class="crud-toolbar">
-                      <input id="dom-search" type="text" class="crud-search" placeholder="Search domains…" spellcheck="false" autocomplete="off" />
-                      <input id="dom-input" type="text" class="settings-input settings-input-md" placeholder="acme.com" spellcheck="false" autocomplete="off" />
-                      <button id="dom-add" class="action-btn primary" type="button">Add</button>
-                    </div>
-                    <div id="dom-list"></div>
-                  </div>
-
-                  <!-- EDITOR — the inline-form standard: a breadcrumb back, then
-                       the domain's DNS records, verify, apex-app pick, remove. -->
-                  <div id="dom-edit-view" class="crud-inline-form hidden">
-                    <div class="crud-inline-header">
-                      <a class="crud-breadcrumb-back" id="dom-back">&larr; Domains</a>
-                      <div class="crud-spacer"></div>
-                    </div>
-                    <div class="acct-section">
-                      <h2 id="dom-edit-title" style="margin:0 0 4px;">domain</h2>
-                      <div id="dom-edit-chip" style="margin-bottom:12px;"></div>
-                      <div id="dom-edit-error" class="settings-error hidden"></div>
-                      <div id="dom-edit-body"></div>
-                    </div>
-                  </div>
-                </div>
+                <!-- The whole page is rendered by the shared list-page scaffold
+                     (settings-list-page.ts) via settings-domains.ts, so it is
+                     identical to every other Security page. -->
+                <div id="dom-body"><div id="dom-root"></div></div>
               </div>
 
               <div class="settings-panel" data-sub="workspaces">

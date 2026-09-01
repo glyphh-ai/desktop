@@ -1,109 +1,46 @@
 /**
- * settings-domains.ts — Settings › Domains, built on the SAME list-page grammar
- * as Roles/Workspaces (settings-workspaces.ts): a lib-table list-view with a
- * crud-toolbar, row kebab menu, crud-empty states + pagination, and an inline
- * crud-inline-form editor a row opens. One surface for org custom domains: add,
- * publish the DNS records, Verify (retry loop), pick the bare-apex app, remove.
- *
- * All writes ride accountApi()'s dual transport — the web SDK handle or the
- * desktop main-process SDK; NOTHING talks to the API directly. org_admin gated
- * in navigation.ts (gateAdminSubs → #dom-admin-only).
+ * settings-domains.ts — Settings › Domains, on the shared Security list-page
+ * scaffold (settings-list-page.ts): title, description, full-width search +
+ * “+ New domain” (validated modal), a lib-table with kebab Edit/Delete, and an
+ * inline editor a row opens. Identical to every other Security page by
+ * construction. All writes ride accountApi()'s SDK transport (web SDK / desktop
+ * main-process SDK); nothing hits the API directly. org_admin gated below.
  */
 
 import { accountApi, type OrgDomain } from "./settings-api.js";
-import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
-import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { mountListPage, type ListPageHandle, type EditCtx } from "./settings-list-page.js";
 
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T | null;
+const $ = (id: string) => document.getElementById(id);
 const esc = (v: unknown): string =>
   String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-let domains: OrgDomain[] = [];
 let apps: Array<{ id: string; name: string; slug: string }> = [];
-let page = 0;
 
 const CHIP: Record<string, string> = { pending: "Waiting for DNS", verifying: "Verifying", active: "Active", error: "Error" };
-const hostSummary = (d: OrgDomain): string => {
+const statusChip = (d: OrgDomain): string => `<span class="lib-badge${d.status === "active" ? " on" : ""}">${esc(CHIP[d.status] ?? d.status)}</span>`;
+const appsCell = (d: OrgDomain): string => {
   const n = Object.keys(d.hostnames ?? {}).length;
-  return n ? `${n} app hostname${n === 1 ? "" : "s"}` : (d.apexAppId ? "apex assigned" : "—");
+  return esc(n ? `${n} app hostname${n === 1 ? "" : "s"}` : d.apexAppId ? "apex assigned" : "—");
 };
 
-function setError(msg: string): void { const el = $("dom-error"); if (!el) return; el.textContent = msg; el.classList.toggle("hidden", !msg); }
-function editError(msg: string): void { const el = $("dom-edit-error"); if (!el) return; el.textContent = msg; el.classList.toggle("hidden", !msg); }
-function setStatus(msg: string, kind: "success" | "error" | "" = ""): void {
-  const el = $("dom-status"); if (!el) return; el.textContent = msg; el.className = `set-save-state${kind ? ` ${kind}` : ""}`;
-}
+// A bare DNS hostname — the same rule the server enforces.
+const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
 
-// ── LIST (lib-table, exactly like Roles) ─────────────────────────────────────
-function paintList(): void {
-  const list = $("dom-list");
-  if (!list) return;
-  const q = ($<HTMLInputElement>("dom-search")?.value || "").trim().toLowerCase();
-  const rows = domains.filter((d) => !q || d.domain.toLowerCase().includes(q));
-  list.innerHTML = "";
-  if (!rows.length) {
-    const empty = document.createElement("div");
-    empty.className = "crud-empty";
-    empty.textContent = q ? "No domains match your search." : "No domains yet — add one above.";
-    list.appendChild(empty);
-    return;
-  }
-  const { items, state } = paginate(rows, page);
-  page = state.page;
-  const table = document.createElement("table");
-  table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Domain</th><th>Status</th><th>Apps</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
-  const tbody = document.createElement("tbody");
-  for (const d of items) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-desc"></td><td class="lib-table-dim"></td>`;
-    tr.querySelector(".lib-table-name")!.textContent = d.domain;
-    const st = tr.querySelector(".lib-table-desc");
-    if (st) {
-      const badge = document.createElement("span");
-      badge.className = `lib-badge${d.status === "active" ? " on" : ""}`;
-      badge.textContent = CHIP[d.status] ?? d.status;
-      st.appendChild(badge);
-    }
-    tr.querySelector(".lib-table-dim")!.textContent = hostSummary(d);
-    tr.addEventListener("click", () => openEditor(d));
-    tr.appendChild(kebabCell(() => [
-      { icon: ROW_MENU_ICONS.edit, label: "Open", onClick: () => openEditor(d) },
-      { icon: ROW_MENU_ICONS.delete, label: "Remove", danger: true, onClick: () => { void removeDomain(d); } },
-    ]));
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  list.appendChild(table);
-  if (state.totalPages > 1) list.appendChild(renderPaginationBar(state, (p) => { page = p; paintList(); }));
-}
-
-// ── EDITOR (crud-inline-form, exactly like Roles) ────────────────────────────
+// ── editor body (DNS records + Verify + apex picker) ─────────────────────────
 const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const SPIN_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></svg>`;
 const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 const copyBtn = (v: string): string => `<button class="action-btn od-copy" type="button" data-copy="${esc(v)}" title="Copy" style="height:22px;width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;">${COPY_SVG}</button>`;
-
-function showEditor(on: boolean): void {
-  $("dom-list-view")?.classList.toggle("hidden", on);
-  $("dom-edit-view")?.classList.toggle("hidden", !on);
-}
 
 function apexOptions(selected: string | null | undefined): string {
   return `<option value=""${!selected ? " selected" : ""}>Subdomains only (nothing at the bare domain)</option>`
     + apps.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? " selected" : ""}>${esc(a.name)} (${esc(a.slug)})</option>`).join("");
 }
 
-function openEditor(d: OrgDomain): void {
-  showEditor(true);
-  editError("");
-  const title = $("dom-edit-title"); if (title) title.textContent = d.domain;
-  const chipEl = $("dom-edit-chip");
-  if (chipEl) chipEl.innerHTML = `<span class="lib-badge${d.status === "active" ? " on" : ""}">${esc(CHIP[d.status] ?? d.status)}</span>`;
-  const body = $("dom-edit-body");
-  if (!body) return;
+function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
   const hostRows = Object.entries(d.hostnames ?? {});
   body.innerHTML = `
+    <p style="margin:0 0 12px;">${statusChip(d)}</p>
     ${d.error ? `<p class="settings-error" style="margin:0 0 10px;">${esc(d.error)}</p>` : ""}
     ${d.status !== "active" ? `
     <h4 class="acct-row-head">Publish these DNS records</h4>
@@ -118,9 +55,7 @@ function openEditor(d: OrgDomain): void {
     <select id="dom-apex" class="settings-input settings-input-md">${apexOptions(d.apexAppId)}</select>
 
     ${hostRows.length ? `<h4 class="acct-row-head" style="margin-top:16px;">App hostnames</h4>
-    <table class="lib-table" style="font-size:12px;"><tbody>${hostRows.map(([h, s]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(s)}</td></tr>`).join("")}</tbody></table>` : ""}
-
-    <div class="settings-actions" style="margin-top:18px;"><button id="dom-remove" class="action-btn danger" type="button">Remove domain</button></div>`;
+    <table class="lib-table" style="font-size:12px;"><tbody>${hostRows.map(([h, s]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(s)}</td></tr>`).join("")}</tbody></table>` : ""}`;
 
   for (const b of Array.from(body.querySelectorAll<HTMLButtonElement>(".od-copy"))) {
     b.addEventListener("click", async () => {
@@ -128,79 +63,69 @@ function openEditor(d: OrgDomain): void {
     });
   }
 
-  const vb = $<HTMLButtonElement>("dom-verify");
+  const vb = $("dom-verify") as HTMLButtonElement | null;
   vb?.addEventListener("click", async () => {
-    editError(""); vb.disabled = true; vb.style.color = "#fff";
+    ctx.error(""); vb.disabled = true; vb.style.color = "#fff";
     let last = "Couldn't verify the domain.";
     for (let a = 1; a <= 6; a++) {
       vb.innerHTML = `${SPIN_SVG} Verifying…${a > 1 ? ` (${a}/6)` : ""}`;
       const r = await accountApi().verifyOrgDomain(d.id);
-      if (r.ok) { await loadDomainsPanel(); const fresh = domains.find((x) => x.id === d.id); if (fresh) openEditor(fresh); return; }
+      if (r.ok) { await ctx.reload(); ctx.back(); return; }
       last = r.error;
       if (a < 6) await new Promise((res) => setTimeout(res, 10_000));
     }
-    vb.disabled = false; vb.style.color = ""; vb.textContent = "Verify"; editError(last);
+    vb.disabled = false; vb.style.color = ""; vb.textContent = "Verify"; ctx.error(last);
   });
 
-  $<HTMLSelectElement>("dom-apex")?.addEventListener("change", async (e) => {
-    editError("");
+  ($("dom-apex") as HTMLSelectElement | null)?.addEventListener("change", async (e) => {
+    ctx.error("");
     const r = await accountApi().setOrgDomainApexApp(d.id, (e.target as HTMLSelectElement).value || null);
-    if (!r.ok) { editError(r.error); return; }
-    await loadDomainsPanel();
-    const fresh = domains.find((x) => x.id === d.id); if (fresh) openEditor(fresh);
+    if (!r.ok) { ctx.error(r.error); return; }
+    await ctx.reload(); ctx.back();
   });
-
-  $("dom-remove")?.addEventListener("click", () => { void removeDomain(d, true); });
 }
 
-async function removeDomain(d: OrgDomain, fromEditor = false): Promise<void> {
-  const ok = await confirmAction({ title: `Remove ${d.domain}?`, body: "Its app hostnames stop resolving immediately.", confirmLabel: "Remove", danger: true });
-  if (!ok) return;
-  const r = await accountApi().removeOrgDomain(d.id);
-  if (!r.ok) { (fromEditor ? editError : setError)(r.error); return; }
-  if (fromEditor) showEditor(false);
-  await loadDomainsPanel();
-}
+let handle: ListPageHandle | null = null;
 
-// ── wiring ───────────────────────────────────────────────────────────────────
-let wired = false;
-export function initDomainsPanel(): void {
-  if (wired) return;
-  wired = true;
-  $("dom-search")?.addEventListener("input", () => { page = 0; paintList(); });
-  $("dom-back")?.addEventListener("click", (e) => { e.preventDefault(); showEditor(false); });
-  const add = async (): Promise<void> => {
-    const input = $<HTMLInputElement>("dom-input");
-    const domain = (input?.value || "").trim().toLowerCase();
-    if (!domain) { setError("Enter a domain like acme.com."); return; }
-    setError(""); setStatus("Adding…");
-    const r = await accountApi().addOrgDomain(domain);
-    setStatus(r.ok ? "Added" : "Not added", r.ok ? "success" : "error");
-    if (!r.ok) { setError(r.error); return; }
-    if (input) input.value = "";
-    await loadDomainsPanel();
-    if (r.data) openEditor(r.data);
-  };
-  $("dom-add")?.addEventListener("click", () => { void add(); });
-  $<HTMLInputElement>("dom-input")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void add(); });
-}
-
-/** Admin gate — mirrors Roles' showPanel. */
 function showPanel(on: boolean): void {
   $("dom-admin-only")?.classList.toggle("hidden", on);
   $("dom-body")?.classList.toggle("hidden", !on);
-  document.querySelector<HTMLElement>('.settings-nav .settings-nav-item[data-sub="domains"]')
-    ?.classList.toggle("hidden", !on);
+  document.querySelector<HTMLElement>('.settings-nav .settings-nav-item[data-sub="domains"]')?.classList.toggle("hidden", !on);
 }
 
 export async function loadDomainsPanel(): Promise<void> {
-  initDomainsPanel();
-  setError("");
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const role = account?.role || "";
   if (!role || !["org_admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
+
   try { apps = await accountApi().orgApps(); } catch { apps = []; }
-  try { domains = await accountApi().orgDomains(); paintList(); }
-  catch (e) { setError(`Couldn't load domains — ${(e as Error).message}`); }
+  if (!handle) {
+    handle = mountListPage<OrgDomain>({
+      rootId: "dom-root",
+      objectName: "domain",
+      objectPlural: "Domains",
+      title: "Domains",
+      description: "Point your own domains at Glyphh. Add a domain, publish the DNS records it shows, then Verify — every published app answers at <code>&lt;app&gt;.yourdomain</code>, and the bare domain can serve a flagship app.",
+      columns: [
+        { header: "Domain", cell: (d) => esc(d.domain) },
+        { header: "Status", cell: (d) => statusChip(d) },
+        { header: "Apps", cell: (d) => appsCell(d), dim: true },
+      ],
+      rowId: (d) => d.id,
+      searchText: (d) => d.domain,
+      load: () => accountApi().orgDomains(),
+      newFields: [
+        { key: "domain", label: "Domain", placeholder: "acme.com", required: true,
+          validate: (v) => HOST_RE.test(v.toLowerCase()) ? null : "Enter a bare domain like acme.com (no scheme, no wildcard)." },
+      ],
+      create: (values) => accountApi().addOrgDomain(values.domain!.trim().toLowerCase())
+        .then((r) => r.ok ? { ok: true as const } : { ok: false as const, error: r.error }),
+      editTitle: (d) => d.domain,
+      renderEdit,
+      remove: (d) => accountApi().removeOrgDomain(d.id).then((r) => r.ok ? { ok: true as const } : { ok: false as const, error: r.error }),
+      deleteBody: () => "Its app hostnames stop resolving immediately.",
+    });
+  }
+  await handle.reload();
 }
