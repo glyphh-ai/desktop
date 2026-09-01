@@ -146,6 +146,7 @@ interface SdkAccountHandle {
     get?: () => Promise<Org>; update?: (patch: OrgUpdate) => Promise<Org>;
     domains?: () => Promise<OrgDomain[]>; addDomain?: (domain: string) => Promise<OrgDomain>;
     verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
+    setDomainApexApp?: (id: string, appId: string | null) => Promise<OrgDomain>;
   };
   profile?: { get?: () => Promise<Profile>; update?: (patch: ProfileUpdate) => Promise<Profile> };
   members?: {
@@ -162,6 +163,7 @@ interface SdkAccountHandle {
 
 /** One org white-label domain (server docs/custom-domains.md). */
 export interface OrgDomain {
+  apexAppId?: string | null;
   id: string;
   domain: string;
   status: string;
@@ -189,6 +191,7 @@ interface DesktopAccountIpc {
   orgDomainsList?: () => Promise<OrgDomain[]>;
   orgDomainAdd?: (domain: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
   orgDomainVerify?: (id: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainApexSet?: (id: string, appId: string | null) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
   orgDomainRemove?: (id: string) => Promise<{ ok: boolean; removed?: boolean; error?: string }>;
   accountOrgUpdate?: (patch: OrgUpdate) => Promise<{ ok: boolean; org?: Org; error?: string }>;
   accountProfileGet?: () => Promise<Profile>;
@@ -224,6 +227,8 @@ export interface AccountApi {
   addOrgDomain(domain: string): Promise<WriteResult<OrgDomain>>;
   verifyOrgDomain(id: string): Promise<WriteResult<OrgDomain>>;
   removeOrgDomain(id: string): Promise<WriteResult<unknown>>;
+  setOrgDomainApexApp(id: string, appId: string | null): Promise<WriteResult<OrgDomain>>;
+  orgApps(): Promise<Array<{ id: string; name: string; slug: string }>>;
   profile(): Promise<Profile>;
   updateProfile(patch: ProfileUpdate): Promise<WriteResult<Profile>>;
   members(): Promise<Member[]>;
@@ -319,6 +324,11 @@ export function accountApi(): AccountApi {
       addOrgDomain: (domain) => web(o?.addDomain && (() => o.addDomain!(domain))),
       verifyOrgDomain: (id) => web(o?.verifyDomain && (() => o.verifyDomain!(id))),
       removeOrgDomain: (id) => web(o?.removeDomain && (() => o.removeDomain!(id))),
+      setOrgDomainApexApp: (id, appId) => web(o?.setDomainApexApp && (() => o.setDomainApexApp!(id, appId))),
+      orgApps: async () => {
+        const apps = (window as unknown as { glyphhSdk?: { apps?: { mine?: () => Promise<Array<{ id: string; name: string; slug: string }>> } } }).glyphhSdk?.apps;
+        return apps?.mine ? (await apps.mine()).map((a) => ({ id: a.id, name: a.name, slug: a.slug })) : [];
+      },
       profile: () => need(p?.get, p),
       updateProfile: (patch) => web(p?.update && (() => p.update!(patch))),
       members: () => need(m?.list, m),
@@ -354,6 +364,12 @@ export function accountApi(): AccountApi {
     addOrgDomain: (domain) => ipc(g?.orgDomainAdd && (() => g.orgDomainAdd!(domain)), "domain"),
     verifyOrgDomain: (id) => ipc(g?.orgDomainVerify && (() => g.orgDomainVerify!(id)), "domain"),
     removeOrgDomain: (id) => ipc(g?.orgDomainRemove && (() => g.orgDomainRemove!(id)), "removed"),
+    setOrgDomainApexApp: (id, appId) => ipc(g?.orgDomainApexSet && (() => g.orgDomainApexSet!(id, appId)), "domain"),
+    orgApps: async () => {
+      const list = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<Array<{ id: string; name: string; slug: string; appArchetype?: string | null }>> } }).glyphh?.panelAppsList;
+      if (!list) return [];
+      return (await list()).filter((a) => a.appArchetype === "glyphh-app").map((a) => ({ id: a.id, name: a.name, slug: a.slug }));
+    },
     profile: () => need(g?.accountProfileGet, g),
     updateProfile: (patch) => ipc(g?.accountProfileUpdate && (() => g.accountProfileUpdate!(patch)), "profile"),
     members: () => need(g?.accountMembersList, g),

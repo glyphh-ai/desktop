@@ -12,7 +12,7 @@ import { downscaleImage } from "./shared.js";
  * folded into the Account panel for continuity; this is the dedicated page.)
  */
 
-import { accountApi, type Org, type Address, type OrgUpdate, type BillingContact, type OrgDomain } from "./settings-api.js";
+import { accountApi, type Org, type Address, type OrgUpdate, type BillingContact } from "./settings-api.js";
 
 const $ = (id: string) => document.getElementById(id);
 let org: Org | null = null;
@@ -102,7 +102,6 @@ export async function loadOrgPanel(): Promise<void> {
   showPanel(true);
   try { org = await accountApi().org(); paint(); }
   catch (e) { setError(`Couldn't load your organization — ${(e as Error).message}`); }
-  void loadDomains();
 }
 
 export function initOrgPanel(): void {
@@ -144,128 +143,3 @@ export function initOrgPanel(): void {
   }
 }
 
-// ── Custom domain (org white-label — server docs/custom-domains.md P1) ──────
-// Add → the row shows the TWO DNS records to publish → Verify → active, with
-// per-app hostname states beneath. All writes ride accountApi()'s dual
-// transport (desktop IPC / web SDK); org_admin is the panel's existing gate.
-
-const esc = (v: unknown): string =>
-  String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-function domainsError(msg: string): void {
-  const el = $("org-domains-error");
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.toggle("hidden", !msg);
-}
-
-function domainsStatus(msg: string): void {
-  const el = $("org-domains-status");
-  if (el) el.textContent = msg;
-}
-
-const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
-const SPIN_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></svg>`;
-const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-
-/** A tiny copy button for a DNS record value — flips to a green check on success. */
-function copyBtnHtml(value: string): string {
-  return `<button class="action-btn od-copy" type="button" data-copy="${esc(value)}" title="Copy" style="height:22px;width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;">${COPY_SVG}</button>`;
-}
-
-function wireCopyButtons(root: HTMLElement): void {
-  for (const btn of Array.from(root.querySelectorAll<HTMLButtonElement>(".od-copy"))) {
-    btn.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(btn.dataset.copy || "");
-        btn.innerHTML = CHECK_SVG;
-        setTimeout(() => { btn.innerHTML = COPY_SVG; }, 1500);
-      } catch { /* clipboard denied — leave the icon */ }
-    });
-  }
-}
-
-const DOMAIN_CHIP: Record<string, string> = {
-  pending: "Waiting for DNS", verifying: "Verifying", active: "Active", error: "Error",
-};
-
-function paintDomains(domains: OrgDomain[]): void {
-  const list = $("org-domains-list");
-  if (!list) return;
-  list.innerHTML = "";
-  for (const d of domains) {
-    const row = document.createElement("div");
-    row.className = "acct-section";
-    row.style.cssText = "border:1px solid var(--border-2);border-radius:10px;padding:14px 16px;margin:10px 0;";
-    const hostRows = Object.entries(d.hostnames);
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;">
-        <b style="font-size:14px;">${esc(d.domain)}</b>
-        <span class="mkt-listed-chip ${d.status === "active" ? "on" : ""}">${esc(DOMAIN_CHIP[d.status] ?? d.status)}</span>
-        <span style="flex:1;"></span>
-        ${d.status !== "active" ? `<button class="action-btn primary od-verify" type="button">Verify</button>` : ""}
-        <button class="action-btn danger od-remove" type="button">Remove</button>
-      </div>
-      ${d.error ? `<p class="settings-error" style="margin:8px 0 0;">${esc(d.error)}</p>` : ""}
-      ${d.status !== "active" ? `
-      <p class="settings-hint" style="margin:10px 0 6px;">Publish these DNS records, then press Verify:</p>
-      <table class="yo-md-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
-        <tbody>${d.dns.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code> ${copyBtnHtml(r.name)}</td><td><code>${esc(r.value)}</code> ${copyBtnHtml(r.value)}</td></tr>`).join("")}</tbody>
-      </table>` : ""}
-      ${hostRows.length ? `
-      <p class="settings-hint" style="margin:10px 0 4px;">App hostnames:</p>
-      ${hostRows.map(([h, st]) => `<div style="display:flex;gap:8px;align-items:center;font-size:12.5px;padding:2px 0;"><code>${esc(h)}</code><span class="mkt-listed-chip ${st === "active" ? "on" : ""}">${esc(st)}</span></div>`).join("")}` : ""}
-    `;
-    wireCopyButtons(row);
-    // Verify retries while DNS propagates (his spec, 2026-08-31): 6 attempts,
-    // 10s apart, spinner on the button; the first success reloads, the last
-    // failure surfaces its reason.
-    const verifyBtn = row.querySelector<HTMLButtonElement>(".od-verify");
-    verifyBtn?.addEventListener("click", async () => {
-      domainsError("");
-      verifyBtn.disabled = true;
-      verifyBtn.style.color = "#fff";
-      const ATTEMPTS = 6;
-      let lastError = "Couldn't verify the domain.";
-      for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-        verifyBtn.innerHTML = `${SPIN_SVG} Verifying…${attempt > 1 ? ` (${attempt}/${ATTEMPTS})` : ""}`;
-        const r = await accountApi().verifyOrgDomain(d.id);
-        if (r.ok) { void loadDomains(); return; }
-        lastError = r.error;
-        if (attempt < ATTEMPTS) await new Promise((res) => setTimeout(res, 10_000));
-      }
-      verifyBtn.disabled = false;
-      verifyBtn.style.color = "";
-      verifyBtn.textContent = "Verify";
-      domainsError(lastError);
-    });
-    row.querySelector<HTMLButtonElement>(".od-remove")?.addEventListener("click", async () => {
-      domainsError("");
-      const r = await accountApi().removeOrgDomain(d.id);
-      if (!r.ok) { domainsError(r.error); return; }
-      void loadDomains();
-    });
-    list.appendChild(row);
-  }
-}
-
-let domainsWired = false;
-async function loadDomains(): Promise<void> {
-  if (!domainsWired) {
-    domainsWired = true;
-    $("org-domain-add")?.addEventListener("click", async () => {
-      const input = $("org-domain-input") as HTMLInputElement | null;
-      const domain = input?.value.trim() || "";
-      if (!domain) return;
-      domainsError("");
-      domainsStatus("Adding…");
-      const r = await accountApi().addOrgDomain(domain);
-      domainsStatus("");
-      if (!r.ok) { domainsError(r.error); return; }
-      if (input) input.value = "";
-      void loadDomains();
-    });
-  }
-  try { paintDomains(await accountApi().orgDomains()); }
-  catch { /* older build / server — the section just stays empty */ }
-}

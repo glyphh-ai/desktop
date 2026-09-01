@@ -203,6 +203,10 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, domain: await getClient().org.verifyDomain(String(id || "")) }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("account-org-domain-apex", async (_e, id: string, appId: string | null) => {
+    try { return { ok: true as const, domain: await getClient().org.setDomainApexApp(String(id || ""), appId ?? null) }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("account-org-domain-remove", async (_e, id: string) => {
     try { await getClient().org.removeDomain(String(id || "")); return { ok: true as const, removed: true }; }
     catch (err) { return fail(err); }
