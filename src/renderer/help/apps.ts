@@ -1928,6 +1928,16 @@ async function openPanelAppDetail(app: PanelApp) {
       `<div id="app-detail-url" class="edit-head-url"></div>` +
     `</div>`;
   paintHeadUrl(app.url || null);
+  // A glyphh app's row carries no url (its UI lives on disk) — the PUBLISHED
+  // address is the hosting deployment's. Resolve it on open so the header is
+  // right on every tab, not only after Releases loads (his report, 2026-09-01).
+  void window.glyphh.hostingStatus?.(app.slug)?.then((r) => {
+    const dep = r?.ok ? r.deployment : null;
+    if (currentAppId !== app.id) return; // he moved on — never paint a stale head
+    if (dep && (dep.status === "live" || dep.status === "building" || dep.status === "queued")) {
+      paintHeadUrl(dep.url || app.url || null);
+    }
+  });
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");

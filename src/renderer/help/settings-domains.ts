@@ -38,7 +38,6 @@ function apexOptions(selected: string | null | undefined): string {
 }
 
 function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
-  const hostRows = Object.entries(d.hostnames ?? {});
   // STAGED state (his spec, 2026-09-01): the two capability toggles drive what
   // the form shows LIVE (the wire always carries every record; the UI filters),
   // but nothing is written until Save. Cancel/← discards.
@@ -47,6 +46,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
   let apexSel = d.apexAppId ?? "";
 
   function paint(): void {
+    const hostRows = Object.entries(d.hostnames ?? {});
     const rows = d.dns.filter((r) =>
       r.type === "TXT" || (pubApps && r.type === "CNAME") || (hostBare && (r.type === "A" || r.type === "AAAA")));
     const showTable = pubApps || hostBare;
@@ -141,7 +141,11 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
         if (r.ok) {
           void ctx.reload(); // refresh the list behind us
           if (!btn.isConnected) return;
-          renderEdit(r.data, body, ctx);
+          // Adopt the fresh server row IN PLACE: records/status/hostnames
+          // update, but STAGED toggle edits survive (his prod report,
+          // 2026-09-01: toggling then Refresh discarded the unsaved flip).
+          d = r.data;
+          paint();
           // Visible receipt on the freshly-rendered button, then back to idle.
           const fresh = $(btnId) as HTMLButtonElement | null;
           if (fresh) {
