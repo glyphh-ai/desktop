@@ -207,6 +207,10 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, domain: await getClient().org.setDomainApexApp(String(id || ""), appId ?? null) }; }
     catch (err) { return fail(err); }
   });
+  ipcMain.handle("account-org-domain-wildcard", async (_e, id: string, wildcard: boolean) => {
+    try { return { ok: true as const, domain: await getClient().org.setDomainWildcard(String(id || ""), !!wildcard) }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("account-org-domain-remove", async (_e, id: string) => {
     try { await getClient().org.removeDomain(String(id || "")); return { ok: true as const, removed: true }; }
     catch (err) { return fail(err); }

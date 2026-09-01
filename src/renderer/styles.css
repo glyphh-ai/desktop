@@ -7619,6 +7619,14 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 .lib-table.billing-invoices tbody tr { cursor: default; }
 .lib-table.billing-invoices tbody tr:hover td { background: transparent; }
 .lib-table.billing-invoices .billing-invoice-link { text-align: right; }
+/* DNS records (Domains editor) — same override play as billing-invoices: the
+   generic 26%/18% fixed columns + nowrap ellipsis CLIPPED the long values
+   (verify token, IPv6) and pushed their copy buttons out of view (his report,
+   2026-08-31). Type hugs its label; Name/Value take the room and WRAP. */
+.lib-table.dom-dns th, .lib-table.dom-dns td { width: auto; white-space: normal; }
+.lib-table.dom-dns td code { word-break: break-all; }
+.lib-table.dom-dns tbody tr { cursor: default; }
+.lib-table.dom-dns tbody tr:hover td { background: transparent; }
 
 /* ── Support ────────────────────────────────────────────── */
 

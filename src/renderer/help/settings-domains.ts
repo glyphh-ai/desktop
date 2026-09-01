@@ -20,7 +20,7 @@ const CHIP: Record<string, string> = { pending: "Waiting for DNS", verifying: "V
 const statusChip = (d: OrgDomain): string => `<span class="lib-badge${d.status === "active" ? " on" : ""}">${esc(CHIP[d.status] ?? d.status)}</span>`;
 const appsCell = (d: OrgDomain): string => {
   const n = Object.keys(d.hostnames ?? {}).length;
-  return esc(n ? `${n} app hostname${n === 1 ? "" : "s"}` : d.apexAppId ? "apex assigned" : "—");
+  return esc(n ? `${n} app hostname${n === 1 ? "" : "s"}` : d.apexAppId ? "home app set" : "—");
 };
 
 // A bare DNS hostname — the same rule the server enforces.
@@ -33,7 +33,7 @@ const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" s
 const copyBtn = (v: string): string => `<button class="action-btn od-copy" type="button" data-copy="${esc(v)}" title="Copy" style="height:22px;width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;">${COPY_SVG}</button>`;
 
 function apexOptions(selected: string | null | undefined): string {
-  return `<option value=""${!selected ? " selected" : ""}>Subdomains only (nothing at the bare domain)</option>`
+  return `<option value=""${!selected ? " selected" : ""}>Not serving yet — pick your home app</option>`
     + apps.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? " selected" : ""}>${esc(a.name)} (${esc(a.slug)})</option>`).join("");
 }
 
@@ -45,17 +45,29 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
     ${d.status !== "active" ? `
     <h4 class="acct-row-head">Publish these DNS records</h4>
     <p class="section-desc">Add them at your DNS host, then press Verify.</p>
-    <table class="lib-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Name</th><th>Value</th></tr></thead>
+    <table class="lib-table dom-dns" style="font-size:12px;"><thead><tr><th style="width:64px;">Type</th><th>Name</th><th>Value</th></tr></thead>
       <tbody>${d.dns.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code> ${copyBtn(r.name)}</td><td><code>${esc(r.value)}</code> ${copyBtn(r.value)}</td></tr>`).join("")}</tbody>
     </table>
     <div class="settings-actions" style="margin:12px 0;"><button id="dom-verify" class="action-btn primary" type="button">Verify</button></div>` : ""}
 
-    <h4 class="acct-row-head">Bare domain serves</h4>
-    <p class="section-desc">Subdomains map to <code>&lt;app&gt;.${esc(d.domain)}</code> automatically. Pick which app the bare <code>${esc(d.domain)}</code> serves.</p>
+    <h4 class="acct-row-head">Home app</h4>
+    <p class="section-desc">Which app the bare <code>${esc(d.domain)}</code> serves once you publish the <code>A</code>/<code>AAAA</code> records above. Your own <code>www</code> and apex stay untouched until you deliberately point them here; leave unset to serve nothing at the naked domain.</p>
     <select id="dom-apex" class="settings-input settings-input-md">${apexOptions(d.apexAppId)}</select>
 
+    <p class="section-desc" style="margin-top:14px;">To point one hostname at one app — <code>abc.${esc(d.domain)}</code> or a bare client domain — add it from that <strong>app's Domains tab</strong>. Only the hostname you bind resolves; nothing else on <code>${esc(d.domain)}</code> is touched.</p>
+
+    <h4 class="acct-row-head" style="margin-top:16px;">Wildcard (whole catalog)</h4>
+    <label class="settings-toggle" style="margin:6px 0;">
+      <input id="dom-wildcard" type="checkbox" ${d.wildcard ? "checked" : ""} />
+      <span class="toggle-switch"></span>
+      <span class="toggle-info">
+        <span class="toggle-title">Publish every app at <code>&lt;app&gt;.${esc(d.domain)}</code></span>
+        <span class="toggle-desc">Adds a wildcard <code>CNAME *.${esc(d.domain)}</code>. ⚠ Every <em>undefined</em> subdomain of <code>${esc(d.domain)}</code> (api, staging, mail…) will then route to Glyphh. Leave off unless this domain exists only to front your Glyphh apps.</span>
+      </span>
+    </label>
+
     ${hostRows.length ? `<h4 class="acct-row-head" style="margin-top:16px;">App hostnames</h4>
-    <table class="lib-table" style="font-size:12px;"><tbody>${hostRows.map(([h, s]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(s)}</td></tr>`).join("")}</tbody></table>` : ""}`;
+    <table class="lib-table dom-dns" style="font-size:12px;"><tbody>${hostRows.map(([h, s]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(s)}</td></tr>`).join("")}</tbody></table>` : ""}`;
 
   for (const b of Array.from(body.querySelectorAll<HTMLButtonElement>(".od-copy"))) {
     b.addEventListener("click", async () => {
@@ -81,6 +93,14 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
     ctx.error("");
     const r = await accountApi().setOrgDomainApexApp(d.id, (e.target as HTMLSelectElement).value || null);
     if (!r.ok) { ctx.error(r.error); return; }
+    await ctx.reload(); ctx.back();
+  });
+
+  ($("dom-wildcard") as HTMLInputElement | null)?.addEventListener("change", async (e) => {
+    ctx.error("");
+    const box = e.target as HTMLInputElement;
+    const r = await accountApi().setOrgDomainWildcard(d.id, box.checked);
+    if (!r.ok) { box.checked = !box.checked; ctx.error(r.error); return; }
     await ctx.reload(); ctx.back();
   });
 }

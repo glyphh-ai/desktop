@@ -147,6 +147,7 @@ interface SdkAccountHandle {
     domains?: () => Promise<OrgDomain[]>; addDomain?: (domain: string) => Promise<OrgDomain>;
     verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
     setDomainApexApp?: (id: string, appId: string | null) => Promise<OrgDomain>;
+    setDomainWildcard?: (id: string, wildcard: boolean) => Promise<OrgDomain>;
   };
   profile?: { get?: () => Promise<Profile>; update?: (patch: ProfileUpdate) => Promise<Profile> };
   members?: {
@@ -164,6 +165,7 @@ interface SdkAccountHandle {
 /** One org white-label domain (server docs/custom-domains.md). */
 export interface OrgDomain {
   apexAppId?: string | null;
+  wildcard?: boolean;
   id: string;
   domain: string;
   status: string;
@@ -192,6 +194,7 @@ interface DesktopAccountIpc {
   orgDomainAdd?: (domain: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
   orgDomainVerify?: (id: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
   orgDomainApexSet?: (id: string, appId: string | null) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainWildcardSet?: (id: string, wildcard: boolean) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
   orgDomainRemove?: (id: string) => Promise<{ ok: boolean; removed?: boolean; error?: string }>;
   accountOrgUpdate?: (patch: OrgUpdate) => Promise<{ ok: boolean; org?: Org; error?: string }>;
   accountProfileGet?: () => Promise<Profile>;
@@ -228,6 +231,7 @@ export interface AccountApi {
   verifyOrgDomain(id: string): Promise<WriteResult<OrgDomain>>;
   removeOrgDomain(id: string): Promise<WriteResult<unknown>>;
   setOrgDomainApexApp(id: string, appId: string | null): Promise<WriteResult<OrgDomain>>;
+  setOrgDomainWildcard(id: string, wildcard: boolean): Promise<WriteResult<OrgDomain>>;
   orgApps(): Promise<Array<{ id: string; name: string; slug: string }>>;
   profile(): Promise<Profile>;
   updateProfile(patch: ProfileUpdate): Promise<WriteResult<Profile>>;
@@ -325,6 +329,7 @@ export function accountApi(): AccountApi {
       verifyOrgDomain: (id) => web(o?.verifyDomain && (() => o.verifyDomain!(id))),
       removeOrgDomain: (id) => web(o?.removeDomain && (() => o.removeDomain!(id))),
       setOrgDomainApexApp: (id, appId) => web(o?.setDomainApexApp && (() => o.setDomainApexApp!(id, appId))),
+      setOrgDomainWildcard: (id, wildcard) => web(o?.setDomainWildcard && (() => o.setDomainWildcard!(id, wildcard))),
       orgApps: async () => {
         const apps = (window as unknown as { glyphhSdk?: { apps?: { mine?: () => Promise<Array<{ id: string; name: string; slug: string }>> } } }).glyphhSdk?.apps;
         return apps?.mine ? (await apps.mine()).map((a) => ({ id: a.id, name: a.name, slug: a.slug })) : [];
@@ -365,6 +370,7 @@ export function accountApi(): AccountApi {
     verifyOrgDomain: (id) => ipc(g?.orgDomainVerify && (() => g.orgDomainVerify!(id)), "domain"),
     removeOrgDomain: (id) => ipc(g?.orgDomainRemove && (() => g.orgDomainRemove!(id)), "removed"),
     setOrgDomainApexApp: (id, appId) => ipc(g?.orgDomainApexSet && (() => g.orgDomainApexSet!(id, appId)), "domain"),
+    setOrgDomainWildcard: (id, wildcard) => ipc(g?.orgDomainWildcardSet && (() => g.orgDomainWildcardSet!(id, wildcard)), "domain"),
     orgApps: async () => {
       const list = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<Array<{ id: string; name: string; slug: string; appArchetype?: string | null }>> } }).glyphh?.panelAppsList;
       if (!list) return [];

@@ -800,6 +800,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("account-org-domain-remove", id) as Promise<{ ok: boolean; removed?: boolean; error?: string }>,
   orgDomainApexSet: (id: string, appId: string | null) =>
     ipcRenderer.invoke("account-org-domain-apex", id, appId) as Promise<{ ok: boolean; domain?: unknown; error?: string }>,
+  orgDomainWildcardSet: (id: string, wildcard: boolean) =>
+    ipcRenderer.invoke("account-org-domain-wildcard", id, wildcard) as Promise<{ ok: boolean; domain?: unknown; error?: string }>,
   // AI Gateway — escalation models (org-governed), slicer usage, org governance.
   logout: () => ipcRenderer.invoke("logout") as Promise<void>,
   onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => {
