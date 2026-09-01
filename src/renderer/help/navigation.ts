@@ -575,7 +575,7 @@ function wireAppUserChip(nav: HTMLElement): void {
     nav.appendChild(menu);
     nav.appendChild(chip);
   }
-  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+  const paintChip = (info: { email?: string; firstName?: string; tier?: string } | null): void => {
     if (!info || !chip) return;
     const name = (info.firstName || info.email || "").trim();
     const face = chip.querySelector(".asu-avatar") as HTMLElement;
@@ -594,7 +594,12 @@ function wireAppUserChip(nav: HTMLElement): void {
     (chip.querySelector(".asu-name") as HTMLElement).textContent = name || "—";
     const tier = (info.tier || "free");
     (chip.querySelector(".asu-plan") as HTMLElement).textContent = `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
-  }).catch(() => { /* signed out — the dash stays */ });
+  };
+  void Promise.resolve(window.glyphh.getAccountInfo?.()).then(paintChip).catch(() => { /* signed out — the dash stays */ });
+  // RE-PAINT on every account refresh (his report, 2026-09-01: a first paint
+  // that raced the account cache — or a freshly uploaded avatar — left the
+  // initial sitting here for the whole run).
+  window.glyphh.onAccountUpdated?.(paintChip);
 }
 
 function gateAdminSubs(): void {
@@ -620,7 +625,43 @@ function gateAdminSubs(): void {
     const superAdmin = (info as { isPlatformAdmin?: boolean } | null)?.isPlatformAdmin === true || info?.role === "super_admin";
     document.querySelectorAll<HTMLElement>(".settings-nav:not(.docs-nav) > .nav-super")
       .forEach((el) => el.classList.toggle("hidden", !superAdmin));
+    paintImpersonationBanner(info as { orgName?: string; impersonatingOrgId?: string | null } | null);
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
+}
+
+/**
+ * The IMPERSONATION banner (scoped-membership epic, his order 2026-09-01):
+ * while a platform admin rides another org, EVERY surface shows a loud fixed
+ * red bar naming where they are, with the way back. The session scope is
+ * server-side, so stopping + a reload restores their real org everywhere.
+ */
+function paintImpersonationBanner(info: { orgName?: string; impersonatingOrgId?: string | null } | null): void {
+  document.getElementById("impersonation-banner")?.remove();
+  if (!info?.impersonatingOrgId) return;
+  const bar = document.createElement("div");
+  bar.id = "impersonation-banner";
+  bar.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:100000;display:flex;align-items:center;justify-content:center;gap:12px;padding:9px 16px;background:#b91c1c;color:#fff;font-size:13px;font-weight:600;box-shadow:0 -2px 10px rgba(0,0,0,.35);";
+  const label = document.createElement("span");
+  label.textContent = `You are impersonating ${info.orgName || "another organization"} — everything you do here acts as its admin.`;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "action-btn";
+  btn.textContent = "Stop impersonating";
+  btn.style.cssText = "background:#fff;color:#b91c1c;border-color:#fff;font-weight:700;";
+  btn.addEventListener("click", () => {
+    void (async () => {
+      btn.disabled = true;
+      // SDK first (web — window.glyphh is a fabricating proxy there), IPC on desktop.
+      const sdk = (window as unknown as { glyphhSdk?: { admin?: { stopImpersonate?: () => Promise<unknown> } } }).glyphhSdk?.admin;
+      try {
+        if (sdk?.stopImpersonate) await sdk.stopImpersonate();
+        else await (window.glyphh as unknown as { adminImpersonate?: (o: null) => Promise<unknown> }).adminImpersonate?.(null);
+      } catch { /* the reload below re-reads the true scope either way */ }
+      window.location.reload();
+    })();
+  });
+  bar.append(label, btn);
+  document.body.appendChild(bar);
 }
 
 /**
@@ -967,12 +1008,34 @@ export function initHelp() {
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
   // repaints it instead of showing the previous identity all run.
-  const fillRailUser = (info: { email?: string; firstName?: string; lastName?: string } | null): void => {
+  const fillRailUser = (info: { email?: string; firstName?: string; lastName?: string; avatarUrl?: string } | null): void => {
     const nameEl = document.getElementById("app-rail-user-name");
     if (!nameEl) return;
     nameEl.textContent = info
       ? (info.firstName ? `${info.firstName} ${info.lastName || ""}`.trim() : info.email) || "Account"
       : "Account";
+    // The avatar he set in his profile (his report, 2026-09-01): this chip
+    // painted the generic person glyph forever. Swap in the resolved avatar
+    // when there is one; a load error falls back to the glyph.
+    const btn = document.getElementById("app-rail-user-btn");
+    if (!btn) return;
+    const svg = btn.querySelector<SVGElement>("svg");
+    let img = btn.querySelector<HTMLImageElement>(".rail-user-avatar");
+    const src = info?.avatarUrl || "";
+    if (src) {
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "rail-user-avatar";
+        img.alt = "";
+        img.addEventListener("error", () => { img?.remove(); svg?.classList.remove("hidden"); });
+        btn.prepend(img);
+      }
+      if (img.src !== src) img.src = src;
+      svg?.classList.add("hidden");
+    } else {
+      img?.remove();
+      svg?.classList.remove("hidden");
+    }
   };
   void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
   window.glyphh.onAccountUpdated?.(fillRailUser);

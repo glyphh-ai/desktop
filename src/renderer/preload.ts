@@ -654,7 +654,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onDeviceLoginPrompt: (cb: (prompt: { userCode: string; verificationUri: string; verificationUriComplete?: string; expiresIn: number }) => void) => {
     ipcRenderer.on("device-login-prompt", (_e, prompt) => cb(prompt));
   },
-  getAccountInfo: () => ipcRenderer.invoke("get-account-info") as Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string; avatarUrl?: string } | null>,
+  getAccountInfo: () => ipcRenderer.invoke("get-account-info") as Promise<{ email: string; firstName: string; lastName: string; role: string; orgName: string; tier: string; billingStatus: string; avatarUrl?: string; impersonatingOrgId?: string | null } | null>,
   // ── Account surfaces (Settings › Billing / Organization / Account) — the
   // MAIN-process SDK client executes these (account-ipc.ts). The renderer
   // mirrors their shapes structurally in help/settings-api.ts, which also owns
@@ -791,6 +791,13 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-org-update", id, patch) as Promise<unknown>,
   adminOrgGrantCredits: (id: string, credits: number, note?: string) =>
     ipcRenderer.invoke("admin-org-grant-credits", id, credits, note) as Promise<{ ok: boolean; balance?: number; error?: string }>,
+  // Members on behalf + org impersonation (the super-admin Members tab).
+  adminOrgMemberInvite: (id: string, email: string, role?: "org_admin" | "user") =>
+    ipcRenderer.invoke("admin-org-member-invite", id, email, role) as Promise<{ ok: boolean; acceptUrl?: string; error?: string }>,
+  adminOrgMemberRemove: (id: string, userId: string) =>
+    ipcRenderer.invoke("admin-org-member-remove", id, userId) as Promise<{ ok: boolean; error?: string }>,
+  adminImpersonate: (orgId: string | null) =>
+    ipcRenderer.invoke("admin-impersonate", orgId) as Promise<{ ok: boolean; impersonating?: { orgId: string } | null; error?: string }>,
   // ── Files artifact store (Files gallery) — the MAIN-process SDK client
   // executes these (files-ipc.ts). Reads REJECT on failure so the gallery shows
   // an honest error; create answers with { ok, file, error }. help/files.ts
@@ -952,7 +959,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onShowOnboarding: (callback: () => void) => {
     ipcRenderer.on("show-onboarding", () => callback());
   },
-  onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string } | null) => void) => {
+  onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string; tier?: string; avatarUrl?: string } | null) => void) => {
     ipcRenderer.on("account-updated", (_e, info) => callback(info));
   },
   onAccountLocked: (callback: (info: { status: string; upgradeUrl: string }) => void) => {

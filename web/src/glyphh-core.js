@@ -604,6 +604,8 @@ export function toAccountInfo(me, org, sub) {
     tier: sub?.tier || me.tier || 'free',
     billingStatus: sub?.billingStatus || 'none',
     avatarUrl: me.avatarUrl || '',
+    // Present while a platform admin impersonates an org — drives the red banner.
+    impersonatingOrgId: me.impersonating?.orgId ?? null,
   };
 }
 

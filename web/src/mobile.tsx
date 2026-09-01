@@ -423,7 +423,9 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
 
       <div className="m-rail-footer">
         <button className="m-avatar" aria-label={user.name} title={user.name} onClick={onAccount}>
-          {user.initials}
+          {user.avatarUrl
+            ? <img className="m-avatar-img" src={user.avatarUrl} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            : user.initials}
         </button>
       </div>
     </aside>

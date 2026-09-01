@@ -247,7 +247,7 @@ declare global {
       onBoot: (callback: (data: { authenticated: boolean; status: string; tier?: string; needsOnboarding: boolean; hideWelcome?: boolean; theme?: string }) => void) => void;
       onThemeChanged: (callback: (theme: string) => void) => void;
       onShowOnboarding: (callback: () => void) => void;
-      onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string } | null) => void) => void;
+      onAccountUpdated: (callback: (info: { email: string; firstName: string; lastName: string; tier?: string; avatarUrl?: string } | null) => void) => void;
       onAccountLocked: (callback: (info: { status: string; upgradeUrl: string }) => void) => void;
       onAccountUnlocked: (callback: () => void) => void;
       recheckAccount: () => Promise<{ status: string }>;

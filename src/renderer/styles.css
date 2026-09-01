@@ -16151,6 +16151,9 @@ body.code-dragging #app-rail { transition: none; }
 }
 
 .app-rail-user-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+/* The profile avatar in the rail chip — same footprint as the person glyph it
+   replaces (his report, 2026-09-01: the set avatar never showed here). */
+.app-rail-user-btn .rail-user-avatar { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 
 .app-rail-user-btn:hover { background: var(--hover); color: var(--text); }
 

@@ -46,6 +46,9 @@ export interface AccountInfo {
   billingStatus: string;
   /** The resolved avatar (uploaded image, else legacy URL, else Gravatar). */
   avatarUrl: string;
+  /** Set while THIS session impersonates an org (platform admin) — drives the
+   *  renderer's red impersonation banner. */
+  impersonatingOrgId: string | null;
 }
 
 export interface HeartbeatResult {
@@ -406,6 +409,7 @@ async function refreshAccountState(): Promise<HeartbeatResult | null> {
     tier: subscription?.tier ?? identity.tier,
     billingStatus: subscription?.billingStatus ?? "",
     avatarUrl: (identity as { avatarUrl?: string }).avatarUrl ?? "",
+    impersonatingOrgId: (identity as { impersonating?: { orgId: string } | null }).impersonating?.orgId ?? null,
   };
   cachedHeartbeat = {
     // The new server has no account-disabled heartbeat signal (a revoked

@@ -293,6 +293,9 @@ body {
   cursor: pointer;
 }
 .m-avatar:hover { color: var(--text); }
+/* The profile avatar inside the rail chip — fills the circle; a load error
+   hides it and the initials underneath take over (his report, 2026-09-01). */
+.m-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .m-rail-footer .btn { margin-left: auto; }
 .m-rail-footer .btn svg { width: 18px; height: 18px; }
 

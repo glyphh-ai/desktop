@@ -123,6 +123,10 @@ interface SdkAdmin {
   org?: (id: string) => Promise<AdminOrgDetail>;
   updateOrg?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   grantCredits?: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
+  inviteOrgMember?: (id: string, email: string, role?: "org_admin" | "user") => Promise<{ acceptUrl: string }>;
+  removeOrgMember?: (id: string, userId: string) => Promise<{ ok: boolean }>;
+  impersonate?: (orgId: string) => Promise<{ impersonating: { orgId: string } | null } | null>;
+  stopImpersonate?: () => Promise<{ impersonating: { orgId: string } | null } | null>;
 }
 interface DesktopAdminIpc {
   adminModels?: () => Promise<{ models: AdminModel[] }>;
@@ -147,6 +151,9 @@ interface DesktopAdminIpc {
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
   adminOrgUpdate?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   adminOrgGrantCredits?: (id: string, credits: number, note?: string) => Promise<{ ok: boolean; balance?: number; error?: string }>;
+  adminOrgMemberInvite?: (id: string, email: string, role?: "org_admin" | "user") => Promise<{ ok: boolean; acceptUrl?: string; error?: string }>;
+  adminOrgMemberRemove?: (id: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
+  adminImpersonate?: (orgId: string | null) => Promise<{ ok: boolean; impersonating?: { orgId: string } | null; error?: string }>;
 }
 
 const NO_TRANSPORT = "This build can't reach the admin console.";
@@ -1278,6 +1285,7 @@ function paintOrgs(): void {
     tr.addEventListener("click", () => void openOrgDetail(o));
     tr.appendChild(kebabCell(() => [
       { icon: ROW_MENU_ICONS.edit, label: "Manage", onClick: () => void openOrgDetail(o) },
+      { icon: ROW_MENU_ICONS.view, label: "Impersonate", danger: true, onClick: () => { void impersonateOrg(o); } },
     ]));
     tbody.appendChild(tr);
   }
@@ -1367,59 +1375,204 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
   const allowance = plan ? microToCredits(Number(plan.included_credits)) : null;
   // The lp-sec rhythm (his spec, 2026-09-01): each section owns real air +
   // a hairline before the next; the view runs full width (lp-edit).
+  // Overview | Members tabs (his order, 2026-09-01): Members mirrors the
+  // regular admins' Members page — search, invite ON BEHALF, delete.
   body.innerHTML = `
     <h3 class="settings-subheading" style="margin-top:0;">${escapeHtml(d.name)} <span id="pa-org-detail-state" class="set-save-state"></span></h3>
-    <p class="settings-hint" style="margin:-4px 0 20px;">${escapeHtml(d.id)}</p>
+    <p class="settings-hint" style="margin:-4px 0 12px;">${escapeHtml(d.id)}</p>
 
-    <div class="lp-sec">
-      <div class="pa-org-stats">
-        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
-        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
-        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
+    <div class="app-detail-tabs" id="pa-org-tabs" style="margin-bottom:16px;">
+      <button class="app-detail-tab${orgDetailTab === "overview" ? " active" : ""}" data-otab="overview" type="button">Overview</button>
+      <button class="app-detail-tab${orgDetailTab === "members" ? " active" : ""}" data-otab="members" type="button">Members</button>
+    </div>
+
+    <div id="pa-org-tab-overview"${orgDetailTab === "members" ? ` class="hidden"` : ""}>
+      <div class="lp-sec">
+        <div class="pa-org-stats">
+          <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
+          <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
+          <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
+        </div>
+        <div class="pa-kv" style="margin-top:16px;">
+          <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
+          <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
+          <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
+          <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
+          <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
+        </div>
       </div>
-      <div class="pa-kv" style="margin-top:16px;">
-        <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
-        <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
-        <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
-        <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
-        <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
+
+      <div class="lp-sec">
+        <h4 class="acct-row-head">Plan</h4>
+        <div class="settings-inline">
+          <select id="pa-org-tier" class="settings-input settings-input-md">${ORG_TIERS.map((t) => `<option value="${t}"${t === d.tier ? " selected" : ""}>${t}</option>`).join("")}</select>
+          <button id="pa-org-tier-save" class="action-btn" type="button">Change plan</button>
+        </div>
+      </div>
+
+      <div class="lp-sec">
+        <h4 class="acct-row-head">Grant credits</h4>
+        <p class="section-desc">Admin-granted credits never expire and land on the balance immediately.</p>
+        <div class="settings-inline">
+          <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
+          <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
+        </div>
       </div>
     </div>
 
-    <div class="lp-sec">
-      <h4 class="acct-row-head">Plan</h4>
-      <div class="settings-inline">
-        <select id="pa-org-tier" class="settings-input settings-input-md">${ORG_TIERS.map((t) => `<option value="${t}"${t === d.tier ? " selected" : ""}>${t}</option>`).join("")}</select>
-        <button id="pa-org-tier-save" class="action-btn" type="button">Change plan</button>
+    <div id="pa-org-tab-members"${orgDetailTab === "members" ? "" : ` class="hidden"`}>
+      <div class="crud-toolbar">
+        <div class="search-clear-wrap"><input id="pa-org-mbr-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
+        <button id="pa-org-mbr-invite" class="action-btn primary" type="button">+ Invite</button>
       </div>
-    </div>
-
-    <div class="lp-sec">
-      <h4 class="acct-row-head">Grant credits</h4>
-      <p class="section-desc">Admin-granted credits never expire and land on the balance immediately.</p>
-      <div class="settings-inline">
-        <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
-        <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
+      <div id="pa-org-invite-form" class="crud-inline-form hidden" style="margin:10px 0;">
+        <label class="settings-label">Email</label>
+        <input id="pa-org-invite-email" type="email" class="settings-input" placeholder="name@company.com" spellcheck="false" autocomplete="off" />
+        <label class="settings-label">Role</label>
+        <select id="pa-org-invite-role" class="settings-input" style="max-width:200px;">
+          <option value="user">Member</option>
+          <option value="org_admin">Org admin</option>
+        </select>
+        <div id="pa-org-invite-note" class="settings-hint" style="margin-top:6px;"></div>
+        <div class="settings-actions" style="margin-top:10px;">
+          <button id="pa-org-invite-cancel" class="action-btn" type="button">Cancel</button>
+          <button id="pa-org-invite-send" class="action-btn primary" type="button">Send invite</button>
+        </div>
       </div>
-    </div>
-
-    <div class="lp-sec">
-      <h4 class="acct-row-head">Members (${fmtInt(d.members.length)})</h4>
-      <div id="pa-org-members" class="mbr-list"></div>
+      <div id="pa-org-mbr-list" class="mbr-list"></div>
+      <div id="pa-org-mbr-pager"></div>
     </div>`;
-  const ml = $("pa-org-members");
-  if (ml) for (const m of d.members) {
-    const row = document.createElement("div");
-    row.className = "mbr-row";
-    const nm = `${m.first_name} ${m.last_name}`.trim() || m.email;
-    row.innerHTML = `<div class="mbr-main"><b></b><span class="lib-table-dim"></span></div><span class="lib-badge"></span>`;
-    row.querySelector(".mbr-main b")!.textContent = nm;
-    row.querySelector(".mbr-main .lib-table-dim")!.textContent = m.email;
-    row.querySelector(".lib-badge")!.textContent = m.role;
-    ml.appendChild(row);
-  }
+  body.querySelectorAll<HTMLButtonElement>("#pa-org-tabs .app-detail-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      orgDetailTab = (btn.dataset.otab as "overview" | "members") || "overview";
+      body.querySelectorAll<HTMLButtonElement>("#pa-org-tabs .app-detail-tab").forEach((b) =>
+        b.classList.toggle("active", b === btn));
+      $("pa-org-tab-overview")?.classList.toggle("hidden", orgDetailTab !== "overview");
+      $("pa-org-tab-members")?.classList.toggle("hidden", orgDetailTab !== "members");
+    });
+  });
   $("pa-org-tier-save")?.addEventListener("click", () => void changeOrgTier());
   $("pa-org-grant-go")?.addEventListener("click", () => void grantFromDetail());
+  wireOrgMembersTab(d);
+  paintOrgMembers(d);
+}
+
+// ── Org detail › Members tab (his order, 2026-09-01): the regular Members
+// page's grammar — search, the member table, invite on behalf, delete. ──────
+
+let orgDetailTab: "overview" | "members" = "overview";
+let orgMbrPage = 0;
+const ORG_MBR_PAGE_SIZE = 10;
+
+function wireOrgMembersTab(d: AdminOrgDetail): void {
+  $<HTMLInputElement>("pa-org-mbr-search")?.addEventListener("input", () => { orgMbrPage = 0; paintOrgMembers(d); });
+  const form = $("pa-org-invite-form");
+  $("pa-org-mbr-invite")?.addEventListener("click", () => {
+    form?.classList.remove("hidden");
+    $<HTMLInputElement>("pa-org-invite-email")?.focus();
+  });
+  $("pa-org-invite-cancel")?.addEventListener("click", () => {
+    form?.classList.add("hidden");
+    const note = $("pa-org-invite-note");
+    if (note) note.textContent = "";
+  });
+  $("pa-org-invite-send")?.addEventListener("click", () => void sendOrgInvite(d));
+}
+
+function paintOrgMembers(d: AdminOrgDetail): void {
+  const list = $("pa-org-mbr-list");
+  if (!list) return;
+  const q = ($<HTMLInputElement>("pa-org-mbr-search")?.value || "").trim().toLowerCase();
+  const rows = d.members.filter((m) =>
+    !q || `${m.first_name} ${m.last_name}`.toLowerCase().includes(q) || m.email.toLowerCase().includes(q));
+  list.innerHTML = "";
+  const pagerHost = $("pa-org-mbr-pager");
+  if (pagerHost) pagerHost.textContent = "";
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "crud-empty";
+    empty.textContent = q ? "No members match your search." : "No members yet — invite someone above.";
+    list.appendChild(empty);
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "lib-table mbr-table";
+  table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th>Role</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  const pg = paginate(rows, orgMbrPage, ORG_MBR_PAGE_SIZE);
+  orgMbrPage = pg.state.page;
+  for (const m of pg.items) {
+    const tr = document.createElement("tr");
+    const nm = `${m.first_name} ${m.last_name}`.trim() || m.email;
+    tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-dim"></td><td><span class="acct-chip"></span></td>`;
+    tr.querySelector(".lib-table-name")!.textContent = nm;
+    tr.querySelector(".lib-table-dim")!.textContent = m.email;
+    tr.querySelector(".acct-chip")!.textContent = m.role;
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.delete, label: "Delete…", danger: true, onClick: () => { void removeOrgMemberOnBehalf(d, m); } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  list.appendChild(table);
+  if (pagerHost && pg.state.totalPages > 1) {
+    pagerHost.appendChild(renderPaginationBar(pg.state, (p) => { orgMbrPage = p; paintOrgMembers(d); }));
+  }
+}
+
+async function sendOrgInvite(d: AdminOrgDetail): Promise<void> {
+  const email = ($<HTMLInputElement>("pa-org-invite-email")?.value || "").trim();
+  const role = ($<HTMLSelectElement>("pa-org-invite-role")?.value === "org_admin" ? "org_admin" : "user") as "org_admin" | "user";
+  const note = $("pa-org-invite-note");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    if (note) note.textContent = "Enter a valid email address.";
+    return;
+  }
+  if (note) note.textContent = "Sending…";
+  const res = await write<{ acceptUrl: string }>(
+    (a) => a.inviteOrgMember?.(d.id, email, role).then((r) => ({ acceptUrl: r.acceptUrl })),
+    (g) => g.adminOrgMemberInvite?.(d.id, email, role), "acceptUrl");
+  if (!res.ok) { if (note) note.textContent = res.error; return; }
+  if (note) note.textContent = `Invite sent to ${email} ✓ — they get an email with the accept link.`;
+  const emailEl = $<HTMLInputElement>("pa-org-invite-email");
+  if (emailEl) emailEl.value = "";
+}
+
+async function removeOrgMemberOnBehalf(d: AdminOrgDetail, m: AdminOrgMember): Promise<void> {
+  const nm = `${m.first_name} ${m.last_name}`.trim() || m.email;
+  const sure = await confirmAction({
+    title: `Remove ${nm} from ${d.name}?`,
+    body: "They lose access to the organization; their seat frees up and any apps they own pass to an org admin.",
+    confirmLabel: "Remove member",
+    danger: true,
+  });
+  if (!sure) return;
+  const res = await write<boolean>(
+    (a) => a.removeOrgMember?.(d.id, m.id).then(() => true),
+    (g) => g.adminOrgMemberRemove?.(d.id, m.id), "ok");
+  if (!res.ok) { setErr("pa-org-detail-error", res.error); return; }
+  setErr("pa-org-detail-error", "");
+  // Re-read the org so counts + roster are the server's truth.
+  await openOrgDetail({ ...d } as unknown as AdminOrgRow);
+}
+
+/** Impersonate an org (his order, 2026-09-01): the WHOLE surface switches to
+ *  that org's view; the red banner (navigation.ts) is the way back. */
+async function impersonateOrg(o: AdminOrgRow): Promise<void> {
+  const sure = await confirmAction({
+    title: `Impersonate ${o.name}?`,
+    body: "The whole app switches to this organization's view — you act as its org admin, and everything you do is audited. A red banner stays on screen until you switch back.",
+    confirmLabel: "Impersonate",
+    danger: true,
+  });
+  if (!sure) return;
+  const res = await write<{ orgId: string } | null>(
+    (a) => a.impersonate?.(o.id).then((r) => r?.impersonating ?? null),
+    (g) => g.adminImpersonate?.(o.id), "impersonating");
+  if (!res.ok) { setErr("pa-orgs-error", res.error); return; }
+  // The session is now scoped server-side — a full reload repaints every
+  // surface as the impersonated org (and boots the red banner).
+  window.location.reload();
 }
 
 function detailState(msg: string): void {

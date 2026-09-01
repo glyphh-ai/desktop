@@ -15,6 +15,7 @@
 
 import { ipcMain } from "electron";
 import { getClient } from "./glyphh-client";
+import { refreshHeartbeat } from "./auth";
 
 // The SDK's index doesn't re-export the admin console input shapes, so they
 // are mirrored structurally here (account-ipc.ts's discipline). All rates and
@@ -129,5 +130,26 @@ export function registerAdminIpc(): void {
   ipcMain.handle("admin-org-grant-credits", async (_e, id: string, credits: number, note?: string) => {
     try { return { ok: true as const, balance: (await getClient().admin.grantCredits(String(id), Number(credits) || 0, note)).balance }; }
     catch (err) { return fail(err); }
+  });
+
+  // ── members ON BEHALF + org impersonation (the super-admin Members tab) ──
+  ipcMain.handle("admin-org-member-invite", async (_e, id: string, email: string, role?: "org_admin" | "user") => {
+    try { return { ok: true as const, acceptUrl: (await getClient().admin.inviteOrgMember(String(id), String(email), role)).acceptUrl }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-org-member-remove", async (_e, id: string, userId: string) => {
+    try { await getClient().admin.removeOrgMember(String(id), String(userId)); return { ok: true as const }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("admin-impersonate", async (_e, orgId: string | null) => {
+    try {
+      const scope = orgId
+        ? await getClient().admin.impersonate(String(orgId))
+        : await getClient().admin.stopImpersonate();
+      // The renderer reloads right after — refresh the cached account NOW so
+      // the banner + org name paint the impersonated scope, not the stale one.
+      await refreshHeartbeat().catch(() => null);
+      return { ok: true as const, impersonating: scope?.impersonating ?? null };
+    } catch (err) { return fail(err); }
   });
 }
