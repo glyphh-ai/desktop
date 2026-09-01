@@ -567,23 +567,6 @@
                   <div id="members-error" class="settings-error hidden"></div>
                   <div id="members-seat-note" class="settings-callout hidden" role="status"></div>
 
-                  <div class="acct-row" style="margin-top:12px;">
-                    <div class="acct-field acct-field-wide">
-                      <label class="settings-label" for="members-invite-email">Invite by email</label>
-                      <input id="members-invite-email" type="email" class="settings-input" placeholder="colleague@company.com" autocomplete="off" spellcheck="false" />
-                    </div>
-                    <div class="acct-field">
-                      <label class="settings-label" for="members-invite-role">Role</label>
-                      <div class="settings-inline">
-                        <select id="members-invite-role" class="settings-input">
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                        <button id="members-invite-btn" class="action-btn primary" type="button">Invite</button>
-                      </div>
-                    </div>
-                  </div>
-
                   <!-- The accept link is the way through when the invite email
                        doesn't arrive, so it stays on screen after a send. -->
                   <div id="members-invite-link-wrap" class="settings-inline hidden" style="margin-top:10px;">
@@ -594,21 +577,24 @@
                   </div>
 
                   <!-- Two tabs (his spec, 2026-08-25): the roster and the
-                       still-pending invites. -->
-                  <div class="app-detail-tabs" id="members-tabs" style="margin-top:22px;">
+                       still-pending invites. Invite = the standard validated
+                       MODAL, opened from the toolbar (his spec, 2026-09-01). -->
+                  <div class="app-detail-tabs" id="members-tabs" style="margin-top:12px;">
                     <button class="app-detail-tab active" data-mtab="members" type="button">Members</button>
                     <button class="app-detail-tab" data-mtab="invited" type="button">Invited</button>
                   </div>
                   <div id="members-tab-members">
                     <div class="crud-toolbar">
-                      <input id="members-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" />
+                      <div class="search-clear-wrap"><input id="members-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
+                      <button id="members-invite-btn" class="action-btn primary" type="button">+ Invite</button>
                     </div>
                     <div id="members-list" class="mbr-list"></div>
                     <div id="members-pager"></div>
                   </div>
                   <div id="members-tab-invited" class="hidden">
                     <div class="crud-toolbar">
-                      <input id="members-invited-search" type="text" class="crud-search" placeholder="Search invites…" spellcheck="false" autocomplete="off" />
+                      <div class="search-clear-wrap"><input id="members-invited-search" type="text" class="crud-search" placeholder="Search invites…" spellcheck="false" autocomplete="off" /></div>
+                      <button id="members-invite-btn2" class="action-btn primary" type="button">+ Invite</button>
                     </div>
                     <div id="members-invited-list"></div>
                     <div id="members-invited-pager"></div>
@@ -644,9 +630,8 @@
                     <h2>Roles <span id="ws-status" class="set-save-state"></span></h2>
                     <p class="section-desc">Access tiers for your members. A role narrows what the org already allows — it can never grant past it.</p>
                     <div class="crud-toolbar">
-                      <input id="ws-search" type="text" class="crud-search" placeholder="Search roles…" spellcheck="false" autocomplete="off" />
-                      <input id="ws-new-name" type="text" class="settings-input settings-input-md" placeholder="New role name" spellcheck="false" autocomplete="off" />
-                      <button id="ws-new-btn" class="action-btn primary" type="button">Create</button>
+                      <div class="search-clear-wrap"><input id="ws-search" type="text" class="crud-search" placeholder="Search roles…" spellcheck="false" autocomplete="off" /></div>
+                      <button id="ws-new-btn" class="action-btn primary" type="button">+ New role</button>
                     </div>
                     <div id="ws-list"></div>
                   </div>
@@ -779,6 +764,18 @@
                         <p class="section-desc" id="ws-tools-hint">Turn a tool off to hide it — members with this role won't see or be able to call it.</p>
                         <div id="ws-tools-list"></div>
                       </div>
+                    </div>
+
+                    <!-- The standard Security editor footer (his spec,
+                         2026-09-01, matching Domains): Delete bottom-left with
+                         a confirm, Cancel + Save bottom-right. General fields
+                         are STAGED — Save commits them; the Models/Connections
+                         allow-toggles keep committing live. -->
+                    <div class="crud-edit-foot">
+                      <button id="ws-del-btn" class="action-btn danger" type="button">Delete</button>
+                      <div class="crud-spacer"></div>
+                      <button id="ws-cancel-btn" class="action-btn secondary" type="button">Cancel</button>
+                      <button id="ws-save-btn" class="action-btn primary" type="button">Save</button>
                     </div>
                   </div>
                 </div>
@@ -1608,6 +1605,8 @@
                     <input id="pa-plan-seats" type="number" min="1" class="settings-input" />
                     <label class="settings-label" for="pa-plan-rpm">Rate limit <span class="mdl-hint">(gateway requests / minute per org &mdash; empty = unlimited)</span></label>
                     <input id="pa-plan-rpm" type="number" min="0" class="settings-input" placeholder="unlimited" />
+                    <label class="settings-label" for="pa-plan-models" style="margin-top:12px;">Allowed models <span class="mdl-hint">(one catalog id per line, e.g. <code>mistral::mistral-small-latest</code> &mdash; empty = every model; the picker and the gateway both enforce this list)</span></label>
+                    <textarea id="pa-plan-models" class="settings-input" rows="5" spellcheck="false" placeholder="every model" style="resize:vertical;font-family:var(--font-mono);font-size:12px;"></textarea>
                     <label class="settings-toggle" style="margin-top:12px;">
                       <input type="checkbox" id="pa-plan-active" />
                       <span class="toggle-switch"></span>
@@ -1713,7 +1712,7 @@
 
                   <!-- Full org management view — rendered dynamically (info,
                        admin, credits have/used, plan, members + controls). -->
-                  <div id="pa-org-detail" class="crud-inline-form hidden">
+                  <div id="pa-org-detail" class="crud-inline-form lp-edit hidden">
                     <div class="crud-inline-header">
                       <a class="crud-breadcrumb-back" id="pa-org-detail-back">&larr; Organizations</a>
                       <div class="crud-spacer"></div>
@@ -1722,7 +1721,7 @@
                     <div id="pa-org-detail-body"></div>
                   </div>
 
-                  <div id="pa-org-grant" class="crud-inline-form hidden">
+                  <div id="pa-org-grant" class="crud-inline-form lp-edit hidden">
                     <div class="crud-inline-header">
                       <a class="crud-breadcrumb-back" id="pa-org-grant-back">&larr; Organizations</a>
                       <div class="crud-spacer"></div>

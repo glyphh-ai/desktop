@@ -152,13 +152,22 @@ export interface ListPageConfig<R> {
   create: (values: Record<string, string>) => Promise<{ ok: true; row?: R } | { ok: false; error: string }>;
   /** Render the object's standard edit form into `body`; call ctx.reload/back. */
   editTitle: (row: R) => string;
+  /** Optional status badge HTML rendered beside the title (e.g. Active pill). */
+  editBadge?: (row: R) => string;
   renderEdit: (row: R, body: HTMLElement, ctx: EditCtx) => void;
   remove: (row: R) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Extra confirm body for delete. */
   deleteBody?: (row: R) => string;
 }
 
-export interface EditCtx { reload: () => Promise<void>; back: () => void; error: (msg: string) => void }
+export interface EditCtx {
+  reload: () => Promise<void>;
+  back: () => void;
+  error: (msg: string) => void;
+  /** Register what Save commits (staged edits → one write). Without one, Save
+   *  just closes. Ok → the scaffold reloads the list and goes back. */
+  onSave: (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => void;
+}
 
 export interface ListPageHandle { reload: () => Promise<void> }
 
@@ -177,12 +186,18 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
       <div id="${id("error")}" class="settings-error hidden"></div>
       <div id="${id("rows")}"></div>
     </div>
-    <div id="${id("edit")}" class="crud-inline-form hidden">
+    <div id="${id("edit")}" class="crud-inline-form lp-edit hidden">
       <div class="crud-inline-header"><a class="crud-breadcrumb-back" id="${id("back")}">&larr; ${esc(cfg.objectPlural)}</a><div class="crud-spacer"></div></div>
       <div class="acct-section">
         <h2 id="${id("edit-title")}" style="margin:0 0 12px;"></h2>
         <div id="${id("edit-err")}" class="settings-error hidden"></div>
         <div id="${id("edit-body")}"></div>
+        <div class="crud-edit-foot">
+          <button id="${id("edit-delete")}" class="action-btn danger" type="button">Delete</button>
+          <div class="crud-spacer"></div>
+          <button id="${id("edit-cancel")}" class="action-btn secondary" type="button">Cancel</button>
+          <button id="${id("edit-save")}" class="action-btn primary" type="button">Save</button>
+        </div>
       </div>
     </div>`;
 
@@ -194,13 +209,23 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
   const editError = (m: string) => { const e = el("edit-err"); if (e) { e.textContent = m; e.classList.toggle("hidden", !m); } };
   const showEdit = (on: boolean) => { el("list")?.classList.toggle("hidden", on); el("edit")?.classList.toggle("hidden", !on); };
 
+  // The open row + its registered save handler (footer: Delete ← … Cancel Save).
+  let editing: R | null = null;
+  let saveHandler: (() => Promise<{ ok: true } | { ok: false; error: string }>) | null = null;
+
   function openEditor(row: R): void {
     editError("");
-    const t = el("edit-title"); if (t) t.textContent = cfg.editTitle(row);
+    editing = row;
+    saveHandler = null;
+    const t = el("edit-title");
+    if (t) t.innerHTML = `${esc(cfg.editTitle(row))}${cfg.editBadge ? `<span style="margin-left:10px;vertical-align:3px;">${cfg.editBadge(row)}</span>` : ""}`;
     const body = el("edit-body"); if (!body) return;
     body.innerHTML = "";
     showEdit(true);
-    cfg.renderEdit(row, body, { reload, back: () => showEdit(false), error: editError });
+    cfg.renderEdit(row, body, {
+      reload, back: () => showEdit(false), error: editError,
+      onSave: (fn) => { saveHandler = fn; },
+    });
   }
 
   function paint(): void {
@@ -253,6 +278,21 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
 
   el("search")?.addEventListener("input", () => { page = 0; paint(); });
   el("back")?.addEventListener("click", (e) => { e.preventDefault(); showEdit(false); });
+
+  // ── editor footer: Delete (confirmed) ← … Cancel · Save ─────────────────────
+  el("edit-cancel")?.addEventListener("click", () => showEdit(false));
+  el("edit-delete")?.addEventListener("click", () => { if (editing) void del(editing); });
+  el("edit-save")?.addEventListener("click", async () => {
+    const btn = el("edit-save") as HTMLButtonElement | null;
+    editError("");
+    if (!saveHandler) { showEdit(false); return; }
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    const r = await saveHandler().catch((e: unknown) => ({ ok: false as const, error: (e as Error).message }));
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+    if (!r.ok) { editError(r.error); return; }
+    await reload();
+    showEdit(false);
+  });
   el("new")?.addEventListener("click", () => {
     let created: R | null = null;
     void formModal({

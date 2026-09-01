@@ -12,10 +12,12 @@
  * model); `true` → the explicit allow-list. Every patch builder below is the
  * platform's, field for field, so the two surfaces write identical records.
  *
- * Two departures from the platform, both this app's house style:
- *   - no Save button anywhere — General debounces like every other Settings
- *     field, and the rest commits on the click that changed it (the platform
- *     already live-saved its Connections tab for the same reason);
+ * House style (his Security-page spec, 2026-09-01, matching Domains):
+ *   - "+ New role" opens the standard validated modal and lands on the editor;
+ *   - the editor carries the standard footer — Delete (confirmed) bottom-left,
+ *     Cancel + Save bottom-right. General fields are STAGED (Save commits);
+ *     the Models/Connections allow-toggles still commit on the click that
+ *     changed them (the platform live-saved those for the same reason);
  *   - the "allow another connection" picker is an inline panel, not a modal.
  *
  * Member assignment is deliberately absent: members.list() doesn't return a
@@ -26,6 +28,7 @@
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
+import { formModal } from "./settings-list-page.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 
@@ -86,7 +89,6 @@ let selectedSlug: string | null = null;
 let pickerResults: Array<{ id: string; name: string; icon: string | null }> = [];
 let wired = false;
 let statusTimer = 0;
-let saveTimer = 0;
 let pickerTimer = 0;
 let hydrating = false;
 
@@ -206,19 +208,14 @@ async function patch(input: Record<string, unknown>, okMsg = "Saved"): Promise<b
   return true;
 }
 
-/** General — debounced, since it's typed into. */
-function scheduleGeneral(delay = 700): void {
-  if (hydrating) return;
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => { void saveGeneral(); }, delay);
-}
-
-async function saveGeneral(): Promise<void> {
-  if (!editing) return;
+/** General — STAGED (his spec, 2026-09-01, matching Domains): typing changes
+ *  nothing; the footer's Save commits the fields in one patch. */
+async function saveGeneral(): Promise<boolean> {
+  if (!editing) return false;
   const name = ($<HTMLInputElement>("ws-name")?.value || "").trim();
-  if (!name) { setError("A role needs a name."); setStatus("", ""); return; }
+  if (!name) { setError("A role needs a name."); setStatus("", ""); return false; }
   const cap = num($<HTMLInputElement>("ws-cap")?.value || "");
-  await patch({
+  return patch({
     name,
     rateLimitCalls: num($<HTMLInputElement>("ws-rate-calls")?.value || ""),
     rateLimitWindowSeconds: num($<HTMLInputElement>("ws-rate-window")?.value || ""),
@@ -335,21 +332,30 @@ async function removeWorkspace(w: Workspace): Promise<void> {
     if (!res.ok) { setError(res.error || "Delete failed"); return; }
   }
   setError("");
+  // Deleting from the editor's footer must land back on the list (a no-op
+  // when the delete came from the list's kebab).
+  if (editing?.id === w.id) { editing = null; showEditor(false); }
   await loadWorkspaces();
 }
 
-async function createWorkspace(): Promise<void> {
-  const field = $<HTMLInputElement>("ws-new-name");
-  const name = (field?.value || "").trim();
-  if (!name) { setError("Give the new role a name."); return; }
-  setStatus("Creating…", "");
-  const created = await via<Workspace>((c) => c.workspaces?.create?.({ name }), "workspacesCreate", { name });
-  if (!created) { setStatus("Not created", "error"); return; }
-  if (field) field.value = "";
-  setError("");
-  setStatus("Created", "success");
-  await loadWorkspaces();
-  void openEditor(created);
+/** + New role — the standard validated modal (his spec, 2026-09-01), landing
+ *  on the new role's editor exactly like Domains lands on the new domain. */
+function newWorkspaceModal(): void {
+  let created: Workspace | null = null;
+  void formModal({
+    title: "New role",
+    fields: [{ key: "name", label: "Name", placeholder: "e.g. Analysts", required: true }],
+    submitLabel: "Create",
+    onSubmit: async (values) => {
+      created = await via<Workspace>((c) => c.workspaces?.create?.({ name: values.name! }), "workspacesCreate", { name: values.name! });
+      return created ? { ok: true as const } : { ok: false as const, error: "Couldn't create the role." };
+    },
+  }).then(async (saved) => {
+    if (!saved) return;
+    setError("");
+    await loadWorkspaces();
+    if (created) void openEditor(created);
+  });
 }
 
 // ── Editor ───────────────────────────────────────────────────────────────
@@ -955,11 +961,20 @@ export function initWorkspaces(): void {
     if (chip) { chip.textContent = r.ok ? "Blocked" : (r.error || "Couldn't block"); chip.className = `set-save-state ${r.ok ? "success" : "error"}`; }
     if (r.ok && input) { input.value = ""; void paintBlocks(); }
   });
-  $("ws-new-btn")?.addEventListener("click", () => { void createWorkspace(); });
-  $("ws-new-name")?.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") void createWorkspace();
-  });
+  $("ws-new-btn")?.addEventListener("click", () => newWorkspaceModal());
   $("ws-back")?.addEventListener("click", () => { editing = null; showEditor(false); paintList(); });
+
+  // ── editor footer: Delete (confirmed) ← … Cancel · Save ─────────────────
+  $("ws-cancel-btn")?.addEventListener("click", () => { editing = null; showEditor(false); paintList(); });
+  $("ws-del-btn")?.addEventListener("click", () => { if (editing) void removeWorkspace(editing); });
+  $("ws-save-btn")?.addEventListener("click", async () => {
+    const btn = $<HTMLButtonElement>("ws-save-btn");
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    const ok = await saveGeneral();
+    if (btn) { btn.disabled = false; btn.textContent = "Save"; }
+    if (!ok) return; // the inline error says why; stay on the form
+    editing = null; showEditor(false); paintList();
+  });
 
   for (const b of Array.from(document.querySelectorAll<HTMLElement>("#ws-tabs .app-detail-tab"))) {
     b.addEventListener("click", () => setTab(b.dataset.wstab || "general"));
@@ -973,12 +988,8 @@ export function initWorkspaces(): void {
     });
   }
 
-  // General — typed fields debounce, the period select commits at once.
-  for (const id of ["ws-name", "ws-rate-calls", "ws-rate-window", "ws-cap"]) {
-    $(id)?.addEventListener("input", () => scheduleGeneral());
-    $(id)?.addEventListener("blur", () => scheduleGeneral(0));
-  }
-  $("ws-cap-period")?.addEventListener("change", () => scheduleGeneral(0));
+  // General fields are STAGED — no per-keystroke autosave; the footer's Save
+  // commits them (his spec, 2026-09-01, matching Domains).
 
   $("ws-models-search")?.addEventListener("input", () => { wsModelsPage = 0; paintModels(); });
   $("ws-models-filter")?.addEventListener("click", (e) => {

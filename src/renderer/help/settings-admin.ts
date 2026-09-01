@@ -71,6 +71,7 @@ interface AdminPlan {
   org_name: string | null;
   /** Gateway requests/minute for orgs on this plan; null = unlimited. */
   rate_limit_rpm?: number | null;
+  allowed_models?: string[] | null;
 }
 interface AdminPlanPatch {
   display_name?: string;
@@ -79,6 +80,7 @@ interface AdminPlanPatch {
   max_seats?: number;
   active?: boolean;
   rate_limit_rpm?: number | null;
+  allowed_models?: string[] | null;
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
 interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; credits: number; tokens: number }
@@ -932,6 +934,7 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   set("pa-plan-credits", String(microToCredits(p.included_credits)));
   set("pa-plan-seats", String(p.max_seats || 1));
   set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
+  set("pa-plan-models", (p.allowed_models ?? []).join("\n"));
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = p.active;
   const priceInput = $<HTMLInputElement>("pa-price-new");
@@ -951,7 +954,7 @@ function openPlanCreate(): void {
   const title = $("pa-plan-title");
   if (title) title.textContent = "New plan";
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
-  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm"]) set(id, "");
+  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm", "pa-plan-models"]) set(id, "");
   set("pa-plan-price", "0");
   set("pa-plan-credits", "0");
   set("pa-plan-seats", "1");
@@ -976,6 +979,11 @@ async function savePlan(): Promise<void> {
     rate_limit_rpm: inputVal("pa-plan-rpm") && Number(inputVal("pa-plan-rpm")) > 0
       ? Math.round(Number(inputVal("pa-plan-rpm")))
       : null,
+    // One catalog id per line; empty clears the list (every model allowed).
+    allowed_models: (() => {
+      const ids = inputVal("pa-plan-models").split("\n").map((l) => l.trim()).filter(Boolean);
+      return ids.length ? ids : null;
+    })(),
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
   if (btn) btn.disabled = true;
@@ -1357,34 +1365,48 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
   const ownerName = owner ? (`${owner.first_name} ${owner.last_name}`.trim() || owner.email) : "—";
   const plan = plans.find((p) => p.tier === d.tier);
   const allowance = plan ? microToCredits(Number(plan.included_credits)) : null;
+  // The lp-sec rhythm (his spec, 2026-09-01): each section owns real air +
+  // a hairline before the next; the view runs full width (lp-edit).
   body.innerHTML = `
     <h3 class="settings-subheading" style="margin-top:0;">${escapeHtml(d.name)} <span id="pa-org-detail-state" class="set-save-state"></span></h3>
-    <p class="settings-hint" style="margin:-4px 0 12px;">${escapeHtml(d.id)}</p>
-    <div class="pa-org-stats">
-      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
-      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
-      <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
+    <p class="settings-hint" style="margin:-4px 0 20px;">${escapeHtml(d.id)}</p>
+
+    <div class="lp-sec">
+      <div class="pa-org-stats">
+        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
+        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
+        <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
+      </div>
+      <div class="pa-kv" style="margin-top:16px;">
+        <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
+        <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
+        <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
+        <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
+        <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
+      </div>
     </div>
-    <div class="pa-kv">
-      <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
-      <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
-      <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
-      <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
-      <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
+
+    <div class="lp-sec">
+      <h4 class="acct-row-head">Plan</h4>
+      <div class="settings-inline">
+        <select id="pa-org-tier" class="settings-input settings-input-md">${ORG_TIERS.map((t) => `<option value="${t}"${t === d.tier ? " selected" : ""}>${t}</option>`).join("")}</select>
+        <button id="pa-org-tier-save" class="action-btn" type="button">Change plan</button>
+      </div>
     </div>
-    <h4 class="acct-row-head">Plan</h4>
-    <div class="settings-inline">
-      <select id="pa-org-tier" class="settings-input settings-input-md">${ORG_TIERS.map((t) => `<option value="${t}"${t === d.tier ? " selected" : ""}>${t}</option>`).join("")}</select>
-      <button id="pa-org-tier-save" class="action-btn" type="button">Change plan</button>
+
+    <div class="lp-sec">
+      <h4 class="acct-row-head">Grant credits</h4>
+      <p class="section-desc">Admin-granted credits never expire and land on the balance immediately.</p>
+      <div class="settings-inline">
+        <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
+        <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
+      </div>
     </div>
-    <h4 class="acct-row-head">Grant credits</h4>
-    <div class="settings-inline">
-      <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
-      <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
-    </div>
-    <p class="settings-hint" style="margin-top:4px;">Admin-granted credits never expire and land on the balance immediately.</p>
-    <h4 class="acct-row-head">Members (${fmtInt(d.members.length)})</h4>
-    <div id="pa-org-members" class="mbr-list"></div>`;
+
+    <div class="lp-sec">
+      <h4 class="acct-row-head">Members (${fmtInt(d.members.length)})</h4>
+      <div id="pa-org-members" class="mbr-list"></div>
+    </div>`;
   const ml = $("pa-org-members");
   if (ml) for (const m of d.members) {
     const row = document.createElement("div");

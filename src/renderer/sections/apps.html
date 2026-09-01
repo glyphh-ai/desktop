@@ -385,16 +385,27 @@
                       <option value="members">Signed-in members of your organization</option>
                       <option value="public">Anyone with the link</option>
                     </select>
-                    <div id="deploy-url-row" class="hidden" style="margin:8px 0 0;">
-                      <a id="deploy-url" class="deploy-url" target="_blank" rel="noreferrer"></a>
-                    </div>
                     <p class="proxy-field-hint" id="deploy-access-hint" style="margin-top:4px;">Access is checked at the edge, before anything reaches the app.</p>
 
-                    <!-- Custom domain (docs/custom-domains.md P2 — his placement,
-                         2026-08-31: Releases tab, above Undeploy/Deploy). Default
+                    <!-- Deploy actions sit WITH the release fields they act on
+                         (his order, 2026-09-01) — the custom-domain section is
+                         its own concern below. The live URL now lives under the
+                         app name in the page head, not here. -->
+                    <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                      <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                      <button id="release-undeploy" class="action-btn" type="button" disabled>Undeploy</button>
+                      <button id="release-save-deploy" class="action-btn primary" type="button">Save &amp; Deploy</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin-top:14px;">
+                      A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
+                      Rolling back is promoting an older release again; nothing is rebuilt.
+                    </p>
+
+                    <!-- Custom domain (docs/custom-domains.md P2). Default
                          target is THIS APP's hosting; dedicated servers, when
-                         deployed, list as explicit targets. Cloudflare mints the
-                         cert; we hand back the DNS records to publish. -->
+                         deployed, list as explicit targets. The apex-edge mints
+                         the cert; we hand back the DNS records to publish. -->
                     <div class="app-detail-section-sep"></div>
                     <label class="settings-label">Custom domain</label>
                     <p class="proxy-field-hint" style="margin:2px 0 14px;">Serve this app on your own hostname (e.g. www.customerABC.com). We handle the HTTPS certificate; you publish the DNS records we give you.</p>
@@ -407,19 +418,6 @@
                       <button id="domain-add-btn" class="action-btn primary" type="button">Add domain</button>
                     </div>
                     <div id="domain-list" style="margin-top:14px;"></div>
-                    <div class="app-detail-section-sep"></div>
-
-                    <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
-                    <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
-                      <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
-                      <button id="release-undeploy" class="action-btn" type="button" disabled>Undeploy</button>
-                      <button id="release-save-deploy" class="action-btn primary" type="button">Save &amp; Deploy</button>
-                    </div>
-
-                    <p class="proxy-field-hint" style="margin-top:14px;">
-                      A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
-                      Rolling back is promoting an older release again; nothing is rebuilt.
-                    </p>
                   </div>
                 </div>
 

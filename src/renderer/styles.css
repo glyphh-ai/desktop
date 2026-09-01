@@ -4096,6 +4096,9 @@ ol.docs-list li::before {
    need the wrapper to grow and fill the row. */
 .search-clear-wrap { position: relative; display: flex; align-items: center; flex: 0 0 auto; min-width: 0; }
 .search-clear-wrap:has(> input.crud-search) { flex: 1 1 auto; }
+/* In a crud toolbar the search ALWAYS takes the full remaining width (his
+   spec: search full width, actions right) — explicit, not :has-dependent. */
+.crud-toolbar .search-clear-wrap { flex: 1 1 auto; }
 .search-clear-wrap > input { flex: 1 1 auto; width: 100%; min-width: 0; padding-right: 30px; }
 .search-clear-btn {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
@@ -5047,6 +5050,13 @@ ol.docs-list li::before {
    under charts, not a plain list). */
 .help-section:not([data-section="dashboard"]):has(.crud-inline-form:not(.hidden)) > h2,
 .help-section:not([data-section="dashboard"]):has(.crud-inline-form:not(.hidden)) > .section-desc {
+  display: none;
+}
+/* Same rule for SETTINGS PANELS whose h2/description are direct children (the
+   super-admin Orgs page — his report, 2026-09-01: the list title must not show
+   over the detail view). */
+.settings-panel:has(.crud-inline-form:not(.hidden)) > h2,
+.settings-panel:has(.crud-inline-form:not(.hidden)) > .section-desc {
   display: none;
 }
 .crud-breadcrumb-back {
@@ -7622,11 +7632,44 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 /* DNS records (Domains editor) — same override play as billing-invoices: the
    generic 26%/18% fixed columns + nowrap ellipsis CLIPPED the long values
    (verify token, IPv6) and pushed their copy buttons out of view (his report,
-   2026-08-31). Type hugs its label; Name/Value take the room and WRAP. */
-.lib-table.dom-dns th, .lib-table.dom-dns td { width: auto; white-space: normal; }
+   2026-08-31). AUTO layout (his report, 2026-09-01: fixed still scrunched the
+   columns evenly): content sizes each column, long values wrap cleanly. */
+.lib-table.dom-dns { table-layout: auto; }
+/* Shrink-to-content columns; the LAST column takes every remaining pixel.
+   (Plain auto layout handed the slack to Name and crushed Value against the
+   right edge — his report, 2026-09-01.) */
+.lib-table.dom-dns th:not(:last-child), .lib-table.dom-dns td:not(:last-child) { width: 1%; white-space: nowrap; }
+.lib-table.dom-dns th:last-child, .lib-table.dom-dns td:last-child { width: auto; white-space: normal; }
+.lib-table.dom-dns td { vertical-align: top; }
+.lib-table.dom-dns td:not(:last-child) { padding-right: 28px; }
 .lib-table.dom-dns td code { word-break: break-all; }
 .lib-table.dom-dns tbody tr { cursor: default; }
 .lib-table.dom-dns tbody tr:hover td { background: transparent; }
+
+/* The validated form modal (formModal): one vertical rhythm — fields stack
+   with real air, labels sit 6px off their inputs (his report, 2026-09-01:
+   the Invite modal was crammed). */
+.fm-form { display: flex; flex-direction: column; gap: 16px; }
+.fm-form .fm-field { display: flex; flex-direction: column; }
+.fm-form .fm-field .settings-label { margin-bottom: 6px; }
+.fm-form .fm-err { margin-top: 6px; }
+
+/* Editor footer (the standard Security edit form): Delete bottom-left,
+   Cancel + Save (primary) bottom-right — identical on every page. */
+.crud-edit-foot { display: flex; align-items: center; gap: 10px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
+/* The scaffold's editor runs FULL WIDTH — matching the Roles editor
+   (#ws-edit-view max-width:none; his call, 2026-09-01: "full width to match
+   roles"). */
+.crud-inline-form.lp-edit { max-width: none; }
+/* Editor sections — one consistent vertical rhythm (his report, 2026-09-01:
+   "everything is crammed and the sections are not clear"): each section owns
+   real air below it and a hairline above the next; the heading gets 8px onto
+   its description, the description 14px onto the content. */
+.lp-edit .lp-sec { margin: 0 0 34px; }
+.lp-edit .lp-sec + .lp-sec { padding-top: 26px; border-top: 1px solid var(--border); }
+.lp-edit .lp-sec .acct-row-head { margin: 0 0 8px; }
+.lp-edit .lp-sec .section-desc { margin: 0 0 16px; }
+.lp-edit .lp-sec:last-of-type { margin-bottom: 8px; }
 
 /* ── Support ────────────────────────────────────────────── */
 
@@ -13378,6 +13421,13 @@ select:focus {
 .edit-head-icons { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .edit-head-name { font-size: 17px; font-weight: 700; color: var(--text); display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .edit-head-slug { font-size: 12px; font-weight: 500; color: var(--text-3); font-family: var(--font-mono); }
+/* Name+slug row on top, the published address (or "Not Published") on its own
+   line UNDER the title — never inline with it. */
+.edit-head-col { display: flex; flex-direction: column; min-width: 0; }
+.edit-head-url { font-size: 12px; margin-top: 3px; font-weight: 400; }
+.edit-head-url a { color: var(--accent); text-decoration: none; font-family: var(--font-mono); }
+.edit-head-url a:hover { text-decoration: underline; }
+.edit-head-url-none { color: var(--text-3); }
 
 .conn-tools { display: grid; gap: 2px; margin-top: 10px; }
 .conn-tool-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 8px; }
@@ -15532,8 +15582,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .deploy-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
 .deploy-dot.on { background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); }
 .deploy-dot.pending { background: #fbbf24; box-shadow: 0 0 8px rgba(251, 191, 36, 0.6); }
-.deploy-url { font-family: var(--font-mono); font-size: 13px; color: var(--accent); text-decoration: none; word-break: break-all; }
-.deploy-url:hover { text-decoration: underline; }
 
 /* ── Composer: notes queued while a run is in flight ─────────────── */
 .code-pending-notes {
@@ -19661,9 +19709,12 @@ body.platform-shell .settings-nav span.not-on-platform { display: none; }
   font-size: 12px; font-weight: 600; flex-shrink: 0;
 }
 #app-settings-user .asu-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-/* Members table: a disabled member reads dimmed; inline inputs stay compact. */
-.mbr-table .mbr-name { max-width: 220px; height: 28px; font-size: 12.5px; }
-.mbr-table .mbr-role { height: 28px; font-size: 12.5px; width: auto; }
+/* Members table: a disabled member reads dimmed; inline inputs stay compact.
+   The fixed 28px height must DROP settings-input's 10px vertical padding or
+   the text has negative room and clips (his report, 2026-09-01: role select
+   showed nothing). */
+.mbr-table .mbr-name { max-width: 220px; height: 28px; font-size: 12.5px; padding-top: 0; padding-bottom: 0; }
+.mbr-table .mbr-role { height: 28px; font-size: 12.5px; width: auto; padding-top: 0; padding-bottom: 0; }
 .mbr-table .mbr-toggle { border: none; padding: 0; margin: 0; }
 tr.mbr-disabled td { opacity: 0.45; }
 tr.mbr-disabled td:nth-last-child(-n+2) { opacity: 1; }

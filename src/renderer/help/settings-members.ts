@@ -20,6 +20,7 @@
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { formModal } from "./settings-list-page.js";
 import { accountApi, type Member, type Org, type PendingInvite } from "./settings-api.js";
 
 /** Roles an admin may assign. org_admin is granted by invite, never here. */
@@ -80,6 +81,8 @@ function paintSeats(): void {
   // disabled Invite and nothing ever re-enabled it.
   const invite = $<HTMLButtonElement>("members-invite-btn");
   if (invite) invite.disabled = full;
+  const invite2 = $<HTMLButtonElement>("members-invite-btn2");
+  if (invite2) invite2.disabled = full;
   if (!full) return;
   note.textContent = (org?.tier || "free") === "free"
     ? "The Free plan is single-seat — change your plan under Billing to invite your team."
@@ -264,29 +267,30 @@ function paintList(): void {
   }
 }
 
-/** Invite. On success the accept link stays on screen — the email can fail to
- *  arrive (or be logged rather than sent), and the link is the way through. */
-async function invite(): Promise<void> {
-  const emailEl = $<HTMLInputElement>("members-invite-email");
-  const roleEl = $<HTMLSelectElement>("members-invite-role");
-  const btn = $<HTMLButtonElement>("members-invite-btn");
-  const email = (emailEl?.value || "").trim();
-  if (!email) { setError("Email is required."); return; }
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError("Enter a valid email address."); return; }
-
-  setError("");
-  if (btn) btn.disabled = true;
-  setStatus("Inviting…", "");
-  try {
-    const res = await accountApi().inviteMember(email, roleEl?.value || "user");
-    if (!res.ok) { setError(res.error); setStatus("", ""); return; }
-    if (emailEl) emailEl.value = "";
-    setStatus(`Invited ${email}`, "success");
-    paintInviteLink(res.data?.acceptUrl || "");
-    await loadMembers();
-  } finally {
-    if (btn) btn.disabled = seatsFull();
-  }
+/** Invite — the standard validated modal (his spec, 2026-09-01). On success
+ *  the accept link stays on screen — the email can fail to arrive (or be
+ *  logged rather than sent), and the link is the way through. */
+function inviteModal(): void {
+  void formModal({
+    title: "Invite a member",
+    fields: [
+      { key: "email", label: "Email", type: "email", placeholder: "colleague@company.com", required: true,
+        validate: (v) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) ? null : "Enter a valid email address." },
+      { key: "role", label: "Role", type: "select", options: [
+        { value: "user", label: "User" }, { value: "admin", label: "Admin" },
+      ] },
+    ],
+    submitLabel: "Invite",
+    onSubmit: async (v) => {
+      const res = await accountApi().inviteMember(v.email!, v.role || "user");
+      if (!res.ok) return { ok: false as const, error: res.error };
+      setError("");
+      setStatus(`Invited ${v.email}`, "success");
+      paintInviteLink(res.data?.acceptUrl || "");
+      await loadMembers();
+      return { ok: true as const };
+    },
+  });
 }
 
 function paintInviteLink(url: string): void {
@@ -373,10 +377,8 @@ export function initMembers(): void {
   });
   $("members-search")?.addEventListener("input", () => { mbrPage = 0; paintList(); });
   $("members-invited-search")?.addEventListener("input", () => { invPage = 0; paintInvited(); });
-  $("members-invite-btn")?.addEventListener("click", () => { void invite(); });
-  $("members-invite-email")?.addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") void invite();
-  });
+  $("members-invite-btn")?.addEventListener("click", () => inviteModal());
+  $("members-invite-btn2")?.addEventListener("click", () => inviteModal());
   $("members-invite-link-copy")?.addEventListener("click", () => {
     const field = $<HTMLInputElement>("members-invite-link");
     const btn = $("members-invite-link-copy");

@@ -1376,13 +1376,20 @@ function initReleasesTab(): void {
 // ── Deploy tab (dev-host) — status + deploy + take-down ──────────
 let deployCurrentId: string | null = null;
 
+/** The published-address line under the app name (his order, 2026-09-01):
+ *  a link when the app is hosted, an honest "Not Published" when it isn't. */
+function paintHeadUrl(url: string | null): void {
+  const el = document.getElementById("app-detail-url");
+  if (!el) return;
+  el.innerHTML = url && /^https?:\/\//i.test(url)
+    ? `<a href="${escMkt(url)}" target="_blank" rel="noreferrer">${escMkt(url)}</a>`
+    : `<span class="edit-head-url-none">Not Published</span>`;
+}
+
 async function loadDeployTab(): Promise<void> {
-  const urlRow = document.getElementById("deploy-url-row");
-  const urlEl = document.getElementById("deploy-url") as HTMLAnchorElement | null;
   const undeploy = document.getElementById("release-undeploy") as HTMLButtonElement | null;
   const accessSel = document.getElementById("deploy-access") as HTMLSelectElement | null;
-  if (!urlRow || !urlEl || !undeploy || !accessSel) return;
-  urlRow.classList.add("hidden");
+  if (!undeploy || !accessSel) return;
   undeploy.disabled = true;
   deployCurrentId = null;
 
@@ -1391,13 +1398,14 @@ async function loadDeployTab(): Promise<void> {
   const d = res?.ok ? res.deployment : null;
   if (d && (d.status === "live" || d.status === "building" || d.status === "queued")) {
     deployCurrentId = d.id;
-    // Hosted → the select shows WHO can reach it; the live URL sits under it.
+    // Hosted → the select shows WHO can reach it; the address shows in the head.
     accessSel.value = currentApp?.access === "public" ? "public" : "members";
-    if (d.url) { urlEl.textContent = d.url; urlEl.href = d.url; urlRow.classList.remove("hidden"); }
+    paintHeadUrl(d.url || currentApp?.url || null);
     undeploy.disabled = false;
   } else {
     // Not hosted — the select SAYS so; picking an audience + Save & Deploy hosts it.
     accessSel.value = "none";
+    paintHeadUrl(null);
   }
   syncDeployAccessHint();
 
@@ -1798,13 +1806,13 @@ async function loadPanelTab() {
       // Register the preview guest so the app-data seam injects the bearer.
       if (wcId !== undefined) (window.glyphh as unknown as { rpaRegister?: (slug: string, wcId: number) => void }).rpaRegister?.(app.slug, wcId);
       const res = await window.glyphh.glyphhAppPreviewOpen(app.slug, wcId);
+      // LOCAL BUILD ONLY (his law, 2026-09-01): the preview never loads the
+      // published site — what you see is what's on disk, not what shipped.
+      // No local build → say so honestly instead of silently showing prod.
       if (res?.ok && res.fileUrl) { appPreview.src = res.fileUrl; }
-      else if (app.url) {
-        void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
-        appPreview.src = app.url;
-      } else {
+      else {
         const errHost = document.getElementById("app-commands-list");
-        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "Nothing to preview yet — Save & Deploy builds the app."}</div>`;
+        if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "No local build to preview yet — build the app (update_app) and it appears here."}</div>`;
         return;
       }
     } else {
@@ -1908,12 +1916,18 @@ async function openPanelAppDetail(app: PanelApp) {
   if (mktInstalled) document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
   else syncMcpTabs(app);
 
-  // Shared edit header: icon + name + slug (the header title span is now blank).
+  // Shared edit header: icon + name + slug, with the app's PUBLISHED address
+  // (or an honest "Not Published") underneath (his order, 2026-09-01). The
+  // hosting-status load refreshes it with the live deployment's URL.
   appDetailHeading.textContent = "";
   const headEl = document.getElementById("app-detail-head");
   if (headEl) headEl.innerHTML =
     `<div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>` +
-    `<div class="edit-head-name">${escMkt(app.name)}<span class="edit-head-slug">${escMkt(app.slug)}</span></div>`;
+    `<div class="edit-head-col">` +
+      `<div class="edit-head-name">${escMkt(app.name)}<span class="edit-head-slug">${escMkt(app.slug)}</span></div>` +
+      `<div id="app-detail-url" class="edit-head-url"></div>` +
+    `</div>`;
+  paintHeadUrl(app.url || null);
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
