@@ -407,7 +407,11 @@
                          deployed, list as explicit targets. The apex-edge mints
                          the cert; we hand back the DNS records to publish. -->
                     <div class="app-detail-section-sep"></div>
-                    <label class="settings-label">Custom domain</label>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <label class="settings-label" style="margin:0;">Custom domain</label>
+                      <div style="flex:1;"></div>
+                      <button id="domain-refresh-btn" class="action-btn primary" type="button">Refresh</button>
+                    </div>
                     <p class="proxy-field-hint" style="margin:2px 0 14px;">Serve this app on your own hostname (e.g. www.customerABC.com). We handle the HTTPS certificate; you publish the DNS records we give you.</p>
                     <div id="domain-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
                     <label class="settings-label">Target</label>

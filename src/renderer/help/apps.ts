@@ -2459,6 +2459,14 @@ function initApps() {
     await loadServerSection();
   });
 
+  // Refresh (his spec, 2026-09-01): re-fetch the domain list — the server
+  // self-heals verifying rows inline (an active cert re-check at Fly), so
+  // this button IS a revalidation, same as the Domains page's.
+  document.getElementById("domain-refresh-btn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("domain-refresh-btn") as HTMLButtonElement;
+    btn.disabled = true; const prev = btn.textContent; btn.textContent = "Refreshing…";
+    try { await loadServerSection(); } finally { btn.disabled = false; btn.textContent = prev; }
+  });
   document.getElementById("domain-list")?.addEventListener("click", async (e) => {
     const id = (e.target as HTMLElement).closest<HTMLElement>("[data-domain-remove]")?.dataset.domainRemove;
     if (!id) return;
