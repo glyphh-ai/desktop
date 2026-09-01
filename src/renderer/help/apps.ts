@@ -1452,6 +1452,12 @@ function renderServerRow(d: { id: string; imageKey: string; status: string; url:
   </div>`;
 }
 
+const DNS_COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+const DNS_CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const DNS_CLOCK_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const dnsCopyBtn = (v: string): string =>
+  `<button class="action-btn app-dns-copy" type="button" data-copy="${escMkt(v)}" title="Copy" style="height:20px;width:24px;padding:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:-5px;">${DNS_COPY_SVG}</button>`;
+
 /** One custom-domain row — status, remove, and the DNS records to publish. */
 function renderDomainRow(dm: CustomDomainWire): string {
   const dot = dm.status === "active" ? "on" : dm.status === "error" ? "" : "pending";
@@ -1462,15 +1468,15 @@ function renderDomainRow(dm: CustomDomainWire): string {
   const apex = dm.dnsInstructions?.apexUnsupported
     ? `<p class="proxy-field-hint" style="margin-top:6px;">A bare domain can't hold a CNAME. Add <code>${escMkt(wwwHost)}</code> here instead, then set up <b>domain forwarding</b> at your registrar: <code>${escMkt(dm.hostname)}</code> → <code>https://${escMkt(wwwHost)}</code> (GoDaddy: Domain → Forwarding). DNS hosts with ALIAS/flattening (Cloudflare, Route53) can point the bare domain straight at the CNAME target instead.</p>` : "";
   const records = (dm.dnsInstructions?.records ?? []).map((r) =>
-    `<div style="font-family:var(--font-mono,monospace);font-size:11px;line-height:1.7;">
-       <span style="display:inline-block;width:52px;color:var(--text-3);">${escMkt(r.type)}</span>${escMkt(r.name)} → ${escMkt(r.value)}</div>`).join("");
+    `<div style="font-family:var(--font-mono,monospace);font-size:11px;line-height:2;">
+       <span style="display:inline-block;width:52px;color:var(--text-3);">${escMkt(r.type)}</span>${escMkt(r.name)} ${dnsCopyBtn(r.name)} → ${escMkt(r.value)} ${dnsCopyBtn(r.value)}</div>`).join("");
   const dns = records
     ? `<div style="margin-top:6px;padding:8px 10px;background:var(--bg-2,#1b1b1b);border-radius:6px;">
          <div class="proxy-field-hint" style="margin:0 0 4px;">Publish these DNS records:</div>${records}</div>` : "";
   // Verifying → set expectations (his spec, 2026-09-01): propagation is the
   // customer's DNS host's clock; ours re-checks every few minutes.
   const verifying = dm.status === "verifying" || dm.status === "pending"
-    ? `<p class="proxy-field-hint" style="margin-top:6px;">⏳ DNS changes can take <b>up to 24 hours</b> to propagate (most complete within minutes). We re-check automatically every few minutes.</p>` : "";
+    ? `<p class="proxy-field-hint" style="margin-top:6px;">${DNS_CLOCK_SVG}DNS changes can take <b>up to 24 hours</b> to propagate (most complete within minutes). We re-check automatically every few minutes.</p>` : "";
   return `<div style="padding:10px 0;border-top:1px solid var(--border-1,#2a2a2a);">
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="deploy-dot ${dot}"></span>
@@ -2468,6 +2474,16 @@ function initApps() {
     try { await loadServerSection(); } finally { btn.disabled = false; btn.textContent = prev; }
   });
   document.getElementById("domain-list")?.addEventListener("click", async (e) => {
+    // Copy-with-receipt on the DNS records (same effect as the Domains page).
+    const copyBtn = (e.target as HTMLElement).closest<HTMLButtonElement>(".app-dns-copy");
+    if (copyBtn) {
+      try {
+        await navigator.clipboard.writeText(copyBtn.dataset.copy || "");
+        copyBtn.innerHTML = DNS_CHECK_SVG;
+        setTimeout(() => { if (copyBtn.isConnected) copyBtn.innerHTML = DNS_COPY_SVG; }, 1500);
+      } catch { /* clipboard denied */ }
+      return;
+    }
     const id = (e.target as HTMLElement).closest<HTMLElement>("[data-domain-remove]")?.dataset.domainRemove;
     if (!id) return;
     const ok = await confirmAction({

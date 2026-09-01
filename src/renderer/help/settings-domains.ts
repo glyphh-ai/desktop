@@ -30,6 +30,8 @@ const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
 const COPY_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
 const SPIN_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="vertical-align:-1px"><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite"/></path></svg>`;
 const CHECK_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const CLOCK_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+const WARN_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1.5px;margin-right:3px;"><path d="M10.3 3.8 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
 const copyBtn = (v: string): string => `<button class="action-btn od-copy" type="button" data-copy="${esc(v)}" title="Copy" style="height:22px;width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;">${COPY_SVG}</button>`;
 
 function apexOptions(selected: string | null | undefined): string {
@@ -61,7 +63,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
       || (hostBare && bareState === "verifying")
       || Object.values(d.hostnames ?? {}).includes("verifying");
     const verifyingNote = anythingVerifying
-      ? `<p class="section-desc" style="margin:10px 0 0;">⏳ Verifying — DNS changes can take <strong>up to 24 hours</strong> to propagate, though most complete within minutes. We re-check automatically every few minutes; <strong>Refresh</strong> checks right now.</p>`
+      ? `<p class="section-desc" style="margin:10px 0 0;">${CLOCK_SVG}Verifying — DNS changes can take <strong>up to 24 hours</strong> to propagate, though most complete within minutes. We re-check automatically every few minutes; <strong>Refresh</strong> checks right now.</p>`
       : "";
     const rows = d.dns.filter((r) =>
       r.type === "TXT" || (pubApps && r.type === "CNAME") || (hostBare && (r.type === "A" || r.type === "AAAA")));
@@ -75,7 +77,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
           <span class="toggle-switch"></span>
           <span class="toggle-info">
             <span class="toggle-title">Publish apps to <code>&lt;app&gt;.${esc(d.domain)}</code></span>
-            <span class="toggle-desc">Every published app answers at its own subdomain via one wildcard <code>CNAME</code>. ⚠ Undefined subdomains of <code>${esc(d.domain)}</code> (api, staging, mail…) will route to Glyphh too.</span>
+            <span class="toggle-desc">Every published app answers at its own subdomain via one wildcard <code>CNAME</code>. ${WARN_SVG}Undefined subdomains of <code>${esc(d.domain)}</code> (api, staging, mail…) will route to Glyphh too.</span>
           </span>
           ${chip1}
         </label>
