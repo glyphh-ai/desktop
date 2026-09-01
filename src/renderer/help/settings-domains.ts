@@ -47,6 +47,14 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
 
   function paint(): void {
     const hostRows = Object.entries(d.hostnames ?? {});
+    // Far-right state chip per capability card: card 1 answers for the DOMAIN
+    // (the TXT gate every subdomain rides); card 2 for the BARE hostname's own
+    // cert/serving state. Shown only while the capability is on.
+    const chip = (label: string, on: boolean) =>
+      on && label ? `<span class="lib-badge${label === "Active" ? " on" : ""}" style="margin-left:auto;flex-shrink:0;">${esc(label)}</span>` : "";
+    const bareState = (d.hostnames ?? {})[d.domain];
+    const chip1 = chip(CHIP[d.status] ?? d.status, pubApps);
+    const chip2 = chip(bareState ? (CHIP[bareState] ?? bareState) : "", hostBare);
     const rows = d.dns.filter((r) =>
       r.type === "TXT" || (pubApps && r.type === "CNAME") || (hostBare && (r.type === "A" || r.type === "AAAA")));
     const showTable = pubApps || hostBare;
@@ -61,6 +69,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
             <span class="toggle-title">Publish apps to <code>&lt;app&gt;.${esc(d.domain)}</code></span>
             <span class="toggle-desc">Every published app answers at its own subdomain via one wildcard <code>CNAME</code>. ⚠ Undefined subdomains of <code>${esc(d.domain)}</code> (api, staging, mail…) will route to Glyphh too.</span>
           </span>
+          ${chip1}
         </label>
         <label class="settings-toggle" style="margin:0;">
           <input id="dom-t-bare" type="checkbox" ${hostBare ? "checked" : ""} />
@@ -69,6 +78,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
             <span class="toggle-title">Host your domain on a Glyphh app</span>
             <span class="toggle-desc">The bare <code>${esc(d.domain)}</code> serves one app you pick — your <code>www</code> and everything else stay untouched.</span>
           </span>
+          ${chip2}
         </label>
       </div>
 
@@ -219,7 +229,6 @@ export async function loadDomainsPanel(): Promise<void> {
       create: (values) => accountApi().addOrgDomain(values.domain!.trim().toLowerCase())
         .then((r) => r.ok ? { ok: true as const, row: r.data } : { ok: false as const, error: r.error }),
       editTitle: (d) => d.domain,
-      editBadge: (d) => statusChip(d),
       renderEdit,
       remove: (d) => accountApi().removeOrgDomain(d.id).then((r) => r.ok ? { ok: true as const } : { ok: false as const, error: r.error }),
       deleteBody: () => "Its app hostnames stop resolving immediately.",
