@@ -147,7 +147,9 @@ export interface ListPageConfig<R> {
   load: () => Promise<R[]>;
   /** The + New modal's fields + create call. */
   newFields: FormField[];
-  create: (values: Record<string, string>) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Create the object. Return the created row so the page can open its editor
+   *  immediately (his spec: adding lands on the detail page with the records). */
+  create: (values: Record<string, string>) => Promise<{ ok: true; row?: R } | { ok: false; error: string }>;
   /** Render the object's standard edit form into `body`; call ctx.reload/back. */
   editTitle: (row: R) => string;
   renderEdit: (row: R, body: HTMLElement, ctx: EditCtx) => void;
@@ -252,12 +254,22 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
   el("search")?.addEventListener("input", () => { page = 0; paint(); });
   el("back")?.addEventListener("click", (e) => { e.preventDefault(); showEdit(false); });
   el("new")?.addEventListener("click", () => {
+    let created: R | null = null;
     void formModal({
       title: `New ${cfg.objectName}`,
       fields: cfg.newFields,
       submitLabel: "Create",
-      onSubmit: cfg.create,
-    }).then((saved) => { if (saved) void reload(); });
+      onSubmit: async (values) => {
+        const r = await cfg.create(values);
+        if (r.ok) { created = r.row ?? null; return { ok: true }; }
+        return r;
+      },
+    }).then(async (saved) => {
+      if (!saved) return;
+      await reload();
+      // Land on the new object's detail page so its records/status are right there.
+      if (created) openEditor(created);
+    });
   });
 
   return { reload };

@@ -120,7 +120,7 @@ export async function loadDomainsPanel(): Promise<void> {
           validate: (v) => HOST_RE.test(v.toLowerCase()) ? null : "Enter a bare domain like acme.com (no scheme, no wildcard)." },
       ],
       create: (values) => accountApi().addOrgDomain(values.domain!.trim().toLowerCase())
-        .then((r) => r.ok ? { ok: true as const } : { ok: false as const, error: r.error }),
+        .then((r) => r.ok ? { ok: true as const, row: r.data } : { ok: false as const, error: r.error }),
       editTitle: (d) => d.domain,
       renderEdit,
       remove: (d) => accountApi().removeOrgDomain(d.id).then((r) => r.ok ? { ok: true as const } : { ok: false as const, error: r.error }),
