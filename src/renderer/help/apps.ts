@@ -1183,7 +1183,7 @@ function renderCollabList(slug: string, rows: CollabRow[]): void {
         <div style="font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.name || c.email)}</div>
         ${c.name ? `<div style="font-size:11px;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escMkt(c.email)}</div>` : ""}
       </div>
-      <select class="settings-input collab-role-sel" style="width:100px;margin:0;height:26px;font-size:12px;">
+      <select class="settings-input collab-role-sel" style="width:110px;margin:0;font-size:12px;">
         <option value="read"${c.role === "read" ? " selected" : ""}>Read</option>
         <option value="edit"${c.role === "edit" ? " selected" : ""}>Edit</option>
         <option value="admin"${c.role === "admin" ? " selected" : ""}>Admin</option>
