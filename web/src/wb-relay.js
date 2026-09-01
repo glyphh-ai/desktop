@@ -203,6 +203,10 @@ export function createWbRelay({ client, apiUrl, isAuthenticated }) {
       try { return await dispatch('fs.gitDiff', { root }); }
       catch (e) { return { text: '', error: msg(e) }; }
     },
+    r2Diff: async (root) => {
+      try { return await dispatch('fs.r2Diff', { root }); }
+      catch (e) { return { status: null, text: '', error: msg(e) }; }
+    },
     // Reuses the folder picker's existing machine method (parent + plain name).
     mkdir: async (dirPath) => {
       try {

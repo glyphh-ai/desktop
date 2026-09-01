@@ -659,6 +659,7 @@ function switchAppTab(tab: string) {
   if (tab === "dashboard") void loadPanelTab();
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") { void loadReleasesTab(); void loadDeployTab(); loadProductionTab(); }
+  if (tab === "history") void loadHistoryTab();
   if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
   if (tab === "schedule") void loadScheduleTab();
   if (tab === "connections") void loadAppConnectionsTab();
@@ -1135,6 +1136,67 @@ function releaseStatus(msg: string): void {
   if (msg.endsWith("✓")) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 2500);
 }
 
+// ── Version history: the source snapshot chain (co-working) ──────
+//
+// Every desktop build pushes a content-addressed snapshot; this tab renders
+// the chain (who, when, which is the head) with restore. The server gates it
+// to the app's developers — owner, collaborators, org admin.
+
+async function loadHistoryTab(): Promise<void> {
+  const list = document.getElementById("apphist-list");
+  const errEl = document.getElementById("apphist-error");
+  if (!list) return;
+  errEl?.classList.add("hidden");
+  list.innerHTML = `<div class="inline-empty">Loading…</div>`;
+  const slug = currentApp?.slug || currentAppId;
+  const res = await window.glyphh.appSourceHistory?.(slug);
+  if (currentApp && (currentApp.slug || currentAppId) !== slug) return;
+  if (!res?.ok) {
+    list.innerHTML = "";
+    if (errEl) { errEl.textContent = res?.error || "Couldn't load the version history."; errEl.classList.remove("hidden"); }
+    return;
+  }
+  if (!res.history.length) {
+    list.innerHTML = `<div class="inline-empty">No snapshots yet — the first build records one.</div>`;
+    return;
+  }
+  list.innerHTML = "";
+  for (const s of res.history) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);";
+    row.innerHTML = `
+      <code style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-2);">${escMkt(s.hash.slice(0, 12))}</code>
+      ${s.isHead ? `<span class="release-badge live">latest</span>` : ""}
+      <div style="flex:1;min-width:0;font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+        ${escMkt(s.createdByEmail || "unknown")}
+        <span style="color:var(--text-3);margin-left:8px;">${escMkt(mktDate(s.createdAt))}</span>
+      </div>
+      ${!s.isHead && !IS_WEB ? `<button type="button" class="action-btn apphist-restore" style="height:24px;font-size:11px;padding:0 10px;">Restore</button>` : ""}`;
+    row.querySelector(".apphist-restore")?.addEventListener("click", () => {
+      void (async () => {
+        const ok = await confirmAction({
+          title: `Restore ${s.hash.slice(0, 12)}?`,
+          body: "This version's files replace your working folder's copy of the app. Your next build makes it the new latest — nothing in the history is lost.",
+          confirmLabel: "Restore",
+        });
+        if (!ok) return;
+        const r = await window.glyphh.appSourceRestore?.(slug, s.hash);
+        if (!r?.ok) {
+          if (errEl) { errEl.textContent = r?.error || "Couldn't restore the snapshot."; errEl.classList.remove("hidden"); }
+          return;
+        }
+        errEl?.classList.add("hidden");
+        const done = document.createElement("div");
+        done.className = "settings-hint";
+        done.style.cssText = "margin:8px 0;";
+        done.textContent = `Restored into ${r.dir} (${r.files} files) — build + update the app to run it.`;
+        list.prepend(done);
+      })();
+    });
+    list.appendChild(row);
+  }
+}
+
 // ── Co-working: collaborators + the org approval queue ───────────
 //
 // Collaborator seats live on the General tab of a user-owned glyphh app
@@ -1535,6 +1597,7 @@ async function loadAppConnectionsTab(): Promise<void> {
 
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
+  document.getElementById("apphist-refresh")?.addEventListener("click", () => { void loadHistoryTab(); });
 
   // Auto-update toggle (installed apps) — persisted per app slug.
   document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {

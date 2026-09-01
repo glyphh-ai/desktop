@@ -4,7 +4,8 @@ import fs from "fs";
 import path from "path";
 import { extractMacAppIcon } from "./app-icon-extract";
 import { exportServerApp } from "./glyphh-app-package";
-import { deployAppFromWorkdir } from "./glyphh-app-builder";
+import { deployAppFromWorkdir, pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder";
+import { getExplicitWorkingDirectory } from "./working-directory";
 import { deployAppFromCloud, isCloudSource } from "./glyphh-harness-run";
 import { loadSessions } from "./glyphh-agent-context";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
@@ -859,6 +860,25 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("app-org-pending-releases", async () => {
     try { return { ok: true, pending: await getClient().apps.pendingOrgReleases() }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), pending: [] }; }
+  });
+
+  // ── Version history (his order, 2026-09-01): the snapshot chain + restore ──
+  ipcMain.handle("app-source-history", async (_e, slug: string) => {
+    try { return { ok: true, history: await getClient().apps.sourceHistory(slug) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), history: [] }; }
+  });
+  ipcMain.handle("app-source-restore", async (_e, slug: string, hash: string) => {
+    try { return { ok: true, ...(await pullAppSource(slug, { hash })) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  // The diff panel's R2 lane: status (drift flag + history) and the unified
+  // head→local diff over the working folder's app project.
+  ipcMain.handle("files:r2-diff", async () => {
+    try {
+      const wd = getExplicitWorkingDirectory();
+      if (!wd) return { status: null, text: "", error: "no working folder" };
+      return await r2DiffWorkdir(appDirInWorkdir(wd));
+    } catch (err) { return { status: null, text: "", error: err instanceof Error ? err.message : String(err) }; }
   });
 
   // ── Marketplace tab: the listing + its images ───────────────────────────────

@@ -684,12 +684,18 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "pull_app",
-    doc: "pull_app({ slug }) — fetch an app's latest SOURCE snapshot from the control plane into the working folder, for CO-WORKING: the owner shares an app with collaborators, and each collaborator pulls the source here to edit it. Extracts into <workdir>/<slug> (or the workdir itself when it already holds this app's project — local files are overwritten by the snapshot, so commit or stash local-only work first). After pulling: edit → `npm run build` → update_app to run it locally; publishing stays the owner/admin-collaborator's explicit step. Access follows the server's co-working roles — owner, collaborators, or an org admin of the publishing org; anyone else gets a not-found.",
-    action: (a) => ({ kind: "edit", title: `Pull app source: ${String(a.slug ?? "")}` }),
+    doc: "pull_app({ slug, merge?, hash? }) — fetch an app's SOURCE snapshot from the control plane, for CO-WORKING. Default: extracts the chain HEAD into <workdir>/<slug> (or the workdir itself when it already holds this app's project — local files are overwritten, so only when starting fresh). merge:true = NEVER overwrites: the head extracts BESIDE the project at .glyphh/upstream-<hash>/ and YOU reconcile — read both trees, carry the upstream author's changes into the project (their intent AND the local intent both survive), then delete the upstream folder, `npm run build`, update_app. Use merge whenever a push reported the head MOVED (someone else built first) or local edits exist. hash restores a specific snapshot from the version history. Access follows the co-working roles — owner, collaborators, org admin.",
+    action: (a) => ({ kind: "edit", title: `Pull app source: ${String(a.slug ?? "")}${a.merge ? " (merge)" : ""}` }),
     run: async (a) => {
       const slug = String(a.slug ?? "").trim();
       if (!slug) return "ERROR: pull_app needs { slug }";
-      const r = await pullAppSource(slug);
+      const r = await pullAppSource(slug, {
+        ...(typeof a.hash === "string" && a.hash ? { hash: a.hash } : {}),
+        ...(a.merge === true ? { merge: true } : {}),
+      });
+      if (r.merged) {
+        return `upstream "${r.slug}" @ ${r.hash.slice(0, 12)} extracted to ${r.dir} (${r.files} files) — the project itself is UNTOUCHED. Now reconcile: diff the upstream tree against the project, merge the upstream author's changes in so both sides' work survives, delete ${r.dir}, then build + update_app.`;
+      }
       return `pulled "${r.slug}" @ ${r.hash.slice(0, 12)} — ${r.files} files into ${r.dir}. Edit there, build, then update_app to run your copy.`;
     },
   },

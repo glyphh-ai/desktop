@@ -50,6 +50,7 @@ import {
   onWorkdirEvent,
   type WorkdirEvent,
 } from "./working-directory.js";
+import { r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder.js";
 
 /** Watch channels a browser bug must not grow unboundedly. */
 const MAX_WATCH_CHANNELS = 8;
@@ -127,6 +128,8 @@ export function installRelayFs(): void {
   });
 
   registerRelayHandler("fs.gitDiff", (params) => gitDiffWorkdir(containedPath(params, "root")));
+  // The R2 lane twin (web = desktop tooling): drift + history + head→local diff.
+  registerRelayHandler("fs.r2Diff", (params) => r2DiffWorkdir(appDirInWorkdir(containedPath(params, "root"))));
 
   registerRelayHandler("fs.search", (params) => {
     const dir = containedPath(params, "dir");

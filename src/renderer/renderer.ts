@@ -104,6 +104,15 @@ type AppCollaboratorRow = {
   addedAt: string;
 };
 
+/** Mirrors preload.ts AppSnapshotRow — one entry of the source snapshot chain. */
+type AppSnapshotRow = {
+  hash: string;
+  parentHash: string | null;
+  createdAt: string;
+  createdByEmail: string | null;
+  isHead: boolean;
+};
+
 /** Mirrors preload.ts OrgPendingReleaseRow — the org admin's approval queue. */
 type OrgPendingReleaseRow = {
   appId: string;
@@ -211,6 +220,8 @@ declare global {
       appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
       appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
+      appSourceHistory: (slug: string) => Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>;
+      appSourceRestore: (slug: string, hash: string) => Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
 
       // Layouts

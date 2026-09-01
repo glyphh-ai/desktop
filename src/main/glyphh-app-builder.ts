@@ -15,6 +15,7 @@ import AdmZip from "adm-zip";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/sdk";
 import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
@@ -245,8 +246,12 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   } catch (e) {
     // LOUD, not silent (his bug, 2026-08-25: a 404 here cost three round
     // trips) — the release stands, but the user must know web rebuilds
-    // did not turn on.
-    sourceWarning = `source snapshot push failed (${(e as Error).message}) — web builds stay unavailable for this app`;
+    // did not turn on. A CAS conflict (someone else pushed first) points
+    // straight at the merge move (co-working, 2026-09-01).
+    const msg = (e as Error).message;
+    sourceWarning = /conflict|stale|409|moved/i.test(msg)
+      ? `source head MOVED under this build (${msg}) — a collaborator pushed first. Run pull_app({ slug: "${liveSlug}", merge: true }), reconcile the upstream tree into the project, then rebuild.`
+      : `source snapshot push failed (${msg}) — web builds stay unavailable for this app`;
   }
 
   // "No hosting": the build is the deliverable — cut, uploaded, ready, never
@@ -266,18 +271,38 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
  * normal edit → build → update_app loop. Read access is the server's call —
  * owner, any collaborator, or an org admin of the publisher org.
  */
-export async function pullAppSource(slug: string): Promise<{ slug: string; hash: string; dir: string; files: number }> {
+export async function pullAppSource(slug: string, opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
   refuseBuiltinWorkpanel(slug);
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set — set one first, the source extracts there");
 
   const client = getClient();
-  const head = await client.apps.sourceHead(slug);
-  if (!head.head) {
-    throw new Error(`'${slug}' has no source snapshot yet — a desktop build (its owner's deploy) creates the first one`);
+  // An explicit hash restores THAT snapshot (the History tab's Restore);
+  // otherwise the chain head.
+  let hash = opts.hash ?? null;
+  if (!hash) {
+    const head = await client.apps.sourceHead(slug);
+    if (!head.head) {
+      throw new Error(`'${slug}' has no source snapshot yet — a desktop build (its owner's deploy) creates the first one`);
+    }
+    hash = head.head.hash;
   }
-  const bytes = await client.apps.pullSource(slug, head.head.hash);
+  const bytes = await client.apps.pullSource(slug, hash);
   const zip = new AdmZip(Buffer.from(bytes));
+
+  // MERGE mode (co-working, his order 2026-09-01): never overwrite local work.
+  // The snapshot extracts BESIDE the project (.glyphh/upstream-<hash>) and the
+  // AGENT reconciles the two trees — an LLM three-way beats conflict markers
+  // for the people building these apps.
+  if (opts.merge) {
+    const projectDir = (() => { try { return resolveAppDir(wd); } catch { return wd; } })();
+    const dest = path.join(projectDir, ".glyphh", `upstream-${hash.slice(0, 12)}`);
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = zip.getEntries().filter((e) => !e.isDirectory);
+    zip.extractAllTo(dest, true);
+    return { slug, hash, dir: dest, files: entries.length, merged: true };
+  }
 
   // Destination: the working folder itself when it IS this app's project;
   // otherwise <workdir>/<slug>. A non-empty destination must already be this
@@ -315,5 +340,85 @@ export async function pullAppSource(slug: string): Promise<{ slug: string; hash:
   fs.mkdirSync(dest, { recursive: true });
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
   zip.extractAllTo(dest, true);
-  return { slug, hash: head.head.hash, dir: dest, files: entries.length };
+  return { slug, hash, dir: dest, files: entries.length };
+}
+
+// ── R2 versioning surface (his order, 2026-09-01): the diff panel + History
+// tab read these. An app is "R2-versioned" when its project folder carries a
+// manifest AND the control plane holds a source snapshot chain for its slug.
+
+export interface R2SourceStatus {
+  slug: string | null;
+  localHash: string | null;
+  head: { hash: string; parentHash: string | null; createdAt: string; createdByEmail: string | null } | null;
+  /** Local tree ≠ the R2 head — the drift flag. */
+  drifted: boolean;
+  history: Array<{ hash: string; parentHash: string | null; createdAt: string; createdByEmail: string | null; isHead: boolean }>;
+}
+
+/** The app project dir inside a working folder — the folder itself when it
+ *  isn't an app project (the R2 lane then reports slug null, not an error). */
+export function appDirInWorkdir(wd: string): string {
+  try { return resolveAppDir(wd); } catch { return wd; }
+}
+
+/** The folder's app slug, or null when it isn't an app project. */
+function slugOfDir(dir: string): string | null {
+  const mf = manifestPathIn(dir);
+  if (!mf) return null;
+  try { return (JSON.parse(fs.readFileSync(mf, "utf8")) as { slug?: string }).slug ?? null; }
+  catch { return null; }
+}
+
+/** sha256 of the deterministic source archive — comparable with the server's
+ *  snapshot hashes (both sides hash the same packProjectSource bytes). */
+function localTreeHash(dir: string): { archive: Buffer; hash: string } {
+  const archive = packProjectSource(dir);
+  const hash = createHash("sha256").update(archive).digest("hex");
+  return { archive, hash };
+}
+
+export async function r2SourceStatus(dir: string): Promise<R2SourceStatus> {
+  const slug = slugOfDir(dir);
+  if (!slug) return { slug: null, localHash: null, head: null, drifted: false, history: [] };
+  const { hash: localHash } = localTreeHash(dir);
+  const client = getClient();
+  const head = await client.apps.sourceHead(slug).then((r) => r.head).catch(() => null);
+  const history = head ? await client.apps.sourceHistory(slug).catch(() => []) : [];
+  return { slug, localHash, head, drifted: !!head && head.hash !== localHash, history };
+}
+
+/** Unified diff of the R2 HEAD → the local tree, via `git diff --no-index`
+ *  over two temp extractions of the SAME packProjectSource filter (no repo
+ *  needed; node_modules/dist never pollute either side). */
+export async function r2DiffWorkdir(dir: string): Promise<{ status: R2SourceStatus; text: string; error?: string }> {
+  const status = await r2SourceStatus(dir);
+  if (!status.slug || !status.head) return { status, text: "" };
+  if (!status.drifted) return { status, text: "" };
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-r2diff-"));
+  try {
+    const headDir = path.join(tmp, "head");
+    const localDir = path.join(tmp, "local");
+    const headBytes = await getClient().apps.pullSource(status.slug, status.head.hash);
+    new AdmZip(Buffer.from(headBytes)).extractAllTo(headDir, true);
+    new AdmZip(localTreeHash(dir).archive).extractAllTo(localDir, true);
+    const { execFile } = await import("node:child_process");
+    const text = await new Promise<string>((resolve, reject) => {
+      execFile("git", ["diff", "--no-index", "--unified=3", "--no-color", "head", "local"],
+        { cwd: tmp, maxBuffer: 10 * 1024 * 1024 },
+        (err, stdout) => {
+          // --no-index exits 1 when the trees differ — that IS the diff.
+          if (err && (err as { code?: number }).code !== 1 && !stdout) reject(err);
+          else resolve(stdout);
+        });
+    });
+    // head/local prefixes → plain a/ b/ paths, so the renderer's parser reads
+    // it exactly like a git diff.
+    return { status, text: text.replaceAll("a/head/", "a/").replaceAll("b/local/", "b/").replaceAll(" head/", " ").replaceAll(" local/", " ") };
+  } catch (e) {
+    return { status, text: "", error: (e as Error).message };
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp reaper's problem */ }
+  }
 }

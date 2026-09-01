@@ -201,6 +201,9 @@ export function createWbPod({ client, isAuthenticated, getScope = () => (locus.c
       try { return await pod().fsDiff({ scope: scoped() }); }
       catch (e) { return { text: '', error: msg(e) }; }
     },
+    // Not on the pod fs surface — the R2 lane compares the DESKTOP working
+    // folder against the snapshot head; a cloud workspace has no local tree.
+    r2Diff: async () => ({ status: null, text: '' }),
     // Not on the pod fs surface (yet) — say so, never pretend.
     mkdir: async () => ({ ok: false, error: 'Not available for cloud workspaces yet — create a file instead (folders appear with their first file).' }),
     deletePath: async () => ({ ok: false, error: 'Not available for cloud workspaces yet.' }),

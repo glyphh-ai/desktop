@@ -85,6 +85,15 @@ export interface AppCollaboratorRow {
   addedAt: string;
 }
 
+/** One entry of an app's source snapshot chain (version history). */
+export interface AppSnapshotRow {
+  hash: string;
+  parentHash: string | null;
+  createdAt: string;
+  createdByEmail: string | null;
+  isHead: boolean;
+}
+
 /** One submitted release in the org admin's approval queue. */
 export interface OrgPendingReleaseRow {
   appId: string;
@@ -634,6 +643,11 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-release-org-review", slug, releaseId, action) as Promise<{ ok: boolean; error?: string }>,
   appOrgPendingReleases: () =>
     ipcRenderer.invoke("app-org-pending-releases") as Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>,
+  // Version history — the source snapshot chain + restore-a-snapshot.
+  appSourceHistory: (slug: string) =>
+    ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,
+  appSourceRestore: (slug: string, hash: string) =>
+    ipcRenderer.invoke("app-source-restore", slug, hash) as Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>,
   appGraduate: (slug: string) => ipcRenderer.invoke("app-graduate", slug) as Promise<{ ok: boolean; path?: string; error?: string }>,
 
   // Onboarding complete — triggers panel restore
@@ -1219,6 +1233,8 @@ contextBridge.exposeInMainWorld("wb", {
   readFile: (filePath: string) => ipcRenderer.invoke("files:read-file", filePath),
   writeFile: (filePath: string, content: string) => ipcRenderer.invoke("files:write-file", filePath, content),
   gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),
+  // The R2 lane (glyphh-versioned apps): head→local unified diff + drift + history.
+  r2Diff: () => ipcRenderer.invoke("files:r2-diff"),
   termSpawn: (termId: string, cwd: string, cols: number, rows: number) =>
     ipcRenderer.send("wb-term:spawn", termId, cwd, cols, rows),
   termWrite: (termId: string, data: string) => ipcRenderer.send("wb-term:write", termId, data),

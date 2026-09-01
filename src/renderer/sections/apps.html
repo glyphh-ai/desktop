@@ -142,6 +142,7 @@
                    anyone who installed the app; Marketplace + Public hosting are
                    the builder's alone (tab-owner-only). -->
               <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="history">History</button>
               <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
               <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
@@ -449,6 +450,20 @@
                     </div>
                     <div id="domain-list" style="margin-top:14px;"></div>
                   </div>
+                </div>
+
+                <!-- Version history (co-working, 2026-09-01): the source
+                     snapshot chain — every desktop build is an entry. Code
+                     history is the DEVELOPERS' surface (server-gated too). -->
+                <div class="app-tab-left" data-tab="history">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label class="settings-label" style="margin:0;">Version history</label>
+                    <div style="flex:1;"></div>
+                    <button id="apphist-refresh" class="ws-icon-btn" type="button" title="Refresh"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                  </div>
+                  <p class="proxy-field-hint" style="margin:2px 0 12px;">Every build records a snapshot of the app's source. Restore pulls that version into your working folder — the next build makes it the new latest.</p>
+                  <div id="apphist-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <div id="apphist-list" class="mbr-list"><div class="inline-empty">Loading…</div></div>
                 </div>
 
                 <!-- About left (marketplace-installed): the store's listing

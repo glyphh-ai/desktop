@@ -893,6 +893,13 @@ export function buildContract(client, deps) {
       try { return { ok: true, pending: await client.apps.pendingOrgReleases() }; }
       catch (err) { return { ok: false, error: err?.message || String(err), pending: [] }; }
     },
+    // Version history — the same chain the desktop shows; restore needs a
+    // local working folder, which only the desktop has.
+    appSourceHistory: async (slug) => {
+      try { return { ok: true, history: await client.apps.sourceHistory(slug) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), history: [] }; }
+    },
+    appSourceRestore: async () => ({ ok: false, error: "Restoring a version needs the desktop app (it writes into your working folder)." }),
     appVersionSet: async (slug, version) => {
       try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
