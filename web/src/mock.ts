@@ -17,7 +17,7 @@ export type SpaceId = 'chat' | 'work' | 'code' | 'files' | 'desktop';
 export type SettingSub =
   | 'profile' | 'billing' | 'usage' | 'general' | 'apikeys' | 'runtime'
   | 'connections' | 'appearance' | 'help' | 'voice'
-  | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
+  | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces' | 'domains'
   | 'apps' | 'artifacts'   // 'apps' opens the Apps sheet, not a tray; 'org*/models/workspaces' = admin
   | 'padmin-usage' | 'padmin-plans' | 'padmin-orgs';   // super_admin platform section
 export interface SettingRow {
@@ -56,6 +56,7 @@ export const SETTINGS_GROUPS: SettingGroup[] = [
   { label: 'Admin', rows: [
     { icon: 'sliders', label: 'Models', sub: 'models', admin: true },
     { icon: 'grid', label: 'Workspaces', sub: 'workspaces', admin: true },
+    { icon: 'link', label: 'Domains', sub: 'domains', admin: true },
     { icon: 'shield', label: 'Guardrails', sub: 'guardrails', admin: true },
   ] },
   { label: 'Platform', rows: [

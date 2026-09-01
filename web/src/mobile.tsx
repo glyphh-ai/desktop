@@ -2264,43 +2264,6 @@ function OrganizationTray() {
   const [addr, setAddr] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
-  // Custom domain (org white-label — server docs/custom-domains.md P1).
-  type OrgDomain = { id: string; domain: string; status: string; error: string | null; dns: Array<{ type: string; name: string; value: string }>; hostnames: Record<string, string> };
-  const [domains, setDomains] = useState<OrgDomain[]>([]);
-  const [domIn, setDomIn] = useState('');
-  const [domErr, setDomErr] = useState('');
-  const [domBusy, setDomBusy] = useState(false);
-  // Verify retries while DNS propagates: 6 attempts, 10s apart; spinner on the
-  // button; first success reloads, the last failure surfaces its reason.
-  const [verifying, setVerifying] = useState<{ id: string; attempt: number } | null>(null);
-  const verifyLoop = async (id: string) => {
-    const fn = orgApi().verifyDomain;
-    if (!fn) { setDomErr('This build cannot manage domains yet.'); return; }
-    setDomErr('');
-    const ATTEMPTS = 6;
-    let lastError = 'Could not verify the domain.';
-    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-      setVerifying({ id, attempt });
-      try { await fn(id); setVerifying(null); refreshDomains(); return; }
-      catch (e) { lastError = (e as Error).message || lastError; }
-      if (attempt < ATTEMPTS) await new Promise((res) => setTimeout(res, 10_000));
-    }
-    setVerifying(null);
-    setDomErr(lastError);
-  };
-  const orgApi = () => (glyphh().org as unknown as {
-    domains?: () => Promise<OrgDomain[]>; addDomain?: (d: string) => Promise<OrgDomain>;
-    verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
-  });
-  const refreshDomains = () => { orgApi().domains?.().then(setDomains).catch(() => { /* older server — section stays empty */ }); };
-  useEffect(() => { refreshDomains(); }, []);
-  const domAct = async (fn: (() => Promise<unknown>) | undefined, after?: () => void) => {
-    if (!fn) { setDomErr('This build cannot manage domains yet.'); return; }
-    setDomErr(''); setDomBusy(true);
-    try { await fn(); after?.(); refreshDomains(); }
-    catch (e) { setDomErr((e as Error).message || 'That did not work.'); }
-    finally { setDomBusy(false); }
-  };
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 1300); };
   useEffect(() => {
     glyphh().org.get().then((o: Record<string, unknown>) => { setOrg(o); setAddr((o.address as Record<string, string>) || {}); }).catch(() => setErr('Could not load your organization.'));
@@ -2332,43 +2295,6 @@ function OrganizationTray() {
         {af('country', 'Country')}
       </div>
       {err && <div className="m-field-err">{err}</div>}
-      <div className="m-set-label">Custom domain</div>
-      <div className="m-set-form">
-        {domains.map((d) => (
-          <div key={d.id} style={{ border: '1px solid var(--border-2, #333)', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <b>{d.domain}</b>
-              <span className="m-bill-l">{d.status === 'active' ? 'Active' : d.status === 'pending' ? 'Waiting for DNS' : d.status}</span>
-              <span style={{ flex: 1 }} />
-              {d.status !== 'active' && (
-                <button className="btn btn-primary" disabled={domBusy || verifying !== null} style={verifying?.id === d.id ? { color: '#fff' } : undefined} onClick={() => void verifyLoop(d.id)}>
-                  {verifying?.id === d.id ? (
-                    <>
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ verticalAlign: -1, marginRight: 5 }}><path d="M21 12a9 9 0 1 1-6.2-8.56"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" /></path></svg>
-                      Verifying…{verifying.attempt > 1 ? ` (${verifying.attempt}/6)` : ''}
-                    </>
-                  ) : 'Verify'}
-                </button>
-              )}
-              <button className="btn" disabled={domBusy} onClick={() => void domAct(orgApi().removeDomain && (() => orgApi().removeDomain!(d.id)))}>Remove</button>
-            </div>
-            {d.error && <div className="m-field-err">{d.error}</div>}
-            {d.status !== 'active' && d.dns.map((r) => (
-              <div key={r.name} style={{ fontSize: 12, marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                <code>{r.type}</code> <code>{r.name}</code> <CopyBtn value={r.name} /> → <code style={{ wordBreak: 'break-all' }}>{r.value}</code> <CopyBtn value={r.value} />
-              </div>
-            ))}
-            {Object.entries(d.hostnames).map(([h, st]) => (
-              <div key={h} style={{ fontSize: 12, marginTop: 4 }}><code>{h}</code> <span className="m-bill-l">{st}</span></div>
-            ))}
-          </div>
-        ))}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input className="m-field-in" value={domIn} placeholder="acme.com" spellCheck={false} onChange={(e) => setDomIn(e.currentTarget.value)} />
-          <button className="btn btn-primary" disabled={domBusy || !domIn.trim()} onClick={() => void domAct(orgApi().addDomain && (() => orgApi().addDomain!(domIn.trim())), () => setDomIn(''))}>Add</button>
-        </div>
-        {domErr && <div className="m-field-err">{domErr}</div>}
-      </div>
     </>
   );
 }
@@ -2524,6 +2450,130 @@ function ModelsTray() {
         </div>
       )}
       {err && <div className="m-field-err">{err}</div>}
+    </>
+  );
+}
+
+function DomainsTray() {
+  type OrgDomain = { id: string; domain: string; status: string; error: string | null; apexAppId: string | null; dns: Array<{ type: string; name: string; value: string }>; hostnames: Record<string, string> };
+  type OApp = { id: string; name: string; slug: string };
+  const [list, setList] = useState<OrgDomain[] | null>(null);
+  const [apps, setApps] = useState<OApp[]>([]);
+  const [sel, setSel] = useState<OrgDomain | null>(null);
+  const [newDom, setNewDom] = useState('');
+  const [del, setDel] = useState<OrgDomain | null>(null);
+  const [err, setErr] = useState('');
+  const [verifying, setVerifying] = useState<string | null>(null);
+  const api = () => (glyphh().org as unknown as {
+    domains?: () => Promise<OrgDomain[]>; addDomain?: (d: string) => Promise<OrgDomain>;
+    verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
+    setDomainApexApp?: (id: string, appId: string | null) => Promise<OrgDomain>;
+  });
+  const refresh = () => { api().domains?.().then((d) => setList(d)).catch(() => setList([])); };
+  useEffect(() => {
+    refresh();
+    (glyphh().apps as unknown as { mine?: () => Promise<OApp[]> }).mine?.().then((a) => setApps(a || [])).catch(() => setApps([]));
+  }, []);
+  // Keep the open subtray fresh after a write.
+  const reselect = (d: OrgDomain) => { setSel(d); refresh(); };
+  const add = async () => {
+    const d = newDom.trim().toLowerCase(); if (!d) return;
+    setErr('');
+    try { await api().addDomain?.(d); setNewDom(''); refresh(); }
+    catch (e) { setErr((e as Error).message || 'Could not add.'); }
+  };
+  const verify = async (d: OrgDomain) => {
+    setErr(''); const fn = api().verifyDomain; if (!fn) return;
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      setVerifying(`${attempt}/6`);
+      try { const r = await fn(d.id); setVerifying(null); reselect(r); return; }
+      catch (e) { if (attempt === 6) { setVerifying(null); setErr((e as Error).message || 'DNS not found yet.'); } }
+      if (attempt < 6) await new Promise((res) => setTimeout(res, 10_000));
+    }
+  };
+  const remove = async (d: OrgDomain) => { setDel(null); try { await api().removeDomain?.(d.id); setSel(null); refresh(); } catch { setErr('Could not remove.'); } };
+  const setApex = async (d: OrgDomain, appId: string | null) => {
+    setErr(''); try { const r = await api().setDomainApexApp?.(d.id, appId); if (r) reselect(r); } catch (e) { setErr((e as Error).message || 'Could not set.'); }
+  };
+  const chip = (st: string) => st === 'active' ? 'Active' : st === 'pending' ? 'Waiting for DNS' : st === 'verifying' ? 'Verifying' : st;
+  return (
+    <>
+      {list == null ? <div className="m-set-loading">Loading…</div> : (
+        <div className="m-sel-group">
+          {list.map((d) => (
+            <button key={d.id} className="m-opt" onClick={() => { haptic(); setSel(d); }}>
+              <span className="m-opt-text"><span className="m-opt-name">{d.domain}<span className="m-chip m-chip-inline">{chip(d.status)}</span></span></span>
+              <Icon name="chevron" />
+            </button>
+          ))}
+          {!list.length && <div className="m-set-empty">No domains yet — add one below.</div>}
+        </div>
+      )}
+      <div className="m-set-form">
+        <div className="m-key-row">
+          <input className="m-field-in" style={{ flex: 1 }} value={newDom} onChange={(e) => setNewDom(e.currentTarget.value)} placeholder="acme.com" spellCheck={false} />
+          <button className="m-field-btn m-field-inline" disabled={!newDom.trim()} onClick={add}>Add</button>
+        </div>
+      </div>
+      {err && <div className="m-field-err">{err}</div>}
+
+      {sel && createPortal(
+        <div className="m-subtray-overlay">
+          <div className="m-subtray-scrim" onClick={() => setSel(null)} />
+          <div className="m-subtray">
+            <header className="m-subtray-head">
+              <button className="m-sheet-btn" aria-label="Back" onClick={() => setSel(null)}><Icon name="back" /></button>
+              <span className="m-sheet-title">{sel.domain}</span>
+              <span className="m-sheet-btn" aria-hidden="true" style={{ visibility: 'hidden' }} />
+            </header>
+            <div className="m-subtray-body">
+              <div className="m-set-label">Status</div>
+              <div className="m-set-form"><div className="m-bill-card"><span className="m-bill-v">{chip(sel.status)}</span><span className="m-bill-l">{sel.domain}</span></div></div>
+              {sel.error && <div className="m-field-err">{sel.error}</div>}
+
+              {sel.status !== 'active' && (
+                <>
+                  <div className="m-set-label">Publish these DNS records</div>
+                  <div className="m-set-form">
+                    {sel.dns.map((r) => (
+                      <div key={r.type + r.name} style={{ fontSize: 12, marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <code>{r.type}</code> <code>{r.name}</code> <CopyBtn value={r.name} /> <span style={{ opacity: .5 }}>→</span> <code style={{ wordBreak: 'break-all' }}>{r.value}</code> <CopyBtn value={r.value} />
+                      </div>
+                    ))}
+                  </div>
+                  <button className="m-field-btn" disabled={verifying !== null} onClick={() => void verify(sel)}>
+                    {verifying ? `Verifying… (${verifying})` : 'Verify'}
+                  </button>
+                </>
+              )}
+
+              <div className="m-set-label">Bare domain serves</div>
+              <div className="m-set-form">
+                <select className="m-field-in" value={sel.apexAppId ?? ''} onChange={(e) => void setApex(sel, e.currentTarget.value || null)}>
+                  <option value="">Subdomains only (nothing at {sel.domain})</option>
+                  {apps.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.slug})</option>)}
+                </select>
+              </div>
+
+              {Object.keys(sel.hostnames).length > 0 && (
+                <>
+                  <div className="m-set-label">App hostnames</div>
+                  <div className="m-set-form">
+                    {Object.entries(sel.hostnames).map(([h, st]) => (
+                      <div key={h} style={{ fontSize: 12.5, padding: '3px 0', display: 'flex', gap: 8 }}><code>{h}</code><span className="m-chip m-chip-inline">{st}</span></div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <button className="m-field-btn m-field-danger" onClick={() => setDel(sel)}>Remove domain</button>
+              {err && <div className="m-field-err">{err}</div>}
+            </div>
+            {del && <Confirm title={`Remove “${del.domain}”?`} message="Its app hostnames stop resolving." confirmLabel="Remove" onCancel={() => setDel(null)} onConfirm={() => remove(del)} />}
+          </div>
+        </div>,
+        document.body,
+      )}
     </>
   );
 }
@@ -2946,14 +2996,14 @@ function PlatformOrgsTray() {
 }
 
 type SettingsSub = 'profile' | 'billing' | 'usage' | 'appearance' | 'connections' | 'help'
-  | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces'
+  | 'general' | 'apikeys' | 'runtime' | 'org' | 'members' | 'guardrails' | 'models' | 'workspaces' | 'domains'
   | 'apps'   // never a tray — the row hands off to the Apps sheet
   | 'artifacts' | 'voice'
   | 'padmin-usage' | 'padmin-plans' | 'padmin-orgs';   // super_admin platform section
 const SUB_TITLE: Record<SettingsSub, string> = {
   profile: 'Profile', billing: 'Billing', usage: 'Usage', appearance: 'Appearance',
   connections: 'Connections', help: 'Help & Support', general: 'General', apikeys: 'API keys',
-  runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces',
+  runtime: 'Region', org: 'Organization', members: 'Members', guardrails: 'Guardrails', models: 'Models', workspaces: 'Workspaces', domains: 'Domains',
   apps: 'Apps',   // never a tray — the row hands off to the Apps sheet
   artifacts: 'Artifacts', voice: 'Voice',
   'padmin-usage': 'Platform usage', 'padmin-plans': 'Plans', 'padmin-orgs': 'Organizations',
@@ -3053,6 +3103,7 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
               {sub === 'guardrails' && <GuardrailsTray />}
               {sub === 'models' && <ModelsTray />}
               {sub === 'workspaces' && <WorkspacesTray />}
+              {sub === 'domains' && <DomainsTray />}
               {sub === 'connections' && <ConnectionsTray />}
               {sub === 'artifacts' && <ArtifactsTray />}
               {sub === 'appearance' && <AppearanceTray />}
