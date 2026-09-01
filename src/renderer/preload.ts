@@ -91,6 +91,8 @@ export interface AppSnapshotRow {
   parentHash: string | null;
   createdAt: string;
   createdByEmail: string | null;
+  /** The commit message, when one was given ("light git", 2026-09-01). */
+  note: string | null;
   isHead: boolean;
 }
 

@@ -1168,7 +1168,7 @@ async function loadHistoryTab(): Promise<void> {
       <code style="font-family:var(--font-mono);font-size:11.5px;color:var(--text-2);">${escMkt(s.hash.slice(0, 12))}</code>
       ${s.isHead ? `<span class="release-badge live">latest</span>` : ""}
       <div style="flex:1;min-width:0;font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-        ${escMkt(s.createdByEmail || "unknown")}
+        ${s.note ? `${escMkt(s.note)}<span style="color:var(--text-3);margin-left:8px;">${escMkt(s.createdByEmail || "unknown")}</span>` : escMkt(s.createdByEmail || "unknown")}
         <span style="color:var(--text-3);margin-left:8px;">${escMkt(mktDate(s.createdAt))}</span>
       </div>
       ${!s.isHead && !IS_WEB ? `<button type="button" class="action-btn apphist-restore" style="height:24px;font-size:11px;padding:0 10px;">Restore</button>` : ""}`;

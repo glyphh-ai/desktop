@@ -79,7 +79,7 @@ interface WbApi {
     status: {
       slug: string | null; localHash: string | null; drifted: boolean;
       head: { hash: string; parentHash: string | null; createdAt: string; createdByEmail: string | null } | null;
-      history: Array<{ hash: string; parentHash: string | null; createdAt: string; createdByEmail: string | null; isHead: boolean }>;
+      history: Array<{ hash: string; parentHash: string | null; createdAt: string; createdByEmail: string | null; note?: string | null; isHead: boolean }>;
     } | null;
     text: string; error?: string;
   }>;
@@ -8123,7 +8123,7 @@ async function init(): Promise<void> {
     // folder is an R2-versioned app, whichever lane is active.
     let lane: "git" | "r2" = "git";
     let lastGit: { text: string; error?: string } = { text: "" };
-    let lastR2: { status: { slug: string | null; localHash: string | null; drifted: boolean; head: { hash: string; createdAt: string; createdByEmail: string | null } | null; history: Array<{ hash: string; createdAt: string; createdByEmail: string | null; isHead: boolean }> } | null; text: string; error?: string } = { status: null, text: "" };
+    let lastR2: { status: { slug: string | null; localHash: string | null; drifted: boolean; head: { hash: string; createdAt: string; createdByEmail: string | null } | null; history: Array<{ hash: string; createdAt: string; createdByEmail: string | null; note?: string | null; isHead: boolean }> } | null; text: string; error?: string } = { status: null, text: "" };
 
     function paintR2Panel(): void {
       const st = lastR2.status;
@@ -8141,7 +8141,8 @@ async function init(): Promise<void> {
         row.className = "ws-diff-r2-row";
         row.innerHTML = `<code></code><span class="ws-diff-r2-who"></span><span class="ws-diff-r2-when"></span>${s.isHead ? `<span class="ws-diff-r2-headmark">latest</span>` : ""}`;
         (row.querySelector("code") as HTMLElement).textContent = s.hash.slice(0, 10);
-        (row.querySelector(".ws-diff-r2-who") as HTMLElement).textContent = s.createdByEmail || "unknown";
+        (row.querySelector(".ws-diff-r2-who") as HTMLElement).textContent =
+          s.note ? `${s.note} — ${s.createdByEmail || "unknown"}` : (s.createdByEmail || "unknown");
         (row.querySelector(".ws-diff-r2-when") as HTMLElement).textContent = new Date(s.createdAt).toLocaleString();
         r2List.appendChild(row);
       }

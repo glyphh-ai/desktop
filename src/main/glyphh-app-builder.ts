@@ -242,7 +242,10 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   let sourceWarning: string | undefined;
   try {
     const head = await client.apps.sourceHead(ref).catch(() => null);
-    await client.apps.pushSource(ref, new Uint8Array(packProjectSource(dir)), { baseHash: head?.head?.hash ?? null });
+    await client.apps.pushSource(ref, new Uint8Array(packProjectSource(dir)), {
+      baseHash: head?.head?.hash ?? null,
+      note: `build v${version}`,
+    });
   } catch (e) {
     // LOUD, not silent (his bug, 2026-08-25: a 404 here cost three round
     // trips) — the release stands, but the user must know web rebuilds
@@ -341,6 +344,28 @@ export async function pullAppSource(slug: string, opts: { hash?: string; merge?:
   const entries = zip.getEntries().filter((e) => !e.isDirectory);
   zip.extractAllTo(dest, true);
   return { slug, hash, dir: dest, files: entries.length };
+}
+
+/**
+ * COMMIT the working folder's source as a snapshot with a message — the light
+ * git's `git commit` (his order, 2026-09-01). Pure versioning: no build, no
+ * install, no deploy. Fast-forwards from the current head; a moved head
+ * surfaces as the merge instruction, same as a build's push.
+ */
+export async function commitAppSource(message: string): Promise<{ slug: string; hash: string; noop: boolean }> {
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) throw new Error("no working folder is set");
+  const dir = appDirInWorkdir(wd);
+  const slug = slugOfDir(dir);
+  if (!slug) throw new Error("the working folder holds no app project (glyphh.app.json / manifest.json)");
+  refuseBuiltinWorkpanel(slug);
+  const client = getClient();
+  const head = await client.apps.sourceHead(slug).catch(() => null);
+  const out = await client.apps.pushSource(slug, new Uint8Array(packProjectSource(dir)), {
+    baseHash: head?.head?.hash ?? null,
+    note: message.slice(0, 500),
+  });
+  return { slug, hash: out.hash, noop: !!out.noop };
 }
 
 // ── R2 versioning surface (his order, 2026-09-01): the diff panel + History

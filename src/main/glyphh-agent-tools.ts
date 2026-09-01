@@ -71,7 +71,7 @@ import { fetchServerLayouts } from "./layout-manager";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client";
 import { BUILTIN_EFFECTS, getDripManagerInstance } from "./drip-manager";
 import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed } from "./tool-vectors";
-import { updateAppFromWorkdir, pullAppSource } from "./glyphh-app-builder";
+import { updateAppFromWorkdir, pullAppSource, commitAppSource } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
 import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
@@ -680,6 +680,18 @@ const TOOLS: ToolDef[] = [
       };
       const r = await updateAppFromWorkdir(lookup);
       return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+    },
+  },
+  {
+    name: "commit_app",
+    doc: "commit_app({ message }) — record the working folder's app source as a VERSION with a message (the light versioning system: like `git commit`, no git needed). Pure versioning — nothing builds, installs, or deploys; the snapshot lands in the app's Version history where any entry can be restored. Commit at meaningful moments: after a working feature, before a risky change, when the user asks to save a version. To REVERT to an earlier version: read the history the user names (or the hash from a prior commit) and pull_app({ slug, hash }) — it restores that version's files into the project; the next commit/build makes it the new latest. A moved-head conflict means a collaborator committed first — pull_app({ slug, merge: true }) and reconcile.",
+    action: (a) => ({ kind: "edit", title: `Commit app version: ${String(a.message ?? "").slice(0, 60)}` }),
+    run: async (a) => {
+      const message = String(a.message ?? "").trim();
+      if (!message) return "ERROR: commit_app needs { message } — one line saying what this version is";
+      const r = await commitAppSource(message);
+      if (r.noop) return `nothing to commit — "${r.slug}" already matches the latest version (${r.hash.slice(0, 12)}).`;
+      return `committed "${r.slug}" @ ${r.hash.slice(0, 12)} — "${message}". It's in the Version history; pull_app({ slug: "${r.slug}", hash: "${r.hash}" }) restores it any time.`;
     },
   },
   {
@@ -2604,7 +2616,7 @@ const CODE_EXCLUDED = new Set([
   "app_list_tools", "app_call_tool",
 ]);
 const COWORK_EXCLUDED = new Set([
-  "run_command", "update_app", "pull_app",
+  "run_command", "update_app", "pull_app", "commit_app",
   "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
 ]);
 
@@ -2669,7 +2681,7 @@ async function runRolePacket(
   const PACKET_TOOLS = new Set([
     "list_dir", "read_file", "write_file", "search_files", "run_command",
     "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
-    "update_app", "pull_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
+    "update_app", "pull_app", "commit_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
   ]);
   const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,

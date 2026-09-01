@@ -110,6 +110,7 @@ type AppSnapshotRow = {
   parentHash: string | null;
   createdAt: string;
   createdByEmail: string | null;
+  note: string | null;
   isHead: boolean;
 };
 
