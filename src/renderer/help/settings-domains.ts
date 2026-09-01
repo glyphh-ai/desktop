@@ -55,6 +55,14 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
     const bareState = (d.hostnames ?? {})[d.domain];
     const chip1 = chip(CHIP[d.status] ?? d.status, pubApps);
     const chip2 = chip(bareState ? (CHIP[bareState] ?? bareState) : "", hostBare);
+    // Anything still verifying → set expectations honestly (his spec,
+    // 2026-09-01): propagation is the customer's DNS host's clock, not ours.
+    const anythingVerifying = (pubApps && (d.status === "pending" || d.status === "verifying"))
+      || (hostBare && bareState === "verifying")
+      || Object.values(d.hostnames ?? {}).includes("verifying");
+    const verifyingNote = anythingVerifying
+      ? `<p class="section-desc" style="margin:10px 0 0;">⏳ Verifying — DNS changes can take <strong>up to 24 hours</strong> to propagate, though most complete within minutes. We re-check automatically every few minutes; <strong>Refresh</strong> checks right now.</p>`
+      : "";
     const rows = d.dns.filter((r) =>
       r.type === "TXT" || (pubApps && r.type === "CNAME") || (hostBare && (r.type === "A" || r.type === "AAAA")));
     const showTable = pubApps || hostBare;
@@ -95,6 +103,7 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
           <tbody>${rows.map((r) => `<tr><td>${esc(r.type)}</td><td><code>${esc(r.name)}</code> ${copyBtn(r.name)}</td><td><code>${esc(r.value)}</code> ${copyBtn(r.value)}</td></tr>`).join("")}</tbody>
         </table>
         ${d.status !== "active" ? `<div class="settings-actions" style="margin-top:14px;"><button id="dom-verify" class="action-btn primary" type="button">Verify</button></div>` : ""}
+        ${verifyingNote}
       </div>` : ""}
 
       ${hostBare ? `<div class="lp-sec">

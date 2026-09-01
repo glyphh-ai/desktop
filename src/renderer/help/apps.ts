@@ -1467,12 +1467,16 @@ function renderDomainRow(dm: CustomDomainWire): string {
   const dns = records
     ? `<div style="margin-top:6px;padding:8px 10px;background:var(--bg-2,#1b1b1b);border-radius:6px;">
          <div class="proxy-field-hint" style="margin:0 0 4px;">Publish these DNS records:</div>${records}</div>` : "";
+  // Verifying → set expectations (his spec, 2026-09-01): propagation is the
+  // customer's DNS host's clock; ours re-checks every few minutes.
+  const verifying = dm.status === "verifying" || dm.status === "pending"
+    ? `<p class="proxy-field-hint" style="margin-top:6px;">⏳ DNS changes can take <b>up to 24 hours</b> to propagate (most complete within minutes). We re-check automatically every few minutes.</p>` : "";
   return `<div style="padding:10px 0;border-top:1px solid var(--border-1,#2a2a2a);">
     <div style="display:flex;align-items:center;gap:8px;">
       <span class="deploy-dot ${dot}"></span>
       <span style="flex:1;">${escMkt(dm.hostname)} · ${escMkt(dm.status)}${error}</span>
       <button class="action-btn danger" type="button" data-domain-remove="${escMkt(dm.id)}">Remove</button>
-    </div>${apex}${dns}
+    </div>${apex}${dns}${verifying}
   </div>`;
 }
 
