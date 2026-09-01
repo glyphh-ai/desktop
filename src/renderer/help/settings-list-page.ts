@@ -164,6 +164,9 @@ export interface EditCtx {
   reload: () => Promise<void>;
   back: () => void;
   error: (msg: string) => void;
+  /** A region BELOW the footer buttons — for read-only companion lists that
+   *  are not part of what Save commits (his spec, 2026-09-01). */
+  after: HTMLElement | null;
   /** Register what Save commits (staged edits → one write). Without one, Save
    *  just closes. Ok → the scaffold reloads the list and goes back. */
   onSave: (fn: () => Promise<{ ok: true } | { ok: false; error: string }>) => void;
@@ -198,6 +201,7 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
           <button id="${id("edit-cancel")}" class="action-btn secondary" type="button">Cancel</button>
           <button id="${id("edit-save")}" class="action-btn primary" type="button">Save</button>
         </div>
+        <div id="${id("edit-after")}"></div>
       </div>
     </div>`;
 
@@ -221,9 +225,11 @@ export function mountListPage<R>(cfg: ListPageConfig<R>): ListPageHandle {
     if (t) t.innerHTML = `${esc(cfg.editTitle(row))}${cfg.editBadge ? `<span style="margin-left:10px;vertical-align:3px;">${cfg.editBadge(row)}</span>` : ""}`;
     const body = el("edit-body"); if (!body) return;
     body.innerHTML = "";
+    const after = el("edit-after");
+    if (after) after.innerHTML = "";
     showEdit(true);
     cfg.renderEdit(row, body, {
-      reload, back: () => showEdit(false), error: editError,
+      reload, back: () => showEdit(false), error: editError, after,
       onSave: (fn) => { saveHandler = fn; },
     });
   }

@@ -9,6 +9,7 @@
 
 import { accountApi, type OrgDomain } from "./settings-api.js";
 import { mountListPage, type ListPageHandle, type EditCtx } from "./settings-list-page.js";
+import { paginate, renderPaginationBar } from "./shared.js";
 
 const $ = (id: string) => document.getElementById(id);
 const esc = (v: unknown): string =>
@@ -48,7 +49,6 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
   let apexSel = d.apexAppId ?? "";
 
   function paint(): void {
-    const hostRows = Object.entries(d.hostnames ?? {});
     // Far-right state chip per capability card: card 1 answers for the DOMAIN
     // (the TXT gate every subdomain rides); card 2 for the BARE hostname's own
     // cert/serving state. Shown only while the capability is on.
@@ -114,12 +114,45 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
         <select id="dom-apex" class="settings-input settings-input-md">${apexOptions(apexSel || null)}</select>
       </div>` : ""}
 
-      ${hostRows.length ? `<div class="lp-sec">
+      `;
+    wire();
+    paintHostnames();
+  }
+
+  // ── App hostnames — BELOW the footer (his spec, 2026-09-01): a read-only
+  // companion list with the standard grammar — full-width search + pagination.
+  let hostQuery = "";
+  let hostPage = 0;
+  function paintHostnames(): void {
+    const host = ctx.after;
+    if (!host) return;
+    const all = Object.entries(d.hostnames ?? {});
+    const q = hostQuery.trim().toLowerCase();
+    const filtered = q ? all.filter(([h]) => h.toLowerCase().includes(q)) : all;
+    const { items, state } = paginate(filtered, hostPage);
+    hostPage = state.page;
+    host.innerHTML = all.length === 0 ? "" : `
+      <div class="lp-sec" style="margin-top:26px;">
         <h4 class="acct-row-head">App hostnames</h4>
         <p class="section-desc">Hostnames currently serving under this domain. To point one hostname at one app — <code>abc.${esc(d.domain)}</code> or a bare client domain — add it from that app's Domains tab.</p>
-        <table class="lib-table dom-dns" style="font-size:12px;"><tbody>${hostRows.map(([h, s]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(s)}</td></tr>`).join("")}</tbody></table>
-      </div>` : ""}`;
-    wire();
+        <div class="crud-toolbar">
+          <div class="search-clear-wrap"><input id="dom-host-search" type="text" class="crud-search" placeholder="Search hostnames…" spellcheck="false" autocomplete="off" value="${esc(hostQuery)}" /></div>
+        </div>
+        ${filtered.length === 0
+          ? `<div class="crud-empty">No hostnames match your search.</div>`
+          : `<table class="lib-table dom-dns" style="font-size:12px;"><tbody>${items.map(([h, st]) => `<tr><td><code>${esc(h)}</code></td><td class="lib-table-dim">${esc(CHIP[st] ?? st)}</td></tr>`).join("")}</tbody></table>`}
+        <div id="dom-host-pager"></div>
+      </div>`;
+    const search = host.querySelector<HTMLInputElement>("#dom-host-search");
+    search?.addEventListener("input", () => {
+      hostQuery = search.value; hostPage = 0;
+      const pos = search.selectionStart ?? search.value.length;
+      paintHostnames();
+      const again = host.querySelector<HTMLInputElement>("#dom-host-search");
+      again?.focus(); again?.setSelectionRange(pos, pos);
+    });
+    if (state.totalPages > 1) host.querySelector("#dom-host-pager")?.appendChild(
+      renderPaginationBar(state, (p) => { hostPage = p; paintHostnames(); }));
   }
 
   function wire(): void {
