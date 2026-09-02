@@ -123,6 +123,8 @@ export function registerAdminIpc(): void {
     getClient().admin.usageDaily({ from: String(q?.from || ""), to: String(q?.to || ""), tz: q?.tz, ...(q?.orgId ? { orgId: q.orgId } : {}) }));
   ipcMain.handle("admin-usage-by-runtime", (_e, q: { from: string; to: string; orgId?: string }) =>
     getClient().admin.usageByRuntime({ from: String(q?.from || ""), to: String(q?.to || ""), ...(q?.orgId ? { orgId: q.orgId } : {}) }));
+  ipcMain.handle("admin-revenue", (_e, q: { from: string; to: string; orgId?: string }) =>
+    getClient().admin.revenue({ from: String(q?.from || ""), to: String(q?.to || ""), ...(q?.orgId ? { orgId: q.orgId } : {}) }));
 
   // ── orgs + credit grants ────────────────────────────────────────────────
   ipcMain.handle("admin-orgs", (_e, q: { q?: string; page?: number; limit?: number }) =>

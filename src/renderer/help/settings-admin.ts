@@ -93,6 +93,13 @@ interface AdminPlanPatch {
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
 interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; credits: number; tokens: number }
 interface AdminUsageDay { day: string; credits: number; requests: number; inputTokens?: number; outputTokens?: number }
+/** The REVENUE rollup (his correction, 2026-09-02): Stripe = real collected
+ *  cash; the lot fields are the paid-vs-free credits math. */
+interface AdminRevenue {
+  stripe: { totalUsdCents: number; byDay: Array<{ day: string; usdCents: number }> } | null;
+  lotsInWindow: Record<string, number>;
+  consumedAllTime: Record<string, number>;
+}
 interface AdminUsageByRuntime {
   region: string; mode: string; tier: string;
   runtimes: number; orgs: number; users: number; requests: number; credits: number;
@@ -127,6 +134,7 @@ interface SdkAdmin {
   usageByUser?: (days?: number, filters?: { orgId?: string }) => Promise<{ users: AdminUsageByUser[] }>;
   usageDaily?: (q: { from: string; to: string; tz?: string; orgId?: string }) => Promise<{ days: AdminUsageDay[] }>;
   usageByRuntime?: (q: { from: string; to: string; orgId?: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
+  revenue?: (q: { from: string; to: string; orgId?: string }) => Promise<AdminRevenue>;
   orgs?: (q?: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
   createOrg?: (input: { name: string; tier?: string }) => Promise<AdminOrgRow>;
   org?: (id: string) => Promise<AdminOrgDetail>;
@@ -156,6 +164,7 @@ interface DesktopAdminIpc {
   adminUsageByUser?: (days: number, orgId?: string) => Promise<{ users: AdminUsageByUser[] }>;
   adminUsageDaily?: (q: { from: string; to: string; tz?: string; orgId?: string }) => Promise<{ days: AdminUsageDay[] }>;
   adminUsageByRuntime?: (q: { from: string; to: string; orgId?: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
+  adminRevenue?: (q: { from: string; to: string; orgId?: string }) => Promise<AdminRevenue>;
   adminOrgs?: (q: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
   adminOrgCreate?: (input: { name: string; tier?: string }) => Promise<{ ok: boolean; org?: AdminOrgRow; error?: string }>;
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
@@ -1091,11 +1100,10 @@ let usageChart: { destroy: () => void } | null = null;
 let usageFinChart: { destroy: () => void } | null = null;
 let usageWired = false;
 
-// The financial constants (his order, 2026-09-02): revenue = credits at the
-// list price; cost = the meter's uniform COGS basis — the same $0.01/credit
-// every usage event's cost_usd_micro is recorded at, so the chart ties out
-// with the ledger.
-const USD_PER_CREDIT_LIST = 0.024;
+// Cost = the meter's uniform COGS basis — the same $0.01/credit every usage
+// event's cost_usd_micro is recorded at, so the chart ties out with the
+// ledger. Revenue is NEVER derived from credits (his correction, 2026-09-02:
+// spent credits may be free grants) — it is Stripe's collected cash.
 const USD_PER_CREDIT_COST = 0.01;
 
 const cssVar = (name: string): string =>
@@ -1167,8 +1175,9 @@ function renderUsageChart(days: AdminUsageDay[]): void {
 let lastUsageUsers: AdminUsageByUser[] = [];
 let lastUsageRuntimes: AdminUsageByRuntime[] = [];
 
-/** Token spend + revenue + cost as LINES, same window/org as the bar chart. */
-function renderUsageFinChart(days: AdminUsageDay[]): void {
+/** Token spend + revenue + cost as LINES, same window/org as the bar chart.
+ *  Revenue is REAL Stripe cash by day (empty when Stripe is unconfigured). */
+function renderUsageFinChart(days: AdminUsageDay[], stripeByDay: Map<string, number>): void {
   const canvas = $<HTMLCanvasElement>("pa-usage-fin-chart");
   const empty = $("pa-usage-fin-empty");
   if (!canvas || typeof Chart === "undefined") return;
@@ -1192,8 +1201,8 @@ function renderUsageFinChart(days: AdminUsageDay[]): void {
           borderWidth: 1.5, pointRadius: 0, tension: 0.25, borderDash: [4, 3],
         },
         {
-          label: "Revenue $", yAxisID: "yUsd",
-          data: days.map((d) => microToCredits(d.credits) * USD_PER_CREDIT_LIST),
+          label: "Revenue $ (Stripe)", yAxisID: "yUsd",
+          data: days.map((d) => (stripeByDay.get(d.day) ?? 0) / 100),
           borderColor: accent, backgroundColor: "transparent",
           borderWidth: 2, pointRadius: 0, tension: 0.25,
         },
@@ -1297,11 +1306,12 @@ async function refreshAdminUsage(): Promise<void> {
   // org + window scope the cards, both charts, and the other two tabs.
   const orgId = $<HTMLSelectElement>("pa-usage-org")?.value || undefined;
   const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(orgId ? { orgId } : {}) };
-  // The three rollups are independent — one failing must not blank the rest.
-  const [daysRes, usersRes, runtimesRes] = await Promise.allSettled([
+  // The rollups are independent — one failing must not blank the rest.
+  const [daysRes, usersRes, runtimesRes, revenueRes] = await Promise.allSettled([
     read((a) => a.usageDaily?.(query), (g) => g.adminUsageDaily?.(query)),
     read((a) => a.usageByUser?.(win, orgId ? { orgId } : {}), (g) => g.adminUsageByUser?.(win, orgId)),
     read((a) => a.usageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
+    read((a) => a.revenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminRevenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
   ]);
   const problems: string[] = [];
   const days: AdminUsageDay[] = daysRes.status === "fulfilled" ? (daysRes.value?.days || []) : (problems.push("daily series"), []);
@@ -1320,12 +1330,29 @@ async function refreshAdminUsage(): Promise<void> {
   set("pa-usage-active", fmtInt(users.length));
   set("pa-usage-total", `${fmtInt(credits)} credits · ${fmtInt(requests)} calls`);
   set("pa-usage-range", `last ${win} days`);
-  // Revenue + cost ride the SAME credits the ledger charges (constants above).
-  set("pa-usage-revenue", `$${(credits * USD_PER_CREDIT_LIST).toFixed(2)}`);
+  // REVENUE = Stripe's collected cash, never credits (his correction,
+  // 2026-09-02: spent credits may be free grants). Cost stays the COGS basis.
+  const revenue: AdminRevenue | null = revenueRes.status === "fulfilled" ? (revenueRes.value ?? null) : null;
+  set("pa-usage-revenue", revenue?.stripe ? `$${(revenue.stripe.totalUsdCents / 100).toFixed(2)}` : "—");
+  const revSub = document.querySelector("#pa-usage-revenue + .dash-card-sub");
+  if (revSub) revSub.textContent = revenue?.stripe ? "collected via Stripe" : "Stripe not configured";
   set("pa-usage-cost", `$${(credits * USD_PER_CREDIT_COST).toFixed(2)}`);
+  // The paid-vs-free credits math (he asked for it explicitly): what entered
+  // the window by lot kind + the exact all-time burn split.
+  const mix = $("pa-usage-credit-mix");
+  if (mix) {
+    if (revenue) {
+      const m = (v?: number): string => fmtInt(microToCredits(v ?? 0));
+      const freeIn = (revenue.lotsInWindow.grant ?? 0) + (revenue.lotsInWindow.admin ?? 0);
+      const freeBurn = (revenue.consumedAllTime.grant ?? 0) + (revenue.consumedAllTime.admin ?? 0);
+      mix.textContent =
+        `Credits added in window: ${m(revenue.lotsInWindow.purchase)} purchased · ${m(freeIn)} free/granted. ` +
+        `Burned all-time: ${m(revenue.consumedAllTime.purchase)} paid · ${m(freeBurn)} free (windowed burn split isn't tracked per-debit).`;
+    } else mix.textContent = "";
+  }
   set("pa-usage-fin-range", `last ${win} days${orgId ? " · one org" : " · all orgs"}`);
   renderUsageChart(days);
-  renderUsageFinChart(days);
+  renderUsageFinChart(days, new Map((revenue?.stripe?.byDay ?? []).map((d) => [d.day, d.usdCents])));
   paintUsageUsers(users);
   paintUsageRuntimes(runtimes);
 }

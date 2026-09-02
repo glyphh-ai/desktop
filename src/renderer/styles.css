@@ -16131,11 +16131,20 @@ body.code-dragging #app-rail { transition: none; }
 
 /* App rail — user area (bottom) */
 /* Org switcher (multi-org members): a compact select at the rail's top-left
-   and the Settings nav head. Hidden until initOrgSwitcher() finds 2+ orgs. */
-.org-switch { padding: 8px 10px 2px; }
+   and the Settings nav head. Hidden until initOrgSwitcher() finds 2+ orgs.
+   FULLY self-styled — settings-input's global margins overlapped the first
+   nav item on the platform (his report, 2026-09-02). */
+.org-switch { flex-shrink: 0; padding: 0 12px 10px 0; }
+body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
+#app-rail > .org-switch { padding: 10px 10px 4px; }
 .org-switch .org-switch-select {
-  width: 100%; margin: 0; height: 30px; font-size: 12.5px;
+  display: block; width: 100%; height: 34px; margin: 0;
+  background: var(--surface-2, transparent); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-family: var(--font-sans); font-size: 13px; font-weight: 500;
+  padding: 0 10px;
 }
+.org-switch .org-switch-select:hover { border-color: var(--text-3); }
 
 .app-rail-user {
   margin-top: auto;

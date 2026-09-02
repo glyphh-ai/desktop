@@ -805,6 +805,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-usage-daily", q) as Promise<{ days: unknown[] }>,
   adminUsageByRuntime: (q: { from: string; to: string; orgId?: string }) =>
     ipcRenderer.invoke("admin-usage-by-runtime", q) as Promise<{ runtimes: unknown[] }>,
+  adminRevenue: (q: { from: string; to: string; orgId?: string }) =>
+    ipcRenderer.invoke("admin-revenue", q) as Promise<unknown>,
   adminOrgs: (q: { q?: string; page?: number; limit?: number }) =>
     ipcRenderer.invoke("admin-orgs", q) as Promise<{ orgs: unknown[]; total: number }>,
   adminOrg: (id: string) => ipcRenderer.invoke("admin-org", id) as Promise<unknown>,

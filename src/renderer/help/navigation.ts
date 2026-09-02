@@ -652,7 +652,9 @@ export function initOrgSwitcher(): void {
       host.classList.remove("hidden");
       host.innerHTML = "";
       const sel = document.createElement("select");
-      sel.className = "settings-input org-switch-select";
+      // Self-owned styling — settings-input's global margins fought the nav's
+      // flow and overlapped the first item (his report, 2026-09-02).
+      sel.className = "org-switch-select";
       sel.title = "Switch organization";
       for (const m of list) {
         const opt = document.createElement("option");
