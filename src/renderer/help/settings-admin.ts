@@ -1100,11 +1100,12 @@ let usageChart: { destroy: () => void } | null = null;
 let usageFinChart: { destroy: () => void } | null = null;
 let usageWired = false;
 
-// Cost = the meter's uniform COGS basis — the same $0.01/credit every usage
-// event's cost_usd_micro is recorded at, so the chart ties out with the
-// ledger. Revenue is NEVER derived from credits (his correction, 2026-09-02:
-// spent credits may be free grants) — it is Stripe's collected cash.
-const USD_PER_CREDIT_COST = 0.01;
+// Cost = the meter's uniform COGS basis: the catalog prices models at 62.5
+// credits per vendor dollar, so one burned credit = 1/62.5 = $0.016 of vendor
+// spend (matches the meter's C_MICRO_USD). Revenue is NEVER derived from
+// credits (his correction, 2026-09-02: spent credits may be free grants) —
+// it is Stripe's collected cash.
+const USD_PER_CREDIT_COST = 0.016;
 
 const cssVar = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -1343,7 +1344,9 @@ async function refreshAdminUsage(): Promise<void> {
   // window while cost is credits BURNED in it — different bases (credits
   // bought one month burn in another), so this is the cash-vs-burn margin.
   const revUsd = revenue?.stripe ? revenue.stripe.totalUsdCents / 100 : null;
-  set("pa-usage-margin", revUsd && revUsd > 0 ? `${(((revUsd - costUsd) / revUsd) * 100).toFixed(1)}%` : "—");
+  // Two decimals — one decimal rounded 99.95% to a suspicious-looking
+  // "100.0%" (his report, 2026-09-02).
+  set("pa-usage-margin", revUsd && revUsd > 0 ? `${(((revUsd - costUsd) / revUsd) * 100).toFixed(2)}%` : "—");
   // The paid-vs-free credits math (he asked for it explicitly): what entered
   // the window by lot kind + the exact all-time burn split.
   const mix = $("pa-usage-credit-mix");
