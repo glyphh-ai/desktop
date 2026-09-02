@@ -6,7 +6,7 @@ import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, 
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
-import { clearUiState } from "./ui-state.js";
+import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
@@ -540,7 +540,64 @@ export function openSettingsModal(sub?: string): void {
   loadSettings();
   gateAdminSubs();
   initOrgSwitcher();
+  initCollapsibleNavGroups();
   selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
+}
+
+// ── Collapsible rail sections (his order, 2026-09-02, PLATFORM only) ─────────
+// Every .settings-nav-group header toggles the items under it. Organization
+// stays open by default; everything else starts collapsed. The preference
+// follows the USER server-side (ui-state — zero-local-storage law), so the
+// rail looks the same on every device.
+const NAV_COLLAPSE_KEY = "platformNavCollapsed";
+let navGroupsWired = false;
+
+function navGroupKey(el: HTMLElement): string {
+  return (el.textContent || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || "group";
+}
+
+/** The items a group owns: every sibling until the next group header. */
+function navGroupItems(group: HTMLElement): HTMLElement[] {
+  const items: HTMLElement[] = [];
+  for (let el = group.nextElementSibling; el && !el.classList.contains("settings-nav-group"); el = el.nextElementSibling) {
+    items.push(el as HTMLElement);
+  }
+  return items;
+}
+
+function initCollapsibleNavGroups(): void {
+  if (!document.body.classList.contains("platform-shell") || navGroupsWired) return;
+  navGroupsWired = true;
+  const nav = document.querySelector<HTMLElement>(".settings-nav:not(.docs-nav)");
+  if (!nav) return;
+  const groups = Array.from(nav.querySelectorAll<HTMLElement>(".settings-nav-group"));
+  const apply = (group: HTMLElement, collapsed: boolean): void => {
+    group.classList.toggle("nav-group-closed", collapsed);
+    for (const item of navGroupItems(group)) item.classList.toggle("nav-collapsed", collapsed);
+  };
+  const readMap = (): Record<string, boolean> => {
+    try { return JSON.parse(uiStateGet(NAV_COLLAPSE_KEY) || "{}") as Record<string, boolean>; } catch { return {}; }
+  };
+  for (const group of groups) {
+    group.classList.add("nav-group-collapsible");
+    group.addEventListener("click", () => {
+      const collapsed = !group.classList.contains("nav-group-closed");
+      apply(group, collapsed);
+      const map = readMap();
+      map[navGroupKey(group)] = collapsed;
+      uiStateSet(NAV_COLLAPSE_KEY, JSON.stringify(map));
+    });
+  }
+  // Initial state once the server pref is in memory: the user's map, else the
+  // default — Organization open, everything else closed.
+  void loadUiState().then(() => {
+    const map = readMap();
+    for (const group of groups) {
+      const key = navGroupKey(group);
+      const collapsed = key in map ? !!map[key] : key !== "organization";
+      apply(group, collapsed);
+    }
+  });
 }
 
 /** Hide the admin-only surfaces for non-admins on modal open — the SAME rule

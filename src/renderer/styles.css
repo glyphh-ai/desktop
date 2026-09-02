@@ -19892,6 +19892,19 @@ body.platform-shell .settings-nav-item {
 }
 body.platform-shell .settings-nav-item .settings-nav-icon { width: 17px; height: 17px; }
 body.platform-shell .settings-nav-group { font-size: 11px; }
+/* Collapsible rail sections (his order, 2026-09-02, platform only): the header
+   toggles its items; a caret shows state. Preference rides ui-state. */
+body.platform-shell .settings-nav-group.nav-group-collapsible {
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+}
+body.platform-shell .settings-nav-group.nav-group-collapsible::after {
+  content: ""; width: 7px; height: 7px; margin-left: auto;
+  border-right: 1.5px solid var(--text-faint); border-bottom: 1.5px solid var(--text-faint);
+  transform: rotate(45deg); transition: transform 0.15s ease;
+}
+body.platform-shell .settings-nav-group.nav-group-closed::after { transform: rotate(-45deg); }
+body.platform-shell .settings-nav .nav-collapsed { display: none !important; }
 body.platform-shell #platform-brand { height: 34px; }
 
 /* ── Rail-bottom user chip: first name over the plan; menu opens UP with
