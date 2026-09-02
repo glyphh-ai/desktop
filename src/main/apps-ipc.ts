@@ -872,6 +872,20 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
 
+  // ── Agency client orgs (his order, 2026-09-02): create + fund workspaces ──
+  ipcMain.handle("org-clients", async () => {
+    try { return { ok: true, ...(await getClient().org.clients()) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), clients: [] }; }
+  });
+  ipcMain.handle("org-client-create", async (_e, name: string) => {
+    try { return { ...(await getClient().org.createClient(name)), ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("org-client-fund", async (_e, id: string, credits: number) => {
+    try { return { ...(await getClient().org.fundClient(id, credits)), ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   // ── Marketing links (his order, 2026-09-02): org campaign URLs + attribution ──
   ipcMain.handle("marketing-links", async (_e, days?: number) => {
     try { return { ok: true, ...(await getClient().org.marketingLinks(days ?? 30)) }; }

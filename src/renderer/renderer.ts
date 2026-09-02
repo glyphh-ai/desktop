@@ -286,6 +286,9 @@ declare global {
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
       appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
+      orgClients: () => Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number }>; error?: string }>;
+      orgClientCreate: (name: string) => Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;
+      orgClientFund: (id: string, credits: number) => Promise<{ ok: boolean; transferredMicro?: number; error?: string }>;
       libraryShare: (kind: "skill" | "loop", ref: string) => Promise<{ ok: boolean; id?: string; status?: string; error?: string }>;
       libraryPublish: (kind: "skill" | "loop", ref: string) => Promise<{ ok: boolean; id?: string; reviewStatus?: string; error?: string }>;
       libraryPending: () => Promise<{ ok: boolean; pending: LibraryShareRow[]; error?: string }>;

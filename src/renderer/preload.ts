@@ -722,6 +722,13 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("marketing-link-update", id, patch) as Promise<{ ok: boolean; error?: string }>,
   marketingLinkDelete: (id: string) =>
     ipcRenderer.invoke("marketing-link-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  // Agency client orgs — workspaces the org creates and funds for its clients.
+  orgClients: () =>
+    ipcRenderer.invoke("org-clients") as Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number }>; error?: string }>,
+  orgClientCreate: (name: string) =>
+    ipcRenderer.invoke("org-client-create", name) as Promise<{ ok: boolean; id?: string; name?: string; error?: string }>,
+  orgClientFund: (id: string, credits: number) =>
+    ipcRenderer.invoke("org-client-fund", id, credits) as Promise<{ ok: boolean; transferredMicro?: number; error?: string }>,
   // Library sharing + marketplace (skills + loops) — free installs, approvals.
   libraryShare: (kind: "skill" | "loop", ref: string) =>
     ipcRenderer.invoke("library-share", kind, ref) as Promise<{ ok: boolean; id?: string; status?: string; error?: string }>,

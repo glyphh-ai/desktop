@@ -902,6 +902,19 @@ export function buildContract(client, deps) {
       try { return { ok: true, ...(await client.org.domainsTraffic(days ?? 30, filter)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
     },
+    // Agency client orgs — workspaces the org creates and funds for its clients.
+    orgClients: async () => {
+      try { return { ok: true, ...(await client.org.clients()) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), clients: [] }; }
+    },
+    orgClientCreate: async (name) => {
+      try { return { ...(await client.org.createClient(name)), ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    orgClientFund: async (id, credits) => {
+      try { return { ...(await client.org.fundClient(id, credits)), ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     // Library sharing + marketplace (skills + loops) — free installs, approvals.
     libraryShare: async (kind, ref) => {
       try { return { ok: true, ...(await (kind === "skill" ? client.skills.share(ref) : client.loops.share(ref))) }; }

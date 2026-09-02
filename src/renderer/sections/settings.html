@@ -15,6 +15,9 @@
               <div class="settings-nav-group platform-only">Organization</div>
               <button id="nav-org-general" class="settings-nav-item platform-only hidden" data-sub="org-general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>General</span></button>
               <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
+              <!-- Agency client workspaces (his order, 2026-09-02): org_admin
+                   only, like Billing — creating + funding moves money. -->
+              <button id="nav-clients" class="settings-nav-item platform-only hidden" data-sub="clients"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M4 21V8l5-3v16"/><path d="M14 21V4l6 3v14"/><path d="M6.5 12h.01"/><path d="M6.5 16h.01"/><path d="M17 12h.01"/><path d="M17 16h.01"/></svg><span>Clients</span></button>
               <button id="nav-billing" class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <button class="settings-nav-item platform-only" data-sub="webhooks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 1 1 8.9 13.1"/><path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/><path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/></svg><span>Integration</span></button>
@@ -665,6 +668,23 @@
                     <div style="flex:1;min-width:260px;"><label class="settings-label">Referrers</label><div id="mx-refs" class="mbr-list"></div></div>
                   </div>
                   <div id="mx-hosts" class="mbr-list" style="margin-top:14px;"></div>
+                </div>
+              </div>
+
+              <!-- Organization › Clients (his order, 2026-09-02): workspaces
+                   the org creates + FUNDS for its clients — the consultancy
+                   model. settings-clients.ts renders. -->
+              <div class="settings-panel" data-sub="clients">
+                <div id="cl-admin-only" class="crud-empty hidden">Only an organization admin can manage client workspaces.</div>
+                <div id="cl-body">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <h2 style="margin:0;">Clients</h2>
+                    <div style="flex:1;"></div>
+                    <button id="cl-new-btn" class="action-btn primary" type="button">+ New client workspace</button>
+                  </div>
+                  <p class="section-desc" style="margin-top:6px;">Workspaces you create and fund for your clients. Each is a full organization — its own apps, members, and data — billed from your credits; you invoice them however you like.</p>
+                  <div id="cl-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <div id="cl-list" class="mbr-list"></div>
                 </div>
               </div>
 
