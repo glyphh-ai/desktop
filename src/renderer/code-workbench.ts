@@ -9584,6 +9584,13 @@ async function init(): Promise<void> {
       railCells.push([c]);
     }
     renderRails();
+    // The same accent OUTLINE an app gets when it renders on the page (his
+    // order, 2026-09-02): a layout swap paints a whole grid at once — every
+    // panel announces itself with the mount flash, exactly like focusAppSlot.
+    document.querySelectorAll<HTMLElement>("#code-wb-rails .ws-rail-slot").forEach((s) => {
+      s.classList.add("flash");
+      window.setTimeout(() => s.classList.remove("flash"), 700);
+    });
     // Proportion the stacked slot heights per rowHeights (post-render so the
     // slot elements exist).
     requestAnimationFrame(() => {
