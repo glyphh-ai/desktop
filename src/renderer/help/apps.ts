@@ -1280,6 +1280,62 @@ export function paintTrafficReport(
   hostsEl.appendChild(table);
 }
 
+/** Duration in a human unit: 47s / 3m 20s / 1h 4m. */
+const fmtDur = (ms: number): string => {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+};
+
+/**
+ * The TELEMETRY rollups riding a traffic report (his order, 2026-09-02):
+ * engagement cards (visitors / sessions / bounce / avg session) + Top pages +
+ * Top referrers tables. Shared by Hosting › Metrics and the app Traffic tab.
+ */
+export function paintTelemetry(
+  ids: { cards: string; pages: string; referrers: string },
+  rep: {
+    topPages?: Array<{ path: string; views: number }>;
+    topReferrers?: Array<{ refHost: string; views: number }>;
+    engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
+  },
+): void {
+  const cardsEl = document.getElementById(ids.cards);
+  if (cardsEl) {
+    const e = rep.engagement ?? { uniques: 0, sessions: 0, bounced: 0, durationMsSum: 0, viewsSum: 0 };
+    const bounce = e.sessions > 0 ? `${Math.round((e.bounced / e.sessions) * 100)}%` : "—";
+    const avgDur = e.sessions > 0 ? fmtDur(e.durationMsSum / e.sessions) : "—";
+    const card = (label: string, value: string, sub: string) =>
+      `<div class="dash-card"><div class="dash-card-label">${label}</div><div class="dash-card-value">${value}</div><div class="dash-card-sub">${sub}</div></div>`;
+    cardsEl.innerHTML =
+      card("Visitors", fmtInt(e.uniques), "unique, this window") +
+      card("Sessions", fmtInt(e.sessions), e.sessions > 0 ? `${(e.viewsSum / e.sessions).toFixed(1)} pages each` : "page-view visits") +
+      card("Bounce rate", bounce, "single-page sessions") +
+      card("Avg session", avgDur, "first to last request");
+  }
+  const fill = (elId: string, head: string, rows: Array<{ name: string; views: number }>): void => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.innerHTML = "";
+    if (!rows.length) { el.innerHTML = `<div class="crud-empty">Nothing in this window yet.</div>`; return; }
+    const table = document.createElement("table");
+    table.className = "lib-table";
+    table.innerHTML = `<thead><tr><th>${head}</th><th>Views</th></tr></thead>`;
+    const tbody = document.createElement("tbody");
+    for (const r of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-dim">${fmtInt(r.views)}</td>`;
+      (tr.querySelector(".lib-table-name") as HTMLElement).textContent = r.name === "__other__" ? "(other)" : r.name;
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    el.appendChild(table);
+  };
+  fill(ids.pages, "Page", (rep.topPages ?? []).map((p) => ({ name: p.path, views: p.views })));
+  fill(ids.referrers, "Referrer", (rep.topReferrers ?? []).map((r) => ({ name: r.refHost, views: r.views })));
+}
+
 const appTrafficChartRef = { current: null as { destroy: () => void } | null };
 
 async function loadTrafficTab(): Promise<void> {
@@ -1291,6 +1347,7 @@ async function loadTrafficTab(): Promise<void> {
     { totals: "apptraffic-totals", chart: "apptraffic-chart", empty: "apptraffic-empty", hosts: "apptraffic-hosts", error: "apptraffic-error" },
     rep, appTrafficChartRef,
   );
+  paintTelemetry({ cards: "apptraffic-cards", pages: "apptraffic-pages", referrers: "apptraffic-refs" }, rep);
 }
 
 // ── Co-working: collaborators + the org approval queue ───────────

@@ -119,6 +119,29 @@ type EdgeTrafficDayRow = {
   blocked: number;
 };
 
+/** Mirrors preload.ts EdgeTelemetryRollups — pages/referrers/engagement. */
+type EdgeTelemetryRollups = {
+  topPages?: Array<{ path: string; views: number }>;
+  topReferrers?: Array<{ refHost: string; views: number }>;
+  engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
+};
+
+/** Mirrors preload.ts MarketingLinkRow — an org campaign link + window stats. */
+type MarketingLinkRow = {
+  id: string;
+  code: string;
+  name: string;
+  targetUrl: string;
+  url: string;
+  appId: string | null;
+  archived: boolean;
+  createdAt: string;
+  clicks: number;
+  sessions: number;
+  bounced: number;
+  durationMsSum: number;
+};
+
 /** Mirrors preload.ts AppSnapshotRow — one entry of the source snapshot chain. */
 type AppSnapshotRow = {
   hash: string;
@@ -236,8 +259,12 @@ declare global {
       appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
       appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
-      appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>;
-      orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>;
+      appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
+      orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
+      marketingLinks: (days?: number) => Promise<{ ok: boolean; links: MarketingLinkRow[]; error?: string }>;
+      marketingLinkCreate: (input: { name: string; targetUrl: string; appId?: string }) => Promise<{ ok: boolean; link?: MarketingLinkRow; error?: string }>;
+      marketingLinkUpdate: (id: string, patch: { name?: string; archived?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+      marketingLinkDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
       appSourceHistory: (slug: string) => Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>;
       appSourceRestore: (slug: string, hash: string) => Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;

@@ -294,11 +294,12 @@ async function loadMetricsTraffic(): Promise<void> {
   const appId = val("mx-app") || undefined;
   const rep = await window.glyphh.orgDomainsTraffic?.(days, { host, appId });
   if (!rep) return;
-  const { paintTrafficReport } = await import("./apps.js");
+  const { paintTrafficReport, paintTelemetry } = await import("./apps.js");
   paintTrafficReport(
     { totals: "mx-totals", chart: "mx-chart", empty: "mx-empty", hosts: "mx-hosts", error: "mx-error" },
     rep, mxChartRef,
   );
+  paintTelemetry({ cards: "mx-cards", pages: "mx-pages", referrers: "mx-refs" }, rep);
 }
 
 /** Refill a filter select, keeping the current pick when it still exists. */

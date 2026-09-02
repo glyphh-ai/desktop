@@ -872,6 +872,24 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
 
+  // ── Marketing links (his order, 2026-09-02): org campaign URLs + attribution ──
+  ipcMain.handle("marketing-links", async (_e, days?: number) => {
+    try { return { ok: true, ...(await getClient().org.marketingLinks(days ?? 30)) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), links: [] }; }
+  });
+  ipcMain.handle("marketing-link-create", async (_e, input: { name: string; targetUrl: string; appId?: string }) => {
+    try { return { ok: true, ...(await getClient().org.createMarketingLink(input)) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("marketing-link-update", async (_e, id: string, patch: { name?: string; archived?: boolean }) => {
+    try { await getClient().org.updateMarketingLink(id, patch); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("marketing-link-delete", async (_e, id: string) => {
+    try { await getClient().org.deleteMarketingLink(id); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   // ── Version history (his order, 2026-09-01): the snapshot chain + restore ──
   ipcMain.handle("app-source-history", async (_e, slug: string) => {
     try { return { ok: true, history: await getClient().apps.sourceHistory(slug) }; }

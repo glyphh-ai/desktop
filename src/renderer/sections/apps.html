@@ -486,6 +486,13 @@
                     <canvas id="apptraffic-chart"></canvas>
                     <div class="dash-chart-empty hidden" id="apptraffic-empty">No edge traffic in this window.</div>
                   </div>
+                  <!-- Telemetry (his order, 2026-09-02): engagement cards +
+                       top pages + referrers, painted by paintTelemetry. -->
+                  <div id="apptraffic-cards" class="dash-grid" style="margin-top:12px;"></div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+                    <div style="flex:1;min-width:240px;"><label class="settings-label">Top pages</label><div id="apptraffic-pages" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:240px;"><label class="settings-label">Referrers</label><div id="apptraffic-refs" class="mbr-list"></div></div>
+                  </div>
                   <div id="apptraffic-hosts" class="mbr-list" style="margin-top:12px;"></div>
                 </div>
 

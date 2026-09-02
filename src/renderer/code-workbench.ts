@@ -8163,9 +8163,13 @@ async function init(): Promise<void> {
       const res = lane === "git" ? lastGit : { text: lastR2.text, error: lastR2.error };
       if (lane === "git" && res.error) {
         // Not a repo but R2-versioned → the R2 lane already took over above;
-        // this branch is the genuinely-unversioned folder.
-        summary.textContent = "error";
-        filesEl.innerHTML = `<div class="ws-diff-empty">${res.error}</div>`;
+        // this branch is the genuinely-unversioned folder. That is a NORMAL
+        // state for a fresh project, not an error (his report, 2026-09-02).
+        const fresh = /not a git repo|no folder/i.test(res.error);
+        summary.textContent = fresh ? "not initialized" : "error";
+        filesEl.innerHTML = `<div class="ws-diff-empty">${fresh
+          ? "No version history yet — this folder isn't a git repo. Ask the agent to set one up and changes will show here."
+          : res.error}</div>`;
         return;
       }
       if (lane === "r2" && res.error) {

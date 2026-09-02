@@ -16138,6 +16138,9 @@ body.code-dragging #app-rail { transition: none; }
    FULLY self-styled — settings-input's global margins overlapped the first
    nav item on the platform (his report, 2026-09-02). */
 .org-switch { flex-shrink: 0; padding: 0 12px 10px 0; }
+/* Desktop settings nav: UNDER the search, sharing its horizontal metrics
+   (search wrap pads 12px left, 0 right — his order, 2026-09-02). */
+.settings-nav > .org-switch { padding: 0 0 10px 12px; }
 body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 #app-rail > .org-switch { padding: 10px 10px 4px; }
 .org-switch .org-switch-select {

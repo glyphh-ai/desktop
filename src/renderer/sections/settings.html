@@ -1,14 +1,15 @@
         <div class="help-section" data-section="settings">
           <div class="settings-layout">
             <nav class="settings-nav">
-              <!-- Org switcher (multi-org members only) — same control as the
-                   platform rail's; filled by initOrgSwitcher(). -->
-              <div id="org-switch-settings" class="org-switch hidden"></div>
               <div id="settings-nav-search-wrap" class="not-on-platform">
                 <span class="set-search-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg></span>
                 <input id="settings-nav-search" type="text" class="settings-input" placeholder="Search" spellcheck="false" autocomplete="off" />
                 <div id="settings-nav-search-pop" class="hidden"></div>
               </div>
+              <!-- Org switcher (multi-org members only) — same control as the
+                   platform rail's; filled by initOrgSwitcher(). UNDER the
+                   search, aligned to it (his order, 2026-09-02). -->
+              <div id="org-switch-settings" class="org-switch hidden"></div>
                   <button class="settings-nav-item platform-only dash-plain" data-sub="dash"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <div class="settings-nav-group platform-only">Organization</div>
@@ -29,6 +30,10 @@
               <div class="settings-nav-group platform-only" id="nav-group-hosting">Hosting</div>
               <button id="nav-domains" class="settings-nav-item platform-only" data-sub="domains"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5c2.6 2.6 4 6 4 9.5s-1.4 6.9-4 9.5c-2.6-2.6-4-6-4-9.5s1.4-6.9 4-9.5z"/></svg><span>Domains</span></button>
               <button id="nav-metrics" class="settings-nav-item platform-only" data-sub="metrics"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3.5" height="8" rx="0.8"/><rect x="10.2" y="7" width="3.5" height="13" rx="0.8"/><rect x="15.4" y="3.5" width="3.5" height="16.5" rx="0.8"/></svg><span>Metrics</span></button>
+              <!-- Marketing (his order, 2026-09-02): campaign links tied back
+                   to clicks on apps + domains. Admin-gated like Hosting. -->
+              <div class="settings-nav-group platform-only" id="nav-group-marketing">Marketing</div>
+              <button id="nav-mkt-links" class="settings-nav-item platform-only" data-sub="mkt-links"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg><span>Links</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
@@ -647,13 +652,29 @@
                   </div>
                   <p class="section-desc" style="margin-top:6px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
                   <div id="mx-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <!-- Engagement cards (his order, 2026-09-02): visitors,
+                       sessions, bounce, avg session — paintTelemetry fills. -->
+                  <div id="mx-cards" class="dash-grid" style="margin-bottom:12px;"></div>
                   <p class="settings-hint" id="mx-totals" style="margin:0 0 10px;"></p>
                   <div class="dash-chart-wrap" style="height:220px;">
                     <canvas id="mx-chart"></canvas>
                     <div class="dash-chart-empty hidden" id="mx-empty">No edge traffic in this window.</div>
                   </div>
-                  <div id="mx-hosts" class="mbr-list" style="margin-top:12px;"></div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">
+                    <div style="flex:1;min-width:260px;"><label class="settings-label">Top pages</label><div id="mx-pages" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:260px;"><label class="settings-label">Referrers</label><div id="mx-refs" class="mbr-list"></div></div>
+                  </div>
+                  <div id="mx-hosts" class="mbr-list" style="margin-top:14px;"></div>
                 </div>
+              </div>
+
+              <!-- Marketing › Links (his order, 2026-09-02): org-minted
+                   campaign URLs; the edge ties clicks + sessions back to each
+                   code. settings-marketing.ts renders the list + create modal
+                   via the shared list-page scaffold. -->
+              <div class="settings-panel" data-sub="mkt-links">
+                <div id="mkt-admin-only" class="crud-empty hidden">Only an organization admin can manage marketing links.</div>
+                <div id="mkt-body"><div id="mkt-root"></div></div>
               </div>
 
               <div class="settings-panel" data-sub="workspaces">

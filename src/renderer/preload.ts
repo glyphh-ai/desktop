@@ -100,6 +100,29 @@ export interface EdgeTrafficDayRow {
   blocked: number;
 }
 
+/** Telemetry rollups riding a traffic report (pages/referrers/engagement). */
+export interface EdgeTelemetryRollups {
+  topPages?: Array<{ path: string; views: number }>;
+  topReferrers?: Array<{ refHost: string; views: number }>;
+  engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
+}
+
+/** An org marketing link + its window stats. */
+export interface MarketingLinkRow {
+  id: string;
+  code: string;
+  name: string;
+  targetUrl: string;
+  url: string;
+  appId: string | null;
+  archived: boolean;
+  createdAt: string;
+  clicks: number;
+  sessions: number;
+  bounced: number;
+  durationMsSum: number;
+}
+
 /** One entry of an app's source snapshot chain (version history). */
 export interface AppSnapshotRow {
   hash: string;
@@ -662,9 +685,18 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-org-pending-releases") as Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>,
   // Edge traffic — the apex fleet's per-hostname stats (org + per-app views).
   appTraffic: (slug: string, days?: number) =>
-    ipcRenderer.invoke("app-traffic", slug, days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
+    ipcRenderer.invoke("app-traffic", slug, days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>,
   orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) =>
-    ipcRenderer.invoke("org-domains-traffic", days, filter) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
+    ipcRenderer.invoke("org-domains-traffic", days, filter) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>,
+  // Marketing links (his order, 2026-09-02): campaign URLs + attribution stats.
+  marketingLinks: (days?: number) =>
+    ipcRenderer.invoke("marketing-links", days) as Promise<{ ok: boolean; links: MarketingLinkRow[]; error?: string }>,
+  marketingLinkCreate: (input: { name: string; targetUrl: string; appId?: string }) =>
+    ipcRenderer.invoke("marketing-link-create", input) as Promise<{ ok: boolean; link?: MarketingLinkRow; error?: string }>,
+  marketingLinkUpdate: (id: string, patch: { name?: string; archived?: boolean }) =>
+    ipcRenderer.invoke("marketing-link-update", id, patch) as Promise<{ ok: boolean; error?: string }>,
+  marketingLinkDelete: (id: string) =>
+    ipcRenderer.invoke("marketing-link-delete", id) as Promise<{ ok: boolean; error?: string }>,
   // Version history — the source snapshot chain + restore-a-snapshot.
   appSourceHistory: (slug: string) =>
     ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,

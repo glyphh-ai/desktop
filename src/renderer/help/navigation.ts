@@ -16,6 +16,7 @@ import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadRuntime } from "./settings-runtime.js";
 import { loadMarketplaceBlocks } from "./settings-workspaces.js";
 import { loadDomainsPanel, loadMetricsPanel } from "./settings-domains.js";
+import { loadMarketingPanel } from "./settings-marketing.js";
 import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -618,8 +619,9 @@ function gateAdminSubs(): void {
     // keeps Billing personal-visible as before.
     if (document.body.classList.contains("platform-shell")) {
       document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
-      // The Hosting group (Domains + Metrics) is admin territory wholesale.
-      for (const id of ["nav-models", "nav-org-marketplace", "nav-group-hosting", "nav-domains", "nav-metrics"]) {
+      // The Hosting + Marketing groups are admin territory wholesale.
+      for (const id of ["nav-models", "nav-org-marketplace", "nav-group-hosting", "nav-domains", "nav-metrics",
+                        "nav-group-marketing", "nav-mkt-links"]) {
         document.getElementById(id)?.classList.toggle("hidden", !admin);
       }
     }
@@ -791,6 +793,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "domains") void loadDomainsPanel();
   else if (sub === "metrics") void loadMetricsPanel();
+  else if (sub === "mkt-links") void loadMarketingPanel();
   else if (sub === "org-marketplace") loadMarketplaceBlocks();
   else if (sub === "models") loadModelsAdmin();
   // The Platform group — the super-admin console (settings-admin.ts). Each

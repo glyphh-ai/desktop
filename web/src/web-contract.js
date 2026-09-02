@@ -902,6 +902,23 @@ export function buildContract(client, deps) {
       try { return { ok: true, ...(await client.org.domainsTraffic(days ?? 30, filter)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
     },
+    // Marketing links — campaign URLs + attribution stats.
+    marketingLinks: async (days) => {
+      try { return { ok: true, ...(await client.org.marketingLinks(days ?? 30)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), links: [] }; }
+    },
+    marketingLinkCreate: async (input) => {
+      try { return { ok: true, ...(await client.org.createMarketingLink(input)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    marketingLinkUpdate: async (id, patch) => {
+      try { await client.org.updateMarketingLink(id, patch); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    marketingLinkDelete: async (id) => {
+      try { await client.org.deleteMarketingLink(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     // Version history — the same chain the desktop shows; restore needs a
     // local working folder, which only the desktop has.
     appSourceHistory: async (slug) => {
