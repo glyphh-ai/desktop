@@ -23,6 +23,14 @@ const appsCell = (d: OrgDomain): string => {
   const n = Object.keys(d.hostnames ?? {}).length;
   return esc(n ? `${n} app hostname${n === 1 ? "" : "s"}` : d.apexAppId ? "home app set" : "—");
 };
+// PLATFORM ADMIN rows (his order, 2026-09-02): every org's domains ride the
+// list, org-labelled and read-only — the per-org DNS truth lives in each
+// org's store, so managing one means impersonating into it.
+type MaybeForeign = OrgDomain & { foreign?: boolean; orgName?: string };
+const domainCell = (d: OrgDomain): string => {
+  const f = d as MaybeForeign;
+  return esc(d.domain) + (f.foreign ? ` <span class="lib-table-dim">· ${esc(f.orgName || "")}</span>` : "");
+};
 
 // A bare DNS hostname — the same rule the server enforces.
 const HOST_RE = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
@@ -41,6 +49,14 @@ function apexOptions(selected: string | null | undefined): string {
 }
 
 function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
+  const f = d as MaybeForeign;
+  if (f.foreign) {
+    const hosts = Object.entries(d.hostnames ?? {});
+    body.innerHTML = `
+      <p class="section-desc" style="margin:0 0 12px;">This domain belongs to <strong>${esc(f.orgName || "another organization")}</strong>. You're seeing it as a platform admin — impersonate the org to manage it.</p>
+      ${hosts.length ? `<table class="lib-table" style="font-size:12px;"><thead><tr><th>Hostname</th><th>Status</th></tr></thead><tbody>${hosts.map(([h, st]) => `<tr><td class="lib-table-name">${esc(h)}</td><td class="lib-table-dim">${esc(st)}</td></tr>`).join("")}</tbody></table>` : `<div class="crud-empty">No app hostnames yet.</div>`}`;
+    return;
+  }
   // STAGED state (his spec, 2026-09-01): the two capability toggles drive what
   // the form shows LIVE (the wire always carries every record; the UI filters),
   // but nothing is written until Save. Cancel/← discards.
@@ -259,7 +275,7 @@ export async function loadDomainsPanel(): Promise<void> {
       title: "Domains",
       description: "Point your own domains at Glyphh. Add a domain, publish the DNS records it shows, then Verify — every published app answers at <code>&lt;app&gt;.yourdomain</code>, and the bare domain can serve a flagship app.",
       columns: [
-        { header: "Domain", cell: (d) => esc(d.domain) },
+        { header: "Domain", cell: (d) => domainCell(d) },
         { header: "Status", cell: (d) => statusChip(d) },
         { header: "Apps", cell: (d) => appsCell(d), dim: true },
       ],

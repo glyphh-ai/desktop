@@ -1858,6 +1858,11 @@
                   <div id="pa-orgs-list-view">
                     <div class="crud-toolbar">
                       <input id="pa-orgs-search" type="text" class="crud-search" placeholder="Search organizations…" spellcheck="false" autocomplete="off" />
+                      <!-- Agency filter (his order, 2026-09-02): one parent's
+                           client fleet. Hidden until a managed org exists. -->
+                      <select id="pa-orgs-parent" class="dash-usage-select hidden" title="Parent organization">
+                        <option value="">All parents</option>
+                      </select>
                       <button id="pa-org-new-btn" class="action-btn primary" type="button">+ New Org</button>
                     </div>
                     <div id="pa-orgs-list"></div>
