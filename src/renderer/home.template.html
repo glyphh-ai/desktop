@@ -76,6 +76,9 @@
            Home|Code switcher, sessions, section nav, and the user area.
            Hidden when the panel is locked to a single section (?section=). -->
       <aside id="app-rail">
+        <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
+             platform — filled by initOrgSwitcher(); hidden for single-org users. -->
+        <div id="org-switch-rail" class="org-switch hidden"></div>
         <!-- Every session is ONE type (the most-capable Code toolset). The
              Chat/Work/Code space tabs were removed — + New session creates a
              Code session; the list below is the Recents for it. -->

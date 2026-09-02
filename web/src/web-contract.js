@@ -900,6 +900,15 @@ export function buildContract(client, deps) {
       catch (err) { return { ok: false, error: err?.message || String(err), history: [] }; }
     },
     appSourceRestore: async () => ({ ok: false, error: "Restoring a version needs the desktop app (it writes into your working folder)." }),
+    // Org switcher — memberships + this session's active org.
+    orgMemberships: async () => {
+      try { return await client.memberships.orgs(); }
+      catch { return []; }
+    },
+    orgSwitch: async (orgId) => {
+      try { await client.memberships.setActiveOrg(orgId); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     appVersionSet: async (slug, version) => {
       try { return { ok: true, ...(await client.apps.setVersion(slug, version)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }

@@ -297,6 +297,12 @@ body {
    hides it and the initials underneath take over (his report, 2026-09-01). */
 .m-avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .m-rail-footer .btn { margin-left: auto; }
+/* Org switcher (multi-org members) — sits beside the avatar in the rail footer. */
+.m-org-switch {
+  flex: 1; min-width: 0; height: 34px; border-radius: 8px;
+  border: 1px solid var(--border-2); background: var(--surface-3);
+  color: var(--text); font: 500 13px var(--font-sans); padding: 0 8px;
+}
 .m-rail-footer .btn svg { width: 18px; height: 18px; }
 
 /* Main content — no header; fills from the top. */

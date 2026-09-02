@@ -361,6 +361,29 @@ function normalizeMsg(m: ThreadMsg, i: number): Message {
    Spaces are gone — there is no Chat/Work/Code tab. The rail is just the one
    primary action, the recents list, and a single Connections shortcut (which
    opens the Settings modal on its Connections tray — the page stays in settings). */
+/** Org switcher (multi-org members only, 2026-09-02): re-pins this session's
+ *  active org server-side and reloads. Single-org users never see it. */
+function OrgSwitch() {
+  const [orgs, setOrgs] = useState<Array<{ orgId: string; orgName: string; active: boolean }>>([]);
+  useEffect(() => {
+    const m = (window as unknown as { glyphhSdk?: { memberships?: { orgs?: () => Promise<Array<{ orgId: string; orgName: string; active: boolean }>> } } }).glyphhSdk?.memberships;
+    m?.orgs?.().then((l) => setOrgs(l || [])).catch(() => { /* signed out — no switcher */ });
+  }, []);
+  if (orgs.length < 2) return null;
+  return (
+    <select
+      className="m-org-switch"
+      value={orgs.find((o) => o.active)?.orgId}
+      onChange={(e) => {
+        const m = (window as unknown as { glyphhSdk?: { memberships?: { setActiveOrg?: (id: string) => Promise<unknown> } } }).glyphhSdk?.memberships;
+        m?.setActiveOrg?.(e.target.value).then(() => location.reload()).catch(() => { /* stays put on failure */ });
+      }}
+    >
+      {orgs.map((o) => <option key={o.orgId} value={o.orgId}>{o.orgName}</option>)}
+    </select>
+  );
+}
+
 function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, onArtifacts, onConnections, onApps, user, iconOf }: {
   onOpenRecent: (r: Recent) => void;
   recents: Recent[];
@@ -422,6 +445,7 @@ function Rail({ onOpenRecent, recents, onAllSessions, onAccount, onNewSession, o
       </div>
 
       <div className="m-rail-footer">
+        <OrgSwitch />
         <button className="m-avatar" aria-label={user.name} title={user.name} onClick={onAccount}>
           {user.avatarUrl
             ? <img className="m-avatar-img" src={user.avatarUrl} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />

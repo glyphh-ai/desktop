@@ -16,6 +16,7 @@
 import { ipcMain } from "electron";
 import type { MemberRole, OrgUpdate, GuardrailsPolicy } from "@glyphh/sdk";
 import { getClient } from "./glyphh-client";
+import { refreshHeartbeat } from "./auth";
 
 // OrgInfraChoice isn't re-exported from the SDK index, so its input is mirrored
 // structurally here (threads-ipc.ts's discipline). region + tier ('shared' is
@@ -230,6 +231,18 @@ export function registerAccountIpc(): void {
   ipcMain.handle("account-profile-update", async (_e, patch: SelfProfileUpdate) => {
     try { return { ok: true as const, profile: await getClient().profile.update(patch) }; }
     catch (err) { return fail(err); }
+  });
+
+  // ── Org switcher (multi-org membership, his order 2026-09-02) ─────────────
+  ipcMain.handle("org-memberships", () => getClient().memberships.orgs());
+  ipcMain.handle("org-switch", async (_e, orgId: string) => {
+    try {
+      await getClient().memberships.setActiveOrg(String(orgId));
+      // The renderer reloads right after — refresh the cached account NOW so
+      // every surface paints the NEW org, not the stale one.
+      await refreshHeartbeat().catch(() => null);
+      return { ok: true as const };
+    } catch (err) { return fail(err); }
   });
 
   // ── Members — the roster plus the org_admin writes behind Settings ›

@@ -537,6 +537,7 @@ export function openSettingsModal(sub?: string): void {
   // Populate the whole panel set + admin gating, then reveal the requested sub.
   loadSettings();
   gateAdminSubs();
+  initOrgSwitcher();
   selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
 }
 
@@ -627,6 +628,64 @@ function gateAdminSubs(): void {
       .forEach((el) => el.classList.toggle("hidden", !superAdmin));
     paintImpersonationBanner(info as { orgName?: string; impersonatingOrgId?: string | null } | null);
   }).catch(() => { /* signed out — items stay hidden (they start hidden) */ });
+}
+
+/**
+ * The ORG SWITCHER (multi-org membership, his order 2026-09-02): a member of
+ * two-plus orgs gets a workspace dropdown — platform rail top-left and the
+ * Settings nav — that re-pins THIS session's active org server-side and
+ * reloads. Single-org members never see it; there is no forced picker (the
+ * session defaults to the member's default/first org).
+ */
+export function initOrgSwitcher(): void {
+  void (async () => {
+    type Membership = { orgId: string; orgName: string; role: string; active: boolean };
+    // SDK first (web — window.glyphh is a fabricating proxy there), IPC on desktop.
+    const sdk = (window as unknown as { glyphhSdk?: { memberships?: { orgs?: () => Promise<Membership[]>; setActiveOrg?: (id: string) => Promise<unknown> } } }).glyphhSdk?.memberships;
+    const ipc = window.glyphh as unknown as { orgMemberships?: () => Promise<Membership[]>; orgSwitch?: (id: string) => Promise<{ ok: boolean; error?: string }> };
+    let list: Membership[] = [];
+    try { list = (sdk?.orgs ? await sdk.orgs() : await ipc.orgMemberships?.()) ?? []; }
+    catch { return; /* signed out / no seam — no switcher */ }
+    if (list.length < 2) return;
+
+    const paint = (host: HTMLElement): void => {
+      host.classList.remove("hidden");
+      host.innerHTML = "";
+      const sel = document.createElement("select");
+      sel.className = "settings-input org-switch-select";
+      sel.title = "Switch organization";
+      for (const m of list) {
+        const opt = document.createElement("option");
+        opt.value = m.orgId;
+        opt.textContent = m.orgName;
+        opt.selected = m.active;
+        sel.appendChild(opt);
+      }
+      sel.addEventListener("change", () => {
+        void (async () => {
+          sel.disabled = true;
+          try {
+            if (sdk?.setActiveOrg) await sdk.setActiveOrg(sel.value);
+            else {
+              const r = await ipc.orgSwitch?.(sel.value);
+              if (r && !r.ok) throw new Error(r.error || "switch failed");
+            }
+            // Scope changed server-side — a full reload repaints every surface
+            // (sessions, apps, settings) as the newly active org.
+            window.location.reload();
+          } catch {
+            sel.disabled = false;
+            sel.value = list.find((m) => m.active)?.orgId ?? sel.value;
+          }
+        })();
+      });
+      host.appendChild(sel);
+    };
+    for (const id of ["org-switch-rail", "org-switch-settings"]) {
+      const host = document.getElementById(id);
+      if (host) paint(host);
+    }
+  })();
 }
 
 /**
@@ -1039,6 +1098,8 @@ export function initHelp() {
   };
   void window.glyphh.getAccountInfo?.().then(fillRailUser).catch(() => { /* signed out — placeholder stays */ });
   window.glyphh.onAccountUpdated?.(fillRailUser);
+  // Multi-org members get the workspace dropdown at the rail's top-left.
+  initOrgSwitcher();
 
   // Initialize all section event handlers. Each init is ISOLATED — one panel
   // throwing (a moved element, a missing id after a refactor) must not kill

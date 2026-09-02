@@ -752,6 +752,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   accountProfileGet: () => ipcRenderer.invoke("account-profile-get") as Promise<AccountProfile>,
   accountProfileUpdate: (patch: Record<string, unknown>) =>
     ipcRenderer.invoke("account-profile-update", patch) as Promise<{ ok: boolean; profile?: AccountProfile; error?: string }>,
+  // Org switcher — the caller's memberships + switching this session's active org.
+  orgMemberships: () =>
+    ipcRenderer.invoke("org-memberships") as Promise<Array<{ orgId: string; orgName: string; role: string; active: boolean }>>,
+  orgSwitch: (orgId: string) =>
+    ipcRenderer.invoke("org-switch", orgId) as Promise<{ ok: boolean; error?: string }>,
   accountMembersList: () => ipcRenderer.invoke("account-members-list") as Promise<Array<{ userId: string; email: string; name: string | null; role: string }>>,
   accountMembersInvite: (email: string, role: string) =>
     ipcRenderer.invoke("account-members-invite", email, role) as Promise<{ ok: boolean; invite?: { acceptUrl?: string }; error?: string }>,
