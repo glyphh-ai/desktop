@@ -817,7 +817,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   adminOrgGrantCredits: (id: string, credits: number, note?: string) =>
     ipcRenderer.invoke("admin-org-grant-credits", id, credits, note) as Promise<{ ok: boolean; balance?: number; error?: string }>,
   // Members on behalf + org impersonation (the super-admin Members tab).
-  adminOrgMemberInvite: (id: string, email: string, role?: "org_admin" | "user") =>
+  adminOrgMemberInvite: (id: string, email: string, role?: "org_admin" | "admin" | "user") =>
     ipcRenderer.invoke("admin-org-member-invite", id, email, role) as Promise<{ ok: boolean; acceptUrl?: string; error?: string }>,
   adminOrgMemberRemove: (id: string, userId: string) =>
     ipcRenderer.invoke("admin-org-member-remove", id, userId) as Promise<{ ok: boolean; error?: string }>,

@@ -140,7 +140,7 @@ interface SdkAdmin {
   org?: (id: string) => Promise<AdminOrgDetail>;
   updateOrg?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   grantCredits?: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
-  inviteOrgMember?: (id: string, email: string, role?: "org_admin" | "user") => Promise<{ acceptUrl: string }>;
+  inviteOrgMember?: (id: string, email: string, role?: "org_admin" | "admin" | "user") => Promise<{ acceptUrl: string }>;
   removeOrgMember?: (id: string, userId: string) => Promise<{ ok: boolean }>;
   impersonate?: (orgId: string) => Promise<{ impersonating: { orgId: string } | null } | null>;
   stopImpersonate?: () => Promise<{ impersonating: { orgId: string } | null } | null>;
@@ -170,7 +170,7 @@ interface DesktopAdminIpc {
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
   adminOrgUpdate?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   adminOrgGrantCredits?: (id: string, credits: number, note?: string) => Promise<{ ok: boolean; balance?: number; error?: string }>;
-  adminOrgMemberInvite?: (id: string, email: string, role?: "org_admin" | "user") => Promise<{ ok: boolean; acceptUrl?: string; error?: string }>;
+  adminOrgMemberInvite?: (id: string, email: string, role?: "org_admin" | "admin" | "user") => Promise<{ ok: boolean; acceptUrl?: string; error?: string }>;
   adminOrgMemberRemove?: (id: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
   adminImpersonate?: (orgId: string | null) => Promise<{ ok: boolean; impersonating?: { orgId: string } | null; error?: string }>;
 }
@@ -1655,6 +1655,7 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
         <label class="settings-label">Role</label>
         <select id="pa-org-invite-role" class="settings-input" style="max-width:200px;">
           <option value="user">Member</option>
+          <option value="admin">Admin</option>
           <option value="org_admin">Org admin</option>
         </select>
         <div id="pa-org-invite-note" class="settings-hint" style="margin-top:6px;"></div>
@@ -1746,7 +1747,8 @@ function paintOrgMembers(d: AdminOrgDetail): void {
 
 async function sendOrgInvite(d: AdminOrgDetail): Promise<void> {
   const email = ($<HTMLInputElement>("pa-org-invite-email")?.value || "").trim();
-  const role = ($<HTMLSelectElement>("pa-org-invite-role")?.value === "org_admin" ? "org_admin" : "user") as "org_admin" | "user";
+  const rawRole = $<HTMLSelectElement>("pa-org-invite-role")?.value || "user";
+  const role = (rawRole === "org_admin" || rawRole === "admin" ? rawRole : "user") as "org_admin" | "admin" | "user";
   const note = $("pa-org-invite-note");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     if (note) note.textContent = "Enter a valid email address.";

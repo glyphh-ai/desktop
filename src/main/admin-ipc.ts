@@ -142,7 +142,7 @@ export function registerAdminIpc(): void {
   });
 
   // ── members ON BEHALF + org impersonation (the super-admin Members tab) ──
-  ipcMain.handle("admin-org-member-invite", async (_e, id: string, email: string, role?: "org_admin" | "user") => {
+  ipcMain.handle("admin-org-member-invite", async (_e, id: string, email: string, role?: "org_admin" | "admin" | "user") => {
     try { return { ok: true as const, acceptUrl: (await getClient().admin.inviteOrgMember(String(id), String(email), role)).acceptUrl }; }
     catch (err) { return fail(err); }
   });

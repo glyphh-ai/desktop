@@ -7650,7 +7650,10 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
    with real air, labels sit 6px off their inputs (his report, 2026-09-01:
    the Invite modal was crammed). */
 .fm-form { display: flex; flex-direction: column; gap: 16px; }
-.fm-form .fm-field { display: flex; flex-direction: column; }
+/* flex: none — the acct-field base class grows to fill spare height, which
+   stretched the invite modal's two fields across a huge box (his report,
+   2026-09-02). Modal fields size to content. */
+.fm-form .fm-field { display: flex; flex-direction: column; flex: 0 0 auto; }
 .fm-form .fm-field .settings-label { margin-bottom: 6px; }
 .fm-form .fm-err { margin-top: 6px; }
 

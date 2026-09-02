@@ -605,16 +605,20 @@ function wireAppUserChip(nav: HTMLElement): void {
 
 function gateAdminSubs(): void {
   void window.glyphh.getAccountInfo?.().then((info) => {
-    const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
+    // The mid-tier 'admin' is "org_admin minus Billing" (his spec, 2026-09-02):
+    // every org surface admits admins; only the money door stays org_admin's.
+    const orgAdmin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
+    const admin = orgAdmin || info?.role === "admin";
     for (const id of ["general-runtime-group", "general-guardrails-group", "nav-org-general"]) {
       document.getElementById(id)?.classList.toggle("hidden", !admin);
     }
     // Members on the PLATFORM see nothing org-financial and no catalog:
-    // Billing and Models are org_admin surfaces there (his scoping order,
-    // 2026-08-24). The server 403s the reads regardless — this hides the
-    // doors. Desktop keeps Billing personal-visible as before.
+    // Billing is org_admin's alone; Models/Marketplace open to admins too.
+    // The server 403s the reads regardless — this hides the doors. Desktop
+    // keeps Billing personal-visible as before.
     if (document.body.classList.contains("platform-shell")) {
-      for (const id of ["nav-billing", "nav-models", "nav-org-marketplace"]) {
+      document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
+      for (const id of ["nav-models", "nav-org-marketplace"]) {
         document.getElementById(id)?.classList.toggle("hidden", !admin);
       }
     }
