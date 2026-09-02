@@ -85,6 +85,21 @@ export interface AppCollaboratorRow {
   addedAt: string;
 }
 
+/** One day (or one hostname's totals) of apex-edge traffic. */
+export interface EdgeTrafficDayRow {
+  day: string;
+  requests: number;
+  bytesIn: number;
+  bytesOut: number;
+  avgMs: number;
+  maxMs: number;
+  s2xx: number;
+  s3xx: number;
+  s4xx: number;
+  s5xx: number;
+  blocked: number;
+}
+
 /** One entry of an app's source snapshot chain (version history). */
 export interface AppSnapshotRow {
   hash: string;
@@ -645,6 +660,11 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("app-release-org-review", slug, releaseId, action) as Promise<{ ok: boolean; error?: string }>,
   appOrgPendingReleases: () =>
     ipcRenderer.invoke("app-org-pending-releases") as Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>,
+  // Edge traffic — the apex fleet's per-hostname stats (org + per-app views).
+  appTraffic: (slug: string, days?: number) =>
+    ipcRenderer.invoke("app-traffic", slug, days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
+  orgDomainsTraffic: (days?: number) =>
+    ipcRenderer.invoke("org-domains-traffic", days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
   // Version history — the source snapshot chain + restore-a-snapshot.
   appSourceHistory: (slug: string) =>
     ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,

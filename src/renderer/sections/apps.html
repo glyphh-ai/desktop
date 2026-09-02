@@ -143,6 +143,7 @@
                    the builder's alone (tab-owner-only). -->
               <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="history">History</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="traffic">Traffic</button>
               <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
               <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
@@ -464,6 +465,28 @@
                   <p class="proxy-field-hint" style="margin:2px 0 12px;">Every build records a snapshot of the app's source. Restore pulls that version into your working folder — the next build makes it the new latest.</p>
                   <div id="apphist-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
                   <div id="apphist-list" class="mbr-list"><div class="inline-empty">Loading…</div></div>
+                </div>
+
+                <!-- Edge traffic (his order, 2026-09-02): what hit the apex
+                     edge for this app's custom hostnames. Developers only. -->
+                <div class="app-tab-left" data-tab="traffic">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label class="settings-label" style="margin:0;">Traffic</label>
+                    <div style="flex:1;"></div>
+                    <select id="apptraffic-days" class="dash-usage-select" title="Date range">
+                      <option value="7">7 days</option>
+                      <option value="30" selected>30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                  </div>
+                  <p class="proxy-field-hint" style="margin:2px 0 10px;">Requests to this app's custom domains at the Glyphh edge. Traffic to <code>&lt;slug&gt;.glyphh.app</code> doesn't pass the apex edge and isn't counted here.</p>
+                  <div id="apptraffic-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <p class="settings-hint" id="apptraffic-totals" style="margin:0 0 10px;"></p>
+                  <div class="dash-chart-wrap" style="height:160px;">
+                    <canvas id="apptraffic-chart"></canvas>
+                    <div class="dash-chart-empty hidden" id="apptraffic-empty">No edge traffic in this window.</div>
+                  </div>
+                  <div id="apptraffic-hosts" class="mbr-list" style="margin-top:12px;"></div>
                 </div>
 
                 <!-- About left (marketplace-installed): the store's listing

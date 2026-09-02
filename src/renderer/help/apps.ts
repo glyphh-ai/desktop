@@ -660,6 +660,7 @@ function switchAppTab(tab: string) {
   if (tab === "config") void loadConfigVarsTab();
   if (tab === "releases") { void loadReleasesTab(); void loadDeployTab(); loadProductionTab(); }
   if (tab === "history") void loadHistoryTab();
+  if (tab === "traffic") void loadTrafficTab();
   if (tab === "webhooks") { void import("./settings-webhooks.js").then((m) => m.renderAppData(currentApp?.slug || currentAppId, currentApp?.name || currentAppId)); }
   if (tab === "schedule") void loadScheduleTab();
   if (tab === "connections") void loadAppConnectionsTab();
@@ -1197,6 +1198,101 @@ async function loadHistoryTab(): Promise<void> {
   }
 }
 
+// ── Edge traffic (his order, 2026-09-02): the apex fleet's stats for this
+// app's custom hostnames — requests/day chart, totals, per-hostname table. ──
+
+type TrafficRow = { day: string; requests: number; bytesIn: number; bytesOut: number; avgMs: number; maxMs: number; s2xx: number; s3xx: number; s4xx: number; s5xx: number; blocked: number };
+
+const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
+
+/** Shared painter — the app tab and the Domains page both render this shape. */
+export function paintTrafficReport(
+  ids: { totals: string; chart: string; empty: string; hosts: string; error: string },
+  rep: { ok: boolean; days: TrafficRow[]; hosts: Array<TrafficRow & { hostname: string }>; error?: string },
+  chartRef: { current: { destroy: () => void } | null },
+): void {
+  const errEl = document.getElementById(ids.error);
+  errEl?.classList.add("hidden");
+  if (!rep.ok) {
+    if (errEl) { errEl.textContent = rep.error || "Couldn't load traffic."; errEl.classList.remove("hidden"); }
+    return;
+  }
+  const total = rep.days.reduce((s, d) => ({
+    requests: s.requests + d.requests, bytesOut: s.bytesOut + d.bytesOut,
+    blocked: s.blocked + d.blocked, err: s.err + d.s4xx + d.s5xx,
+    msSum: s.msSum + d.avgMs * d.requests,
+  }), { requests: 0, bytesOut: 0, blocked: 0, err: 0, msSum: 0 });
+  const totalsEl = document.getElementById(ids.totals);
+  if (totalsEl) {
+    totalsEl.textContent = total.requests
+      ? `${fmtInt(total.requests)} requests · ${formatBytes(total.bytesOut)} out · ${fmtInt(total.err)} errors · ${fmtInt(total.blocked)} blocked at the edge · avg ${Math.round(total.msSum / total.requests)} ms`
+      : "";
+  }
+  // Requests/day bars, errors stacked in red on top.
+  const canvas = document.getElementById(ids.chart) as HTMLCanvasElement | null;
+  const empty = document.getElementById(ids.empty);
+  if (!canvas || typeof Chart === "undefined") return;
+  chartRef.current?.destroy();
+  chartRef.current = null;
+  const hasData = rep.days.some((d) => d.requests > 0);
+  empty?.classList.toggle("hidden", hasData);
+  canvas.style.visibility = hasData ? "visible" : "hidden";
+  if (hasData) {
+    const ctx2 = canvas.getContext("2d");
+    if (ctx2) {
+      chartRef.current = new Chart(ctx2, {
+        type: "bar",
+        data: {
+          labels: rep.days.map((d) => d.day.slice(5)),
+          datasets: [
+            { label: "ok", data: rep.days.map((d) => d.requests - d.s4xx - d.s5xx - d.blocked), backgroundColor: cssVar("--accent") || "#af5fff", stack: "r", borderRadius: 2, maxBarThickness: 26 },
+            { label: "errors", data: rep.days.map((d) => d.s4xx + d.s5xx), backgroundColor: "#e05252", stack: "r", maxBarThickness: 26 },
+            { label: "blocked", data: rep.days.map((d) => d.blocked), backgroundColor: "#8a8a8a", stack: "r", maxBarThickness: 26 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+            y: { stacked: true, beginAtZero: true },
+          },
+        },
+      });
+    }
+  }
+  // Per-hostname table.
+  const hostsEl = document.getElementById(ids.hosts);
+  if (!hostsEl) return;
+  hostsEl.innerHTML = "";
+  if (!rep.hosts.length) return;
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Hostname</th><th>Requests</th><th>Data out</th><th>4xx</th><th>5xx</th><th>Blocked</th><th>Avg ms</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const h of rep.hosts) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-dim">${fmtInt(h.requests)}</td><td class="lib-table-dim">${escMkt(formatBytes(h.bytesOut))}</td><td class="lib-table-dim">${fmtInt(h.s4xx)}</td><td class="lib-table-dim">${fmtInt(h.s5xx)}</td><td class="lib-table-dim">${fmtInt(h.blocked)}</td><td class="lib-table-dim">${fmtInt(h.avgMs)}</td>`;
+    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = h.hostname;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  hostsEl.appendChild(table);
+}
+
+const appTrafficChartRef = { current: null as { destroy: () => void } | null };
+
+async function loadTrafficTab(): Promise<void> {
+  const slug = currentApp?.slug || currentAppId;
+  const days = parseInt((document.getElementById("apptraffic-days") as HTMLSelectElement | null)?.value || "30", 10);
+  const rep = await window.glyphh.appTraffic?.(slug, days);
+  if (!rep || (currentApp && (currentApp.slug || currentAppId) !== slug)) return;
+  paintTrafficReport(
+    { totals: "apptraffic-totals", chart: "apptraffic-chart", empty: "apptraffic-empty", hosts: "apptraffic-hosts", error: "apptraffic-error" },
+    rep, appTrafficChartRef,
+  );
+}
+
 // ── Co-working: collaborators + the org approval queue ───────────
 //
 // Collaborator seats live on the General tab of a user-owned glyphh app
@@ -1598,6 +1694,7 @@ async function loadAppConnectionsTab(): Promise<void> {
 function initReleasesTab(): void {
   document.getElementById("release-refresh")?.addEventListener("click", () => { void loadReleasesTab(); });
   document.getElementById("apphist-refresh")?.addEventListener("click", () => { void loadHistoryTab(); });
+  document.getElementById("apptraffic-days")?.addEventListener("change", () => { void loadTrafficTab(); });
 
   // Auto-update toggle (installed apps) — persisted per app slug.
   document.getElementById("release-autoupdate")?.addEventListener("change", (e) => {

@@ -238,6 +238,22 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
 
 let handle: ListPageHandle | null = null;
 
+// ── Edge traffic (his order, 2026-09-02): the org's domain dashboard,
+// painted by the shared traffic painter (apps.ts owns the shape). ──
+let domTrafficWired = false;
+const domTrafficChartRef = { current: null as { destroy: () => void } | null };
+
+async function loadDomTraffic(): Promise<void> {
+  const days = parseInt((document.getElementById("domtraffic-days") as HTMLSelectElement | null)?.value || "30", 10);
+  const rep = await window.glyphh.orgDomainsTraffic?.(days);
+  if (!rep) return;
+  const { paintTrafficReport } = await import("./apps.js");
+  paintTrafficReport(
+    { totals: "domtraffic-totals", chart: "domtraffic-chart", empty: "domtraffic-empty", hosts: "domtraffic-hosts", error: "domtraffic-error" },
+    rep, domTrafficChartRef,
+  );
+}
+
 function showPanel(on: boolean): void {
   $("dom-admin-only")?.classList.toggle("hidden", on);
   $("dom-body")?.classList.toggle("hidden", !on);
@@ -249,6 +265,11 @@ export async function loadDomainsPanel(): Promise<void> {
   const role = account?.role || "";
   if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
+  void loadDomTraffic();
+  if (!domTrafficWired) {
+    domTrafficWired = true;
+    $("domtraffic-days")?.addEventListener("change", () => { void loadDomTraffic(); });
+  }
 
   try { apps = await accountApi().orgApps(); } catch { apps = []; }
   if (!handle) {

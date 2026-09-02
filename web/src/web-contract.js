@@ -893,6 +893,15 @@ export function buildContract(client, deps) {
       try { return { ok: true, pending: await client.apps.pendingOrgReleases() }; }
       catch (err) { return { ok: false, error: err?.message || String(err), pending: [] }; }
     },
+    // Edge traffic — the apex fleet's per-hostname stats.
+    appTraffic: async (slug, days) => {
+      try { return { ok: true, ...(await client.apps.traffic(slug, days ?? 30)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
+    },
+    orgDomainsTraffic: async (days) => {
+      try { return { ok: true, ...(await client.org.domainsTraffic(days ?? 30)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
+    },
     // Version history — the same chain the desktop shows; restore needs a
     // local working folder, which only the desktop has.
     appSourceHistory: async (slug) => {

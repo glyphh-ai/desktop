@@ -616,7 +616,29 @@
                 <!-- The whole page is rendered by the shared list-page scaffold
                      (settings-list-page.ts) via settings-domains.ts, so it is
                      identical to every other Security page. -->
-                <div id="dom-body"><div id="dom-root"></div></div>
+                <div id="dom-body"><div id="dom-root"></div>
+                  <!-- Edge traffic (his order, 2026-09-02): what hit the apex
+                       fleet for the org's hostnames — the domain dashboard. -->
+                  <div id="dom-traffic" class="lp-sec">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <label class="settings-label" style="margin:0;">Traffic</label>
+                      <div style="flex:1;"></div>
+                      <select id="domtraffic-days" class="dash-usage-select" title="Date range">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:2px 0 10px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
+                    <div id="domtraffic-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                    <p class="settings-hint" id="domtraffic-totals" style="margin:0 0 10px;"></p>
+                    <div class="dash-chart-wrap" style="height:160px;">
+                      <canvas id="domtraffic-chart"></canvas>
+                      <div class="dash-chart-empty hidden" id="domtraffic-empty">No edge traffic in this window.</div>
+                    </div>
+                    <div id="domtraffic-hosts" class="mbr-list" style="margin-top:12px;"></div>
+                  </div>
+                </div>
               </div>
 
               <div class="settings-panel" data-sub="workspaces">

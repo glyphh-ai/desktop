@@ -862,6 +862,16 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), pending: [] }; }
   });
 
+  // ── Edge traffic (his order, 2026-09-02): the apex fleet's stats ───────────
+  ipcMain.handle("app-traffic", async (_e, slug: string, days?: number) => {
+    try { return { ok: true, ...(await getClient().apps.traffic(slug, days ?? 30)) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
+  });
+  ipcMain.handle("org-domains-traffic", async (_e, days?: number) => {
+    try { return { ok: true, ...(await getClient().org.domainsTraffic(days ?? 30)) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
+  });
+
   // ── Version history (his order, 2026-09-01): the snapshot chain + restore ──
   ipcMain.handle("app-source-history", async (_e, slug: string) => {
     try { return { ok: true, history: await getClient().apps.sourceHistory(slug) }; }

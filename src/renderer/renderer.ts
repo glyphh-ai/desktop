@@ -104,6 +104,21 @@ type AppCollaboratorRow = {
   addedAt: string;
 };
 
+/** Mirrors preload.ts EdgeTrafficDayRow — apex-edge stats, one day or host. */
+type EdgeTrafficDayRow = {
+  day: string;
+  requests: number;
+  bytesIn: number;
+  bytesOut: number;
+  avgMs: number;
+  maxMs: number;
+  s2xx: number;
+  s3xx: number;
+  s4xx: number;
+  s5xx: number;
+  blocked: number;
+};
+
 /** Mirrors preload.ts AppSnapshotRow — one entry of the source snapshot chain. */
 type AppSnapshotRow = {
   hash: string;
@@ -221,6 +236,8 @@ declare global {
       appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
       appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
+      appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>;
+      orgDomainsTraffic: (days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>;
       appSourceHistory: (slug: string) => Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>;
       appSourceRestore: (slug: string, hash: string) => Promise<{ ok: boolean; dir?: string; files?: number; error?: string }>;
       appGraduate: (slug: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
