@@ -1336,7 +1336,14 @@ async function refreshAdminUsage(): Promise<void> {
   set("pa-usage-revenue", revenue?.stripe ? `$${(revenue.stripe.totalUsdCents / 100).toFixed(2)}` : "—");
   const revSub = document.querySelector("#pa-usage-revenue + .dash-card-sub");
   if (revSub) revSub.textContent = revenue?.stripe ? "collected via Stripe" : "Stripe not configured";
-  set("pa-usage-cost", `$${(credits * USD_PER_CREDIT_COST).toFixed(2)}`);
+  const costUsd = credits * USD_PER_CREDIT_COST;
+  set("pa-usage-cost", `$${costUsd.toFixed(2)}`);
+  // Gross margin (his order, 2026-09-02): (Stripe cash − COGS burn) / cash.
+  // Honest caveat carried in the card's sub: revenue is cash COLLECTED in the
+  // window while cost is credits BURNED in it — different bases (credits
+  // bought one month burn in another), so this is the cash-vs-burn margin.
+  const revUsd = revenue?.stripe ? revenue.stripe.totalUsdCents / 100 : null;
+  set("pa-usage-margin", revUsd && revUsd > 0 ? `${(((revUsd - costUsd) / revUsd) * 100).toFixed(1)}%` : "—");
   // The paid-vs-free credits math (he asked for it explicitly): what entered
   // the window by lot kind + the exact all-time burn split.
   const mix = $("pa-usage-credit-mix");
