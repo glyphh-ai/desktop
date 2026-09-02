@@ -238,22 +238,6 @@ function renderEdit(d: OrgDomain, body: HTMLElement, ctx: EditCtx): void {
 
 let handle: ListPageHandle | null = null;
 
-// ── Edge traffic (his order, 2026-09-02): the org's domain dashboard,
-// painted by the shared traffic painter (apps.ts owns the shape). ──
-let domTrafficWired = false;
-const domTrafficChartRef = { current: null as { destroy: () => void } | null };
-
-async function loadDomTraffic(): Promise<void> {
-  const days = parseInt((document.getElementById("domtraffic-days") as HTMLSelectElement | null)?.value || "30", 10);
-  const rep = await window.glyphh.orgDomainsTraffic?.(days);
-  if (!rep) return;
-  const { paintTrafficReport } = await import("./apps.js");
-  paintTrafficReport(
-    { totals: "domtraffic-totals", chart: "domtraffic-chart", empty: "domtraffic-empty", hosts: "domtraffic-hosts", error: "domtraffic-error" },
-    rep, domTrafficChartRef,
-  );
-}
-
 function showPanel(on: boolean): void {
   $("dom-admin-only")?.classList.toggle("hidden", on);
   $("dom-body")?.classList.toggle("hidden", !on);
@@ -265,11 +249,6 @@ export async function loadDomainsPanel(): Promise<void> {
   const role = account?.role || "";
   if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
-  void loadDomTraffic();
-  if (!domTrafficWired) {
-    domTrafficWired = true;
-    $("domtraffic-days")?.addEventListener("change", () => { void loadDomTraffic(); });
-  }
 
   try { apps = await accountApi().orgApps(); } catch { apps = []; }
   if (!handle) {
@@ -300,4 +279,60 @@ export async function loadDomainsPanel(): Promise<void> {
     });
   }
   await handle.reload();
+}
+
+// ── Hosting › Metrics (his order, 2026-09-02): the edge-traffic charts on
+// their own page, with domain / app / timeline filters top-right driving
+// everything. Painted by the shared traffic painter (apps.ts owns the shape). ──
+let mxWired = false;
+const mxChartRef = { current: null as { destroy: () => void } | null };
+
+async function loadMetricsTraffic(): Promise<void> {
+  const val = (id: string) => (document.getElementById(id) as HTMLSelectElement | null)?.value || "";
+  const days = parseInt(val("mx-days") || "30", 10);
+  const host = val("mx-domain") || undefined;
+  const appId = val("mx-app") || undefined;
+  const rep = await window.glyphh.orgDomainsTraffic?.(days, { host, appId });
+  if (!rep) return;
+  const { paintTrafficReport } = await import("./apps.js");
+  paintTrafficReport(
+    { totals: "mx-totals", chart: "mx-chart", empty: "mx-empty", hosts: "mx-hosts", error: "mx-error" },
+    rep, mxChartRef,
+  );
+}
+
+/** Refill a filter select, keeping the current pick when it still exists. */
+function fillSelect(id: string, options: Array<{ value: string; label: string }>, allLabel: string): void {
+  const sel = document.getElementById(id) as HTMLSelectElement | null;
+  if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">${esc(allLabel)}</option>`
+    + options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join("");
+  if (keep && options.some((o) => o.value === keep)) sel.value = keep;
+}
+
+export async function loadMetricsPanel(): Promise<void> {
+  const account = await window.glyphh.getAccountInfo().catch(() => null);
+  const role = account?.role || "";
+  const on = !!role && ["org_admin", "admin", "super_admin"].includes(role);
+  $("mx-admin-only")?.classList.toggle("hidden", on);
+  $("mx-body")?.classList.toggle("hidden", !on);
+  document.querySelector<HTMLElement>('.settings-nav .settings-nav-item[data-sub="metrics"]')?.classList.toggle("hidden", !on);
+  if (!on) return;
+
+  // The filters: the org's claimed domains + its apps. Best-effort — an org
+  // with neither still sees the (empty) charts honestly.
+  const [domains, orgAppList] = await Promise.all([
+    accountApi().orgDomains().catch(() => []),
+    accountApi().orgApps().catch(() => [] as Array<{ id: string; name: string; slug: string }>),
+  ]);
+  fillSelect("mx-domain", domains.map((d) => ({ value: d.domain, label: d.domain })), "All domains");
+  fillSelect("mx-app", orgAppList.map((a) => ({ value: a.id, label: a.name })), "All apps");
+
+  if (!mxWired) {
+    mxWired = true;
+    for (const id of ["mx-domain", "mx-app", "mx-days"])
+      $(id)?.addEventListener("change", () => { void loadMetricsTraffic(); });
+  }
+  void loadMetricsTraffic();
 }

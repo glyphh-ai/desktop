@@ -663,8 +663,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Edge traffic — the apex fleet's per-hostname stats (org + per-app views).
   appTraffic: (slug: string, days?: number) =>
     ipcRenderer.invoke("app-traffic", slug, days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
-  orgDomainsTraffic: (days?: number) =>
-    ipcRenderer.invoke("org-domains-traffic", days) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
+  orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) =>
+    ipcRenderer.invoke("org-domains-traffic", days, filter) as Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string }>,
   // Version history — the source snapshot chain + restore-a-snapshot.
   appSourceHistory: (slug: string) =>
     ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,

@@ -867,8 +867,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     try { return { ok: true, ...(await getClient().apps.traffic(slug, days ?? 30)) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
-  ipcMain.handle("org-domains-traffic", async (_e, days?: number) => {
-    try { return { ok: true, ...(await getClient().org.domainsTraffic(days ?? 30)) }; }
+  ipcMain.handle("org-domains-traffic", async (_e, days?: number, filter?: { host?: string; appId?: string }) => {
+    try { return { ok: true, ...(await getClient().org.domainsTraffic(days ?? 30, filter)) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
 

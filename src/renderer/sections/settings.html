@@ -22,9 +22,13 @@
               <div class="settings-nav-group platform-only">Security</div>
               <button class="settings-nav-item platform-only" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
-              <button id="nav-domains" class="settings-nav-item platform-only" data-sub="domains"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5c2.6 2.6 4 6 4 9.5s-1.4 6.9-4 9.5c-2.6-2.6-4-6-4-9.5s1.4-6.9 4-9.5z"/></svg><span>Domains</span></button>
               <button id="nav-models" class="settings-nav-item platform-only" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
               <button id="nav-org-marketplace" class="settings-nav-item platform-only" data-sub="org-marketplace"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 20.3 6v5.4c0 5-3.5 8.6-8.3 10-4.8-1.4-8.3-5-8.3-10V6z"/><path d="m8.8 12 2.2 2.2 4.2-4.4"/></svg><span>Marketplace</span></button>
+              <!-- Hosting (his order, 2026-09-02): Domains moved out of Security,
+                   Metrics owns the edge-traffic charts. Both admin-gated. -->
+              <div class="settings-nav-group platform-only" id="nav-group-hosting">Hosting</div>
+              <button id="nav-domains" class="settings-nav-item platform-only" data-sub="domains"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19"/><path d="M12 2.5c2.6 2.6 4 6 4 9.5s-1.4 6.9-4 9.5c-2.6-2.6-4-6-4-9.5s1.4-6.9 4-9.5z"/></svg><span>Domains</span></button>
+              <button id="nav-metrics" class="settings-nav-item platform-only" data-sub="metrics"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="12" width="3.5" height="8" rx="0.8"/><rect x="10.2" y="7" width="3.5" height="13" rx="0.8"/><rect x="15.4" y="3.5" width="3.5" height="16.5" rx="0.8"/></svg><span>Metrics</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
@@ -616,28 +620,39 @@
                 <!-- The whole page is rendered by the shared list-page scaffold
                      (settings-list-page.ts) via settings-domains.ts, so it is
                      identical to every other Security page. -->
-                <div id="dom-body"><div id="dom-root"></div>
-                  <!-- Edge traffic (his order, 2026-09-02): what hit the apex
-                       fleet for the org's hostnames — the domain dashboard. -->
-                  <div id="dom-traffic" class="lp-sec">
-                    <div style="display:flex;align-items:center;gap:10px;">
-                      <label class="settings-label" style="margin:0;">Traffic</label>
-                      <div style="flex:1;"></div>
-                      <select id="domtraffic-days" class="dash-usage-select" title="Date range">
-                        <option value="7">7 days</option>
-                        <option value="30" selected>30 days</option>
-                        <option value="90">90 days</option>
-                      </select>
-                    </div>
-                    <p class="proxy-field-hint" style="margin:2px 0 10px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
-                    <div id="domtraffic-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
-                    <p class="settings-hint" id="domtraffic-totals" style="margin:0 0 10px;"></p>
-                    <div class="dash-chart-wrap" style="height:160px;">
-                      <canvas id="domtraffic-chart"></canvas>
-                      <div class="dash-chart-empty hidden" id="domtraffic-empty">No edge traffic in this window.</div>
-                    </div>
-                    <div id="domtraffic-hosts" class="mbr-list" style="margin-top:12px;"></div>
+                <div id="dom-body"><div id="dom-root"></div></div>
+              </div>
+
+              <!-- Hosting › Metrics (his order, 2026-09-02): the edge-traffic
+                   charts moved off Domains, with domain/app/timeline filters
+                   top-right driving everything. settings-domains.ts paints it
+                   via the shared traffic painter (apps.ts owns the shape). -->
+              <div class="settings-panel" data-sub="metrics">
+                <div id="mx-admin-only" class="crud-empty hidden">Only an organization admin can see hosting metrics.</div>
+                <div id="mx-body">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <h2 style="margin:0;">Metrics</h2>
+                    <div style="flex:1;"></div>
+                    <select id="mx-domain" class="dash-usage-select" title="Domain">
+                      <option value="">All domains</option>
+                    </select>
+                    <select id="mx-app" class="dash-usage-select" title="App">
+                      <option value="">All apps</option>
+                    </select>
+                    <select id="mx-days" class="dash-usage-select" title="Date range">
+                      <option value="7">7 days</option>
+                      <option value="30" selected>30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
                   </div>
+                  <p class="section-desc" style="margin-top:6px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
+                  <div id="mx-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <p class="settings-hint" id="mx-totals" style="margin:0 0 10px;"></p>
+                  <div class="dash-chart-wrap" style="height:220px;">
+                    <canvas id="mx-chart"></canvas>
+                    <div class="dash-chart-empty hidden" id="mx-empty">No edge traffic in this window.</div>
+                  </div>
+                  <div id="mx-hosts" class="mbr-list" style="margin-top:12px;"></div>
                 </div>
               </div>
 
