@@ -911,8 +911,8 @@ export function buildContract(client, deps) {
       try { return { ...(await client.org.createClient(name)), ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
-    orgClientFund: async (id, credits) => {
-      try { return { ...(await client.org.fundClient(id, credits)), ok: true }; }
+    orgClientCap: async (id, monthlyCapCredits) => {
+      try { await client.org.setClientCap(id, monthlyCapCredits); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     // Library sharing + marketplace (skills + loops) — free installs, approvals.

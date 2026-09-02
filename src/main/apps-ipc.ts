@@ -881,8 +881,8 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     try { return { ...(await getClient().org.createClient(name)), ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("org-client-fund", async (_e, id: string, credits: number) => {
-    try { return { ...(await getClient().org.fundClient(id, credits)), ok: true }; }
+  ipcMain.handle("org-client-cap", async (_e, id: string, monthlyCapCredits: number) => {
+    try { await getClient().org.setClientCap(id, monthlyCapCredits); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 

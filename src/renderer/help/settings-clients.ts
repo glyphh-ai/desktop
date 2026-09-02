@@ -1,8 +1,9 @@
 /**
  * settings-clients.ts — Organization › Clients (his order, 2026-09-02): the
- * agency surface. An org_admin creates client workspaces, funds them from the
- * org's own credits (transfers, never mints — the server refuses a dry
- * parent), and hops inside via the same active-org switch the workspace
+ * agency surface. An org_admin creates client workspaces and sets each one's
+ * MONTHLY LIMIT — the client spends straight from this org's credit pool up
+ * to that many credits per calendar month (0 = closed; their own lots drain
+ * first). Open hops inside via the same active-org switch the workspace
  * dropdown uses. Strictly org_admin, like Billing — this page moves money.
  */
 
@@ -45,26 +46,27 @@ async function paint(): Promise<void> {
   }
   const table = document.createElement("table");
   table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Client</th><th>Members</th><th>Credits</th><th></th><th></th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Client</th><th>Members</th><th>This month</th><th>Monthly limit</th><th></th><th></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   for (const c of res.clients) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-dim">${c.members}</td>
-      <td class="lib-table-dim">${fmtCredits(c.creditsMicro)}</td>
-      <td style="text-align:right;"><button type="button" class="action-btn cl-fund" style="height:26px;font-size:12px;">Add credits</button></td>
+      <td class="lib-table-dim">${fmtCredits(c.monthUsedMicro)}</td>
+      <td class="lib-table-dim">${c.monthlyCapMicro > 0 ? fmtCredits(c.monthlyCapMicro) : "closed"}</td>
+      <td style="text-align:right;"><button type="button" class="action-btn cl-cap" style="height:26px;font-size:12px;">Set limit</button></td>
       <td style="text-align:right;"><button type="button" class="action-btn primary cl-open" style="height:26px;font-size:12px;">Open</button></td>`;
     (tr.querySelector(".lib-table-name") as HTMLElement).textContent = c.name;
-    tr.querySelector(".cl-fund")!.addEventListener("click", () => {
+    tr.querySelector(".cl-cap")!.addEventListener("click", () => {
       void formModal({
-        title: `Add credits to ${c.name}`,
-        fields: [{ key: "credits", label: "Credits", placeholder: "100", required: true,
-          validate: (v) => (Number(v) > 0 ? null : "Enter a positive number of credits.") }],
-        submitLabel: "Transfer",
+        title: `Monthly limit for ${c.name}`,
+        fields: [{ key: "credits", label: "Credits per month", placeholder: "500", required: true,
+          validate: (v) => (Number(v) >= 0 ? null : "Enter 0 or more (0 closes the gate).") }],
+        submitLabel: "Set limit",
         onSubmit: async (values) => {
-          const r = await window.glyphh.orgClientFund(c.id, Number(values.credits));
-          if (!r.ok) return { ok: false as const, error: r.error || "Couldn't transfer." };
+          const r = await window.glyphh.orgClientCap(c.id, Number(values.credits));
+          if (!r.ok) return { ok: false as const, error: r.error || "Couldn't set the limit." };
           await paint();
           return { ok: true as const };
         },
