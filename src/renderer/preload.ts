@@ -722,6 +722,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("marketing-link-update", id, patch) as Promise<{ ok: boolean; error?: string }>,
   marketingLinkDelete: (id: string) =>
     ipcRenderer.invoke("marketing-link-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  // Duplicate an owned app as a template (new private app, history seeded).
+  appClone: (slug: string, input: { slug: string; name?: string }) =>
+    ipcRenderer.invoke("app-clone", slug, input) as Promise<{ ok: boolean; id?: string; slug?: string; name?: string; error?: string }>,
   // Agency client orgs — workspaces the org creates and funds for its clients.
   orgClients: () =>
     ipcRenderer.invoke("org-clients") as Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>,

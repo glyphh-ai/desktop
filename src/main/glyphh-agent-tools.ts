@@ -712,6 +712,19 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "clone_app",
+    doc: "clone_app({ slug, newSlug, name? }) — duplicate an app THIS ORG OWNS as a template: a NEW private app under newSlug whose version history starts from the original's latest source snapshot. Public address, custom domains, listing and releases are deliberately NOT copied — the clone is a starting point, not a second deployment. PREFER one app + pushed updates for serving many customers (per-org data/config already isolates them); clone only for a genuine fork (customer-specific features the base app must never carry). After cloning: pull_app({ slug: newSlug }) to bring the source into a working folder.",
+    action: (a) => ({ kind: "edit", title: `Clone app: ${String(a.slug ?? "")} → ${String(a.newSlug ?? "")}` }),
+    run: async (a) => {
+      const slug = String(a.slug ?? "").trim();
+      const newSlug = String(a.newSlug ?? "").trim().toLowerCase();
+      if (!slug || !newSlug) return "ERROR: clone_app needs { slug, newSlug }";
+      const name = typeof a.name === "string" && a.name.trim() ? { name: a.name.trim() } : {};
+      const r = await getClient().apps.clone(slug, { slug: newSlug, ...name });
+      return `cloned "${slug}" → "${r.slug}" ("${r.name}") — private, version history seeded from the original's latest snapshot. pull_app({ slug: "${r.slug}" }) to start working on it; deploying/publishing it is a separate, deliberate step.`;
+    },
+  },
+  {
     name: "export_pdf",
     doc: "export_pdf({ doc?, slides?, folder? }) — render a Glyphh Doc (doc: its name) or Slides deck (slides: its name) to a real PDF with the BUILT-IN Office exporter, saved into Drive as a file artifact. Optional folder files it into that Drive folder by name (created if missing). ALWAYS use this for doc/deck → PDF — never pandoc, wkhtmltopdf, CUPS, headless browsers, or any hand-rolled conversion.",
     action: (a) => ({ kind: "edit", title: `Export PDF: ${String(a.doc ?? a.slides ?? "")}` }),
@@ -2616,7 +2629,7 @@ const CODE_EXCLUDED = new Set([
   "app_list_tools", "app_call_tool",
 ]);
 const COWORK_EXCLUDED = new Set([
-  "run_command", "update_app", "pull_app", "commit_app",
+  "run_command", "update_app", "pull_app", "commit_app", "clone_app",
   "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
 ]);
 
@@ -2681,7 +2694,7 @@ async function runRolePacket(
   const PACKET_TOOLS = new Set([
     "list_dir", "read_file", "write_file", "search_files", "run_command",
     "semantic_search", "git_init", "git_status", "git_branch", "git_diff", "git_log", "git_commit",
-    "update_app", "pull_app", "commit_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
+    "update_app", "pull_app", "commit_app", "clone_app", "open_browser", "find_tools", "call_tool", "fetch_connector_file",
   ]);
   const tools = TOOLS.filter((t) => PACKET_TOOLS.has(t.name) && !ROLE_RUN_EXCLUDED.has(t.name)).map((t) => ({
     name: t.name,

@@ -872,6 +872,12 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
 
+  // ── Clone an owned app as a template (his order, 2026-09-02) ──────────────
+  ipcMain.handle("app-clone", async (_e, slug: string, input: { slug: string; name?: string }) => {
+    try { return { ...(await getClient().apps.clone(slug, input)), ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   // ── Agency client orgs (his order, 2026-09-02): create + fund workspaces ──
   ipcMain.handle("org-clients", async () => {
     try { return { ok: true, ...(await getClient().org.clients()) }; }

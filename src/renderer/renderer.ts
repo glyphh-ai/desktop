@@ -286,6 +286,7 @@ declare global {
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
       appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
+      appClone: (slug: string, input: { slug: string; name?: string }) => Promise<{ ok: boolean; id?: string; slug?: string; name?: string; error?: string }>;
       orgClients: () => Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>;
       orgClientCreate: (name: string) => Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;
       orgClientCap: (id: string, monthlyCapCredits: number) => Promise<{ ok: boolean; error?: string }>;

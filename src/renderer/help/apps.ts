@@ -2778,6 +2778,34 @@ function initApps() {
     closeAppDetail();
   });
 
+  // Duplicate as a template (his order, 2026-09-02): new private app whose
+  // version history starts from this app's latest snapshot. One-app-plus-
+  // updates stays the sanctioned model; this is the deliberate-fork door.
+  document.getElementById("app-detail-clone")?.addEventListener("click", async () => {
+    const srcSlug = currentApp?.slug;
+    if (!srcSlug) return;
+    const { formModal } = await import("./settings-list-page.js");
+    await formModal({
+      title: `Duplicate ${appDetailName.value || srcSlug}`,
+      fields: [
+        { key: "slug", label: "New slug", placeholder: `${srcSlug}-v2`, required: true,
+          validate: (v) => (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.trim().toLowerCase()) ? null : "Kebab-case: letters, numbers, hyphens.") },
+        { key: "name", label: "Name", placeholder: `${appDetailName.value || srcSlug} copy` },
+      ],
+      submitLabel: "Duplicate",
+      onSubmit: async (values) => {
+        const r = await window.glyphh.appClone?.(srcSlug, {
+          slug: values.slug!.trim().toLowerCase(),
+          ...(values.name?.trim() ? { name: values.name.trim() } : {}),
+        });
+        if (!r?.ok) return { ok: false as const, error: r?.error || "Couldn't duplicate the app." };
+        closeAppDetail();
+        void loadApps();
+        return { ok: true as const };
+      },
+    });
+  });
+
   // Export the current app as a .glyphh bundle (main shows the save dialog).
   document.getElementById("app-detail-export")?.addEventListener("click", async () => {
     if (!currentAppId) return;
