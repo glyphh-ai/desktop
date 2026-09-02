@@ -803,6 +803,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   adminOrgs: (q: { q?: string; page?: number; limit?: number }) =>
     ipcRenderer.invoke("admin-orgs", q) as Promise<{ orgs: unknown[]; total: number }>,
   adminOrg: (id: string) => ipcRenderer.invoke("admin-org", id) as Promise<unknown>,
+  adminOrgCreate: (input: { name: string; tier?: string }) =>
+    ipcRenderer.invoke("admin-org-create", input) as Promise<{ ok: boolean; org?: unknown; error?: string }>,
   adminOrgUpdate: (id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     ipcRenderer.invoke("admin-org-update", id, patch) as Promise<unknown>,
   adminOrgGrantCredits: (id: string, credits: number, note?: string) =>

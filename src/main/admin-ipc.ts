@@ -127,6 +127,10 @@ export function registerAdminIpc(): void {
   // ── orgs + credit grants ────────────────────────────────────────────────
   ipcMain.handle("admin-orgs", (_e, q: { q?: string; page?: number; limit?: number }) =>
     getClient().admin.orgs({ q: q?.q, page: q?.page, limit: q?.limit }));
+  ipcMain.handle("admin-org-create", async (_e, input: { name: string; tier?: string }) => {
+    try { return { ok: true as const, org: await getClient().admin.createOrg({ name: String(input?.name || ""), ...(input?.tier ? { tier: input.tier } : {}) }) }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("admin-org", (_e, id: string) => getClient().admin.org(String(id)));
   ipcMain.handle("admin-org-update", (_e, id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     getClient().admin.updateOrg(String(id), patch));

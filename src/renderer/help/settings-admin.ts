@@ -128,6 +128,7 @@ interface SdkAdmin {
   usageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
   usageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   orgs?: (q?: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
+  createOrg?: (input: { name: string; tier?: string }) => Promise<AdminOrgRow>;
   org?: (id: string) => Promise<AdminOrgDetail>;
   updateOrg?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   grantCredits?: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
@@ -156,6 +157,7 @@ interface DesktopAdminIpc {
   adminUsageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
   adminUsageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   adminOrgs?: (q: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
+  adminOrgCreate?: (input: { name: string; tier?: string }) => Promise<{ ok: boolean; org?: AdminOrgRow; error?: string }>;
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
   adminOrgUpdate?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
   adminOrgGrantCredits?: (id: string, credits: number, note?: string) => Promise<{ ok: boolean; balance?: number; error?: string }>;
@@ -1153,11 +1155,18 @@ function renderUsageChart(days: AdminUsageDay[]): void {
   });
 }
 
-function paintUsageUsers(users: AdminUsageByUser[]): void {
+// Last-loaded rollups — the tab search bars filter these client-side.
+let lastUsageUsers: AdminUsageByUser[] = [];
+let lastUsageRuntimes: AdminUsageByRuntime[] = [];
+
+function paintUsageUsers(all: AdminUsageByUser[]): void {
   const wrap = $("pa-usage-users");
   if (!wrap) return;
+  lastUsageUsers = all;
+  const q = inputVal("pa-usage-users-search").trim().toLowerCase();
+  const users = q ? all.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(q)) : all;
   wrap.innerHTML = "";
-  if (!users.length) { wrap.innerHTML = `<div class="crud-empty">No usage in this window.</div>`; return; }
+  if (!users.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No members match your search." : "No usage in this window."}</div>`; return; }
   const { table, tbody } = mkTable(["Member", "Email", "Requests", "Credits"], false);
   for (const u of users) {
     const tr = document.createElement("tr");
@@ -1175,11 +1184,14 @@ function paintUsageUsers(users: AdminUsageByUser[]): void {
   wrap.appendChild(table);
 }
 
-function paintUsageRuntimes(runtimes: AdminUsageByRuntime[]): void {
+function paintUsageRuntimes(all: AdminUsageByRuntime[]): void {
   const wrap = $("pa-usage-runtimes");
   if (!wrap) return;
+  lastUsageRuntimes = all;
+  const q = inputVal("pa-usage-runtimes-search").trim().toLowerCase();
+  const runtimes = q ? all.filter((r) => `${r.region} ${r.mode} ${r.tier}`.toLowerCase().includes(q)) : all;
   wrap.innerHTML = "";
-  if (!runtimes.length) { wrap.innerHTML = `<div class="crud-empty">No runtime usage in this window.</div>`; return; }
+  if (!runtimes.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "Nothing matches your search." : "No runtime usage in this window."}</div>`; return; }
   const { table, tbody } = mkTable(["Region", "Mode", "Tier", "Orgs", "Requests", "Credits"], false);
   for (const r of runtimes) {
     const tr = document.createElement("tr");
@@ -1235,11 +1247,36 @@ async function refreshAdminUsage(): Promise<void> {
   paintUsageRuntimes(runtimes);
 }
 
+/** The one date window all three Usage tabs share — three selects, one value. */
+function syncUsageDays(from: string): void {
+  const v = $<HTMLSelectElement>(from)?.value || "30";
+  for (const id of ["pa-usage-days", "pa-usage-days-spenders", "pa-usage-days-runtime"]) {
+    const el = $<HTMLSelectElement>(id);
+    if (el && el.value !== v) el.value = v;
+  }
+}
+
 export function loadAdminUsage(): void {
   if (!usageWired) {
     usageWired = true;
-    $("pa-usage-days")?.addEventListener("change", () => { void refreshAdminUsage(); });
+    for (const id of ["pa-usage-days", "pa-usage-days-spenders", "pa-usage-days-runtime"]) {
+      $(id)?.addEventListener("change", () => { syncUsageDays(id); void refreshAdminUsage(); });
+    }
     $("pa-usage-refresh")?.addEventListener("click", () => { void refreshAdminUsage(); });
+    // Tab strip (his order, 2026-09-02): one tab per section.
+    document.querySelectorAll<HTMLButtonElement>("#pa-usage-tabs .app-detail-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.utab || "daily";
+        document.querySelectorAll<HTMLButtonElement>("#pa-usage-tabs .app-detail-tab").forEach((b) =>
+          b.classList.toggle("active", b === btn));
+        $("pa-usage-tab-daily")?.classList.toggle("hidden", tab !== "daily");
+        $("pa-usage-tab-spenders")?.classList.toggle("hidden", tab !== "spenders");
+        $("pa-usage-tab-runtime")?.classList.toggle("hidden", tab !== "runtime");
+      });
+    });
+    // The search bars filter the loaded rollups in place.
+    $("pa-usage-users-search")?.addEventListener("input", () => paintUsageUsers(lastUsageUsers));
+    $("pa-usage-runtimes-search")?.addEventListener("input", () => paintUsageRuntimes(lastUsageRuntimes));
   }
   void (async () => {
     const allowed = await isSuperAdmin();
@@ -1357,10 +1394,39 @@ let detailOrg: AdminOrgDetail | null = null;
 const ORG_TIERS = ["free", "basic", "pro", "enterprise"];
 
 /** Show exactly one of the org sub-views. */
-function showOrgView(view: "list" | "detail" | "grant"): void {
+function showOrgView(view: "list" | "detail" | "grant" | "create"): void {
   $("pa-orgs-list-view")?.classList.toggle("hidden", view !== "list");
   $("pa-org-detail")?.classList.toggle("hidden", view !== "detail");
   $("pa-org-grant")?.classList.toggle("hidden", view !== "grant");
+  $("pa-org-create")?.classList.toggle("hidden", view !== "create");
+}
+
+/** + New Org (his order, 2026-09-02) — the roles-page create grammar: open the
+ *  inline form, create a standalone org (base workspace + free credits seeded
+ *  server-side), land back on the refreshed list. */
+function openOrgCreate(): void {
+  setErr("pa-org-create-error", "");
+  const name = $<HTMLInputElement>("pa-org-create-name");
+  if (name) name.value = "";
+  const tier = $<HTMLSelectElement>("pa-org-create-tier");
+  if (tier) tier.innerHTML = ORG_TIERS.map((t) => `<option value="${t}"${t === "free" ? " selected" : ""}>${t}</option>`).join("");
+  showOrgView("create");
+  name?.focus();
+}
+
+async function createOrgFromForm(): Promise<void> {
+  const name = inputVal("pa-org-create-name").trim();
+  if (!name) { setErr("pa-org-create-error", "The organization needs a name."); return; }
+  const tier = inputVal("pa-org-create-tier") || "free";
+  const btn = $<HTMLButtonElement>("pa-org-create-save");
+  if (btn) btn.disabled = true;
+  const res = await write<AdminOrgRow>(
+    (a) => a.createOrg?.({ name, tier }),
+    (g) => g.adminOrgCreate?.({ name, tier }), "org");
+  if (btn) btn.disabled = false;
+  if (!res.ok) { setErr("pa-org-create-error", res.error); return; }
+  showOrgView("list");
+  await refreshOrgs();
 }
 
 async function openOrgDetail(o: AdminOrgRow): Promise<void> {
@@ -1655,6 +1721,10 @@ export function loadAdminOrgs(): void {
     $("pa-grant-cancel")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); });
     $("pa-org-detail-back")?.addEventListener("click", () => { detailOrg = null; showOrgView("list"); void refreshOrgs(); });
     $("pa-grant-save")?.addEventListener("click", () => { void grantCredits(); });
+    $("pa-org-new-btn")?.addEventListener("click", openOrgCreate);
+    $("pa-org-create-back")?.addEventListener("click", () => showOrgView("list"));
+    $("pa-org-create-cancel")?.addEventListener("click", () => showOrgView("list"));
+    $("pa-org-create-save")?.addEventListener("click", () => { void createOrgFromForm(); });
   }
   void (async () => {
     const allowed = await isSuperAdmin();

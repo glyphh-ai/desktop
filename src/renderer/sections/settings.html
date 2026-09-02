@@ -1662,6 +1662,13 @@
                 <div id="pa-usage-gate" class="crud-empty hidden">Only a platform super admin can see platform usage.</div>
                 <div id="pa-usage-body">
                   <div id="pa-usage-error" class="settings-error hidden"></div>
+                  <!-- Three tabs, one per section (his order, 2026-09-02). -->
+                  <div class="app-detail-tabs" id="pa-usage-tabs" style="margin:4px 0 14px;">
+                    <button class="app-detail-tab active" data-utab="daily" type="button">Per day</button>
+                    <button class="app-detail-tab" data-utab="spenders" type="button">Top spenders</button>
+                    <button class="app-detail-tab" data-utab="runtime" type="button">By runtime</button>
+                  </div>
+                  <div id="pa-usage-tab-daily">
                   <div class="dash-grid">
                     <div class="dash-card">
                       <div class="dash-card-label">Credits spent</div>
@@ -1702,11 +1709,32 @@
                       <div class="dash-chart-empty hidden" id="pa-usage-empty">No usage in this window.</div>
                     </div>
                   </div>
-                  <h3 class="acct-row-head">Top spenders</h3>
-                  <div id="pa-usage-users"></div>
-                  <h3 class="acct-row-head">By runtime</h3>
-                  <p class="section-desc">Where it ran — region × shared or dedicated × plan tier.</p>
-                  <div id="pa-usage-runtimes"></div>
+                  </div>
+
+                  <div id="pa-usage-tab-spenders" class="hidden">
+                    <div class="crud-toolbar">
+                      <div class="search-clear-wrap"><input id="pa-usage-users-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
+                      <select id="pa-usage-days-spenders" class="dash-usage-select" title="Date range">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </div>
+                    <div id="pa-usage-users"></div>
+                  </div>
+
+                  <div id="pa-usage-tab-runtime" class="hidden">
+                    <div class="crud-toolbar">
+                      <div class="search-clear-wrap"><input id="pa-usage-runtimes-search" type="text" class="crud-search" placeholder="Search region, mode, tier…" spellcheck="false" autocomplete="off" /></div>
+                      <select id="pa-usage-days-runtime" class="dash-usage-select" title="Date range">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </div>
+                    <p class="section-desc">Where it ran — region × shared or dedicated × plan tier.</p>
+                    <div id="pa-usage-runtimes"></div>
+                  </div>
                 </div>
               </div>
 
@@ -1721,9 +1749,28 @@
                   <div id="pa-orgs-list-view">
                     <div class="crud-toolbar">
                       <input id="pa-orgs-search" type="text" class="crud-search" placeholder="Search organizations…" spellcheck="false" autocomplete="off" />
+                      <button id="pa-org-new-btn" class="action-btn primary" type="button">+ New Org</button>
                     </div>
                     <div id="pa-orgs-list"></div>
                     <p class="settings-hint" id="pa-orgs-total"></p>
+                  </div>
+
+                  <!-- + New Org (the roles-page create grammar, 2026-09-02): a
+                       standalone org — base workspace + free credits seeded. -->
+                  <div id="pa-org-create" class="crud-inline-form lp-edit hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-org-create-back">&larr; Organizations</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-org-create-error" class="crud-form-error hidden"></div>
+                    <label class="settings-label">Name</label>
+                    <input id="pa-org-create-name" type="text" class="settings-input" placeholder="e.g. Acme Inc" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label">Plan</label>
+                    <select id="pa-org-create-tier" class="settings-input" style="max-width:240px;"></select>
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <button id="pa-org-create-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-org-create-save" class="action-btn primary" type="button">Create organization</button>
+                    </div>
                   </div>
 
                   <!-- Full org management view — rendered dynamically (info,
