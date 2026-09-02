@@ -98,7 +98,7 @@ export async function loadOrgPanel(): Promise<void> {
   setError("");
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const role = account?.role || "";
-  if (!role || !["org_admin", "super_admin"].includes(role)) { showPanel(false); return; }
+  if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
   try { org = await accountApi().org(); paint(); }
   catch (e) { setError(`Couldn't load your organization — ${(e as Error).message}`); }

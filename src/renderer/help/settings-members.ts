@@ -405,7 +405,7 @@ export async function loadMembers(): Promise<void> {
     const account = await window.glyphh.getAccountInfo().catch(() => null);
     selfId = "";
     const role = account?.role || "";
-    if (!role || !["org_admin", "super_admin"].includes(role)) { showPanel(false); return; }
+    if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
     showPanel(true);
 
     const [list, orgRes, invRes] = await Promise.allSettled([accountApi().members(), accountApi().org(), accountApi().pendingInvites()]);

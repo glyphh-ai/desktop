@@ -616,7 +616,7 @@ export async function loadUsageAppView(): Promise<void> {
   // 2026-08-24): no org balance, no buying, no auto top-up. The server 403s
   // the billing reads/writes for them regardless — this hides the controls.
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
-    const admin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
+    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
     document.querySelector(".ua-credits-toggle")?.classList.toggle("hidden", !admin);
     el("ua-balance-row")?.classList.toggle("hidden", !admin);
   }).catch(() => { /* signed out — the page renders read-only anyway */ });

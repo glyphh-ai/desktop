@@ -247,7 +247,7 @@ function showPanel(on: boolean): void {
 export async function loadDomainsPanel(): Promise<void> {
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const role = account?.role || "";
-  if (!role || !["org_admin", "super_admin"].includes(role)) { showPanel(false); return; }
+  if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
 
   try { apps = await accountApi().orgApps(); } catch { apps = []; }
