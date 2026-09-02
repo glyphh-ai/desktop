@@ -92,7 +92,7 @@ interface AdminPlanPatch {
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
 interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; credits: number; tokens: number }
-interface AdminUsageDay { day: string; credits: number; requests: number }
+interface AdminUsageDay { day: string; credits: number; requests: number; inputTokens?: number; outputTokens?: number }
 interface AdminUsageByRuntime {
   region: string; mode: string; tier: string;
   runtimes: number; orgs: number; users: number; requests: number; credits: number;
@@ -124,9 +124,9 @@ interface SdkAdmin {
   addPlanPrice?: (tier: string, stripePriceId: string) => Promise<AdminPlanPrice>;
   activatePlanPrice?: (id: string) => Promise<AdminPlanPrice>;
   removePlanPrice?: (id: string) => Promise<void>;
-  usageByUser?: (days?: number) => Promise<{ users: AdminUsageByUser[] }>;
-  usageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
-  usageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
+  usageByUser?: (days?: number, filters?: { orgId?: string }) => Promise<{ users: AdminUsageByUser[] }>;
+  usageDaily?: (q: { from: string; to: string; tz?: string; orgId?: string }) => Promise<{ days: AdminUsageDay[] }>;
+  usageByRuntime?: (q: { from: string; to: string; orgId?: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   orgs?: (q?: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
   createOrg?: (input: { name: string; tier?: string }) => Promise<AdminOrgRow>;
   org?: (id: string) => Promise<AdminOrgDetail>;
@@ -153,9 +153,9 @@ interface DesktopAdminIpc {
   adminPlanPriceAdd?: (tier: string, priceId: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
   adminPlanPriceActivate?: (id: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
   adminPlanPriceRemove?: (id: string) => Promise<{ ok: boolean; error?: string }>;
-  adminUsageByUser?: (days: number) => Promise<{ users: AdminUsageByUser[] }>;
-  adminUsageDaily?: (q: { from: string; to: string; tz?: string }) => Promise<{ days: AdminUsageDay[] }>;
-  adminUsageByRuntime?: (q: { from: string; to: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
+  adminUsageByUser?: (days: number, orgId?: string) => Promise<{ users: AdminUsageByUser[] }>;
+  adminUsageDaily?: (q: { from: string; to: string; tz?: string; orgId?: string }) => Promise<{ days: AdminUsageDay[] }>;
+  adminUsageByRuntime?: (q: { from: string; to: string; orgId?: string }) => Promise<{ runtimes: AdminUsageByRuntime[] }>;
   adminOrgs?: (q: { q?: string; page?: number; limit?: number }) => Promise<{ orgs: AdminOrgRow[]; total: number }>;
   adminOrgCreate?: (input: { name: string; tier?: string }) => Promise<{ ok: boolean; org?: AdminOrgRow; error?: string }>;
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
@@ -1088,7 +1088,15 @@ export function loadAdminPlans(): void {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let usageChart: { destroy: () => void } | null = null;
+let usageFinChart: { destroy: () => void } | null = null;
 let usageWired = false;
+
+// The financial constants (his order, 2026-09-02): revenue = credits at the
+// list price; cost = the meter's uniform COGS basis — the same $0.01/credit
+// every usage event's cost_usd_micro is recorded at, so the chart ties out
+// with the ledger.
+const USD_PER_CREDIT_LIST = 0.024;
+const USD_PER_CREDIT_COST = 0.01;
 
 const cssVar = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -1159,6 +1167,73 @@ function renderUsageChart(days: AdminUsageDay[]): void {
 let lastUsageUsers: AdminUsageByUser[] = [];
 let lastUsageRuntimes: AdminUsageByRuntime[] = [];
 
+/** Token spend + revenue + cost as LINES, same window/org as the bar chart. */
+function renderUsageFinChart(days: AdminUsageDay[]): void {
+  const canvas = $<HTMLCanvasElement>("pa-usage-fin-chart");
+  const empty = $("pa-usage-fin-empty");
+  if (!canvas || typeof Chart === "undefined") return;
+  if (usageFinChart) { usageFinChart.destroy(); usageFinChart = null; }
+  const hasData = days.some((d) => d.credits > 0 || (d.inputTokens ?? 0) + (d.outputTokens ?? 0) > 0);
+  empty?.classList.toggle("hidden", hasData);
+  canvas.style.visibility = hasData ? "visible" : "hidden";
+  if (!hasData) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const accent = cssVar("--accent") || "#af5fff";
+  usageFinChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: days.map((d) => shortDay(d.day)),
+      datasets: [
+        {
+          label: "Tokens", yAxisID: "yTok",
+          data: days.map((d) => (d.inputTokens ?? 0) + (d.outputTokens ?? 0)),
+          borderColor: cssVar("--text-3") || "#868686", backgroundColor: "transparent",
+          borderWidth: 1.5, pointRadius: 0, tension: 0.25, borderDash: [4, 3],
+        },
+        {
+          label: "Revenue $", yAxisID: "yUsd",
+          data: days.map((d) => microToCredits(d.credits) * USD_PER_CREDIT_LIST),
+          borderColor: accent, backgroundColor: "transparent",
+          borderWidth: 2, pointRadius: 0, tension: 0.25,
+        },
+        {
+          label: "Cost $", yAxisID: "yUsd",
+          data: days.map((d) => microToCredits(d.credits) * USD_PER_CREDIT_COST),
+          borderColor: "#e5a50a", backgroundColor: "transparent",
+          borderWidth: 2, pointRadius: 0, tension: 0.25,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: cssVar("--text-3") || "#868686", boxWidth: 14 } },
+        tooltip: {
+          callbacks: {
+            label: (c: { dataset: { label?: string }; parsed: { y: number } }) =>
+              c.dataset.label === "Tokens" ? `${fmtInt(c.parsed.y)} tokens` : `${c.dataset.label ?? ""} ${c.parsed.y.toFixed(2)}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: cssVar("--text-3") || "#868686", maxRotation: 0, autoSkip: true } },
+        yUsd: {
+          beginAtZero: true, position: "left",
+          grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => `$${fmtInt(v)}` },
+        },
+        yTok: {
+          beginAtZero: true, position: "right",
+          grid: { display: false },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtInt(v) },
+        },
+      },
+    },
+  });
+}
+
 function paintUsageUsers(all: AdminUsageByUser[]): void {
   const wrap = $("pa-usage-users");
   if (!wrap) return;
@@ -1218,12 +1293,15 @@ async function refreshAdminUsage(): Promise<void> {
   const to = new Date();
   const from = new Date();
   from.setDate(to.getDate() - (win - 1));
-  const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone };
+  // ONE filter set drives everything (his order, 2026-09-02): the bar chart's
+  // org + window scope the cards, both charts, and the other two tabs.
+  const orgId = $<HTMLSelectElement>("pa-usage-org")?.value || undefined;
+  const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(orgId ? { orgId } : {}) };
   // The three rollups are independent — one failing must not blank the rest.
   const [daysRes, usersRes, runtimesRes] = await Promise.allSettled([
     read((a) => a.usageDaily?.(query), (g) => g.adminUsageDaily?.(query)),
-    read((a) => a.usageByUser?.(win), (g) => g.adminUsageByUser?.(win)),
-    read((a) => a.usageByRuntime?.({ from: query.from, to: query.to }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to })),
+    read((a) => a.usageByUser?.(win, orgId ? { orgId } : {}), (g) => g.adminUsageByUser?.(win, orgId)),
+    read((a) => a.usageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
   ]);
   const problems: string[] = [];
   const days: AdminUsageDay[] = daysRes.status === "fulfilled" ? (daysRes.value?.days || []) : (problems.push("daily series"), []);
@@ -1242,7 +1320,12 @@ async function refreshAdminUsage(): Promise<void> {
   set("pa-usage-active", fmtInt(users.length));
   set("pa-usage-total", `${fmtInt(credits)} credits · ${fmtInt(requests)} calls`);
   set("pa-usage-range", `last ${win} days`);
+  // Revenue + cost ride the SAME credits the ledger charges (constants above).
+  set("pa-usage-revenue", `$${(credits * USD_PER_CREDIT_LIST).toFixed(2)}`);
+  set("pa-usage-cost", `$${(credits * USD_PER_CREDIT_COST).toFixed(2)}`);
+  set("pa-usage-fin-range", `last ${win} days${orgId ? " · one org" : " · all orgs"}`);
   renderUsageChart(days);
+  renderUsageFinChart(days);
   paintUsageUsers(users);
   paintUsageRuntimes(runtimes);
 }
@@ -1263,6 +1346,20 @@ export function loadAdminUsage(): void {
       $(id)?.addEventListener("change", () => { syncUsageDays(id); void refreshAdminUsage(); });
     }
     $("pa-usage-refresh")?.addEventListener("click", () => { void refreshAdminUsage(); });
+    // The All-orgs filter — populated once, drives every card/chart/tab.
+    $("pa-usage-org")?.addEventListener("change", () => { void refreshAdminUsage(); });
+    void read((a) => a.orgs?.({ limit: 500 }), (g) => g.adminOrgs?.({ limit: 500 }))
+      .then((r) => {
+        const sel = $<HTMLSelectElement>("pa-usage-org");
+        if (!sel || !r?.orgs) return;
+        for (const o of [...r.orgs].sort((a, b) => a.name.localeCompare(b.name))) {
+          const opt = document.createElement("option");
+          opt.value = o.id;
+          opt.textContent = o.name;
+          sel.appendChild(opt);
+        }
+      })
+      .catch(() => { /* the select degrades to All orgs */ });
     // Tab strip (his order, 2026-09-02): one tab per section.
     document.querySelectorAll<HTMLButtonElement>("#pa-usage-tabs .app-detail-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1614,7 +1711,10 @@ async function sendOrgInvite(d: AdminOrgDetail): Promise<void> {
     (a) => a.inviteOrgMember?.(d.id, email, role).then((r) => ({ acceptUrl: r.acceptUrl })),
     (g) => g.adminOrgMemberInvite?.(d.id, email, role), "acceptUrl");
   if (!res.ok) { if (note) note.textContent = res.error; return; }
-  if (note) note.textContent = `Invite sent to ${email} ✓ — they get an email with the accept link.`;
+  // The accept link is ALWAYS shown (his report, 2026-09-02): mail is
+  // best-effort (dev has no mailer at all), the invite itself is real either
+  // way — the admin can hand the link over directly.
+  if (note) note.textContent = `Invite created for ${email} ✓ — accept link: ${res.data.acceptUrl}`;
   const emailEl = $<HTMLInputElement>("pa-org-invite-email");
   if (emailEl) emailEl.value = "";
 }

@@ -117,12 +117,12 @@ export function registerAdminIpc(): void {
   });
 
   // ── platform usage ──────────────────────────────────────────────────────
-  ipcMain.handle("admin-usage-by-user", (_e, days: number) =>
-    getClient().admin.usageByUser(Math.max(1, Math.min(365, Number(days) || 30))));
-  ipcMain.handle("admin-usage-daily", (_e, q: AdminDailyQueryInput) =>
-    getClient().admin.usageDaily({ from: String(q?.from || ""), to: String(q?.to || ""), tz: q?.tz }));
-  ipcMain.handle("admin-usage-by-runtime", (_e, q: { from: string; to: string }) =>
-    getClient().admin.usageByRuntime({ from: String(q?.from || ""), to: String(q?.to || "") }));
+  ipcMain.handle("admin-usage-by-user", (_e, days: number, orgId?: string) =>
+    getClient().admin.usageByUser(Math.max(1, Math.min(365, Number(days) || 30)), orgId ? { orgId } : {}));
+  ipcMain.handle("admin-usage-daily", (_e, q: AdminDailyQueryInput & { orgId?: string }) =>
+    getClient().admin.usageDaily({ from: String(q?.from || ""), to: String(q?.to || ""), tz: q?.tz, ...(q?.orgId ? { orgId: q.orgId } : {}) }));
+  ipcMain.handle("admin-usage-by-runtime", (_e, q: { from: string; to: string; orgId?: string }) =>
+    getClient().admin.usageByRuntime({ from: String(q?.from || ""), to: String(q?.to || ""), ...(q?.orgId ? { orgId: q.orgId } : {}) }));
 
   // ── orgs + credit grants ────────────────────────────────────────────────
   ipcMain.handle("admin-orgs", (_e, q: { q?: string; page?: number; limit?: number }) =>

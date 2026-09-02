@@ -1688,6 +1688,16 @@
                       <div class="dash-card-value" id="pa-usage-active">—</div>
                       <div class="dash-card-sub">with usage</div>
                     </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Revenue</div>
+                      <div class="dash-card-value" id="pa-usage-revenue">—</div>
+                      <div class="dash-card-sub">credits at list price</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Cost</div>
+                      <div class="dash-card-value" id="pa-usage-cost">—</div>
+                      <div class="dash-card-sub">COGS basis</div>
+                    </div>
                   </div>
                   <div class="dash-card dash-card-wide">
                     <div class="dash-card-head">
@@ -1697,6 +1707,9 @@
                         <div class="dash-card-sub" id="pa-usage-range">last 30 days</div>
                       </div>
                       <div class="dash-usage-filters">
+                        <select id="pa-usage-org" class="dash-usage-select" title="Organization">
+                          <option value="">All orgs</option>
+                        </select>
                         <select id="pa-usage-days" class="dash-usage-select" title="Date range">
                           <option value="7">7 days</option>
                           <option value="30" selected>30 days</option>
@@ -1710,6 +1723,20 @@
                     <div class="dash-chart-wrap">
                       <canvas id="pa-usage-chart"></canvas>
                       <div class="dash-chart-empty hidden" id="pa-usage-empty">No usage in this window.</div>
+                    </div>
+                  </div>
+                  <!-- Financials (his order, 2026-09-02): token spend, revenue,
+                       cost as lines — the SAME window + org the bar chart uses. -->
+                  <div class="dash-card dash-card-wide">
+                    <div class="dash-card-head">
+                      <div>
+                        <div class="dash-card-label">Tokens · Revenue · Cost</div>
+                        <div class="dash-card-sub" id="pa-usage-fin-range">same window as above</div>
+                      </div>
+                    </div>
+                    <div class="dash-chart-wrap">
+                      <canvas id="pa-usage-fin-chart"></canvas>
+                      <div class="dash-chart-empty hidden" id="pa-usage-fin-empty">No usage in this window.</div>
                     </div>
                   </div>
                   </div>

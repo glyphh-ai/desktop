@@ -800,10 +800,10 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-plan-price-activate", id) as Promise<{ ok: boolean; price?: unknown; error?: string }>,
   adminPlanPriceRemove: (id: string) =>
     ipcRenderer.invoke("admin-plan-price-remove", id) as Promise<{ ok: boolean; error?: string }>,
-  adminUsageByUser: (days: number) => ipcRenderer.invoke("admin-usage-by-user", days) as Promise<{ users: unknown[] }>,
-  adminUsageDaily: (q: { from: string; to: string; tz?: string }) =>
+  adminUsageByUser: (days: number, orgId?: string) => ipcRenderer.invoke("admin-usage-by-user", days, orgId) as Promise<{ users: unknown[] }>,
+  adminUsageDaily: (q: { from: string; to: string; tz?: string; orgId?: string }) =>
     ipcRenderer.invoke("admin-usage-daily", q) as Promise<{ days: unknown[] }>,
-  adminUsageByRuntime: (q: { from: string; to: string }) =>
+  adminUsageByRuntime: (q: { from: string; to: string; orgId?: string }) =>
     ipcRenderer.invoke("admin-usage-by-runtime", q) as Promise<{ runtimes: unknown[] }>,
   adminOrgs: (q: { q?: string; page?: number; limit?: number }) =>
     ipcRenderer.invoke("admin-orgs", q) as Promise<{ orgs: unknown[]; total: number }>,
