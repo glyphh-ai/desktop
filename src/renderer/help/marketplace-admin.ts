@@ -20,7 +20,7 @@ import {
 import { showMktView, openMktDetail } from "./marketplace.js";
 import { openMktDeveloper } from "./marketplace-dev.js";
 
-type AdminTab = "queue" | "apps" | "reports" | "reviews" | "dev-reviews";
+type AdminTab = "queue" | "library" | "apps" | "reports" | "reviews" | "dev-reviews";
 let adminTab: AdminTab = "queue";
 let reportFilter: "open" | "reviewing" | "resolved" | "dismissed" | undefined;
 
@@ -61,6 +61,7 @@ export async function loadMktAdmin(): Promise<void> {
     <p class="mkt-console-sub">Nothing ships without approval — every release and every update comes through here, and every report is taken seriously.</p>
     <div class="mkt-admin-tabs">
       <button class="mkt-scope${adminTab === "queue" ? " active" : ""}" data-atab="queue">Release queue</button>
+      <button class="mkt-scope${adminTab === "library" ? " active" : ""}" data-atab="library">Skills &amp; loops</button>
       <button class="mkt-scope${adminTab === "reports" ? " active" : ""}" data-atab="reports">App reports</button>
       <button class="mkt-scope${adminTab === "apps" ? " active" : ""}" data-atab="apps">Apps</button>
       <button class="mkt-scope${adminTab === "reviews" ? " active" : ""}" data-atab="reviews">Flagged reviews</button>
@@ -89,12 +90,63 @@ async function loadAdminTab(): Promise<void> {
   body.innerHTML = `<div class="crud-empty">Loading…</div>`;
   try {
     if (adminTab === "queue") await renderQueue(body);
+    else if (adminTab === "library") await renderLibraryQueue(body);
     else if (adminTab === "reports") await renderReports(body);
     else if (adminTab === "apps") await renderAdminApps(body);
     else if (adminTab === "reviews") await renderFlagged(body, "app");
     else await renderFlagged(body, "dev");
   } catch (err) {
     body.innerHTML = `<div class="crud-empty">${escMkt(err instanceof Error ? err.message : "Couldn't load the desk.")}</div>`;
+  }
+}
+
+// ── Library queue (skills + loops, his order 2026-09-02) ──────────────────
+// Same shape as releases: submitted → begin → approve/reject. The frozen
+// content snapshot (prompt + program) IS what's being ruled on — it renders
+// inline so the reviewer reads exactly what an install will copy.
+
+async function renderLibraryQueue(body: HTMLElement): Promise<void> {
+  const res = await window.glyphh.libraryAdminQueue?.();
+  const queue = res?.ok ? res.queue : [];
+  if (!queue.length) {
+    body.innerHTML = `<div class="crud-empty">No skills or loops waiting for review.</div>`;
+    return;
+  }
+  body.innerHTML = "";
+  for (const l of queue) {
+    const row = document.createElement("div");
+    row.className = "mkt-admin-row";
+    row.innerHTML = `
+      <div class="mkt-admin-row-head">
+        <b></b>
+        <span class="lib-badge">${l.kind === "skill" ? "Skill" : "Loop"}</span>
+        <span class="mkt-console-app-sub"></span>
+        <span style="flex:1;"></span>
+        <span class="mkt-console-app-sub">${escMkt(mktDate(l.submittedAt))}${l.submittedBy ? ` · ${escMkt(l.submittedBy)}` : ""}</span>
+      </div>
+      <p class="mkt-console-app-sub" style="margin:4px 0 8px;"></p>
+      ${l.prompt ? `<details style="margin:0 0 8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-3);">Instructions</summary><pre class="lib-read-code" style="white-space:pre-wrap;"></pre></details>` : ""}
+      ${l.code ? `<details style="margin:0 0 8px;"><summary style="cursor:pointer;font-size:12px;color:var(--text-3);">Program</summary><pre class="lib-read-code"></pre></details>` : ""}
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="action-btn lq-reject" style="height:26px;font-size:12px;">Reject</button>
+        <button type="button" class="action-btn primary lq-approve" style="height:26px;font-size:12px;">Approve &amp; list</button>
+      </div>
+      <div class="crud-form-error hidden lq-err" style="margin-top:6px;"></div>`;
+    (row.querySelector(".mkt-admin-row-head b") as HTMLElement).textContent = l.name;
+    (row.querySelector(".mkt-admin-row-head .mkt-console-app-sub") as HTMLElement).textContent = l.slug;
+    (row.querySelector("p") as HTMLElement).textContent = l.description || "";
+    const pres = row.querySelectorAll("details pre");
+    if (l.prompt && pres[0]) (pres[0] as HTMLElement).textContent = l.prompt;
+    if (l.code) ((l.prompt ? pres[1] : pres[0]) as HTMLElement | undefined)?.append(l.code);
+    const rule = async (action: "approve" | "reject"): Promise<void> => {
+      const r = await window.glyphh.libraryAdminReview?.(l.id, action);
+      const err = row.querySelector(".lq-err") as HTMLElement;
+      if (!r?.ok) { err.textContent = r?.error || `Couldn't ${action}.`; err.classList.remove("hidden"); return; }
+      await renderLibraryQueue(body);
+    };
+    row.querySelector(".lq-approve")!.addEventListener("click", () => void rule("approve"));
+    row.querySelector(".lq-reject")!.addEventListener("click", () => void rule("reject"));
+    body.appendChild(row);
   }
 }
 

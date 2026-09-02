@@ -185,6 +185,60 @@ export async function loadMarketplace(): Promise<void> {
   }
   renderMktStorefront();
   hydrateDetails(true);
+  void loadLibraryStrip();
+}
+
+/** The Skills & Loops strip (his order, 2026-09-02): approved library listings
+ *  + the org's own shared items. Always free; Install copies into the caller's
+ *  library. Quiet on failure — the app storefront never waits on it. */
+async function loadLibraryStrip(): Promise<void> {
+  const wrap = document.getElementById("mkt-library");
+  const list = document.getElementById("mkt-library-list");
+  if (!wrap || !list) return;
+  const res = await window.glyphh.libraryMarket?.().catch(() => null);
+  if (!res?.ok) { wrap.classList.add("hidden"); return; }
+  const orgSlugs = new Set(res.org.map((o) => `${o.kind}|${o.slug}`));
+  const rows = [
+    ...res.listings.map((l) => ({ ...l, inOrg: orgSlugs.has(`${l.kind}|${l.slug}`) })),
+    ...res.org.filter((o) => !res.listings.some((l) => l.kind === o.kind && l.slug === o.slug))
+      .map((o) => ({ id: "", kind: o.kind as "skill" | "loop", slug: o.slug, name: o.name, description: o.description,
+                     installs: 0, installed: false, inOrg: true })),
+  ];
+  if (!rows.length) { wrap.classList.add("hidden"); return; }
+  wrap.classList.remove("hidden");
+  list.innerHTML = "";
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);";
+    row.innerHTML = `
+      <span class="lib-badge">${r.kind === "skill" ? "Skill" : "Loop"}</span>
+      <div style="flex:1;min-width:0;">
+        <span style="font-size:13px;color:var(--text-1);"></span>
+        <span style="font-size:12px;color:var(--text-3);margin-left:6px;"></span>
+      </div>
+      ${r.inOrg && !r.id ? `<span class="lib-badge on">In your org</span>`
+        : r.installed ? `<button type="button" class="action-btn mkt-lib-un" style="height:26px;font-size:12px;">Installed</button>`
+        : `<button type="button" class="action-btn primary mkt-lib-in" style="height:26px;font-size:12px;">Install</button>`}`;
+    const [nameEl, descEl] = Array.from(row.querySelectorAll("div > span"));
+    (nameEl as HTMLElement).textContent = r.name;
+    (descEl as HTMLElement).textContent = r.description || (r.id && r.installs ? `${r.installs} installs` : "");
+    row.querySelector(".mkt-lib-in")?.addEventListener("click", () => {
+      void window.glyphh.libraryMarketInstall?.(r.id).then((rr) => {
+        if (!rr?.ok) {
+          const err = document.createElement("div");
+          err.className = "crud-form-error";
+          err.textContent = rr?.error || "Couldn't install.";
+          row.appendChild(err);
+          return;
+        }
+        void loadLibraryStrip();
+      });
+    });
+    row.querySelector(".mkt-lib-un")?.addEventListener("click", () => {
+      void window.glyphh.libraryMarketUninstall?.(r.id).then(() => void loadLibraryStrip());
+    });
+    list.appendChild(row);
+  }
 }
 
 /** Fetch each listing's detail (icon / tagline / stars / category / developer)

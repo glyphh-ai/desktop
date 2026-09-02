@@ -126,6 +126,31 @@ type EdgeTelemetryRollups = {
   engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
 };
 
+/** Mirrors preload.ts LibraryListingRow — a skills/loops marketplace listing. */
+type LibraryListingRow = {
+  id: string;
+  kind: "skill" | "loop";
+  slug: string;
+  name: string;
+  description: string;
+  reviewStatus: string;
+  reviewNotes: string | null;
+  submittedAt: string;
+  listedAt: string | null;
+  installs: number;
+  installed: boolean;
+};
+
+/** Mirrors preload.ts LibraryShareRow — an open org-share submission. */
+type LibraryShareRow = {
+  id: string;
+  kind: "skill" | "loop";
+  slug: string;
+  name: string;
+  requestedBy: string;
+  submittedAt: string;
+};
+
 /** Mirrors preload.ts MarketingLinkRow — an org campaign link + window stats. */
 type MarketingLinkRow = {
   id: string;
@@ -261,6 +286,15 @@ declare global {
       appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
       appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
+      libraryShare: (kind: "skill" | "loop", ref: string) => Promise<{ ok: boolean; id?: string; status?: string; error?: string }>;
+      libraryPublish: (kind: "skill" | "loop", ref: string) => Promise<{ ok: boolean; id?: string; reviewStatus?: string; error?: string }>;
+      libraryPending: () => Promise<{ ok: boolean; pending: LibraryShareRow[]; error?: string }>;
+      libraryShareReview: (id: string, action: "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
+      libraryMarket: (kind?: "skill" | "loop") => Promise<{ ok: boolean; listings: LibraryListingRow[]; org: Array<{ kind: string; slug: string; name: string; description: string }>; error?: string }>;
+      libraryMarketInstall: (id: string) => Promise<{ ok: boolean; kind?: string; slug?: string; error?: string }>;
+      libraryMarketUninstall: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      libraryAdminQueue: () => Promise<{ ok: boolean; queue: Array<LibraryListingRow & { prompt: string; code: string; submittedBy: string | null }>; error?: string }>;
+      libraryAdminReview: (id: string, action: "begin" | "approve" | "reject", notes?: string) => Promise<{ ok: boolean; error?: string }>;
       marketingLinks: (days?: number) => Promise<{ ok: boolean; links: MarketingLinkRow[]; error?: string }>;
       marketingLinkCreate: (input: { name: string; targetUrl: string; appId?: string }) => Promise<{ ok: boolean; link?: MarketingLinkRow; error?: string }>;
       marketingLinkUpdate: (id: string, patch: { name?: string; archived?: boolean }) => Promise<{ ok: boolean; error?: string }>;

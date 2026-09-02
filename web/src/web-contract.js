@@ -902,6 +902,43 @@ export function buildContract(client, deps) {
       try { return { ok: true, ...(await client.org.domainsTraffic(days ?? 30, filter)) }; }
       catch (err) { return { ok: false, error: err?.message || String(err), days: [], hosts: [] }; }
     },
+    // Library sharing + marketplace (skills + loops) — free installs, approvals.
+    libraryShare: async (kind, ref) => {
+      try { return { ok: true, ...(await (kind === "skill" ? client.skills.share(ref) : client.loops.share(ref))) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    libraryPublish: async (kind, ref) => {
+      try { return { ok: true, ...(await (kind === "skill" ? client.skills.publish(ref) : client.loops.publish(ref))) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    libraryPending: async () => {
+      try { return { ok: true, ...(await client.libraryMarket.pendingShares()) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), pending: [] }; }
+    },
+    libraryShareReview: async (id, action) => {
+      try { await client.libraryMarket.reviewShare(id, action); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    libraryMarket: async (kind) => {
+      try { return { ok: true, ...(await client.libraryMarket.browse(kind)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), listings: [], org: [] }; }
+    },
+    libraryMarketInstall: async (id) => {
+      try { return { ok: true, ...(await client.libraryMarket.install(id)) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    libraryMarketUninstall: async (id) => {
+      try { await client.libraryMarket.uninstall(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    libraryAdminQueue: async () => {
+      try { return { ok: true, ...(await client.libraryMarket.reviewQueue()) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err), queue: [] }; }
+    },
+    libraryAdminReview: async (id, action, notes) => {
+      try { await client.libraryMarket.reviewListing(id, action, notes); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     // Marketing links — campaign URLs + attribution stats.
     marketingLinks: async (days) => {
       try { return { ok: true, ...(await client.org.marketingLinks(days ?? 30)) }; }

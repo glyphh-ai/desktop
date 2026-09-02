@@ -890,6 +890,48 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 
+  // ── Library sharing + marketplace (his order, 2026-09-02): skills + loops ──
+  ipcMain.handle("library-share", async (_e, kind: "skill" | "loop", ref: string) => {
+    try {
+      const c = getClient();
+      return { ok: true, ...(await (kind === "skill" ? c.skills.share(ref) : c.loops.share(ref))) };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("library-publish", async (_e, kind: "skill" | "loop", ref: string) => {
+    try {
+      const c = getClient();
+      return { ok: true, ...(await (kind === "skill" ? c.skills.publish(ref) : c.loops.publish(ref))) };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("library-pending", async () => {
+    try { return { ok: true, ...(await getClient().libraryMarket.pendingShares()) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), pending: [] }; }
+  });
+  ipcMain.handle("library-share-review", async (_e, id: string, action: "approve" | "reject") => {
+    try { await getClient().libraryMarket.reviewShare(id, action); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("library-market", async (_e, kind?: "skill" | "loop") => {
+    try { return { ok: true, ...(await getClient().libraryMarket.browse(kind)) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), listings: [], org: [] }; }
+  });
+  ipcMain.handle("library-market-install", async (_e, id: string) => {
+    try { return { ...(await getClient().libraryMarket.install(id)), ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("library-market-uninstall", async (_e, id: string) => {
+    try { await getClient().libraryMarket.uninstall(id); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("library-admin-queue", async () => {
+    try { return { ok: true, ...(await getClient().libraryMarket.reviewQueue()) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), queue: [] }; }
+  });
+  ipcMain.handle("library-admin-review", async (_e, id: string, action: "begin" | "approve" | "reject", notes?: string) => {
+    try { await getClient().libraryMarket.reviewListing(id, action, notes); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   // ── Version history (his order, 2026-09-01): the snapshot chain + restore ──
   ipcMain.handle("app-source-history", async (_e, slug: string) => {
     try { return { ok: true, history: await getClient().apps.sourceHistory(slug) }; }

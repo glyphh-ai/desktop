@@ -66,6 +66,8 @@ export interface SkillManifest {
 export interface SkillSummary {
   id: string;
   slug: string;
+  /** `personal` = the author's own; `org` = shared with every member. */
+  scope?: "personal" | "org";
   name: string;
   description: string;
   hasCode: boolean;

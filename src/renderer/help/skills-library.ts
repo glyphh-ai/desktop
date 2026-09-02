@@ -129,6 +129,8 @@ function readRow(label: string, value: string): string {
   return `<div class="lib-read-row"><span class="lib-read-label">${escapeHtml(label)}</span><span class="lib-read-value">${escapeHtml(value)}</span></div>`;
 }
 
+import { wireLibraryActions } from "./library-share.js";
+
 async function openDetail(ref: string): Promise<void> {
   formError.classList.add("hidden");
   const env = await window.glyphh.librarySkillGet(ref);
@@ -153,9 +155,15 @@ async function openDetail(ref: string): Promise<void> {
     <div class="settings-actions lib-detail-actions">
       <button id="skill-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
-    </div>`;
+      ${current.builtIn ? "" : current.scope === "personal"
+        ? `<button id="skill-share-btn" class="action-btn">Share with org</button>`
+        : `<span class="lib-badge on" style="align-self:center;">Org</span>
+           <button id="skill-publish-btn" class="action-btn">Publish to marketplace</button>`}
+    </div>
+    <div id="skill-share-note" class="settings-hint hidden" style="margin-top:6px;"></div>`;
 
   detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
+  wireLibraryActions(detailEl, "skill", () => current);
   wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
     const res = await window.glyphh.librarySkillUpdate(current!.slug, patch);
     if (!res.ok) return res.error || "Couldn't save.";

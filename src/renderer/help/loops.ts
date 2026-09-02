@@ -15,6 +15,7 @@ import type { Loop, LoopSummary } from "./library-types.js";
 import { loopGraph, renderFlow } from "./lib-flow.js";
 import { seedComposer } from "./code.js";
 import { wireSplitDivider, kebabCell, ROW_MENU_ICONS, wireIdentityEdit } from "./lib-editor.js";
+import { wireLibraryActions } from "./library-share.js";
 
 let all: LoopSummary[] = [];
 let page = 0;
@@ -142,9 +143,14 @@ async function openDetail(ref: string): Promise<void> {
     ${current.builtIn ? "" : `<div class="settings-actions lib-detail-actions">
       <button id="loop-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
-    </div>`}`;
+      ${current.scope === "personal"
+        ? `<button id="loop-share-btn" class="action-btn">Share with org</button>`
+        : `<button id="loop-publish-btn" class="action-btn">Publish to marketplace</button>`}
+    </div>
+    <div id="loop-share-note" class="settings-hint hidden" style="margin-top:6px;"></div>`}`;
 
   detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  if (!current.builtIn) wireLibraryActions(detailEl, "loop", () => current);
   if (!current.builtIn) {
     wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
       const res = await window.glyphh.libraryLoopUpdate(current!.slug, patch);

@@ -107,6 +107,31 @@ export interface EdgeTelemetryRollups {
   engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
 }
 
+/** A skills/loops marketplace listing (free installs). */
+export interface LibraryListingRow {
+  id: string;
+  kind: "skill" | "loop";
+  slug: string;
+  name: string;
+  description: string;
+  reviewStatus: string;
+  reviewNotes: string | null;
+  submittedAt: string;
+  listedAt: string | null;
+  installs: number;
+  installed: boolean;
+}
+
+/** An open org-share submission (skills/loops) awaiting an admin. */
+export interface LibraryShareRow {
+  id: string;
+  kind: "skill" | "loop";
+  slug: string;
+  name: string;
+  requestedBy: string;
+  submittedAt: string;
+}
+
 /** An org marketing link + its window stats. */
 export interface MarketingLinkRow {
   id: string;
@@ -697,6 +722,25 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("marketing-link-update", id, patch) as Promise<{ ok: boolean; error?: string }>,
   marketingLinkDelete: (id: string) =>
     ipcRenderer.invoke("marketing-link-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  // Library sharing + marketplace (skills + loops) — free installs, approvals.
+  libraryShare: (kind: "skill" | "loop", ref: string) =>
+    ipcRenderer.invoke("library-share", kind, ref) as Promise<{ ok: boolean; id?: string; status?: string; error?: string }>,
+  libraryPublish: (kind: "skill" | "loop", ref: string) =>
+    ipcRenderer.invoke("library-publish", kind, ref) as Promise<{ ok: boolean; id?: string; reviewStatus?: string; error?: string }>,
+  libraryPending: () =>
+    ipcRenderer.invoke("library-pending") as Promise<{ ok: boolean; pending: LibraryShareRow[]; error?: string }>,
+  libraryShareReview: (id: string, action: "approve" | "reject") =>
+    ipcRenderer.invoke("library-share-review", id, action) as Promise<{ ok: boolean; error?: string }>,
+  libraryMarket: (kind?: "skill" | "loop") =>
+    ipcRenderer.invoke("library-market", kind) as Promise<{ ok: boolean; listings: LibraryListingRow[]; org: Array<{ kind: string; slug: string; name: string; description: string }>; error?: string }>,
+  libraryMarketInstall: (id: string) =>
+    ipcRenderer.invoke("library-market-install", id) as Promise<{ ok: boolean; kind?: string; slug?: string; error?: string }>,
+  libraryMarketUninstall: (id: string) =>
+    ipcRenderer.invoke("library-market-uninstall", id) as Promise<{ ok: boolean; error?: string }>,
+  libraryAdminQueue: () =>
+    ipcRenderer.invoke("library-admin-queue") as Promise<{ ok: boolean; queue: Array<LibraryListingRow & { prompt: string; code: string; submittedBy: string | null }>; error?: string }>,
+  libraryAdminReview: (id: string, action: "begin" | "approve" | "reject", notes?: string) =>
+    ipcRenderer.invoke("library-admin-review", id, action, notes) as Promise<{ ok: boolean; error?: string }>,
   // Version history — the source snapshot chain + restore-a-snapshot.
   appSourceHistory: (slug: string) =>
     ipcRenderer.invoke("app-source-history", slug) as Promise<{ ok: boolean; history: AppSnapshotRow[]; error?: string }>,
