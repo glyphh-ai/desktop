@@ -915,6 +915,10 @@ export function buildContract(client, deps) {
       try { await client.org.setClientCap(id, monthlyCapCredits); return { ok: true }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
+    orgClientDetach: async (id) => {
+      try { await client.org.detachClient(id); return { ok: true }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     // Library sharing + marketplace (skills + loops) — free installs, approvals.
     libraryShare: async (kind, ref) => {
       try { return { ok: true, ...(await (kind === "skill" ? client.skills.share(ref) : client.loops.share(ref))) }; }

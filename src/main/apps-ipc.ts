@@ -885,6 +885,10 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     try { await getClient().org.setClientCap(id, monthlyCapCredits); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
+  ipcMain.handle("org-client-detach", async (_e, id: string) => {
+    try { await getClient().org.detachClient(id); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
 
   // ── Marketing links (his order, 2026-09-02): org campaign URLs + attribution ──
   ipcMain.handle("marketing-links", async (_e, days?: number) => {

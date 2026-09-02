@@ -729,6 +729,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("org-client-create", name) as Promise<{ ok: boolean; id?: string; name?: string; error?: string }>,
   orgClientCap: (id: string, monthlyCapCredits: number) =>
     ipcRenderer.invoke("org-client-cap", id, monthlyCapCredits) as Promise<{ ok: boolean; error?: string }>,
+  orgClientDetach: (id: string) =>
+    ipcRenderer.invoke("org-client-detach", id) as Promise<{ ok: boolean; error?: string }>,
   // Library sharing + marketplace (skills + loops) — free installs, approvals.
   libraryShare: (kind: "skill" | "loop", ref: string) =>
     ipcRenderer.invoke("library-share", kind, ref) as Promise<{ ok: boolean; id?: string; status?: string; error?: string }>,

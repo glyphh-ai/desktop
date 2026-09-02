@@ -676,16 +676,10 @@
                    model. settings-clients.ts renders. -->
               <div class="settings-panel" data-sub="clients">
                 <div id="cl-admin-only" class="crud-empty hidden">Only an organization admin can manage client workspaces.</div>
-                <div id="cl-body">
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <h2 style="margin:0;">Clients</h2>
-                    <div style="flex:1;"></div>
-                    <button id="cl-new-btn" class="action-btn primary" type="button">+ New client workspace</button>
-                  </div>
-                  <p class="section-desc" style="margin-top:6px;">Workspaces you create for your clients. Each is a full organization — its own apps, members, and data — that spends from <em>your</em> credits up to the monthly limit you set; you invoice them however you like.</p>
-                  <div id="cl-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
-                  <div id="cl-list" class="mbr-list"></div>
-                </div>
+                <!-- The whole page is the shared list-page scaffold
+                     (settings-list-page.ts) via settings-clients.ts — search,
+                     table, pagination, editor: identical to every admin page. -->
+                <div id="cl-body"><div id="cl-root"></div></div>
               </div>
 
               <!-- Marketing › Links (his order, 2026-09-02): org-minted
