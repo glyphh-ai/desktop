@@ -1344,9 +1344,18 @@ async function refreshAdminUsage(): Promise<void> {
   // window while cost is credits BURNED in it — different bases (credits
   // bought one month burn in another), so this is the cash-vs-burn margin.
   const revUsd = revenue?.stripe ? revenue.stripe.totalUsdCents / 100 : null;
-  // Two decimals — one decimal rounded 99.95% to a suspicious-looking
-  // "100.0%" (his report, 2026-09-02).
-  set("pa-usage-margin", revUsd && revUsd > 0 ? `${(((revUsd - costUsd) / revUsd) * 100).toFixed(2)}%` : "—");
+  // MARGIN = profit ÷ COST (his metric, 2026-09-02: "$1.15 spent, $1,567
+  // made" should read as a huge number, not a ~100%-capped gross margin).
+  // Reads as a × multiple past 10x; the accountant's gross-margin-of-revenue
+  // rides in the sub for reconciliation.
+  if (revUsd && revUsd > 0 && costUsd > 0) {
+    const markup = (revUsd - costUsd) / costUsd;
+    set("pa-usage-margin", markup >= 10 ? `${fmtInt(markup)}×` : `${(markup * 100).toFixed(1)}%`);
+    set("pa-usage-margin-sub", `profit ÷ cost · gross ${(((revUsd - costUsd) / revUsd) * 100).toFixed(2)}% of revenue`);
+  } else {
+    set("pa-usage-margin", "—");
+    set("pa-usage-margin-sub", "profit ÷ cost, window");
+  }
   // The paid-vs-free credits math (he asked for it explicitly): what entered
   // the window by lot kind + the exact all-time burn split.
   const mix = $("pa-usage-credit-mix");
