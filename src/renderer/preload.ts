@@ -98,12 +98,14 @@ export interface EdgeTrafficDayRow {
   s4xx: number;
   s5xx: number;
   blocked: number;
+  offline?: number;
 }
 
 /** Telemetry rollups riding a traffic report (pages/referrers/engagement). */
 export interface EdgeTelemetryRollups {
   topPages?: Array<{ path: string; views: number }>;
   topReferrers?: Array<{ refHost: string; views: number }>;
+  topErrorPaths?: Array<{ path: string; hits: number }>;
   engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
 }
 

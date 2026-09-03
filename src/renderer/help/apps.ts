@@ -1201,7 +1201,7 @@ async function loadHistoryTab(): Promise<void> {
 // ── Edge traffic (his order, 2026-09-02): the apex fleet's stats for this
 // app's custom hostnames — requests/day chart, totals, per-hostname table. ──
 
-type TrafficRow = { day: string; requests: number; bytesIn: number; bytesOut: number; avgMs: number; maxMs: number; s2xx: number; s3xx: number; s4xx: number; s5xx: number; blocked: number };
+type TrafficRow = { day: string; requests: number; bytesIn: number; bytesOut: number; avgMs: number; maxMs: number; s2xx: number; s3xx: number; s4xx: number; s5xx: number; blocked: number; offline?: number };
 
 const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
 
@@ -1220,12 +1220,13 @@ export function paintTrafficReport(
   const total = rep.days.reduce((s, d) => ({
     requests: s.requests + d.requests, bytesOut: s.bytesOut + d.bytesOut,
     blocked: s.blocked + d.blocked, err: s.err + d.s4xx + d.s5xx,
+    offline: s.offline + (d.offline ?? 0),
     msSum: s.msSum + d.avgMs * d.requests,
-  }), { requests: 0, bytesOut: 0, blocked: 0, err: 0, msSum: 0 });
+  }), { requests: 0, bytesOut: 0, blocked: 0, err: 0, offline: 0, msSum: 0 });
   const totalsEl = document.getElementById(ids.totals);
   if (totalsEl) {
     totalsEl.textContent = total.requests
-      ? `${fmtInt(total.requests)} requests · ${formatBytes(total.bytesOut)} out · ${fmtInt(total.err)} errors · ${fmtInt(total.blocked)} blocked at the edge · avg ${Math.round(total.msSum / total.requests)} ms`
+      ? `${fmtInt(total.requests)} requests · ${formatBytes(total.bytesOut)} out · ${fmtInt(total.err)} errors · ${fmtInt(total.offline)} offline · ${fmtInt(total.blocked)} blocked at the edge · avg ${Math.round(total.msSum / total.requests)} ms`
       : "";
   }
   // Requests/day bars, errors stacked in red on top.
@@ -1245,8 +1246,10 @@ export function paintTrafficReport(
         data: {
           labels: rep.days.map((d) => d.day.slice(5)),
           datasets: [
-            { label: "ok", data: rep.days.map((d) => d.requests - d.s4xx - d.s5xx - d.blocked), backgroundColor: cssVar("--accent") || "#af5fff", stack: "r", borderRadius: 2, maxBarThickness: 26 },
+            { label: "ok", data: rep.days.map((d) => d.requests - d.s4xx - d.s5xx - d.blocked - (d.offline ?? 0)), backgroundColor: cssVar("--accent") || "#af5fff", stack: "r", borderRadius: 2, maxBarThickness: 26 },
             { label: "errors", data: rep.days.map((d) => d.s4xx + d.s5xx), backgroundColor: "#e05252", stack: "r", maxBarThickness: 26 },
+            // Platform "app offline" answers — honest, never the app's error.
+            { label: "offline", data: rep.days.map((d) => d.offline ?? 0), backgroundColor: "#d9a13b", stack: "r", maxBarThickness: 26 },
             { label: "blocked", data: rep.days.map((d) => d.blocked), backgroundColor: "#8a8a8a", stack: "r", maxBarThickness: 26 },
           ],
         },
@@ -1294,10 +1297,11 @@ const fmtDur = (ms: number): string => {
  * Top referrers tables. Shared by Hosting › Metrics and the app Traffic tab.
  */
 export function paintTelemetry(
-  ids: { cards: string; pages: string; referrers: string },
+  ids: { cards: string; pages: string; referrers: string; errorPaths?: string },
   rep: {
     topPages?: Array<{ path: string; views: number }>;
     topReferrers?: Array<{ refHost: string; views: number }>;
+    topErrorPaths?: Array<{ path: string; hits: number }>;
     engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
   },
 ): void {
@@ -1334,6 +1338,9 @@ export function paintTelemetry(
   };
   fill(ids.pages, "Page", (rep.topPages ?? []).map((p) => ({ name: p.path, views: p.views })));
   fill(ids.referrers, "Referrer", (rep.topReferrers ?? []).map((r) => ({ name: r.refHost, views: r.views })));
+  // WHAT the errors are (his order, 2026-09-03): the paths behind 4xx/5xx
+  // that actually reached the app — offline pages and blocks excluded.
+  if (ids.errorPaths) fill(ids.errorPaths, "Error path", (rep.topErrorPaths ?? []).map((e) => ({ name: e.path, views: e.hits })));
 }
 
 const appTrafficChartRef = { current: null as { destroy: () => void } | null };
@@ -1347,7 +1354,7 @@ async function loadTrafficTab(): Promise<void> {
     { totals: "apptraffic-totals", chart: "apptraffic-chart", empty: "apptraffic-empty", hosts: "apptraffic-hosts", error: "apptraffic-error" },
     rep, appTrafficChartRef,
   );
-  paintTelemetry({ cards: "apptraffic-cards", pages: "apptraffic-pages", referrers: "apptraffic-refs" }, rep);
+  paintTelemetry({ cards: "apptraffic-cards", pages: "apptraffic-pages", referrers: "apptraffic-refs", errorPaths: "apptraffic-errpaths" }, rep);
 }
 
 // ── Co-working: collaborators + the org approval queue ───────────

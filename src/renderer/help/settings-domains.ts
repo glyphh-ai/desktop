@@ -315,7 +315,7 @@ async function loadMetricsTraffic(): Promise<void> {
     { totals: "mx-totals", chart: "mx-chart", empty: "mx-empty", hosts: "mx-hosts", error: "mx-error" },
     rep, mxChartRef,
   );
-  paintTelemetry({ cards: "mx-cards", pages: "mx-pages", referrers: "mx-refs" }, rep);
+  paintTelemetry({ cards: "mx-cards", pages: "mx-pages", referrers: "mx-refs", errorPaths: "mx-errpaths" }, rep);
 }
 
 /** Refill a filter select, keeping the current pick when it still exists. */
