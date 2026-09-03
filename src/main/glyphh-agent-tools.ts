@@ -20,7 +20,7 @@
  * the tool result so the model can re-plan instead of crashing the loop.
  */
 
-import { exec } from "child_process";
+import { exec, execFileSync } from "child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { promises as fsp } from "node:fs";
@@ -220,7 +220,35 @@ const DANGEROUS_RULES: Array<{ re: RegExp; why: string }> = [
 const dangerReasons = (cmd: string): string[] =>
   DANGEROUS_RULES.filter((r) => r.re.test(cmd)).map((r) => r.why);
 
+/**
+ * The user's REAL shell PATH. A Dock-launched Electron app inherits launchd's
+ * MINIMAL path (/usr/bin:/bin:…) — Homebrew/nvm node is invisible, so agent
+ * builds failed "node not found" on a machine that plainly has node (his
+ * report, 2026-09-03). Resolved ONCE from an interactive login shell and
+ * applied to process.env so EVERY child this process spawns (run_command,
+ * builders, git) sees the same toolchain the user's terminal does. Static
+ * install locations are appended as a belt-and-braces fallback.
+ */
+let userPathResolved = false;
+function ensureUserPath(): void {
+  if (userPathResolved) return;
+  userPathResolved = true;
+  let path = process.env.PATH || "";
+  try {
+    const out = execFileSync(process.env.SHELL || "/bin/zsh", ["-ilc", 'echo -n "$PATH"'], {
+      timeout: 5_000, encoding: "utf8",
+    }).trim();
+    if (out.includes("/")) path = out;
+  } catch { /* profile hung or errored — the static appends below still fix node */ }
+  const parts = new Set(path.split(":").filter(Boolean));
+  for (const extra of ["/opt/homebrew/bin", "/usr/local/bin", `${process.env.HOME ?? ""}/.nvm/current/bin`]) {
+    if (extra.startsWith("/") && !parts.has(extra)) { parts.add(extra); path += `:${extra}`; }
+  }
+  process.env.PATH = path;
+}
+
 function runShell(command: string, cwd: string, signal?: AbortSignal): Promise<string> {
+  ensureUserPath();
   return new Promise((res) => {
     exec(command, { cwd, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, shell: "/bin/zsh", signal }, (err, stdout, stderr) => {
       const out = [stdout, stderr].filter(Boolean).join("\n---stderr---\n").trim();
