@@ -172,6 +172,14 @@ per-app token moves data in and out; the app schema is the contract.
    at \`/api/ingest/<slug>/<name>\` — \`embed\` columns index into the app's
    embeddings plane.)
 
+**Files plane (uploads + generated images):** declare \`files: true\` in the
+manifest and the app gets scoped blob storage on the platform — no bucket, no
+credentials. From inside the app: \`POST /api/app/data/files?name=<n>\` with the
+raw body uploads (≤10MB each, 500MB per app); \`GET /api/app/data/files\` lists;
+\`GET /api/app/data/files/<id>\` serves the bytes (use as an <img src>);
+\`DELETE\` removes. NEVER wire an external S3/R2 for app data — the platform
+plane keeps client data on-infra, exportable and governed.
+
 **Webhooks (outbound):** the user registers a URL on the app and the platform
 POSTs \`{ app, table, op, at, rows }\` to it whenever the app's data changes,
 signed \`X-Glyphh-Signature: sha256=<hmac>\` with the secret shown once at
