@@ -390,6 +390,7 @@ export async function harnessRun(
         wc,
         signal: ctrl.signal,
         ...(runWorkdir ? { workdir: runWorkdir } : {}),
+        ...(loopOverride ? { loop: loopOverride } : {}),
         defs,
         connDefs,
         // Lent-tool activity is reported HERE, in full fidelity (gate title,

@@ -98,7 +98,11 @@ async function enricherModel(): Promise<string | null> {
     const models = await getClient().models.available();
     if (!models.length) return null;
     const cheap = models.find((m) => /haiku|mini|flash|small|nano|lite|3b|7b|8b|1\.7b/i.test(m.id) || /haiku|mini|flash|small|nano|lite/i.test(m.name));
-    return (cheap ?? models[0]).id;
+    // No cheap model in the caller's catalog → skip enrichment. The old
+    // models[0] fallback rode the list's alphabetical head — a frontier
+    // model — for a background nicety, and its refusal surfaced as the
+    // live run's error.
+    return cheap?.id ?? null;
   } catch {
     return null;
   }

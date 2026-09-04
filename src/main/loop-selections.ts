@@ -33,13 +33,20 @@ const PREF_KEY = "loopSelections";
 const cache = createTtlCache({ ttlMs: 60_000 });
 
 /** Last good answer per loop — survives TTL expiry so a failed refresh degrades to
- *  stale-but-usable rather than to nothing. */
-const lastGood = new Map<string, ResolvedLoopRole[]>();
+ *  stale-but-usable rather than to nothing. BOUNDED staleness: an entry older
+ *  than this is dead, not a fallback. An unbounded one served a plan-gated
+ *  model for days after the plan's allow-list changed server-side (the fable-5
+ *  402 of 2026-09-04) — governance changes must win over "stale beats none". */
+const LAST_GOOD_TTL_MS = 10 * 60_000;
+const lastGood = new Map<string, { roles: ResolvedLoopRole[]; at: number }>();
 
 /** Drop cached slots — call after a selection changes, or the picker shows the
  *  model the user just replaced. */
 export function invalidateRoles(loop?: string): void {
   cache.invalidate(loop ? `roles:${loop}` : "roles:");
+  for (const key of lastGood.keys()) {
+    if (!loop || key.startsWith(`${loop}:`)) lastGood.delete(key);
+  }
 }
 
 /** The loop the composer is set to. */
@@ -102,13 +109,16 @@ export async function resolveRoles(loop: string, context: "local" | "cloud" = "l
   const key = `roles:${loop}:${context}:${JSON.stringify(selectionsFor(loop))}`;
   try {
     const roles = await cache.cached(key, () => getClient().loops.roles(loop, selectionsFor(loop), { context }));
-    lastGood.set(`${loop}:${context}`, roles);
+    lastGood.set(`${loop}:${context}`, { roles, at: Date.now() });
     return roles;
   } catch (err) {
-    // A stale answer beats none: the models a caller may use rarely change, and
-    // blocking the composer on a transient failure is the worse outcome.
+    // A RECENT stale answer beats none: the models a caller may use rarely
+    // change, and blocking the composer on a transient failure is the worse
+    // outcome. Beyond the TTL the entry may predate a governance change (plan
+    // allow-list, catalog edit) — running on it gets refused at the gateway
+    // anyway, so failing here is the honest outcome.
     const stale = lastGood.get(`${loop}:${context}`);
-    if (stale) return stale;
+    if (stale && Date.now() - stale.at < LAST_GOOD_TTL_MS) return stale.roles;
     throw err;
   }
 }

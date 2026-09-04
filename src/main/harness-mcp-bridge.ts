@@ -62,6 +62,10 @@ export interface LendOptions {
   /** The SESSION's folder. This is what makes lent tools operate on the user's
    *  real project rather than anything pod-side. */
   workdir?: string;
+  /** The SESSION's loop. run_role packets must resolve their role's model
+   *  against THIS loop, not the device-global composer pref — the two diverge
+   *  when another surface switched loops mid-run. */
+  loop?: string;
   /** Builtin tool defs for the run's mode (glyphhToolDefs). */
   defs: Array<{ name: string; doc: string }>;
   /** Connector tools with their real catalog schemas. */
@@ -146,7 +150,9 @@ function buildServer(run: LendOptions): McpServer {
       run.wc,
       { name, arguments: args },
       run.signal,
-      run.workdir ? { workdir: run.workdir } : undefined,
+      run.workdir || run.loop
+        ? { ...(run.workdir ? { workdir: run.workdir } : {}), ...(run.loop ? { loop: run.loop } : {}) }
+        : undefined,
     );
     const failed = outcome.result.startsWith("ERROR");
     run.onTool({
