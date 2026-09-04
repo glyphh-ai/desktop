@@ -1,9 +1,9 @@
 /**
  * memory-panel.ts — GLYPHH MEMORY, the desktop transport. The panel is a
- * window onto the org's stator (one memory plane): raw browse, semantic
- * search with scores, the 3D graph payload, and the two curation writes
- * (forget/amend). Thin IPC over client.stator — auth, region routing and
- * tenant scoping all live server-side.
+ * window onto the org's memory plane — the FACT SUBSTRATE (glyph ledger):
+ * raw browse, cosine search with scores, the 3D fact-space payload, and the
+ * curation writes (forget/amend). Thin IPC over client.stator — auth, region
+ * routing and tenant scoping all live server-side.
  */
 
 import { ipcMain } from "electron";
@@ -12,12 +12,12 @@ import { getClient } from "./glyphh-client";
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 export function registerMemoryPanelIpc(): void {
-  ipcMain.handle("memory-browse", async (_e, threadId?: unknown) => {
+  ipcMain.handle("memory-browse", async (_e, limit?: unknown) => {
     try {
-      const r = await getClient().stator.browse(threadId ? String(threadId) : undefined);
-      return { ok: true, ...r };
+      const r = await getClient().stator.browse({ limit: Math.max(1, Math.min(2000, Number(limit) || 500)) });
+      return { ok: true, facts: r.facts };
     } catch (err) {
-      return { ok: false, error: errText(err), facts: [], turns: [], window: [] };
+      return { ok: false, error: errText(err), facts: [] };
     }
   });
   ipcMain.handle("memory-graph", async (_e, opts: unknown) => {
@@ -33,26 +33,31 @@ export function registerMemoryPanelIpc(): void {
     try {
       const r = await getClient().stator.recall({
         query: String(query ?? ""),
-        topK: Math.max(1, Math.min(50, Number(topK) || 12)),
-        threshold: 0.05,
+        topK: Math.max(1, Math.min(24, Number(topK) || 12)),
       });
-      return { ok: true, recalled: r.recalled, directives: r.directives };
+      return { ok: true, facts: r.facts };
     } catch (err) {
-      return { ok: false, error: errText(err), recalled: [], directives: [] };
+      return { ok: false, error: errText(err), facts: [] };
     }
   });
-  ipcMain.handle("memory-forget", async (_e, input: unknown) => {
+  ipcMain.handle("memory-forget", async (_e, id: unknown) => {
     try {
-      const r = await getClient().stator.forget(input as Parameters<ReturnType<typeof getClient>["stator"]["forget"]>[0]);
-      return { ok: true, deleted: r.deleted };
+      const r = await getClient().stator.forget({ id: String(id ?? "") });
+      return { ok: true, forgotten: r.forgotten };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
   });
   ipcMain.handle("memory-amend", async (_e, input: unknown) => {
     try {
-      const r = await getClient().stator.amend(input as Parameters<ReturnType<typeof getClient>["stator"]["amend"]>[0]);
-      return { ok: true, written: r.written };
+      const i = (input ?? {}) as { id?: string; name?: string; facts?: Record<string, Record<string, string>>; confidence?: number };
+      const r = await getClient().stator.amend({
+        id: String(i.id ?? ""),
+        ...(i.name ? { name: i.name } : {}),
+        ...(i.facts ? { facts: i.facts } : {}),
+        ...(typeof i.confidence === "number" ? { confidence: i.confidence } : {}),
+      });
+      return { ok: true, id: r.id, supersedes: r.supersedes };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
