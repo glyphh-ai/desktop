@@ -443,7 +443,16 @@ export async function runRemoteTurn(
   // Runtime binding for the UI's isCommitted state: the relay marker for an
   // on-machine run, a synthetic api binding for the front door (no pod url to hold).
   chat.runtime = isLocal ? RELAY_RUNTIME(chat) : { sessionId: chat.id, url: "api", token: "api" };
-  const workdir = chat.source?.kind === "local" ? chat.source.path : undefined;
+  // The working folder MUST match the send-gate's source of truth (code.ts:
+  // `chat.workdir || source.path`). The resolved `workdir` is authoritative — the
+  // folder picker and workspace stamps write there, and `source.path` only SEEDS
+  // it — so a folder held in `chat.workdir` with an empty `source.path` (e.g. after
+  // a reload/retry) would otherwise dispatch folder-less and the desktop would fall
+  // back to its own cwd, losing the session's real folder. Local sessions only:
+  // the cloud pod rejects a caller workdir by design (runtime-stator-split.md).
+  const boundDir = typeof chat.workdir === "string" ? chat.workdir.trim() : "";
+  const localPath = chat.source?.kind === "local" ? chat.source.path : "";
+  const workdir = isLocal ? (boundDir || localPath || undefined) : undefined;
   // The session's GitHub repo — the cloud workspace's SOURCE. The pod tells
   // the agent and instructs clone-if-absent, so "clone the repo" needs no
   // follow-up question.
