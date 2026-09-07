@@ -179,12 +179,20 @@ async function handleCallback(shownAt) {
 /** Stash a members-app return target (?next=) from the login/challenge URL.
  *  APP HOSTS ONLY — *.glyphh.app (the dev zone's *.dev.glyphh.app included);
  *  anything else is dropped, never followed. */
+let appNextError = '';
 function stashAppNext() {
   try {
     const next = new URLSearchParams(window.location.search).get('next');
     if (!next) return;
     const u = new URL(next);
-    if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) return;
+    if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) {
+      // A `next` we cannot honour: the token hand-off only mints to *.glyphh.app
+      // app hosts (custom domains aren't wired yet). Silently dropping it looked
+      // like "sign-in does nothing, no error" (his report). Record it so the
+      // login screen SHOWS why instead of bouncing the user into the platform.
+      appNextError = `Can't return you to ${u.hostname || 'that address'} after sign-in — only *.glyphh.app app URLs are supported for the hand-off right now.`;
+      return;
+    }
     sessionStorage.setItem('glyphhAppNext', next);
   } catch { /* malformed next — ignored */ }
 }
@@ -625,6 +633,10 @@ export async function startWebBoot(overrides = {}) {
   if (state === 'device') return showDevice(shownAt);
   if (state === 'consent') return showConsent(shownAt);
   if (state === 'callback') return handleCallback(shownAt);
+  // A rejected app return (custom domain etc.) must be VISIBLE, not swallowed —
+  // land on the login screen with the reason rather than bouncing into the
+  // platform as if the ?next= was never there.
+  if (appNextError) return showLogin(shownAt, appNextError);
   if (state === 'app') return enterApp(shownAt);
   return showLogin(shownAt);
 }
