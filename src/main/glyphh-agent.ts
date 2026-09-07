@@ -22,7 +22,6 @@
  * `glyphh-agent-stop` aborts a session's run.
  */
 
-import os from "node:os";
 import { existsSync } from "node:fs";
 import { ipcMain, type WebContents } from "electron";
 import { runMaxOutputTokens } from "./loop-selections";
@@ -40,7 +39,7 @@ import { getClient } from "./glyphh-client";
 import { getPreference } from "./stores/preferences-db";
 import { runModel } from "./loop-selections";
 import { brandError, skillSeedFor, type ChatMessage } from "./glyphh-agent-prompt";
-import { harnessRun, isCloudSource, setRunPermission, injectRunMessage, type RunSource } from "./glyphh-harness-run";
+import { harnessRun, setRunPermission, injectRunMessage, type RunSource } from "./glyphh-harness-run";
 import { closeBridge } from "./harness-mcp-bridge";
 
 export type { ChatMessage };
@@ -111,27 +110,17 @@ export function registerGlyphhIpc(): void {
     // reason `mode` does; a cloud session runs on its provisioned pod, from
     // the desktop just as it does from the web.
     const source = stored?.source ?? payload?.source;
-    const onCloud = isCloudSource(source);
-    // A folder is NOT a hard requirement (2026-08-13): a session with no
-    // explicit pick runs from the DEFAULT ROOT — the user's home dir — the
-    // same doctrine the cloud pod follows with its project workspace. The
-    // old NO_WORKDIR throw force-opened the OS picker on the first send,
-    // blocking someone who just wanted to talk. Chat and cloud runs never
-    // touch a local folder at all.
-    // A DEAD folder must not kill the turn (his report, 2026-08-28: the
-    // harness 400s '`workdir` does not exist'). /tmp is wiped on reboot, so a
-    // session that ran in the local pod's OWN sandbox workspace resumes
-    // pointing at a path that no longer exists. That path is the harness's to
-    // rebuild: send NO workdir and the pod re-derives the session workspace
-    // and mkdirs it. A vanished USER folder falls back to home, the same
-    // doctrine as a folderless code run.
+    // The run's folder is the session's EXPLICIT pick (a payload override wins),
+    // and ONLY if it still exists. There is NO silent default: a folderless or
+    // vanished-folder run must never divert into ~ or wherever the app launched
+    // (the working-directory.ts invariant). With no live explicit folder we send
+    // NO workdir, and the harness re-derives + mkdirs the session's OWN workspace
+    // — the same path a harness-owned sandbox session already takes. Chat and
+    // cloud runs never touch a local folder at all.
     const requested = (typeof payload?.workdir === "string" && payload.workdir)
       || getExplicitWorkingDirectory() || "";
     const requestedLive = !!requested && existsSync(requested);
-    const harnessOwned = !requestedLive && /[\/]glyphh-harness[\/]sessions[\/]/.test(requested);
-    const runWorkdir = requestedLive ? requested
-      : harnessOwned ? ""
-      : (mode !== "chat" && !onCloud ? os.homedir() : "");
+    const runWorkdir = requestedLive ? requested : "";
     // Composer attachments: validate paths, then whitelist them for reads
     // (attach = consent) for the duration of this run.
     const attachments = validAttachments(payload?.attachments);
