@@ -30,6 +30,7 @@ import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
+import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadDownload } from "./settings-download.js";
 import { loadWebhooks, initWebhooksPanel } from "./settings-webhooks.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
@@ -865,6 +866,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "apikeys") void loadApiKeys();
+  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
   else if (sub === "webhooks") { initWebhooksPanel(); void loadWebhooks(); }
   else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
@@ -1190,6 +1192,7 @@ export function initHelp() {
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("apikeys", initApiKeys);
+  boot("oauth", initOAuth);
   boot("support", initSupportPanel);
   boot("guardrails", initGuardrails);
   boot("drips", initDripsEvents);
