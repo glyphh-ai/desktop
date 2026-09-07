@@ -193,7 +193,12 @@ function stashAppNext() {
       appNextError = `Can't return you to ${u.hostname || 'that address'} after sign-in — only *.glyphh.app app URLs are supported for the hand-off right now.`;
       return;
     }
-    sessionStorage.setItem('glyphhAppNext', next);
+    // localStorage, NOT sessionStorage: sign-in round-trips break the tab —
+    // a magic link opens in a NEW tab, GitHub/Google OAuth may too — and a
+    // per-tab stash is empty when the callback lands, so the hand-off dropped
+    // and the user fell through to the dashboard (his report). localStorage is
+    // shared across the origin's tabs; TTL'd + cleared on use in handOffToApp.
+    localStorage.setItem('glyphhAppNext', JSON.stringify({ url: next, ts: Date.now() }));
   } catch { /* malformed next — ignored */ }
 }
 
@@ -201,9 +206,18 @@ function stashAppNext() {
  *  mint with this session's access token. True when navigation started. */
 async function handOffToApp() {
   try {
-    const next = sessionStorage.getItem('glyphhAppNext');
+    const raw = localStorage.getItem('glyphhAppNext') || sessionStorage.getItem('glyphhAppNext');
+    if (!raw) return false;
+    localStorage.removeItem('glyphhAppNext');
+    sessionStorage.removeItem('glyphhAppNext'); // clear any legacy per-tab stash too
+    let next = '';
+    try {
+      const s = JSON.parse(raw);
+      // Ignore a stale stash (abandoned sign-in left it behind); the round-trip
+      // is minutes, so 15 is generous without redirecting to an old target.
+      if (s && s.url && (Date.now() - (s.ts || 0)) < 15 * 60_000) next = String(s.url);
+    } catch { next = raw; } // legacy plain-string value
     if (!next) return false;
-    sessionStorage.removeItem('glyphhAppNext');
     const u = new URL(next);
     if (u.protocol !== 'https:' || !u.hostname.endsWith('.glyphh.app')) return false;
     // A FRESH token, never the raw stored one (his bug, 2026-08-25: access
