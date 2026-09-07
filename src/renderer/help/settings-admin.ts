@@ -1863,7 +1863,7 @@ async function grantFromDetail(): Promise<void> {
   detailState(`Granted — balance now ${fmtInt(microToCredits(res.data))} credits`);
 }
 
-const ORGS_PAGE_SIZE = 25;
+const ORGS_PAGE_SIZE = 15;
 async function refreshOrgs(): Promise<void> {
   try {
     // SERVER-side pagination + parent filter (his orders, 2026-09-02) — the
