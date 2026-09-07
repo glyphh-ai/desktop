@@ -271,7 +271,7 @@ async function newWebhookModal(t: Transport, slug: string, appName: string): Pro
 
 // ── shared table renderers (one grammar for the app tab and the org page) ────
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 
 /** Webhooks: [App] | Endpoint | Created by | Created | Last fired | kebab. */
 /** The single empty state, in the table body. Search misses say so; otherwise

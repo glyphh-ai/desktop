@@ -235,7 +235,7 @@ export function promptAction(message: string, defaultValue = "", placeholder = "
 
 // ── Pagination utility ──────────────────────────────────────
 
-export const PAGE_SIZE = 25;
+export const PAGE_SIZE = 15;
 
 /**
  * The platform's web origin, as a STRING.

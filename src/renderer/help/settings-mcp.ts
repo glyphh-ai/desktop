@@ -76,7 +76,7 @@ const $ = (id: string) => document.getElementById(id);
 let wired = false;
 let clients: McpClientRow[] = [];
 let query = "";
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 let page = 0;
 
 function setError(msg: string): void {

@@ -447,7 +447,7 @@ function startDashParticles(): void {
 /** Code's right column: the user's SESSIONS (pending + recent), newest first —
  *  a click resumes one. Reads the live store via the __agentSessions bridge. */
 let sessionsPage = 0;
-const SESSIONS_PER_PAGE = 6;
+const SESSIONS_PER_PAGE = 15;
 
 function renderSessionsList(): void {
   const host = document.getElementById("dash-sessions-list");
@@ -817,7 +817,7 @@ interface DashRun {
 
 let allRuns: DashRun[] = [];
 let runsPage = 0;
-const RUNS_PAGE_SIZE = 5;
+const RUNS_PAGE_SIZE = 15;
 
 function renderRuns(): void {
   const listEl = document.getElementById("dash-tasks-list");

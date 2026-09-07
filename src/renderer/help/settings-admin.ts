@@ -359,7 +359,7 @@ function paintCatalog(): void {
     .filter((e) => !q || e.p.name.toLowerCase().includes(q) || e.p.slug.toLowerCase().includes(q) || e.autoOpen)
     .sort((a, b) => a.p.name.localeCompare(b.p.name));
 
-  const state = { page: catalogPage, pageSize: 10, total: entries.length, totalPages: Math.max(1, Math.ceil(entries.length / 10)) };
+  const state = { page: catalogPage, pageSize: 15, total: entries.length, totalPages: Math.max(1, Math.ceil(entries.length / 15)) };
   if (state.page >= state.totalPages) { state.page = state.totalPages - 1; catalogPage = state.page; }
   const slice = entries.slice(state.page * state.pageSize, (state.page + 1) * state.pageSize);
 
@@ -1709,7 +1709,7 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
 
 let orgDetailTab: "overview" | "members" = "overview";
 let orgMbrPage = 0;
-const ORG_MBR_PAGE_SIZE = 10;
+const ORG_MBR_PAGE_SIZE = 15;
 
 function wireOrgMembersTab(d: AdminOrgDetail): void {
   $<HTMLInputElement>("pa-org-mbr-search")?.addEventListener("input", () => { orgMbrPage = 0; paintOrgMembers(d); });

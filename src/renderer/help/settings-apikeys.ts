@@ -170,7 +170,7 @@ function setError(msg: string): void {
   el.classList.toggle("hidden", !msg);
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;
 let page = 0;
 
 const fmtDay = (iso: string | null | undefined): string =>
