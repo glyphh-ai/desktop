@@ -719,6 +719,9 @@ export function initGPoint(host: GPointHost): GPointPanel {
       item.className = "gpoint-side-item" + (i === start ? " active" : "") + (spans[i]!.hidden ? " gpoint-hidden" : "");
       item.innerHTML = `<span class="gpoint-side-num">${i + 1}</span>` + (spans[i]!.hidden ? `<span class="gpoint-hidden-badge">hidden</span>` : "");
       item.addEventListener("click", () => {
+        // The clicked slide IS the intent — record it now so Present starts
+        // here even if the frame's report round-trip hasn't landed yet.
+        slot.slideIdx = i;
         try {
           (frame.contentWindow as unknown as { __gpGoto?: (n: number) => void })?.__gpGoto?.(i);
         } catch { /* frame still loading — the rail highlights on the next report */ }

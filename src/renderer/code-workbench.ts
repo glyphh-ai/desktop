@@ -1202,6 +1202,10 @@ async function init(): Promise<void> {
     /** The universal chat icon: clear the surface, load the chat alone. */
     openChat(): void;
     hasTool(view: string): boolean;
+    /** The live tool slot behind an Echo card, by slot id — panels that get
+     *  called back from their iframes (the Slides reader) resolve their slot
+     *  through this when Echo, not the rails, is hosting them. */
+    toolSlotById(id: number): Slot | undefined;
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
@@ -1999,7 +2003,16 @@ async function init(): Promise<void> {
     if (!gpointPanel) {
       gpointPanel = initGPoint({
         confirm: (o) => appConfirm(o),
-        slotById: (id) => rails.flatMap((r) => r.slots).find((s) => s.id === id && s.view === "gpoint") as GPointSlot | undefined,
+        slotById: (id) => {
+          // Rails first, then ECHO — the command center hosts tool slots on
+          // tile entries, not rails, so the reader's slide reports found no
+          // slot there: clicking a slide navigated the stage but slideIdx
+          // never synced, and Present started from the stale slide (his
+          // report, 2026-09-08).
+          const s = rails.flatMap((r) => r.slots).find((sl) => sl.id === id && sl.view === "gpoint")
+            ?? echoCtl?.toolSlotById(id);
+          return s?.view === "gpoint" ? (s as GPointSlot) : undefined;
+        },
         icon: VIEW_META.gpoint.icon,
       });
     }
@@ -5998,6 +6011,7 @@ async function init(): Promise<void> {
         settle();
       },
       hasTool: (view) => openList.some((x) => x.tile.toolView === view),
+      toolSlotById: (id) => openList.find((x) => x.toolSlot?.id === id)?.toolSlot,
       closeTool: (view) => { for (const x of openList.filter((c) => c.tile.toolView === view)) closeCard(x); },
       // A folder change re-roots the folder-backed cards IN PLACE — the echo
       // arrangement (cards, layout, wall) is never torn down for it. Files
