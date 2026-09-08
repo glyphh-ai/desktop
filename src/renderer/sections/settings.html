@@ -1410,7 +1410,29 @@
                 <h2>OAuth</h2>
                 <p class="section-desc">Connect your organization's identity provider so your team signs in to Glyphh through it (SAML or OIDC, via WorkOS).</p>
                 <div id="oauth-error" class="settings-error hidden"></div>
-                <div id="oauth-body"></div>
+                <div class="lp-sec">
+                  <div class="pa-org-stats">
+                    <div class="pa-stat"><span class="pa-stat-num" id="oauth-idp-status">—</span><span class="pa-stat-lbl">identity provider</span></div>
+                  </div>
+                  <div class="settings-inline" style="margin-top:14px;">
+                    <button id="oauth-connect-btn" class="action-btn primary" type="button">Connect identity provider</button>
+                  </div>
+                </div>
+                <div class="lp-sec">
+                  <h4 class="acct-row-head">Verified domains</h4>
+                  <div id="oauth-domains" class="pa-kv"></div>
+                  <div class="settings-inline" style="margin-top:12px;">
+                    <button id="oauth-verify-btn" class="action-btn" type="button">Verify a domain</button>
+                  </div>
+                </div>
+                <div class="lp-sec">
+                  <h4 class="acct-row-head">Require SSO for all members</h4>
+                  <p class="section-desc">Members must sign in through your identity provider — magic-link and social sign-in are turned off for your org.</p>
+                  <div class="settings-inline">
+                    <button id="oauth-require-btn" class="action-btn" type="button">Require SSO</button>
+                  </div>
+                  <div id="oauth-require-hint" class="settings-hint hidden"></div>
+                </div>
               </div>
               <div class="settings-panel" data-sub="apikeys">
                 <h2>API Keys</h2>

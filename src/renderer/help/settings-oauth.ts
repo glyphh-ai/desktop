@@ -3,11 +3,12 @@
  *
  * Organization SSO (WorkOS). The org connects its identity provider ONCE; its
  * members then sign in through it, and a members-only app (access='members')
- * rides that same org auth — no per-app OAuth. Mirrors the transport law of the
- * other settings pages (the renderer never holds an SDK client):
+ * rides that same org auth — no per-app OAuth. Controls are STATIC in
+ * settings.html and wired ONCE in initOAuth() (same pattern as the other
+ * settings pages); loadOAuth() only paints the dynamic status. Transport law —
+ * the renderer never holds an SDK client:
  *   • web     — window.glyphhSdk.org.security / securityPortal / setRequireSso
  *   • desktop — window.glyphh.orgSecurity* → account-ipc.ts → getClient().org
- * Neither present → an honest "not available on this build" message.
  */
 
 import { escapeHtml } from "./shared.js";
@@ -20,7 +21,6 @@ interface OrgSecurityStatus {
   connections: Array<{ id: string; name: string; type: string; state: string }>;
   domains: Array<{ domain: string; status: string }>;
 }
-
 type PortalIntent = "sso" | "dsync" | "domain_verification";
 
 interface SdkOrg {
@@ -33,7 +33,6 @@ interface DesktopOrgIpc {
   orgSecurityPortal?: (intent: PortalIntent) => Promise<{ url: string }>;
   orgSecurityRequireSso?: (v: boolean) => Promise<{ requireSso: boolean }>;
 }
-
 interface Transport {
   status(): Promise<OrgSecurityStatus>;
   portal(intent: PortalIntent): Promise<{ url: string }>;
@@ -41,8 +40,7 @@ interface Transport {
 }
 
 const NO_TRANSPORT = "Single sign-on isn't available on this build.";
-
-const $ = (id: string) => document.getElementById(id);
+const $ = (id: string): HTMLElement | null => document.getElementById(id);
 
 function isWeb(): boolean {
   return !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
@@ -76,66 +74,44 @@ function setError(msg: string): void {
 let current: OrgSecurityStatus | null = null;
 let busy = false;
 
-function render(): void {
-  const body = $("oauth-body");
-  if (!body) return;
+function paint(): void {
   const s = current;
-  if (!s) { body.innerHTML = `<div class="crud-empty">Loading…</div>`; return; }
+  const idp = $("oauth-idp-status");
+  const connectBtn = $("oauth-connect-btn") as HTMLButtonElement | null;
+  const verifyBtn = $("oauth-verify-btn") as HTMLButtonElement | null;
+  const domains = $("oauth-domains");
+  const requireBtn = $("oauth-require-btn") as HTMLButtonElement | null;
+  const hint = $("oauth-require-hint");
+  if (!s) return;
 
   if (!s.configured) {
-    body.innerHTML = `<div class="crud-empty">Single sign-on isn't enabled for this platform yet. Contact your Glyphh administrator to turn on organization SSO.</div>`;
+    if (idp) idp.textContent = "Unavailable";
+    setError("Single sign-on isn't enabled for this platform yet.");
+    for (const b of [connectBtn, verifyBtn, requireBtn]) if (b) b.disabled = true;
     return;
   }
 
   const active = s.connections.find((c) => c.state === "active");
   const pending = s.connections.find((c) => c.state !== "active");
-  const statusBadge = active
-    ? `<span class="lib-badge">Connected</span>`
-    : pending
-      ? `<span class="lib-table-dim">Setup in progress</span>`
-      : `<span class="lib-table-dim">Not connected</span>`;
-  const idpName = active ? escapeHtml(active.name || active.type || "Identity provider")
-    : pending ? escapeHtml(pending.name || pending.type || "Identity provider")
-    : "No identity provider connected";
+  if (idp) idp.textContent = active ? "Connected" : pending ? "Setup…" : "Not connected";
+  if (connectBtn) connectBtn.textContent = active ? "Manage connection" : "Connect identity provider";
 
-  const domainsHtml = s.domains.length
-    ? s.domains.map((d) => `<div class="mbr-row"><span class="mbr-name">${escapeHtml(d.domain)}</span><span class="lib-table-dim">${escapeHtml(d.status)}</span></div>`).join("")
-    : `<div class="crud-empty">No verified domains yet — verify one so WorkOS can match your members by email domain.</div>`;
+  if (domains) {
+    domains.innerHTML = s.domains.length
+      ? s.domains.map((d) => `<div><span>${escapeHtml(d.domain)}</span><b>${escapeHtml(d.status)}</b></div>`).join("")
+      : `<div><span>No verified domains yet</span><b>—</b></div>`;
+  }
 
-  body.innerHTML = `
-    <div class="settings-block">
-      <div class="settings-inline settings-inline-spread">
-        <div>
-          <div class="settings-label">Identity provider ${statusBadge}</div>
-          <div class="lib-table-dim">${idpName}</div>
-        </div>
-        <button id="oauth-connect-btn" class="action-btn primary" type="button">${active ? "Manage connection" : "Connect identity provider"}</button>
-      </div>
-    </div>
-
-    <div class="settings-block">
-      <div class="settings-label">Verified domains</div>
-      <div class="mbr-list">${domainsHtml}</div>
-      <div class="settings-actions">
-        <button id="oauth-verify-btn" class="action-btn" type="button">Verify a domain</button>
-      </div>
-    </div>
-
-    <div class="settings-block">
-      <div class="settings-inline settings-inline-spread">
-        <div>
-          <div class="settings-label">Require SSO for all members</div>
-          <div class="lib-table-dim">Members must sign in through your identity provider — magic-link and social sign-in are turned off for your org.</div>
-        </div>
-        <button id="oauth-require-btn" class="action-btn${s.requireSso ? " danger" : " primary"}" type="button" ${!s.ssoActive && !s.requireSso ? "disabled" : ""}>${s.requireSso ? "SSO required — turn off" : "Require SSO"}</button>
-      </div>
-      ${!s.ssoActive && !s.requireSso ? `<div class="settings-warn">Connect an identity provider before requiring SSO — enabling it now would lock every member out.</div>` : ""}
-    </div>
-  `;
-
-  $("oauth-connect-btn")?.addEventListener("click", () => void openPortal("sso"));
-  $("oauth-verify-btn")?.addEventListener("click", () => void openPortal("domain_verification"));
-  $("oauth-require-btn")?.addEventListener("click", () => void toggleRequireSso());
+  if (requireBtn) {
+    requireBtn.textContent = s.requireSso ? "SSO required — turn off" : "Require SSO";
+    requireBtn.classList.toggle("primary", !s.requireSso);
+    requireBtn.disabled = !s.ssoActive && !s.requireSso;
+  }
+  if (hint) {
+    const warn = !s.ssoActive && !s.requireSso;
+    hint.textContent = warn ? "Connect an identity provider before requiring SSO — enabling it now would lock every member out." : "";
+    hint.classList.toggle("hidden", !warn);
+  }
 }
 
 async function openPortal(intent: PortalIntent): Promise<void> {
@@ -146,8 +122,7 @@ async function openPortal(intent: PortalIntent): Promise<void> {
   try {
     const { url } = await t.portal(intent);
     if (url) openExternal(url);
-    // The admin returns from the portal; refresh so a new connection shows.
-    await loadOAuth();
+    await loadOAuth(); // a new connection may show after the admin returns
   } catch (e) {
     setError(`Couldn't open the setup portal — ${(e as Error).message}`);
   } finally { busy = false; }
@@ -161,7 +136,7 @@ async function toggleRequireSso(): Promise<void> {
   try {
     const r = await t.setRequireSso(!current.requireSso);
     current.requireSso = r.requireSso;
-    render();
+    paint();
   } catch (e) {
     setError((e as Error).message);
   } finally { busy = false; }
@@ -170,20 +145,21 @@ async function toggleRequireSso(): Promise<void> {
 export async function loadOAuth(): Promise<void> {
   setError("");
   const t = transport();
-  if (!t) { current = null; render(); setError(NO_TRANSPORT); return; }
+  if (!t) { current = null; setError(NO_TRANSPORT); return; }
   try {
     current = await t.status();
-    render();
+    paint();
   } catch (e) {
-    current = null; render();
+    current = null;
     setError(`Couldn't load SSO settings — ${(e as Error).message}`);
   }
 }
 
 let wired = false;
 export function initOAuth(): void {
-  // The page rebuilds its own controls in render(); nothing static to wire, but
-  // keep the init hook for parity with the other settings pages' boot contract.
   if (wired) return;
   wired = true;
+  $("oauth-connect-btn")?.addEventListener("click", () => void openPortal("sso"));
+  $("oauth-verify-btn")?.addEventListener("click", () => void openPortal("domain_verification"));
+  $("oauth-require-btn")?.addEventListener("click", () => void toggleRequireSso());
 }
