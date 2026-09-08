@@ -143,8 +143,8 @@ interface RailPanelSlot {
   /** The header's collapse affordances — OFF by default; a workspace cell
    *  enables either via its config (railHideLeft/railHideRight). */
   hideLeft?: boolean; hideRight?: boolean;
-  /** Live collapse state — the rail is an icon strip pinned to this edge.
-   *  Runtime-only: never persisted, a reopen starts expanded. */
+  /** Collapse state — the rail is an icon strip pinned to this edge. Persisted
+   *  through the layout snapshot so a reopen comes back the way it was left. */
   collapsed?: "left" | "right";
   sticky?: boolean;
 }
@@ -842,7 +842,7 @@ async function init(): Promise<void> {
       hideRight: cfg?.railHideRight === true,
     };
   }
-  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string };
+  type SavedView = ViewKind | { view: "app"; slug: string; name: string; url: string; glyphh?: boolean; sticky?: boolean } | { view: "section"; section: string } | { view: "rail"; collapsed?: "left" | "right" };
   type SavedLayout = { rails: { width?: number; topSlotHeight?: number; banner?: "top" | "bottom"; heightFrac?: number; views: SavedView[] }[] };
   type PanelAppRow = { id: string; slug?: string; name: string; url?: string | null; isBrowser?: boolean; execPath?: string | null; appArchetype?: string | null; system?: boolean; launchConfig?: Record<string, unknown> | null };
   type LayoutRow = { name: string; cols: number; rows: number; colWidths: number[]; rowHeights: number[]; target?: "glyphh" | "desktop"; sessionMode?: "keep" | "new" | "last"; folder?: string | null; space?: "chat" | "cowork" | "code" | null; loop?: string | null; modelSelections?: Record<string, string>; splits: Array<{ panelId: string; col: number; row: number; colSpan: number; rowSpan: number; sticky?: boolean; config?: CellConfig }> };
@@ -929,7 +929,12 @@ async function init(): Promise<void> {
               ? { view: "app", slug: s.slug, name: s.name, url: s.url, glyphh: s.glyphh, sticky: s.sticky }
               : s.view === "section"
                 ? { view: "section", section: s.section }
-                : s.view),
+                // A collapsed Rail rides its edge-strip state through the
+                // snapshot; an expanded one stays the bare "rail" string so
+                // untouched rails keep their compact form.
+                : s.view === "rail" && s.collapsed
+                  ? { view: "rail", collapsed: s.collapsed }
+                  : s.view),
         })).filter((r) => r.views.length > 0),
       };
       uiStateSet(layoutKey(), JSON.stringify(data));
@@ -952,6 +957,15 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
+        } else if (typeof v === "object" && v !== null && v.view === "rail") {
+          // Restore the Rail's collapsed edge-strip. Pin the matching hide flag
+          // too so the expand affordance renders even on the plain per-folder
+          // path (a workspace's applyCellConfigs re-applies the definition's
+          // flags over these afterward).
+          const s = makeSlot("rail") as RailPanelSlot;
+          if (v.collapsed === "left") { s.collapsed = "left"; s.hideLeft = true; }
+          else if (v.collapsed === "right") { s.collapsed = "right"; s.hideRight = true; }
+          slots.push(s);
         } else if (v === "coding" || v === "thread") {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
@@ -1840,6 +1854,7 @@ async function init(): Promise<void> {
         const dir = btn.dataset.dir as "left" | "right";
         slot.collapsed = slot.collapsed === dir ? undefined : dir;
         renderRails();   // rebuild — the column width and header change shape
+        saveLayout();    // persist the collapse like every other layout change
       });
     });
     wrap.querySelector(".slot-maximize")!.addEventListener("click", (ev) => {
@@ -5218,15 +5233,18 @@ async function init(): Promise<void> {
           const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
           const space = activateLayoutSpace(layout);
           const mode = layout.sessionMode ?? "keep";
-          // The layout's MODEL SLOTS bind to ITS session (his rule, 2026-08-20):
-          // stamped after the session resolves below, so five open layouts run
-          // five independent casts — never through the shared loop store alone.
+          // The layout's LOOP + MODEL SLOTS follow the SESSION contract (his
+          // rule, 2026-09-08): they bind only to a session the layout CREATES.
+          // "keep" keeps the current session's own cast; "last" restores the
+          // resumed session's own loop + models (switch repaints them); the
+          // reset to the layout's declared config happens on a NEW session.
           const stampLayoutModels = (): void => {
             if (layout.loop) sess?.stampLoop?.(layout.loop);
             if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
           };
           if (sess && mode === "new") {
             sess.startNew();
+            stampLayoutModels();
           } else if (sess && mode === "last" && layout.name) {
             let last: string | null = null;
             try {
@@ -5241,9 +5259,9 @@ async function init(): Promise<void> {
               if (sess.currentId() !== target.id) sess.switch(target.id);
             } else {
               sess.startNew();
+              stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
             }
           }
-          stampLayoutModels();
           // the layout's folder rides the session, same as standard mode
           if (sess && layout.folder) sess.stampWorkdir?.(layout.folder, true);   // weak — a thread's own folder wins
         }
@@ -9434,7 +9452,10 @@ async function init(): Promise<void> {
     // so every re-open snapped back to the pristine definition.) A memory with
     // different panels is stale (the layout was edited) — definition wins.
     const viewKey = (v: SavedView): string =>
-      typeof v === "string" ? v : v.view === "section" ? `section:${v.section}` : `app:${(v.slug || "").toLowerCase()}`;
+      typeof v === "string" ? v
+        : v.view === "section" ? `section:${v.section}`
+        : v.view === "rail" ? "rail"
+        : `app:${(v.slug || "").toLowerCase()}`;
     const savedKeys = (saved?.rails || []).flatMap((r) => (r.views || []).map(viewKey)).sort().join("|");
     const defKeys = cells.map((c) => (c.tool ? c.tool : `app:${c.slug.toLowerCase()}`)).sort().join("|");
     // Session behavior applies after the panels land; the FOLDER applied
@@ -9447,15 +9468,20 @@ async function init(): Promise<void> {
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
-        const stamp = (): void => {
+        const stampFolder = (): void => {
           if (layout.folder) sess?.stampWorkdir(layout.folder, true);   // weak — a thread's own folder wins
-          // The layout's loop + model slots bind to the session it just
-          // resolved — this session only; others keep their own config.
+        };
+        // The layout's loop + model slots follow the SESSION contract (his
+        // rule, 2026-09-08): they bind only to a session the layout CREATES.
+        // "keep" keeps the current session's own cast; "last" restores the
+        // resumed session's own loop + models (switch repaints them); the
+        // reset to the layout's declared config happens on a NEW session.
+        const stampConfig = (): void => {
           if (layout.loop) sess?.stampLoop?.(layout.loop);
           if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
         };
-        if (!sess || mode === "keep") { stamp(); return; }
-        if (mode === "new") { sess.startNew(); stamp(); return; }
+        if (!sess || mode === "keep") { stampFolder(); return; }
+        if (mode === "new") { sess.startNew(); stampConfig(); stampFolder(); return; }
         let last: string | null = null;
         try {
           last = uiStateGet(layoutSessionKey(layout.name, space))
@@ -9464,8 +9490,8 @@ async function init(): Promise<void> {
         const target = last ? (sess.list() as Array<{ id: string; mode?: string }>).find((c) => c.id === last) : undefined;
         const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
         if (target && spaceOfMode(target.mode) === space) sess.switch(target.id);
-        else sess.startNew();
-        stamp();
+        else { sess.startNew(); stampConfig(); }   // no remembered session — the fresh one takes the layout's config
+        stampFolder();
       })();
     };
     // App setup (Browser URL / Terminal command) comes from the DEFINITION —

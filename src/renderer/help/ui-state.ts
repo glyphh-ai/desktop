@@ -59,15 +59,30 @@ export function loadUiState(): Promise<void> {
         const raw = await bridge().getPreference?.(PREF_KEY, null);
         const map = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (map && typeof map === "object") {
-          for (const [k, e] of Object.entries(map as Record<string, unknown>)) {
+          // Re-stamp in the PERSISTED write order, not iteration order. The
+          // stored `at` is a per-session counter — meaningless as a value, but
+          // a valid total order within one snapshot. Iterating JSON order here
+          // froze every key at its CREATION position (Map.set keeps an
+          // existing key's slot), so a key updated daily but created first
+          // stayed "oldest" forever and the 28KB eviction deleted the user's
+          // hottest arrangements (his report, 2026-09-08: deleting a layout
+          // wiped panels out of other layouts for good).
+          const entries = Object.entries(map as Record<string, unknown>)
+            .map(([k, e]): [string, Entry] | null => {
+              // Tolerate both shapes: {v, at} and a bare string from an older write.
+              if (typeof e === "string") return [k, { v: e, at: 0 }];
+              if (e && typeof e === "object" && typeof (e as Entry).v === "string") {
+                return [k, { v: (e as Entry).v, at: Number((e as Entry).at) || 0 }];
+              }
+              return null;
+            })
+            .filter((x): x is [string, Entry] => x !== null)
+            .sort((a, b) => a[1].at - b[1].at);
+          for (const [k, e] of entries) {
             // An optimistic write made while this flight was open is NEWER than
             // the server's copy — merge under it, never over it.
             if (mem.has(k)) continue;
-            // Tolerate both shapes: {v, at} and a bare string from an older write.
-            if (typeof e === "string") mem.set(k, { v: e, at: stamp() });
-            else if (e && typeof e === "object" && typeof (e as Entry).v === "string") {
-              mem.set(k, { v: (e as Entry).v, at: stamp() });
-            }
+            mem.set(k, { v: e.v, at: stamp() });
           }
         }
         loaded = true;
@@ -147,12 +162,16 @@ function snapshot(): Record<string, Entry> {
   if (JSON.stringify(out).length <= MAX_BYTES) return out;
 
   const oldestFirst = [...mem.entries()].sort((a, b) => a[1].at - b[1].at);
+  const evicted: string[] = [];
   for (const [k] of oldestFirst) {
     if (mem.size <= 1) break; // never evict the entry that was just written
     delete out[k];
     mem.delete(k);
+    evicted.push(k);
     if (JSON.stringify(out).length <= MAX_BYTES) break;
   }
+  // Never silent: an evicted key IS a forgotten arrangement somewhere.
+  if (evicted.length) console.warn("[ui-state] over budget — evicted:", evicted.join(", "));
   return out;
 }
 
