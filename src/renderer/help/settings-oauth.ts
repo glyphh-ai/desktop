@@ -4,14 +4,11 @@
  * Organization SSO (WorkOS). The org connects its identity provider ONCE; its
  * members then sign in through it, and a members-only app (access='members')
  * rides that same org auth — no per-app OAuth. Controls are STATIC in
- * settings.html and wired ONCE in initOAuth() (same pattern as the other
- * settings pages); loadOAuth() only paints the dynamic status. Transport law —
- * the renderer never holds an SDK client:
+ * settings.html and wired ONCE in initOAuth(); loadOAuth() only paints state.
+ * Transport law — the renderer never holds an SDK client:
  *   • web     — window.glyphhSdk.org.security / securityPortal / setRequireSso
  *   • desktop — window.glyphh.orgSecurity* → account-ipc.ts → getClient().org
  */
-
-import { escapeHtml } from "./shared.js";
 
 interface OrgSecurityStatus {
   configured: boolean;
@@ -57,13 +54,6 @@ function transport(): Transport | null {
   return { status: () => g.orgSecurity!(), portal: (i) => g.orgSecurityPortal!(i), setRequireSso: (v) => g.orgSecurityRequireSso!(v) };
 }
 
-/** WorkOS Admin Portal links are external — open in the system browser. */
-function openExternal(url: string): void {
-  const open = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
-  if (open) open(url);
-  else window.open(url, "_blank", "noopener");
-}
-
 function setError(msg: string): void {
   const el = $("oauth-error");
   if (!el) return;
@@ -78,34 +68,26 @@ function paint(): void {
   const s = current;
   const idp = $("oauth-idp-status");
   const connectBtn = $("oauth-connect-btn") as HTMLButtonElement | null;
-  const verifyBtn = $("oauth-verify-btn") as HTMLButtonElement | null;
-  const domains = $("oauth-domains");
-  const requireBtn = $("oauth-require-btn") as HTMLButtonElement | null;
+  const toggle = $("oauth-require-toggle") as HTMLInputElement | null;
   const hint = $("oauth-require-hint");
   if (!s) return;
 
   if (!s.configured) {
-    if (idp) idp.textContent = "Unavailable";
-    setError("Single sign-on isn't enabled for this platform yet.");
-    for (const b of [connectBtn, verifyBtn, requireBtn]) if (b) b.disabled = true;
+    if (idp) idp.textContent = "Single sign-on isn't enabled for this platform yet.";
+    if (connectBtn) connectBtn.disabled = true;
+    if (toggle) toggle.disabled = true;
     return;
   }
 
   const active = s.connections.find((c) => c.state === "active");
   const pending = s.connections.find((c) => c.state !== "active");
-  if (idp) idp.textContent = active ? "Connected" : pending ? "Setup…" : "Not connected";
-  if (connectBtn) connectBtn.textContent = active ? "Manage connection" : "Connect identity provider";
+  if (idp) idp.textContent = active ? `Connected — ${active.name || active.type || "identity provider"}`
+    : pending ? "Setup in progress" : "Not connected";
+  if (connectBtn) { connectBtn.textContent = active ? "Manage connection" : "Connect identity provider"; connectBtn.disabled = false; }
 
-  if (domains) {
-    domains.innerHTML = s.domains.length
-      ? s.domains.map((d) => `<div><span>${escapeHtml(d.domain)}</span><b>${escapeHtml(d.status)}</b></div>`).join("")
-      : `<div><span>No verified domains yet</span><b>—</b></div>`;
-  }
-
-  if (requireBtn) {
-    requireBtn.textContent = s.requireSso ? "SSO required — turn off" : "Require SSO";
-    requireBtn.classList.toggle("primary", !s.requireSso);
-    requireBtn.disabled = !s.ssoActive && !s.requireSso;
+  if (toggle) {
+    toggle.checked = s.requireSso;
+    toggle.disabled = !s.ssoActive && !s.requireSso;
   }
   if (hint) {
     const warn = !s.ssoActive && !s.requireSso;
@@ -114,30 +96,46 @@ function paint(): void {
   }
 }
 
+/** Open the WorkOS Admin Portal. On WEB the tab MUST be opened synchronously in
+ *  the click gesture — opening it after the async portal fetch gets eaten by the
+ *  popup blocker (the "dead button"). So we open a blank tab now, then point it
+ *  at the URL. On desktop we hand off to the shell after the fetch. */
 async function openPortal(intent: PortalIntent): Promise<void> {
   if (busy) return;
   const t = transport();
   if (!t) { setError(NO_TRANSPORT); return; }
   busy = true; setError("");
+  const web = isWeb();
+  const tab = web ? window.open("about:blank", "_blank") : null;
   try {
     const { url } = await t.portal(intent);
-    if (url) openExternal(url);
-    await loadOAuth(); // a new connection may show after the admin returns
+    if (url) {
+      if (tab) tab.location.href = url;
+      else {
+        const open = (window as unknown as { glyphh?: { openExternal?: (u: string) => void } }).glyphh?.openExternal;
+        if (open) open(url); else window.location.href = url;
+      }
+    } else { tab?.close(); }
+    await loadOAuth();
   } catch (e) {
+    tab?.close();
     setError(`Couldn't open the setup portal — ${(e as Error).message}`);
   } finally { busy = false; }
 }
 
 async function toggleRequireSso(): Promise<void> {
-  if (busy || !current) return;
+  const toggle = $("oauth-require-toggle") as HTMLInputElement | null;
+  if (busy || !current || !toggle) return;
+  const desired = toggle.checked;
   const t = transport();
-  if (!t) { setError(NO_TRANSPORT); return; }
+  if (!t) { setError(NO_TRANSPORT); toggle.checked = current.requireSso; return; }
   busy = true; setError("");
   try {
-    const r = await t.setRequireSso(!current.requireSso);
+    const r = await t.setRequireSso(desired);
     current.requireSso = r.requireSso;
     paint();
   } catch (e) {
+    toggle.checked = current.requireSso; // revert the switch
     setError((e as Error).message);
   } finally { busy = false; }
 }
@@ -158,8 +156,11 @@ export async function loadOAuth(): Promise<void> {
 let wired = false;
 export function initOAuth(): void {
   if (wired) return;
+  const connectBtn = $("oauth-connect-btn");
+  // Don't latch `wired` until the panel is actually in the DOM, or an early
+  // boot() call would no-op the real wiring and leave the buttons dead.
+  if (!connectBtn) return;
   wired = true;
-  $("oauth-connect-btn")?.addEventListener("click", () => void openPortal("sso"));
-  $("oauth-verify-btn")?.addEventListener("click", () => void openPortal("domain_verification"));
-  $("oauth-require-btn")?.addEventListener("click", () => void toggleRequireSso());
+  connectBtn.addEventListener("click", () => void openPortal("sso"));
+  $("oauth-require-toggle")?.addEventListener("change", () => void toggleRequireSso());
 }
