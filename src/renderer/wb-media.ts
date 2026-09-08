@@ -45,6 +45,7 @@ export interface MediaHost {
 const api = () => (window as unknown as { glyphh?: {
   mediaList?: (kind?: string, q?: string) => Promise<{ ok: boolean; assets: MediaAssetLite[]; error?: string }>;
   mediaUrl?: (id: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
+  mediaThumbBytes?: (id: string) => Promise<{ ok: boolean; bytes?: Uint8Array; mime?: string; error?: string }>;
   mediaDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   mediaJob?: (id: string) => Promise<{ ok: boolean; job?: MediaJobLite; error?: string }>;
   mediaUploadPick?: (kind?: string) => Promise<{ ok: boolean; id?: string; title?: string; error?: string }>;
@@ -74,17 +75,14 @@ async function assetUrl(id: string, fresh = false): Promise<string | null> {
 }
 
 /** First-frame capture for video cards: seek ~10% in, draw to canvas, cache
- *  the JPEG. A cross-origin (presigned) source can taint the canvas — that
- *  path bails to the plain duration badge rather than throwing. */
+ *  the JPEG. `cross` marks a foreign-origin source (crossOrigin=anonymous so
+ *  the canvas stays clean); a same-origin blob needs no attribute. */
 const frameCache = new Map<string, string | null>();
-async function videoThumb(id: string): Promise<string | null> {
-  if (frameCache.has(id)) return frameCache.get(id) ?? null;
-  const url = await assetUrl(id);
-  if (!url) { frameCache.set(id, null); return null; }
-  const out = await new Promise<string | null>((resolve) => {
+function captureFrame(src: string, cross: boolean): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
     const v = document.createElement("video");
     v.muted = true;
-    v.crossOrigin = "anonymous";
+    if (cross) v.crossOrigin = "anonymous";
     v.preload = "metadata";
     const timer = setTimeout(() => bail(), 8000);
     const cleanup = (): void => { clearTimeout(timer); v.removeAttribute("src"); v.load(); };
@@ -105,8 +103,29 @@ async function videoThumb(id: string): Promise<string | null> {
         resolve(data);
       } catch { bail(); }
     }, { once: true });
-    v.src = url;
+    v.src = src;
   });
+}
+async function videoThumb(id: string): Promise<string | null> {
+  if (frameCache.has(id)) return frameCache.get(id) ?? null;
+  // DESKTOP: the main process fetches the bytes (Node has no CORS) and the
+  // capture runs on a same-origin Blob. The store's presigned URLs carry no
+  // CORS headers, so the crossOrigin <video> load below simply errored and
+  // every card sat on its placeholder (his report, 2026-09-08). The direct
+  // URL stays as the fallback — it works wherever the bucket grants CORS.
+  let out: string | null = null;
+  const fetchBytes = api().mediaThumbBytes;
+  if (fetchBytes) {
+    const r = await fetchBytes(id).catch(() => null);
+    if (r?.ok && r.bytes) {
+      const u = URL.createObjectURL(new Blob([r.bytes as BlobPart], { type: r.mime || "video/mp4" }));
+      try { out = await captureFrame(u, false); } finally { URL.revokeObjectURL(u); }
+    }
+  }
+  if (!out) {
+    const url = await assetUrl(id);
+    if (url) out = await captureFrame(url, true);
+  }
   frameCache.set(id, out);
   return out;
 }

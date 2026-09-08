@@ -87,6 +87,31 @@ export function registerMediaPanelIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
+  // First-frame capture support: the raw bytes fetched HERE — Node has no
+  // CORS. The store's presigned URLs carry no CORS headers, so the renderer's
+  // crossOrigin <video> load simply errored and every video card sat on its
+  // placeholder instead of a still (his report, 2026-09-08). The renderer
+  // wraps these bytes in a same-origin Blob and captures cleanly.
+  ipcMain.handle("media-thumb-bytes", async (_e, id: unknown) => {
+    const THUMB_BYTES_CAP = 64 * 1024 * 1024; // a thumbnail is not worth a 500MB pull
+    try {
+      const media = getClient().media;
+      const asset = await media.get(String(id));
+      if (asset.sizeBytes > THUMB_BYTES_CAP) return { ok: false, error: "too large for capture" };
+      const { url } = await media.playbackUrl(String(id));
+      let bytes: Uint8Array;
+      if (url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`store fetch failed: ${res.status}`);
+        bytes = new Uint8Array(await res.arrayBuffer());
+      } else {
+        bytes = new Uint8Array(await media.bytes(String(id)));
+      }
+      return { ok: true, bytes, mime: asset.mime };
+    } catch (err) {
+      return { ok: false, error: errText(err) };
+    }
+  });
   ipcMain.handle("media-delete", async (_e, id: unknown) => {
     try {
       await getClient().media.delete(String(id));

@@ -1276,6 +1276,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   memoryAmend: (input: unknown) => ipcRenderer.invoke("memory-amend", input) as Promise<{ ok: boolean; id?: string; supersedes?: string; error?: string }>,
   mediaList: (kind?: string, q?: string) => ipcRenderer.invoke("media-list", kind, q) as Promise<{ ok: boolean; assets: unknown[]; error?: string }>,
   mediaUrl: (id: string) => ipcRenderer.invoke("media-url", id) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  mediaThumbBytes: (id: string) => ipcRenderer.invoke("media-thumb-bytes", id) as Promise<{ ok: boolean; bytes?: Uint8Array; mime?: string; error?: string }>,
   mediaDelete: (id: string) => ipcRenderer.invoke("media-delete", id) as Promise<{ ok: boolean; error?: string }>,
   mediaGenerate: (input: unknown) => ipcRenderer.invoke("media-generate", input) as Promise<{ ok: boolean; job?: unknown; outputKind?: string; error?: string }>,
   mediaJob: (id: string) => ipcRenderer.invoke("media-job", id) as Promise<{ ok: boolean; job?: unknown; error?: string }>,
