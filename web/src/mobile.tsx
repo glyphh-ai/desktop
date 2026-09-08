@@ -159,13 +159,13 @@ function currentTheme(): string { try { return localStorage.getItem('yoTheme') |
 
 
 /* ── Current user (derived from the SDK identity / cached legacy user) ─────── */
-interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; role: string; tier: string; }
-function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null; role?: string | null; tier?: string | null } | null): DisplayUser {
+interface DisplayUser { name: string; email: string; initials: string; avatarUrl: string | null; role: string; tier: string; isPlatformAdmin: boolean; }
+function toDisplayUser(u: { name?: string | null; email?: string | null; avatarUrl?: string | null; role?: string | null; tier?: string | null; isPlatformAdmin?: boolean | null } | null): DisplayUser {
   const name = (u?.name || u?.email || 'You').trim();
   const email = u?.email || '';
   const parts = name.split(/\s+/).filter(Boolean);
   const initials = (parts.length >= 2 ? parts[0][0] + parts[parts.length - 1][0] : (name[0] || 'U')).toUpperCase();
-  return { name, email, initials, avatarUrl: u?.avatarUrl || null, role: u?.role || '', tier: u?.tier || '' };
+  return { name, email, initials, avatarUrl: u?.avatarUrl || null, role: u?.role || '', tier: u?.tier || '', isPlatformAdmin: !!u?.isPlatformAdmin };
 }
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
@@ -3058,7 +3058,11 @@ function SettingsSheet({ open, onClose, user, onSignOut, onUserChanged, initialS
     return () => clearTimeout(t);
   }, [open]);
   const openSub = (s: SettingsSub) => { haptic(); setSub(s); setSubOpen(true); };
-  const isSuper = user.role === 'super_admin';
+  // Platform admin is a SEPARATE axis from the org role (his common case: an
+  // org_admin member with is_platform_admin=true). Match the desktop gate
+  // (navigation.ts / settings-admin.ts) so the Platform section — Organizations,
+  // credit grants — shows on mobile too, not just for the legacy super_admin role.
+  const isSuper = user.isPlatformAdmin === true || user.role === 'super_admin';
   const isAdmin = user.role === 'org_admin' || isSuper;
   const title = SUB_TITLE[sub];
 
