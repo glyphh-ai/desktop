@@ -383,19 +383,40 @@ export function normalizeDeckHtml(html: string): string {
     .replace(/calc\(\s*100vh\s*\/\s*1080\s*\)/g, "calc(100vh / 1080px)");
 }
 
+// ── Write-through cache: OUR just-written bytes are authoritative ──────────────
+// The deck store (R2) is eventually consistent on OVERWRITE — a GET issued right
+// after a PUT can return the PREVIOUS bytes. A surgical pass that edits slide 6
+// then slide 2 in separate update_slides calls therefore rebased slide 2 on a
+// stale deck and WIPED the slide-6 edit (his report, 2026-09-08: deleting/editing
+// one slide reverted another). All agent slide ops run in THIS process, so a
+// write-through cache keyed by file makes a follow-up read see the bytes we just
+// stored. Only WRITES populate it (they're authoritative); reads prefer it within
+// a short window that covers an editing pass, then fall back to the store.
+const deckCache = new Map<string, { html: string; at: number }>();
+const DECK_CACHE_TTL_MS = 30_000;
+
 export async function readGPoint(name: unknown): Promise<string> {
-  return normalizeDeckHtml((await getClient().officeSlides.get(gpointFileName(name))).html);
+  const file = gpointFileName(name);
+  const hit = deckCache.get(file);
+  if (hit && Date.now() - hit.at < DECK_CACHE_TTL_MS) return hit.html;
+  return normalizeDeckHtml((await getClient().officeSlides.get(file)).html);
 }
 
 export async function writeGPoint(name: unknown, html: string): Promise<{ file: string; path: string; slides: number }> {
   // Every save passes the STRUCTURE LOCK — agent or import, no exceptions — and
   // heals any legacy shell defect so re-saved decks are permanently fixed.
-  const meta = await getClient().officeSlides.put(gpointFileName(name), normalizeDeckHtml(lockDeckSections(html)));
+  const stored = normalizeDeckHtml(lockDeckSections(html));
+  const meta = await getClient().officeSlides.put(gpointFileName(name), stored);
+  // Cache the EXACT bytes the store now holds (post lock+normalize), so the next
+  // readGPoint in this pass rebases on them, not on an eventually-consistent GET.
+  deckCache.set(meta.file, { html: normalizeDeckHtml(stored), at: Date.now() });
   return { file: meta.file, path: `the org's Slides library (${meta.file})`, slides: meta.slides };
 }
 
 export async function deleteGPoint(name: unknown): Promise<void> {
-  await getClient().officeSlides.delete(gpointFileName(name));
+  const file = gpointFileName(name);
+  deckCache.delete(file);
+  await getClient().officeSlides.delete(file);
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));

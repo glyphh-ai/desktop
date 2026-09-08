@@ -13,14 +13,25 @@
 
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import { promises as fsp } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { marked } from "marked";
 import { readGPoint, stripHiddenSlides } from "./gpoints";
 import { gdocFileName } from "./office-docs";
 import { getClient } from "./glyphh-client";
 
-const dataUrl = (html: string): string =>
-  `data:text/html;base64,${Buffer.from(html, "utf8").toString("base64")}`;
+/** Load HTML into a window via a TEMP FILE, not a data: URL. A base64 data URL
+ *  has a hard length ceiling in Chromium, so a big/image-heavy deck (media
+ *  inlined as data URIs, or a page-per-slide print doc) failed `loadURL`
+ *  outright — "PDF export choked on the deck size" (his report, 2026-09-08). A
+ *  file has no such limit. Cleaned up once loaded (the page is in memory). */
+async function loadHtml(win: BrowserWindow, html: string): Promise<void> {
+  const p = join(tmpdir(), `glyphh-export-${randomBytes(8).toString("hex")}.html`);
+  await fsp.writeFile(p, html, "utf8");
+  try { await win.loadFile(p); }
+  finally { await fsp.unlink(p).catch(() => { /* temp — best effort */ }); }
+}
 
 async function offscreen(width: number, height: number): Promise<BrowserWindow> {
   return new BrowserWindow({
@@ -33,7 +44,7 @@ async function offscreen(width: number, height: number): Promise<BrowserWindow> 
 async function captureSlides(html: string): Promise<string[]> {
   const win = await offscreen(1920, 1080);
   try {
-    await win.loadURL(dataUrl(stripHiddenSlides(html)));
+    await loadHtml(win, stripHiddenSlides(html));
     await win.webContents.executeJavaScript(
       `new Promise((r) => { const s = document.createElement("style");
          s.textContent = "*{transition:none!important;animation:none!important}";
@@ -49,7 +60,10 @@ async function captureSlides(html: string): Promise<string[]> {
       );
       await new Promise((r) => setTimeout(r, 90));   // let the compositor paint
       const image = await win.webContents.capturePage({ x: 0, y: 0, width: 1920, height: 1080 });
-      pages.push(image.toPNG().toString("base64"));
+      // JPEG, not PNG: a full-res 1920×1080 slide is multi-MB as PNG, so a
+      // 20-slide deck's print doc ran to tens of MB and blew memory / the load
+      // ceiling. JPEG@92 is visually identical for slides and ~6× smaller.
+      pages.push(image.toJPEG(92).toString("base64"));
     }
     return pages;
   } finally {
@@ -61,7 +75,7 @@ async function captureSlides(html: string): Promise<string[]> {
 async function printHtml(html: string): Promise<Buffer> {
   const win = await offscreen(1200, 800);
   try {
-    await win.loadURL(dataUrl(html));
+    await loadHtml(win, html);
     return await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
   } finally {
     win.destroy();
@@ -69,7 +83,7 @@ async function printHtml(html: string): Promise<Buffer> {
 }
 
 function slidesPrintDoc(pages: string[]): string {
-  const imgs = pages.map((b64) => `<div class="page"><img src="data:image/png;base64,${b64}"></div>`).join("");
+  const imgs = pages.map((b64) => `<div class="page"><img src="data:image/jpeg;base64,${b64}"></div>`).join("");
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     @page { size: 13.333in 7.5in; margin: 0; }
     html, body { margin: 0; padding: 0; }
@@ -144,7 +158,7 @@ export function registerOfficeExportIpc(): void {
         if (req.print) {
           // File → Print: the OS print dialog over the same paper document.
           const win = await offscreen(1200, 800);
-          await win.loadURL(dataUrl(docPrintDoc(title, html)));
+          await loadHtml(win, docPrintDoc(title, html));
           await new Promise<void>((resolve) => {
             win.webContents.print({}, () => { win.destroy(); resolve(); });
           });
