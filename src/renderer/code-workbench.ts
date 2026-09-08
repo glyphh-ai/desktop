@@ -22,7 +22,21 @@ import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-te
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
-import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, flushUiState } from "./help/ui-state.js";
+import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
+
+/** Forget every server-side memory family a workspace owns — geometry snapshot,
+ *  per-space session binding, Echo cell state. Deleting a workspace from the
+ *  LAUNCHER tile used to clear NONE of these (only the Workspaces editor did),
+ *  so a delete-and-re-add re-adopted the old, sometimes-corrupt memory and the
+ *  workspace opened broken (his report, 2026-09-08). Keyed by name because the
+ *  memory is (matches the editor's deleteLayout + rename paths). */
+function forgetWorkspaceMemory(name: string): void {
+  const n = name.trim().toLowerCase();
+  if (!n) return;
+  uiStateRemovePrefix(`workbench:namedlayout:${n}`);
+  uiStateRemovePrefix(`workbench:layoutsession:${n}`);
+  uiStateRemovePrefix(`echo:layout:${n}`);
+}
 import { maybeStartWallTour } from "./wall-tour.js";
 import { initDockPortal } from "./dock-portal.js";
 import { mountStreamedPanel, type StreamedPanelHandle } from "./panel-stream.js";
@@ -2619,7 +2633,11 @@ async function init(): Promise<void> {
             if (!list.includes(t.slug)) list.push(t.slug);
             await yo?.setPreference?.("ccHiddenDefaults", list);
           }
-          else if (t.kind === "layout" && t.layoutName) await yo?.layoutsDelete?.(t.layoutName);
+          else if (t.kind === "layout" && t.layoutName) {
+            await loadUiState();               // memory is server-side; forget it there
+            forgetWorkspaceMemory(t.layoutName);
+            await yo?.layoutsDelete?.(t.layoutName);
+          }
           else if (t.appId) {
             const res = await yo?.panelAppsDelete?.(t.appId);
             if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }

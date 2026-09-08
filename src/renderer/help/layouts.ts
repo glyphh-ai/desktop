@@ -8,6 +8,40 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
 
+/** Rewrite a workspace's launcher/dock tile key across the persisted order
+ *  prefs (the command center owns these: ccIconOrder = page order,
+ *  echoDockOrder = the dock, echoFolders[].keys = filed tiles). Workspace tiles
+ *  are keyed `layout:<name>`, so a rename orphaned the tile out of all three
+ *  and it vanished from the dock. Writing the prefs directly (not via the live
+ *  Echo state) makes the fix hold even when the command center isn't mounted —
+ *  its next open reads the corrected order. */
+async function remapLayoutTileKey(from: string, to: string): Promise<void> {
+  const g = window.glyphh as unknown as {
+    getPreference?: (k: string, d: unknown) => Promise<unknown>;
+    setPreference?: (k: string, v: unknown) => void;
+  };
+  if (!g.getPreference || !g.setPreference) return;
+  try {
+    for (const pref of ["ccIconOrder", "echoDockOrder"]) {
+      const cur = await g.getPreference(pref, []);
+      if (Array.isArray(cur) && cur.includes(from)) {
+        g.setPreference(pref, cur.map((k) => (k === from ? to : k)));
+      }
+    }
+    const folders = await g.getPreference("echoFolders", []);
+    if (Array.isArray(folders)) {
+      let hit = false;
+      const next = folders.map((f) => {
+        const rec = (f ?? {}) as { keys?: unknown };
+        const keys = Array.isArray(rec.keys) ? (rec.keys as string[]) : null;
+        if (keys && keys.includes(from)) { hit = true; return { ...rec, keys: keys.map((k) => (k === from ? to : k)) }; }
+        return f;
+      });
+      if (hit) g.setPreference("echoFolders", next);
+    }
+  } catch { /* best effort — the workspace still opens, just off the dock */ }
+}
+
 /** Open a saved layout INTO the workbench (agent pinned left, grid to its
  *  right) instead of tiling OS windows. Resolves each cell's panel to its
  *  web app; native/unresolved panels are skipped (they can't run in a
@@ -1118,13 +1152,30 @@ async function saveLayout() {
   // Only keep model picks for slots the chosen loop still declares — a stale
   // pick from a loop the user switched away from must not ride along.
   const selections = builderLoop ? builderModelSelections : {};
-  // An EDITED layout invalidates its remembered arrangement — the workbench's
-  // named-layout snapshot recalls the OLD geometry whenever the panel set is
-  // unchanged, which is exactly the common edit (resize rows/cols, re-place
-  // the same panels). Definition wins after a save. (Rename drops both keys.)
+  // An EDITED layout invalidates its remembered GEOMETRY — the workbench's
+  // named-layout snapshot AND the Echo cell snapshot both recall the OLD
+  // arrangement when the panel set is unchanged, which is exactly the common
+  // edit. Definition wins after a save. Clearing echo:layout too is what makes
+  // a re-save actually repair a corrupt snapshot (his report: "vibe" reopened
+  // broken; delete+re-add didn't clear it — the echo:layout memory survived).
   await loadUiState();   // the arrangement is server-side; forget it there
-  for (const n of new Set([name, editingLayoutName].filter(Boolean) as string[])) {
-    uiStateRemovePrefix(`workbench:namedlayout:${n.trim().toLowerCase()}`);
+  const editedName = name.trim().toLowerCase();
+  const oldName = editingLayoutName?.trim().toLowerCase() || "";
+  const isRename = !!oldName && oldName !== editedName;
+  for (const n of new Set([editedName, oldName].filter(Boolean))) {
+    uiStateRemovePrefix(`workbench:namedlayout:${n}`);
+    uiStateRemovePrefix(`echo:layout:${n}`);
+  }
+  // The session binding only moves on a RENAME — a same-name edit keeps which
+  // conversation the workspace resumes. On rename both names' bindings drop
+  // (the resume path self-heals to a new session).
+  if (isRename) {
+    uiStateRemovePrefix(`workbench:layoutsession:${oldName}`);
+    uiStateRemovePrefix(`workbench:layoutsession:${editedName}`);
+    // Dock/launcher tiles are keyed `layout:<name>`, so a rename orphaned the
+    // workspace out of the dock, its page slot, and any folder (his report).
+    // Rewrite the key in the persisted order prefs so placement survives.
+    await remapLayoutTileKey(`layout:${oldName}`, `layout:${editedName}`);
   }
   await window.glyphh.layoutsSaveGrid({
     name,
