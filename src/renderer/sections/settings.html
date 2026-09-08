@@ -1407,17 +1407,16 @@
                 <div id="dl-list" class="mbr-list"></div>
               </div>
               <div class="settings-panel" data-sub="oauth">
-                <h2>OAuth</h2>
-                <p class="section-desc">Connect your organization's identity provider so your team signs in to Glyphh through it (SAML or OIDC, via WorkOS).</p>
-                <div id="oauth-error" class="settings-error hidden"></div>
-                <div class="lp-sec">
-                  <h4 class="acct-row-head">Identity provider</h4>
-                  <p class="section-desc" id="oauth-idp-status">Not connected</p>
-                  <div class="settings-inline">
-                    <button id="oauth-connect-btn" class="action-btn primary" type="button">Connect identity provider</button>
+                <div id="oauth-main">
+                  <div class="ua-head">
+                    <span class="ua-title">OAuth <span class="ua-plan" id="oauth-idp-status">not connected</span></span>
+                    <span class="ua-head-aside">
+                      <button id="oauth-connect-btn" class="action-btn primary" type="button">Connect identity provider</button>
+                    </span>
                   </div>
-                </div>
-                <div class="lp-sec">
+                  <p class="section-desc">Connect your organization's identity provider so your team signs in to Glyphh through it (SAML or OIDC, via WorkOS).</p>
+                  <div id="oauth-error" class="settings-error hidden"></div>
+                  <div class="ua-section">Access</div>
                   <label class="settings-toggle set-pref-row">
                     <div class="set-pref-text">
                       <div class="set-pref-title">Require SSO for all members</div>
@@ -1426,7 +1425,6 @@
                     <input type="checkbox" id="oauth-require-toggle" />
                     <span class="toggle-switch"></span>
                   </label>
-                  <div id="oauth-require-hint" class="settings-hint hidden"></div>
                 </div>
               </div>
               <div class="settings-panel" data-sub="apikeys">

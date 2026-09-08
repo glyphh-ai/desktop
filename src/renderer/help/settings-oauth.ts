@@ -10,6 +10,8 @@
  *   • desktop — window.glyphh.orgSecurity* → account-ipc.ts → getClient().org
  */
 
+import { confirmAction } from "./shared.js";
+
 interface OrgSecurityStatus {
   configured: boolean;
   linked: boolean;
@@ -69,30 +71,27 @@ function paint(): void {
   const idp = $("oauth-idp-status");
   const connectBtn = $("oauth-connect-btn") as HTMLButtonElement | null;
   const toggle = $("oauth-require-toggle") as HTMLInputElement | null;
-  const hint = $("oauth-require-hint");
   if (!s) return;
 
   if (!s.configured) {
-    if (idp) idp.textContent = "Single sign-on isn't enabled for this platform yet.";
+    if (idp) idp.textContent = "unavailable";
     if (connectBtn) connectBtn.disabled = true;
     if (toggle) toggle.disabled = true;
+    setError("Single sign-on isn't enabled for this platform yet.");
     return;
   }
 
   const active = s.connections.find((c) => c.state === "active");
   const pending = s.connections.find((c) => c.state !== "active");
-  if (idp) idp.textContent = active ? `Connected — ${active.name || active.type || "identity provider"}`
-    : pending ? "Setup in progress" : "Not connected";
+  if (idp) idp.textContent = active ? `connected · ${active.name || active.type || "IdP"}`
+    : pending ? "setup in progress" : "not connected";
   if (connectBtn) { connectBtn.textContent = active ? "Manage connection" : "Connect identity provider"; connectBtn.disabled = false; }
 
+  // The toggle is simply disabled until a provider is connected (no inline
+  // warning — his call). Requiring SSO is confirmed via the standard modal.
   if (toggle) {
     toggle.checked = s.requireSso;
     toggle.disabled = !s.ssoActive && !s.requireSso;
-  }
-  if (hint) {
-    const warn = !s.ssoActive && !s.requireSso;
-    hint.textContent = warn ? "Connect an identity provider before requiring SSO — enabling it now would lock every member out." : "";
-    hint.classList.toggle("hidden", !warn);
   }
 }
 
@@ -127,6 +126,15 @@ async function toggleRequireSso(): Promise<void> {
   const toggle = $("oauth-require-toggle") as HTMLInputElement | null;
   if (busy || !current || !toggle) return;
   const desired = toggle.checked;
+  // Turning it ON changes sign-in for the whole org — acknowledge it first.
+  if (desired) {
+    const ok = await confirmAction({
+      title: "Require SSO for all members?",
+      body: "Everyone in your organization will have to sign in through your identity provider. Magic-link and social sign-in are turned off for your org.",
+      confirmLabel: "Require SSO",
+    });
+    if (!ok) { toggle.checked = false; return; }
+  }
   const t = transport();
   if (!t) { setError(NO_TRANSPORT); toggle.checked = current.requireSso; return; }
   busy = true; setError("");

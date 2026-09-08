@@ -1533,6 +1533,7 @@ body.account-locked #dl-btn-wrap {
    like the Dashboard. */
 .glyphh-web .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="account"] { display: none !important; }
 body.platform-shell .settings-panel[data-sub="account"] { max-width: 880px; margin: 0 auto; }
+body.platform-shell .settings-panel[data-sub="oauth"] { max-width: 880px; margin: 0 auto; }
 /* Voice + Appearance are desktop-app surfaces too (his rule, 2026-08-25):
    the platform themes itself from the user popup's three modes instead. */
 body.platform-shell .settings-nav:not(.docs-nav) > .settings-nav-item[data-sub="general"],
