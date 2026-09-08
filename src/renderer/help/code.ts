@@ -17,7 +17,7 @@ import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
 import * as picker from "./model-picker.js";
-import { initVoiceMic, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
+import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
 import { openLayoutInWorkbench } from "./layouts.js";
@@ -5415,6 +5415,10 @@ export function initCode(): void {
   // (This call was lost in the cc-button removal; without it the chip is
   // wired to NOTHING — "the record button isn't turning on".)
   initVoiceMic();
+  // Hands-free submits ride the ENTER path — mid-run it queues instead of
+  // hitting a send button that is Stop while thinking (and whose synthetic
+  // click a disabled button swallows silently).
+  registerComposerSubmit(() => { if (thinking) queueMidRun(); else send(); });
   // ── Drips — the droplet on the agent's top row, RIGHT of the caret. The
   // picker opens UPWARD (.echo-drip-anchor positions it); the typed `.dip`
   // watcher lands on the same opener. ──

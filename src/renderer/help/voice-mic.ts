@@ -36,6 +36,26 @@ let startedAt = 0;
 // across listen → transcribe → submit → reply → listen until they click to stop.
 let handsFree = false;
 let awaitingReply = false;   // submitted a turn; hold off re-listening until it lands
+// The user clicked the chip to END a hands-free session mid-utterance: what
+// was said still SUBMITS (the click means "done talking", not "discard" —
+// his report, 2026-09-08), and then the session ends instead of re-listening.
+let endAfterUtterance = false;
+
+// The REAL composer submit, registered by code.ts — the same path the Enter
+// key takes (queues mid-run instead of turning into Stop). The old synthetic
+// el("code-send").click() was silently swallowed whenever the button was
+// disabled, and would have CANCELLED a live run.
+let submitFn: (() => void) | null = null;
+export function registerComposerSubmit(fn: () => void): void { submitFn = fn; }
+function submitComposer(): void {
+  // Mirror the Enter key's reach: a gated composer takes no keydown, so a
+  // gated hands-free utterance stays in the box for the user instead of
+  // firing into a source that isn't ready.
+  const ta = el<HTMLTextAreaElement>("code-input");
+  if (ta?.disabled) return;
+  if (submitFn) submitFn();
+  else el("code-send")?.click();
+}
 // Live meter: one AudioContext + analyser drives BOTH the waveform overlay and
 // (hands-free only) the silence detector.
 let audioCtx: AudioContext | null = null;
@@ -295,8 +315,16 @@ async function transcribe(model: string): Promise<void> {
     awaitingReply = true;
     resetEarlySpeech();
     cue("submit");
-    el("code-send")?.click();          // fire the turn; reply → onTurnComplete
-  } else if (handsFree) {
+    submitComposer();                  // the Enter path; reply → onTurnComplete
+    if (endAfterUtterance) {           // chip-click ended the session — submit, don't re-listen
+      endAfterUtterance = false;
+      handsFree = false;
+      awaitingReply = false;
+    }
+  } else if (endAfterUtterance) {
+    endAfterUtterance = false;         // ended with nothing said — just stop
+    handsFree = false;
+  } else {
     void startRecording();             // heard nothing — keep listening
   }
 }
@@ -352,9 +380,14 @@ async function chipClick(): Promise<void> {
     void (window.glyphh as unknown as { micOpenSettings?: () => Promise<unknown> }).micOpenSettings?.();
     return;
   }
-  // Already recording → the user is stopping.
+  // Already recording → the user is stopping. In a HANDS-FREE session the
+  // click means "done talking": what was captured still submits, then the
+  // session ends. Killing handsFree here instead routed the transcript down
+  // the push-to-talk path — text in the box, turn never fired (his report,
+  // 2026-09-08).
   if (recorder && recorder.state === "recording") {
-    handsFree = false; awaitingReply = false;
+    if (handsFree) endAfterUtterance = true;
+    else awaitingReply = false;
     stopRecording();                             // → onstop → transcribe
     return;
   }
