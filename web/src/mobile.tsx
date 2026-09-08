@@ -2965,7 +2965,7 @@ function PlatformOrgDetail({ id, onBack }: { id: string; onBack: () => void }) {
       <button className="m-field-btn" onClick={() => { haptic(); onBack(); }}>← All organizations</button>
       <div className="m-set-label">{d.name} {saved && <span className="m-saved">{saved}</span>}</div>
       <div className="m-bill-cards">
-        <div className="m-bill-card"><span className="m-bill-v">{wholeCredits(d.credits?.balance)}</span><span className="m-bill-l">Balance</span></div>
+        <div className="m-bill-card"><span className="m-bill-v">{credits(d.credits?.balance)}</span><span className="m-bill-l">Balance</span></div>
         <div className="m-bill-card"><span className="m-bill-v">{d.member_count}/{d.max_seats || '—'}</span><span className="m-bill-l">Seats</span></div>
       </div>
       <div className="m-set-label">Plan</div>
