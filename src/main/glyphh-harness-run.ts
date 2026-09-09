@@ -119,6 +119,9 @@ async function ensurePod(): Promise<string> {
   const pod = await ensureLocalHarnessPod({
     ...(bundled ?? {}),
     ...(cmd && !bundled ? { cmd } : {}),
+    // PROGRAM-PER-TURN on the local pod too (P3 — parity with the prod
+    // runtime, enabled 2026-09-09). An explicit env off-switch is honored.
+    env: { ...(bundled?.env ?? {}), ROTOR_TURN_PROGRAM: process.env.ROTOR_TURN_PROGRAM ?? "1" },
     // Electron's boot is busy; a cold pod (node + SDK load) needs more than
     // the supervisor's 15s default on a first run.
     startTimeoutMs: 30_000,
@@ -421,6 +424,13 @@ export async function harnessRun(
         throw new Error("no model available — your workspace allows none, or the ones it allows have no key configured");
       }
     }
+    // P3: the local pod's loop PROGRAM, fetched via the SDK (the same loops
+    // API the picker reads — builtins included, they ship as source). Cached
+    // per loop for the session's cadence by the SDK's own HTTP layer; a miss
+    // degrades to a bindings-only turn, never a blocked one.
+    const localLoopProgram = !cloud
+      ? await getClient().loops.get(loopOverride ?? currentLoop()).then((l) => l.code || undefined).catch(() => undefined)
+      : undefined;
     const pod = getClient().harness({
       url: target.url,
       ...(target.token ? { token: async (): Promise<string> => target.token as string } : {}),
@@ -440,6 +450,10 @@ export async function harnessRun(
       // client's pick, else this desktop's active loop. Attribution now;
       // the pod's envelope hooks consume it from P1 on.
       ...((loopOverride ?? currentLoop()) ? { loop: loopOverride ?? currentLoop() } : {}),
+      // P3: a LOCAL auth-off pod has no org store — hand it the program
+      // source so the envelope runs on-desktop exactly as in the cloud.
+      // Best-effort: no code (offline, builtin without one) = bindings-only.
+      ...(!cloud && localLoopProgram ? { loopProgram: localLoopProgram } : {}),
       // The SESSION'S REAL FOLDER as the run's cwd. A LOCAL (auth-off,
       // loopback) pod honours this and anchors its OWN preset tools —
       // Bash/Read/Edit/Glob/Grep — there; a cloud pod 400s the field, which is
