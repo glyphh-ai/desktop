@@ -436,6 +436,10 @@ export async function harnessRun(
       mode,
       permission: permissionOverride ?? glyphhMode(),
       ...(model ? { model } : {}),
+      // The LOOP shaping this turn (program-per-turn P0): the relaying
+      // client's pick, else this desktop's active loop. Attribution now;
+      // the pod's envelope hooks consume it from P1 on.
+      ...((loopOverride ?? currentLoop()) ? { loop: loopOverride ?? currentLoop() } : {}),
       // The SESSION'S REAL FOLDER as the run's cwd. A LOCAL (auth-off,
       // loopback) pod honours this and anchors its OWN preset tools —
       // Bash/Read/Edit/Glob/Grep — there; a cloud pod 400s the field, which is
