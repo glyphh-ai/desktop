@@ -698,6 +698,12 @@ async function init(): Promise<void> {
     pointerDown = true;
   }, true);
   document.addEventListener("pointerup", () => { pointerDown = false; }, true);
+  // A release OUTSIDE the window fires neither pointerup nor pointercancel on
+  // the document — pointerDown latched true and silently DISARMED the focus
+  // watchdog for the rest of the session (one drag out of the window and the
+  // composer was unguarded; his report, 2026-09-09).
+  document.addEventListener("pointercancel", () => { pointerDown = false; }, true);
+  window.addEventListener("blur", () => { pointerDown = false; });
 
   const composerEl = (): HTMLTextAreaElement | null =>
     document.getElementById("code-input") as HTMLTextAreaElement | null;
@@ -775,8 +781,18 @@ async function init(): Promise<void> {
   // catch. Poll for the dropped state and take it back.
   window.setInterval(() => {
     if (!composerHeld || pointerDown) return;
-    const a = document.activeElement;
-    if (a && a !== document.body && a !== document.documentElement) return;
+    const a = document.activeElement as HTMLElement | null;
+    const dropped = !a || a === document.body || a === document.documentElement;
+    // NOT just body drops: a <webview> re-attaching / an xterm spawning mid-run
+    // takes the caret in ways focusin never hands back (the guest grabs focus
+    // internally, or the helper textarea focuses on mount). Those are never a
+    // typing destination unless the user POINTED at them — reclaim (his
+    // report, 2026-09-09: "NOTHING should take focus from the agent input").
+    const pointedAt = !!a && Date.now() - lastPointerAt < 600
+      && (a === lastPointerTarget || (lastPointerTarget instanceof Node && a.contains(lastPointerTarget)));
+    const stolen = !dropped && !!a && !pointedAt
+      && (a.tagName === "WEBVIEW" || a.classList?.contains("xterm-helper-textarea"));
+    if (!dropped && !stolen) return;
     // A drag-select in the transcript also parks focus on <body>; refocusing
     // would collapse the selection out from under them.
     const sel = window.getSelection();
@@ -5129,7 +5145,8 @@ async function init(): Promise<void> {
           const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
           let entry: TileEntry | null = null;
           if (id.startsWith("tool:")) {
-            const v = id.slice(5) === "editor" ? "monaco" : id.slice(5);
+            const raw = id.slice(5);
+            const v = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
             // The agent cell mounts the agent as a PANEL — the layout owns
             // it, and the center composer steps off screen until the layout
             // lets go.
@@ -5231,6 +5248,16 @@ async function init(): Promise<void> {
               row: g?.row ?? cell.row ?? 0,
               colSpan: Math.max(1, g?.colSpan ?? cell.colSpan ?? 1),
               rowSpan: Math.max(1, g?.rowSpan ?? cell.rowSpan ?? 1),
+            });
+          } else if (id !== "tool:coding") {
+            // NEVER silent: a definition cell that produced no card is a
+            // MISSING PANEL to the user ("removed a panel and it never came
+            // back", 2026-09-09) — name the cell and why it died so the next
+            // report pins the path in one console line. (The agent cell is
+            // legitimately skipped when the dock owns the agent.)
+            console.warn("[echo] layout cell produced no card:", {
+              layout: layout.name, panelId: cell.panelId,
+              entryMade: !!entry, cardMade: !!entry?.card,
             });
           }
         }
