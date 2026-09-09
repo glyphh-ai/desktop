@@ -714,7 +714,7 @@ const TOOLS: ToolDef[] = [
         return names.length ? names : null;
       };
       const r = await updateAppFromWorkdir(lookup);
-      return `updated "${r.name}" (${r.slug}) from source${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files.`;
+      return `updated "${r.name}" (${r.slug}) from source${r.entryPath ? ` — registered entry: ${r.entryPath}` : ""}${r.warnings.length ? ` — notes: ${r.warnings.slice(0, 3).join("; ")}` : ""}. Its tools now match the edited files. open_app("${r.slug}") shows this exact build.`;
     },
   },
   {

@@ -87,7 +87,7 @@ function resolveAppDir(wd: string): string {
  */
 export async function updateAppFromWorkdir(
   lookup?: (slug: string) => string[] | null,
-): Promise<{ slug: string; name: string; warnings: string[] }> {
+): Promise<{ slug: string; name: string; warnings: string[]; entryPath?: string }> {
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
   const dir = resolveAppDir(wd);
@@ -114,7 +114,9 @@ export async function updateAppFromWorkdir(
     // is reserved for installing someone else's PUBLISHED app.
     const r = await registerAppInPlace(dir, built.manifestJson);
     if (!r.ok) throw new Error(r.error || "register failed");
-    return { slug: m.slug, name: r.name || m.name, warnings: [] };
+    // Name WHERE it registered — "success" without the path made a
+    // stale-row open failure undiagnosable (2026-09-09).
+    return { slug: m.slug, name: r.name || m.name, warnings: [], entryPath: path.join(dir, "dist", "index.html") };
   }
 
   // ── Legacy single-file app: package the folder's text files as before ─────

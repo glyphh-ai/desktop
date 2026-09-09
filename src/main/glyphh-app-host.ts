@@ -875,7 +875,16 @@ export function registerGlyphhAppHost(): void {
         const hosted = mine.find((a) => a.slug === row.slug || a.id === row.slug)?.prodUrl;
         if (hosted) return { ok: true, fileUrl: hosted, hosted: true };
       } catch { /* offline — fall through to the honest error */ }
-      return { ok: false, error: "App bundle is missing on this machine and it has no live deployment — re-install or rebuild it" };
+      // NAME THE PATH. The bare "bundle is missing" cost an hour of blind
+      // hunting (2026-09-09): the row said WHERE it looked and the error
+      // hid it. With the path visible, "stale row / dist mid-rebuild /
+      // wrong folder registered" is a one-glance diagnosis.
+      return {
+        ok: false,
+        error: entryPath
+          ? `App bundle is missing at ${entryPath} (the registered row's entry) and it has no live deployment — rebuild + update_app from its project folder, or re-install it`
+          : "This app's row has no local entry registered and no live deployment — build it (update_app) or install it",
+      };
     }
     // Cover this app's dir with the egress-sandbox CSP — custom-apps/ apps are
     // already under the copy-install root; an IN-PLACE dev build (execPath in a
