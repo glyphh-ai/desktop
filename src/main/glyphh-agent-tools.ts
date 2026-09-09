@@ -63,6 +63,7 @@ async function statorCall(path: "recall" | "create" | "browse" | "forget", body:
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic";
 import { getClient, appCache } from "./glyphh-client";
 import { exportDocPdf, exportSlidesPdf } from "./office-export";
+import { rasterizePdf } from "./pdf-raster";
 import { designFileName, extractSiteDesign, imagePalette } from "./design";
 import { uploadMediaFile, mediaFileUrl } from "./media-panel";
 import { genImageAsset, genLook, addLookToInstrumentLibrary } from "./music-panel";
@@ -975,6 +976,22 @@ const TOOLS: ToolDef[] = [
       if ("error" in imported) return `ERROR: ${imported.error}`;
       const r = await writeGPoint(a.name, imported.doc);
       return `imported ${r.path} (${imported.slides} slide${imported.slides === 1 ? "" : "s"}, styles + animations preserved) — open_slides("${r.file}") jumps to it`;
+    },
+  },
+  {
+    name: "pdf_pages",
+    doc: 'pdf_pages(path, dpi?, pages?) — rasterize a PDF into PNGs, ONE PER PAGE, into "<name>-pages/" beside it. Multi-page (sips/qlmanage only do page 1) and cross-platform — no Ghostscript/poppler/Xcode needed, ever. dpi 36–300 (default 150); pages caps how many render (default all, max 200). Use it to pull slides/figures out of a PDF, feed pages to import paths, or read a scanned doc page by page.',
+    action: (a) => ({ kind: "edit", title: `Rasterize PDF "${String(a.path ?? "")}"`, detail: [a.dpi && `${a.dpi}dpi`, a.pages && `first ${a.pages} pages`].filter(Boolean).join(", ") }),
+    run: async (a) => {
+      const { abs, escapes } = resolveReadPath(a.path);
+      if (escapes) return `ERROR: ${String(a.path)} is outside the working folder`;
+      if (!/\.pdf$/i.test(abs)) return "ERROR: pdf_pages takes a .pdf file";
+      const r = await rasterizePdf(abs, {
+        ...(a.dpi !== undefined ? { dpi: Number(a.dpi) } : {}),
+        ...(a.pages !== undefined ? { pages: Number(a.pages) } : {}),
+      });
+      const skipped = r.pageCount - r.rendered;
+      return `rasterized ${r.rendered} page${r.rendered === 1 ? "" : "s"}${skipped > 0 ? ` of ${r.pageCount}` : ""} → ${r.dir}/ (${r.files.map((f) => f.split("/").pop()).slice(0, 5).join(", ")}${r.files.length > 5 ? ", …" : ""})`;
     },
   },
   {

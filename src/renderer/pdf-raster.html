@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>pdf-raster</title></head>
+<body>
+<!-- Headless PDF rasterizer harness — loaded by main/pdf-raster.ts in a hidden
+     window. No UI: the page exposes __pdfChunk/__pdfOpen/__pdfPage globals the
+     main process drives via executeJavaScript. pdf.js does the rendering, so
+     the SAME code rasterizes on macOS, Windows and Linux — no Ghostscript,
+     poppler or OS bindings. -->
+<script src="pdf-raster.js"></script>
+</body></html>
