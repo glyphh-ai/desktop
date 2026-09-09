@@ -866,7 +866,16 @@ export function registerGlyphhAppHost(): void {
     if (!row) return { ok: false, error: `unknown app: ${slug}` };
     const entryPath = String(row.execPath || "");
     if (!entryPath || !fs.existsSync(entryPath)) {
-      return { ok: false, error: "App bundle is missing on this machine — re-install it" };
+      // The LOCAL bundle is per-machine; R2/hosting is the source of record.
+      // An app built on another machine still has a LIVE DEPLOYMENT to show —
+      // open that instead of a dead-end error page (his report, 2026-09-09:
+      // "FortessAI Marketing failed to open: App bundle is missing").
+      try {
+        const mine = await getClient().apps.mine();
+        const hosted = mine.find((a) => a.slug === row.slug || a.id === row.slug)?.prodUrl;
+        if (hosted) return { ok: true, fileUrl: hosted, hosted: true };
+      } catch { /* offline — fall through to the honest error */ }
+      return { ok: false, error: "App bundle is missing on this machine and it has no live deployment — re-install or rebuild it" };
     }
     // Cover this app's dir with the egress-sandbox CSP — custom-apps/ apps are
     // already under the copy-install root; an IN-PLACE dev build (execPath in a
