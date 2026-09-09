@@ -31,11 +31,6 @@ import { embedText, embedTexts, dot, packVec, unpackVec } from "./glyphh-agent-e
 import { getClient } from "./glyphh-client";
 import type { ConnectorWireDef } from "./glyphh-agent-tools";
 
-const TOOL_K = 24;         // most connector tools a single run wires
-const SEM_MIN = 0.3;       // nomic cosine floor for "related to the ask"
-const TOKEN_BUDGET = 7000; // ≈ tokens the wired tool JSON may cost (of 32k)
-const SMALL_ENOUGH = 12;   // catalogs this small skip selection entirely
-
 /** Descriptions shorter than this get the enrichment pass; longer ones
  *  already carry enough intent language to embed on their own. */
 const THIN_DESC = 200;
@@ -43,8 +38,6 @@ const THIN_DESC = 200;
  *  catalog converges over a few refreshes instead of burning credits at once. */
 const ENRICH_BATCH = 16;
 const ENRICH_MAX_CALLS = 8;
-
-const est = (s: string) => Math.ceil(s.length / 3.2);
 
 const toolHash = (d: ConnectorWireDef) =>
   createHash("sha1").update(`${d.name}\n${d.description}`).digest("hex");
@@ -189,16 +182,16 @@ export function noteToolUsed(name: string): void {
   }
 }
 
-function pinnedNames(): string[] {
+/** True while the tool is in this stretch's working set (TTL-pruned). With
+ *  the preselect gone (search-first cutover, 2026-09-09) the working set
+ *  feeds the RANKER instead: a tool the session already used outranks a
+ *  same-score stranger in find_tools results. */
+function recentlyUsed(name: string): boolean {
   const floor = Date.now() - PIN_TTL_MS;
-  for (const [name, ts] of used) if (ts < floor) used.delete(name);
-  return [...used.keys()].reverse(); // most recent first
+  for (const [n, ts] of used) if (ts < floor) used.delete(n);
+  return used.has(name);
 }
 
-/** New session, clean slate — yesterday's tools are not a prior for today. */
-export function resetToolWorkingSet(): void {
-  used.clear();
-}
 
 // ── Ranking ──────────────────────────────────────────────────────────────────
 
@@ -243,38 +236,15 @@ export async function rankConnectorTools(query: string, defs: ConnectorWireDef[]
       const semantic = row?.sem ?? 0;
       const blurb = row?.paragraph ?? null;
       const lexical = lexScore(askTokens, def, blurb);
-      return { def, semantic, lexical, score: semantic + Math.min(lexical, 1) * 0.4, blurb };
+      // Recency: a tool this session already used outranks a same-score
+      // stranger — the working set's whole job now that nothing pre-wires.
+      const recency = recentlyUsed(def.name) ? 0.15 : 0;
+      return { def, semantic, lexical, score: semantic + Math.min(lexical, 1) * 0.4 + recency, blurb };
     })
     .sort((a, b) => b.score - a.score);
 }
 
-/** The wire set for one run: the session's WORKING SET first (tools already
- *  used stay wired — retrieval is a first-touch cost), then top-scored tools
- *  related to the ask, capped by count AND token budget, returned in catalog
- *  order so the prompt prefix stays byte-stable across runs that select the
- *  same set. */
-export async function selectConnectorTools(ask: string, defs: ConnectorWireDef[]): Promise<ConnectorWireDef[]> {
-  if (defs.length <= SMALL_ENOUGH) return defs;
-  const byName = new Map(defs.map((d) => [d.name, d] as const));
-  const picked = new Set<string>();
-  let spent = 0;
-  const take = (d: ConnectorWireDef): boolean => {
-    const cost = est(JSON.stringify(d));
-    if (spent + cost > TOKEN_BUDGET) return false;
-    picked.add(d.name);
-    spent += cost;
-    return true;
-  };
-  for (const name of pinnedNames()) {
-    const d = byName.get(name);
-    if (d && picked.size < TOOL_K) take(d);
-  }
-  const ranked = await rankConnectorTools(ask, defs);
-  for (const r of ranked) {
-    if (picked.size >= TOOL_K) break;
-    if (picked.has(r.def.name)) continue;
-    if (r.semantic < SEM_MIN && r.lexical === 0) continue; // unrelated to the ask
-    take(r.def);
-  }
-  return defs.filter((d) => picked.has(d.name));
-}
+// (The per-run PRESELECT — selectConnectorTools — was deleted 2026-09-09 with
+// the search-first cutover: NO connector defs pre-wire the prompt anymore, on
+// any surface. Discovery is find_tools/find_connection_tools; the index,
+// enrichment, ranking and working set above are what those searches ride.)

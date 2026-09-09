@@ -39,7 +39,6 @@ import { runModel, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
 import { captureRun } from "./glyphh-agent-training";
 import { glyphhToolDefs, connectorWireTools, type ConnectorWireDef } from "./glyphh-agent-tools";
-import { selectConnectorTools } from "./tool-vectors";
 import { turnNeedsTools } from "./turn-router";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
@@ -372,16 +371,19 @@ export async function harnessRun(
     const fullDefs = cloud ? [] : glyphhToolDefs(mode);
     const defs = cloud || wantsTools ? fullDefs : fullDefs.filter((d) => ESCAPE_HATCH.has(d.name));
 
-    // Wire the connector catalog even in the no-tools branch: it costs no
-    // prompt tokens (it only populates the module-level wireMap/lastWireDefs
-    // that back find_tools/call_tool), and without it the escape hatch would
-    // search a stale/empty catalog. What we skip when tools are gated off is
-    // the per-ask PRESELECT — those defs DO ride the prompt — so connDefs stays
-    // empty and find_tools discovers the rest lazily if the model reaches for it.
-    const connCatalog = cloud ? [] : await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
-    const connDefs = cloud || !wantsTools || mode === "code"
-      ? []
-      : await selectConnectorTools(ask, connCatalog).catch(() => connCatalog.slice(0, 24));
+    // Wire the connector catalog (no-tools branch included): it costs no
+    // prompt tokens — it only populates the module-level wireMap/lastWireDefs
+    // that back find_tools/call_tool, and without it the escape hatch would
+    // search a stale/empty catalog.
+    //
+    // SEARCH-FIRST EVERYWHERE (2026-09-09): NO connector defs pre-wire the
+    // prompt anymore, in any mode. The old per-ask preselect (~24 defs)
+    // stacked ON TOP of the pod's runtime-MCP surface — two doors to the same
+    // governed set — and the runtime surface now serves find_connection_tools
+    // while the lend's own find_tools → call_tool searches the catalog
+    // semantically. Discovery is one hop; the prompt stays clean.
+    if (!cloud) await connectorWireTools().catch(() => [] as ConnectorWireDef[]);
+    const connDefs: ConnectorWireDef[] = [];
 
     // 4. Pod + bridge, in parallel — neither depends on the other.
     const knownTools = new Set([...defs.map((d) => d.name), ...connDefs.map((d) => d.name)]);
