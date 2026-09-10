@@ -1487,48 +1487,6 @@ function initApps() {
   // old document-level mouseup never fired over it, so the handle stuck to
   // the cursor until the next click on host chrome.
   //
-  // The controls lookup is SCOPED to this divider's own split: the Layouts and
-  // Connections editors reuse `.app-builder-controls`, and layouts.html sits
-  // EARLIER in the assembled document (the settings-modal adoption also moves
-  // whole sections around the DOM), so a bare
-  // `document.querySelector(".app-builder-controls")` resolved to a DIFFERENT
-  // editor's hidden column — every drag wrote its width and this pane never
-  // moved. (Below the 1140px collapse breakpoint the divider is display:none
-  // and the stacked columns are width:auto !important — dragging is off there
-  // by design.)
-  const divider = document.getElementById("app-builder-divider")!;
-  const split = divider.closest<HTMLElement>(".app-builder-split")!;
-  const controls = split.querySelector<HTMLElement>(":scope > .app-builder-controls")!;
-  let startX = 0;
-  let startW = 0;
-  divider.addEventListener("pointerdown", (e) => {
-    divider.setPointerCapture(e.pointerId);
-    startX = e.clientX;
-    startW = controls.offsetWidth;
-    divider.classList.add("dragging");
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    e.preventDefault();
-  });
-  divider.addEventListener("pointermove", (e) => {
-    if (!divider.hasPointerCapture(e.pointerId)) return;
-    // Clamp against the split's LIVE width — inside the settings modal the
-    // split is much narrower than the old full page, so a fixed 800px max
-    // could shove the preview pane out of the modal. The preview always keeps
-    // at least 260px.
-    const max = Math.min(800, split.clientWidth - 260);
-    const w = Math.max(200, Math.min(max, startW + (e.clientX - startX)));
-    controls.style.width = w + "px";
-  });
-  const releaseDivider = (e: PointerEvent): void => {
-    if (!divider.hasPointerCapture(e.pointerId)) return;
-    divider.releasePointerCapture(e.pointerId);
-    divider.classList.remove("dragging");
-    document.body.style.cursor = "";
-    document.body.style.userSelect = "";
-  };
-  divider.addEventListener("pointerup", releaseDivider);
-  divider.addEventListener("pointercancel", releaseDivider);
 }
 
 export { loadApps, initApps, closeAppDetail };

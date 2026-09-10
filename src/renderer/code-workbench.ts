@@ -3625,10 +3625,15 @@ async function init(): Promise<void> {
           prior = new Map((old?.cells ?? []).filter((c) => c.state).map((c) => [c.key, c.state!]));
         } catch { prior = null; }
       }
+      // Loose panels opened beside the layout APPEND columns to the live
+      // grid; persisting the widened arrays poisoned the memory (a 3-wide
+      // save for a 2-col layout failed the reopen length check wholesale →
+      // 50/50, his report 2026-09-10). Only the layout's own columns save.
+      const nDefCols = echoGrid.defCols ?? echoGrid.colWidths.length;
       const data = {
         sig: echoLayoutSig,
-        colWidths: echoGrid.colWidths,
-        rowFracs: echoGrid.rowFracs,
+        colWidths: echoGrid.colWidths.slice(0, nDefCols),
+        rowFracs: echoGrid.rowFracs.slice(0, nDefCols).map((r) => r.slice()),
         cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => {
           const state = keepState ? (captureCellState(c.entry) ?? prior?.get(c.entry.memKey!)) : undefined;
           return {
@@ -5105,15 +5110,19 @@ async function init(): Promise<void> {
             : layout.rowHeights?.length === nRows ? layout.rowHeights.slice()
             : Array.from({ length: nRows }, () => 1));
           const memFracs = mem?.rowFracs;
-          const fracsOk = Array.isArray(memFracs) && memFracs.length === nCols
-            && memFracs.every((r) => Array.isArray(r) && r.length === nRows);
+          // Widened memories from before the defCols-slice fix still hold the
+          // layout's columns FIRST (loose columns append) — take the prefix
+          // rather than rejecting the user's drag wholesale; row fractions
+          // recover per column the same way.
           echoGrid = {
             defCols: nCols,
-            colWidths: mem?.colWidths?.length === nCols ? mem.colWidths.slice()
+            colWidths: (mem?.colWidths?.length ?? 0) >= nCols ? mem!.colWidths!.slice(0, nCols)
               : layout.colWidths?.length === nCols ? layout.colWidths.slice()
               : Array.from({ length: nCols }, () => 1),
-            rowFracs: fracsOk ? memFracs!.map((r) => r.slice())
-              : Array.from({ length: nCols }, () => baseRow.slice()),
+            rowFracs: Array.from({ length: nCols }, (_, i) => {
+              const r = Array.isArray(memFracs) ? memFracs[i] : undefined;
+              return Array.isArray(r) && r.length === nRows ? r.slice() : baseRow.slice();
+            }),
             cells: gridCells,
           };
           layoutCards();
