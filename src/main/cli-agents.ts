@@ -25,9 +25,9 @@ export const AGENTS_DIR = path.join(homedir(), ".glyphh", "agents");
 export interface CliAgentRow {
   id: string;
   name: string;
-  /** Which CLI this agent drives — "claude" carries the brand mark; "custom"
-   *  uses the emoji icon. More CLIs join this union as they're wired. */
-  cli: "claude" | "custom";
+  /** Which CLI this agent drives — "claude"/"codex" carry their brand marks;
+   *  "custom" uses the emoji icon. More CLIs join this union as they're wired. */
+  cli: "claude" | "codex" | "custom";
   /** Small glyph for lists (an emoji or short text) — custom CLIs only. */
   icon: string;
   /** The command line the terminal plays on open (before MCP wiring). */
@@ -57,7 +57,7 @@ function readAgent(id: string): CliAgentRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(agentFile(id), "utf-8")) as CliAgentRow;
     if (!row || !row.id) return null;
-    row.cli = row.cli === "custom" ? "custom" : "claude";
+    row.cli = row.cli === "custom" || row.cli === "codex" ? row.cli : "claude";
     row.cwd = typeof row.cwd === "string" ? row.cwd : "";
     row.keepAlive = row.keepAlive !== false;
     return row;
@@ -100,11 +100,38 @@ function ensureMcpConfig(id: string): void {
   fs.writeFileSync(mcpFile(id), JSON.stringify(cfg, null, 2), "utf-8");
 }
 
-/** The one composition rule: mcp-on appends --mcp-config <file>. The agent
- *  rides the USER'S own CLI auth (their ~/.claude login) — Glyphh injects
- *  nothing else yet; the gateway's ANTHROPIC_BASE_URL seam lands here later. */
+/** The agent's minted bearer, read back from its mcp.json. */
+function mcpTokenOf(id: string): string {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(mcpFile(id), "utf-8")) as {
+      mcpServers?: { glyphh?: { headers?: { Authorization?: string } } };
+    };
+    return /^Bearer (.+)$/.exec(cfg.mcpServers?.glyphh?.headers?.Authorization ?? "")?.[1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Per-CLI composition. The agent rides the USER'S own CLI auth (their
+ *  ~/.claude login / ~/.codex auth) — Glyphh injects nothing else yet; the
+ *  gateway's base-URL seam lands here later.
+ *    claude — --mcp-config <file> (the JSON beside the agent)
+ *    codex  — TOML -c overrides (streamable-HTTP MCP via the rmcp client)
+ *    custom — the command verbatim; mcp.json sits beside the agent for
+ *             whatever the CLI can consume */
 function composeCommand(row: CliAgentRow): string {
-  const base = row.mcp ? `${row.cmd} --mcp-config "${mcpFile(row.id)}"` : row.cmd;
+  let base = row.cmd;
+  if (row.mcp) {
+    if (row.cli === "codex") {
+      const { port } = localMcpStatus();
+      const token = mcpTokenOf(row.id);
+      base = `${row.cmd} -c experimental_use_rmcp_client=true`
+        + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token="${token}"'` : "");
+    } else if (row.cli === "claude") {
+      base = `${row.cmd} --mcp-config "${mcpFile(row.id)}"`;
+    }
+  }
   // The working folder leads the open — same contract as a workspace's.
   return row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
 }
@@ -140,7 +167,7 @@ export function registerCliAgentsIpc(): void {
       const row: CliAgentRow = {
         id,
         name,
-        cli: input.cli === "custom" ? "custom" : "claude",
+        cli: input.cli === "custom" || input.cli === "codex" ? input.cli : "claude",
         icon: String(input.icon ?? existing?.icon ?? "").trim(),
         cmd,
         mcp: input.mcp !== false,

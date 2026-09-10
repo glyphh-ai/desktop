@@ -2350,8 +2350,10 @@ async function init(): Promise<void> {
       name: a.name,
       slug: `agent:${a.id}`,
       orderKey: `agent:${a.id}`,
-      // Claude agents wear the brand's public mark; custom ones the robot.
-      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" } : { glyphSvg: CLI_AGENT_GLYPH }),
+      // Branded CLIs wear their public marks; custom ones the robot.
+      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" }
+        : a.cli === "codex" ? { iconUrl: "https://openai.com/favicon.ico" }
+        : { glyphSvg: CLI_AGENT_GLYPH }),
       kind: "tool",
       toolView: "terminal",
       cliAgent: { id: a.id, command: a.command },

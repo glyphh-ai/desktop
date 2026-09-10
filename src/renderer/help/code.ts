@@ -4329,7 +4329,11 @@ let railLayouts: RailLayout[] = [];
 // the exact grammar Workspaces uses (tiles, search, 15-page pager).
 interface RailCliAgent { id: string; name: string; cli?: string; icon?: string }
 let railAgents: RailCliAgent[] = [];
-let railClaudeMark = "";   // web-icon-fetch data URL, cached for the session
+const RAIL_CLI_MARK_URLS: Record<string, string> = {
+  claude: "https://claude.ai/favicon.ico",
+  codex: "https://openai.com/favicon.ico",
+};
+const railCliMarks: Record<string, string> = {};   // cli → data URL, cached
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
@@ -4392,9 +4396,11 @@ async function loadRecentApps(): Promise<void> {
       yoAgents.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
     ]);
     railAgents = agentsRes?.ok ? agentsRes.agents : [];
-    if (!railClaudeMark && railAgents.some((a) => a.cli !== "custom")) {
+    for (const cli of new Set(railAgents.map((a) => a.cli || "claude"))) {
+      const url = RAIL_CLI_MARK_URLS[cli];
+      if (!url || railCliMarks[cli]) continue;
       void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
-        .webIconFetch?.("https://claude.ai/favicon.ico").then((d) => { if (d) { railClaudeMark = d; renderRecentApps(); } }).catch(() => {});
+        .webIconFetch?.(url).then((d) => { if (d) { railCliMarks[cli] = d; renderRecentApps(); } }).catch(() => {});
     }
     // Palette parity: web apps (have a url) + native library apps. The
     // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
@@ -4697,8 +4703,9 @@ function paintAgentsGrid(host: RailGridHost): void {
     tile.title = `${a.name} (agent)`;
     const icon = document.createElement("div");
     icon.className = "tile-icon";
-    icon.innerHTML = a.cli !== "custom" && railClaudeMark
-      ? `<img src="${railClaudeMark}" alt="" style="width:20px;height:20px;border-radius:5px" />`
+    const mark = railCliMarks[a.cli || "claude"] || "";
+    icon.innerHTML = mark
+      ? `<img src="${mark}" alt="" style="width:20px;height:20px;border-radius:5px" />`
       : a.icon ? `<span style="font-size:18px;line-height:1">${a.icon.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>` : RAIL_AGENT_GLYPH;
     const nm = document.createElement("span");
     nm.className = "tile-name";

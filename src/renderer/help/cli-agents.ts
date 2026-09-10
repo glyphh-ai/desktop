@@ -10,10 +10,13 @@
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
-interface CliAgent { id: string; name: string; cli: "claude" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
 
-/** Claude's public web mark — the brand icon its agents wear. */
-const CLAUDE_MARK_URL = "https://claude.ai/favicon.ico";
+/** The CLIs' public web marks — the brand icons their agents wear. */
+const CLI_MARK_URLS: Record<string, string> = {
+  claude: "https://claude.ai/favicon.ico",
+  codex: "https://openai.com/favicon.ico",
+};
 
 const api = () => (window as unknown as { glyphh?: {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgent[]; error?: string }>;
@@ -23,12 +26,14 @@ const api = () => (window as unknown as { glyphh?: {
   webIconFetch?: (url: string) => Promise<string>;
 } }).glyphh ?? {};
 
-/** The mark rides the main process (web-icon-fetch → data URL, cached) — a
+/** Marks ride the main process (web-icon-fetch → data URL, cached) — a
  *  direct remote <img> doesn't render from the desktop page. */
-let claudeMarkData: string | null = null;
-async function claudeMark(): Promise<string> {
-  if (claudeMarkData === null) claudeMarkData = (await api().webIconFetch?.(CLAUDE_MARK_URL).catch(() => "")) || "";
-  return claudeMarkData;
+const markCache = new Map<string, string>();
+async function cliMark(cli: string): Promise<string> {
+  const url = CLI_MARK_URLS[cli];
+  if (!url) return "";
+  if (!markCache.has(url)) markCache.set(url, (await api().webIconFetch?.(url).catch(() => "")) || "");
+  return markCache.get(url) || "";
 }
 
 let all: CliAgent[] = [];
@@ -69,10 +74,10 @@ function showEditor(agent: CliAgent | null): void {
   paintPreview();
 }
 
-/** Claude wears its own mark — the emoji field is for custom CLIs. */
+/** Branded CLIs wear their own marks — the emoji field is for custom ones. */
 function syncCliRow(): void {
   const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
-  el("cagent-icon-row")?.classList.toggle("hidden", cli === "claude");
+  el("cagent-icon-row")?.classList.toggle("hidden", cli in CLI_MARK_URLS);
 }
 
 function paintPreview(): void {
@@ -109,7 +114,7 @@ function renderList(): void {
     card.className = "app-card cagent-card";
     card.dataset.id = a.id;
     card.innerHTML = `
-      <div class="app-card-icon"${a.cli === "claude" ? ' data-role="cagent-mark"' : ""}>${a.cli === "claude"
+      <div class="app-card-icon"${a.cli in CLI_MARK_URLS ? ` data-role="cagent-mark" data-cli="${esc(a.cli)}"` : ""}>${a.cli in CLI_MARK_URLS
         ? AGENT_CARD_GLYPH
         : a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
       <div class="app-card-name">${esc(a.name)}</div>
@@ -117,11 +122,10 @@ function renderList(): void {
     grid.appendChild(card);
   }
   list.appendChild(grid);
-  // Claude cards swap the placeholder glyph for the fetched mark.
-  void claudeMark().then((data) => {
-    if (!data) return;   // offline — the robot glyph stands
-    grid.querySelectorAll<HTMLElement>('[data-role="cagent-mark"]').forEach((elm) => {
-      elm.innerHTML = `<img class="cagent-card-mark" src="${data}" alt="" />`;
+  // Branded cards swap the placeholder glyph for their fetched mark.
+  grid.querySelectorAll<HTMLElement>('[data-role="cagent-mark"]').forEach((elm) => {
+    void cliMark(elm.dataset.cli || "").then((data) => {
+      if (data) elm.innerHTML = `<img class="cagent-card-mark" src="${data}" alt="" />`;
     });
   });
   if (state.totalPages > 1) {
@@ -148,9 +152,14 @@ export function initCliAgentsEvents(): void {
   el<HTMLInputElement>("cagent-mcp")?.addEventListener("change", paintPreview);
   el<HTMLSelectElement>("cagent-cli")?.addEventListener("change", () => {
     syncCliRow();
-    // Picking Claude seeds the command if the field is empty or still default.
+    // Picking a branded CLI seeds the command if the field is empty or still
+    // the OTHER brand's default.
+    const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
     const cmd = el<HTMLInputElement>("cagent-cmd");
-    if (el<HTMLSelectElement>("cagent-cli")?.value === "claude" && cmd && !cmd.value.trim()) cmd.value = "claude";
+    if (cmd && (cli === "claude" || cli === "codex")) {
+      const cur = cmd.value.trim();
+      if (!cur || cur === "claude" || cur === "codex") cmd.value = cli;
+    }
     paintPreview();
   });
   const pickFolder = (): void => {
