@@ -173,22 +173,6 @@ function buildMcpServer(): McpServer {
   );
 
   // ── Local MCP servers via the client ─────────────────
-  mcp.tool(
-    "local_mcp_list_tools",
-    "List tools from MCP servers the user is running locally (custom dev MCPs, local-file tools, etc.).",
-    {},
-    async () => via("mcp.list_tools", {}),
-  );
-  mcp.tool(
-    "local_mcp_call_tool",
-    "Invoke a tool on a user's local MCP server. Pass serverId + name from local_mcp_list_tools.",
-    {
-      serverId: z.string().describe("MCP server id"),
-      name: z.string().describe("Tool name"),
-      args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments"),
-    },
-    async ({ serverId, name, args }) => via("mcp.call_tool", { serverId, name, args: args || {} }),
-  );
 
   // ── RPA — drive an open app panel ────────────────────
   mcp.tool(

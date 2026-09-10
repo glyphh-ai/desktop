@@ -51,12 +51,6 @@ import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
 } from "./glyphh-app-services.js";
-import {
-  llmEmbed, llmChunk,
-  vectorUpsert, vectorSearch, vectorDelete,
-  graphCypher,
-} from "./glyphh-app-ai.js";
-import { agentRun } from "./glyphh-app-agent.js";
 import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
 import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 
@@ -532,30 +526,11 @@ async function runCapability(
     case "connector.call":   return connectorCall(connectors, args);
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
-    case "llm.embed":        return llmEmbed(args);
-    case "llm.chunk":        return llmChunk(args);
-    case "llm.complete": {
-      // One-shot completion = agent.run with no tools and a single turn.
-      // Same auth model: the APP's own config-var key, nothing Glyphh-level.
-      const app = await findAppRow(slug);
-      if (!app) throw new Error(`unknown app: ${slug}`);
-      const result = await agentRun(
-        slug, appName,
-        withAppApiKey(app, { ...args, tools: [], maxTurns: 1 }),
-        { tools: [], dispatch: () => Promise.reject(new Error("llm.complete has no tools")) }
-      );
-      return { text: result.text, usage: result.usage };
-    }
-    case "agent.run": {
-      const app = await findAppRow(slug);
-      if (!app) throw new Error(`unknown app: ${slug}`);
-      return agentRun(slug, appName, withAppApiKey(app, args), {
-        tools: (app.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-        // Re-enters callAppTool so every agent tool call is re-validated
-        // against the app's declared tools/capabilities.
-        dispatch: (tool, targs) => callAppTool(slug, tool, targs),
-      });
-    }
+    case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "llm.chunk":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "llm.complete":
+    case "agent.run":
+      throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
     case "secrets.get": {
       const key = String(args.key || "").trim();
       if (!key) throw new Error("key is required");
@@ -580,10 +555,10 @@ async function runCapability(
       const app = await findAppRow(slug);
       return secretKeysFromRow(app?.launchConfig as Record<string, unknown> | undefined);
     }
-    case "vector.upsert":    return vectorUpsert(slug, args);
-    case "vector.search":    return vectorSearch(slug, args);
-    case "vector.delete":    return vectorDelete(slug, args);
-    case "graph.cypher":     return graphCypher(slug, args);
+    case "vector.upsert":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "vector.search":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "vector.delete":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "graph.cypher":     throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
     // Filesystem is brokered + user-scoped: fs.pick (interactive OS dialog)
     // grants a root; read/write only resolve under a granted root. See glyphh-app-fs.
     case "fs.pick":          return fsPick(senderWc, args, slug);

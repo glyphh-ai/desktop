@@ -14,7 +14,6 @@
  * thrown errors into `{ok:false,error}` frames automatically.
  */
 
-import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
 import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
@@ -23,7 +22,6 @@ import fs from "fs";
 import os from "os";
 
 interface Deps {
-  getMcpManager: () => McpManager | null;
 }
 
 function appParam(params: unknown): string {
@@ -32,7 +30,6 @@ function appParam(params: unknown): string {
 }
 
 export function installRelayHandlers(deps: Deps): void {
-  const { getMcpManager } = deps;
 
   // Smoke-test handler — the loopback local-MCP relay_ping tool routes here.
   // (Formerly registered by relay-client's now-deleted initRelayClient.)

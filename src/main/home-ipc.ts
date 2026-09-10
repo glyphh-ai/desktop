@@ -6,8 +6,6 @@
  */
 
 import { ipcMain, webContents } from "electron";
-import type { McpManager } from "./mcp-manager";
-import type { ConnectorManager } from "./connectors";
 import {
   syncLocalMcpServer,
   stopLocalMcpServer,
@@ -22,13 +20,9 @@ import { getClient } from "./glyphh-client";
 import { ForbiddenError } from "@glyphh/sdk";
 
 interface HomeIpcDeps {
-  mcpManager: McpManager | null;
-  connectorManager: ConnectorManager | null;
-  canUseCustomMcp: () => { allowed: boolean; reason?: string };
 }
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
-  const { mcpManager, connectorManager, canUseCustomMcp } = deps;
 
   // ── Home dashboard ──────────────────────────────────────────────────────
   // Credits, month spend, apps deployed, and a per-day usage series (credits
@@ -190,44 +184,6 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   ipcMain.handle("local-mcp-tokens-create", (_e, label: string) => localMcpGenToken(label));
   ipcMain.handle("local-mcp-tokens-revoke", (_e, id: string) => { localMcpRevokeToken(id); return { ok: true }; });
 
-  // Custom MCP connections live server-side (apps-ipc: mcp-connections-*);
-  // this gate only drives the Connections page's show/hide. The old policy
-  // endpoint is gone — governance is the workspace gate on the personal
-  // custom-MCP surface, so probe it: a 403 means the workspace disallows
-  // custom MCP; any other failure (offline) falls back to the local gate.
-  ipcMain.handle("mcp-custom-allowed", async () => {
-    try {
-      await getClient().connections.personalMcpList();
-      return { allowed: true };
-    } catch (err) {
-      if (err instanceof ForbiddenError) return { allowed: false, reason: "Custom MCP connections are disabled by your organization." };
-      return canUseCustomMcp();
-    }
-  });
 
-  ipcMain.handle("connectors-get-apps", async (_e, search?: string, offset?: number) => {
-    if (!connectorManager) return { apps: [], hasMore: false };
-    return connectorManager.getApps(search, offset);
-  });
-  ipcMain.handle("connectors-get-accounts", async () => {
-    if (!connectorManager) return [];
-    return connectorManager.getAccounts();
-  });
-  ipcMain.handle("connectors-connect", async (_e, appSlug: string) => {
-    if (!connectorManager) return { ok: false, error: "Not initialized" };
-    return connectorManager.connectApp(appSlug);
-  });
-  ipcMain.handle("connectors-disconnect", async (_e, accountId: string) => {
-    if (!connectorManager) return false;
-    return connectorManager.disconnectAccount(accountId);
-  });
-  ipcMain.handle("connectors-refresh-mcp", async () => {
-    if (!connectorManager) return { ok: false, error: "Not initialized", toolCount: 0 };
-    return connectorManager.refreshMcp();
-  });
-  ipcMain.handle("connectors-list-tools", async () => {
-    if (!connectorManager) return [];
-    return connectorManager.listTools();
-  });
 
 }

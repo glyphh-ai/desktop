@@ -19,7 +19,6 @@ import { app } from "electron";
 import { GLYPHH_DIR, getActiveUserId, setActiveUserIdState, userScopedDir } from "./app-paths";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { appCache } from "./glyphh-client";
-import { clearConnectorCatalog } from "./connector-tools-client";
 
 // main.ts registers how to reload the UI (it owns the BrowserWindow).
 let reloadWindow: (() => void) | null = null;
@@ -92,7 +91,6 @@ export function setActiveUser(userId: string | null): void {
   fs.mkdirSync(userScopedDir(), { recursive: true });
   initLocalDb();
   appCache.invalidate();
-  clearConnectorCatalog();
 
   // Reset every main-process singleton holding per-user state in memory.
   for (const reset of userChangeResets) {
