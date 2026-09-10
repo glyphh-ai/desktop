@@ -965,13 +965,10 @@ export function initHelp() {
     });
   });
   // The More fly-out — second-tier rail destinations, every one a WORKBENCH
-  // surface: Loops/Skills/Agents open as section cards, Browser as the
-  // preview tool, Scheduled Tasks as the hidden tasks view.
+  // surface. Down to the Browser (preview tool) after THE PURGE.
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
-    { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
-      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
   ];
   const moreToggle = document.getElementById("rail-more-toggle");
   let moreMenu: HTMLDivElement | null = null;
