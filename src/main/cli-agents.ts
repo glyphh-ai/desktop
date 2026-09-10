@@ -157,6 +157,24 @@ function ensureGeminiMcp(id: string): void {
   fs.writeFileSync(file, JSON.stringify(settings, null, 2), "utf-8");
 }
 
+/** An agent passing GEMINI_API_KEY pre-selects key auth in the CLI's
+ *  settings, skipping the first-run chooser (whose Google option now
+ *  auto-fails for individual accounts). Both schema generations get the
+ *  key — v0.4x reads top-level selectedAuthType, v0.5x+ security.auth. */
+function ensureGeminiKeyAuth(): void {
+  const file = path.join(homedir(), ".gemini", "settings.json");
+  let settings: Record<string, unknown> = {};
+  try { settings = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  settings.selectedAuthType = "gemini-api-key";
+  const security = (settings.security && typeof settings.security === "object" ? settings.security : {}) as Record<string, unknown>;
+  const auth = (security.auth && typeof security.auth === "object" ? security.auth : {}) as Record<string, unknown>;
+  auth.selectedType = "gemini-api-key";
+  security.auth = auth;
+  settings.security = security;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(settings, null, 2), "utf-8");
+}
+
 /** Copilot CLI's seam is ~/.copilot/mcp-config.json — same upsert contract
  *  as Gemini's settings file: glyphh joins mcpServers, everything else stays. */
 function ensureCopilotMcp(id: string): void {
@@ -325,7 +343,10 @@ export function registerCliAgentsIpc(): void {
       if (!row) return { ok: false, error: "agent not found" };
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
-        if (row.cli === "gemini") ensureGeminiMcp(row.id);
+        if (row.cli === "gemini") {
+          ensureGeminiMcp(row.id);
+          if (row.apiKey?.name === "GEMINI_API_KEY") ensureGeminiKeyAuth();
+        }
         if (row.cli === "copilot") ensureCopilotMcp(row.id);
         if (row.cli === "cursor") ensureCursorMcp(row.id);
         const r = await startLocalMcpServer();
