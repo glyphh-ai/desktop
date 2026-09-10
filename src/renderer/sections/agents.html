@@ -20,6 +20,8 @@
             </div>
             <div id="cagent-form-error" class="crud-form-error hidden"></div>
             <div id="cagent-detail-head" class="edit-head"></div>
+            <div class="app-builder-split">
+            <div class="app-builder-controls">
             <label class="settings-label">Name</label>
             <input type="text" id="cagent-name" class="settings-input" placeholder="Claude" spellcheck="false" autocomplete="off" />
             <label class="settings-label">CLI</label>
@@ -48,26 +50,54 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
               </button>
             </div>
-            <label class="settings-toggle set-pref-row" style="margin-top:10px;">
-              <div class="set-pref-text">
-                <div class="set-pref-title">Connect Glyphh tools (MCP)</div>
-              </div>
-              <input type="checkbox" id="cagent-mcp" checked />
-              <span class="toggle-switch"></span>
-            </label>
-            <label class="settings-toggle set-pref-row" style="margin-top:6px;">
-              <div class="set-pref-text">
-                <div class="set-pref-title">Keep session alive when closed</div>
-              </div>
-              <input type="checkbox" id="cagent-keepalive" checked />
-              <span class="toggle-switch"></span>
-            </label>
             <p class="settings-hint" id="cagent-cmd-preview" style="margin-top:10px;font-family:ui-monospace,monospace;"></p>
+              <div class="set-pref-text">
+                <div class="set-pref-title">Pass API key</div>
+              </div>
+              <input type="checkbox" id="cagent-apikey-on" />
+              <span class="toggle-switch"></span>
+            </label>
+
             <div class="settings-actions" style="margin-top:28px;">
               <button id="cagent-delete-btn" class="action-btn danger hidden" type="button">Delete</button>
               <div style="flex:1;"></div>
               <button id="cagent-cancel-btn" class="action-btn" type="button">Cancel</button>
               <button id="cagent-save-btn" class="action-btn primary" type="button">Save</button>
+            </div>
+            </div>
+            <div class="app-builder-preview">
+              <div class="layout-setup-pane">
+                <label class="settings-label" style="margin-top:0;">Agent setup</label>
+                <label class="settings-toggle set-pref-row" style="margin-top:10px;">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Pass API key</div>
+                  </div>
+                  <input type="checkbox" id="cagent-apikey-on" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div id="cagent-apikey-fields" class="hidden">
+                  <label class="settings-label">Variable</label>
+                  <input type="text" id="cagent-apikey-name" class="settings-input" placeholder="GEMINI_API_KEY" spellcheck="false" autocomplete="off" />
+                  <label class="settings-label">Key</label>
+                  <input type="password" id="cagent-apikey-value" class="settings-input" placeholder="paste the key" spellcheck="false" autocomplete="off" />
+                  <p class="settings-hint" id="cagent-apikey-hint" style="font-family:ui-monospace,monospace;"></p>
+                </div>
+                <label class="settings-toggle set-pref-row" style="margin-top:10px;">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Connect Glyphh tools (MCP)</div>
+                  </div>
+                  <input type="checkbox" id="cagent-mcp" checked />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row" style="margin-top:6px;">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Keep session alive when closed</div>
+                  </div>
+                  <input type="checkbox" id="cagent-keepalive" checked />
+                  <span class="toggle-switch"></span>
+                </label>
+              </div>
+            </div>
             </div>
           </div>
         </div>

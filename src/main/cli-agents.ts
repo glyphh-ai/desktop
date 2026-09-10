@@ -36,6 +36,10 @@ export interface CliAgentRow {
   mcp: boolean;
   /** Start the terminal here (like a workspace's working folder). "" = current. */
   cwd: string;
+  /** Pass an API key to the CLI: the env-var NAME rides here; the VALUE
+   *  lives in the agent's env file (0600) and is never readable back — list
+   *  rows carry only a first/last glimpse (`hint`) for recognition. */
+  apiKey: { name: string; hint: string } | null;
   /** Closing the card parks the terminal session for the next open (true,
    *  the default) or kills it so every open starts fresh. A workspace cell's
    *  own "Maintain on close" OVERRIDES this when the agent rides a layout. */
@@ -49,6 +53,27 @@ export type CliAgentListed = CliAgentRow & { command: string };
 
 const agentFile = (id: string): string => path.join(AGENTS_DIR, id, "agent.json");
 const mcpFile = (id: string): string => path.join(AGENTS_DIR, id, "mcp.json");
+/** The secret side of `apiKey`: NAME="value" lines the composed command
+ *  sources invisibly (`set -a; . file; set +a`) — the value never types
+ *  into the visible terminal and never rides agent.json. */
+const envFile = (id: string): string => path.join(AGENTS_DIR, id, "env");
+
+const keyHint = (value: string): string =>
+  value.length <= 8 ? `${value.slice(0, 2)}…` : `${value.slice(0, 4)}…${value.slice(-4)}`;
+
+function readEnvValue(id: string, name: string): string {
+  try {
+    const m = new RegExp(`^${name.replace(/[^\w]/g, "")}="(.*)"$`, "m").exec(fs.readFileSync(envFile(id), "utf-8"));
+    return m?.[1] ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeEnvValue(id: string, name: string, value: string): void {
+  fs.mkdirSync(path.join(AGENTS_DIR, id), { recursive: true });
+  fs.writeFileSync(envFile(id), `${name}="${value.replace(/"/g, '\\"')}"\n`, { encoding: "utf-8", mode: 0o600 });
+}
 
 const slug = (name: string): string =>
   name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
@@ -60,6 +85,7 @@ function readAgent(id: string): CliAgentRow | null {
     row.cli = ["custom", "codex", "gemini", "copilot", "cursor"].includes(row.cli) ? row.cli : "claude";
     row.cwd = typeof row.cwd === "string" ? row.cwd : "";
     row.keepAlive = row.keepAlive !== false;
+    row.apiKey = row.apiKey && typeof row.apiKey === "object" && row.apiKey.name ? row.apiKey : null;
     return row;
   } catch {
     return null;
@@ -195,7 +221,12 @@ function composeCommand(row: CliAgentRow): string {
     // ensureCursorMcp).
   }
   // The working folder leads the open — same contract as a workspace's.
-  return row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+  const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+  // The API key sources INVISIBLY — the terminal shows the file path, never
+  // the value.
+  return row.apiKey && fs.existsSync(envFile(row.id))
+    ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
+    : line;
 }
 
 export function listCliAgents(): CliAgentListed[] {
@@ -217,7 +248,7 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
     try {
       const name = String(input.name ?? "").trim();
       const cmd = String(input.cmd ?? "").trim();
@@ -235,9 +266,25 @@ export function registerCliAgentsIpc(): void {
         mcp: input.mcp !== false,
         cwd: String(input.cwd ?? existing?.cwd ?? "").trim(),
         keepAlive: input.keepAlive !== undefined ? input.keepAlive !== false : existing?.keepAlive !== false,
+        apiKey: existing?.apiKey ?? null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };
+      // API key: WRITE-ONLY. Toggle off deletes the secret; a new value (or a
+      // renamed var carrying the old value) rewrites the 0600 env file; an
+      // untouched value field changes nothing.
+      if (input.apiKeyOn === false) {
+        row.apiKey = null;
+        try { fs.rmSync(envFile(id), { force: true }); } catch { /* gone */ }
+      } else if (input.apiKeyOn === true) {
+        const keyName = String(input.apiKeyName ?? row.apiKey?.name ?? "").trim().replace(/[^\w]/g, "");
+        if (!keyName) return { ok: false, error: "the API key needs a variable name (e.g. GEMINI_API_KEY)" };
+        const typed = String(input.apiKeyValue ?? "").trim();
+        const value = typed || (row.apiKey ? readEnvValue(id, row.apiKey.name) : "");
+        if (!value) return { ok: false, error: "paste the API key value" };
+        writeEnvValue(id, keyName, value);
+        row.apiKey = { name: keyName, hint: keyHint(value) };
+      }
       writeAgent(row);
       if (row.mcp) ensureMcpConfig(id);
       return { ok: true, agent: { ...row, command: composeCommand(row) } };

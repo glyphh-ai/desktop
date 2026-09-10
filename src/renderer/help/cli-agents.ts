@@ -10,7 +10,7 @@
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
-interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; apiKey: { name: string; hint: string } | null; command: string }
 
 /** The CLIs' public web marks — the brand icons their agents wear. */
 const CLI_MARK_URLS: Record<string, string> = {
@@ -23,7 +23,7 @@ const CLI_MARK_URLS: Record<string, string> = {
 
 const api = () => (window as unknown as { glyphh?: {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgent[]; error?: string }>;
-  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
+  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
   cliAgentsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
   webIconFetch?: (url: string) => Promise<string>;
@@ -69,6 +69,14 @@ function showEditor(agent: CliAgent | null): void {
   (el<HTMLInputElement>("cagent-folder-input")!).value = agent?.cwd ?? "";
   (el<HTMLInputElement>("cagent-mcp")!).checked = agent ? agent.mcp : true;
   (el<HTMLInputElement>("cagent-keepalive")!).checked = agent ? agent.keepAlive !== false : true;
+  // API key: WRITE-ONLY. The value field starts empty; a stored key shows
+  // its first/last glimpse in the hint so the user knows WHICH key it is.
+  (el<HTMLInputElement>("cagent-apikey-on")!).checked = !!agent?.apiKey;
+  (el<HTMLInputElement>("cagent-apikey-name")!).value = agent?.apiKey?.name ?? "";
+  (el<HTMLInputElement>("cagent-apikey-value")!).value = "";
+  const kh = el("cagent-apikey-hint");
+  if (kh) kh.textContent = agent?.apiKey ? `set: ${agent.apiKey.hint} — type to replace` : "";
+  syncApiKeyRow();
   syncCliRow();
   el("cagent-open-btn")?.classList.toggle("hidden", !agent);
   el("cagent-delete-btn")?.classList.toggle("hidden", !agent);
@@ -77,10 +85,31 @@ function showEditor(agent: CliAgent | null): void {
   paintPreview();
 }
 
+/** The env var each CLI expects its key in — pre-populates the Variable
+ *  field when Pass API key turns on (editable; custom starts blank). */
+const CLI_KEY_NAMES: Record<string, string> = {
+  claude: "ANTHROPIC_API_KEY",
+  codex: "OPENAI_API_KEY",
+  gemini: "GEMINI_API_KEY",
+  copilot: "GITHUB_TOKEN",
+  cursor: "CURSOR_API_KEY",
+};
+
 /** Branded CLIs wear their own marks — the emoji field is for custom ones. */
 function syncCliRow(): void {
   const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
   el("cagent-icon-row")?.classList.toggle("hidden", cli in CLI_MARK_URLS);
+  // The Variable field follows the CLI unless the user typed their own.
+  const nameEl = el<HTMLInputElement>("cagent-apikey-name");
+  if (nameEl) {
+    const cur = nameEl.value.trim();
+    if (!cur || Object.values(CLI_KEY_NAMES).includes(cur)) nameEl.value = CLI_KEY_NAMES[cli] ?? "";
+  }
+}
+
+function syncApiKeyRow(): void {
+  const on = el<HTMLInputElement>("cagent-apikey-on")?.checked === true;
+  el("cagent-apikey-fields")?.classList.toggle("hidden", !on);
 }
 
 function paintPreview(): void {
@@ -153,6 +182,7 @@ export function initCliAgentsEvents(): void {
   el<HTMLInputElement>("cagent-search")?.addEventListener("input", renderList);
   el<HTMLInputElement>("cagent-cmd")?.addEventListener("input", paintPreview);
   el<HTMLInputElement>("cagent-mcp")?.addEventListener("change", paintPreview);
+  el<HTMLInputElement>("cagent-apikey-on")?.addEventListener("change", () => { syncApiKeyRow(); syncCliRow(); });
   el<HTMLSelectElement>("cagent-cli")?.addEventListener("change", () => {
     syncCliRow();
     // Picking a branded CLI seeds the command if the field is empty or still
@@ -201,6 +231,10 @@ export function initCliAgentsEvents(): void {
       cwd: el<HTMLInputElement>("cagent-folder-input")?.value ?? "",
       mcp: el<HTMLInputElement>("cagent-mcp")?.checked !== false,
       keepAlive: el<HTMLInputElement>("cagent-keepalive")?.checked !== false,
+      apiKeyOn: el<HTMLInputElement>("cagent-apikey-on")?.checked === true,
+      apiKeyName: el<HTMLInputElement>("cagent-apikey-name")?.value ?? "",
+      // Only a TYPED value travels — empty means keep what's stored.
+      apiKeyValue: el<HTMLInputElement>("cagent-apikey-value")?.value ?? "",
     };
     void api().cliAgentsSave?.(input).then((r) => {
       if (!r?.ok) {
