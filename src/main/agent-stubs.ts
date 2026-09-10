@@ -36,7 +36,7 @@ const ENVELOPE = [
   "glyphh-agent-context-usage", "glyphh-agent-inject", "glyphh-agent-set-permission", "glyphh-agent-stop",
   "harness-stop-run",
   "hosting-deploy", "hosting-destroy", "hosting-status",
-  "loop-apply-config", "loop-role-set", "loop-set-role-default",
+  "loop-apply-config", "loop-role-set",
   "marketing-link-create", "marketing-link-delete", "marketing-link-update", "marketing-links",
   "mcp-connections-catalog", "mcp-connections-create", "mcp-connections-delete",
   "mcp-connections-install", "mcp-connections-tools", "mcp-connections-update",
