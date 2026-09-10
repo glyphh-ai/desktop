@@ -1209,6 +1209,7 @@ export function initLayoutsEvents() {
     void editLayout(name);
   };
   document.getElementById("layout-new-btn")!.addEventListener("click", newLayout);
+  document.getElementById("layouts-refresh-btn")?.addEventListener("click", () => { void loadLayouts(); });
   document.getElementById("layout-save-btn")!.addEventListener("click", saveLayout);
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-back-link")!.addEventListener("click", cancelLayout);

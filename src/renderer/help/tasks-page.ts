@@ -243,6 +243,7 @@ export function initTasksPage(): void {
   wireSplitDivider($a("loop-split-divider"), detailEl);
   searchInput.addEventListener("input", renderList);
   $a("loop-back-link").addEventListener("click", () => renderList());
+  $a("loops-refresh-btn").addEventListener("click", () => void loadTasksPage());
 
   // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
   // 2026-09-10) — no default set, the modal points at Settings → General.

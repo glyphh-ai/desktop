@@ -184,6 +184,7 @@ export function initSkillsLibraryEvents(): void {
   wireSplitDivider($a("skill-split-divider"), detailEl);
   searchInput.addEventListener("input", renderList);
   $a("skill-back-link").addEventListener("click", () => renderList());
+  $a("skills-refresh-btn").addEventListener("click", () => void loadSkillsLibrary());
 
   // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
   // 2026-09-10) — no default set, the modal points at Settings → General.

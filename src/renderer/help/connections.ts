@@ -737,6 +737,7 @@ export function initConnections(): void {
 
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
   document.getElementById("conn-add-custom-btn")!.addEventListener("click", () => openCustomForm("new"));
+  document.getElementById("connections-refresh-btn")?.addEventListener("click", () => { void loadConnections(); });
   document.getElementById("conn-advanced-toggle")?.addEventListener("click", () => {
     const adv = document.getElementById("conn-advanced")!;
     const btn = document.getElementById("conn-advanced-toggle")!;

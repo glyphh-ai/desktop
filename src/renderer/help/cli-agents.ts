@@ -189,6 +189,7 @@ export function loadCliAgents(): void {
 
 export function initCliAgentsEvents(): void {
   el("cagent-new-btn")?.addEventListener("click", () => showEditor(null));
+  el("cagents-refresh-btn")?.addEventListener("click", () => loadCliAgents());
   el("cagent-back-link")?.addEventListener("click", () => { showList(); });
   el<HTMLInputElement>("cagent-search")?.addEventListener("input", renderList);
   el<HTMLInputElement>("cagent-cmd")?.addEventListener("input", paintPreview);
