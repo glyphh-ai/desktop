@@ -13,7 +13,6 @@ import { getClient } from "./glyphh-client";
 import { probeMcpAuth, authorizeMcpServer } from "./mcp-oauth";
 import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/sdk";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
-import { registerMarketplaceIpc } from "./marketplace-ipc";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { showThinking, hideThinking } from "./thinking-overlay";
@@ -130,7 +129,6 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // ── Marketplace ──────────────────────────────────────────────
   // The storefront / reviews / developer / admin transport lives in
   // marketplace-ipc.ts (SDK contract shapes end to end).
-  registerMarketplaceIpc();
   // App CRUD is the entries API (`/api/apps/entries`). The renderer still
   // speaks the older field names, so translate here: a native app carries an
   // execPath, everything else a url, and `launchConfig` is the entry `config`.
@@ -860,16 +858,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("app-org-pending-releases", async () => {
     try { return { ok: true, pending: await getClient().apps.pendingOrgReleases() }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), pending: [] }; }
-  });
-
-  // ── Edge traffic (his order, 2026-09-02): the apex fleet's stats ───────────
-  ipcMain.handle("app-traffic", async (_e, slug: string, days?: number) => {
-    try { return { ok: true, ...(await getClient().apps.traffic(slug, days ?? 30)) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
-  });
-  ipcMain.handle("org-domains-traffic", async (_e, days?: number, filter?: { host?: string; appId?: string }) => {
-    try { return { ok: true, ...(await getClient().org.domainsTraffic(days ?? 30, filter)) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), days: [], hosts: [] }; }
   });
 
   // ── Clone an owned app as a template (his order, 2026-09-02) ──────────────

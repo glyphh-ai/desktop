@@ -38,7 +38,7 @@
 
 import path from "path";
 import { registerRelayHandler } from "./relay-client.js";
-import { pushToAttach, onAttachDown } from "./attach-client.js";
+import { pushLocal as pushToAttach } from "./relay-client.js";
 import {
   getWorkingDirectory,
   getExplicitWorkingDirectory,
@@ -106,7 +106,7 @@ function containedPath(params: unknown, key: string): string {
 
 /** Register the fs relay methods + the socket-down sweep. Call once at boot. */
 export function installRelayFs(): void {
-  onAttachDown(clearAllRelayFsWatches);
+  // THE PURGE: no transport to drop — cleanup is app-quit's (main.ts kills all).
 
   registerRelayHandler("fs.cwd", () => ({
     cwd: getWorkingDirectory(),

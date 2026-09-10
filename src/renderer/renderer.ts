@@ -104,30 +104,6 @@ type AppCollaboratorRow = {
   addedAt: string;
 };
 
-/** Mirrors preload.ts EdgeTrafficDayRow — apex-edge stats, one day or host. */
-type EdgeTrafficDayRow = {
-  day: string;
-  requests: number;
-  bytesIn: number;
-  bytesOut: number;
-  avgMs: number;
-  maxMs: number;
-  s2xx: number;
-  s3xx: number;
-  s4xx: number;
-  s5xx: number;
-  blocked: number;
-  offline?: number;
-};
-
-/** Mirrors preload.ts EdgeTelemetryRollups — pages/referrers/engagement. */
-type EdgeTelemetryRollups = {
-  topPages?: Array<{ path: string; views: number }>;
-  topReferrers?: Array<{ refHost: string; views: number }>;
-  topErrorPaths?: Array<{ path: string; hits: number }>;
-  engagement?: { uniques: number; sessions: number; bounced: number; durationMsSum: number; viewsSum: number };
-};
-
 /** Mirrors preload.ts LibraryListingRow — a skills/loops marketplace listing. */
 type LibraryListingRow = {
   id: string;
@@ -177,17 +153,6 @@ type AppSnapshotRow = {
   createdByEmail: string | null;
   note: string | null;
   isHead: boolean;
-};
-
-/** Mirrors preload.ts OrgPendingReleaseRow — the org admin's approval queue. */
-type OrgPendingReleaseRow = {
-  appId: string;
-  slug: string;
-  name: string;
-  releaseId: string;
-  version: string;
-  submittedAt: string;
-  ownerEmail: string | null;
 };
 
 declare global {
@@ -285,9 +250,6 @@ declare global {
       appCollaboratorSet: (slug: string, userId: string, role: "read" | "edit" | "admin") => Promise<{ ok: boolean; collaborators?: AppCollaboratorRow[]; error?: string }>;
       appCollaboratorRemove: (slug: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
       appReleaseOrgReview: (slug: string, releaseId: string, action: "submit" | "approve" | "reject") => Promise<{ ok: boolean; error?: string }>;
-      appOrgPendingReleases: () => Promise<{ ok: boolean; pending: OrgPendingReleaseRow[]; error?: string }>;
-      appTraffic: (slug: string, days?: number) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
-      orgDomainsTraffic: (days?: number, filter?: { host?: string; appId?: string }) => Promise<{ ok: boolean; days: EdgeTrafficDayRow[]; hosts: Array<EdgeTrafficDayRow & { hostname: string }>; error?: string } & EdgeTelemetryRollups>;
       appClone: (slug: string, input: { slug: string; name?: string }) => Promise<{ ok: boolean; id?: string; slug?: string; name?: string; error?: string }>;
       orgClients: () => Promise<{ ok: boolean; clients: Array<{ id: string; name: string; createdAt: string; creditsMicro: number; members: number; monthlyCapMicro: number; monthUsedMicro: number }>; error?: string }>;
       orgClientCreate: (name: string) => Promise<{ ok: boolean; id?: string; name?: string; error?: string }>;

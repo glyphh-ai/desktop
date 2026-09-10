@@ -69,8 +69,6 @@ import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
-import { installAttachHandlers } from "./attach-handlers";
-import { installAttachRunHandlers } from "./attach-run";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
@@ -96,15 +94,12 @@ import { registerDesignIpc } from "./design";
 import { registerMemoryPanelIpc } from "./memory-panel";
 import { registerMediaPanelIpc } from "./media-panel";
 import { registerMusicPanelIpc } from "./music-panel";
-import { registerRunStreamIpc } from "./run-stream-ipc";
-import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
 import { registerModelsIpc } from "./models-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
-import { registerLibraryIpc } from "./library-ipc";
 import { registerGitIpc } from "./git-ipc";
 import { startAgentScheduler, stopAgentScheduler } from "./agent-scheduler";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
@@ -386,12 +381,6 @@ async function boot() {
   installRelayHandlers({
     getMcpManager: () => mcpManager,
   });
-  // loops.run / skills.run / agents.run / scrape.page — the attach socket's
-  // extra capabilities, on the same registry.
-  installAttachHandlers();
-  // agent.run / agent.answer / agent.stop — run a turn ON THIS MACHINE for a
-  // signed-in web/mobile client, streaming frames back up the attach socket.
-  installAttachRunHandlers();
   // panel.open/input/close/stats/webrtc — stream a real on-machine page to a
   // web client over the attach relay (panel-host.ts). Same registry, same
   // socket. On web + desktop-attached, an app panel renders here and streams.
@@ -409,12 +398,6 @@ async function boot() {
   installRpaHandlers();
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
-  // Every relay handler is registered now — re-advertise the FULL method
-  // table on the attach socket. Auth can win the race and open the socket
-  // before this block runs; its first hello then lists a partial table and
-  // the server's capability-aware dispatch refuses the rest (web panel
-  // input silently dead). A repeated hello just updates presence.
-  void import("./attach-client.js").then((m) => m.refreshHello()).catch(() => {});
 
   layoutManager = new LayoutManager();
   commandParser = new CommandParser();
@@ -447,7 +430,6 @@ async function boot() {
     // Without this the composer has no handlers to call and simply spins.
     registerGlyphhIpc();
     // The library pages: loops, skills, agents.
-    registerLibraryIpc();
     registerGitIpc();
     // Live agents' scheduled tasks fire while the app runs.
     startAgentScheduler();
@@ -1043,12 +1025,7 @@ async function boot() {
   registerMediaPanelIpc();
   registerMusicPanelIpc();
 
-  // Run-stream observer bridge — the renderer watches runs executing on OTHER
-  // surfaces (web/cloud) through the main-process SDK client.
-  registerRunStreamIpc();
-
-  // API Keys + Support (threaded ticketing) — A4 settings panels' transport.
-  registerApiKeysIpc();
+  // Support (threaded ticketing) — the settings panel's transport.
   registerSupportIpc();
 
   registerAppsIpc({

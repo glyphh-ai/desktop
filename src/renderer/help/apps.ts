@@ -387,7 +387,6 @@ async function loadApps() {
   // icon comes from the url favicon or the executable icon.
   void primeNativeIcons(panelApps, renderAppsList);
   // Org admins: the co-working approval queue above the grid (empty → hidden).
-  void loadOrgApprovals();
 }
 
 function renderAppsList() {
@@ -654,85 +653,6 @@ function wireCollabAdd(slug: string): void {
       void loadCollabSection();
     });
   });
-}
-
-/** The org admin's approval queue at the top of the Apps page. Non-admins and
- *  an empty queue render nothing — the server's refusal stays quiet here.
- *  Carries BOTH lanes: app releases and library shares (skills/loops — his
- *  order, 2026-09-02: same approval process, different install). */
-async function loadOrgApprovals(): Promise<void> {
-  const host = document.getElementById("apps-approvals");
-  if (!host) return;
-  const [res, lib] = await Promise.all([
-    window.glyphh.appOrgPendingReleases?.(),
-    window.glyphh.libraryPending?.(),
-  ]);
-  const pending = res?.ok ? res.pending || [] : [];
-  const shares = lib?.ok ? lib.pending || [] : [];
-  if (!pending.length && !shares.length) { host.classList.add("hidden"); host.innerHTML = ""; return; }
-  host.classList.remove("hidden");
-  host.innerHTML = `<label class="settings-label">Awaiting your approval</label>
-    <p class="proxy-field-hint" style="margin:2px 0 8px;">Submitted to your organization. Approving shares with every member.</p>`;
-  for (const s of shares) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);";
-    row.innerHTML = `
-      <div style="flex:1;min-width:0;">
-        <span style="font-size:13px;color:var(--text-1);">${escMkt(s.name)}</span>
-        <span class="lib-badge" style="margin-left:6px;">${s.kind === "skill" ? "Skill" : "Loop"}</span>
-        <span style="font-size:12px;color:var(--text-3);margin-left:6px;">by ${escMkt(s.requestedBy)} · ${escMkt(mktDate(s.submittedAt))}</span>
-      </div>
-      <button type="button" class="action-btn lib-share-reject" style="height:26px;font-size:12px;">Reject</button>
-      <button type="button" class="action-btn primary lib-share-approve" style="height:26px;font-size:12px;">Approve</button>`;
-    const review = async (action: "approve" | "reject"): Promise<void> => {
-      const ok = await confirmAction(action === "approve"
-        ? { title: `Share ${s.name} org-wide?`, body: `The ${s.kind} becomes part of every member's library.`, confirmLabel: "Approve" }
-        : { title: `Reject ${s.name}?`, body: "It stays personal; the owner can submit again.", confirmLabel: "Reject", danger: true });
-      if (!ok) return;
-      const r = await window.glyphh.libraryShareReview?.(s.id, action);
-      if (!r?.ok) {
-        const err = document.createElement("div");
-        err.className = "crud-form-error";
-        err.textContent = r?.error || `Couldn't ${action} the submission.`;
-        row.appendChild(err);
-        return;
-      }
-      await loadOrgApprovals();
-    };
-    row.querySelector(".lib-share-approve")!.addEventListener("click", () => void review("approve"));
-    row.querySelector(".lib-share-reject")!.addEventListener("click", () => void review("reject"));
-    host.appendChild(row);
-  }
-  for (const p of pending) {
-    const row = document.createElement("div");
-    row.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);";
-    row.innerHTML = `
-      <div style="flex:1;min-width:0;">
-        <span style="font-size:13px;color:var(--text-1);">${escMkt(p.name)}</span>
-        <span style="font-size:12px;color:var(--text-3);margin-left:6px;">v${escMkt(p.version)}${p.ownerEmail ? ` — by ${escMkt(p.ownerEmail)}` : ""} · ${escMkt(mktDate(p.submittedAt))}</span>
-      </div>
-      <button type="button" class="action-btn org-rel-reject" style="height:26px;font-size:12px;">Reject</button>
-      <button type="button" class="action-btn primary org-rel-approve" style="height:26px;font-size:12px;">Approve</button>`;
-    const review = async (action: "approve" | "reject"): Promise<void> => {
-      const ok = await confirmAction(action === "approve"
-        ? { title: `Approve ${p.name} v${p.version}?`, body: "The app becomes available to everyone in your organization.", confirmLabel: "Approve" }
-        : { title: `Reject ${p.name} v${p.version}?`, body: "The author can revise and submit again.", confirmLabel: "Reject", danger: true });
-      if (!ok) return;
-      const r = await window.glyphh.appReleaseOrgReview?.(p.slug, p.releaseId, action);
-      if (!r?.ok) {
-        const err = document.createElement("div");
-        err.className = "crud-form-error";
-        err.textContent = r?.error || `Couldn't ${action} the release.`;
-        row.appendChild(err);
-        return;
-      }
-      await loadOrgApprovals();
-      if (action === "approve") void loadApps();   // visibility may have flipped to org
-    };
-    row.querySelector(".org-rel-approve")!.addEventListener("click", () => void review("approve"));
-    row.querySelector(".org-rel-reject")!.addEventListener("click", () => void review("reject"));
-    host.appendChild(row);
-  }
 }
 
 // ── Installed-app release view: version + update availability ────

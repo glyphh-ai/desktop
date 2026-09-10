@@ -87,11 +87,9 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// Attach lifecycle, wired via lazy import so auth.ts carries no static dep on
-// attach-client (which imports THIS module). Every sign-in/out path funnels
-// through here, so the outbound socket tracks auth exactly.
-function attachStart(): void { void import("./attach-client.js").then((m) => m.startAttach()).catch(() => {}); }
-function attachStop(): void { void import("./attach-client.js").then((m) => m.stopAttach()).catch(() => {}); }
+// THE PURGE: the outbound attach socket is gone — nothing tracks auth but us.
+function attachStart(): void { /* attach is dead */ }
+function attachStop(): void { /* attach is dead */ }
 
 setSignedOutHandler(() => {
   signedIn = false;

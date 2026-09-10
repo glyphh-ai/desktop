@@ -43,8 +43,6 @@ import { turnNeedsTools } from "./turn-router";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
 import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
-import { pushToAttach, isAttached } from "./attach-client";
-import { toWireFrame } from "./attach-run-frames";
 
 /** Strip the Agent SDK's MCP prefix so tool names read the way the in-process
  *  path emits them (`open_app`, not `mcp__desktop__open_app`). */
@@ -310,12 +308,7 @@ export async function harnessRun(
     // Tee to the broker for cross-surface observation. `threadId` on every frame lets
     // the server record this thread's active run once (broker setActiveRun), so a web
     // client can discover + attach to it.
-    if (publishFrames && isAttached()) {
-      try {
-        const wf = toWireFrame(channel, { ...data }, pubSeq++, runId);
-        if (wf) pushToAttach(`run:${runId}`, { ...wf, ...(chatId ? { threadId: chatId } : {}) });
-      } catch { /* never let publishing perturb the run */ }
-    }
+    // THE PURGE: run frames publish nowhere — the broker is dead.
   };
 
   let lent: LentSurface | null = null;

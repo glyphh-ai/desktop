@@ -35,7 +35,7 @@ import { randomUUID } from "node:crypto";
 import type * as pty from "node-pty";
 import { spawnShellPty } from "./wb-terminal.js";
 import { registerRelayHandler } from "./relay-client.js";
-import { pushToAttach, onAttachDown } from "./attach-client.js";
+import { pushLocal as pushToAttach } from "./relay-client.js";
 import { getWorkingDirectory } from "./working-directory.js";
 
 interface RelayPty {
@@ -87,7 +87,7 @@ export function killAllRelayPtys(): void {
 
 /** Register the pty relay methods + the socket-down sweep. Call once at boot. */
 export function installRelayPty(): void {
-  onAttachDown(killAllRelayPtys);
+  // THE PURGE: no transport to drop — cleanup is app-quit's (main.ts kills all).
 
   registerRelayHandler("pty.open", async (params) => {
     const p = params as { cols?: number; rows?: number; cwd?: string } | null;
