@@ -4089,8 +4089,11 @@ async function init(): Promise<void> {
             && !document.body.classList.contains("echo-has-panels")) return;
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "closeall") {
-            if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();
-            else resetEcho();   // loose panels: close everything, back to the CC
+            // CLOSE ALL means ALL — the layout group AND any loose panels
+            // opened beside it (his report, 2026-09-10: the layout closed,
+            // the strays stayed). resetEcho saves layout memory + parks
+            // terminals, then clears the whole stage.
+            resetEcho();
             return;
           }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
