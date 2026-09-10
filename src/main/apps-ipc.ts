@@ -228,6 +228,82 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   ipcMain.handle("has-mcp-access", () => hasMcpAccess());
 
+
+  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+  const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
+
+  const entryKind = (o: Record<string, unknown>): "web" | "native" | "glyphh" => {
+    if (String(o.appArchetype ?? "") === "glyphh-app") return "glyphh";
+    return o.isBrowser === false || o.execPath ? "native" : "web";
+  };
+
+  const entryFields = (o: Record<string, unknown>) => ({
+    ...(o.name !== undefined ? { name: String(o.name) } : {}),
+    ...(o.url !== undefined && o.url !== null ? { url: String(o.url) } : {}),
+    ...(o.execPath !== undefined && o.execPath !== null ? { nativeRef: String(o.execPath) } : {}),
+    ...(o.description !== undefined ? { description: String(o.description) } : {}),
+    ...(o.launchConfig !== undefined ? { config: (o.launchConfig ?? {}) as Record<string, unknown> } : {}),
+    ...(o.access !== undefined ? { access: o.access as "public" | "members" } : {}),
+  });
+
+  const appSlug = async (id: string): Promise<string> => {
+    const apps = await fetchOrgApps();
+    return apps.find((a) => a.id === id)?.slug ?? id;
+  };
+
+  ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {
+    setTimeout(() => { void refreshForceWebSlugs(); }, 500);   // guard set follows app edits
+    try {
+      const slug = String(input.slug || input.name || "").toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!slug) return { ok: false, error: "A name is required." };
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
+      const app = await getClient().apps.createEntry({
+        kind: entryKind(input),
+        slug,
+        name: String(input.name || slug),
+        ...entryFields(input),
+      });
+      invalidateOrgApps();
+      return { ok: true, app };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-update", async (_e, id: string, patch: Record<string, unknown>) => {
+    setTimeout(() => { void refreshForceWebSlugs(); }, 500);   // guard set follows app edits
+    try {
+      // A retype only travels when the renderer asserts a LAUNCHER shape
+      // (`isBrowser`). Without this the type dropdown appeared to save and the
+      // row kept its old kind; with it on a built app, the server would refuse
+      // the whole patch — a glyphh app's kind comes from its bundle.
+      const kind = patch.isBrowser !== undefined ? entryKind(patch) : undefined;
+      const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug) || BUILTIN_WORKPANELS.has(String(patch.slug ?? ""))) {
+        return { ok: false, error: WORKPANEL_REFUSAL };
+      }
+      const app = await getClient().apps.updateEntry(slug, {
+        ...entryFields(patch),
+        ...(kind === "web" || kind === "native" ? { kind } : {}),
+      });
+      invalidateOrgApps();
+      return { ok: true, app };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("panel-apps-delete", async (_e, id: string) => {
+    try {
+      const slug = await appSlug(id);
+      if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
+      await getClient().apps.removeEntry(slug);
+      invalidateOrgApps();
+      return { ok: true };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("app-secrets-list", async (_e, id: string) => listAppSecrets(id));
+  ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string, appReadable?: boolean) => setAppSecret(id, key, value, appReadable === true));
+  ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));
+
   // ── yo app package (import / export) ──────────────────────
   // Export an app to a .glyphh bundle. Resolves the app from the org's SERVER
   // library (fetchOrgApps) — the old path read the legacy local appConnector,

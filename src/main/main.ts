@@ -76,6 +76,7 @@ import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
+import { registerAgentStubs } from "./agent-stubs";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -385,6 +386,8 @@ async function boot() {
   if (!ipcMain.listenerCount("wb-term:spawn")) {
     registerWorkbenchTerminalIpc();
     registerGitIpc();
+    // Dead ends for every retired agent-era channel (see agent-stubs.ts).
+    registerAgentStubs();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
