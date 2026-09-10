@@ -4490,28 +4490,7 @@ function paintAppsGrid(host: RailGridHost): void {
       const tb = railRecentTs[`app:${b.id}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
-  // HOME is a FIXED first tile — same control as the wall's, not an installed
-  // app: it can't be reordered, paged away, edited or deleted.
-  const home = document.createElement("button");
-  home.className = "app-rail-tile app-rail-tile-home";
-  home.type = "button";
-  home.title = "Home — new session";
-  const homeIcon = document.createElement("div");
-  homeIcon.className = "tile-icon";
-  const homeImg = document.createElement("img");
-  homeImg.src = "brand/glyphh-mark.png";
-  homeImg.alt = "";
-  homeIcon.appendChild(homeImg);
-  const homeName = document.createElement("div");
-  homeName.className = "tile-name";
-  homeName.textContent = "Home";
-  home.append(homeIcon, homeName);
-  home.addEventListener("click", () => {
-    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
-  });
-  list.appendChild(home);
-
-  // SLIDES — Glyphh Office's first app: a FIXED tile beside Home (a builtin
+  // SLIDES — Glyphh Office's first app: a FIXED tile (a builtin
   // tool panel, not an installed app row — no row backs it, so no edit/delete).
   const slides = document.createElement("button");
   slides.className = "app-rail-tile";
