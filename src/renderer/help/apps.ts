@@ -998,7 +998,10 @@ async function openPanelAppDetail(app: PanelApp) {
     el.classList.toggle("hidden", !show);
   });
   document.querySelectorAll<HTMLElement>(".tab-owner-only").forEach((el) => {
-    el.classList.toggle("hidden", !(isBuilt && owned));
+    // History is OFF the surface for now (his order, 2026-09-10) — the
+    // snapshot chain keeps recording; only the tab is hidden.
+    const parked = el.dataset.tab === "history";
+    el.classList.toggle("hidden", parked || !(isBuilt && owned));
   });
   // The type control is retired: every NEW app is a web panel, and a built
   // app's type comes from its bundle either way.
