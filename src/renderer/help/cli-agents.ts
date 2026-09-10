@@ -10,7 +10,7 @@
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
-interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
 
 /** The CLIs' public web marks — the brand icons their agents wear. */
 const CLI_MARK_URLS: Record<string, string> = {
@@ -18,6 +18,7 @@ const CLI_MARK_URLS: Record<string, string> = {
   codex: "https://openai.com/favicon.ico",
   gemini: "https://gemini.google.com/favicon.ico",
   copilot: "https://github.com/favicon.ico",
+  cursor: "https://cursor.com/favicon.ico",
 };
 
 const api = () => (window as unknown as { glyphh?: {
@@ -158,9 +159,10 @@ export function initCliAgentsEvents(): void {
     // the OTHER brand's default.
     const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
     const cmd = el<HTMLInputElement>("cagent-cmd");
-    if (cmd && cli in CLI_MARK_URLS) {
+    const CLI_DEFAULT_CMDS: Record<string, string> = { claude: "claude", codex: "codex", gemini: "gemini", copilot: "copilot", cursor: "cursor-agent" };
+    if (cmd && cli in CLI_DEFAULT_CMDS) {
       const cur = cmd.value.trim();
-      if (!cur || cur in CLI_MARK_URLS) cmd.value = cli;
+      if (!cur || Object.values(CLI_DEFAULT_CMDS).includes(cur)) cmd.value = CLI_DEFAULT_CMDS[cli];
     }
     paintPreview();
   });

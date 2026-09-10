@@ -4334,6 +4334,7 @@ const RAIL_CLI_MARK_URLS: Record<string, string> = {
   codex: "https://openai.com/favicon.ico",
   gemini: "https://gemini.google.com/favicon.ico",
   copilot: "https://github.com/favicon.ico",
+  cursor: "https://cursor.com/favicon.ico",
 };
 const railCliMarks: Record<string, string> = {};   // cli → data URL, cached
 let railRecentTs: Record<string, number> = {};
