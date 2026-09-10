@@ -93,6 +93,7 @@ import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
+import { registerCliAgentsIpc } from "./cli-agents";
 import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
@@ -972,6 +973,7 @@ async function boot() {
   // Glyphh Office · Docs — the Docs panel's org library transport.
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
+  registerCliAgentsIpc();
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();

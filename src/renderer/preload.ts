@@ -429,6 +429,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   wsStateLoad: () => ipcRenderer.invoke("wsstate-load") as Promise<Record<string, { v: string; at: number }>>,
   wsStateSave: (snapshot: Record<string, { v: string; at: number }>) => ipcRenderer.invoke("wsstate-save", snapshot) as Promise<boolean>,
 
+  // CLI agents — named pre-configs for terminal-driven CLIs (Claude first)
+  cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
+  cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
+  cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  cliAgentOpen: (id: string) => ipcRenderer.invoke("cli-agent-open", id) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
+
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
   dripsSave: (name: string, recipe: string) => ipcRenderer.invoke("drips-save", name, recipe) as Promise<string>,

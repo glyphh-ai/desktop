@@ -20291,3 +20291,7 @@ body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
    chrome (sliver, hot zone, peeked bar) starts below it. */
 body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
+
+/* ── Agents section (CLI pre-configs, help/cli-agents.ts) ──── */
+.cagent-glyph { margin-right: 2px; }
+.cagent-card .crud-card-actions { margin-top: 8px; }

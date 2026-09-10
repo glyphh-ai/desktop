@@ -124,7 +124,21 @@ async function ensureAppNames(): Promise<void> {
 function resolveApp(panelId: string): LayoutApp | undefined {
   return appById[panelId] || appById[panelId.replace(/-\d+$/, "")];
 }
+/** CLI agents cache — cells store `agent:<id>`; names/icons resolve here.
+ *  Loaded with the page and refreshed when the Agents section announces. */
+let cliAgentRows: Array<{ id: string; name: string; icon: string }> = [];
+const CLI_AGENT_CELL_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6"/><rect x="4" y="6" width="16" height="12.5" rx="3.5"/><circle cx="9" cy="11.4" r="1.2"/><circle cx="15" cy="11.4" r="1.2"/><path d="M8.6 15.8h6.8"/></svg>`;
+function refreshCliAgents(): void {
+  void (window as unknown as { glyphh?: { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string }> }> } })
+    .glyphh?.cliAgentsList?.().then((r) => { if (r?.ok) cliAgentRows = r.agents; }).catch(() => {});
+}
+window.addEventListener("glyphh:cli-agents-changed", refreshCliAgents);
+
 function panelLabel(panelId: string): string {
+  if (panelId.startsWith("agent:")) {
+    const id = panelId.slice(6);
+    return cliAgentRows.find((a) => a.id === id)?.name || id;
+  }
   return resolveApp(panelId)?.name || panelId;
 }
 /** Built-in workbench tool panels selectable in a layout cell. id = `tool:<ViewKind>`:
@@ -178,6 +192,10 @@ function panelIconHtml(panelId: string): string {
   if (isToolPanel(panelId)) {
     const label = toolPanelLabel(panelId);
     return `<span class="layout-app-icon layout-tool-icon" title="${label}">${toolPanelIcon(panelId)}</span>`;
+  }
+  if (panelId.startsWith("agent:")) {
+    const label = panelLabel(panelId);
+    return `<span class="layout-app-icon layout-tool-icon" title="${label}">${CLI_AGENT_CELL_GLYPH}</span>`;
   }
   const app = resolveApp(panelId);
   const name = app?.name || panelId;
@@ -862,6 +880,8 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
+    cliAgentRows.length ? `<div class="cell-panel-group-label">Agents</div>` : "",
+    ...cliAgentRows.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.icon ? `${a.icon} ` : ""}${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Apps</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
@@ -924,6 +944,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
 }
 
 async function loadLayouts() {
+  refreshCliAgents();
   // OPENING THE PAGE ALWAYS LANDS ON THE LIST (his report, 2026-08-28:
   // edit a workspace, close the page from the editor, and the section came
   // back blank with no way into a workspace). The section markup is a

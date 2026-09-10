@@ -1,0 +1,39 @@
+        <!-- Agents — CLI pre-configs (the build, 2026-09-10): each agent is a
+             named config for a terminal-driven CLI (Claude first) — command,
+             icon, Glyphh MCP wiring. Opens as a WORKPANEL section beside the
+             agent, like Drips; help/cli-agents.ts renders. "Open" plays the
+             pre-config into a fresh terminal card. -->
+        <div class="help-section" data-section="agents">
+
+                <h2>Agents</h2>
+                <p class="section-desc">CLI agents, pre-wired — configure the command and connections once; opening one plays that config into a terminal.</p>
+          <div id="cagents-toolbar" class="crud-toolbar">
+            <input id="cagent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
+            <button id="cagent-new-btn" class="action-btn primary">+ New</button>
+          </div>
+          <div id="cagents-list" class="crud-cards"></div>
+          <div id="cagent-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="cagent-back-link">&larr; Agents</a>
+              <div class="crud-spacer"></div>
+              <button id="cagent-open-btn" class="action-btn primary" type="button" title="Open this agent in a terminal">&#9654; Open</button>
+            </div>
+            <div id="cagent-form-error" class="crud-form-error hidden"></div>
+            <div id="cagent-detail-head" class="edit-head"></div>
+            <label class="settings-label">Name</label>
+            <input type="text" id="cagent-name" class="settings-input" placeholder="Claude" spellcheck="false" autocomplete="off" />
+            <label class="settings-label">Icon <span class="settings-hint-inline">an emoji for the card</span></label>
+            <input type="text" id="cagent-icon" class="settings-input" placeholder="✳" spellcheck="false" autocomplete="off" maxlength="4" />
+            <label class="settings-label">Command <span class="settings-hint-inline">what the terminal runs — flags welcome</span></label>
+            <input type="text" id="cagent-cmd" class="settings-input" placeholder="claude" spellcheck="false" autocomplete="off" />
+            <label class="settings-check" style="margin-top:10px;display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="cagent-mcp" checked />
+              <span>Connect Glyphh tools (MCP) — the CLI gets this machine's panels, files, and office tools automatically</span>
+            </label>
+            <p class="settings-hint" id="cagent-cmd-preview" style="margin-top:10px;font-family:ui-monospace,monospace;"></p>
+            <div class="crud-inline-actions">
+              <button id="cagent-save-btn" class="action-btn primary" type="button">Save</button>
+              <button id="cagent-delete-btn" class="action-btn danger hidden" type="button">Delete</button>
+            </div>
+          </div>
+        </div>

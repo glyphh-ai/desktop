@@ -335,6 +335,7 @@ const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as {
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
+  { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
@@ -2323,7 +2324,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
@@ -2339,6 +2340,21 @@ async function init(): Promise<void> {
       layoutId?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; iconUrl?: string | null }> = [];
+    // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
+    // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
+    // the wall like workspaces do, and agent:<id> layout cells resolve here.
+    interface CliAgentRowLite { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }
+    let cliAgentRows: CliAgentRowLite[] = [];
+    const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
+    const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
+      name: a.name,
+      slug: `agent:${a.id}`,
+      orderKey: `agent:${a.id}`,
+      glyphSvg: CLI_AGENT_GLYPH,
+      kind: "tool",
+      toolView: "terminal",
+      cliAgent: { id: a.id, command: a.command },
+    });
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -3133,6 +3149,8 @@ async function init(): Promise<void> {
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
+      cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
+      cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -3146,7 +3164,8 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+      yoApi?.cliAgentsList?.().catch(() => null) ?? null,
+    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref, cliAgentsRes]) => {
       await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
@@ -3257,7 +3276,11 @@ async function init(): Promise<void> {
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
       const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, gimageTile, gvideoTile, gsoundTile]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
-      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      // AGENT tiles ride the wall like workspaces do — one per saved CLI config.
+      cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
+        ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
+      const agentTiles = cliAgentRows.map(cliAgentTileOf);
+      const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
       if (Array.isArray(dockPref)) dockKeys = dockPref.map(String);
       // …and NEW nav slots shipped after the pref was saved still join it
@@ -3304,6 +3327,28 @@ async function init(): Promise<void> {
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
       buildWall([[...pageTiles, ...rest]]);
+      // The Agents section announces saves/deletes — reconcile the wall's
+      // agent tiles in place (no rebuild: geometry and open cards survive).
+      window.addEventListener("glyphh:cli-agents-changed", () => {
+        void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+          if (!r?.ok) return;
+          cliAgentRows = r.agents;
+          const have = new Map(entries.filter((e) => e.tile.cliAgent).map((e) => [e.tile.cliAgent!.id, e]));
+          for (const a of r.agents) {
+            const e = have.get(a.id);
+            if (e) {
+              e.tile.name = a.name;
+              e.tile.cliAgent = { id: a.id, command: a.command };
+              have.delete(a.id);
+            } else {
+              const t = makeTileEntry(cliAgentTileOf(a));
+              (wallBands[0] ?? (wallBands[0] = [])).push(t);
+            }
+          }
+          for (const [, e] of have) dropTileEntry(e);
+          renderPages();
+        }).catch(() => {});
+      });
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
       // First run: the guided tour points at the live dock + tiles, once per
@@ -5047,7 +5092,18 @@ async function init(): Promise<void> {
           // state only comes back under the "last" contract
           const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
           let entry: TileEntry | null = null;
-          if (id.startsWith("tool:")) {
+          if (id.startsWith("agent:")) {
+            // A CLI agent cell: a terminal that plays the agent's pre-config.
+            const aid = id.slice(6);
+            const arow = cliAgentRows.find((x) => x.id === aid);
+            entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky, ...(arow ? { cliAgent: { id: aid, command: arow.command } } : {}) });
+            entry.keepTermsAlive = cell.config?.keepAlive !== false;
+            activateTile(entry);
+            const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+            if (ts?.terminals?.[0] && arow) ts.terminals[0].initCmd = arow.command;
+            // dependencies (the local MCP server) come up in the background
+            if (arow?.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
+          } else if (id.startsWith("tool:")) {
             const raw = id.slice(5);
             const v = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
             // The agent cell mounts the agent as a PANEL — the layout owns
@@ -5750,6 +5806,7 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
+      if (t.cliAgent) { openAgentCliCard(t); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -5834,6 +5891,33 @@ async function init(): Promise<void> {
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
     };
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
+    /** Open a CLI agent: dependencies first (the local MCP server), then the
+     *  pre-config types into a fresh terminal card named for the agent. */
+    const openAgentCliCard = (t: EchoTile): void => {
+      const a = t.cliAgent;
+      if (!a) return;
+      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+        .glyphh?.cliAgentOpen?.(a.id).then((r) => {
+          if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
+          const cmd = (r?.ok && r.command) || a.command;
+          const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal", cliAgent: a });
+          entry.keepTermsAlive = true;
+          activateTile(entry);
+          const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+          if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cmd;
+        });
+    };
+    (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli = (id: string) => {
+      const row = cliAgentRows.find((x) => x.id === id);
+      if (row) { openAgentCliCard(cliAgentTileOf(row)); return; }
+      // Section saved an agent this session hasn't cached yet — fetch, then open.
+      void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+        if (!r?.ok) return;
+        cliAgentRows = r.agents;
+        const fresh = cliAgentRows.find((x) => x.id === id);
+        if (fresh) openAgentCliCard(cliAgentTileOf(fresh));
+      }).catch(() => {});
+    };
     /** "Here it is" — surface a card the user just aimed at. Landing in an
      *  EXISTING card (a pinned slot, an already-open app) has to leave
      *  shadow mode just like opening a new one does, or the app they picked
