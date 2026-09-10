@@ -23,7 +23,13 @@ import {
 import { fetchServerLayouts } from "./layout-manager";
 
 export class CommandParser {
-  private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "waz"]);
+  private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
+
+  private dripManager: import("./drip-manager").DripManager | null = null;
+
+  setDripManager(mgr: import("./drip-manager").DripManager) {
+    this.dripManager = mgr;
+  }
 
   constructor() {}
 
@@ -60,8 +66,12 @@ export class CommandParser {
         return this.handleSup();
       case "dip":
         return this.handleDip(args);
+      case "drip":
+        return this.handleDrip(args);
+      case "peace":
+        return this.handlePeace(args);
       default:
-        return `Unknown command: ${cmd}. Try sup or dip.`;
+        return `Unknown command: ${cmd}. Try sup, dip, or drip.`;
     }
   }
 
@@ -187,5 +197,14 @@ export class CommandParser {
 
   // ── drip: CSS visual effects ────────────────────────────────
 
+  private handleDrip(args: string[]): string {
+    return this.dripManager ? this.dripManager.execute(args) : "";
+  }
+
+  // ── peace: particle peace-sign gesture ──────────────────────
+
+  private handlePeace(args: string[]): string {
+    return this.dripManager ? this.dripManager.execute(["peace", ...args]) : "";
+  }
 
 }

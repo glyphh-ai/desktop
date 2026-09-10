@@ -139,7 +139,6 @@ const ENVELOPE = [
 /** Channels whose callers destructure a bare array. */
 const EMPTY_LIST = [
   "connections-list", "connectors-get-accounts",
-  "drips-builtin-effects", "drips-list", "drips-running",
   "loops-list",
   "glyphh-threads-list",
   "library-agents-list",
@@ -155,10 +154,6 @@ export function registerAgentStubs(): void {
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
   ipcMain.handle("connectors-get-apps", () => ({ apps: [], hasMore: false }));
-  ipcMain.handle("drips-save", () => RETIRED);
-  ipcMain.handle("drips-delete", () => RETIRED);
-  ipcMain.handle("drips-preview", () => RETIRED);
-  ipcMain.handle("drips-stop", () => "stopped");
   ipcMain.handle("loop-roles", (_e, p?: { loop?: string }) => ({ ok: false, loop: String(p?.loop || "default"), roles: [] }));
   ipcMain.handle("mcp-connections-list", () => ({ ok: false, error: RETIRED, connections: [] }));
   ipcMain.handle("mcp-custom-allowed", () => ({ allowed: false, reason: RETIRED }));

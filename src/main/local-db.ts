@@ -189,6 +189,19 @@ const MIGRATIONS: Migration[] = [
     version: 7,
     sql: `ALTER TABLE tool_vectors ADD COLUMN paragraph TEXT;`,
   },
+  {
+    // Custom drip presets — LOCAL now (THE PURGE, 2026-09-10): the server's
+    // saved_drips lane is gone; the `.drip save` command and the Drips tab
+    // both persist here.
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS drips (
+        name TEXT PRIMARY KEY,
+        recipe TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

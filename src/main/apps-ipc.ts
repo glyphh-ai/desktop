@@ -15,6 +15,7 @@ import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
 import { listAppSecrets, setAppSecret, deleteAppSecret } from "./app-secrets";
 import { BUILTIN_EFFECT_LIST } from "../shared/drip-effects";
+import { getDripManagerInstance } from "./drip-manager";
 
 /** Server-authoritative panel-apps CRUD (Dashboard shell) — the Apps tab's
  *  list is no longer a local object; every read/write goes straight to
@@ -226,10 +227,29 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   ipcMain.handle("layouts-delete", async (_e, name: string) => layoutManager.deleteLayout(name));
 
+  // IPC: Drips CRUD — LOCAL presets (drips table, user-state.sqlite).
+  ipcMain.handle("drips-list", async () => (await getDripManagerInstance()?.refreshAndList()) ?? []);
+  ipcMain.handle("drips-save", async (_e, name: string, recipe: string) => (await getDripManagerInstance()?.saveCustomAsync(name, recipe)) ?? "");
+  ipcMain.handle("drips-delete", async (_e, name: string) => (await getDripManagerInstance()?.deleteCustomAsync(name)) ?? "");
+  ipcMain.handle("drips-builtin-effects", () => BUILTIN_EFFECT_LIST);
+  // A PREVIEW is windowed + time-bounded — never a full-screen forever overlay.
+  ipcMain.handle("drips-preview", async (_e, recipe: string) => {
+    const mgr = getDripManagerInstance();
+    if (!mgr) return "drip manager not ready";
+    return mgr.execute(recipe.split(/\s+/), { preview: true });
+  });
+  ipcMain.handle("drips-stop", async () => {
+    const mgr = getDripManagerInstance();
+    if (!mgr) return "drip manager not ready";
+    mgr.stopAll();
+    return "stopped";
+  });
+  ipcMain.handle("drips-running", async () => (getDripManagerInstance()?.running() ?? []));
+
   ipcMain.handle("has-mcp-access", () => hasMcpAccess());
 
 
-  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gimage", "gvideo", "gsound"]);
   const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
   const entryKind = (o: Record<string, unknown>): "web" | "native" | "glyphh" => {

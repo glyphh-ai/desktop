@@ -3333,12 +3333,12 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     return true;
   }
   const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor",
-    "releases", "tasks", "gpoint", "slides", "gdoc", "docs", "gdrive", "drive", "gsheet", "sheets",
-    "gdesign", "design", "gmemory", "memory", "gimage", "image", "gvideo", "video", "gsound", "sound", "gband", "band"]);
+    "tasks", "gpoint", "slides", "gdoc", "docs", "gdrive", "drive", "gsheet", "sheets",
+    "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
     const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", slides: "gpoint", docs: "gdoc",
-      drive: "gdrive", sheets: "gsheet", design: "gdesign", memory: "gmemory", image: "gimage", video: "gvideo",
-      sound: "gsound", band: "gband" };
+      drive: "gdrive", sheets: "gsheet", design: "gdesign", image: "gimage", video: "gvideo",
+      sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
   }
@@ -4609,42 +4609,6 @@ function paintAppsGrid(host: RailGridHost): void {
   });
   list.appendChild(gdesign);
 
-  // MEMORY — the stator visualized, same fixed-tile treatment.
-  const gmemory = document.createElement("button");
-  gmemory.className = "app-rail-tile";
-  gmemory.type = "button";
-  gmemory.title = "Memory — your org's memory, visualized";
-  const gmIcon = document.createElement("div");
-  gmIcon.className = "tile-icon";
-  gmIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e"/></svg>`;
-  const gmName = document.createElement("div");
-  gmName.className = "tile-name";
-  gmName.textContent = "Memory";
-  gmemory.append(gmIcon, gmName);
-  gmemory.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gmemory");
-  });
-  list.appendChild(gmemory);
-
-  // BAND — the music studio app, same fixed-tile treatment.
-  const gband = document.createElement("button");
-  gband.className = "app-rail-tile";
-  gband.type = "button";
-  gband.title = "Band — songs, artists, music video";
-  const gbIcon = document.createElement("div");
-  gbIcon.className = "tile-icon";
-  gbIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>`;
-  const gbName = document.createElement("div");
-  gbName.className = "tile-name";
-  gbName.textContent = "Band";
-  gband.append(gbIcon, gbName);
-  gband.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gband");
-  });
-  list.appendChild(gband);
-
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -5505,7 +5469,7 @@ export function initCode(): void {
   el("code-session-new")?.addEventListener("click", newSessionInPlace);
 
   // ── Developer tools ⋯ menu (his rule, 2026-08-21): Files/Terminal/Editor/
-  // Browser/Diff/Plan/Releases live HERE, right of + new session — off the
+  // Browser/Diff/Plan live HERE, right of + new session — off the
   // command-center wall. Each opens its workbench view via __wbOpenTool. The
   // whole control hides when the agent is ATTACHED to another app
   // (data-home-scope="agent-dock") — that overlay is not a dev surface.
@@ -5517,7 +5481,6 @@ export function initCode(): void {
       { view: "preview",  label: "Browser",  icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>` },
       { view: "diff",     label: "Diff",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="8 7 4 11 8 15"/><polyline points="16 9 20 13 16 17"/></svg>` },
       { view: "plan",     label: "Plan",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
-      { view: "releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
       { view: "rail",     label: "Rail",     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
     ];
     const wrap = el("code-tools-wrap");

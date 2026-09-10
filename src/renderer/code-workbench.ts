@@ -49,9 +49,7 @@ import { initGDocs, type GDocPanel } from "./wb-gdoc.js";
 import { initGDrive, type GDrivePanel } from "./wb-drive.js";
 import { initGSheets, type GSheetPanel } from "./wb-sheets.js";
 import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
-import { initMemory, type MemoryPanel, type MemorySlotState } from "./wb-memory.js";
 import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
-import { initBand, type BandPanel, type BandSlotState } from "./wb-music.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -108,7 +106,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -165,7 +163,6 @@ interface RailPanelSlot {
 /** Releases — the release-management view for BUILT (glyphh-hosted) apps:
  *  pick an app, see its release history, cut a build, promote to live.
  *  `slug` remembers the picked app across renders/layout saves. */
-interface ReleasesSlot { id: number; view: "releases"; slug?: string; sticky?: boolean }
 /** Tasks — the user's SCHEDULED work in one place: every agent task, when it
  *  fires next, how the last run went, and (per task) the full run history.
  *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
@@ -234,14 +231,9 @@ interface GSheetSlot {
 /** Design — Glyphh Design systems (library ↔ studio; wb-design.ts). */
 interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 
-/** Memory — the stator visualized (wb-memory.ts). */
-interface GMemorySlot extends MemorySlotState { view: "gmemory"; sticky?: boolean }
-
 /** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
 interface GMediaSlot extends MediaSlotState { sticky?: boolean }
 
-/** Band — Songs / Artists / Music Video (wb-music.ts initBand). */
-interface GBandSlot extends BandSlotState { view: "gband"; sticky?: boolean }
 /** Drive — folders + pointers over every Office file. */
 interface GDriveSlot {
   id: number; view: "gdrive";
@@ -274,7 +266,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMemorySlot | GMediaSlot | GBandSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -315,18 +307,15 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   // (persisted layouts reference it).
   coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
-  releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
   gsheet:   { title: "Sheets",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
   gdesign:  { title: "Design",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg>` },
-  gmemory:  { title: "Memory",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4;stroke:none"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e;stroke:none"/><path d="M9.9 10.9 11.3 13.4M14.2 10.2 12.7 13.3M10.4 10.2 13.7 9.4" style="stroke:#0f766e;stroke-width:1.1"/></svg>` },
   gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
   gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
   gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
-  gband:    { title: "Band",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635;stroke:none"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff;stroke:none"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>` },
   gdrive:   { title: "Drive",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
   gdoc:     { title: "Docs",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
   gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
@@ -347,12 +336,13 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
+  { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
   { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
-  ];
+  ].filter((d) => !IS_WEB_TARGET || d.key !== "drips");
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -995,7 +985,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound" || v === "gband") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -1161,7 +1151,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1232,7 +1222,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1347,7 +1337,6 @@ async function init(): Promise<void> {
     if (view === "coding") return { id, view };
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
-    if (view === "releases") return { id, view };
     if (view === "rail") return { id, view };
     if (view === "tasks") return { id, view };
     if (view === "gpoint") return { id, view };
@@ -1355,9 +1344,7 @@ async function init(): Promise<void> {
     if (view === "gdrive") return { id, view };
     if (view === "gsheet") return { id, view };
     if (view === "gdesign") return { id, view };
-    if (view === "gmemory") return { id, view };
     if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
-    if (view === "gband") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1962,7 +1949,6 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "gpoint") {
@@ -1985,15 +1971,9 @@ async function init(): Promise<void> {
     } else if (slot.view === "gdesign") {
       body.classList.add("ws-gdesign-body");
       void renderDesignIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gmemory") {
-      body.classList.add("ws-gmemory-body");
-      void renderMemoryIntoSlot(body, slot, wrap);
     } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
       body.classList.add("ws-gmedia-body");
       void renderMediaIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gband") {
-      body.classList.add("ws-gband-body");
-      void renderBandIntoSlot(body, slot, wrap);
     }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
@@ -2139,24 +2119,6 @@ async function init(): Promise<void> {
     });
   };
 
-  // ── Memory — the stator visualized (wb-memory.ts) ─────────────────────────
-  let gmemoryPanel: MemoryPanel | null = null;
-  function gmemoryPanelInstance(): MemoryPanel {
-    if (!gmemoryPanel) {
-      gmemoryPanel = initMemory({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gmemory.icon,
-      });
-    }
-    return gmemoryPanel;
-  }
-  function renderMemoryIntoSlot(body: HTMLElement, slot: GMemorySlot, wrap: HTMLElement): Promise<void> {
-    return gmemoryPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  (window as unknown as { __wbOpenMemory?: () => void }).__wbOpenMemory = () => {
-    openToolWithPayload("gmemory", () => { gmemoryPanelInstance().invalidate(); });
-  };
-
   // ── Media — Image / Video / Sounds (wb-media.ts) ──────────────────────────
   let gmediaPanel: MediaPanel | null = null;
   function gmediaPanelInstance(): MediaPanel {
@@ -2175,28 +2137,8 @@ async function init(): Promise<void> {
   function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
     return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
   }
-  // ── Band — Songs / Artists / Music Video (wb-music.ts) ────────────────────
-  let gbandPanel: BandPanel | null = null;
-  function gbandPanelInstance(): BandPanel {
-    if (!gbandPanel) gbandPanel = initBand({ confirm: (o) => appConfirm(o) });
-    return gbandPanel;
-  }
-  function renderBandIntoSlot(body: HTMLElement, slot: GBandSlot, wrap: HTMLElement): Promise<void> {
-    return gbandPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  (window as unknown as { __wbOpenMedia?: (view: MediaView | "gband", assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
-    // A song deep-link (or an explicit gband open) lands in the BAND app.
-    if (view === "gband" || songId) {
-      openToolWithPayload("gband", (t) => {
-        const b = t as GBandSlot;
-        if (songId) {
-          b.tab = 0;
-          b.music = { songId };
-        }
-      });
-      return;
-    }
+  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
+    void songId;   // Band is gone (THE PURGE) — song deep-links have no panel
     openToolWithPayload(view, (t) => {
       const m = t as GMediaSlot;
       if (assetId) {
@@ -3287,13 +3229,6 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gdesign",
       };
-      const memoryTile: EchoTile = {
-        name: VIEW_META.gmemory.title,
-        slug: "gmemory",
-        glyphSvg: VIEW_META.gmemory.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gmemory",
-      };
       const gimageTile: EchoTile = {
         name: VIEW_META.gimage.title,
         slug: "gimage",
@@ -3315,19 +3250,12 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gsound",
       };
-      const gbandTile: EchoTile = {
-        name: VIEW_META.gband.title,
-        slug: "gband",
-        glyphSvg: VIEW_META.gband.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gband",
-      };
       // The DEV workbench tools (his rule, 2026-08-21, REVERSING 08-20): Files/
       // Terminal/Editor/Diff/Plan/Releases are OFF the wall — they live in the
       // agent composer's ⋯ developer-tools menu (help/code.ts), a development
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
-      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile]
+      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, gimageTile, gvideoTile, gsoundTile]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
       const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
@@ -4352,6 +4280,9 @@ async function init(): Promise<void> {
             return;
           }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
+          // Drips has no section page — the dock slot opens the composer's
+          // droplet picker (help/code.ts owns the menu).
+          if (key === "drips") { (document.getElementById("code-drips-btn") as HTMLElement | null)?.click(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
@@ -5143,7 +5074,7 @@ async function init(): Promise<void> {
             // it, and the center composer steps off screen until the layout
             // lets go.
             if (v === "coding") entry = openAgentPanel();
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound" || v === "gband") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -5549,7 +5480,6 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-        else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
         else if (slot.view === "gpoint") {
@@ -5570,15 +5500,9 @@ async function init(): Promise<void> {
         } else if (slot.view === "gdesign") {
           body.classList.add("ws-gdesign-body");
           void renderDesignIntoSlot(body, slot, card);
-        } else if (slot.view === "gmemory") {
-          body.classList.add("ws-gmemory-body");
-          void renderMemoryIntoSlot(body, slot, card);
         } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
           body.classList.add("ws-gmedia-body");
           void renderMediaIntoSlot(body, slot, card);
-        } else if (slot.view === "gband") {
-          body.classList.add("ws-gband-body");
-          void renderBandIntoSlot(body, slot, card);
         }
     };
 
@@ -5940,7 +5864,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -7502,258 +7426,6 @@ async function init(): Promise<void> {
 
     paintTabs();
     await mountActive();
-  }
-
-  // ── Releases view — release management for BUILT (glyphh-hosted) apps ──
-  // Pick an app, see its release history, cut a build from the working
-  // folder, promote dev → live, edit notes. Same IPC the Settings → Apps →
-  // Releases tab uses; while a build is in flight the panel polls until it
-  // settles (the settings tab is manual-refresh only).
-  interface WbReleaseRow {
-    id: string;
-    version: string;
-    status: "pending" | "uploading" | "building" | "ready" | "failed";
-    error: string | null;
-    notes: string | null;
-    channel: "dev" | "live";
-    promotedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-  }
-  // Structural mirror of the preload surface (remote-run.ts's discipline —
-  // this bundle can't import preload types).
-  interface WbReleasesIpc {
-    panelAppsList?: () => Promise<Array<{ id: string; slug: string; name: string; system: boolean; appArchetype?: string | null; access?: string }>>;
-    panelAppsUpdate?: (id: string, patch: { access?: string }) => Promise<{ ok?: boolean } | unknown>;
-    appReleases?: (slug: string) => Promise<{ ok: boolean; releases: WbReleaseRow[]; error?: string }>;
-    appReleaseNotes?: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; error?: string }>;
-    appReleasePromote?: (slug: string, releaseId: string) => Promise<{ ok: boolean; error?: string }>;
-    appBuildDeploy?: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; url?: string }; error?: string }>;
-    hostingStatus?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string } | null; error?: string }>;
-    hostingDeploy?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
-    appExport?: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-  }
-  const relIpc = (): WbReleasesIpc => (window as unknown as { glyphh?: WbReleasesIpc }).glyphh ?? {};
-  const REL_POLL_MS = 5000;
-  const REL_BUILDING = new Set(["pending", "uploading", "building"]);
-  const relEsc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  function relDate(iso: string | null): string {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  }
-
-  async function renderReleasesIntoSlot(body: HTMLElement, slot: ReleasesSlot): Promise<void> {
-    body.classList.add("ws-rel-body");
-    body.innerHTML = `
-      <div class="ws-rel-toolbar">
-        <select class="ws-rel-app" title="Which app to manage"></select>
-        <span class="ws-rel-note"></span>
-        <button type="button" class="action-btn primary ws-rel-deploy" title="Package the working folder, cut a release, and deploy it">Build &amp; deploy</button>
-        <button type="button" class="ws-icon-btn ws-rel-refresh" title="Refresh">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-        </button>
-      </div>
-      <div class="ws-rel-hosting hidden">
-        <span class="ws-rel-host-status"></span>
-        <select class="ws-rel-access" title="Who can reach the deployed app">
-          <option value="members">Org members</option>
-          <option value="public">Public</option>
-        </select>
-        <button type="button" class="action-btn ws-rel-host-deploy" title="Serve this app's latest build at its Glyphh address">Deploy</button>
-        <button type="button" class="action-btn ws-rel-export" title="Export a standalone repo — the app no longer needs Glyphh">Export repo</button>
-      </div>
-      <div class="ws-rel-list"><div class="ws-rel-empty">Loading…</div></div>`;
-    const sel = body.querySelector(".ws-rel-app") as HTMLSelectElement;
-    const note = body.querySelector(".ws-rel-note") as HTMLElement;
-    const deployBtn = body.querySelector(".ws-rel-deploy") as HTMLButtonElement;
-    const hosting = body.querySelector(".ws-rel-hosting") as HTMLElement;
-    const hostStatus = body.querySelector(".ws-rel-host-status") as HTMLElement;
-    const accessSel = body.querySelector(".ws-rel-access") as HTMLSelectElement;
-    const hostDeploy = body.querySelector(".ws-rel-host-deploy") as HTMLButtonElement;
-    const exportBtn = body.querySelector(".ws-rel-export") as HTMLButtonElement;
-    const list = body.querySelector(".ws-rel-list") as HTMLElement;
-    let pollTimer = 0;
-
-    // BUILT apps only (the Settings tabs' own gate: appArchetype "glyphh-app").
-    // "Current folder" leads: Build & deploy reads the workdir's
-    // glyphh.app.json and deploys THAT app — no pick needed.
-    interface RelApp { id: string; slug: string; name: string; access?: string }
-    let apps: RelApp[] = [];
-    try {
-      const all = (await relIpc().panelAppsList?.()) || [];
-      apps = all.filter((a) => !a.system && a.appArchetype === "glyphh-app")
-        .map((a) => ({ id: a.id, slug: a.slug, name: a.name, access: a.access }));
-    } catch { /* offline — current-folder deploy still works */ }
-    sel.innerHTML = [`<option value="">Current folder</option>`,
-      ...apps.map((a) => `<option value="${relEsc(a.slug)}">${relEsc(a.name)}</option>`)].join("");
-    if (slot.slug && apps.some((a) => a.slug === slot.slug)) sel.value = slot.slug;
-    slot.slug = sel.value;
-
-    const pickedApp = (): RelApp | null => apps.find((a) => a.slug === sel.value) ?? null;
-    const setNote = (text: string, err = false): void => {
-      note.textContent = text;
-      note.classList.toggle("err", err);
-    };
-
-    async function refreshHosting(): Promise<void> {
-      const app = pickedApp();
-      hosting.classList.toggle("hidden", !app);
-      if (!app) return;
-      accessSel.value = app.access === "public" ? "public" : "members";
-      hostStatus.textContent = "checking…";
-      try {
-        const r = await relIpc().hostingStatus?.(app.slug);
-        if (!r?.ok) { hostStatus.textContent = r?.error || "Couldn't load deploy status"; return; }
-        if (!r.deployment) { hostStatus.textContent = "Not deployed"; return; }
-        const st = r.deployment.status || "";
-        hostStatus.innerHTML = r.deployment.url
-          ? `${relEsc(st)} · <a href="${relEsc(r.deployment.url)}" target="_blank" rel="noreferrer">${relEsc(r.deployment.url.replace(/^https?:\/\//, ""))}</a>`
-          : relEsc(st);
-      } catch { hostStatus.textContent = "Couldn't load deploy status"; }
-    }
-
-    async function refresh(): Promise<void> {
-      if (pollTimer) { clearTimeout(pollTimer); pollTimer = 0; }
-      const slug = sel.value;
-      void refreshHosting();
-      if (!slug) {
-        list.innerHTML = `<div class="ws-rel-empty">Current folder — Build &amp; deploy reads the working folder's <code>glyphh.app.json</code> and deploys that app. Pick an app above to see its release history and hosting.</div>`;
-        return;
-      }
-      let releases: WbReleaseRow[] = [];
-      try {
-        const r = await relIpc().appReleases?.(slug);
-        if (!r?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(r?.error || "Couldn't load releases")}</div>`; return; }
-        releases = r.releases || [];
-      } catch (err) {
-        list.innerHTML = `<div class="ws-rel-empty">${relEsc(err instanceof Error ? err.message : "Couldn't load releases")}</div>`;
-        return;
-      }
-      if (!body.isConnected || sel.value !== slug) return; // stale — panel closed or app switched
-      if (!releases.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No releases yet — Build &amp; deploy cuts the first one from your working folder.</div>`;
-        return;
-      }
-      list.textContent = "";
-      for (const r of releases) {
-        const row = document.createElement("div");
-        row.className = "ws-rel-row" + (r.status === "failed" ? " failed" : "");
-        const badge = r.channel === "live"
-          ? `<span class="ws-rel-badge live">live</span>`
-          : `<span class="ws-rel-badge">dev</span>`;
-        const state = r.status !== "ready" ? `<span class="ws-rel-state ${r.status}">${r.status}</span>` : "";
-        row.innerHTML = `
-          <div class="ws-rel-row-head">
-            <span class="ws-rel-version">${relEsc(r.version)}</span>${badge}${state}
-            <span class="ws-rel-date">${relEsc(relDate(r.promotedAt || r.createdAt))}</span>
-            <span class="ws-rel-actions">
-              ${r.channel === "dev" && r.status === "ready" ? `<button type="button" class="action-btn ws-rel-promote" title="Publish this release to everyone">Promote to live</button>` : ""}
-              <button type="button" class="action-btn ws-rel-notes-btn" title="Release notes">Notes</button>
-            </span>
-          </div>
-          ${r.notes ? `<div class="ws-rel-notes-preview">${relEsc(r.notes.split("\n").slice(0, 2).join(" · ").slice(0, 140))}</div>` : ""}
-          ${r.status === "failed" && r.error ? `<div class="ws-rel-error">${relEsc(r.error.slice(0, 300))}</div>` : ""}`;
-        row.querySelector(".ws-rel-promote")?.addEventListener("click", async (e) => {
-          const btn = e.currentTarget as HTMLButtonElement;
-          btn.disabled = true;
-          btn.textContent = "Promoting…";
-          const res = await relIpc().appReleasePromote?.(slug, r.id).catch(() => ({ ok: false, error: "promote failed" }));
-          if (!res?.ok) setNote(res?.error || "Promote failed", true);
-          else setNote(`v${r.version} is live`);
-          void refresh();
-        });
-        // Notes: an inline editor under the row — save writes through, blank clears.
-        row.querySelector(".ws-rel-notes-btn")?.addEventListener("click", () => {
-          const openEd = row.querySelector(".ws-rel-notes-edit");
-          if (openEd) { openEd.remove(); return; }
-          const ed = document.createElement("div");
-          ed.className = "ws-rel-notes-edit";
-          ed.innerHTML = `<textarea rows="3" placeholder="What changed in ${relEsc(r.version)}…">${relEsc(r.notes || "")}</textarea><button type="button" class="action-btn">Save</button>`;
-          ed.querySelector("button")!.addEventListener("click", async () => {
-            const text = (ed.querySelector("textarea") as HTMLTextAreaElement).value.trim();
-            const res = await relIpc().appReleaseNotes?.(slug, r.id, text || null).catch(() => ({ ok: false, error: "save failed" }));
-            if (!res?.ok) { setNote(res?.error || "Couldn't save the notes", true); return; }
-            setNote("Notes saved");
-            void refresh();
-          });
-          row.appendChild(ed);
-        });
-        list.appendChild(row);
-      }
-      // A build in flight → poll until it settles; nothing owed → sleep.
-      if (releases.some((r) => REL_BUILDING.has(r.status))) {
-        pollTimer = window.setTimeout(() => { if (body.isConnected) void refresh(); }, REL_POLL_MS);
-      }
-    }
-
-    sel.addEventListener("change", () => {
-      slot.slug = sel.value;
-      setNote("");
-      saveLayout();
-      void refresh();
-    });
-    body.querySelector(".ws-rel-refresh")?.addEventListener("click", () => { setNote(""); void refresh(); });
-    deployBtn.addEventListener("click", async () => {
-      deployBtn.disabled = true;
-      setNote("Building from your working folder…");
-      try {
-        // Empty slug = deploy WHATEVER the working folder builds (its
-        // manifest names the app); a picked app is a guard — the build
-        // refuses if the folder holds a different project.
-        const res = await relIpc().appBuildDeploy?.(sel.value);
-        if (res?.ok) {
-          setNote(`Built v${res.result?.version || "?"}${res.result?.url ? ` — live at ${res.result.url}` : ""}`);
-          // A current-folder build names its app — land the picker on it so
-          // the history below shows what was just cut.
-          const builtSlug = res.result?.slug;
-          if (!sel.value && builtSlug && apps.some((a) => a.slug === builtSlug)) {
-            sel.value = builtSlug;
-            slot.slug = builtSlug;
-          }
-        } else setNote(res?.error || "Build failed", true);
-      } catch (err) {
-        setNote(err instanceof Error ? err.message : "Build failed", true);
-      } finally {
-        deployBtn.disabled = false;
-        void refresh();
-      }
-    });
-    accessSel.addEventListener("change", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      try {
-        await relIpc().panelAppsUpdate?.(app.id, { access: accessSel.value });
-        app.access = accessSel.value;
-        setNote(accessSel.value === "public" ? "Anyone with the link can reach it" : "Only signed-in org members can reach it");
-      } catch { setNote("Couldn't change access", true); }
-    });
-    hostDeploy.addEventListener("click", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      hostDeploy.disabled = true;
-      setNote("Deploying…");
-      try {
-        const r = await relIpc().hostingDeploy?.(app.slug);
-        if (r?.ok) setNote(r.deployment?.url ? `Deploying — ${r.deployment.url}` : "Deploying");
-        else setNote(r?.error || "Deploy failed", true);
-      } catch (err) { setNote(err instanceof Error ? err.message : "Deploy failed", true); }
-      finally { hostDeploy.disabled = false; void refreshHosting(); }
-    });
-    exportBtn.addEventListener("click", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      exportBtn.disabled = true;
-      setNote("Exporting…");
-      try {
-        const r = await relIpc().appExport?.(app.id);
-        if (r?.ok) setNote(r.path ? `Exported to ${r.path}` : "Exported");
-        else setNote(r?.error || "Export failed", true);
-      } catch (err) { setNote(err instanceof Error ? err.message : "Export failed", true); }
-      finally { exportBtn.disabled = false; }
-    });
-    void refresh();
   }
 
   // ── Tasks view — every scheduled task, next fire, last outcome, run feed ──
@@ -9621,7 +9293,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9886,8 +9558,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

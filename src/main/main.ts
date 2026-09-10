@@ -96,6 +96,7 @@ import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
+import { DripManager, setDripManagerInstance } from "./drip-manager";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 
@@ -104,6 +105,7 @@ let mainWindow: BrowserWindow | null = null;
 let homeView: HomeView;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
+let dripManager: DripManager | null = null;
 
 
 
@@ -130,6 +132,7 @@ async function createWindow() {
   // the terminal — a renderer that dies during boot otherwise reads as "the
   // splash never dismisses" with zero evidence (2026-09-10).
   if (!app.isPackaged) {
+    dripManager?.setMainWindow(mainWindow);
     mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
       if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`);
     });
@@ -370,6 +373,13 @@ async function boot() {
 
   layoutManager = new LayoutManager();
   commandParser = new CommandParser();
+  // Drips are BACK (his order, 2026-09-10) — presets in local SQLite, the
+  // overlays untouched. The manager parents windowed effects to mainWindow
+  // (wired in createWindow).
+  dripManager = new DripManager();
+  setDripManagerInstance(dripManager);
+  if (mainWindow) dripManager.setMainWindow(mainWindow);
+  commandParser.setDripManager(dripManager);
 
 
   // OS windows, the command palette, and the keytap overlay are retired —
@@ -414,6 +424,14 @@ async function boot() {
     });
   }
 
+
+  // ⌘⇧. anywhere on the system: kill every playing drip effect. A full-screen
+  // overlay with no timeout reads exactly like a dead app — this is the out.
+  globalShortcut.register("CommandOrControl+Shift+.", () => {
+    try { dripManager?.stopAll(); } catch (e) {
+      console.error("[drips] stop shortcut failed:", (e as Error).message);
+    }
+  });
 
   // ⌘⇧Space anywhere on the system: front Glyphh and open the command
   // center (the renderer's opener applies the desktop-overlay preference).
@@ -1236,6 +1254,7 @@ function cleanupAll(backstopMs = 4000) {
     ["localMcpServer", () => stopLocalMcpServer()],
     ["appWorkers", () => stopAllAppWorkers()],
     ["schedules", () => stopAllSchedules()],
+    ["drips", () => dripManager?.cleanup()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],
   ];
