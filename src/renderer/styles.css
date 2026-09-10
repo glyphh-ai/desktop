@@ -20291,3 +20291,18 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* Agent card dev-tools kebab — sits with the head's icon buttons. */
 .echo-card-devtools svg { width: 15px; height: 15px; }
+
+/* ── Rail Recents — CLI session rows (help/code.ts) ───────── */
+.rail-sess-list { display: flex; flex-direction: column; gap: 2px; padding: 0 6px 8px; overflow-y: auto; min-height: 0; }
+.rail-sess-row {
+  appearance: none; background: none; border: 0; border-radius: 8px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 6px 8px; cursor: pointer; text-align: left; width: 100%;
+}
+.rail-sess-row:hover { background: var(--hover); }
+.rail-sess-title {
+  font-size: 12px; color: var(--text); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rail-sess-sub { font-size: 10.5px; color: var(--text-3); }
+.rail-sess-empty { font-size: 11.5px; color: var(--text-3); padding: 6px 10px 10px; }

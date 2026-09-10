@@ -262,7 +262,9 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   }
 }
 
-export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean; prompt?: string; light?: boolean }
+/** resume: true = the CLI's continue-last; a string = a SPECIFIC session id
+ *  (claude --resume <id> / codex resume <id>) — the rail Recents rides it. */
+export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
@@ -303,8 +305,8 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // RESUME: the CLI's own continue-last affordance. claude takes a flag;
   // codex resumes via a subcommand; CLIs without one just start fresh.
   const resumePart = ov?.resume
-    ? row.cli === "claude" ? " --continue"
-      : row.cli === "codex" ? " resume --last"
+    ? row.cli === "claude" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue")
+      : row.cli === "codex" ? (typeof ov.resume === "string" ? ` resume '${ov.resume.replace(/'/g, "")}'` : " resume --last")
       : ""
     : "";
   // An INITIAL PROMPT seeds the interactive session (claude/codex take it
@@ -354,7 +356,77 @@ export function listCliAgents(): CliAgentListed[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ── Recent CLI sessions — the rail's Recents list ───────────────────────────
+// Claude's store is the source: ~/.claude/projects/<munged-cwd>/<id>.jsonl,
+// one file per session. The head of the file carries the real cwd and the
+// first user message; mtime orders the list. (Codex/Gemini read differently —
+// they join here when their stores are wired.)
+
+export interface CliSessionRow { id: string; cli: "claude"; title: string; cwd: string; mtime: number }
+
+export function listCliSessions(limit = 20): CliSessionRow[] {
+  const root = path.join(homedir(), ".claude", "projects");
+  let dirs: string[] = [];
+  try { dirs = fs.readdirSync(root); } catch { return []; }
+  const files: Array<{ file: string; mtime: number }> = [];
+  for (const d of dirs) {
+    const dir = path.join(root, d);
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir).filter((n) => n.endsWith(".jsonl")); } catch { continue; }
+    for (const n of names) {
+      try {
+        const st = fs.statSync(path.join(dir, n));
+        if (st.size > 0) files.push({ file: path.join(dir, n), mtime: st.mtimeMs });
+      } catch { /* raced */ }
+    }
+  }
+  files.sort((a, b) => b.mtime - a.mtime);
+  const out: CliSessionRow[] = [];
+  for (const f of files.slice(0, limit * 2)) {
+    const row = readClaudeSessionHead(f.file, f.mtime);
+    if (row) out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | null {
+  let head = "";
+  try {
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(32_768);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    head = buf.toString("utf-8", 0, n);
+  } catch { return null; }
+  let cwd = "";
+  let title = "";
+  for (const line of head.split("\n")) {
+    if (!line.trim()) continue;
+    let j: Record<string, unknown>;
+    try { j = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+    if (!cwd && typeof j.cwd === "string") cwd = j.cwd;
+    if (!title && j.type === "summary" && typeof j.summary === "string") title = j.summary;
+    if (!title && j.type === "user") {
+      const msg = (j.message as { content?: unknown } | undefined)?.content;
+      if (typeof msg === "string") title = msg;
+      else if (Array.isArray(msg)) {
+        const t = msg.find((c) => (c as { type?: string }).type === "text") as { text?: string } | undefined;
+        if (t?.text) title = t.text;
+      }
+    }
+    if (cwd && title) break;
+  }
+  if (!title) return null;   // meta-only file — nothing a human would resume
+  title = title.replace(/\s+/g, " ").trim().slice(0, 80);
+  return { id: path.basename(file, ".jsonl"), cli: "claude", title, cwd, mtime };
+}
+
 export function registerCliAgentsIpc(): void {
+  ipcMain.handle("cli-sessions-list", () => {
+    try { return { ok: true, sessions: listCliSessions() }; }
+    catch (err) { return { ok: false, sessions: [], error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("cli-agents-list", () => {
     try { return { ok: true, agents: listCliAgents() }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), agents: [] }; }

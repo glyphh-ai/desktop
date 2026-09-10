@@ -4271,6 +4271,7 @@ const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
   { toggle: "rail-agents-toggle", body: "rail-agents-body", pref: "railPanelAgentsOpen" },
+  { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
 ];
 
 function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
@@ -4325,7 +4326,7 @@ let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
 // CLI agents (the build, 2026-09-10) — their own foldable tray, painted with
 // the exact grammar Workspaces uses (tiles, search, 15-page pager).
-interface RailCliAgent { id: string; name: string; cli?: string; icon?: string }
+interface RailCliAgent { id: string; name: string; cli?: string; icon?: string; cwd?: string }
 let railAgents: RailCliAgent[] = [];
 const RAIL_CLI_MARK_URLS: Record<string, string> = {
   claude: "https://claude.ai/favicon.ico",
@@ -4351,6 +4352,58 @@ interface RailGridHost { list: HTMLElement; search: HTMLInputElement | null; pag
 const railAppsHosts = new Set<RailGridHost>();
 const railLayoutsHosts = new Set<RailGridHost>();
 const railAgentsHosts = new Set<RailGridHost>();
+// ── Rail Recents — the CLI agents' own session stores (his order,
+//    2026-09-10): Claude first; a click resumes that exact conversation on
+//    its agent (matching cwd wins, then matching CLI, then the first agent).
+interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number }
+let railSessions: RailSession[] = [];
+
+function railAgo(ms: number): string {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 90) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86_400)}d ago`;
+}
+
+async function loadRailSessions(): Promise<void> {
+  const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: RailSession[] }> };
+  const r = await api.cliSessionsList?.().catch(() => null);
+  railSessions = r?.ok ? r.sessions : [];
+  renderRailSessions();
+}
+
+function renderRailSessions(): void {
+  const host = el<HTMLDivElement>("recent-sessions-list");
+  if (!host) return;
+  const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
+  const items = q ? railSessions.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : railSessions;
+  host.textContent = "";
+  if (!items.length) {
+    host.innerHTML = `<div class="rail-sess-empty">${q ? "No sessions match." : "No recent sessions yet."}</div>`;
+    return;
+  }
+  for (const sess of items) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "rail-sess-row";
+    row.innerHTML = `<span class="rail-sess-title"></span><span class="rail-sess-sub"></span>`;
+    row.querySelector(".rail-sess-title")!.textContent = sess.title;
+    const folder = sess.cwd ? sess.cwd.split("/").filter(Boolean).pop() ?? "" : "";
+    row.querySelector(".rail-sess-sub")!.textContent = [folder, railAgo(sess.mtime)].filter(Boolean).join(" · ");
+    row.title = sess.title;
+    row.addEventListener("click", () => {
+      const agent = railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
+        ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
+        ?? railAgents[0];
+      if (!agent) return;
+      (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
+        .__wbOpenAgentCli?.(agent.id, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined });
+    });
+    host.appendChild(row);
+  }
+}
+
 function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
   (kind === "apps" ? railAppsHosts : kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);
 }
@@ -4397,6 +4450,7 @@ async function loadRecentApps(): Promise<void> {
       yoAgents.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
     ]);
     railAgents = agentsRes?.ok ? agentsRes.agents : [];
+    void loadRailSessions();
     for (const cli of new Set(railAgents.map((a) => a.cli || "claude"))) {
       const url = RAIL_CLI_MARK_URLS[cli];
       if (!url || railCliMarks[cli]) continue;
@@ -4667,6 +4721,8 @@ function initRailApps(): void {
     ? { list: el<HTMLDivElement>("recent-agents-list")!, search: el<HTMLInputElement>("recent-agents-search"), page: 0 }
     : null;
   if (leftAgents) registerRailGridHost("agents", leftAgents);
+  el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
+  el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
   syncRailLayout();
   void loadRecentApps();

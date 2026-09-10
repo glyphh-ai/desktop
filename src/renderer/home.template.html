@@ -98,6 +98,21 @@
             <span>More</span>
           </button>
         </nav>
+        <!-- Recents — BACK (his order, 2026-09-10): the sessions are the CLI
+             agents' own stores now (Claude first); a click resumes that exact
+             conversation on its agent. Same section grammar as Apps below. -->
+        <div class="code-rail-label app-rail-section-head" data-rail-section="recents">
+          <button id="rail-recents-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Recents</span>
+          </button>
+        </div>
+        <div id="rail-recents-body" class="app-rail-section-body" data-rail-section="recents">
+          <div class="app-rail-search">
+            <input id="recent-sessions-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
+          </div>
+          <div id="recent-sessions-list" class="rail-sess-list"></div>
+        </div>
         <div class="code-rail-label app-rail-section-head" data-rail-section="apps">
           <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>

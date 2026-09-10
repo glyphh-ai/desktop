@@ -23,6 +23,7 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
+import { listCliAgents } from "./cli-agents.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -113,6 +114,12 @@ function buildMcpServer(): McpServer {
   //    schedulable and visible in the UI, not beside it) ─────────────────
   const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
   mcp.tool(
+    "agents_list",
+    "The user's CLI-agent roster — the ONLY valid values for a task slot's agent binding and for task_run's agent override. Returns [{ id, name, cli, model, cwd }].",
+    {},
+    async () => text(listCliAgents().map((a) => ({ id: a.id, name: a.name, cli: a.cli, model: a.model ?? null, cwd: a.cwd ?? null }))),
+  );
+  mcp.tool(
     "tasks_list",
     "List the user's Glyphh TASKS. A task is a PROGRAM — a spec an agent authors and can rewrite; only the slots\u2192agents are fixed. Returns [{ slug, name, description, program, slots: [{ name, label?, agent }] }].",
     {},
@@ -129,7 +136,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "task_save",
-    "Create or update a Glyphh task. The program is the SPEC the slotted agent runs — write it freely (steps inside it can carry prompts or reference Glyphh skills via skill_get); the agent building the task owns its shape. slots fix which CLI agent runs it (agent = an id from the user's roster; null = first agent). Saved tasks appear in the Tasks UI, where the user schedules them on a cron or runs them one-off.",
+    "Create or update a Glyphh task. The program is the SPEC the slotted agent runs — write it freely (steps inside it can carry prompts or reference Glyphh skills via skill_get); the agent building the task owns its shape. slots are the FIXED cast: create ONE SLOT PER STAGE of the pipeline (e.g. plan/review/build), each bound to a real agent id from agents_list (null leaves it for the user to pick in the Tasks UI) — never collapse a multi-model pipeline into a single slot. Saved tasks appear in the Tasks UI, where the user schedules them on a cron or runs them one-off.",
     {
       slug: z.string().optional().describe("Existing task slug to update; omit to create"),
       name: z.string().describe("Task name"),

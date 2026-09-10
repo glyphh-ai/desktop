@@ -4598,6 +4598,40 @@ async function init(): Promise<void> {
         const expand = card.querySelector(".echo-card-expand");
         if (expand?.nextSibling) head.insertBefore(devBtn, expand.nextSibling);
         else head.appendChild(devBtn);
+        const agentId = (e.tile.slug || "").slice(6);
+        const wbW = window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; fresh?: boolean; cwd?: string }) => void };
+        const histBtn = document.createElement("button");
+        histBtn.className = "ws-icon-btn echo-card-sessions";
+        histBtn.title = "Recent sessions";
+        histBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>`;
+        histBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const agentRow = cliAgentRows.find((x) => x.id === agentId);
+          void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }> } })
+            .glyphh?.cliSessionsList?.().then((r) => {
+              const sessions = (r?.ok ? r.sessions : [])
+                .filter((x) => x.cli === (agentRow?.cli ?? "claude"))
+                .filter((x) => !agentRow?.cwd || x.cwd === agentRow.cwd)
+                .slice(0, 12);
+              showTileMenu(ev as MouseEvent, sessions.length
+                ? sessions.map((x) => ({
+                    label: x.title.length > 48 ? `${x.title.slice(0, 48)}…` : x.title,
+                    onPick: () => { closeCard(e); wbW.__wbOpenAgentCli?.(agentId, undefined, { resumeId: x.id, cwd: x.cwd || undefined }); },
+                  }))
+                : [{ label: "No recent sessions", onPick: () => {} }]);
+            });
+        });
+        const plusBtn = document.createElement("button");
+        plusBtn.className = "ws-icon-btn echo-card-newsession";
+        plusBtn.title = "New session";
+        plusBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+        plusBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          closeCard(e);
+          wbW.__wbOpenAgentCli?.(agentId, undefined, { fresh: true });
+        });
+        const expandRef = card.querySelector(".echo-card-expand");
+        if (expandRef) { head.insertBefore(histBtn, expandRef); head.insertBefore(plusBtn, expandRef); }
         devBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           // Each entry is a TOGGLE: ✓ marks a tool that's open; picking an
@@ -5759,7 +5793,8 @@ async function init(): Promise<void> {
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
     /** Open a CLI agent: dependencies first (the local MCP server), then the
      *  pre-config types into a fresh terminal card named for the agent. */
-    const openAgentCliCard = (t: EchoTile, prompt?: string): void => {
+    type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };
+    const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
       const a = t.cliAgent;
       if (!a) return;
       const appLight = document.documentElement.getAttribute("data-theme") === "light";
@@ -5767,7 +5802,9 @@ async function init(): Promise<void> {
         .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const row = cliAgentRows.find((x) => x.id === a.id);
-          const mode = row?.session ?? "keep";
+          // fresh (+ button) and resume-a-specific-session both need their
+          // OWN pty — a parked buffer is a different conversation.
+          const mode = opts?.fresh || opts?.resumeId ? "new" : row?.session ?? "keep";
           // NO cliAgent on the minted tile — activateTile routes cliAgent
           // tiles back HERE (that was an infinite loop, his report).
           const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
@@ -5798,9 +5835,14 @@ async function init(): Promise<void> {
               if (tt.spawned) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
               else tt.initCmd = cmd;
             };
-            if (wantResume || prompt) {
-              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean; prompt?: string; light?: boolean }) => Promise<{ ok: boolean; command?: string }> } })
-                .glyphh?.cliAgentOpen?.(a.id, { light: appLight, ...(wantResume ? { resume: true } : {}), ...(prompt ? { prompt } : {}) })
+            if (wantResume || prompt || opts?.resumeId || opts?.cwd) {
+              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; prompt?: string; light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string }> } })
+                .glyphh?.cliAgentOpen?.(a.id, {
+                  light: appLight,
+                  ...(opts?.resumeId ? { resume: opts.resumeId } : wantResume ? { resume: true } : {}),
+                  ...(opts?.cwd ? { cwd: opts.cwd } : {}),
+                  ...(prompt ? { prompt } : {}),
+                })
                 .then((rr) => finish((rr?.ok && rr.command) || a.command));
             } else {
               finish((r?.ok && r.command) || a.command);
@@ -5808,15 +5850,15 @@ async function init(): Promise<void> {
           }
         });
     };
-    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string) => void }).__wbOpenAgentCli = (id: string, prompt?: string) => {
+    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli = (id: string, prompt?: string, opts?: AgentOpenOpts) => {
       const row = cliAgentRows.find((x) => x.id === id);
-      if (row) { openAgentCliCard(cliAgentTileOf(row), prompt); return; }
+      if (row) { openAgentCliCard(cliAgentTileOf(row), prompt, opts); return; }
       // Section saved an agent this session hasn't cached yet — fetch, then open.
       void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
         if (!r?.ok) return;
         cliAgentRows = r.agents;
         const fresh = cliAgentRows.find((x) => x.id === id);
-        if (fresh) openAgentCliCard(cliAgentTileOf(fresh), prompt);
+        if (fresh) openAgentCliCard(cliAgentTileOf(fresh), prompt, opts);
       }).catch(() => {});
     };
     /** "Here it is" — surface a card the user just aimed at. Landing in an
@@ -7522,16 +7564,14 @@ async function init(): Promise<void> {
         </div>
         <div class="ws-tasks-cols">
           <div class="ws-tasks-col">
-            <div class="ws-tasks-coltitle">Create with the agent</div>
-            <div class="ws-tasks-prompts dash-starters"></div>
+            <div class="ws-tasks-coltitle">All tasks</div>
+            <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
           </div>
           <div class="ws-tasks-col">
             <div class="ws-tasks-coltitle">Recent runs</div>
             <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
           </div>
         </div>
-        <div class="ws-tasks-coltitle ws-tasks-alltitle">All tasks</div>
-        <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
         </div>
       </div>`;
     const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
@@ -7642,15 +7682,19 @@ async function init(): Promise<void> {
       }
     }
 
+    let taskPage = 0;
     function paintList(): void {
       if (!body.isConnected) return;
       if (!rows.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — create one on the left, or just ask the agent.</div>`;
+        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — open a task and add a schedule.</div>`;
         return;
       }
       list.textContent = "";
       const now = Date.now();
-      for (const r of rows) {
+      const PER = 10;
+      const totalPages = Math.max(1, Math.ceil(rows.length / PER));
+      taskPage = Math.max(0, Math.min(taskPage, totalPages - 1));
+      for (const r of rows.slice(taskPage * PER, (taskPage + 1) * PER)) {
         const card = document.createElement("div");
         card.className = "ws-task-card" + (r.task.enabled ? "" : " off");
         const status = r.task.lastStatus
@@ -7671,8 +7715,36 @@ async function init(): Promise<void> {
             <span class="ws-task-cron" title="${relEsc(r.task.cron)}">${relEsc(cronHuman(r.task.cron))}</span>
           </div>
           ${r.task.lastError ? `<div class="ws-task-lasterr">${relEsc(r.task.lastError)}</div>` : ""}`;
-        card.addEventListener("click", () => { slot.taskId = r.task.id; void paintDetail(r); });
+        // A task card opens the TASK for editing (his order, 2026-09-10);
+        // run history stays one click away in Recent runs.
+        card.addEventListener("click", () => {
+          const open = (window as unknown as { __glyphhOpenTask?: (slug: string) => void }).__glyphhOpenTask;
+          if (open) open(r.task.target);
+          else { slot.taskId = r.task.id; void paintDetail(r); }
+        });
         list.appendChild(card);
+      }
+      if (totalPages > 1) {
+        const bar = document.createElement("div");
+        bar.className = "pagination-bar";
+        const nav = document.createElement("div");
+        nav.className = "pagination-nav";
+        const mk = (label: string, to: number, disabled: boolean): HTMLButtonElement => {
+          const b = document.createElement("button");
+          b.className = "pagination-btn";
+          b.textContent = label;
+          b.disabled = disabled;
+          b.addEventListener("click", () => { taskPage = to; paintList(); });
+          return b;
+        };
+        nav.appendChild(mk("\u2039", taskPage - 1, taskPage === 0));
+        const info = document.createElement("span");
+        info.className = "pagination-info";
+        info.textContent = `${taskPage + 1}/${totalPages}`;
+        nav.appendChild(info);
+        nav.appendChild(mk("\u203a", taskPage + 1, taskPage >= totalPages - 1));
+        bar.appendChild(nav);
+        list.appendChild(bar);
       }
     }
 
@@ -7737,26 +7809,6 @@ async function init(): Promise<void> {
     // ── Prompt cards — creating a scheduled task is a CONVERSATION, not a
     // form: each card seeds the composer with a prompt the agent knows how to
     // fulfil (build the skill + schedule it), then the user makes it theirs.
-    const TASK_PROMPTS: Array<{ title: string; prompt: string }> = [
-      { title: "Morning inbox brief", prompt: "Create a skill that checks my email every weekday at 8:00, summarizes what needs a reply, and schedule it as a daily task." },
-      { title: "Daily digest", prompt: "Build a skill that runs every day at 9:00 and writes me a short digest of yesterday: what my agents did, anything that failed, anything waiting on me. Schedule it." },
-      { title: "Watch a page", prompt: "Create a skill that checks a web page for changes every hour and messages me only when something meaningful changed. Ask me for the page, then schedule it." },
-      { title: "Weekly report", prompt: "Create a skill that runs Mondays at 9:00 and drafts my weekly report from last week's sessions and tasks. Schedule it weekly." },
-      { title: "Something else", prompt: "Help me create a scheduled task: ask me what should happen and when, then build the skill and schedule it." },
-    ];
-    const promptsHost = body.querySelector(".ws-tasks-prompts") as HTMLElement;
-    for (const tp of TASK_PROMPTS) {
-      // The + New Session landing's starter cards ARE the look — same classes,
-      // so the theme styles this page for free.
-      const cardEl = document.createElement("button");
-      cardEl.type = "button";
-      cardEl.className = "dash-starter";
-      cardEl.innerHTML = `<span class="dash-starter-top"><span class="dash-starter-title">${relEsc(tp.title)}</span></span><span class="dash-starter-blurb">${relEsc(tp.prompt)}</span>`;
-      cardEl.addEventListener("click", () => {
-        (window as unknown as { __glyphhSeedSession?: (text: string) => void }).__glyphhSeedSession?.(tp.prompt);
-      });
-      promptsHost.appendChild(cardEl);
-    }
 
     body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintOverview(); }); });
     await load();
