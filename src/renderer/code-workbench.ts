@@ -5588,6 +5588,8 @@ async function init(): Promise<void> {
       }
       void openAgentPanel();
     };
+    // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
+    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh();
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
