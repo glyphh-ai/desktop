@@ -353,7 +353,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
 // within a single app launch (but re-arms on a fresh launch).
 const WALL_STATE_PREF = "echoWallState";
 let wallRestored = false;
-type WallCard = { kind: "app" | "tool" | "section"; slug?: string; url?: string; name?: string; section?: string; toolView?: string };
+type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string };
 type WallState = { layout: string | null; cards: WallCard[] };
 
 // ── Browser panel: start page + error pages ─────────────────────────────
@@ -3375,6 +3375,9 @@ async function init(): Promise<void> {
         const t = e.tile;
         if (t.kind === "agent" || t.slug === "glyphh-home") continue;
         if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
+        // A CLI agent card is NOT a bare terminal — losing the id here is why
+        // a reopened app "reverted to claude" (his report, 2026-09-10).
+        else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
         else if (t.kind === "tool" && t.toolView) cards.push({ kind: "tool", toolView: t.toolView });
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
@@ -3408,6 +3411,7 @@ async function init(): Promise<void> {
         if (saved?.cards?.length) {
           for (const c of saved.cards) {
             if (c.kind === "section" && c.section) echoCtl.openSection(c.section);
+            else if (c.kind === "agent" && c.agent) (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(c.agent);
             else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
             else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
           }
