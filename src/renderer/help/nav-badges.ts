@@ -1,37 +1,12 @@
 /**
  * nav-badges.ts — the red notification counts on nav icons (his rule,
- * 2026-08-20): Marketplace shows pending review activity (a platform admin
- * sees the queue size; an author sees their changes-requested listings), and
- * Settings shows unread support-case replies. Computed here (the modules with
- * transport access), broadcast as `glyphh:nav-badges` — the command center
- * paints dock slots and page tiles off the event.
+ * 2026-08-20). THE PURGE: the marketplace half died with the storefront;
+ * Settings' unread support-case replies remain — computed here (the module
+ * with transport access), broadcast as `glyphh:nav-badges`, painted by the
+ * command center off the event.
  */
 
-import { mkt } from "./marketplace-data.js";
-import { listingReviewState } from "./marketplace-dev.js";
-
-export interface NavBadges { marketplace: number; settings: number }
-
-async function marketplaceCount(): Promise<number> {
-  // Platform admin first: the review queue IS the pending work. Gated on the
-  // flag — an unconditional call 403'd (console noise) for everyone else.
-  try {
-    const info = await window.glyphh.getAccountInfo?.() as { isPlatformAdmin?: boolean; role?: string } | null;
-    if (info?.isPlatformAdmin || info?.role === "super_admin") {
-      const q = await mkt.adminQueue();
-      if (Array.isArray(q.releases)) return q.releases.length;
-    }
-  } catch { /* not an admin — fall through to the author's view */ }
-  // Author: listings with changes requested (a ruling waiting on them).
-  try {
-    const apps = (await mkt.myApps()).apps.filter((a) => a.kind === "glyphh" && a.owned === true).slice(0, 12);
-    const states = await Promise.all(apps.map(async (a) => {
-      try { return listingReviewState((await mkt.releases(a.slug)).releases); }
-      catch { return null; }
-    }));
-    return states.filter((s) => s?.cls === "rejected").length;
-  } catch { return 0; }
-}
+export interface NavBadges { settings: number }
 
 async function settingsCount(): Promise<number> {
   try {
@@ -47,8 +22,8 @@ async function settingsCount(): Promise<number> {
 let timer = 0;
 
 export async function refreshNavBadges(): Promise<void> {
-  const [marketplace, settings] = await Promise.all([marketplaceCount(), settingsCount()]);
-  window.dispatchEvent(new CustomEvent<NavBadges>("glyphh:nav-badges", { detail: { marketplace, settings } }));
+  const settings = await settingsCount();
+  window.dispatchEvent(new CustomEvent<NavBadges>("glyphh:nav-badges", { detail: { settings } }));
 }
 
 /** Start the poll: first pass after boot settles, then every 3 minutes.

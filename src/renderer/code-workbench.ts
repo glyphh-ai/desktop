@@ -2298,15 +2298,14 @@ async function init(): Promise<void> {
     // review activity) and Settings (unread support replies). nav-badges.ts
     // computes + broadcasts; this paints dock slots and page tiles.
     window.addEventListener("glyphh:nav-badges", (ev) => {
-      const d = (ev as CustomEvent<{ marketplace: number; settings: number }>).detail;
+      const d = (ev as CustomEvent<{ settings: number }>).detail;
       if (!d) return;
-      for (const [key, n] of [["marketplace", d.marketplace], ["settings", d.settings]] as const) {
-        document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="${key}"], .echo-app-btn[data-nav="${key}"]`)
-          .forEach((el2) => {
-            if (n > 0) el2.dataset.badge = String(Math.min(99, n));
-            else delete el2.dataset.badge;
-          });
-      }
+      const n = d.settings;
+      document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="settings"], .echo-app-btn[data-nav="settings"]`)
+        .forEach((el2) => {
+          if (n > 0) el2.dataset.badge = String(Math.min(99, n));
+          else delete el2.dataset.badge;
+        });
     });
     // TINY HOVER TICK (his ask, 2026-08-19): sweeping the cursor over apps on
     // the command center clicks softly. Delegated on the whole wall body so

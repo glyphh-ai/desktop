@@ -8,18 +8,10 @@ import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
-import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
-import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadClientsPanel } from "./settings-clients.js";
-import { loadLoops, initLoopsEvents } from "./loops.js";
-import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
-import { loadAgents, initAgentsEvents } from "./agents.js";
-import { initSkills } from "./skills.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
-import { wireDipWatcher } from "./dip-watch.js";
-import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
@@ -108,18 +100,6 @@ export function resetEditors() {
     document.getElementById("layouts-list")?.classList.remove("hidden");
     document.getElementById("layouts-toolbar")?.classList.remove("hidden");
   }
-  const re = document.getElementById("rip-editor");
-  if (re && !re.classList.contains("hidden")) {
-    re.classList.add("hidden");
-    document.getElementById("rips-list")?.classList.remove("hidden");
-    document.getElementById("rips-toolbar")?.classList.remove("hidden");
-  }
-  const de = document.getElementById("drip-editor");
-  if (de && !de.classList.contains("hidden")) {
-    de.classList.add("hidden");
-    document.getElementById("drips-list")?.classList.remove("hidden");
-    document.getElementById("drips-toolbar")?.classList.remove("hidden");
-  }
   const ad = document.getElementById("app-detail");
   if (ad && !ad.classList.contains("hidden")) {
     ad.classList.add("hidden");
@@ -148,16 +128,10 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
-  else if (sec === "loops") void loadLoops();
-  else if (sec === "drips") loadDrips();
-  else if (sec === "skills") void loadSkillsLibrary();
-  else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
-  else if (sec === "marketplace") loadMarketplaceSection();
   else if (sec === "code") loadCode();
-  else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
@@ -207,7 +181,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "marketplace", "connections", "layouts", "agents", "loops", "skills", "drips"].includes(section)) {
+  if (["apps", "layouts"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -840,7 +814,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
-  else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -895,8 +868,6 @@ function parkSettingsDocs(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
-  connections: { host: "settings-connections-host" },
-  agents: { host: "settings-agents-host" },
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
 };
@@ -994,7 +965,7 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   // "artifacts" is the files section's rail name.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", marketplace: "marketplace", connections: "connections", layouts: "layouts", artifacts: "files" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
@@ -1007,16 +978,10 @@ export function initHelp() {
   // surface: Loops/Skills/Agents open as section cards, Browser as the
   // preview tool, Scheduled Tasks as the hidden tasks view.
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
-    { label: "Loops", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("loops") },
-    { label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("skills") },
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
     { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
-    { label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("agents") },
   ];
   const moreToggle = document.getElementById("rail-more-toggle");
   let moreMenu: HTMLDivElement | null = null;
@@ -1154,22 +1119,12 @@ export function initHelp() {
   boot("org", initOrgPanel);
   boot("settings", initSettings);
   boot("apps", initApps);
-  boot("marketplace", initMarketplace);
-  boot("connections", initConnections);
   boot("layouts", initLayoutsEvents);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
-  boot("drips", initDripsEvents);
-  boot("loops", initLoopsEvents);
-  boot("skills-library", initSkillsLibraryEvents);
-  boot("agents", initAgentsEvents);
-  boot("skills", initSkills);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
-  // Typing the exact `.dip` sequence ANYWHERE (agent input, any field, or no
-  // field at all) opens the drip picker — see help/dip-watch.ts.
-  wireDipWatcher();
   // The shell steers sections too (the first-run walkthrough lands on Home).
   window.glyphh.onGotoSection?.((section) => {
     // "settings:account" → section + sub-panel (the nav apps use this).
