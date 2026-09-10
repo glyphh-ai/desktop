@@ -16287,7 +16287,9 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   background: var(--surface-3);
 }
 
-.app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
+/* Favicons sit INSET in the plate — full-bleed read a tad oversized next
+   to the 28px panel marks (his eye, 2026-09-10). */
+.app-rail-tile .tile-icon img { width: 22px; height: 22px; object-fit: contain; border-radius: 5px; }
 /* Panel tiles (Slides/Docs/Design/Band/…) carry their OWN filled marks — no
    frame, just the mark, bigger. The gray box stays only for app favicons,
    which are arbitrary images that need one. */
