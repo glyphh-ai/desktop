@@ -4332,6 +4332,8 @@ let railAgents: RailCliAgent[] = [];
 const RAIL_CLI_MARK_URLS: Record<string, string> = {
   claude: "https://claude.ai/favicon.ico",
   codex: "https://openai.com/favicon.ico",
+  gemini: "https://gemini.google.com/favicon.ico",
+  copilot: "https://github.com/favicon.ico",
 };
 const railCliMarks: Record<string, string> = {};   // cli → data URL, cached
 let railRecentTs: Record<string, number> = {};

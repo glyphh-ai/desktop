@@ -10,12 +10,14 @@
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
-interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
 
 /** The CLIs' public web marks — the brand icons their agents wear. */
 const CLI_MARK_URLS: Record<string, string> = {
   claude: "https://claude.ai/favicon.ico",
   codex: "https://openai.com/favicon.ico",
+  gemini: "https://gemini.google.com/favicon.ico",
+  copilot: "https://github.com/favicon.ico",
 };
 
 const api = () => (window as unknown as { glyphh?: {
@@ -156,9 +158,9 @@ export function initCliAgentsEvents(): void {
     // the OTHER brand's default.
     const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
     const cmd = el<HTMLInputElement>("cagent-cmd");
-    if (cmd && (cli === "claude" || cli === "codex")) {
+    if (cmd && cli in CLI_MARK_URLS) {
       const cur = cmd.value.trim();
-      if (!cur || cur === "claude" || cur === "codex") cmd.value = cli;
+      if (!cur || cur in CLI_MARK_URLS) cmd.value = cli;
     }
     paintPreview();
   });

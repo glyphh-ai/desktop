@@ -25,9 +25,9 @@ export const AGENTS_DIR = path.join(homedir(), ".glyphh", "agents");
 export interface CliAgentRow {
   id: string;
   name: string;
-  /** Which CLI this agent drives — "claude"/"codex" carry their brand marks;
-   *  "custom" uses the emoji icon. More CLIs join this union as they're wired. */
-  cli: "claude" | "codex" | "custom";
+  /** Which CLI this agent drives — branded ones carry their marks; "custom"
+   *  uses the emoji icon. More CLIs join this union as they're wired. */
+  cli: "claude" | "codex" | "gemini" | "copilot" | "custom";
   /** Small glyph for lists (an emoji or short text) — custom CLIs only. */
   icon: string;
   /** The command line the terminal plays on open (before MCP wiring). */
@@ -57,7 +57,7 @@ function readAgent(id: string): CliAgentRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(agentFile(id), "utf-8")) as CliAgentRow;
     if (!row || !row.id) return null;
-    row.cli = row.cli === "custom" || row.cli === "codex" ? row.cli : "claude";
+    row.cli = ["custom", "codex", "gemini", "copilot"].includes(row.cli) ? row.cli : "claude";
     row.cwd = typeof row.cwd === "string" ? row.cwd : "";
     row.keepAlive = row.keepAlive !== false;
     return row;
@@ -112,6 +112,44 @@ function mcpTokenOf(id: string): string {
   }
 }
 
+/** Gemini's MCP seam is its settings file, not a launch flag — the same
+ *  mutation its own `gemini mcp add` performs: upsert mcpServers.glyphh into
+ *  ~/.gemini/settings.json (created if absent, every other key preserved). */
+function ensureGeminiMcp(id: string): void {
+  const { port } = localMcpStatus();
+  const token = mcpTokenOf(id);
+  const file = path.join(homedir(), ".gemini", "settings.json");
+  let settings: Record<string, unknown> = {};
+  try { settings = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  const servers = (settings.mcpServers && typeof settings.mcpServers === "object" ? settings.mcpServers : {}) as Record<string, unknown>;
+  servers.glyphh = {
+    httpUrl: `http://127.0.0.1:${port}/mcp`,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
+  settings.mcpServers = servers;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(settings, null, 2), "utf-8");
+}
+
+/** Copilot CLI's seam is ~/.copilot/mcp-config.json — same upsert contract
+ *  as Gemini's settings file: glyphh joins mcpServers, everything else stays. */
+function ensureCopilotMcp(id: string): void {
+  const { port } = localMcpStatus();
+  const token = mcpTokenOf(id);
+  const file = path.join(homedir(), ".copilot", "mcp-config.json");
+  let cfg: Record<string, unknown> = {};
+  try { cfg = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  const servers = (cfg.mcpServers && typeof cfg.mcpServers === "object" ? cfg.mcpServers : {}) as Record<string, unknown>;
+  servers.glyphh = {
+    type: "http",
+    url: `http://127.0.0.1:${port}/mcp`,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
+  cfg.mcpServers = servers;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+}
+
 /** Per-CLI composition. The agent rides the USER'S own CLI auth (their
  *  ~/.claude login / ~/.codex auth) — Glyphh injects nothing else yet; the
  *  gateway's base-URL seam lands here later.
@@ -135,6 +173,8 @@ function composeCommand(row: CliAgentRow): string {
     } else if (row.cli === "claude") {
       base = `${row.cmd} --mcp-config "${mcpFile(row.id)}"`;
     }
+    // gemini / copilot: nothing on the line — their settings-file seams are
+    // written at open (ensureGeminiMcp / ensureCopilotMcp).
   }
   // The working folder leads the open — same contract as a workspace's.
   return row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
@@ -171,7 +211,7 @@ export function registerCliAgentsIpc(): void {
       const row: CliAgentRow = {
         id,
         name,
-        cli: input.cli === "custom" || input.cli === "codex" ? input.cli : "claude",
+        cli: ["custom", "codex", "gemini", "copilot"].includes(String(input.cli)) ? (input.cli as CliAgentRow["cli"]) : "claude",
         icon: String(input.icon ?? existing?.icon ?? "").trim(),
         cmd,
         mcp: input.mcp !== false,
@@ -205,6 +245,8 @@ export function registerCliAgentsIpc(): void {
       if (!row) return { ok: false, error: "agent not found" };
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
+        if (row.cli === "gemini") ensureGeminiMcp(row.id);
+        if (row.cli === "copilot") ensureCopilotMcp(row.id);
         const r = await startLocalMcpServer();
         if (!r.ok) return { ok: false, error: r.error ?? "local MCP server failed to start" };
       }
