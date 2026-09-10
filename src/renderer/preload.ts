@@ -424,6 +424,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
   pickExecutable: () => ipcRenderer.invoke("pick-executable") as Promise<string | null>,
 
+  // Workspace state — the drag/panel arrangement, sharded to
+  // ~/.glyphh/workspaces/<id>/state.json (THE PURGE 2026-09-10)
+  wsStateLoad: () => ipcRenderer.invoke("wsstate-load") as Promise<Record<string, { v: string; at: number }>>,
+  wsStateSave: (snapshot: Record<string, { v: string; at: number }>) => ipcRenderer.invoke("wsstate-save", snapshot) as Promise<boolean>,
+
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
   dripsSave: (name: string, recipe: string) => ipcRenderer.invoke("drips-save", name, recipe) as Promise<string>,
