@@ -4569,6 +4569,34 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      // AGENT cards (his order, 2026-09-10): the dev tools that rode the
+      // glyphh agent's ⋯ menu follow each CLI agent — a ⋮ right of Expand.
+      if ((e.tile.slug || "").startsWith("agent:")) {
+        const AGENT_DEV_TOOLS: Array<{ view: string; label: string }> = [
+          { view: "files", label: "Files" },
+          { view: "terminal", label: "Terminal" },
+          { view: "monaco", label: "Editor" },
+          { view: "preview", label: "Browser" },
+          { view: "diff", label: "Diff" },
+          { view: "plan", label: "Plan" },
+          { view: "rail", label: "Rail" },
+        ];
+        const devBtn = document.createElement("button");
+        devBtn.className = "ws-icon-btn echo-card-devtools";
+        devBtn.title = "Developer tools";
+        devBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
+        const head = card.querySelector(".echo-card-head")!;
+        const expand = card.querySelector(".echo-card-expand");
+        if (expand?.nextSibling) head.insertBefore(devBtn, expand.nextSibling);
+        else head.appendChild(devBtn);
+        devBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          showTileMenu(ev as MouseEvent, AGENT_DEV_TOOLS.map((t) => ({
+            label: t.label,
+            onPick: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view),
+          })));
+        });
+      }
       // Pop-out — same rule as the rail-slot header: web panels (http apps,
       // the Browser) and Slides can leave the app for a standalone OS window.
       // Glyphh apps stay (their file:// entry needs in-app webview caps).
