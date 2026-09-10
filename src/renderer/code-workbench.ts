@@ -8514,14 +8514,42 @@ async function init(): Promise<void> {
     const bg = styles.getPropertyValue("--ws-bg-card").trim() || "#1e1e1e";
     const fg = styles.getPropertyValue("--ws-text").trim() || "#d4d4d4";
     const accent = styles.getPropertyValue("--ws-accent").trim() || "#a855f7";
+    // THE ANSI 16 follow the theme too — CLIs (claude/codex/gemini, git,
+    // ls) draw with these, so retheming the palette IS retheming the CLI.
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const ansi = light
+      ? {
+          black: "#3b3b43", red: "#c93c4b", green: "#1d8a4e", yellow: "#b07d12",
+          blue: "#2f6fdb", magenta: "#8c3bf2", cyan: "#0e7490", white: "#8b8b93",
+          brightBlack: "#6e6e78", brightRed: "#e05563", brightGreen: "#2aa564",
+          brightYellow: "#c9941a", brightBlue: "#4c86ec", brightMagenta: "#a35ef7",
+          brightCyan: "#0891b2", brightWhite: "#1b1b1f",
+        }
+      : {
+          black: "#3a3a42", red: "#f2555f", green: "#4ade80", yellow: "#facc15",
+          blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#c8c8d0",
+          brightBlack: "#7a7a85", brightRed: "#ff7b84", brightGreen: "#86efac",
+          brightYellow: "#fde047", brightBlue: "#93c5fd", brightMagenta: "#d8b4fe",
+          brightCyan: "#67e8f9", brightWhite: "#f4f4f6",
+        };
     return {
       background: bg,
       foreground: fg,
       cursor: accent,
       cursorAccent: bg,
       selectionBackground: accent + "33",
+      ...ansi,
     };
   }
+  // Live terminals re-theme when the app does — one observer, every pty
+  // untouched (only xterm's paint changes).
+  const liveTerms = new Set<Terminal>();
+  new MutationObserver(() => {
+    const theme = terminalTheme();
+    for (const t of [...liveTerms]) {
+      try { t.options.theme = theme; } catch { liveTerms.delete(t); }
+    }
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
     // pod has no pty surface. Say so honestly instead of opening a local shell
@@ -8597,6 +8625,7 @@ async function init(): Promise<void> {
         // the DOM renderer leaves those to a font chain that lacks them.
         customGlyphs: true,
       });
+      liveTerms.add(term);
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostEl);
