@@ -116,6 +116,9 @@ interface FilesSlot { id: number; view: "files"; root?: TreeNode | null; sticky?
 interface WbTerminal {
   /** Stable id used as the IPC channel suffix (`wb-term:data:<id>`). */
   ptyId: string;
+  /** True once wb-term:spawn actually went out — ptyId alone is just the
+   *  renderer-minted key, which is why late writes must check THIS. */
+  spawned?: boolean;
   /** A layout-slotted first command — written to the pty once, right after
    *  spawn (the working folder is already the spawn cwd). */
   initCmd?: string;
@@ -4914,9 +4917,9 @@ async function init(): Promise<void> {
                 const target = entry;
                 void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
                   if (!r?.ok || !r.command) return;
-                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string }> } | undefined)?.terminals?.[0];
+                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
                   if (!t) return;
-                  if (t.ptyId) { const cmd = r.command; setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
+                  if (t.spawned) { const cmd = r.command; setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
                   else t.initCmd = r.command;
                 }).catch(() => {});
               } else {
@@ -5729,10 +5732,10 @@ async function init(): Promise<void> {
             // conversation (claude --continue / codex resume --last).
             const wantResume = mode === "last";
             const finish = (cmd: string): void => {
-              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string }> } | undefined;
+              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined;
               const tt = ts?.terminals?.[0];
               if (!tt) return;
-              if (tt.ptyId) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
+              if (tt.spawned) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
               else tt.initCmd = cmd;
             };
             if (wantResume || prompt) {
@@ -8670,6 +8673,7 @@ async function init(): Promise<void> {
           // light/dark variant to match the app.
           window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows,
             document.documentElement.getAttribute("data-theme") === "light");
+          wbt.spawned = true;
           if (wbt.initCmd) {
             // The layout's slotted first command — once, after the shell boots.
             const cmd = wbt.initCmd;
