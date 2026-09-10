@@ -976,8 +976,13 @@ export function initHelp() {
     });
   });
   // The More fly-out — second-tier rail destinations, every one a WORKBENCH
-  // surface. Down to the Browser (preview tool) after THE PURGE.
+  // surface: Loops/Skills open as section cards, Browser as the preview
+  // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
+    { label: "Loops", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("loops") },
+    { label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("skills") },
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
   ];
