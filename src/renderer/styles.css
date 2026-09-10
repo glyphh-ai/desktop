@@ -20315,3 +20315,18 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* Agent card dev-tools kebab — sits with the head's icon buttons. */
 .echo-card-devtools svg { width: 15px; height: 15px; }
+
+/* ── Tasks section (help/tasks-page.ts) ────────────────────── */
+.gtask-step { border: 1px solid var(--border-2); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+.gtask-step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gtask-step-n { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); flex: 0 0 auto; }
+.gtask-step-agent { max-width: 220px; }
+.gtask-step-model { max-width: 180px; }
+.gtask-step-program { width: 100%; font-family: ui-monospace, monospace; }
+.gtask-run { border-bottom: 1px solid var(--border-2); padding: 6px 0; cursor: pointer; }
+.gtask-run-head { display: flex; gap: 10px; align-items: center; }
+.gtask-run-status { font: 11px ui-monospace, monospace; }
+.gtask-run-status.ok { color: var(--success); }
+.gtask-run-status.bad { color: #f43f5e; }
+.gtask-run-err { font-size: 11px; color: #f43f5e; margin-top: 2px; }
+.gtask-run-out { font: 11px ui-monospace, monospace; white-space: pre-wrap; max-height: 260px; overflow-y: auto; background: var(--surface-2); border-radius: 8px; padding: 8px; margin-top: 6px; }

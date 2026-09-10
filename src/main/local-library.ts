@@ -83,6 +83,27 @@ function saveLoop(row: LoopRow): LoopRow {
   writeRow(LOOPS_DIR, row.slug, row);
   return row;
 }
+export function listSkillRows(): SkillRow[] { return listRows<SkillRow>(SKILLS_DIR); }
+export function getSkillRow(ref: string): SkillRow { return getSkill(ref); }
+export function saveSkillRow(input: { slug?: string; name: string; description?: string; prompt?: string }): SkillRow {
+  const name = String(input.name ?? "").trim();
+  if (!name) throw new Error("a skill needs a name");
+  const slug = input.slug ? String(input.slug) : slugify(name);
+  const existing = readRow<SkillRow>(SKILLS_DIR, slug);
+  const now = new Date().toISOString();
+  const row: SkillRow = {
+    id: slug, slug, scope: "personal", name,
+    description: String(input.description ?? existing?.description ?? ""),
+    hasCode: existing?.hasCode ?? false, builtIn: false,
+    schedule: existing?.schedule ?? null, updatedAt: now,
+    manifest: existing?.manifest ?? { version: 1 },
+    prompt: String(input.prompt ?? existing?.prompt ?? ""),
+    code: existing?.code ?? "",
+  };
+  writeRow(SKILLS_DIR, slug, row);
+  return row;
+}
+
 function getSkill(ref: string): SkillRow {
   const row = readRow<SkillRow>(SKILLS_DIR, String(ref));
   if (!row) throw new Error(`skill "${ref}" not found`);

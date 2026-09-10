@@ -10,8 +10,8 @@ import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadCliAgents, initCliAgentsEvents } from "./cli-agents.js";
-import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadConnections, initConnections } from "./connections.js";
+import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
@@ -138,9 +138,9 @@ export function loadActiveSection(explicit?: string) {
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "drips") loadDrips();
   else if (sec === "agents") loadCliAgents();
-  else if (sec === "loops") void loadLoops();
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "connections") void loadConnections();
+  else if (sec === "tasks") loadTasksPage();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
@@ -194,7 +194,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "agents", "loops", "skills", "connections"].includes(section)) {
+  if (["apps", "layouts", "drips", "agents", "skills", "connections", "tasks"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -981,8 +981,8 @@ export function initHelp() {
   // surface: Loops/Skills open as section cards, Browser as the preview
   // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
-    { label: "Loops", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("loops") },
+    { label: "Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("tasks") },
     { label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
       open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("skills") },
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
@@ -1126,9 +1126,9 @@ export function initHelp() {
   boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
   boot("agents", initCliAgentsEvents);
-  boot("loops", initLoopsEvents);
   boot("skills", initSkillsLibraryEvents);
   boot("connections", initConnections);
+  boot("tasks", initTasksPage);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).

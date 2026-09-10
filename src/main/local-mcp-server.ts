@@ -22,6 +22,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
+import { listTasks, runTask, saveTaskRow, listTaskRuns } from "./local-tasks.js";
+import { getLocalDb } from "./local-db.js";
+import { listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -106,6 +109,81 @@ function buildMcpServer(): McpServer {
       return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
     }
   };
+
+  // ── Tasks + skills — Glyphh's OWN primitives, author-grade (the write
+  //    path agents lacked: a pipeline built here lands in Glyphh's registry,
+  //    schedulable and visible in the UI, not beside it) ─────────────────
+  const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
+  mcp.tool(
+    "tasks_list",
+    "List the user's Glyphh TASKS — stepped work where each step slots a CLI agent, runnable once or on a cron. Returns [{ slug, name, description, steps: [{ agent, model?, program }], repeat }].",
+    {},
+    async () => text(listTasks()),
+  );
+  mcp.tool(
+    "task_save",
+    "Create or update a Glyphh task. steps run in order, each through its slotted agent (agent = a CLI-agent id from the user's roster; empty = first agent); every step after the first also receives the previous step's output. repeat (1-25) re-walks the steps; an iteration ending in DONE stops early. Schedule it from the Tasks UI or run it with task_run.",
+    {
+      slug: z.string().optional().describe("Existing task slug to update; omit to create"),
+      name: z.string().describe("Task name"),
+      description: z.string().optional(),
+      steps: z.array(z.object({
+        name: z.string().optional(),
+        agent: z.string().describe("CLI-agent id for this step (see the user's agents; empty = first)"),
+        model: z.string().optional().describe("Model override for this step"),
+        program: z.string().describe("What this step's agent does"),
+      })).describe("Ordered steps"),
+      repeat: z.number().optional().describe("Walk the steps this many times (default 1, max 25)"),
+    },
+    async (input) => {
+      try { return text(saveTaskRow(input as never)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "task_run",
+    "Run a Glyphh task NOW (all steps, headlessly, each through its slotted agent). Returns { status, output } — the full step transcript.",
+    { slug: z.string().describe("Task slug from tasks_list") },
+    async ({ slug }) => {
+      try { return text(await runTask(slug)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "task_runs",
+    "A Glyphh task's recent runs (newest first): { id, startedAt, durationMs, status, error, output }.",
+    { slug: z.string().describe("Task slug") },
+    async ({ slug }) => text(listTaskRuns(slug)),
+  );
+  mcp.tool(
+    "skills_list",
+    "List the user's Glyphh SKILLS — cross-agent instruction sets any CLI can read. Returns summaries; read one with skill_get.",
+    {},
+    async () => text(listSkillRows().map(({ prompt: _p, code: _c, manifest: _m, ...sum }) => sum)),
+  );
+  mcp.tool(
+    "skill_get",
+    "Read a Glyphh skill in full — its markdown instructions (prompt) are the payload.",
+    { slug: z.string().describe("Skill slug from skills_list") },
+    async ({ slug }) => {
+      try { return text(getSkillRow(slug)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "skill_save",
+    "Create or update a Glyphh skill (name, description, prompt = its markdown instructions). Saved skills appear in the Skills UI and are readable by EVERY CLI agent through skill_get.",
+    {
+      slug: z.string().optional().describe("Existing slug to update; omit to create"),
+      name: z.string().describe("Skill name"),
+      description: z.string().optional(),
+      prompt: z.string().optional().describe("The skill's markdown instructions"),
+    },
+    async (input) => {
+      try { return text(saveSkillRow(input)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
 
   // ── Custom MCP connections — the user's own servers, aggregated ─────
   mcp.tool(

@@ -292,8 +292,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "connections", title: "Connections",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7" style="fill:none;stroke:#0e7490;stroke-width:2.6"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7" style="fill:none;stroke:#06b6d4;stroke-width:2.6"/></svg>` },
-  { key: "tasks",       title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
-  { key: "loops",       title: "Loops",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/><path d="M7 21.9l-4-4 4-4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/></svg>` },
+  { key: "tasks",       title: "Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
   { key: "skills",      title: "Skills",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z" style="fill:#f59e0b;stroke:#d97706;stroke-width:1.2;stroke-linejoin:round"/><circle cx="12" cy="10.5" r="2" style="fill:#fef3c7;stroke:none"/></svg>` },
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
@@ -404,7 +403,7 @@ const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
   layouts: "Workspaces",
-  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models", drips: "Drips",
+  skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",
 };
 
@@ -4097,7 +4096,8 @@ async function init(): Promise<void> {
 
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
+          else if (key === "tasks") w.__wbOpenSection?.("tasks");
+          else if (key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
           return;
         }
@@ -4944,13 +4944,21 @@ async function init(): Promise<void> {
                 // initCmd if the shell hasn't spawned, else types straight
                 // into the live pty (same 600ms grace the boot typing uses).
                 const target = entry;
+                const fallbackCmd = arow.command;
                 void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
-                  if (!r?.ok || !r.command) return;
+                  // NEVER a silent bare shell: a failed open (MCP port
+                  // squabble, missing agent file) still starts the agent
+                  // with its default command — resume/model just don't ride.
+                  if (r && !r.ok && r.error) console.warn("[agents] workspace open:", r.error);
+                  const cmd = (r?.ok && r.command) || fallbackCmd;
                   const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
                   if (!t) return;
-                  if (t.spawned) { const cmd = r.command; setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
-                  else t.initCmd = r.command;
-                }).catch(() => {});
+                  if (t.spawned) { setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
+                  else t.initCmd = cmd;
+                }).catch(() => {
+                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; spawned?: boolean; ptyId?: string }> } | undefined)?.terminals?.[0];
+                  if (t && !t.spawned) t.initCmd = fallbackCmd;
+                });
               } else {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = arow.command;
@@ -5632,7 +5640,8 @@ async function init(): Promise<void> {
         if (t.navKey === "glyphh") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
+        else if (t.navKey === "tasks") w.__wbOpenSection?.("tasks");
+        else if (t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;
       }

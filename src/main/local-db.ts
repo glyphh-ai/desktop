@@ -228,6 +228,31 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_loop_runs_schedule ON loop_runs (schedule_id, started_at);
     `,
   },
+  {
+    // TASKS — the collapse (2026-09-10): one primitive, stepped + slotted.
+    version: 10,
+    sql: `
+      CREATE TABLE IF NOT EXISTS task_schedules (
+        id TEXT PRIMARY KEY,
+        task_slug TEXT NOT NULL,
+        name TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS task_runs (
+        id TEXT PRIMARY KEY,
+        task_slug TEXT NOT NULL,
+        schedule_id TEXT,
+        started_at TEXT NOT NULL,
+        duration_ms INTEGER,
+        status TEXT NOT NULL,
+        error TEXT,
+        output TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_runs_task ON task_runs (task_slug, started_at);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {
