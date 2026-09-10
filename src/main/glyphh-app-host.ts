@@ -42,7 +42,7 @@ import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
 import { glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
-import { getClient } from "./glyphh-client.js";
+import * as appsStore from "./apps-store.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
@@ -133,16 +133,10 @@ function customAppsDir(): string {
 /** The active account's org id — the namespace for locally-held apps. Cached
  *  after the first resolve; best-effort (a pre-auth or offline call returns
  *  null and the caller falls back to the legacy flat root). */
-let cachedOrgId: string | null = null;
 async function currentOrgId(): Promise<string | null> {
-  if (cachedOrgId) return cachedOrgId;
-  try {
-    const org = await getClient().org.get();
-    cachedOrgId = org?.id || null;
-    return cachedOrgId;
-  } catch {
-    return null;
-  }
+  // THE PURGE: no server org — locally-held apps live under the flat root
+  // (a bundle's publisherOrgId still namespaces marketplace-era installs).
+  return null;
 }
 
 /** Directories that hold a registered Glyphh app's UI and must get the app-session
@@ -183,14 +177,13 @@ export async function registerAppInPlace(appProjectDir: string, manifestJson: st
   };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === manifest.slug)).catch(() => undefined);
-    const client = getClient();
     if (existing) {
       // Config vars (secrets) are USER data — preserve them across a re-register.
       const secrets = (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets;
       if (secrets && typeof secrets === "object") (fields.launchConfig as Record<string, unknown>).secrets = secrets;
-      await client.apps.updateEntry(existing.slug, { name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+      await appsStore.updateEntry(existing.slug, { name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
     } else {
-      await client.apps.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+      await appsStore.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
     }
     invalidateOrgApps();
     for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
@@ -336,7 +329,6 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     const existing = await fetchOrgApps()
       .then((apps) => apps.find((a) => a.slug === manifest.slug))
       .catch(() => undefined);
-    const client = getClient();
     if (existing) {
       // Config vars (launchConfig.secrets) are USER data, not bundle data —
       // they must survive app updates, which otherwise replace launchConfig.
@@ -344,14 +336,14 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       if (secrets && typeof secrets === "object") {
         (fields.launchConfig as Record<string, unknown>).secrets = secrets;
       }
-      await client.apps.updateEntry(existing.slug, {
+      await appsStore.updateEntry(existing.slug, {
         name: fields.name,
         nativeRef: fields.execPath,
         config: fields.launchConfig,
       });
       updated = true;
     } else {
-      await client.apps.createEntry({
+      await appsStore.createEntry({
         // Its own kind: the config below is the BUNDLE CONTRACT (capabilities,
         // connectors, tools, worker), which the native allowlist rejects.
         kind: "glyphh",
@@ -719,7 +711,7 @@ async function migrateCustomAppsToOrgScoped(): Promise<void> {
         fs.mkdirSync(path.dirname(targetDir), { recursive: true });
         fs.renameSync(sourceDir, targetDir);
         const newExec = path.join(targetDir, path.relative(sourceDir, execPath));
-        await getClient().apps.updateEntry(row.slug, { nativeRef: newExec });
+        await appsStore.updateEntry(row.slug, { nativeRef: newExec });
         moved++;
       } catch (e) {
         console.error(`[glyphh-app] migrate ${row.slug} → org-scoped failed:`, e instanceof Error ? e.message : e);
@@ -846,7 +838,7 @@ export function registerGlyphhAppHost(): void {
       // open that instead of a dead-end error page (his report, 2026-09-09:
       // "FortessAI Marketing failed to open: App bundle is missing").
       try {
-        const mine = await getClient().apps.mine();
+        const mine = await appsStore.mine();
         const hosted = mine.find((a) => a.slug === row.slug || a.id === row.slug)?.prodUrl;
         if (hosted) return { ok: true, fileUrl: hosted, hosted: true };
       } catch { /* offline — fall through to the honest error */ }

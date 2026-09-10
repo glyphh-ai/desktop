@@ -7,8 +7,7 @@ import { exportServerApp } from "./glyphh-app-package";
 import { deployAppFromWorkdir, pullAppSource, r2DiffWorkdir, appDirInWorkdir } from "./glyphh-app-builder";
 import { getExplicitWorkingDirectory } from "./working-directory";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
-import { getClient } from "./glyphh-client";
-import type { OrgMcpConnection, UpdateListingInput } from "@glyphh/sdk";
+import * as appsStore from "./apps-store";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
@@ -115,12 +114,9 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     catch { return []; }
   });
 
-  // The HOUSE DEFAULTS — the glyphh launcher set, command-center only (the
-  // Apps page stays the org's own rows via panel-apps-list).
-  ipcMain.handle("apps-defaults", async () => {
-    try { return await getClient().apps.defaults(); }
-    catch { return []; }
-  });
+  // The HOUSE DEFAULTS died with the server library — the builtin workpanels
+  // are the launcher set now (code-workbench owns those tiles).
+  ipcMain.handle("apps-defaults", async () => []);
 
 }
 
@@ -278,7 +274,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
         .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) return { ok: false, error: "A name is required." };
       if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
-      const app = await getClient().apps.createEntry({
+      const app = await appsStore.createEntry({
         kind: entryKind(input),
         slug,
         name: String(input.name || slug),
@@ -301,7 +297,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       if (BUILTIN_WORKPANELS.has(slug) || BUILTIN_WORKPANELS.has(String(patch.slug ?? ""))) {
         return { ok: false, error: WORKPANEL_REFUSAL };
       }
-      const app = await getClient().apps.updateEntry(slug, {
+      const app = await appsStore.updateEntry(slug, {
         ...entryFields(patch),
         ...(kind === "web" || kind === "native" ? { kind } : {}),
       });
@@ -314,7 +310,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     try {
       const slug = await appSlug(id);
       if (BUILTIN_WORKPANELS.has(slug)) return { ok: false, error: WORKPANEL_REFUSAL };
-      await getClient().apps.removeEntry(slug);
+      await appsStore.removeEntry(slug);
       invalidateOrgApps();
       return { ok: true };
     }
@@ -344,30 +340,23 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     });
     if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
     const dest = result.filePath.endsWith(".glyphh") ? result.filePath : `${result.filePath}.glyphh`;
-    // Pull the app's built source (built apps have a release); a launcher or an
-    // app with no finished build exports manifest-only.
+    // LOCAL source (THE PURGE): a built glyphh app's bytes live beside its
+    // entry — zip that folder. A launcher exports manifest-only.
     let sourceZip: Buffer | undefined;
     try {
-      const buf = await getClient().apps.source(app.slug);
-      sourceZip = Buffer.from(buf);
-    } catch { /* no build / not built — manifest-only export */ }
-
-    // The bundle carries its RELEASE identity: the live release if there is one,
-    // else the newest built. An export with no story is what this fixes.
-    let release: Parameters<typeof exportServerApp>[0]["release"];
-    try {
-      const rows = await getClient().apps.releases(app.slug);
-      const built = rows.filter((r) => r.status === "ready");
-      const chosen = built.find((r) => r.channel === "live") ?? built[0];
-      if (chosen) {
-        release = {
-          version: chosen.version,
-          notes: chosen.notes,
-          channel: chosen.channel,
-          releasedAt: chosen.promotedAt ?? chosen.createdAt,
-        };
+      if (app.execPath && fs.existsSync(app.execPath)) {
+        const AdmZip = (await import("adm-zip")).default;
+        const zip = new AdmZip();
+        zip.addLocalFolder(path.dirname(app.execPath));
+        sourceZip = zip.toBuffer();
       }
-    } catch { /* no releases readable — export without the release block */ }
+    } catch { /* no build — manifest-only export */ }
+
+    // The bundle carries its RELEASE identity from the local row.
+    let release: Parameters<typeof exportServerApp>[0]["release"];
+    if (app.latestVersion) {
+      release = { version: app.latestVersion, notes: "", channel: "live", releasedAt: app.updatedAt };
+    }
 
     return exportServerApp(
       { id: app.id, slug: app.slug, name: app.name, url: app.url, ...(release ? { release } : {}) },
@@ -410,12 +399,18 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     if (result.canceled || !result.filePath) return { ok: false, error: "Canceled" };
     const dest = result.filePath.endsWith(".zip") ? result.filePath : `${result.filePath}.zip`;
     try {
-      const buf = await getClient().apps.export(slug);
-      fs.writeFileSync(dest, Buffer.from(buf));
+      // LOCAL (THE PURGE): the standalone-repo builder died with the control
+      // plane — export the working project source as the zip instead.
+      const wd = getExplicitWorkingDirectory();
+      if (!wd) return { ok: false, error: "no working folder is set — open the app's project folder first" };
+      const dir = appDirInWorkdir(wd);
+      const AdmZip = (await import("adm-zip")).default;
+      const zip = new AdmZip();
+      zip.addLocalFolder(dir, undefined, (p) => !/(^|\/)(node_modules|dist|\.git)(\/|$)/.test(p));
+      fs.writeFileSync(dest, zip.toBuffer());
       return { ok: true, path: dest };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { ok: false, error: /no built release/.test(msg) ? "Build + deploy the app first — there's no release to export." : msg };
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 

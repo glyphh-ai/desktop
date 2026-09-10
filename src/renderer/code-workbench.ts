@@ -47,7 +47,6 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
 import { initGDocs, type GDocPanel } from "./wb-gdoc.js";
 import { initGDrive, type GDrivePanel } from "./wb-drive.js";
-import { renderDripsIntoSlot } from "./wb-drips.js";
 import { initGSheets, type GSheetPanel } from "./wb-sheets.js";
 import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
 import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
@@ -107,7 +106,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "drips" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -169,8 +168,6 @@ interface RailPanelSlot {
  *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
  *  from its rail tab. `taskId` remembers an opened detail across renders. */
 interface TasksSlot { id: number; view: "tasks"; taskId?: string; sticky?: boolean }
-/** Drips — the effects workpanel (wb-drips.ts). */
-interface DripsPanelSlot { id: number; view: "drips"; sticky?: boolean }
 /** The Glyphh seat (internal view "coding" — persisted layouts reference the
  *  key) — HOSTS the live agent DOM (same sessions, same composer); nothing
  *  of its own beyond the header's session controls. */
@@ -269,7 +266,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | DripsPanelSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -312,7 +309,6 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
-  drips:    { title: "Drips", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
   gsheet:   { title: "Sheets",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
@@ -1343,7 +1339,6 @@ async function init(): Promise<void> {
     if (view === "echo") return { id, view };
     if (view === "rail") return { id, view };
     if (view === "tasks") return { id, view };
-    if (view === "drips") return { id, view };
     if (view === "gpoint") return { id, view };
     if (view === "gdoc") return { id, view };
     if (view === "gdrive") return { id, view };
@@ -1955,7 +1950,6 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
-    else if (slot.view === "drips") void renderDripsIntoSlot(body, { confirm: (o) => appConfirm(o) });
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "gpoint") {
       // Sync, inline-styled first paint — immune to CSS/theme/module state.
@@ -4289,7 +4283,7 @@ async function init(): Promise<void> {
 
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "tasks" || key === "drips" || key === "preview") w.__wbOpenTool?.(key);
+          else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
           return;
         }
@@ -5485,7 +5479,6 @@ async function init(): Promise<void> {
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
-    else if (slot.view === "drips") void renderDripsIntoSlot(body, { confirm: (o) => appConfirm(o) });
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
         else if (slot.view === "gpoint") {
           body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
@@ -5766,7 +5759,7 @@ async function init(): Promise<void> {
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "tasks" || t.navKey === "drips" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
+        else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;
       }
@@ -9563,8 +9556,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "drips", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks" && v !== "drips") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

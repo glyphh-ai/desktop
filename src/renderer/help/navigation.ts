@@ -8,6 +8,7 @@ import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
+import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
@@ -97,6 +98,12 @@ export function resetEditors() {
     document.getElementById("layouts-list")?.classList.remove("hidden");
     document.getElementById("layouts-toolbar")?.classList.remove("hidden");
   }
+  const de = document.getElementById("drip-editor");
+  if (de && !de.classList.contains("hidden")) {
+    de.classList.add("hidden");
+    document.getElementById("drips-list")?.classList.remove("hidden");
+    document.getElementById("drips-toolbar")?.classList.remove("hidden");
+  }
   const ad = document.getElementById("app-detail");
   if (ad && !ad.classList.contains("hidden")) {
     ad.classList.add("hidden");
@@ -125,6 +132,7 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
+  else if (sec === "drips") loadDrips();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
@@ -178,7 +186,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts"].includes(section)) {
+  if (["apps", "layouts", "drips"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -1103,6 +1111,7 @@ export function initHelp() {
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
+  boot("drips", initDripsEvents);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).
