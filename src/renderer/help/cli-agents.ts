@@ -8,6 +8,8 @@
  * so the echo wall and the layout editor pick up new tiles/cells live.
  */
 
+import { paginate, renderPaginationBar } from "./shared.js";
+
 interface CliAgent { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }
 
 const api = () => (window as unknown as { glyphh?: {
@@ -18,6 +20,7 @@ const api = () => (window as unknown as { glyphh?: {
 
 let all: CliAgent[] = [];
 let editing: CliAgent | null = null;
+let listPage = 0;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -58,21 +61,40 @@ function paintPreview(): void {
   preview.textContent = `runs: ${cmd}${mcp ? ' --mcp-config "~/.glyphh/agents/<agent>/mcp.json"' : ""}`;
 }
 
+const AGENT_CARD_GLYPH = `<svg viewBox="0 0 24 24" fill="none" style="width:26px;height:26px"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe"/></svg>`;
+
+/** The SAME shape Apps/Workspaces render: a card grid, 15 to a page (his
+ *  rule, 2026-09-10). Click edits; double-click (or the editor's ▶) opens. */
 function renderList(): void {
   const list = el("cagents-list");
   if (!list) return;
   const q = (el<HTMLInputElement>("cagent-search")?.value ?? "").trim().toLowerCase();
-  const rows = q ? all.filter((a) => a.name.toLowerCase().includes(q) || a.cmd.toLowerCase().includes(q)) : all;
-  if (!rows.length) {
-    list.innerHTML = `<div class="crud-empty">No agents yet — <b>+ New</b> pre-wires Claude in two fields.</div>`;
+  const filtered = q ? all.filter((a) => a.name.toLowerCase().includes(q) || a.cmd.toLowerCase().includes(q)) : all;
+  list.innerHTML = "";
+  if (!filtered.length) {
+    list.innerHTML = q
+      ? `<div class="crud-empty">No agents matching "${esc(q)}"</div>`
+      : `<div class="crud-empty">No agents yet — <b>+ New</b> pre-wires Claude in two fields.</div>`;
     return;
   }
-  list.innerHTML = rows.map((a) => `
-    <div class="crud-card cagent-card" data-id="${esc(a.id)}">
-      <div class="crud-card-title">${a.icon ? `<span class="cagent-glyph">${esc(a.icon)}</span> ` : ""}${esc(a.name)}</div>
-      <div class="crud-card-sub" style="font-family:ui-monospace,monospace;">${esc(a.cmd)}${a.mcp ? " · glyphh tools" : ""}</div>
-      <div class="crud-card-actions"><button type="button" class="action-btn cagent-open" title="Open in a terminal">&#9654; Open</button></div>
-    </div>`).join("");
+  const { items, state } = paginate(filtered, listPage);
+  listPage = state.page;
+  const grid = document.createElement("div");
+  grid.className = "app-grid";
+  for (const a of items) {
+    const card = document.createElement("div");
+    card.className = "app-card cagent-card";
+    card.dataset.id = a.id;
+    card.innerHTML = `
+      <div class="app-card-icon">${a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
+      <div class="app-card-name">${esc(a.name)}</div>
+      <div class="app-card-id" style="font-family:ui-monospace,monospace;">${esc(a.cmd)}${a.mcp ? " · glyphh tools" : ""}</div>`;
+    grid.appendChild(card);
+  }
+  list.appendChild(grid);
+  if (state.totalPages > 1) {
+    list.appendChild(renderPaginationBar(state, (p) => { listPage = p; renderList(); }));
+  }
 }
 
 async function refresh(): Promise<void> {
@@ -97,12 +119,12 @@ export function initCliAgentsEvents(): void {
     const card = (ev.target as HTMLElement).closest<HTMLElement>(".cagent-card");
     if (!card?.dataset.id) return;
     const agent = all.find((a) => a.id === card.dataset.id);
-    if (!agent) return;
-    if ((ev.target as HTMLElement).closest(".cagent-open")) {
-      (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(agent.id);
-      return;
-    }
-    showEditor(agent);
+    if (agent) showEditor(agent);
+  });
+  el("cagents-list")?.addEventListener("dblclick", (ev) => {
+    const card = (ev.target as HTMLElement).closest<HTMLElement>(".cagent-card");
+    if (!card?.dataset.id) return;
+    (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(card.dataset.id);
   });
 
   el("cagent-save-btn")?.addEventListener("click", () => {

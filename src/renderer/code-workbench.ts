@@ -5096,7 +5096,9 @@ async function init(): Promise<void> {
             // A CLI agent cell: a terminal that plays the agent's pre-config.
             const aid = id.slice(6);
             const arow = cliAgentRows.find((x) => x.id === aid);
-            entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky, ...(arow ? { cliAgent: { id: aid, command: arow.command } } : {}) });
+            // NO cliAgent on the cell tile — activateTile would bounce it
+            // back to openAgentCliCard instead of minting the terminal.
+            entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
             entry.keepTermsAlive = cell.config?.keepAlive !== false;
             activateTile(entry);
             const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
@@ -5900,7 +5902,9 @@ async function init(): Promise<void> {
         .glyphh?.cliAgentOpen?.(a.id).then((r) => {
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const cmd = (r?.ok && r.command) || a.command;
-          const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal", cliAgent: a });
+          // NO cliAgent on the minted tile — activateTile routes cliAgent
+          // tiles back HERE (that was an infinite loop, his report).
+          const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
           entry.keepTermsAlive = true;
           activateTile(entry);
           const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
