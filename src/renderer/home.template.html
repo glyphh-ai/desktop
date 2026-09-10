@@ -79,13 +79,6 @@
         <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
              platform — filled by initOrgSwitcher(); hidden for single-org users. -->
         <div id="org-switch-rail" class="org-switch hidden"></div>
-        <!-- Every session is ONE type (the most-capable Code toolset). The
-             Chat/Work/Code space tabs were removed — + New session creates a
-             Code session; the list below is the Recents for it. -->
-        <button id="code-new-chat" class="btn btn-primary btn-lg code-new-session-rail" type="button">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span>New session</span>
-        </button>
         <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
              Layouts (each opens the modal at that section; the pages live in
              the modal). Everything else stays modal-only. -->
@@ -105,18 +98,6 @@
             <span>More</span>
           </button>
         </nav>
-        <button id="recents-toggle" class="code-rail-label code-rail-disclosure" type="button" data-rail-section="recents">
-          <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-          <span>Recents</span>
-        </button>
-        <div class="app-rail-search" data-rail-section="recents">
-          <input id="recents-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
-        </div>
-        <div id="code-history" class="code-history" data-rail-section="recents"></div>
-        <!-- Apps + Layouts quick-launch trays — the grids help/code.ts paints
-             through registerRailGridHost. Restored for the Rail PANEL (the
-             shell rail stays hidden); the panel's config toggles hide any of
-             menu / recents / layouts per workspace cell. -->
         <div class="code-rail-label app-rail-section-head" data-rail-section="apps">
           <button id="rail-apps-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
             <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>

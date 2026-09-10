@@ -4406,7 +4406,9 @@ async function loadRecentApps(): Promise<void> {
     // Palette parity: web apps (have a url) + native library apps. The
     // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
     // header is the chat entry, not an app in the list.
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
+    // glyphh-self / nav rows never tile the rail — and the AGENT is gone.
+    railApps = ((apps || []) as unknown as RailApp[])
+      .filter((a) => (a.url || a.isBrowser === false) && a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav");
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     // the wall's arranged order (same preference the command centre writes)
@@ -4531,12 +4533,6 @@ function paintAppsGrid(host: RailGridHost): void {
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
       openCommandCenter();   // rail clicks land in Echo — the layout manager
-      // The GLYPHH tile opens the glyphh AGENT (the dock mark's exact open),
-      // never the app-launch path (his order, 2026-09-10).
-      if (a.appArchetype === "glyphh-self" || (a.slug || a.id) === "glyphh") {
-        (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent?.();
-        return;
-      }
       // Same open the Apps page's "Open app" uses (per-config launch).
       void window.glyphh.appLaunch?.({
         slug: a.slug || a.id, name: a.name, url: a.url,
