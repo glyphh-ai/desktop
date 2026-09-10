@@ -32,6 +32,9 @@ export interface CliAgentRow {
   icon: string;
   /** The command line the terminal plays on open (before MCP wiring). */
   cmd: string;
+  /** Starting model — composed as the CLI's model flag; "" = the CLI's own
+   *  default. A workspace cell's model override beats this at open. */
+  model: string;
   /** Wire the Glyphh local MCP server into the CLI (--mcp-config). */
   mcp: boolean;
   /** Start the terminal here (like a workspace's working folder). "" = current. */
@@ -84,6 +87,7 @@ function readAgent(id: string): CliAgentRow | null {
     if (!row || !row.id) return null;
     row.cli = ["custom", "codex", "gemini", "copilot", "cursor"].includes(row.cli) ? row.cli : "claude";
     row.cwd = typeof row.cwd === "string" ? row.cwd : "";
+    row.model = typeof row.model === "string" ? row.model : "";
     row.keepAlive = row.keepAlive !== false;
     row.apiKey = row.apiKey && typeof row.apiKey === "object" && row.apiKey.name ? row.apiKey : null;
     return row;
@@ -218,8 +222,26 @@ function ensureCursorMcp(id: string): void {
  *    codex  — TOML -c overrides (streamable-HTTP MCP via the rmcp client)
  *    custom — the command verbatim; mcp.json sits beside the agent for
  *             whatever the CLI can consume */
-function composeCommand(row: CliAgentRow): string {
-  let base = row.cmd;
+/** Each CLI's model flag — appended when the agent (or an override) names one. */
+function modelFlag(cli: CliAgentRow["cli"], model: string): string {
+  if (!model) return "";
+  const m = model.replace(/"/g, "");
+  switch (cli) {
+    case "claude": return ` --model "${m}"`;
+    case "codex": return ` -m "${m}"`;
+    case "gemini": return ` -m "${m}"`;
+    case "copilot": return ` --model "${m}"`;
+    case "cursor": return ` --model "${m}"`;
+    default: return "";
+  }
+}
+
+export interface OpenOverrides { model?: string; cwd?: string }
+
+function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
+  const model = (ov?.model ?? row.model ?? "").trim();
+  const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
+  let base = `${row.cmd}${modelFlag(row.cli, model)}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -228,18 +250,18 @@ function composeCommand(row: CliAgentRow): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${modelFlag(row.cli, model)} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${modelFlag(row.cli, model)} --mcp-config "${mcpFile(row.id)}"`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /
     // ensureCursorMcp).
   }
   // The working folder leads the open — same contract as a workspace's.
-  const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+  const line = cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
   // The API key sources INVISIBLY — the terminal shows the file path, never
   // the value.
   return row.apiKey && fs.existsSync(envFile(row.id))
@@ -266,7 +288,7 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; model?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
     try {
       const name = String(input.name ?? "").trim();
       const cmd = String(input.cmd ?? "").trim();
@@ -283,6 +305,7 @@ export function registerCliAgentsIpc(): void {
         cmd,
         mcp: input.mcp !== false,
         cwd: String(input.cwd ?? existing?.cwd ?? "").trim(),
+        model: String(input.model ?? existing?.model ?? "").trim(),
         keepAlive: input.keepAlive !== undefined ? input.keepAlive !== false : existing?.keepAlive !== false,
         apiKey: existing?.apiKey ?? null,
         createdAt: existing?.createdAt ?? now,
@@ -337,7 +360,7 @@ export function registerCliAgentsIpc(): void {
 
   // "Open" = make sure the pre-config's dependencies are live. The command
   // itself types into the terminal the renderer opens.
-  ipcMain.handle("cli-agent-open", async (_e, id: string) => {
+  ipcMain.handle("cli-agent-open", async (_e, id: string, overrides?: OpenOverrides) => {
     try {
       const row = readAgent(String(id));
       if (!row) return { ok: false, error: "agent not found" };
@@ -352,7 +375,7 @@ export function registerCliAgentsIpc(): void {
         const r = await startLocalMcpServer();
         if (!r.ok) return { ok: false, error: r.error ?? "local MCP server failed to start" };
       }
-      return { ok: true, command: composeCommand(row), name: row.name };
+      return { ok: true, command: composeCommand(row, overrides), name: row.name };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

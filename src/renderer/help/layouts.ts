@@ -600,6 +600,44 @@ function renderCellConfigs(): void {
   list.innerHTML = "";
   let fields = 0;
   builderCells.forEach((c, i) => {
+    // AGENT cells: folder + model OVERRIDE the agent's own config at open;
+    // Maintain-on-close overrides its keep-alive (same key terminals use).
+    if (c.panelId?.startsWith("agent:")) {
+      fields++;
+      const row = document.createElement("div");
+      row.className = "layout-cell-config-row";
+      const label = document.createElement("span");
+      label.className = "layout-cell-config-label";
+      label.textContent = `${panelLabel(c.panelId)} (agent) · cell ${c.col + 1},${c.row + 1}`;
+      const mkInput = (key: "model" | "folder", placeholder: string): HTMLInputElement => {
+        const input = document.createElement("input");
+        input.className = "settings-input";
+        input.placeholder = placeholder;
+        input.spellcheck = false;
+        input.value = String((c.config as Record<string, unknown> | undefined)?.[key] ?? "");
+        input.addEventListener("input", () => {
+          const cell = builderCells[i];
+          if (!cell) return;
+          const v = input.value.trim();
+          const cfg = (cell.config || {}) as Record<string, unknown>;
+          if (v) { cfg[key] = v; cell.config = cfg as typeof cell.config; }
+          else { delete cfg[key]; if (!Object.keys(cfg).length) delete cell.config; }
+        });
+        return input;
+      };
+      row.append(label, mkInput("model", "model override — empty keeps the agent's"), mkInput("folder", "folder override — empty keeps the agent's"));
+      const stack = document.createElement("div");
+      stack.className = "settings-toggles";
+      stack.appendChild(settingsToggle(
+        "Maintain on close",
+        "Keeps the agent's terminal session alive when the workspace closes.",
+        c.config?.keepAlive !== false,
+        (on) => setCellFlag(i, "keepAlive", on, true),
+      ));
+      row.append(stack);
+      list.appendChild(row);
+      return;
+    }
     const toggleSpec = CELL_TOGGLE_SPECS[c.panelId];
     if (toggleSpec) {
       fields++;

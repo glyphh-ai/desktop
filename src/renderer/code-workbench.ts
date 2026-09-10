@@ -2958,7 +2958,7 @@ async function init(): Promise<void> {
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
       cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
-      cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
+      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -4876,28 +4876,48 @@ async function init(): Promise<void> {
           const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
           let entry: TileEntry | null = null;
           if (id.startsWith("agent:")) {
-            // A CLI agent cell: a terminal that plays the agent's pre-config.
+            // A CLI agent cell: a terminal that plays the agent's pre-config,
+            // with the WORKSPACE's overrides (model / folder) beating it.
             const aid = id.slice(6);
             const arow = cliAgentRows.find((x) => x.id === aid);
+            const cellCfg = (cell.config || {}) as { model?: string; folder?: string; keepAlive?: boolean };
             // NO cliAgent on the cell tile — activateTile would bounce it
             // back to openAgentCliCard instead of minting the terminal.
             entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
             // The WORKSPACE's "Maintain on close" overrides the agent's own
             // keep-alive when set; otherwise the agent's config rules.
-            entry.keepTermsAlive = cell.config?.keepAlive !== undefined
-              ? cell.config.keepAlive !== false
+            entry.keepTermsAlive = cellCfg.keepAlive !== undefined
+              ? cellCfg.keepAlive !== false
               : (arow ? arow.keepAlive !== false : true);
             // A parked agent session re-attaches (one session per agent id).
             const parkedA = parkedTerms.get(`agent::${id}`);
             if (parkedA) { parkedTerms.delete(`agent::${id}`); pendingParkedTerms = parkedA; }
             activateTile(entry);
             pendingParkedTerms = null;
-            if (!parkedA) {
-              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
-              if (ts?.terminals?.[0] && arow) ts.terminals[0].initCmd = arow.command;
+            if (!parkedA && arow) {
+              const overrides = {
+                ...(cellCfg.model ? { model: cellCfg.model } : {}),
+                ...(cellCfg.folder ? { cwd: cellCfg.folder } : {}),
+              };
+              if (Object.keys(overrides).length) {
+                // Overridden opens compose in MAIN — the command lands as
+                // initCmd if the shell hasn't spawned, else types straight
+                // into the live pty (same 600ms grace the boot typing uses).
+                const target = entry;
+                void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
+                  if (!r?.ok || !r.command) return;
+                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string }> } | undefined)?.terminals?.[0];
+                  if (!t) return;
+                  if (t.ptyId) { const cmd = r.command; setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
+                  else t.initCmd = r.command;
+                }).catch(() => {});
+              } else {
+                const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+                if (ts?.terminals?.[0]) ts.terminals[0].initCmd = arow.command;
+                // dependencies (the local MCP server) come up in the background
+                if (arow.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
+              }
             }
-            // dependencies (the local MCP server) come up in the background
-            if (arow?.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
           } else if (id.startsWith("tool:")) {
             const raw = id.slice(5);
             const v = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;

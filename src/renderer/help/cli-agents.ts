@@ -10,7 +10,7 @@
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
-interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; apiKey: { name: string; hint: string } | null; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom"; icon: string; cmd: string; model: string; mcp: boolean; cwd: string; keepAlive: boolean; apiKey: { name: string; hint: string } | null; command: string }
 
 /** The CLIs' public web marks — the brand icons their agents wear. */
 const CLI_MARK_URLS: Record<string, string> = {
@@ -23,7 +23,7 @@ const CLI_MARK_URLS: Record<string, string> = {
 
 const api = () => (window as unknown as { glyphh?: {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgent[]; error?: string }>;
-  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
+  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; model?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
   cliAgentsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   cliAgentsKeyDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
@@ -67,6 +67,7 @@ function showEditor(agent: CliAgent | null): void {
   (el<HTMLInputElement>("cagent-icon")!).value = agent?.icon ?? "";
   // The Claude case is one click: a new agent lands pre-filled.
   (el<HTMLInputElement>("cagent-cmd")!).value = agent?.cmd ?? "claude";
+  (el<HTMLInputElement>("cagent-model")!).value = agent?.model ?? "";
   (el<HTMLInputElement>("cagent-folder-input")!).value = agent?.cwd ?? "";
   (el<HTMLInputElement>("cagent-mcp")!).checked = agent ? agent.mcp : true;
   (el<HTMLInputElement>("cagent-keepalive")!).checked = agent ? agent.keepAlive !== false : true;
@@ -259,6 +260,7 @@ export function initCliAgentsEvents(): void {
       icon: el<HTMLInputElement>("cagent-icon")?.value ?? "",
       cmd: el<HTMLInputElement>("cagent-cmd")?.value ?? "",
       cwd: el<HTMLInputElement>("cagent-folder-input")?.value ?? "",
+      model: el<HTMLInputElement>("cagent-model")?.value ?? "",
       mcp: el<HTMLInputElement>("cagent-mcp")?.checked !== false,
       keepAlive: el<HTMLInputElement>("cagent-keepalive")?.checked !== false,
       apiKeyOn: el<HTMLInputElement>("cagent-apikey-on")?.checked === true,

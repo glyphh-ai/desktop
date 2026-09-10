@@ -434,7 +434,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
   cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
   cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentOpen: (id: string) => ipcRenderer.invoke("cli-agent-open", id) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
+  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
 
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
