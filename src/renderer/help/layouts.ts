@@ -53,15 +53,6 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   // Opening a layout LEAVES settings — drop the modal (no-op when absent) so
   // the workbench isn't hidden behind it.
   closeSettingsModal();
-  // A layout also sets the loop + its slot models — apply before the panels
-  // tile so the composer is already in the layout's program state.
-  if (layout.loop) {
-    try {
-      await window.glyphh.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
-      // Tell the composer to re-sync its loop + model chips to the new state.
-      document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
-    } catch { /* offline — the panels still open; the loop just stays as-is */ }
-  }
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The
@@ -241,8 +232,6 @@ const folderModeRow = document.getElementById("layout-folder-mode-row");
 const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement | null;
 
 // ── Loop + models this layout activates on open ──────────────────────────
-const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
-const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 // The agent anchor is a GLOBAL device setting owned by the agent (the anchor
 // picker in the agent header → the `glyphhAnchorMode` preference), NOT a layout
 // property. A layout opens into whatever workspace the anchor leaves available and
@@ -258,10 +247,7 @@ layoutFolderPickBtn?.addEventListener("click", () => {
 layoutFolderClearBtn?.addEventListener("click", () => {
   if (layoutFolderInput) layoutFolderInput.value = "";
 });
-const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
-let builderLoop = "";
-let builderModelSelections: Record<string, string> = {};
 
 /** Recompute whether this layout is folder-bound. No-op now the control is
  *  gone; kept so callers don't need to know it was cut. */
@@ -279,55 +265,6 @@ async function refreshFolderModeRow(): Promise<void> {
   } catch {
     folderModeRow.classList.add("hidden");
   }
-}
-
-/** Fill the loop dropdown once — "Leave as-is" plus every loop the caller has. */
-async function ensureLoopOptions(): Promise<void> {
-  // REFETCHED EVERY TIME THE EDITOR OPENS (his report, 2026-08-29: a new loop
-  // never appeared here without restarting). The old dataset.filled guard was
-  // a SESSION-lifetime cache — right for one paint, wrong for a list the user
-  // edits on another page and comes straight back to.
-  if (!layoutLoopSelect) return;
-  try {
-    const res = await window.glyphh.loopsList();
-    const opts = [`<option value="">Leave as-is</option>`];
-    // Memory loops power the memory rotor — not bindable to a layout panel.
-    for (const l of res.loops.filter((x) => (x as { type?: string }).type !== "memory")) {
-      opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
-    }
-    layoutLoopSelect.innerHTML = opts.join("");
-    layoutLoopSelect.dataset.filled = "1";
-  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
-}
-
-/** One model dropdown per slot the chosen loop declares. "" = Auto (the loop's
- *  own default). Absent loop → nothing to configure. */
-async function renderLoopModels(): Promise<void> {
-  if (!layoutLoopModels) return;
-  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
-  layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
-  let roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
-  // force: drop main's 60s roles cache, so a provider/model added on the
-  // platform shows in the slots without an app restart (his report).
-  try { roles = (await window.glyphh.loopRoles(builderLoop, true)).roles; }
-  catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
-  if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
-  layoutLoopModels.innerHTML = roles.map((r) => {
-    const picked = builderModelSelections[r.name] ?? "";
-    const opts = [`<option value="">Auto — loop default</option>`]
-      .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === picked ? " selected" : ""}>${escLayout(c.name)}</option>`));
-    return `<label class="layout-loop-model">
-      <span class="layout-loop-model-label">${escLayout(r.label || r.name)}</span>
-      <select class="settings-input" data-role="${escLayout(r.name)}">${opts.join("")}</select>
-    </label>`;
-  }).join("");
-  layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
-    sel.addEventListener("change", () => {
-      const role = sel.dataset.role!;
-      if (sel.value) builderModelSelections[role] = sel.value;
-      else delete builderModelSelections[role];
-    });
-  });
 }
 
 /** Minimal HTML escape for option labels. */
@@ -600,8 +537,10 @@ function renderCellConfigs(): void {
   list.innerHTML = "";
   let fields = 0;
   builderCells.forEach((c, i) => {
-    // AGENT cells: folder + model OVERRIDE the agent's own config at open;
-    // Maintain-on-close overrides its keep-alive (same key terminals use).
+    // AGENT cells: model + SESSION override the agent's own config at open
+    // (the workspace's working folder rules the agent's folder by itself).
+    // Each slotted agent gets its own session choice — a page can carry
+    // several agents handled differently.
     if (c.panelId?.startsWith("agent:")) {
       fields++;
       const row = document.createElement("div");
@@ -609,32 +548,36 @@ function renderCellConfigs(): void {
       const label = document.createElement("span");
       label.className = "layout-cell-config-label";
       label.textContent = `${panelLabel(c.panelId)} (agent) · cell ${c.col + 1},${c.row + 1}`;
-      const mkInput = (key: "model" | "folder", placeholder: string): HTMLInputElement => {
-        const input = document.createElement("input");
-        input.className = "settings-input";
-        input.placeholder = placeholder;
-        input.spellcheck = false;
-        input.value = String((c.config as Record<string, unknown> | undefined)?.[key] ?? "");
-        input.addEventListener("input", () => {
-          const cell = builderCells[i];
-          if (!cell) return;
-          const v = input.value.trim();
-          const cfg = (cell.config || {}) as Record<string, unknown>;
-          if (v) { cfg[key] = v; cell.config = cfg as typeof cell.config; }
-          else { delete cfg[key]; if (!Object.keys(cfg).length) delete cell.config; }
-        });
-        return input;
-      };
-      row.append(label, mkInput("model", "model override — empty keeps the agent's"), mkInput("folder", "folder override — empty keeps the agent's"));
-      const stack = document.createElement("div");
-      stack.className = "settings-toggles";
-      stack.appendChild(settingsToggle(
-        "Maintain on close",
-        "Keeps the agent's terminal session alive when the workspace closes.",
-        c.config?.keepAlive !== false,
-        (on) => setCellFlag(i, "keepAlive", on, true),
-      ));
-      row.append(stack);
+      const model = document.createElement("input");
+      model.className = "settings-input";
+      model.placeholder = "model override — empty keeps the agent's";
+      model.spellcheck = false;
+      model.value = String((c.config as Record<string, unknown> | undefined)?.model ?? "");
+      model.addEventListener("input", () => {
+        const cell = builderCells[i];
+        if (!cell) return;
+        const v = model.value.trim();
+        const cfg = (cell.config || {}) as Record<string, unknown>;
+        if (v) { cfg.model = v; cell.config = cfg as typeof cell.config; }
+        else { delete cfg.model; if (!Object.keys(cfg).length) delete cell.config; }
+      });
+      const sess = document.createElement("select");
+      sess.className = "settings-input";
+      sess.innerHTML = `
+        <option value="">Agent default</option>
+        <option value="keep">Keep the current session</option>
+        <option value="new">Start a new session</option>
+        <option value="last">Resume the last session</option>`;
+      sess.value = String((c.config as Record<string, unknown> | undefined)?.session ?? "");
+      sess.addEventListener("change", () => {
+        const cell = builderCells[i];
+        if (!cell) return;
+        const v = sess.value;
+        const cfg = (cell.config || {}) as Record<string, unknown>;
+        if (v) { cfg.session = v; cell.config = cfg as typeof cell.config; }
+        else { delete cfg.session; if (!Object.keys(cfg).length) delete cell.config; }
+      });
+      row.append(label, model, sess);
       list.appendChild(row);
       return;
     }
@@ -1093,17 +1036,8 @@ async function editLayout(name: string) {
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
-  if (layoutSessionSelect) {
-    const sm = (layout as { sessionMode?: string })?.sessionMode;
-    layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
-  }
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
   // Loop + models this layout activates on open.
-  builderLoop = (layout as { loop?: string })?.loop ?? "";
-  builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
-  await ensureLoopOptions();
-  if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
-  void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
   document.getElementById("layout-open-btn")?.classList.remove("hidden");
@@ -1127,11 +1061,7 @@ async function newLayout() {
   gridColsSelect.value = "2";
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
-  if (layoutSessionSelect) layoutSessionSelect.value = "keep";
   if (layoutFolderInput) layoutFolderInput.value = "";
-  builderLoop = "";
-  builderModelSelections = {};
-  void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
   document.getElementById("layout-open-btn")?.classList.add("hidden");
@@ -1199,9 +1129,6 @@ async function saveLayout() {
     layoutFormError.classList.remove("hidden");
     return;
   }
-  // Only keep model picks for slots the chosen loop still declares — a stale
-  // pick from a loop the user switched away from must not ride along.
-  const selections = builderLoop ? builderModelSelections : {};
   // An EDITED layout invalidates its remembered GEOMETRY — the workbench's
   // named-layout snapshot AND the Echo cell snapshot both recall the OLD
   // arrangement when the panel set is unchanged, which is exactly the common
@@ -1235,10 +1162,6 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
-    ...(builderLoop ? { loop: builderLoop } : {}),
-    ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
-    sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
-      ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     folder: layoutFolderInput?.value.trim() || null,
   });
   cancelLayout();
@@ -1296,14 +1219,6 @@ export function initLayoutsEvents() {
     void openLayoutInWorkbench(editingLayoutName);
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
-
-  // Loop picker: switching loops clears the old loop's model picks (its slots
-  // don't apply to the new program) and re-renders the per-slot dropdowns.
-  layoutLoopSelect?.addEventListener("change", () => {
-    builderLoop = layoutLoopSelect.value;
-    builderModelSelections = {};
-    void renderLoopModels();
-  });
 
   // Grid builder dimension controls
   gridColsSelect.addEventListener("change", () => {

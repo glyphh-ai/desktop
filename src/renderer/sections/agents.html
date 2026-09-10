@@ -93,13 +93,13 @@
                   <input type="checkbox" id="cagent-mcp" checked />
                   <span class="toggle-switch"></span>
                 </label>
-                <label class="settings-toggle set-pref-row" style="margin-top:6px;">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Keep session alive when closed</div>
-                  </div>
-                  <input type="checkbox" id="cagent-keepalive" checked />
-                  <span class="toggle-switch"></span>
-                </label>
+                <label class="settings-label" style="margin-top:14px;">Agent session</label>
+                <div class="settings-hint" style="margin:-2px 0 6px;">What opening this agent does with its session.</div>
+                <select id="cagent-session" class="settings-input">
+                  <option value="keep">Keep the current session</option>
+                  <option value="new">Start a new session</option>
+                  <option value="last">Resume the last session</option>
+                </select>
               </div>
             </div>
             </div>

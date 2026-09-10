@@ -43,10 +43,13 @@ export interface CliAgentRow {
    *  lives in the agent's env file (0600) and is never readable back — list
    *  rows carry only a first/last glimpse (`hint`) for recognition. */
   apiKey: { name: string; hint: string } | null;
-  /** Closing the card parks the terminal session for the next open (true,
-   *  the default) or kills it so every open starts fresh. A workspace cell's
-   *  own "Maintain on close" OVERRIDES this when the agent rides a layout. */
-  keepAlive: boolean;
+  /** What an open does with the agent's session (a workspace cell can
+   *  override per slot):
+   *    keep — re-attach the parked terminal if one survives; else start.
+   *    new  — always a fresh session; closing kills the terminal.
+   *    last — re-attach if parked; else start the CLI RESUMING its own last
+   *           conversation (claude --continue / codex resume --last). */
+  session: "keep" | "new" | "last";
   createdAt: string;
   updatedAt: string;
 }
@@ -88,7 +91,10 @@ function readAgent(id: string): CliAgentRow | null {
     row.cli = ["custom", "codex", "gemini", "copilot", "cursor"].includes(row.cli) ? row.cli : "claude";
     row.cwd = typeof row.cwd === "string" ? row.cwd : "";
     row.model = typeof row.model === "string" ? row.model : "";
-    row.keepAlive = row.keepAlive !== false;
+    // legacy rows carried a keepAlive boolean — false maps to "new"
+    const legacyKeep = (row as unknown as { keepAlive?: boolean }).keepAlive;
+    row.session = row.session === "new" || row.session === "last" ? row.session
+      : legacyKeep === false ? "new" : "keep";
     row.apiKey = row.apiKey && typeof row.apiKey === "object" && row.apiKey.name ? row.apiKey : null;
     return row;
   } catch {
@@ -236,7 +242,7 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   }
 }
 
-export interface OpenOverrides { model?: string; cwd?: string }
+export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean }
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
@@ -274,7 +280,14 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   const model = (ov?.model ?? row.model ?? "").trim();
   const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
-  let base = `${row.cmd}${modelFlag(row.cli, model)}`;
+  // RESUME: the CLI's own continue-last affordance. claude takes a flag;
+  // codex resumes via a subcommand; CLIs without one just start fresh.
+  const resumePart = ov?.resume
+    ? row.cli === "claude" ? " --continue"
+      : row.cli === "codex" ? " resume --last"
+      : ""
+    : "";
+  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -283,11 +296,11 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${modelFlag(row.cli, model)} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd}${modelFlag(row.cli, model)} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)} --mcp-config "${mcpFile(row.id)}"`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /
@@ -321,7 +334,7 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; model?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; session?: string; model?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
     try {
       const name = String(input.name ?? "").trim();
       const cmd = String(input.cmd ?? "").trim();
@@ -339,7 +352,8 @@ export function registerCliAgentsIpc(): void {
         mcp: input.mcp !== false,
         cwd: String(input.cwd ?? existing?.cwd ?? "").trim(),
         model: String(input.model ?? existing?.model ?? "").trim(),
-        keepAlive: input.keepAlive !== undefined ? input.keepAlive !== false : existing?.keepAlive !== false,
+        session: input.session === "new" || input.session === "last" ? input.session
+          : input.session === "keep" ? "keep" : (existing?.session ?? "keep"),
         apiKey: existing?.apiKey ?? null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,

@@ -2148,7 +2148,7 @@ async function init(): Promise<void> {
     // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
     // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
     // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; keepAlive?: boolean; command: string }
+    interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
     let cliAgentRows: CliAgentRowLite[] = [];
     const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
     const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
@@ -2961,7 +2961,7 @@ async function init(): Promise<void> {
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
       cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
-      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
+      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -4875,32 +4875,39 @@ async function init(): Promise<void> {
           // the card at creation (a web card mounts on its saved page)
           const pendingKey = `${id}#${(seenKeys.get(id) ?? 0) + 1}`;
           const saved = mem?.cells?.find((c) => c.key === pendingKey);
-          // state only comes back under the "last" contract
-          const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
+          // Workspaces REMEMBER their panels — the old gate rode the
+          // workspace-level session mode, which moved onto agent cells.
+          const st = saved?.state;
           let entry: TileEntry | null = null;
           if (id.startsWith("agent:")) {
             // A CLI agent cell: a terminal that plays the agent's pre-config,
             // with the WORKSPACE's overrides (model / folder) beating it.
             const aid = id.slice(6);
             const arow = cliAgentRows.find((x) => x.id === aid);
-            const cellCfg = (cell.config || {}) as { model?: string; folder?: string; keepAlive?: boolean };
+            const cellCfg = (cell.config || {}) as { model?: string; session?: "keep" | "new" | "last"; keepAlive?: boolean };
+            const mode = cellCfg.session ?? arow?.session ?? (cellCfg.keepAlive === false ? "new" : "keep");
             // NO cliAgent on the cell tile — activateTile would bounce it
             // back to openAgentCliCard instead of minting the terminal.
             entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
-            // The WORKSPACE's "Maintain on close" overrides the agent's own
-            // keep-alive when set; otherwise the agent's config rules.
-            entry.keepTermsAlive = cellCfg.keepAlive !== undefined
-              ? cellCfg.keepAlive !== false
-              : (arow ? arow.keepAlive !== false : true);
-            // A parked agent session re-attaches (one session per agent id).
-            const parkedA = parkedTerms.get(`agent::${id}`);
+            // The cell's SESSION choice overrides the agent's (each slotted
+            // agent on a page can behave differently); legacy keepAlive:false
+            // still reads as "new".
+            entry.keepTermsAlive = mode !== "new";
+            const parkedA = mode !== "new" ? parkedTerms.get(`agent::${id}`) : undefined;
+            if (mode === "new") {
+              const stale = parkedTerms.get(`agent::${id}`);
+              if (stale) { parkedTerms.delete(`agent::${id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
+            }
             if (parkedA) { parkedTerms.delete(`agent::${id}`); pendingParkedTerms = parkedA; }
             activateTile(entry);
             pendingParkedTerms = null;
             if (!parkedA && arow) {
+              // The WORKSPACE's working folder rules the agent's own (no
+              // per-cell folder field — his rule, 2026-09-10).
               const overrides = {
                 ...(cellCfg.model ? { model: cellCfg.model } : {}),
-                ...(cellCfg.folder ? { cwd: cellCfg.folder } : {}),
+                ...(layout.folder ? { cwd: layout.folder } : {}),
+                ...(mode === "last" ? { resume: true } : {}),
               };
               if (Object.keys(overrides).length) {
                 // Overridden opens compose in MAIN — the command lands as
@@ -5704,21 +5711,39 @@ async function init(): Promise<void> {
       void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; error?: string }> } })
         .glyphh?.cliAgentOpen?.(a.id).then((r) => {
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
-          const cmd = (r?.ok && r.command) || a.command;
           const row = cliAgentRows.find((x) => x.id === a.id);
+          const mode = row?.session ?? "keep";
           // NO cliAgent on the minted tile — activateTile routes cliAgent
           // tiles back HERE (that was an infinite loop, his report).
           const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
-          entry.keepTermsAlive = row ? row.keepAlive !== false : true;
-          // A parked session re-attaches — same pty, same buffer, the CLI
-          // never stopped. Only a FRESH terminal types the command.
-          const parked = parkedTerms.get(`agent::agent:${a.id}`);
+          entry.keepTermsAlive = mode !== "new";
+          // keep/last re-attach a parked session (same pty, same buffer);
+          // "new" always starts fresh — a stale parked session is killed.
+          const parked = mode !== "new" ? parkedTerms.get(`agent::agent:${a.id}`) : undefined;
+          if (mode === "new") {
+            const stale = parkedTerms.get(`agent::agent:${a.id}`);
+            if (stale) { parkedTerms.delete(`agent::agent:${a.id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
+          }
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
           activateTile(entry);
           pendingParkedTerms = null;
           if (!parked) {
-            const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
-            if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cmd;
+            // "last" with nothing parked: the CLI resumes ITS last
+            // conversation (claude --continue / codex resume --last).
+            const wantResume = mode === "last";
+            const finish = (cmd: string): void => {
+              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string }> } | undefined;
+              const tt = ts?.terminals?.[0];
+              if (!tt) return;
+              if (tt.ptyId) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
+              else tt.initCmd = cmd;
+            };
+            if (wantResume) {
+              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean }) => Promise<{ ok: boolean; command?: string }> } })
+                .glyphh?.cliAgentOpen?.(a.id, { resume: true }).then((rr) => finish((rr?.ok && rr.command) || a.command));
+            } else {
+              finish((r?.ok && r.command) || a.command);
+            }
           }
         });
     };
