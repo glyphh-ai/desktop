@@ -125,9 +125,13 @@ function composeCommand(row: CliAgentRow): string {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
       const token = mcpTokenOf(row.id);
-      base = `${row.cmd} -c experimental_use_rmcp_client=true`
+      // codex (v0.154 verified): streamable_http auth rides an ENV VAR, not
+      // an inline bearer_token ("bearer_token is not supported for
+      // streamable_http") — the shell line exports it just for this process.
+      base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
+        + `${row.cmd} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
-        + (token ? ` -c 'mcp_servers.glyphh.bearer_token="${token}"'` : "");
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
       base = `${row.cmd} --mcp-config "${mcpFile(row.id)}"`;
     }
