@@ -126,6 +126,16 @@ async function createWindow() {
     },
   });
 
+  // DEV VISIBILITY: forward the shell renderer's console errors/warnings to
+  // the terminal — a renderer that dies during boot otherwise reads as "the
+  // splash never dismisses" with zero evidence (2026-09-10).
+  if (!app.isPackaged) {
+    mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
+      if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`);
+    });
+  }
+
+
   if (saved.maximized) mainWindow.maximize();
   // Share the main-window handle with modules that can't import main.ts
   // (app-resolver focuses it when the "Glyphh" system app is opened).
@@ -1107,7 +1117,10 @@ const startWithLock = (attempt: number): void => {
     return;
   }
   if (attempt < 3) setTimeout(() => startWithLock(attempt + 1), 1200);
-  else app.exit(0);
+  else {
+    console.error("[main] another Glyphh instance holds the single-instance lock — quit it (or the installed Glyphh Desktop.app) and relaunch.");
+    app.exit(0);
+  }
 };
 startWithLock(0);
 
