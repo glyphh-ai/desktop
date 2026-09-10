@@ -2961,7 +2961,7 @@ async function init(): Promise<void> {
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
       cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
-      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
+      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean; prompt?: string }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -5695,7 +5695,7 @@ async function init(): Promise<void> {
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
     /** Open a CLI agent: dependencies first (the local MCP server), then the
      *  pre-config types into a fresh terminal card named for the agent. */
-    const openAgentCliCard = (t: EchoTile): void => {
+    const openAgentCliCard = (t: EchoTile, prompt?: string): void => {
       const a = t.cliAgent;
       if (!a) return;
       void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; error?: string }> } })
@@ -5717,6 +5717,11 @@ async function init(): Promise<void> {
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
           activateTile(entry);
           pendingParkedTerms = null;
+          if (parked && prompt) {
+            // The session is already live — the task types in as a message.
+            const tt = (entry.toolSlot as unknown as { terminals?: Array<{ ptyId?: string }> } | undefined)?.terminals?.[0];
+            if (tt?.ptyId) setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${prompt}\r`); }, 400);
+          }
           if (!parked) {
             // "last" with nothing parked: the CLI resumes ITS last
             // conversation (claude --continue / codex resume --last).
@@ -5728,24 +5733,25 @@ async function init(): Promise<void> {
               if (tt.ptyId) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
               else tt.initCmd = cmd;
             };
-            if (wantResume) {
-              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean }) => Promise<{ ok: boolean; command?: string }> } })
-                .glyphh?.cliAgentOpen?.(a.id, { resume: true }).then((rr) => finish((rr?.ok && rr.command) || a.command));
+            if (wantResume || prompt) {
+              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean; prompt?: string }) => Promise<{ ok: boolean; command?: string }> } })
+                .glyphh?.cliAgentOpen?.(a.id, { ...(wantResume ? { resume: true } : {}), ...(prompt ? { prompt } : {}) })
+                .then((rr) => finish((rr?.ok && rr.command) || a.command));
             } else {
               finish((r?.ok && r.command) || a.command);
             }
           }
         });
     };
-    (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli = (id: string) => {
+    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string) => void }).__wbOpenAgentCli = (id: string, prompt?: string) => {
       const row = cliAgentRows.find((x) => x.id === id);
-      if (row) { openAgentCliCard(cliAgentTileOf(row)); return; }
+      if (row) { openAgentCliCard(cliAgentTileOf(row), prompt); return; }
       // Section saved an agent this session hasn't cached yet — fetch, then open.
       void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
         if (!r?.ok) return;
         cliAgentRows = r.agents;
         const fresh = cliAgentRows.find((x) => x.id === id);
-        if (fresh) openAgentCliCard(cliAgentTileOf(fresh));
+        if (fresh) openAgentCliCard(cliAgentTileOf(fresh), prompt);
       }).catch(() => {});
     };
     /** "Here it is" — surface a card the user just aimed at. Landing in an

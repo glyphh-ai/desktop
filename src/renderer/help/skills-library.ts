@@ -10,7 +10,7 @@
  * The only hand controls are operational: search, and delete.
  */
 
-import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction, promptAction } from "./shared.js";
+import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { unwrap, type Skill, type SkillSummary } from "./library-types.js";
 import { skillGraph, renderFlow } from "./lib-flow.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -185,17 +185,10 @@ export function initSkillsLibraryEvents(): void {
   searchInput.addEventListener("input", renderList);
   $a("skill-back-link").addEventListener("click", () => renderList());
 
-  // HAND authoring (the AI author died with the glyphh agent).
+  // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
+  // 2026-09-10) — no default set, the modal points at Settings → General.
   $a("skill-new-btn").addEventListener("click", () => {
-    void promptAction("New skill — name it", "", "release-notes", "Create").then((name) => {
-      if (!name) return;
-      void (window.glyphh as unknown as { skillsCreate?: (i: { name: string }) => Promise<{ ok: boolean; data?: { slug: string }; error?: string }> })
-        .skillsCreate?.({ name }).then(async (r) => {
-          if (!r?.ok) { fail(r?.error || "couldn't create the skill"); return; }
-          await loadSkillsLibrary();
-          if (r.data?.slug) void openDetail(r.data.slug);
-        });
-    });
+    void openDefaultAgent("Create a new Glyphh skill for me. A skill is a JSON file at ~/.glyphh/skills/<slug>.json with keys: id and slug (the same kebab slug), scope set to personal, name, description, hasCode false, builtIn false, schedule null, updatedAt (ISO now), manifest (version 1), prompt — the skill's markdown instructions — and an empty code string. Ask me what the skill should teach, then write the file.");
   });
   $a("skill-ai-btn")?.classList.add("hidden");
 
@@ -208,4 +201,26 @@ async function deleteCurrent(): Promise<void> {
   const env = await window.glyphh.librarySkillDelete(current.slug);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadSkillsLibrary();
+}
+
+/** "+ New" hands authoring to the DEFAULT AGENT (Settings → General). No
+ *  default set → the standard modal points there. */
+async function openDefaultAgent(task: string): Promise<void> {
+  const yo = window.glyphh as unknown as {
+    getPreference?: (k: string, d: unknown) => Promise<unknown>;
+    cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
+  };
+  const def = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
+  const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
+  const agent = agents.find((a) => a.id === def);
+  if (!agent) {
+    const go = await confirmAction({
+      title: "Set a default agent first",
+      body: "\u201c+ New\u201d hands authoring to your default agent. Pick one in Settings \u2192 General.",
+      confirmLabel: "Open Settings",
+    });
+    if (go) (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
+    return;
+  }
+  (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string) => void }).__wbOpenAgentCli?.(agent.id, task);
 }

@@ -10,7 +10,7 @@
  * out of this list; the only hand controls are search and delete.
  */
 
-import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction, promptAction } from "./shared.js";
+import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import type { Loop, LoopSummary } from "./library-types.js";
 import { loopGraph, renderFlow } from "./lib-flow.js";
 import { wireSplitDivider, kebabCell, ROW_MENU_ICONS, wireIdentityEdit } from "./lib-editor.js";
@@ -245,17 +245,10 @@ export function initLoopsEvents(): void {
   searchInput.addEventListener("input", renderList);
   $a("loop-back-link").addEventListener("click", () => renderList());
 
-  // HAND authoring (the AI author died with the glyphh agent).
+  // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
+  // 2026-09-10) — no default set, the modal points at Settings → General.
   $a("loop-new-btn").addEventListener("click", () => {
-    void promptAction("New loop — name it", "", "morning-digest", "Create").then((name) => {
-      if (!name) return;
-      void (window.glyphh as unknown as { loopsCreate?: (i: { name: string }) => Promise<{ ok: boolean; data?: { slug: string }; error?: string }> })
-        .loopsCreate?.({ name }).then(async (r) => {
-          if (!r?.ok) { fail(r?.error || "couldn't create the loop"); return; }
-          await loadLoops();
-          if (r.data?.slug) void openDetail(r.data.slug);
-        });
-    });
+    void openDefaultAgent("Create a new Glyphh loop for me. A loop is a JSON file at ~/.glyphh/loops/<slug>.json with keys: id and slug (the same kebab slug), scope set to personal, ownerUserId null, name, description, builtIn false, updatedAt (ISO now), manifest (version 1, type turn, roles: an array of one role with name main, label Main, default null), and code — code is the PROGRAM, the prompt the slotted agent runs. Ask me what the loop should do, then write the file.");
   });
   $a("loop-ai-btn")?.classList.add("hidden");
 
@@ -312,4 +305,26 @@ async function deleteCurrent(): Promise<void> {
   const env = await window.glyphh.libraryLoopDelete(current.slug);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadLoops();
+}
+
+/** "+ New" hands authoring to the DEFAULT AGENT (Settings → General). No
+ *  default set → the standard modal points there. */
+async function openDefaultAgent(task: string): Promise<void> {
+  const yo = window.glyphh as unknown as {
+    getPreference?: (k: string, d: unknown) => Promise<unknown>;
+    cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
+  };
+  const def = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
+  const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
+  const agent = agents.find((a) => a.id === def);
+  if (!agent) {
+    const go = await confirmAction({
+      title: "Set a default agent first",
+      body: "\u201c+ New\u201d hands authoring to your default agent. Pick one in Settings \u2192 General.",
+      confirmLabel: "Open Settings",
+    });
+    if (go) (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
+    return;
+  }
+  (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string) => void }).__wbOpenAgentCli?.(agent.id, task);
 }

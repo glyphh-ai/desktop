@@ -177,6 +177,35 @@ function initSettings() {
     })();
   }
 
+  // Default agent — who answers "+ New" on Loops/Skills (pref defaultAgent).
+  const defAg = document.getElementById("settings-default-agent") as HTMLSelectElement | null;
+  if (defAg) {
+    void (async () => {
+      const yo = window.glyphh as unknown as {
+        cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
+        getPreference?: (k: string, d: unknown) => Promise<unknown>;
+        setPreference?: (k: string, v: unknown) => void;
+      };
+      const current = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
+      const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
+      defAg.innerHTML = "";
+      const none = document.createElement("option");
+      none.value = "";
+      none.textContent = agents.length ? "None" : "None — create an agent first";
+      defAg.appendChild(none);
+      for (const a of agents) {
+        const o = document.createElement("option");
+        o.value = a.id;
+        o.textContent = a.name;
+        defAg.appendChild(o);
+      }
+      defAg.value = agents.some((a) => a.id === current) ? current : "";
+      defAg.addEventListener("change", () => {
+        void yo.setPreference?.("defaultAgent", defAg.value);
+      });
+    })();
+  }
+
   // The cloud relay (external LLMs driving this machine) was removed. Its
   // in-page helper survives — escapeHtmlLocal is reused by the token list below.
   function escapeHtmlLocal(s: string): string {

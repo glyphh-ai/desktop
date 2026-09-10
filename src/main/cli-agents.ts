@@ -242,7 +242,7 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   }
 }
 
-export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean }
+export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean; prompt?: string }
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
@@ -287,7 +287,15 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       : row.cli === "codex" ? " resume --last"
       : ""
     : "";
-  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}`;
+  // An INITIAL PROMPT seeds the interactive session (claude/codex take it
+  // positionally; gemini via -i); CLIs without the affordance just open.
+  const p0 = (ov?.prompt ?? "").trim();
+  const promptPart = p0
+    ? (row.cli === "claude" || row.cli === "codex") ? ` '${p0.replace(/'/g, "'\\''")}'`
+      : row.cli === "gemini" ? ` -i '${p0.replace(/'/g, "'\\''")}'`
+      : ""
+    : "";
+  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -296,11 +304,11 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart} --mcp-config "${mcpFile(row.id)}"`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /
