@@ -74,7 +74,10 @@
                   <input type="text" id="cagent-apikey-name" class="settings-input" placeholder="GEMINI_API_KEY" spellcheck="false" autocomplete="off" />
                   <label class="settings-label">Key</label>
                   <input type="password" id="cagent-apikey-value" class="settings-input" placeholder="paste the key" spellcheck="false" autocomplete="off" />
-                  <p class="settings-hint" id="cagent-apikey-hint" style="font-family:ui-monospace,monospace;"></p>
+                  <div id="cagent-apikey-current" class="cagent-key-current hidden">
+                    <span id="cagent-apikey-hint"></span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
                 </div>
                 <label class="settings-toggle set-pref-row" style="margin-top:10px;">
                   <div class="set-pref-text">

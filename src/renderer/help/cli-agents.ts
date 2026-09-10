@@ -75,7 +75,8 @@ function showEditor(agent: CliAgent | null): void {
   (el<HTMLInputElement>("cagent-apikey-name")!).value = agent?.apiKey?.name ?? "";
   (el<HTMLInputElement>("cagent-apikey-value")!).value = "";
   const kh = el("cagent-apikey-hint");
-  if (kh) kh.textContent = agent?.apiKey ? `set: ${agent.apiKey.hint} — type to replace` : "";
+  if (kh) kh.textContent = agent?.apiKey ? `Current Key: ${agent.apiKey.hint}` : "";
+  el("cagent-apikey-current")?.classList.toggle("hidden", !agent?.apiKey);
   syncApiKeyRow();
   syncCliRow();
   el("cagent-open-btn")?.classList.toggle("hidden", !agent);

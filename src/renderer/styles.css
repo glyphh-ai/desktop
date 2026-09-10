@@ -20299,3 +20299,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .cagent-card-mark { width: 26px; height: 26px; border-radius: 6px; }
 /* The Agents editor rides the Apps/Workspaces split — same release. */
 #cagent-editor.crud-inline-form { max-width: none !important; }
+.cagent-key-current {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 8px; font: 12px ui-monospace, monospace; color: var(--text-2);
+}
+.cagent-key-current svg { width: 16px; height: 16px; color: var(--success); flex: 0 0 auto; }
