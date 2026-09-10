@@ -244,6 +244,11 @@ export function initTasksPage(): void {
   searchInput.addEventListener("input", renderList);
   $a("loop-back-link").addEventListener("click", () => renderList());
   $a("loops-refresh-btn").addEventListener("click", () => void loadTasksPage());
+  // The scheduled-runs monitor is the WORKBENCH tool panel (chart, next
+  // fires, run history) — the old Scheduled Tasks surface, one click away.
+  $a("loops-scheduled-btn").addEventListener("click", () => {
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks");
+  });
 
   // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
   // 2026-09-10) — no default set, the modal points at Settings → General.

@@ -302,7 +302,10 @@ export function registerLocalLibraryIpc(): void {
   // Roles resolve with CHOICES = the CLI AGENTS (a role's default names an
   // agent now; the agent carries its model) — the main-era picker mechanics
   // read modelId/choices unchanged.
-  ipcMain.handle("loop-roles", (_e, loop: string) => {
+  // Preload sends { loop } / { loopId, role, modelId } object payloads (the
+  // main-era wire shape) — accept those AND bare positionals.
+  ipcMain.handle("loop-roles", (_e, arg: string | { loop?: string }) => {
+    const loop = typeof arg === "string" ? arg : String(arg?.loop ?? "");
     try {
       const row = getLoop(String(loop));
       const agents = listCliAgents();
@@ -317,9 +320,12 @@ export function registerLocalLibraryIpc(): void {
       return { ok: false, loop: String(loop), roles: [], error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle("loop-set-role-default", (_e, loopId: string, role: string, agentId: string | null) => env(() => {
-    const row = getLoop(String(loopId));
-    const r = (row.manifest.roles ?? []).find((x) => x.name === String(role));
+  ipcMain.handle("loop-set-role-default", (_e, arg: string | { loopId?: string; role?: string; modelId?: string | null }, rolePos?: string, agentPos?: string | null) => env(() => {
+    const loopId = typeof arg === "string" ? arg : String(arg?.loopId ?? "");
+    const role = typeof arg === "string" ? String(rolePos ?? "") : String(arg?.role ?? "");
+    const agentId = typeof arg === "string" ? agentPos ?? null : arg?.modelId ?? null;
+    const row = getLoop(loopId);
+    const r = (row.manifest.roles ?? []).find((x) => x.name === role);
     if (!r) throw new Error(`role "${role}" not on this loop`);
     r.default = agentId ? String(agentId) : null;
     return saveLoop(row);
