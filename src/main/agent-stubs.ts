@@ -71,16 +71,9 @@ const ENVELOPE = [
   "library-agent-get",
   "library-agent-task-add",
   "library-agent-task-delete",
-  "library-agent-task-run-now",
   "library-agent-task-running",
-  "library-agent-task-runs",
-  "library-agent-task-update",
-  "library-agent-tasks",
   "library-agent-update",
   "library-loop-create",
-  "library-loop-delete",
-  "library-loop-get",
-  "library-loop-update",
   "library-market",
   "library-market-install",
   "library-market-uninstall",
@@ -89,9 +82,6 @@ const ENVELOPE = [
   "library-share",
   "library-share-review",
   "library-skill-create",
-  "library-skill-delete",
-  "library-skill-get",
-  "library-skill-update",
   "mkt-admin-app-search",
   "mkt-admin-dev-flagged",
   "mkt-admin-dev-moderate",
@@ -139,10 +129,7 @@ const ENVELOPE = [
 /** Channels whose callers destructure a bare array. */
 const EMPTY_LIST = [
   "connections-list", "connectors-get-accounts",
-  "loops-list",
   "glyphh-threads-list",
-  "library-agents-list",
-  "library-skills-list",
 ] as const;
 
 export function registerAgentStubs(): void {
@@ -154,7 +141,6 @@ export function registerAgentStubs(): void {
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
   ipcMain.handle("connectors-get-apps", () => ({ apps: [], hasMore: false }));
-  ipcMain.handle("loop-roles", (_e, p?: { loop?: string }) => ({ ok: false, loop: String(p?.loop || "default"), roles: [] }));
   ipcMain.handle("mcp-connections-list", () => ({ ok: false, error: RETIRED, connections: [] }));
   ipcMain.handle("mcp-custom-allowed", () => ({ allowed: false, reason: RETIRED }));
   // The composer's session cache — an empty store, honestly.

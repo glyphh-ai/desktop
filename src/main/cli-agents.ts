@@ -238,6 +238,39 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
 
 export interface OpenOverrides { model?: string; cwd?: string }
 
+/** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
+ *  same env file / model / MCP wiring an interactive open gets. The loop
+ *  scheduler runs these. */
+export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string): string {
+  const row = { ...agent } as CliAgentRow;
+  const p = prompt.replace(/'/g, "'\\''");
+  const m = (model ?? row.model ?? "").trim();
+  let core: string;
+  switch (row.cli) {
+    case "claude":
+      core = `${row.cmd}${modelFlag(row.cli, m)} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
+      break;
+    case "codex": {
+      const token = row.mcp ? mcpTokenOf(row.id) : "";
+      const { port } = localMcpStatus();
+      core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
+        + `${row.cmd}${modelFlag(row.cli, m)} exec '${p}'`
+        + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
+          + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
+      break;
+    }
+    case "gemini":
+      core = `${row.cmd}${modelFlag(row.cli, m)} -p '${p}'`;
+      break;
+    default:
+      throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex or gemini for scheduled loops`);
+  }
+  const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${core}` : core;
+  return row.apiKey && fs.existsSync(envFile(row.id))
+    ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
+    : line;
+}
+
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   const model = (ov?.model ?? row.model ?? "").trim();
   const cwd = (ov?.cwd ?? row.cwd ?? "").trim();

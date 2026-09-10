@@ -1,0 +1,27 @@
+        <!-- Loops — READ-first, like Skills and Agents. The AGENT authors loops
+             (via /create-loop or "Create with AI"); this page shows what each
+             loop is: its model slots, what it may reach, its program, and the
+             flow view. Hand controls: search, delete. -->
+        <div class="help-section" data-section="loops">
+          <h2>Loops</h2>
+          <p class="section-desc">The deterministic flows your agent runs — model slots, reach, and program, authored with AI.</p>
+          <div id="loops-toolbar" class="crud-toolbar">
+            <input id="loop-search" type="text" class="crud-search" placeholder="Search loops..." spellcheck="false" autocomplete="off" />
+            <button id="loop-new-btn" class="action-btn primary">+ New with AI</button>
+          </div>
+          <div id="loops-list" class="crud-cards"></div>
+          <div id="loop-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="loop-back-link">&larr; Loops</a>
+              <a id="loop-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this loop"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <div class="crud-spacer"></div>
+              <span id="loop-builtin-badge" class="lib-badge hidden">Built-in</span>
+            </div>
+            <div id="loop-form-error" class="crud-form-error hidden"></div>
+            <div class="lib-split">
+              <div id="loop-detail" class="lib-split-form lib-read"></div>
+              <div class="lib-split-divider" id="loop-split-divider"></div>
+              <div id="loop-flow-host" class="lib-split-flow"></div>
+            </div>
+          </div>
+        </div>

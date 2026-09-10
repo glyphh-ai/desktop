@@ -436,6 +436,13 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
   cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
 
+  // Loops + skills (local library) — hand-create + schedules
+  loopsCreate: (input: { name?: string }) => ipcRenderer.invoke("loops-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  skillsCreate: (input: { name?: string }) => ipcRenderer.invoke("skills-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  loopSchedulesList: (loopSlug: string) => ipcRenderer.invoke("loop-schedules-list", loopSlug) as Promise<{ ok: boolean; data?: Array<{ id: string; agentId: string; name: string; cron: string; enabled: boolean }>; error?: string }>,
+  loopScheduleSave: (input: { loopSlug: string; agentId: string; cron: string; name?: string; id?: string }) => ipcRenderer.invoke("loop-schedule-save", input) as Promise<{ ok: boolean; data?: { id: string }; error?: string }>,
+  loopScheduleDelete: (id: string) => ipcRenderer.invoke("loop-schedule-delete", id) as Promise<{ ok: boolean; error?: string }>,
+
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
   dripsSave: (name: string, recipe: string) => ipcRenderer.invoke("drips-save", name, recipe) as Promise<string>,

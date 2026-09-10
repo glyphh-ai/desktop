@@ -202,6 +202,32 @@ const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    // Scheduled loops (the build, 2026-09-10): a schedule binds a LOOP to a
+    // CLI AGENT on a cron; runs capture the headless output.
+    version: 9,
+    sql: `
+      CREATE TABLE IF NOT EXISTS loop_schedules (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        loop_slug TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS loop_runs (
+        id TEXT PRIMARY KEY,
+        schedule_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        duration_ms INTEGER,
+        status TEXT NOT NULL,
+        error TEXT,
+        output TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_schedule ON loop_runs (schedule_id, started_at);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {
