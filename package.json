@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "WILLIAM_TRAINING_CAPTURE=1 npm run build && ELECTRON_RUN_AS_NODE= electron .",
     "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs",
-    "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/popout-slides.ts --bundle --outfile=dist/renderer/popout-slides.js --platform=browser && shx cp src/renderer/popout-slides.html dist/renderer/ && esbuild src/renderer/pdf-raster.ts --bundle --outfile=dist/renderer/pdf-raster.js --platform=browser --format=iife && esbuild node_modules/pdfjs-dist/build/pdf.worker.mjs --bundle --outfile=dist/renderer/pdf-raster-worker.js --platform=browser --format=esm --minify && shx cp src/renderer/pdf-raster.html dist/renderer/",
+    "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/pdf-raster.ts --bundle --outfile=dist/renderer/pdf-raster.js --platform=browser --format=iife && esbuild node_modules/pdfjs-dist/build/pdf.worker.mjs --bundle --outfile=dist/renderer/pdf-raster-worker.js --platform=browser --format=esm --minify && shx cp src/renderer/pdf-raster.html dist/renderer/",
     "build:main": "tsc",
     "build:app-libs": "node scripts/build-app-libs.mjs",
     "pack:apps": "node scripts/pack-apps.mjs",
