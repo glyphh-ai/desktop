@@ -38,8 +38,6 @@ const ENVELOPE = [
   "hosting-deploy", "hosting-destroy", "hosting-status",
   "loop-apply-config", "loop-role-set",
   "marketing-link-create", "marketing-link-delete", "marketing-link-update", "marketing-links",
-  "mcp-connections-catalog", "mcp-connections-create", "mcp-connections-delete",
-  "mcp-connections-install", "mcp-connections-tools", "mcp-connections-update",
   "memory-amend", "memory-browse", "memory-forget", "memory-graph", "memory-search",
   "org-custom-models-delete", "org-custom-models-list", "org-custom-models-save",
   "org-custom-providers-delete", "org-custom-providers-list", "org-custom-providers-save",
@@ -141,8 +139,6 @@ export function registerAgentStubs(): void {
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
   ipcMain.handle("connectors-get-apps", () => ({ apps: [], hasMore: false }));
-  ipcMain.handle("mcp-connections-list", () => ({ ok: false, error: RETIRED, connections: [] }));
-  ipcMain.handle("mcp-custom-allowed", () => ({ allowed: false, reason: RETIRED }));
   // The composer's session cache — an empty store, honestly.
   ipcMain.handle("glyphh-agent-sessions-load", () => ({ chats: [], currentId: null }));
   // Background/resident mode is gone — report it off, refuse to arm it.

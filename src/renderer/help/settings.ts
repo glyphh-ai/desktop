@@ -289,7 +289,7 @@ function initSettings() {
   if (localMcpSection && localMcpToggle && !mcpOnWeb) {
     localMcpSection.classList.remove("hidden");
     void (async () => {
-      const enabled = (await window.glyphh.getPreference("localMcpEnabled", false)) as boolean;
+      const enabled = (await window.glyphh.getPreference("localMcpEnabled", true)) !== false;
       localMcpToggle.checked = enabled;
       setLocalMcpBodyVisible(enabled);
       await refreshLocalMcp();

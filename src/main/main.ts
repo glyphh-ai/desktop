@@ -95,6 +95,7 @@ import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { registerCliAgentsIpc } from "./cli-agents";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
+import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
 import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
@@ -976,6 +977,7 @@ async function boot() {
   registerWorkspaceStateIpc();
   registerCliAgentsIpc();
   registerLocalLibraryIpc();
+  registerMcpConnectionsIpc();
   startLoopScheduler();
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
@@ -1263,6 +1265,7 @@ function cleanupAll(backstopMs = 4000) {
     ["schedules", () => stopAllSchedules()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],
+    ["mcpConnections", () => closeMcpConnections()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],
   ];

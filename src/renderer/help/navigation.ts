@@ -11,6 +11,7 @@ import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadCliAgents, initCliAgentsEvents } from "./cli-agents.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
+import { loadConnections, initConnections } from "./connections.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
@@ -139,6 +140,7 @@ export function loadActiveSection(explicit?: string) {
   else if (sec === "agents") loadCliAgents();
   else if (sec === "loops") void loadLoops();
   else if (sec === "skills") void loadSkillsLibrary();
+  else if (sec === "connections") void loadConnections();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
@@ -192,7 +194,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "agents", "loops", "skills"].includes(section)) {
+  if (["apps", "layouts", "drips", "agents", "loops", "skills", "connections"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -1126,6 +1128,7 @@ export function initHelp() {
   boot("agents", initCliAgentsEvents);
   boot("loops", initLoopsEvents);
   boot("skills", initSkillsLibraryEvents);
+  boot("connections", initConnections);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).

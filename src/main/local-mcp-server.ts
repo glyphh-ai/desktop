@@ -21,6 +21,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
+import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -105,6 +106,34 @@ function buildMcpServer(): McpServer {
       return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
     }
   };
+
+  // ── Custom MCP connections — the user's own servers, aggregated ─────
+  mcp.tool(
+    "connections_list_tools",
+    "List the tools published by the user's CUSTOM MCP CONNECTIONS (their own servers, dialed locally). Returns [{ connection, name, description, inputSchema }]. Call one with connections_call_tool.",
+    {},
+    async () => {
+      const tools = await listConnectionTools();
+      return { content: [{ type: "text" as const, text: JSON.stringify(tools) }] };
+    },
+  );
+  mcp.tool(
+    "connections_call_tool",
+    "Call a tool on one of the user's custom MCP connections (discover with connections_list_tools).",
+    {
+      connection: z.string().describe("Connection slug"),
+      tool: z.string().describe("Tool name on that connection"),
+      args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments"),
+    },
+    async ({ connection, tool, args }) => {
+      try {
+        const r = await callConnectionTool(connection, tool, (args as Record<string, unknown>) || {});
+        return { content: [{ type: "text" as const, text: typeof r === "string" ? r : JSON.stringify(r) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
+      }
+    },
+  );
 
   mcp.tool(
     "relay_ping",
@@ -359,7 +388,7 @@ export function localMcpStatus(): { running: boolean; port: number } {
  * boot and whenever the user toggles the setting.
  */
 export async function syncLocalMcpServer(): Promise<{ ok: boolean; error?: string }> {
-  const enabled = getPreference<boolean>("localMcpEnabled", false) === true;
+  const enabled = getPreference<boolean>("localMcpEnabled", true) !== false;
   if (enabled && !server) return startLocalMcpServer();
   if (!enabled && server) { stopLocalMcpServer(); return { ok: true }; }
   return { ok: true };
