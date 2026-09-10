@@ -3848,12 +3848,7 @@ async function init(): Promise<void> {
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
-      // ATTACHED MODE: the CC lifts over the foreign app even with nothing
-      // open — the app IS the covering surface, so an empty frame is the
-      // normal resting state, not a reason to refuse (his report,
-      // 2026-08-28: the CC icon did nothing).
-      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
-      if (!openList.length && !agentDock) return;
+      if (!openList.length) return;
       setShadow(!shadowPinned, !shadowPinned);
     };
     // ESC closes the lifted command center when apps/a layout are open behind
@@ -4183,11 +4178,7 @@ async function init(): Promise<void> {
       // dock off the top — fixed and above EVERY layer (the agent panel was
       // burying it) — leaving the hint sliver; hovering the top edge peeks
       // the dock back over the panels. Pinned (auto-hide off) it stays put.
-      // ATTACHED MODE (his spec, 2026-08-28): the dock is ALWAYS tucked over
-      // a foreign app, whatever the auto-hide setting says — the attached
-      // app reads as an open window, and open windows don't wear the dock.
-      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
-      const dockTucked = agentDock || (hidden && autoHideOn);
+      const dockTucked = hidden && autoHideOn;
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
       if (!dockTucked) document.body.classList.remove("echo-dock-peek");
@@ -4206,10 +4197,7 @@ async function init(): Promise<void> {
       // covered proceeds as ever, cards take the FULL band, and the lock's
       // CSS pin (body.echo-agent-locked, !important) simply overrides the
       // tuck transform so the agent floats OVER the cards instead of hiding.
-      // ?solo=agent: the foreign app beneath the window IS the covering
-      // surface — covered is permanent there (agentDock hoisted above), and
-      // the lock pin overrides the tuck exactly as it does over cards.
-      const covered = agentDock || (hidden && !layoutUp);
+      const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
       // A separate signal for "the WALL is not on screen" regardless of WHY —
@@ -4268,11 +4256,8 @@ async function init(): Promise<void> {
           }
           // CC and Close all are permanent slots that go INERT with nothing
           // open (his order, 2026-08-28) — dim in the row, but never acting.
-          // ATTACHED MODE exempts the CC: over a foreign app it is the way
-          // to the wall, live from the first summon.
           if ((key === "cc" || key === "closeall")
-            && !document.body.classList.contains("echo-has-panels")
-            && !(key === "cc" && document.documentElement.getAttribute("data-home-scope") === "agent-dock")) return;
+            && !document.body.classList.contains("echo-has-panels")) return;
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "closeall") {
             if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();

@@ -3108,26 +3108,6 @@ function wireComposerAttachments(): void {
         void window.glyphh.glyphhPickAttachments("folder").then((refs) => { if (refs.length) queueAttachments(refs); });
       }),
     );
-    // ATTACHED AGENT ONLY (his order, 2026-08-28): capture the window the
-    // pill rides — the window's own surface (the pill never photobombs),
-    // attached like any image. In the app itself panels are webviews the
-    // agent can already read (rpa.read / rpa.screenshot), so this item
-    // exists only where the target is a FOREIGN app.
-    if (document.documentElement.getAttribute("data-home-scope") === "agent-dock") {
-      menu.append(mkItem("Record this window", "Attach a shot of the app this agent is riding", () => {
-        void (window.glyphh as unknown as { agentDockCaptureTarget?: () => Promise<{ ok: boolean; path?: string; proc?: string; error?: string }> })
-          .agentDockCaptureTarget?.().then((r) => {
-            if (r?.ok && r.path) {
-              queueAttachments([{ kind: "image", path: r.path, name: `${r.proc || "window"}.png` }]);
-            } else if (r?.error) {
-              // Same voice every command failure uses — a line in the thread.
-              if (!current()) newChat();
-              current()!.messages.push({ role: "assistant", text: `⚠ Record this window: ${r.error}`, at: Date.now() });
-              void saveStore(); renderThread();
-            }
-          });
-      }));
-    }
     // WORK and CODE run inside a working folder — the + is where you set it,
     // right from the landing or the thread (Chat has no folder concept; CSS
     // hides these under data-session-space="chat").
@@ -5471,8 +5451,7 @@ export function initCode(): void {
   // ── Developer tools ⋯ menu (his rule, 2026-08-21): Files/Terminal/Editor/
   // Browser/Diff/Plan live HERE, right of + new session — off the
   // command-center wall. Each opens its workbench view via __wbOpenTool. The
-  // whole control hides when the agent is ATTACHED to another app
-  // (data-home-scope="agent-dock") — that overlay is not a dev surface.
+
   {
     const TOOLS: Array<{ view: string; label: string; icon: string }> = [
       { view: "files",    label: "Files",    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>` },
@@ -5486,10 +5465,8 @@ export function initCode(): void {
     const wrap = el("code-tools-wrap");
     const moreBtn = el("code-tools-more");
     const menu = el("code-tools-menu");
-    // Attached-agent overlay is not a dev surface — drop the whole control.
-    if (document.documentElement.getAttribute("data-home-scope") === "agent-dock") {
-      wrap?.remove();
-    } else if (moreBtn && menu) {
+    void wrap;
+    if (moreBtn && menu) {
       menu.innerHTML = TOOLS.map((t) =>
         `<button class="code-view-menu-item" data-view="${t.view}" type="button">${t.icon}<span>${t.label}</span></button>`).join("");
       const close = (): void => menu.classList.add("hidden");
