@@ -2353,7 +2353,7 @@ async function init(): Promise<void> {
       // Branded CLIs wear their public marks; custom ones the robot.
       ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" }
         : a.cli === "codex" ? { iconUrl: "https://openai.com/favicon.ico" }
-        : a.cli === "gemini" ? { iconUrl: "https://gemini.google.com/favicon.ico" }
+        : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
         : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
         : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
         : { glyphSvg: CLI_AGENT_GLYPH }),

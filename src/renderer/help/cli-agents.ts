@@ -16,7 +16,7 @@ interface CliAgent { id: string; name: string; cli: "claude" | "codex" | "gemini
 const CLI_MARK_URLS: Record<string, string> = {
   claude: "https://claude.ai/favicon.ico",
   codex: "https://openai.com/favicon.ico",
-  gemini: "https://gemini.google.com/favicon.ico",
+  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
   copilot: "https://github.com/favicon.ico",
   cursor: "https://cursor.com/favicon.ico",
 };
