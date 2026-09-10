@@ -24,14 +24,12 @@ const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
 
 // THE user-menu rows — one list, every anchor (his question, 2026-08-27:
 // two hand-built menus had drifted; About made one and missed the other).
-// Order: identity first, help next, About (version + updates) last before
-// the sign-out. Rendered by buildUserMenuInto for BOTH the rail's Account
-// chip and the settings shell's bottom-left chip.
+// Identity + About only (his order, 2026-09-10): Settings is redundant from
+// inside the settings dialog, and Docs/Support live on the settings nav now.
+// Rendered by buildUserMenuInto for BOTH the rail's Account chip and the
+// settings shell's bottom-left chip.
 const USER_MENU_ROWS: ReadonlyArray<{ label: string; sub: string; icon: string }> = [
   { label: "Account", sub: "account", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>` },
-  { label: "Settings", sub: "settings", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` },
-  { label: "Docs", sub: "docs", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` },
-  { label: "Support", sub: "support", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>` },
   { label: "About", sub: "about", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>` },
 ];
 /** Render the shared rows + Log out into `menu`. `go` routes a sub. */
@@ -307,7 +305,9 @@ export function openSettingsModal(sub?: string): void {
   // settings surface — the two are separate on purpose; never route the app's
   // gear to /platform.
   // Already open — just switch the sub-panel.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "org-general" : "account";
+  // Desktop lands on General now — Account left the nav rail for the user
+  // menu (his order, 2026-09-10), so it can't be the modal's landing row.
+  const defaultSub = document.body.classList.contains("platform-shell") ? "org-general" : "general";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
@@ -577,12 +577,10 @@ function wireAppUserChip(nav: HTMLElement): void {
     menu.setAttribute("role", "menu");
     buildUserMenuInto(menu, (sub) => {
       // Route through the (possibly hidden) nav rows so panel switching stays
-      // the one existing path — same trick the platform chip uses. "Settings"
-      // (already inside the modal) lands on the first nav row.
-      const target = sub === "settings"
-        ? nav.querySelector<HTMLElement>(".settings-nav-item")
-        : nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`);
-      target?.click();
+      // the one existing path — same trick the platform chip uses. Account's
+      // row is hidden (the menu owns it), but a hidden row still takes the
+      // programmatic click.
+      nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`)?.click();
     }, () => menu.classList.add("hidden"));
     chip.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -954,8 +952,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  // "artifacts" is the files section's rail name.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", artifacts: "files" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
@@ -1014,7 +1011,7 @@ export function initHelp() {
   let userMenu: HTMLDivElement | null = null;
   let userMenuAnchor: HTMLElement | null = null;
   const closeUserMenu = () => { userMenu?.remove(); userMenu = null; userMenuAnchor = null; };
-  /** The account dropdown — Docs / Settings / Account / Logout. ANCHOR-aware:
+  /** The account dropdown — Account / About / Log out. ANCHOR-aware:
    *  opens upward from a bottom-of-screen anchor (the retired rail button)
    *  and downward from a top one. (No visible opener today — the retired
    *  rail button keeps the binding; Settings/Account run through the dock's
@@ -1031,11 +1028,7 @@ export function initHelp() {
       b.addEventListener("click", () => { closeUserMenu(); cb(); });
       m.appendChild(b);
     };
-    buildUserMenuInto(m, (sub) => {
-      if (sub === "docs") gotoSection("docs");
-      else if (sub === "settings") gotoSection("settings");   // the modal's landing
-      else gotoSection("settings", sub);
-    }, closeUserMenu);
+    buildUserMenuInto(m, (sub) => { gotoSection("settings", sub); }, closeUserMenu);
     document.body.appendChild(m);
     const r = anchor.getBoundingClientRect();
     const openUp = r.top > window.innerHeight / 2;
