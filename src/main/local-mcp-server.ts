@@ -116,7 +116,7 @@ function buildMcpServer(): McpServer {
   // ── Panel management ─────────────────────────────────
   mcp.tool(
     "panels_list",
-    "List the user's open app windows. Returns app (slug — the key every other panel tool takes), name, current url, page title, and which window is focused.",
+    "List the user's OPEN app panels (see panels_available for everything that CAN be opened). Returns app (slug — the key every other panel tool takes), name, current url, page title, and which window is focused.",
     {},
     async () => via("panels.list", {}),
   );
@@ -133,9 +133,15 @@ function buildMcpServer(): McpServer {
     async ({ app }) => via("panels.close", { app }),
   );
   mcp.tool(
+    "panels_available",
+    "List the user's SAVED APP LIBRARY — everything panels_open can open (slug, name, url, kind). When the user asks about a site or service (mail, calendar, a dashboard…), check here FIRST and open their saved app for it instead of driving the raw browser.",
+    {},
+    async () => via("panels.available", {}),
+  );
+  mcp.tool(
     "panels_open",
-    "Open an app in its own native window on the user's machine. `app` is 'browser', 'terminal', or a slug from the user's saved app library (the same apps the platform's Apps page manages). Re-opening an already-open app focuses its window.",
-    { app: z.string().describe("App to open: 'browser', 'terminal', or a saved-app slug") },
+    "Open an app as a panel. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Re-opening an already-open app focuses it.",
+    { app: z.string().describe("App to open: a saved-app slug from panels_available, or 'browser' / 'terminal'") },
     async ({ app }) => via("panels.open", { app }),
   );
   mcp.tool(
