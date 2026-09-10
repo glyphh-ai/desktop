@@ -107,11 +107,6 @@ export function registerAccountIpc(): void {
     catch (err) { return fail(err); }
   });
   // Organization SSO (WorkOS) — status, admin-portal link, require-SSO toggle.
-  ipcMain.handle("org-security", () => getClient().org.security());
-  ipcMain.handle("org-security-portal", (_e, intent: string) =>
-    getClient().org.securityPortal((intent as "sso" | "dsync" | "domain_verification") || "sso"));
-  ipcMain.handle("org-security-require-sso", (_e, requireSso: boolean) =>
-    getClient().org.setRequireSso(!!requireSso));
   // ── App ingest webhooks (the Webhooks settings page) ────────────────────
   ipcMain.handle("apps-ingest-installed", async () => {
     try { return { ok: true as const, apps: await getClient().apps.installed() }; }

@@ -80,7 +80,7 @@ void (async () => {
       // Open the settings surface as the page. ?sub=<panel> deep-links a
       // specific panel (billing, members, padmin-orgs, …); the platform LANDS
       // on the Dashboard (his rule, 2026-08-25).
-      openSettingsModal(params.get("sub") || "dash");
+      openSettingsModal(params.get("sub") || "org-general");
       // Rail collapse chevron — pinned to the rail's top edge of the shell.
       const railBtn = document.createElement("button");
       railBtn.type = "button";

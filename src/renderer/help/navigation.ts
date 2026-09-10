@@ -4,21 +4,15 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
-import { initMcpPanel, loadMcpPanel } from "./settings-mcp.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadRuntime } from "./settings-runtime.js";
-import { loadMarketplaceBlocks } from "./settings-workspaces.js";
-import { loadDomainsPanel, loadMetricsPanel } from "./settings-domains.js";
-import { loadMarketingPanel } from "./settings-marketing.js";
 import { loadClientsPanel } from "./settings-clients.js";
-import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
@@ -27,15 +21,10 @@ import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { wireDipWatcher } from "./dip-watch.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
-import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
-import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
-import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadDownload } from "./settings-download.js";
-import { loadWebhooks, initWebhooksPanel } from "./settings-webhooks.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
-import { loadVoiceSettings } from "./settings-voice.js";
+import { loadAdminPlans, loadAdminOrgs } from "./settings-admin.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -345,7 +334,7 @@ export function openSettingsModal(sub?: string): void {
   // settings surface — the two are separate on purpose; never route the app's
   // gear to /platform.
   // Already open — just switch the sub-panel.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "account";
+  const defaultSub = document.body.classList.contains("platform-shell") ? "org-general" : "account";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
@@ -430,7 +419,7 @@ export function openSettingsModal(sub?: string): void {
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
     if (settingsGroup && nav) {
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account", "voice"]) {
+      for (const sub of ["general", "appearance", "account"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -542,7 +531,7 @@ export function openSettingsModal(sub?: string): void {
   gateAdminSubs();
   initOrgSwitcher();
   initCollapsibleNavGroups();
-  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
+  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "org-general" : "account"));
 }
 
 // ── Collapsible rail sections (his order, 2026-09-02, PLATFORM only) ─────────
@@ -669,22 +658,15 @@ function gateAdminSubs(): void {
     // every org surface admits admins; only the money door stays org_admin's.
     const orgAdmin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
     const admin = orgAdmin || info?.role === "admin";
-    for (const id of ["general-runtime-group", "general-guardrails-group", "nav-org-general"]) {
-      document.getElementById(id)?.classList.toggle("hidden", !admin);
-    }
+    document.getElementById("nav-org-general")?.classList.toggle("hidden", !admin);
     // Members on the PLATFORM see nothing org-financial and no catalog:
     // Billing is org_admin's alone; Models/Marketplace open to admins too.
     // The server 403s the reads regardless — this hides the doors. Desktop
     // keeps Billing personal-visible as before.
     if (document.body.classList.contains("platform-shell")) {
       document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
-      // Clients moves money (creating + funding workspaces) — org_admin's alone.
+      // Clients moves money (creating client orgs) — org_admin's alone.
       document.getElementById("nav-clients")?.classList.toggle("hidden", !orgAdmin);
-      // The Hosting + Marketing groups are admin territory wholesale.
-      for (const id of ["nav-models", "nav-org-marketplace", "nav-group-hosting", "nav-domains", "nav-metrics",
-                        "nav-group-marketing", "nav-mkt-links"]) {
-        document.getElementById(id)?.classList.toggle("hidden", !admin);
-      }
     }
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
@@ -830,48 +812,34 @@ const settingsSubAlias = (sub: string): string => {
   // Drips is a desktop-machine feature (no web); MCP shows EVERYWHERE (his
   // order, 2026-08-25). General/Voice/Appearance hide only on the platform.
   if (target === "drips" && document.documentElement.classList.contains("glyphh-web")) {
-    return document.body.classList.contains("platform-shell") ? "dash" : "general";
+    return document.body.classList.contains("platform-shell") ? "org-general" : "general";
   }
-  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "dash";
+  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "org-general";
   return target;
 };
 
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  // General carries the Sessions (runtime region) + Guardrails groups (both
-  // PLATFORM-ONLY surfaces now) — they fetch on show.
-  if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
-  else if (sub === "usage") void loadUsageAppView();
-  else if (sub === "mcp") { loadMcp(); initMcpPanel(); void loadMcpPanel(); }
+  // THE PURGE: the settings shell is the minimal platform — account, org,
+  // members, clients, billing (the license), apps, download, support, docs,
+  // and the super-admin Plans/Orgs console.
+  if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") { void loadOrgPanel(); void loadRuntime(); void loadGuardrails(); }
+  else if (sub === "org-general") void loadOrgPanel();
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
-  else if (sub === "workspaces") void loadWorkspacesPanel();
-  else if (sub === "domains") void loadDomainsPanel();
-  else if (sub === "metrics") void loadMetricsPanel();
-  else if (sub === "mkt-links") void loadMarketingPanel();
   else if (sub === "clients") void loadClientsPanel();
-  else if (sub === "org-marketplace") loadMarketplaceBlocks();
-  else if (sub === "models") loadModelsAdmin();
   // The Platform group — the super-admin console (settings-admin.ts). Each
   // loader re-checks the role and paints an honest gate; the server enforces.
-  else if (sub === "padmin-models") loadAdminModels();
   else if (sub === "padmin-plans") loadAdminPlans();
-  else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
-  else if (sub === "apikeys") void loadApiKeys();
-  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
-  else if (sub === "webhooks") { initWebhooksPanel(); void loadWebhooks(); }
-  else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
-  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
@@ -1191,10 +1159,7 @@ export function initHelp() {
   boot("layouts", initLayoutsEvents);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
-  boot("apikeys", initApiKeys);
-  boot("oauth", initOAuth);
   boot("support", initSupportPanel);
-  boot("guardrails", initGuardrails);
   boot("drips", initDripsEvents);
   boot("loops", initLoopsEvents);
   boot("skills-library", initSkillsLibraryEvents);
