@@ -185,6 +185,26 @@ function ensureGeminiKeyAuth(): void {
   fs.writeFileSync(file, JSON.stringify(settings, null, 2), "utf-8");
 }
 
+/** Pin the CLI's OWN theme to the app's (his order, 2026-09-10 — the ANSI
+ *  palette covers most of it; these cover the truecolor chrome). Same upsert
+ *  contract as every settings seam: one key changes, the rest survives. */
+function ensureClaudeTheme(light: boolean): void {
+  const file = path.join(homedir(), ".claude.json");
+  let cfg: Record<string, unknown> = {};
+  try { cfg = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  cfg.theme = light ? "light" : "dark";
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+}
+
+function ensureGeminiTheme(light: boolean): void {
+  const file = path.join(homedir(), ".gemini", "settings.json");
+  let cfg: Record<string, unknown> = {};
+  try { cfg = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  cfg.theme = light ? "Default Light" : "Default";
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+}
+
 /** Copilot CLI's seam is ~/.copilot/mcp-config.json — same upsert contract
  *  as Gemini's settings file: glyphh joins mcpServers, everything else stays. */
 function ensureCopilotMcp(id: string): void {
@@ -242,7 +262,7 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   }
 }
 
-export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean; prompt?: string }
+export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean; prompt?: string; light?: boolean }
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
@@ -419,6 +439,14 @@ export function registerCliAgentsIpc(): void {
     try {
       const row = readAgent(String(id));
       if (!row) return { ok: false, error: "agent not found" };
+      if (overrides?.light !== undefined) {
+        try {
+          if (row.cli === "claude") ensureClaudeTheme(overrides.light);
+          if (row.cli === "gemini") ensureGeminiTheme(overrides.light);
+        } catch (err) {
+          console.warn("[agents] theme pin failed:", err instanceof Error ? err.message : err);
+        }
+      }
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
         if (row.cli === "gemini") {

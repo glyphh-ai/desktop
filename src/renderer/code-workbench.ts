@@ -91,7 +91,7 @@ interface WbApi {
     } | null;
     text: string; error?: string;
   }>;
-  termSpawn: (termId: string, cwd: string, cols: number, rows: number) => void;
+  termSpawn: (termId: string, cwd: string, cols: number, rows: number, light?: boolean) => void;
   termWrite: (termId: string, data: string) => void;
   termResize: (termId: string, cols: number, rows: number) => void;
   termKill: (termId: string) => void;
@@ -2961,7 +2961,7 @@ async function init(): Promise<void> {
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
       cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
-      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean; prompt?: string }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
+      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean; prompt?: string; light?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -4902,6 +4902,7 @@ async function init(): Promise<void> {
               // The WORKSPACE's working folder rules the agent's own (no
               // per-cell folder field — his rule, 2026-09-10).
               const overrides = {
+                light: document.documentElement.getAttribute("data-theme") === "light",
                 ...(cellCfg.model ? { model: cellCfg.model } : {}),
                 ...(layout.folder ? { cwd: layout.folder } : {}),
                 ...(mode === "last" ? { resume: true } : {}),
@@ -5698,8 +5699,9 @@ async function init(): Promise<void> {
     const openAgentCliCard = (t: EchoTile, prompt?: string): void => {
       const a = t.cliAgent;
       if (!a) return;
-      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string) => Promise<{ ok: boolean; command?: string; error?: string }> } })
-        .glyphh?.cliAgentOpen?.(a.id).then((r) => {
+      const appLight = document.documentElement.getAttribute("data-theme") === "light";
+      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+        .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const row = cliAgentRows.find((x) => x.id === a.id);
           const mode = row?.session ?? "keep";
@@ -5734,8 +5736,8 @@ async function init(): Promise<void> {
               else tt.initCmd = cmd;
             };
             if (wantResume || prompt) {
-              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean; prompt?: string }) => Promise<{ ok: boolean; command?: string }> } })
-                .glyphh?.cliAgentOpen?.(a.id, { ...(wantResume ? { resume: true } : {}), ...(prompt ? { prompt } : {}) })
+              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean; prompt?: string; light?: boolean }) => Promise<{ ok: boolean; command?: string }> } })
+                .glyphh?.cliAgentOpen?.(a.id, { light: appLight, ...(wantResume ? { resume: true } : {}), ...(prompt ? { prompt } : {}) })
                 .then((rr) => finish((rr?.ok && rr.command) || a.command));
             } else {
               finish((r?.ok && r.command) || a.command);
@@ -8664,7 +8666,10 @@ async function init(): Promise<void> {
           // DESKTOP over the pty relay instead (remote-terminal.ts).
           void spawnRemoteTerm(wbt, hostEl, cols, rows);
         } else {
-          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
+          // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
+          // light/dark variant to match the app.
+          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows,
+            document.documentElement.getAttribute("data-theme") === "light");
           if (wbt.initCmd) {
             // The layout's slotted first command — once, after the shell boots.
             const cmd = wbt.initCmd;

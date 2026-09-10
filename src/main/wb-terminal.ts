@@ -32,20 +32,24 @@ function key(wcId: number, termId: string): string { return `${wcId}:${termId}`;
  * relay-pty.ts). One place so shell choice / `-il` / env inheritance never
  * drift between the local and relayed paths.
  */
-export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number }): pty.IPty {
+export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number; light?: boolean }): pty.IPty {
   const shell = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "/bin/zsh");
   const shellArgs = os.platform() === "win32" ? [] : ["-il"];
+  // COLORFGBG is the classic light/dark hint TUIs read ("fg;bg" in ANSI
+  // indices) — CLIs that auto-detect the background pick the right variant.
+  const env: Record<string, string> = { ...(process.env as Record<string, string>) };
+  if (opts.light !== undefined) env.COLORFGBG = opts.light ? "0;15" : "15;0";
   return pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: opts.cols || 80,
     rows: opts.rows || 24,
     cwd: opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir(),
-    env: process.env as Record<string, string>,
+    env,
   });
 }
 
-function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number): void {
-  const proc = spawnShellPty({ cwd, cols, rows });
+function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number, light?: boolean): void {
+  const proc = spawnShellPty({ cwd, cols, rows, light });
   proc.onData((data) => {
     if (wc.isDestroyed()) return;
     wc.send(`wb-term:data:${termId}`, data);
@@ -58,11 +62,11 @@ function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, ro
 }
 
 export function registerWorkbenchTerminalIpc(): void {
-  ipcMain.on("wb-term:spawn", (e, termId: string, cwd: string, cols: number, rows: number) => {
+  ipcMain.on("wb-term:spawn", (e, termId: string, cwd: string, cols: number, rows: number, light?: boolean) => {
     if (!termId) return;
     const k = key(e.sender.id, termId);
     if (ptys.has(k)) return;
-    spawnPty(e.sender, termId, cwd, cols, rows);
+    spawnPty(e.sender, termId, cwd, cols, rows, light);
   });
   ipcMain.on("wb-term:write", (e, termId: string, data: string) => {
     ptys.get(key(e.sender.id, termId))?.proc.write(data);
