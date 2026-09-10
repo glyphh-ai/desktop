@@ -2564,7 +2564,7 @@ async function init(): Promise<void> {
     // ── Per-tile context menu (his rule, 2026-08-19): apps get Edit; work-
     // spaces get Edit + Delete; the close items appear ONLY when that tile's
     // panel is actually open — a closed tile never offers "Close panel". ──
-    const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean }>): void => {
+    const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean; checked?: boolean }>): void => {
       if (!items.length) return;
       document.querySelector(".ws-tab-ctx-menu")?.remove();
       const menu = document.createElement("div");
@@ -2579,7 +2579,8 @@ async function init(): Promise<void> {
       for (const it of items) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "ws-tab-ctx-item" + (it.danger ? " danger" : "");
+        btn.className = "ws-tab-ctx-item" + (it.danger ? " danger" : "")
+          + (it.checked !== undefined ? " checkable" : "") + (it.checked ? " checked" : "");
         btn.textContent = it.label;
         btn.addEventListener("click", () => { dismiss(); it.onPick(); });
         menu.appendChild(btn);
@@ -4591,10 +4592,19 @@ async function init(): Promise<void> {
         else head.appendChild(devBtn);
         devBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          showTileMenu(ev as MouseEvent, AGENT_DEV_TOOLS.map((t) => ({
-            label: t.label,
-            onPick: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view),
-          })));
+          // Each entry is a TOGGLE: ✓ marks a tool that's open; picking an
+          // open one closes its card instead of re-opening it.
+          showTileMenu(ev as MouseEvent, AGENT_DEV_TOOLS.map((t) => {
+            const open = openList.find((x) => x.card && x.tile.kind === "tool" && x.tile.toolView === t.view);
+            return {
+              label: t.label,
+              checked: !!open,
+              onPick: () => {
+                if (open) closeCard(open);
+                else (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view);
+              },
+            };
+          }));
         });
       }
       // Pop-out — same rule as the rail-slot header: web panels (http apps,
