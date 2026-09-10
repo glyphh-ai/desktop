@@ -11597,34 +11597,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-diff-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-diff-summary .add { color: var(--ws-diff-add); margin-left: 6px; }
 .ws-diff-summary .del { color: var(--ws-diff-del); margin-left: 4px; }
-/* Lane chips (git | glyphh R2) — shown only when BOTH lanes exist. */
-.ws-diff-lanes { display: flex; gap: 2px; }
-.ws-diff-lane {
-  background: transparent; border: 1px solid var(--ws-line); color: var(--ws-text-muted);
-  font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
-}
-.ws-diff-lane.active { color: var(--ws-text); border-color: var(--accent); }
-/* The R2 bottom half: drift flag + the snapshot history (his spec, 2026-09-01). */
-.ws-diff-r2 {
-  flex-shrink: 0; max-height: 45%; overflow-y: auto;
-  border-top: 1px solid var(--ws-line); background: var(--ws-bg-rail);
-}
-.ws-diff-r2-head {
-  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
-  font-size: 11px; color: var(--ws-text-muted);
-  position: sticky; top: 0; background: var(--ws-bg-rail);
-}
-.ws-diff-r2-title { margin-left: auto; text-transform: uppercase; letter-spacing: .04em; color: var(--ws-text-faint); }
-.ws-diff-r2-flag { font-weight: 600; }
-.ws-diff-r2-flag.drifted { color: var(--warning, #e5a50a); }
-.ws-diff-r2-flag.insync { color: var(--ws-diff-add); }
-.ws-diff-r2-row {
-  display: flex; align-items: center; gap: 10px; padding: 4px 12px;
-  font-size: 11.5px; color: var(--ws-text-muted); border-top: 1px solid var(--ws-line);
-}
-.ws-diff-r2-row code { font-family: var(--font-mono); color: var(--ws-text-faint); }
-.ws-diff-r2-who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-diff-r2-headmark { color: var(--ws-diff-add); font-size: 10px; text-transform: uppercase; }
 .ws-diff-refresh {
   background: transparent; border: none; padding: 0;
   width: 24px; height: 24px; border-radius: 4px;

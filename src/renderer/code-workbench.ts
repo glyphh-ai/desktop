@@ -7759,10 +7759,6 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="ws-diff-toolbar">
         <span class="ws-diff-summary">loading…</span>
-        <span class="ws-diff-lanes hidden">
-          <button class="ws-diff-lane" data-lane="git" type="button">Git</button>
-          <button class="ws-diff-lane" data-lane="r2" type="button">Glyphh</button>
-        </span>
         <button class="ws-icon-btn ws-diff-expand" title="Expand all">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"/>
@@ -7780,20 +7776,9 @@ async function init(): Promise<void> {
         </button>
       </div>
       <div class="ws-diff-files"></div>
-      <div class="ws-diff-r2 hidden">
-        <div class="ws-diff-r2-head">
-          <span class="ws-diff-r2-flag"></span>
-          <span class="ws-diff-r2-title">Version history</span>
-        </div>
-        <div class="ws-diff-r2-list"></div>
-      </div>
     `;
     const summary = body.querySelector(".ws-diff-summary") as HTMLElement;
     const filesEl = body.querySelector(".ws-diff-files") as HTMLElement;
-    const lanesEl = body.querySelector(".ws-diff-lanes") as HTMLElement;
-    const r2El = body.querySelector(".ws-diff-r2") as HTMLElement;
-    const r2Flag = body.querySelector(".ws-diff-r2-flag") as HTMLElement;
-    const r2List = body.querySelector(".ws-diff-r2-list") as HTMLElement;
     const refreshBtn = body.querySelector(".ws-diff-refresh") as HTMLButtonElement;
     const expandBtn = body.querySelector(".ws-diff-expand") as HTMLButtonElement;
     const collapseBtn = body.querySelector(".ws-diff-collapse") as HTMLButtonElement;
@@ -7814,54 +7799,16 @@ async function init(): Promise<void> {
     // flash per agent write. Overlapping refreshes resolve to the newest.
     let painted = false;
     let refreshSeq = 0;
-    // Which lane paints the file list (his order, 2026-09-01): git when the
-    // folder is a repo, the R2 lane when the app is glyphh-versioned — chips
-    // switch when BOTH exist. The bottom history panel rides whenever the
-    // folder is an R2-versioned app, whichever lane is active.
-    let lane: "git" | "r2" = "git";
+    // Git is the ONLY lane (his order, 2026-09-10) — the Glyphh/R2 version
+    // lane left with the local-build pivot.
     let lastGit: { text: string; error?: string } = { text: "" };
-    let lastR2: { status: { slug: string | null; localHash: string | null; drifted: boolean; head: { hash: string; createdAt: string; createdByEmail: string | null } | null; history: Array<{ hash: string; createdAt: string; createdByEmail: string | null; note?: string | null; isHead: boolean }> } | null; text: string; error?: string } = { status: null, text: "" };
-
-    function paintR2Panel(): void {
-      const st = lastR2.status;
-      const versioned = !!(st && st.slug && st.head);
-      r2El.classList.toggle("hidden", !versioned);
-      if (!versioned || !st || !st.head) return;
-      // THE DRIFT FLAG: local tree hash vs the chain head.
-      r2Flag.className = "ws-diff-r2-flag " + (st.drifted ? "drifted" : "insync");
-      r2Flag.textContent = st.drifted
-        ? `Drifted from latest (${st.head.hash.slice(0, 8)} by ${st.head.createdByEmail || "unknown"})`
-        : "In sync with latest";
-      r2List.innerHTML = "";
-      for (const s of st.history) {
-        const row = document.createElement("div");
-        row.className = "ws-diff-r2-row";
-        row.innerHTML = `<code></code><span class="ws-diff-r2-who"></span><span class="ws-diff-r2-when"></span>${s.isHead ? `<span class="ws-diff-r2-headmark">latest</span>` : ""}`;
-        (row.querySelector("code") as HTMLElement).textContent = s.hash.slice(0, 10);
-        (row.querySelector(".ws-diff-r2-who") as HTMLElement).textContent =
-          s.note ? `${s.note} — ${s.createdByEmail || "unknown"}` : (s.createdByEmail || "unknown");
-        (row.querySelector(".ws-diff-r2-when") as HTMLElement).textContent = new Date(s.createdAt).toLocaleString();
-        r2List.appendChild(row);
-      }
-    }
-
-    function paintLaneChips(): void {
-      const gitOk = !lastGit.error;
-      const r2Ok = !!(lastR2.status && lastR2.status.slug && lastR2.status.head);
-      lanesEl.classList.toggle("hidden", !(gitOk && r2Ok));
-      if (!gitOk && r2Ok) lane = "r2";
-      if (gitOk && !r2Ok) lane = "git";
-      lanesEl.querySelectorAll<HTMLButtonElement>(".ws-diff-lane").forEach((b) =>
-        b.classList.toggle("active", b.dataset.lane === lane));
-    }
 
     function paintActiveLane(): void {
       const keepScroll = filesEl.scrollTop;
-      const res = lane === "git" ? lastGit : { text: lastR2.text, error: lastR2.error };
-      if (lane === "git" && res.error) {
-        // Not a repo but R2-versioned → the R2 lane already took over above;
-        // this branch is the genuinely-unversioned folder. That is a NORMAL
-        // state for a fresh project, not an error (his report, 2026-09-02).
+      const res = lastGit;
+      if (res.error) {
+        // An unversioned folder is a NORMAL state for a fresh project, not
+        // an error (his report, 2026-09-02).
         const fresh = /not a git repo|no folder/i.test(res.error);
         summary.textContent = fresh ? "not initialized" : "error";
         filesEl.innerHTML = `<div class="ws-diff-empty">${fresh
@@ -7869,15 +7816,10 @@ async function init(): Promise<void> {
           : res.error}</div>`;
         return;
       }
-      if (lane === "r2" && res.error) {
-        summary.textContent = "error";
-        filesEl.innerHTML = `<div class="ws-diff-empty">${res.error}</div>`;
-        return;
-      }
       const files = parseUnifiedDiff(res.text);
       if (files.length === 0) {
         summary.textContent = "no changes";
-        filesEl.innerHTML = `<div class="ws-diff-empty">${lane === "r2" ? "In sync with the latest Glyphh version." : "Working tree is clean."}</div>`;
+        filesEl.innerHTML = `<div class="ws-diff-empty">Working tree is clean.</div>`;
         return;
       }
       const totalAdd = files.reduce((s, f) => s + f.additions, 0);
@@ -7925,25 +7867,12 @@ async function init(): Promise<void> {
     async function refresh(): Promise<void> {
       const seq = ++refreshSeq;
       if (!painted) summary.textContent = "loading…";
-      const [git, r2] = await Promise.all([
-        cwd ? window.wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }),
-        cwd && window.wb.r2Diff ? window.wb.r2Diff(cwd).catch(() => ({ status: null, text: "" })) : Promise.resolve({ status: null, text: "" }),
-      ]);
+      const git = await (cwd ? window.wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }));
       if (seq !== refreshSeq || !body.isConnected) return; // superseded / slot gone
       painted = true;
       lastGit = git;
-      lastR2 = r2 as typeof lastR2;
-      paintLaneChips();
-      paintR2Panel();
       paintActiveLane();
     }
-    lanesEl.querySelectorAll<HTMLButtonElement>(".ws-diff-lane").forEach((b) => {
-      b.addEventListener("click", () => {
-        lane = (b.dataset.lane as "git" | "r2") || "git";
-        paintLaneChips();
-        paintActiveLane();
-      });
-    });
     refreshBtn.addEventListener("click", refresh);
     // The workdir watcher's fs/git-changed fan-in refreshes THIS render's
     // closure (quiet + scroll-preserving) instead of poking the button.
