@@ -423,6 +423,20 @@ function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | nul
 }
 
 export function registerCliAgentsIpc(): void {
+  ipcMain.handle("cli-session-delete", (_e, id: string) => {
+    try {
+      const base = `${String(id)}.jsonl`;
+      if (!/^[\w-]+\.jsonl$/.test(base)) throw new Error("bad session id");
+      const root = path.join(homedir(), ".claude", "projects");
+      for (const d of fs.readdirSync(root)) {
+        const f = path.join(root, d, base);
+        if (fs.existsSync(f)) { fs.rmSync(f); return { ok: true }; }
+      }
+      throw new Error("session not found");
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
   ipcMain.handle("cli-sessions-list", () => {
     try { return { ok: true, sessions: listCliSessions() }; }
     catch (err) { return { ok: false, sessions: [], error: err instanceof Error ? err.message : String(err) }; }

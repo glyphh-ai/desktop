@@ -4355,23 +4355,131 @@ const railAgentsHosts = new Set<RailGridHost>();
 // ── Rail Recents — the CLI agents' own session stores (his order,
 //    2026-09-10): Claude first; a click resumes that exact conversation on
 //    its agent (matching cwd wins, then matching CLI, then the first agent).
+//    UX is the MAIN-era recents wholesale: Pinned first, then one group per
+//    folder; rows carry the pin icon + a trailing ⋮ (Pin / Delete); the same
+//    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number }
 let railSessions: RailSession[] = [];
+let railSessionPins: string[] = [];
+const SESS_PINS_PREF = "railSessionPins";
 
-function railAgo(ms: number): string {
-  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
-  if (s < 90) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86_400)}d ago`;
-}
+const SESS_LOCAL_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
+const SESS_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
+const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
 
 async function loadRailSessions(): Promise<void> {
   const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: RailSession[] }> };
-  const r = await api.cliSessionsList?.().catch(() => null);
+  const [r, pins] = await Promise.all([
+    api.cliSessionsList?.().catch(() => null),
+    window.glyphh.getPreference?.(SESS_PINS_PREF, []).catch(() => []),
+  ]);
   railSessions = r?.ok ? r.sessions : [];
+  railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   renderRailSessions();
 }
+
+function sessPinned(id: string): boolean { return railSessionPins.includes(id); }
+
+function sessTogglePin(id: string): void {
+  railSessionPins = sessPinned(id) ? railSessionPins.filter((x) => x !== id) : [...railSessionPins, id];
+  void window.glyphh.setPreference?.(SESS_PINS_PREF, railSessionPins);
+  renderRailSessions();
+}
+
+async function sessDelete(sess: RailSession): Promise<boolean> {
+  const sure = await confirmAction({
+    title: `Delete "${sess.title.slice(0, 60)}"?`,
+    body: "This session's history is gone for good.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!sure) return false;
+  const api = window.glyphh as unknown as { cliSessionDelete?: (id: string) => Promise<{ ok: boolean }> };
+  const r = await api.cliSessionDelete?.(sess.id).catch(() => null);
+  if (r?.ok) {
+    railSessions = railSessions.filter((x) => x.id !== sess.id);
+    renderRailSessions();
+  }
+  return !!r?.ok;
+}
+
+/** The last path segment, for a heading (main's folderName, verbatim). */
+function sessFolderName(pathStr: string): string {
+  const trimmed = pathStr.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return (cut === -1 ? trimmed : trimmed.slice(cut + 1)) || pathStr;
+}
+
+interface SessGroup { label: string; title: string; rows: RailSession[] }
+
+/** THE RAIL'S PARADIGM (main, 2026-08-20): Pinned first (only when any
+ *  exist), then one group per folder, each most-recently-touched down. */
+function sessSections(items: RailSession[]): SessGroup[] {
+  const byTouch = (a: RailSession, b: RailSession): number => b.mtime - a.mtime;
+  const pinned = items.filter((x) => sessPinned(x.id)).sort(byTouch);
+  const rest = items.filter((x) => !sessPinned(x.id)).sort(byTouch);
+  const out: SessGroup[] = [];
+  if (pinned.length) out.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
+  const byKey = new Map<string, SessGroup>();
+  for (const c of rest) {
+    const key = c.cwd || "";
+    let g = byKey.get(key);
+    if (!g) {
+      g = key ? { label: sessFolderName(key), title: key, rows: [] } : { label: "Local", title: "On this machine", rows: [] };
+      byKey.set(key, g);
+    }
+    g.rows.push(c);
+  }
+  return [...out, ...byKey.values()];
+}
+
+function sessSectionHead(label: string, title: string): HTMLDivElement {
+  const head = document.createElement("div");
+  head.className = "code-history-sec";
+  head.textContent = label;
+  head.title = title;
+  return head;
+}
+
+function sessOpen(sess: RailSession): void {
+  const agent = railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
+    ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
+    ?? railAgents[0];
+  if (!agent) return;
+  (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
+    .__wbOpenAgentCli?.(agent.id, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined });
+}
+
+let sessMenuEl: HTMLDivElement | null = null;
+function closeSessMenu(): void { sessMenuEl?.remove(); sessMenuEl = null; }
+
+/** The row's ⋮ menu — Pin / Delete, positioned like main's openChatMenu. */
+function openSessRowMenu(anchor: HTMLElement, sess: RailSession): void {
+  closeSessMenu();
+  const m = document.createElement("div");
+  m.className = "code-menu";
+  const pin = document.createElement("button");
+  pin.className = "code-menu-item";
+  pin.textContent = sessPinned(sess.id) ? "Unpin" : "Pin";
+  pin.addEventListener("click", () => { closeSessMenu(); sessTogglePin(sess.id); });
+  m.appendChild(pin);
+  const del = document.createElement("button");
+  del.className = "code-menu-item danger";
+  del.textContent = "Delete";
+  del.addEventListener("click", () => { closeSessMenu(); void sessDelete(sess); });
+  m.appendChild(del);
+  const r = anchor.getBoundingClientRect();
+  m.style.left = `${Math.max(8, r.right - 120)}px`;
+  document.body.appendChild(m);
+  const h = m.offsetHeight;
+  m.style.top = r.bottom + 4 + h > window.innerHeight - 8
+    ? `${Math.max(8, r.top - 4 - h)}px`
+    : `${r.bottom + 4}px`;
+  sessMenuEl = m;
+}
+document.addEventListener("mousedown", (ev) => {
+  if (sessMenuEl && !(ev.target as HTMLElement).closest?.(".code-menu, .code-chat-menu-btn")) closeSessMenu();
+}, true);
 
 function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
@@ -4380,29 +4488,113 @@ function renderRailSessions(): void {
   const items = q ? railSessions.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : railSessions;
   host.textContent = "";
   if (!items.length) {
-    host.innerHTML = `<div class="rail-sess-empty">${q ? "No sessions match." : "No recent sessions yet."}</div>`;
+    const empty = document.createElement("div");
+    empty.className = "wb-session-empty";
+    empty.textContent = q ? "No sessions match." : "No recent sessions yet.";
+    host.appendChild(empty);
     return;
   }
-  for (const sess of items) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "rail-sess-row";
-    row.innerHTML = `<span class="rail-sess-title"></span><span class="rail-sess-sub"></span>`;
-    row.querySelector(".rail-sess-title")!.textContent = sess.title;
-    const folder = sess.cwd ? sess.cwd.split("/").filter(Boolean).pop() ?? "" : "";
-    row.querySelector(".rail-sess-sub")!.textContent = [folder, railAgo(sess.mtime)].filter(Boolean).join(" · ");
-    row.title = sess.title;
-    row.addEventListener("click", () => {
-      const agent = railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
-        ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
-        ?? railAgents[0];
-      if (!agent) return;
-      (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
-        .__wbOpenAgentCli?.(agent.id, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined });
-    });
-    host.appendChild(row);
+  for (const sec of sessSections(items)) {
+    host.appendChild(sessSectionHead(sec.label, sec.title));
+    for (const sess of sec.rows) {
+      const row = document.createElement("div");
+      row.className = "code-history-item";
+      const dot = document.createElement("span");
+      dot.className = "code-sess-ic";
+      dot.innerHTML = SESS_LOCAL_SVG;
+      dot.classList.toggle("pinned", sessPinned(sess.id));
+      dot.title = `Local — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
+      dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
+      const label = document.createElement("span");
+      label.className = "code-history-title";
+      label.textContent = sess.title;
+      label.title = sess.title;
+      const menuBtn = document.createElement("button");
+      menuBtn.className = "code-chat-menu-btn";
+      menuBtn.title = "More";
+      menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
+      menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
+      row.append(dot, label, menuBtn);
+      row.addEventListener("click", () => sessOpen(sess));
+      host.appendChild(row);
+    }
   }
 }
+
+/** The agent card's recents DROPDOWN — main's wb-session-menu wholesale:
+ *  search on top, the rail's grouping, rows with pin + delete icons. */
+function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: string; onPick: (sess: RailSession) => void }): void {
+  document.querySelector(".wb-session-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "code-drop wb-session-menu";
+  let menuQuery = "";
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "wb-session-search";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search repo-drop-search";
+  search.placeholder = "Search sessions…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  search.addEventListener("mousedown", (e) => e.stopPropagation());
+  searchWrap.appendChild(search);
+  menu.appendChild(searchWrap);
+  const listHost = document.createElement("div");
+  listHost.className = "wb-session-list";
+  menu.appendChild(listHost);
+  search.addEventListener("input", () => { menuQuery = search.value; paint(); });
+  const pool = railSessions
+    .filter((x) => !opts.cli || x.cli === opts.cli)
+    .filter((x) => !opts.cwd || x.cwd === opts.cwd);
+  const paint = (): void => {
+    listHost.innerHTML = "";
+    const q = menuQuery.trim().toLowerCase();
+    const visible = q ? pool.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : pool;
+    const mkRow = (sess: RailSession): HTMLElement => {
+      const row = document.createElement("div");
+      row.className = "wb-session-row";
+      const title = document.createElement("button");
+      title.type = "button";
+      title.className = "code-drop-item wb-session-title";
+      title.textContent = sess.title;
+      title.addEventListener("click", () => { menu.remove(); opts.onPick(sess); });
+      const pin = document.createElement("button");
+      pin.type = "button";
+      pin.className = "code-icon-btn wb-session-pin" + (sessPinned(sess.id) ? " on" : "");
+      pin.title = sessPinned(sess.id) ? "Unpin" : "Pin to top";
+      pin.innerHTML = SESS_PIN_SVG;
+      pin.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); paint(); });
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "code-icon-btn wb-session-del";
+      del.title = "Delete session";
+      del.innerHTML = SESS_TRASH_SVG;
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        void sessDelete(sess).then((gone) => { if (gone && menu.isConnected) paint(); });
+      });
+      row.append(title, pin, del);
+      return row;
+    };
+    for (const sec of sessSections(visible)) {
+      listHost.appendChild(sessSectionHead(sec.label, sec.title));
+      for (const c of sec.rows) listHost.appendChild(mkRow(c));
+    }
+    if (!visible.length) {
+      const empty = document.createElement("div");
+      empty.className = "wb-session-empty";
+      empty.textContent = q ? "No sessions match." : "No sessions yet.";
+      listHost.appendChild(empty);
+    }
+  };
+  paint();
+  placeDropup(anchor, menu);
+  const dismiss = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+  };
+  document.addEventListener("mousedown", dismiss, true);
+}
+(window as unknown as { __glyphhSessionsMenu?: typeof openSessionsDropdown }).__glyphhSessionsMenu = openSessionsDropdown;
 
 function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
   (kind === "apps" ? railAppsHosts : kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);

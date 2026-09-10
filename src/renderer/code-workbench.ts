@@ -4606,20 +4606,16 @@ async function init(): Promise<void> {
         histBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>`;
         histBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
+          // The MAIN-era wb-session-menu (search + folder groups + pin +
+          // delete), served by help/code.ts over the CLI session stores.
           const agentRow = cliAgentRows.find((x) => x.id === agentId);
-          void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }> } })
-            .glyphh?.cliSessionsList?.().then((r) => {
-              const sessions = (r?.ok ? r.sessions : [])
-                .filter((x) => x.cli === (agentRow?.cli ?? "claude"))
-                .filter((x) => !agentRow?.cwd || x.cwd === agentRow.cwd)
-                .slice(0, 12);
-              showTileMenu(ev as MouseEvent, sessions.length
-                ? sessions.map((x) => ({
-                    label: x.title.length > 48 ? `${x.title.slice(0, 48)}…` : x.title,
-                    onPick: () => { closeCard(e); wbW.__wbOpenAgentCli?.(agentId, undefined, { resumeId: x.id, cwd: x.cwd || undefined }); },
-                  }))
-                : [{ label: "No recent sessions", onPick: () => {} }]);
-            });
+          const menuApi = (window as unknown as { __glyphhSessionsMenu?: (anchor: HTMLElement, opts: { cli?: string; cwd?: string; onPick: (sess: { id: string; cwd: string }) => void }) => void }).__glyphhSessionsMenu;
+          if (!menuApi) return;
+          menuApi(histBtn, {
+            cli: agentRow?.cli ?? "claude",
+            cwd: agentRow?.cwd || undefined,
+            onPick: (sess) => { closeCard(e); wbW.__wbOpenAgentCli?.(agentId, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined }); },
+          });
         });
         const plusBtn = document.createElement("button");
         plusBtn.className = "ws-icon-btn echo-card-newsession";

@@ -439,6 +439,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
   /** Recent CLI sessions (Claude's store) — the rail Recents + agent-card history. */
   cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
+  cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,
 
   // Loops + skills (local library) — hand-create + schedules
   loopsCreate: (input: { name?: string }) => ipcRenderer.invoke("loops-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
