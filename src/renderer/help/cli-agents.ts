@@ -20,7 +20,16 @@ const api = () => (window as unknown as { glyphh?: {
   cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
   cliAgentsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
+  webIconFetch?: (url: string) => Promise<string>;
 } }).glyphh ?? {};
+
+/** The mark rides the main process (web-icon-fetch → data URL, cached) — a
+ *  direct remote <img> doesn't render from the desktop page. */
+let claudeMarkData: string | null = null;
+async function claudeMark(): Promise<string> {
+  if (claudeMarkData === null) claudeMarkData = (await api().webIconFetch?.(CLAUDE_MARK_URL).catch(() => "")) || "";
+  return claudeMarkData;
+}
 
 let all: CliAgent[] = [];
 let editing: CliAgent | null = null;
@@ -100,14 +109,21 @@ function renderList(): void {
     card.className = "app-card cagent-card";
     card.dataset.id = a.id;
     card.innerHTML = `
-      <div class="app-card-icon">${a.cli === "claude"
-        ? `<img class="cagent-card-mark" src="${CLAUDE_MARK_URL}" alt="" />`
+      <div class="app-card-icon"${a.cli === "claude" ? ' data-role="cagent-mark"' : ""}>${a.cli === "claude"
+        ? AGENT_CARD_GLYPH
         : a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
       <div class="app-card-name">${esc(a.name)}</div>
       <div class="app-card-id" style="font-family:ui-monospace,monospace;">${esc(a.cmd)}${a.mcp ? " · glyphh tools" : ""}</div>`;
     grid.appendChild(card);
   }
   list.appendChild(grid);
+  // Claude cards swap the placeholder glyph for the fetched mark.
+  void claudeMark().then((data) => {
+    if (!data) return;   // offline — the robot glyph stands
+    grid.querySelectorAll<HTMLElement>('[data-role="cagent-mark"]').forEach((elm) => {
+      elm.innerHTML = `<img class="cagent-card-mark" src="${data}" alt="" />`;
+    });
+  });
   if (state.totalPages > 1) {
     list.appendChild(renderPaginationBar(state, (p) => { listPage = p; renderList(); }));
   }
@@ -137,11 +153,14 @@ export function initCliAgentsEvents(): void {
     if (el<HTMLSelectElement>("cagent-cli")?.value === "claude" && cmd && !cmd.value.trim()) cmd.value = "claude";
     paintPreview();
   });
-  el("cagent-folder-pick")?.addEventListener("click", () => {
+  const pickFolder = (): void => {
     void api().layoutsPickFolder?.().then((dir) => {
       if (dir) { const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = dir; }
     });
-  });
+  };
+  el("cagent-folder-pick")?.addEventListener("click", pickFolder);
+  // The readonly field IS the picker — clicking it opens the dialog too.
+  el("cagent-folder-input")?.addEventListener("click", pickFolder);
   el("cagent-folder-clear")?.addEventListener("click", () => {
     const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = "";
   });
