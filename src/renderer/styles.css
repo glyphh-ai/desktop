@@ -17649,7 +17649,11 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .code-root[data-anchor="center"] > .code-workbench { flex: 1 1 auto; min-width: 0; }
 .code-root[data-anchor="center"] #code-wb-edge { display: none; }
 .code-root[data-anchor="center"] > .code-agent {
-  display: flex;
+  /* THE PURGE (2026-09-10): the echo agent is dead — the floating bottom
+     composer never renders. The agent shows ONLY when a surface hosts it
+     (the Glyphh agent card, a rail seat, a layout's agent cell); the DOM
+     stays parked here so every id + listener survives. */
+  display: none;
   flex-direction: column;
   position: absolute;
   /* Draggable geometry (his rule, 2026-08-20): X offset + width ride vars —
