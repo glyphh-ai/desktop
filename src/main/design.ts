@@ -1,8 +1,9 @@
 /**
  * design.ts — GLYPHH DESIGN, the desktop transport + the agent's extraction
- * helpers. Design systems live in the ORG library via the SDK (documents +
- * assets in R2, indexed per-org); this module is the IPC surface the panel
- * rides plus the two DETERMINISTIC extractors the agent's tools lean on:
+ * helpers. Design systems live in the LOCAL library (~/.glyphh/office/design
+ * via office-store — documents + asset bytes on disk, THE PURGE 2026-09-10);
+ * this module is the IPC surface the panel rides plus the two DETERMINISTIC
+ * extractors the agent's tools lean on:
  *
  *   extractSiteDesign(url)  — fetch a page (+ its first stylesheets) and count
  *                             the colors/fonts/radii it actually uses
@@ -13,7 +14,7 @@
 
 import { readFile } from "node:fs/promises";
 import { ipcMain, nativeImage } from "electron";
-import { getClient } from "./glyphh-client";
+import * as store from "./office-store";
 import type { DesignSystem } from "@glyphh/sdk";
 
 export function designFileName(name: unknown): string {
@@ -133,7 +134,7 @@ export async function imagePalette(path: string): Promise<Array<{ hex: string; s
 export function registerDesignIpc(): void {
   ipcMain.handle("design-list", async () => {
     try {
-      const designs = (await getClient().designs.list()).map((m) => ({
+      const designs = (await store.listDesigns()).map((m) => ({
         file: m.file, title: m.title, size: m.sizeBytes, mtime: Date.parse(m.updatedAt) || 0,
       }));
       return { ok: true, designs };
@@ -143,7 +144,7 @@ export function registerDesignIpc(): void {
   });
   ipcMain.handle("design-read", async (_e, name: unknown) => {
     try {
-      const d = await getClient().designs.get(designFileName(name));
+      const d = await store.readDesign(designFileName(name));
       return { ok: true, title: d.title, document: d.document };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -151,7 +152,7 @@ export function registerDesignIpc(): void {
   });
   ipcMain.handle("design-write", async (_e, name: unknown, document: unknown) => {
     try {
-      const meta = await getClient().designs.put(designFileName(name), document as DesignSystem);
+      const meta = await store.writeDesign(designFileName(name), document as DesignSystem);
       return { ok: true, file: meta.file, title: meta.title };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -159,7 +160,7 @@ export function registerDesignIpc(): void {
   });
   ipcMain.handle("design-delete", async (_e, name: unknown) => {
     try {
-      await getClient().designs.delete(designFileName(name));
+      await store.deleteDesign(designFileName(name));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -168,7 +169,15 @@ export function registerDesignIpc(): void {
   ipcMain.handle("design-asset-upload", async (_e, name: unknown, input: unknown) => {
     try {
       const a = input as { id?: string; kind: "logo" | "icon" | "image"; title: string; contentType: string; dataBase64: string };
-      const entry = await getClient().designs.uploadAsset(designFileName(name), a);
+      const file = designFileName(name);
+      const d = await store.readDesign(file);
+      const bytes = Buffer.from(String(a.dataBase64 ?? ""), "base64");
+      const id = (a.id ?? a.title ?? "asset").toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "asset";
+      const entry = { id, kind: a.kind, title: a.title, contentType: a.contentType, sizeBytes: bytes.length };
+      await store.writeDesignAssetBytes(file, id, bytes);
+      const doc = d.document as DesignSystem;
+      doc.assets = [...(doc.assets ?? []).filter((x) => x.id !== id), entry];
+      await store.writeDesign(file, doc);
       return { ok: true, asset: entry };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -179,18 +188,23 @@ export function registerDesignIpc(): void {
   ipcMain.handle("design-asset-url", async (_e, name: unknown, assetId: unknown) => {
     try {
       const file = designFileName(name);
-      const d = await getClient().designs.get(file);
+      const d = await store.readDesign(file);
       const entry = (d.document.assets ?? []).find((x) => x.id === String(assetId));
       if (!entry) throw new Error("asset not found");
-      const bytes = await getClient().designs.assetBytes(file, entry.id);
-      return { ok: true, url: `data:${entry.contentType};base64,${Buffer.from(bytes).toString("base64")}` };
+      const bytes = await store.readDesignAssetBytes(file, entry.id);
+      return { ok: true, url: `data:${entry.contentType};base64,${bytes.toString("base64")}` };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
   });
   ipcMain.handle("design-asset-delete", async (_e, name: unknown, assetId: unknown) => {
     try {
-      await getClient().designs.deleteAsset(designFileName(name), String(assetId));
+      const file = designFileName(name);
+      const d = await store.readDesign(file);
+      const doc = d.document as DesignSystem;
+      doc.assets = (doc.assets ?? []).filter((x) => x.id !== String(assetId));
+      await store.writeDesign(file, doc);
+      await store.deleteDesignAssetBytes(file, String(assetId));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
