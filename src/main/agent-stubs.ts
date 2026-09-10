@@ -22,6 +22,7 @@ const RETIRED =
 const ENVELOPE = [
   "agent-dock:capture-target",
   "app-clone",
+  "org-clients", "org-client-create", "org-client-cap", "org-client-detach",
   "app-collaborator-remove", "app-collaborator-set", "app-collaborators",
   "app-domain-add", "app-domain-remove", "app-domains-list",
   "app-listing-image-add", "app-listing-image-remove", "app-listing-list", "app-listing-set",

@@ -620,44 +620,21 @@ function paintOrgs(): void {
     wrap.innerHTML = `<div class="crud-empty">${inputVal("pa-orgs-search") ? "No organizations match your search." : "No organizations yet."}</div>`;
     return;
   }
-  // Parent filter (his order, 2026-09-02): one agency's client fleet —
-  // server-filtered; the dropdown accumulates parents it has seen.
-  const parentSel = document.getElementById("pa-orgs-parent") as HTMLSelectElement | null;
-  if (parentSel) {
-    const keep = parentSel.value;
-    for (const o of orgs) {
-      if (o.managed_by_org_id && !parentSel.querySelector(`option[value="${o.managed_by_org_id}"]`)) {
-        const opt = document.createElement("option");
-        opt.value = o.managed_by_org_id;
-        opt.textContent = o.managed_by_name || o.managed_by_org_id;
-        parentSel.appendChild(opt);
-      }
-    }
-    parentSel.value = keep;
-    parentSel.classList.toggle("hidden", parentSel.options.length <= 1);
-  }
   const items = orgs;
   const state = { page: orgsPage, totalPages: Math.max(1, Math.ceil(orgsTotal / ORGS_PAGE_SIZE)), total: orgsTotal, pageSize: ORGS_PAGE_SIZE };
-  const { table, tbody } = mkTable(["Organization", "Tier", "Parent", "Billing", "Members", "Credits"], true);
+  const { table, tbody } = mkTable(["Organization", "Tier", "Billing", "Members"], true);
   for (const o of items) {
     const tr = document.createElement("tr");
-    // Credits: ledger truth (purchased/spent) + the monthly gate for managed
-    // orgs — a 5,000/mo client no longer reads as its bare signup grant.
-    const gate = (o.managed_monthly_cap_micro ?? 0) > 0
-      ? ` <span class="lib-table-dim">+${fmtInt(microToCredits(o.managed_monthly_cap_micro!))}/mo</span>` : "";
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
-      <td class="lib-table-dim pa-org-parent"></td>
       <td></td>
-      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>
-      <td class="lib-table-dim" title="purchased / spent (+ monthly gate from parent)">${fmtInt(microToCredits(o.credits_purchased ?? 0))} / ${fmtInt(microToCredits(o.credits_spent ?? 0))}${gate}</td>`;
-    (tr.querySelector(".pa-org-parent") as HTMLElement).textContent = o.managed_by_name || "—";
+      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>`;
     const name = tr.querySelector(".lib-table-name");
     if (name) name.textContent = o.name;
     const tier = tr.querySelector(".lib-table-desc");
     if (tier) tier.textContent = o.tier;
-    const billing = tr.querySelector("td:nth-child(4)");
+    const billing = tr.querySelector("td:nth-child(3)");
     if (billing) {
       billing.innerHTML = o.billing_status === "active"
         ? `<span class="lib-badge">active</span>` : `<span class="lib-table-dim"></span>`;
@@ -1033,11 +1010,10 @@ async function grantFromDetail(): Promise<void> {
 const ORGS_PAGE_SIZE = 15;
 async function refreshOrgs(): Promise<void> {
   try {
-    // SERVER-side pagination + parent filter (his orders, 2026-09-02) — the
-    // page in view is exactly one server page; the bar walks the real total.
+    // SERVER-side pagination — the page in view is exactly one server page;
+    // the bar walks the real total.
     const query = {
       q: inputVal("pa-orgs-search") || undefined,
-      parent: (document.getElementById("pa-orgs-parent") as HTMLSelectElement | null)?.value || undefined,
       page: orgsPage + 1, limit: ORGS_PAGE_SIZE,
     };
     const r = await read((a) => a.orgs?.(query), (g) => g.adminOrgs?.(query));
@@ -1059,7 +1035,6 @@ export function loadAdminOrgs(): void {
       window.clearTimeout(orgsSearchTimer);
       orgsSearchTimer = window.setTimeout(() => { orgsPage = 0; void refreshOrgs(); }, 250);
     });
-    $("pa-orgs-parent")?.addEventListener("change", () => { orgsPage = 0; void refreshOrgs(); });
     $("pa-org-grant-back")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); void refreshOrgs(); });
     $("pa-grant-cancel")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); });
     $("pa-org-detail-back")?.addEventListener("click", () => { detailOrg = null; showOrgView("list"); void refreshOrgs(); });

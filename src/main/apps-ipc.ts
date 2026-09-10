@@ -377,24 +377,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
-  // ── Agency client orgs (his order, 2026-09-02): create + fund workspaces ──
-  ipcMain.handle("org-clients", async () => {
-    try { return { ok: true, ...(await getClient().org.clients()) }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), clients: [] }; }
-  });
-  ipcMain.handle("org-client-create", async (_e, name: string) => {
-    try { return { ...(await getClient().org.createClient(name)), ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("org-client-cap", async (_e, id: string, monthlyCapCredits: number) => {
-    try { await getClient().org.setClientCap(id, monthlyCapCredits); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-  ipcMain.handle("org-client-detach", async (_e, id: string) => {
-    try { await getClient().org.detachClient(id); return { ok: true }; }
-    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
-  });
-
   // ── Production tab: graduate to a standalone Supabase repo (download zip) ────
   ipcMain.handle("app-graduate", async (_e, slug: string) => {
     const win = getMainWindow();

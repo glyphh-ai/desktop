@@ -10,7 +10,6 @@ import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js
 import { loadApps, initApps } from "./apps.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
-import { loadClientsPanel } from "./settings-clients.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadFiles, initFiles } from "./files.js";
@@ -397,7 +396,6 @@ export function openSettingsModal(sub?: string): void {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
-      const mcpHead = nav.querySelector("#nav-group-mcp");
       let orgGroup = nav.querySelector("#app-nav-group-org");
       if (!orgGroup) {
         orgGroup = document.createElement("div");
@@ -414,12 +412,7 @@ export function openSettingsModal(sub?: string): void {
       // MCP is its OWN group at the end (his spec, 2026-08-25): the cloud/
       // local General panel plus the API keys that authorize it.
       const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
-      const akItem = nav.querySelector('.settings-nav-item[data-sub="apikeys"]');
-      if (mcpHead && mcpItem) {
-        anchor.after(mcpHead);
-        mcpHead.after(mcpItem);
-        if (akItem) mcpItem.after(akItem);
-      }
+      if (mcpItem) { anchor.after(mcpItem); anchor = mcpItem; }
       wireAppUserChip(nav as HTMLElement);
     }
   }
@@ -639,8 +632,6 @@ function gateAdminSubs(): void {
     // keeps Billing personal-visible as before.
     if (document.body.classList.contains("platform-shell")) {
       document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
-      // Clients moves money (creating client orgs) — org_admin's alone.
-      document.getElementById("nav-clients")?.classList.toggle("hidden", !orgAdmin);
     }
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
@@ -796,7 +787,7 @@ const settingsSubAlias = (sub: string): string => {
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
   // THE PURGE: the settings shell is the minimal platform — account, org,
-  // members, clients, billing (the license), apps, download, support, docs,
+  // members, billing (the license), apps, download, support, docs,
   // and the super-admin Plans/Orgs console.
   if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
@@ -806,7 +797,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "org-general") void loadOrgPanel();
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
-  else if (sub === "clients") void loadClientsPanel();
   // The Platform group — the super-admin console (settings-admin.ts). Each
   // loader re-checks the role and paints an honest gate; the server enforces.
   else if (sub === "padmin-plans") loadAdminPlans();
