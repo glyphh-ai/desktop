@@ -257,7 +257,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "panels_open",
-    "Open an app as a panel. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Re-opening an already-open app focuses it.",
+    "Open an app as a panel. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Re-opening an already-open app focuses it. Installed Glyphh apps MUST open this way (by slug) — a file:// URL in the browser panel gets no glyphh bridge and the app won't work.",
     { app: z.string().describe("App to open: a saved-app slug from panels_available, or 'browser' / 'terminal'") },
     async ({ app }) => via("panels.open", { app }),
   );
@@ -290,7 +290,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "app_install",
-    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place.",
+    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place. To show the app afterwards, call panels_open with its slug — NEVER open its index.html via a file:// URL in the browser panel: the glyphh bridge (glyphh.call, db.exec, its tools) only exists when the app opens through its slug.",
     { bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string") },
     async ({ bundleBase64 }) => via("apps.install", { bundleBase64 }),
   );
