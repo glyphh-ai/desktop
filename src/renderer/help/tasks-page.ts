@@ -219,6 +219,7 @@ function renderDefaultModels(
     return `<div class="loop-model-row">
       <span class="loop-model-label">${escapeHtml(r.label || r.name)}</span>
       <select class="settings-input loop-model-select" data-role="${escapeHtml(r.name)}">${opts.join("")}</select>
+      <input class="settings-input loop-model-override" data-role="${escapeHtml(r.name)}" value="${escapeHtml(r.model ?? "")}" placeholder="model override" spellcheck="false" autocomplete="off" style="max-width:170px;font-family:ui-monospace,monospace;" />
     </div>`;
   }).join("");
   return `<hr class="lib-divider" />
@@ -234,6 +235,14 @@ function renderDefaultModels(
  *  server-side — a member's write surfaces as an inline permission message). */
 function wireDefaultModelPickers(): void {
   const msg = detailEl.querySelector<HTMLElement>("#loop-model-msg");
+  const report = (res: { ok: boolean; error?: string } | undefined): void => {
+    if (!msg) return;
+    if (res?.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
+    else {
+      msg.textContent = res?.error || "Couldn't save.";
+      msg.classList.remove("hidden"); msg.classList.add("danger");
+    }
+  };
   detailEl.querySelectorAll<HTMLSelectElement>(".loop-model-select").forEach((sel) => {
     sel.addEventListener("change", () => {
       void (async () => {
@@ -242,12 +251,22 @@ function wireDefaultModelPickers(): void {
         sel.disabled = true;
         const res = await window.glyphh.loopSetRoleDefault(current.id, role, sel.value || null);
         sel.disabled = false;
-        if (!msg) return;
-        if (res?.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
-        else {
-          msg.textContent = res.error || "Couldn't save.";
-          msg.classList.remove("hidden"); msg.classList.add("danger");
-        }
+        report(res);
+      })();
+    });
+  });
+  // The slot's model OVERRIDE — written with the CURRENT agent so the same
+  // lane never clobbers the binding; empty clears back to the agent's model.
+  detailEl.querySelectorAll<HTMLInputElement>(".loop-model-override").forEach((inp) => {
+    inp.addEventListener("change", () => {
+      void (async () => {
+        if (!current) return;
+        const role = inp.dataset.role!;
+        const agentSel = detailEl.querySelector<HTMLSelectElement>(`.loop-model-select[data-role="${role}"]`);
+        inp.disabled = true;
+        const res = await window.glyphh.loopSetRoleDefault(current.id, role, agentSel?.value || null, inp.value.trim() || null);
+        inp.disabled = false;
+        report(res);
       })();
     });
   });

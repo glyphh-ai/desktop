@@ -28,7 +28,7 @@ import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agent
 const LOOPS_DIR = path.join(homedir(), ".glyphh", "loops");
 const SKILLS_DIR = path.join(homedir(), ".glyphh", "skills");
 
-interface LoopRole { name: string; label?: string; description?: string; default?: string | null }
+interface LoopRole { name: string; label?: string; description?: string; default?: string | null; model?: string | null }
 interface LoopManifest { version?: number; type?: "turn" | "memory"; roles?: LoopRole[]; skills?: string[]; connections?: string[]; layout?: string }
 export interface LoopRow {
   id: string; slug: string; scope: "personal"; ownerUserId: null;
@@ -164,7 +164,8 @@ async function runSchedule(scheduleId: string): Promise<void> {
   };
   let line: string;
   try {
-    line = composeHeadless(agent, loop.code || loop.description || loop.name);
+    const schedRole = (loop.manifest.roles ?? []).find((r) => r.default === sched.agent_id) ?? loop.manifest.roles?.[0];
+    line = composeHeadless(agent, loop.code || loop.description || loop.name, schedRole?.model ?? undefined);
   } catch (err) {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
@@ -191,14 +192,14 @@ function execHeadless(line: string): Promise<{ code: number; output: string; err
 
 export interface TaskSpec {
   slug: string; name: string; description: string; program: string;
-  slots: Array<{ name: string; label?: string; description?: string; agent: string | null }>;
+  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
 }
 
 const specOf = (row: LoopRow): TaskSpec => ({
   slug: row.slug, name: row.name, description: row.description, program: row.code,
   slots: (row.manifest.roles ?? []).map((r) => ({
     name: r.name, ...(r.label ? { label: r.label } : {}), ...(r.description ? { description: r.description } : {}),
-    agent: r.default ?? null,
+    agent: r.default ?? null, ...(r.model ? { model: r.model } : {}),
   })),
 });
 
@@ -213,7 +214,7 @@ export function getTaskSpec(ref: string): TaskSpec {
 
 export function saveTaskSpec(input: {
   slug?: string; name: string; description?: string; program?: string;
-  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null }>;
+  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null }>;
 }): TaskSpec {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a task needs a name");
@@ -225,6 +226,7 @@ export function saveTaskSpec(input: {
         label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`),
         ...(sl.description ? { description: String(sl.description) } : {}),
         default: sl.agent ? String(sl.agent) : null,
+        ...(sl.model ? { model: String(sl.model) } : {}),
       }))
     : existing?.manifest.roles ?? [{ name: "main", label: "Main", description: "The agent this task runs on.", default: null }];
   const row: LoopRow = {
@@ -246,7 +248,8 @@ export async function runTaskNow(ref: string, agentId?: string): Promise<{ statu
   const wanted = agentId || row.manifest.roles?.[0]?.default || "";
   const agent = agents.find((a) => a.id === wanted) ?? agents[0];
   if (!agent) throw new Error("no agents exist to run this task");
-  const line = composeHeadless(agent, row.code || row.description || row.name);
+  const runRole = (row.manifest.roles ?? []).find((r) => r.default === agent.id) ?? row.manifest.roles?.[0];
+  const line = composeHeadless(agent, row.code || row.description || row.name, runRole?.model ?? undefined);
   const r = await execHeadless(line);
   return { status: r.code === 0 ? "ok" : "failed", output: r.error ? `${r.output}\n${r.error}`.trim() : r.output };
 }
@@ -313,6 +316,7 @@ export function registerLocalLibraryIpc(): void {
       const roles = (row.manifest.roles ?? []).map((r) => ({
         name: r.name, label: r.label, description: r.description,
         modelId: r.default ?? null,
+        model: r.model ?? null,
         choices,
       }));
       return { ok: true, loop: row.slug, roles };
@@ -320,7 +324,7 @@ export function registerLocalLibraryIpc(): void {
       return { ok: false, loop: String(loop), roles: [], error: err instanceof Error ? err.message : String(err) };
     }
   });
-  ipcMain.handle("loop-set-role-default", (_e, arg: string | { loopId?: string; role?: string; modelId?: string | null }, rolePos?: string, agentPos?: string | null) => env(() => {
+  ipcMain.handle("loop-set-role-default", (_e, arg: string | { loopId?: string; role?: string; modelId?: string | null; model?: string | null }, rolePos?: string, agentPos?: string | null) => env(() => {
     const loopId = typeof arg === "string" ? arg : String(arg?.loopId ?? "");
     const role = typeof arg === "string" ? String(rolePos ?? "") : String(arg?.role ?? "");
     const agentId = typeof arg === "string" ? agentPos ?? null : arg?.modelId ?? null;
@@ -328,6 +332,9 @@ export function registerLocalLibraryIpc(): void {
     const r = (row.manifest.roles ?? []).find((x) => x.name === role);
     if (!r) throw new Error(`role "${role}" not on this loop`);
     r.default = agentId ? String(agentId) : null;
+    // The slot's MODEL OVERRIDE rides the same lane: undefined = untouched,
+    // "" / null = cleared (the agent's own model runs).
+    if (typeof arg === "object" && arg && "model" in arg) r.model = arg.model ? String(arg.model) : null;
     return saveLoop(row);
   }));
 

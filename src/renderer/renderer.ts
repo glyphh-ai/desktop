@@ -447,7 +447,7 @@ declare global {
       orgProviderClearKey: (slug: string) => Promise<{ ok: boolean; error?: string }>;
       // @-mention summon (ghost overlay): alias lookup + summon.
       loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) => Promise<{ ok: boolean; loop: string }>;
-      loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) => Promise<{ ok: boolean; error?: string }>;
+      loopSetRoleDefault: (loopId: string, role: string, modelId: string | null, model?: string | null) => Promise<{ ok: boolean; error?: string }>;
       glyphhContextUsage: (chatId: string) => Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>;
       glyphhCompact: (chatId: string, focus: string) => Promise<{ ok: boolean; reason?: string }>;
       glyphhStop: (chatId?: string) => Promise<boolean>;

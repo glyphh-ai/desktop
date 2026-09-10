@@ -323,6 +323,8 @@ interface LoopRoleView {
   description: string;
   modality?: string;
   modelId: string | null;
+  /** The slot's model OVERRIDE (rides the agent's CLI as its -m). */
+  model?: string | null;
   source: "selection" | "loop" | "platform" | "fallback" | "none";
   choices: Array<{
     id: string;
@@ -1064,8 +1066,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) =>
     ipcRenderer.invoke("loop-apply-config", { loop, modelSelections }) as Promise<{ ok: boolean; loop: string }>,
   /** Edit a loop's OWN default model for a role (writes manifest.roles[].default). */
-  loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) =>
-    ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId }) as Promise<{ ok: boolean; error?: string }>,
+  loopSetRoleDefault: (loopId: string, role: string, modelId: string | null, model?: string | null) =>
+    ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId, ...(model !== undefined ? { model } : {}) }) as Promise<{ ok: boolean; error?: string }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,

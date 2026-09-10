@@ -147,6 +147,7 @@ function buildMcpServer(): McpServer {
         label: z.string().optional(),
         description: z.string().optional().describe("What this slot is for"),
         agent: z.string().nullable().optional().describe("CLI-agent id bound to this slot (null = first agent)"),
+        model: z.string().optional().describe("Model override for this slot (omit = the agent's own model)"),
       })).optional().describe("The fixed slots\u2192agents; omit to keep existing (default: one Main slot)"),
     },
     async (input) => {
