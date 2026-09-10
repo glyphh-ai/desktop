@@ -20294,3 +20294,4 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* ── Agents section (CLI pre-configs, help/cli-agents.ts) ──── */
 .cagent-card-emoji { font-size: 24px; line-height: 1; }
+.cagent-card-mark { width: 26px; height: 26px; border-radius: 6px; }

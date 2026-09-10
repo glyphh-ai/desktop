@@ -11,7 +11,7 @@
             <input id="cagent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
             <button id="cagent-new-btn" class="action-btn primary">+ New</button>
           </div>
-          <div id="cagents-list" class="crud-cards"></div>
+          <div id="cagents-list" class="app-list-wrap"></div>
           <div id="cagent-editor" class="crud-inline-form hidden">
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="cagent-back-link">&larr; Agents</a>
@@ -22,15 +22,40 @@
             <div id="cagent-detail-head" class="edit-head"></div>
             <label class="settings-label">Name</label>
             <input type="text" id="cagent-name" class="settings-input" placeholder="Claude" spellcheck="false" autocomplete="off" />
-            <label class="settings-label">Icon <span class="settings-hint-inline">an emoji for the card</span></label>
-            <input type="text" id="cagent-icon" class="settings-input" placeholder="✳" spellcheck="false" autocomplete="off" maxlength="4" />
+            <label class="settings-label">CLI</label>
+            <select id="cagent-cli" class="settings-input">
+              <option value="claude">Claude</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <div id="cagent-icon-row">
+              <label class="settings-label">Icon <span class="settings-hint-inline">an emoji for the card</span></label>
+              <input type="text" id="cagent-icon" class="settings-input" placeholder="✳" spellcheck="false" autocomplete="off" maxlength="4" />
+            </div>
             <label class="settings-label">Command <span class="settings-hint-inline">what the terminal runs — flags welcome</span></label>
             <input type="text" id="cagent-cmd" class="settings-input" placeholder="claude" spellcheck="false" autocomplete="off" />
+            <label class="settings-label" style="margin-top:16px;">Working folder</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">Opening this agent starts its terminal in this folder. Leave empty to use the current one.</div>
+            <div class="layout-folder-row">
+              <input id="cagent-folder-input" class="settings-input" placeholder="No folder — uses the current one" spellcheck="false" readonly />
+              <button id="cagent-folder-pick" class="layout-folder-icon" title="Choose folder">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              </button>
+              <button id="cagent-folder-clear" class="layout-folder-icon" title="Clear">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+              </button>
+            </div>
             <label class="settings-toggle set-pref-row" style="margin-top:10px;">
               <div class="set-pref-text">
                 <div class="set-pref-title">Connect Glyphh tools (MCP)</div>
               </div>
               <input type="checkbox" id="cagent-mcp" checked />
+              <span class="toggle-switch"></span>
+            </label>
+            <label class="settings-toggle set-pref-row" style="margin-top:6px;">
+              <div class="set-pref-text">
+                <div class="set-pref-title">Keep session alive when closed</div>
+              </div>
+              <input type="checkbox" id="cagent-keepalive" checked />
               <span class="toggle-switch"></span>
             </label>
             <p class="settings-hint" id="cagent-cmd-preview" style="margin-top:10px;font-family:ui-monospace,monospace;"></p>

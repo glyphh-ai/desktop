@@ -10,12 +10,16 @@
 
 import { paginate, renderPaginationBar } from "./shared.js";
 
-interface CliAgent { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }
+interface CliAgent { id: string; name: string; cli: "claude" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
+
+/** Claude's public web mark — the brand icon its agents wear. */
+const CLAUDE_MARK_URL = "https://claude.ai/favicon.ico";
 
 const api = () => (window as unknown as { glyphh?: {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgent[]; error?: string }>;
-  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
+  cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
   cliAgentsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  layoutsPickFolder?: () => Promise<string | null>;
 } }).glyphh ?? {};
 
 let all: CliAgent[] = [];
@@ -41,15 +45,25 @@ function showEditor(agent: CliAgent | null): void {
   ed?.classList.remove("hidden");
   el("cagent-form-error")?.classList.add("hidden");
   (el<HTMLInputElement>("cagent-name")!).value = agent?.name ?? "";
+  (el<HTMLSelectElement>("cagent-cli")!).value = agent?.cli ?? "claude";
   (el<HTMLInputElement>("cagent-icon")!).value = agent?.icon ?? "";
   // The Claude case is one click: a new agent lands pre-filled.
   (el<HTMLInputElement>("cagent-cmd")!).value = agent?.cmd ?? "claude";
+  (el<HTMLInputElement>("cagent-folder-input")!).value = agent?.cwd ?? "";
   (el<HTMLInputElement>("cagent-mcp")!).checked = agent ? agent.mcp : true;
+  (el<HTMLInputElement>("cagent-keepalive")!).checked = agent ? agent.keepAlive !== false : true;
+  syncCliRow();
   el("cagent-open-btn")?.classList.toggle("hidden", !agent);
   el("cagent-delete-btn")?.classList.toggle("hidden", !agent);
   const head = el("cagent-detail-head");
   if (head) head.innerHTML = `<div class="edit-head-name">${agent ? esc(agent.name) : "New agent"}</div>`;
   paintPreview();
+}
+
+/** Claude wears its own mark — the emoji field is for custom CLIs. */
+function syncCliRow(): void {
+  const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
+  el("cagent-icon-row")?.classList.toggle("hidden", cli === "claude");
 }
 
 function paintPreview(): void {
@@ -86,7 +100,9 @@ function renderList(): void {
     card.className = "app-card cagent-card";
     card.dataset.id = a.id;
     card.innerHTML = `
-      <div class="app-card-icon">${a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
+      <div class="app-card-icon">${a.cli === "claude"
+        ? `<img class="cagent-card-mark" src="${CLAUDE_MARK_URL}" alt="" />`
+        : a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
       <div class="app-card-name">${esc(a.name)}</div>
       <div class="app-card-id" style="font-family:ui-monospace,monospace;">${esc(a.cmd)}${a.mcp ? " · glyphh tools" : ""}</div>`;
     grid.appendChild(card);
@@ -114,6 +130,21 @@ export function initCliAgentsEvents(): void {
   el<HTMLInputElement>("cagent-search")?.addEventListener("input", renderList);
   el<HTMLInputElement>("cagent-cmd")?.addEventListener("input", paintPreview);
   el<HTMLInputElement>("cagent-mcp")?.addEventListener("change", paintPreview);
+  el<HTMLSelectElement>("cagent-cli")?.addEventListener("change", () => {
+    syncCliRow();
+    // Picking Claude seeds the command if the field is empty or still default.
+    const cmd = el<HTMLInputElement>("cagent-cmd");
+    if (el<HTMLSelectElement>("cagent-cli")?.value === "claude" && cmd && !cmd.value.trim()) cmd.value = "claude";
+    paintPreview();
+  });
+  el("cagent-folder-pick")?.addEventListener("click", () => {
+    void api().layoutsPickFolder?.().then((dir) => {
+      if (dir) { const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = dir; }
+    });
+  });
+  el("cagent-folder-clear")?.addEventListener("click", () => {
+    const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = "";
+  });
 
   el("cagents-list")?.addEventListener("click", (ev) => {
     const card = (ev.target as HTMLElement).closest<HTMLElement>(".cagent-card");
@@ -132,9 +163,12 @@ export function initCliAgentsEvents(): void {
     const input = {
       ...(editing ? { id: editing.id } : {}),
       name: el<HTMLInputElement>("cagent-name")?.value ?? "",
+      cli: el<HTMLSelectElement>("cagent-cli")?.value ?? "claude",
       icon: el<HTMLInputElement>("cagent-icon")?.value ?? "",
       cmd: el<HTMLInputElement>("cagent-cmd")?.value ?? "",
+      cwd: el<HTMLInputElement>("cagent-folder-input")?.value ?? "",
       mcp: el<HTMLInputElement>("cagent-mcp")?.checked !== false,
+      keepAlive: el<HTMLInputElement>("cagent-keepalive")?.checked !== false,
     };
     void api().cliAgentsSave?.(input).then((r) => {
       if (!r?.ok) {

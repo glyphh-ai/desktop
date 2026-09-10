@@ -2343,14 +2343,15 @@ async function init(): Promise<void> {
     // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
     // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
     // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    interface CliAgentRowLite { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }
+    interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; keepAlive?: boolean; command: string }
     let cliAgentRows: CliAgentRowLite[] = [];
     const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
     const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
       name: a.name,
       slug: `agent:${a.id}`,
       orderKey: `agent:${a.id}`,
-      glyphSvg: CLI_AGENT_GLYPH,
+      // Claude agents wear the brand's public mark; custom ones the robot.
+      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" } : { glyphSvg: CLI_AGENT_GLYPH }),
       kind: "tool",
       toolView: "terminal",
       cliAgent: { id: a.id, command: a.command },
@@ -4687,8 +4688,14 @@ async function init(): Promise<void> {
       e.toolSlot = undefined;
       // Captured NOW — by the time the deferred teardown runs, the incoming
       // layout may already own echoLayoutName.
-      const parkKey = opts?.parkTerms && echoLayoutName && e.memKey && e.keepTermsAlive !== false
-        ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
+      // AGENT cards park by agent — ONE session per agent id, surviving an
+      // explicit close when keep-alive says so (his order, 2026-09-10); a
+      // standalone reopen or a workspace cell both re-adopt it.
+      const agentParkKey = (e.tile.slug || "").startsWith("agent:") && e.keepTermsAlive !== false
+        ? `agent::${e.tile.slug}` : null;
+      const parkKey = agentParkKey
+        ?? (opts?.parkTerms && echoLayoutName && e.memKey && e.keepTermsAlive !== false
+          ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null);
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections). The
@@ -5099,10 +5106,20 @@ async function init(): Promise<void> {
             // NO cliAgent on the cell tile — activateTile would bounce it
             // back to openAgentCliCard instead of minting the terminal.
             entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
-            entry.keepTermsAlive = cell.config?.keepAlive !== false;
+            // The WORKSPACE's "Maintain on close" overrides the agent's own
+            // keep-alive when set; otherwise the agent's config rules.
+            entry.keepTermsAlive = cell.config?.keepAlive !== undefined
+              ? cell.config.keepAlive !== false
+              : (arow ? arow.keepAlive !== false : true);
+            // A parked agent session re-attaches (one session per agent id).
+            const parkedA = parkedTerms.get(`agent::${id}`);
+            if (parkedA) { parkedTerms.delete(`agent::${id}`); pendingParkedTerms = parkedA; }
             activateTile(entry);
-            const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
-            if (ts?.terminals?.[0] && arow) ts.terminals[0].initCmd = arow.command;
+            pendingParkedTerms = null;
+            if (!parkedA) {
+              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+              if (ts?.terminals?.[0] && arow) ts.terminals[0].initCmd = arow.command;
+            }
             // dependencies (the local MCP server) come up in the background
             if (arow?.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
           } else if (id.startsWith("tool:")) {
@@ -5902,13 +5919,21 @@ async function init(): Promise<void> {
         .glyphh?.cliAgentOpen?.(a.id).then((r) => {
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const cmd = (r?.ok && r.command) || a.command;
+          const row = cliAgentRows.find((x) => x.id === a.id);
           // NO cliAgent on the minted tile — activateTile routes cliAgent
           // tiles back HERE (that was an infinite loop, his report).
           const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
-          entry.keepTermsAlive = true;
+          entry.keepTermsAlive = row ? row.keepAlive !== false : true;
+          // A parked session re-attaches — same pty, same buffer, the CLI
+          // never stopped. Only a FRESH terminal types the command.
+          const parked = parkedTerms.get(`agent::agent:${a.id}`);
+          if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
           activateTile(entry);
-          const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
-          if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cmd;
+          pendingParkedTerms = null;
+          if (!parked) {
+            const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+            if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cmd;
+          }
         });
     };
     (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli = (id: string) => {

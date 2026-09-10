@@ -25,12 +25,21 @@ export const AGENTS_DIR = path.join(homedir(), ".glyphh", "agents");
 export interface CliAgentRow {
   id: string;
   name: string;
-  /** Small glyph for lists (an emoji or short text). */
+  /** Which CLI this agent drives — "claude" carries the brand mark; "custom"
+   *  uses the emoji icon. More CLIs join this union as they're wired. */
+  cli: "claude" | "custom";
+  /** Small glyph for lists (an emoji or short text) — custom CLIs only. */
   icon: string;
   /** The command line the terminal plays on open (before MCP wiring). */
   cmd: string;
   /** Wire the Glyphh local MCP server into the CLI (--mcp-config). */
   mcp: boolean;
+  /** Start the terminal here (like a workspace's working folder). "" = current. */
+  cwd: string;
+  /** Closing the card parks the terminal session for the next open (true,
+   *  the default) or kills it so every open starts fresh. A workspace cell's
+   *  own "Maintain on close" OVERRIDES this when the agent rides a layout. */
+  keepAlive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,7 +56,11 @@ const slug = (name: string): string =>
 function readAgent(id: string): CliAgentRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(agentFile(id), "utf-8")) as CliAgentRow;
-    return row && row.id ? row : null;
+    if (!row || !row.id) return null;
+    row.cli = row.cli === "custom" ? "custom" : "claude";
+    row.cwd = typeof row.cwd === "string" ? row.cwd : "";
+    row.keepAlive = row.keepAlive !== false;
+    return row;
   } catch {
     return null;
   }
@@ -91,8 +104,9 @@ function ensureMcpConfig(id: string): void {
  *  rides the USER'S own CLI auth (their ~/.claude login) — Glyphh injects
  *  nothing else yet; the gateway's ANTHROPIC_BASE_URL seam lands here later. */
 function composeCommand(row: CliAgentRow): string {
-  if (!row.mcp) return row.cmd;
-  return `${row.cmd} --mcp-config "${mcpFile(row.id)}"`;
+  const base = row.mcp ? `${row.cmd} --mcp-config "${mcpFile(row.id)}"` : row.cmd;
+  // The working folder leads the open — same contract as a workspace's.
+  return row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${base}` : base;
 }
 
 export function listCliAgents(): CliAgentListed[] {
@@ -114,7 +128,7 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean }) => {
     try {
       const name = String(input.name ?? "").trim();
       const cmd = String(input.cmd ?? "").trim();
@@ -126,9 +140,12 @@ export function registerCliAgentsIpc(): void {
       const row: CliAgentRow = {
         id,
         name,
+        cli: input.cli === "custom" ? "custom" : "claude",
         icon: String(input.icon ?? existing?.icon ?? "").trim(),
         cmd,
         mcp: input.mcp !== false,
+        cwd: String(input.cwd ?? existing?.cwd ?? "").trim(),
+        keepAlive: input.keepAlive !== undefined ? input.keepAlive !== false : existing?.keepAlive !== false,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };
