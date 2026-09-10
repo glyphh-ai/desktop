@@ -20,7 +20,6 @@ import * as picker from "./model-picker.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
-import { openLayoutInWorkbench } from "./layouts.js";
 import { initAnchor, initAnchorEvents, isPeeking, togglePeek, closePeek } from "./code-anchor.js";
 import { createSourceChip, type Source, createGitChip, openMachineFolderBrowser, openCloudFolderBrowser, openNewFolderDrop, closeAllDrops, gitStateFor, probeSources } from "./code-source-chip.js";
 import {
@@ -4273,6 +4272,7 @@ interface RailSectionDef { toggle: string; body: string; pref: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
+  { toggle: "rail-agents-toggle", body: "rail-agents-body", pref: "railPanelAgentsOpen" },
 ];
 
 function setRailSectionOpen(def: RailSectionDef, open: boolean, persist: boolean): void {
@@ -4325,6 +4325,11 @@ interface RailApp {
 interface RailLayout { name: string; splits: Array<{ panelId: string }> }
 let railApps: RailApp[] = [];
 let railLayouts: RailLayout[] = [];
+// CLI agents (the build, 2026-09-10) — their own foldable tray, painted with
+// the exact grammar Workspaces uses (tiles, search, 15-page pager).
+interface RailCliAgent { id: string; name: string; cli?: string; icon?: string }
+let railAgents: RailCliAgent[] = [];
+let railClaudeMark = "";   // web-icon-fetch data URL, cached for the session
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
@@ -4340,8 +4345,9 @@ const RAIL_LAYOUTS_PER_PAGE = 15;
 interface RailGridHost { list: HTMLElement; search: HTMLInputElement | null; page: number }
 const railAppsHosts = new Set<RailGridHost>();
 const railLayoutsHosts = new Set<RailGridHost>();
-function registerRailGridHost(kind: "apps" | "layouts", host: RailGridHost): void {
-  (kind === "apps" ? railAppsHosts : railLayoutsHosts).add(host);
+const railAgentsHosts = new Set<RailGridHost>();
+function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
+  (kind === "apps" ? railAppsHosts : kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);
 }
 
 /** Slice items to a page, clamping in-range (palette parity). */
@@ -4378,11 +4384,18 @@ function railPager(page: number, totalPages: number, onPage: (p: number) => void
 
 async function loadRecentApps(): Promise<void> {
   try {
-    const [apps, layouts, recents] = await Promise.all([
+    const yoAgents = (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: RailCliAgent[] }> });
+    const [apps, layouts, recents, agentsRes] = await Promise.all([
       window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
       window.glyphh.layoutsList?.() ?? Promise.resolve([]),
       window.glyphh.recentsList?.() ?? Promise.resolve([]),
+      yoAgents.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
     ]);
+    railAgents = agentsRes?.ok ? agentsRes.agents : [];
+    if (!railClaudeMark && railAgents.some((a) => a.cli !== "custom")) {
+      void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
+        .webIconFetch?.("https://claude.ai/favicon.ico").then((d) => { if (d) { railClaudeMark = d; renderRecentApps(); } }).catch(() => {});
+    }
     // Palette parity: web apps (have a url) + native library apps. The
     // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
     // header is the chat entry, not an app in the list.
@@ -4412,7 +4425,7 @@ async function loadRecentApps(): Promise<void> {
 /** Both rail sections. Apps and Layouts each own a search + pagination and live
  *  under their own collapsible header (see initRailSections). */
 let railCcOrder: string[] = [];
-function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); }
+function renderRecentApps(): void { renderRailApps(); renderRailLayouts(); renderRailAgents(); }
 // The wall re-saves its order on every drag — mirror it into the rail at once,
 // so the two lists can never disagree about what the user arranged.
 window.addEventListener("glyphh:cc-order-changed", (e) => {
@@ -4442,7 +4455,7 @@ function railEmpty(list: HTMLElement, q: string, label: string, section: string)
     gotoSection(section);
     // Land ON the create form, not just the page — the button says "+".
     // The page's own New button is the one authority for what "new" means.
-    window.setTimeout(() => document.getElementById(`${section === "apps" ? "app" : "layout"}-new-btn`)?.click(), 60);
+    window.setTimeout(() => document.getElementById(`${section === "apps" ? "app" : section === "agents" ? "cagent" : "layout"}-new-btn`)?.click(), 60);
   });
   list.appendChild(btn);
 }
@@ -4664,12 +4677,60 @@ function paintLayoutsGrid(host: RailGridHost): void {
     nm.className = "tile-name";
     nm.textContent = l.name;
     tile.append(icon, nm);
-    tile.addEventListener("click", () => { openCommandCenter(); void openLayoutInWorkbench(l.name); });
+    tile.addEventListener("click", () => {
+      openCommandCenter();
+      void (window as unknown as { __wbOpenLayoutByName?: (n: string) => Promise<boolean> }).__wbOpenLayoutByName?.(l.name);
+    });
     list.appendChild(tile);
   }
   if (lp.totalPages > 1) list.appendChild(railPager(lp.page, lp.totalPages, (pg) => { host.page = pg; paintLayoutsGrid(host); }));
   if (!layouts.length) railEmpty(list, q, "Workspace", "layouts");
 }
+
+function renderRailAgents(): void {
+  for (const host of [...railAgentsHosts]) {
+    if (!host.list.isConnected) { railAgentsHosts.delete(host); continue; }
+    paintAgentsGrid(host);
+  }
+}
+
+const RAIL_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" style="width:20px;height:20px"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe"/></svg>`;
+
+function paintAgentsGrid(host: RailGridHost): void {
+  const list = host.list;
+  const q = (host.search?.value || "").trim().toLowerCase();
+  list.textContent = "";
+  const agents = railAgents
+    .filter((a) => !q || (a.name || "").toLowerCase().includes(q))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  const ap = railPaginate(agents, host.page, RAIL_LAYOUTS_PER_PAGE);
+  host.page = ap.page;
+  for (const a of ap.items) {
+    const tile = document.createElement("button");
+    tile.className = "app-rail-tile";
+    tile.type = "button";
+    tile.title = `${a.name} (agent)`;
+    const icon = document.createElement("div");
+    icon.className = "tile-icon";
+    icon.innerHTML = a.cli !== "custom" && railClaudeMark
+      ? `<img src="${railClaudeMark}" alt="" style="width:20px;height:20px;border-radius:5px" />`
+      : a.icon ? `<span style="font-size:18px;line-height:1">${a.icon.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>` : RAIL_AGENT_GLYPH;
+    const nm = document.createElement("span");
+    nm.className = "tile-name";
+    nm.textContent = a.name;
+    tile.append(icon, nm);
+    tile.addEventListener("click", () => {
+      openCommandCenter();
+      (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(a.id);
+    });
+    list.appendChild(tile);
+  }
+  if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { host.page = pg; paintAgentsGrid(host); }));
+  if (!agents.length) railEmpty(list, q, "Agent", "agents");
+}
+
+// The Agents section announces saves/deletes — the tray follows live.
+window.addEventListener("glyphh:cli-agents-changed", () => { void loadRecentApps(); });
 
 // (The recents splitter died with the rail tray sections — recents fills
 // the stack; see syncRailLayout.)
@@ -4686,6 +4747,10 @@ function initRailApps(): void {
     ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
+  const leftAgents: RailGridHost | null = el<HTMLDivElement>("recent-agents-list")
+    ? { list: el<HTMLDivElement>("recent-agents-list")!, search: el<HTMLInputElement>("recent-agents-search"), page: 0 }
+    : null;
+  if (leftAgents) registerRailGridHost("agents", leftAgents);
   initRailSections();
   syncRailLayout();
   void loadRecentApps();
@@ -4704,6 +4769,8 @@ function initRailApps(): void {
   });
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
+  // Agents search — same contract.
+  if (leftAgents) wireRailSearch(leftAgents.search, () => { leftAgents.page = 0; paintAgentsGrid(leftAgents); });
 
 }
 
