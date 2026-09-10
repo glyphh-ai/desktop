@@ -116,9 +116,17 @@ function paintPreview(): void {
   const preview = el("cagent-cmd-preview");
   if (!preview) return;
   const cmd = (el<HTMLInputElement>("cagent-cmd")?.value ?? "").trim();
+  const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
   const mcp = el<HTMLInputElement>("cagent-mcp")?.checked !== false;
   if (!cmd) { preview.textContent = ""; return; }
-  preview.textContent = `runs: ${cmd}${mcp ? ' --mcp-config "~/.glyphh/agents/<agent>/mcp.json"' : ""}`;
+  // Honest per-CLI wiring note — claude takes a flag; codex takes -c
+  // overrides; gemini/copilot/cursor get their settings files written.
+  const wiring = !mcp ? ""
+    : cli === "claude" ? ' --mcp-config "~/.glyphh/agents/<agent>/mcp.json"'
+    : cli === "codex" ? " -c mcp_servers.glyphh.… (composed at open)"
+    : cli === "custom" ? "  (mcp.json written beside the agent)"
+    : "  (glyphh added to the CLI's own MCP settings at open)";
+  preview.textContent = `runs: ${cmd}${wiring}`;
 }
 
 const AGENT_CARD_GLYPH = `<svg viewBox="0 0 24 24" fill="none" style="width:26px;height:26px"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe"/></svg>`;
