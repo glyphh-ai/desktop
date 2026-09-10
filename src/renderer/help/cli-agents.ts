@@ -8,7 +8,7 @@
  * so the echo wall and the layout editor pick up new tiles/cells live.
  */
 
-import { paginate, renderPaginationBar } from "./shared.js";
+import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
 
 interface CliAgent { id: string; name: string; cli: "claude" | "custom"; icon: string; cmd: string; mcp: boolean; cwd: string; keepAlive: boolean; command: string }
 
@@ -199,12 +199,22 @@ export function initCliAgentsEvents(): void {
     });
   });
 
+  el("cagent-cancel-btn")?.addEventListener("click", () => { showList(); });
   el("cagent-delete-btn")?.addEventListener("click", () => {
     if (!editing) return;
-    void api().cliAgentsDelete?.(editing.id).then((r) => {
-      if (!r?.ok) return;
-      announce();
-      void refresh().then(showList);
+    const doomed = editing;
+    void confirmAction({
+      title: `Delete agent "${doomed.name}"?`,
+      body: "Its card leaves the wall and any workspace cells stop resolving. Saved terminal sessions close.",
+      confirmLabel: "Delete",
+      danger: true,
+    }).then((yes) => {
+      if (!yes) return;
+      void api().cliAgentsDelete?.(doomed.id).then((r) => {
+        if (!r?.ok) return;
+        announce();
+        void refresh().then(showList);
+      });
     });
   });
 
