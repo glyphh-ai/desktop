@@ -20303,4 +20303,12 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin-top: 8px; font: 12px ui-monospace, monospace; color: var(--text-2);
 }
-.cagent-key-current svg { width: 16px; height: 16px; color: var(--success); flex: 0 0 auto; }
+.cagent-key-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.cagent-key-actions > svg { width: 16px; height: 16px; color: var(--success); }
+#cagent-apikey-delete {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+#cagent-apikey-delete svg { width: 14px; height: 14px; }
+#cagent-apikey-delete:hover { color: #f43f5e; background: var(--surface-2); }

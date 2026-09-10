@@ -25,6 +25,7 @@ const api = () => (window as unknown as { glyphh?: {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgent[]; error?: string }>;
   cliAgentsSave?: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; keepAlive?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => Promise<{ ok: boolean; agent?: CliAgent; error?: string }>;
   cliAgentsDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  cliAgentsKeyDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
   webIconFetch?: (url: string) => Promise<string>;
 } }).glyphh ?? {};
@@ -192,6 +193,26 @@ export function initCliAgentsEvents(): void {
   el<HTMLInputElement>("cagent-cmd")?.addEventListener("input", paintPreview);
   el<HTMLInputElement>("cagent-mcp")?.addEventListener("change", paintPreview);
   el<HTMLInputElement>("cagent-apikey-on")?.addEventListener("change", () => { syncApiKeyRow(); syncCliRow(); });
+  el("cagent-apikey-delete")?.addEventListener("click", () => {
+    if (!editing?.apiKey) return;
+    const doomed = editing;
+    void confirmAction({
+      title: `Remove the stored ${doomed.apiKey!.name}?`,
+      body: "The key file is deleted from disk; the agent opens without it until a new key is saved.",
+      confirmLabel: "Remove",
+      danger: true,
+    }).then((yes) => {
+      if (!yes) return;
+      void api().cliAgentsKeyDelete?.(doomed.id).then((r) => {
+        if (!r?.ok) return;
+        announce();
+        void refresh().then(() => {
+          const fresh = all.find((a) => a.id === doomed.id) ?? null;
+          if (editing?.id === doomed.id) showEditor(fresh);
+        });
+      });
+    });
+  });
   el<HTMLSelectElement>("cagent-cli")?.addEventListener("change", () => {
     syncCliRow();
     // Picking a branded CLI seeds the command if the field is empty or still

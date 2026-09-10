@@ -293,6 +293,21 @@ export function registerCliAgentsIpc(): void {
     }
   });
 
+  // Remove ONLY the stored key — the env file leaves the disk, the agent stays.
+  ipcMain.handle("cli-agents-key-delete", (_e, id: string) => {
+    try {
+      const row = readAgent(String(id));
+      if (!row) return { ok: false, error: "agent not found" };
+      try { fs.rmSync(envFile(row.id), { force: true }); } catch { /* gone */ }
+      row.apiKey = null;
+      row.updatedAt = new Date().toISOString();
+      writeAgent(row);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle("cli-agents-delete", (_e, id: string) => {
     try {
       fs.rmSync(path.join(AGENTS_DIR, String(id)), { recursive: true, force: true });
