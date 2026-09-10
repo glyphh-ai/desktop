@@ -443,17 +443,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopScheduleSave: (input: { loopSlug: string; agentId: string; cron: string; name?: string; id?: string }) => ipcRenderer.invoke("loop-schedule-save", input) as Promise<{ ok: boolean; data?: { id: string }; error?: string }>,
   loopScheduleDelete: (id: string) => ipcRenderer.invoke("loop-schedule-delete", id) as Promise<{ ok: boolean; error?: string }>,
 
-  // Tasks — the one work primitive (stepped, slotted, schedulable)
-  tasksList: () => ipcRenderer.invoke("tasks-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  tasksGet: (slug: string) => ipcRenderer.invoke("tasks-get", slug) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  tasksSave: (input: unknown) => ipcRenderer.invoke("tasks-save", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  tasksDelete: (slug: string) => ipcRenderer.invoke("tasks-delete", slug) as Promise<{ ok: boolean; error?: string }>,
-  tasksRunNow: (slug: string) => ipcRenderer.invoke("tasks-run-now", slug) as Promise<{ ok: boolean; status?: string; output?: string; error?: string }>,
-  tasksRuns: (slug: string) => ipcRenderer.invoke("tasks-runs", slug) as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  taskSchedulesList: (slug: string) => ipcRenderer.invoke("task-schedules-list", slug) as Promise<{ ok: boolean; data?: Array<{ id: string; name: string; cron: string; enabled: boolean }>; error?: string }>,
-  taskScheduleSave: (input: { taskSlug: string; cron: string; id?: string; enabled?: boolean }) => ipcRenderer.invoke("task-schedule-save", input) as Promise<{ ok: boolean; data?: { id: string }; error?: string }>,
-  taskScheduleDelete: (id: string) => ipcRenderer.invoke("task-schedule-delete", id) as Promise<{ ok: boolean; error?: string }>,
-
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
   dripsSave: (name: string, recipe: string) => ipcRenderer.invoke("drips-save", name, recipe) as Promise<string>,

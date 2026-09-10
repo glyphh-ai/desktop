@@ -169,24 +169,93 @@ async function runSchedule(scheduleId: string): Promise<void> {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
   }
-  await new Promise<void>((resolve) => {
+  const r = await execHeadless(line);
+  finish(r.code === 0 ? "ok" : "failed", r.code === 0 ? null : r.error ?? `exit ${r.code}`, r.output || null);
+}
+
+function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
+  return new Promise((resolve) => {
     const child = spawn("/bin/sh", ["-lc", line], { env: process.env });
     let out = "";
     const cap = (b: Buffer): void => { if (out.length < 40_000) out += b.toString(); };
     child.stdout.on("data", cap);
     child.stderr.on("data", cap);
     const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* raced exit */ } }, 10 * 60 * 1000);
-    child.on("close", (codeNum) => {
-      clearTimeout(timer);
-      finish(codeNum === 0 ? "ok" : "failed", codeNum === 0 ? null : `exit ${codeNum}`, out.trim() || null);
-      resolve();
-    });
-    child.on("error", (err) => {
-      clearTimeout(timer);
-      finish("failed", err.message, out.trim() || null);
-      resolve();
-    });
+    child.on("close", (codeNum) => { clearTimeout(timer); resolve({ code: codeNum ?? 1, output: out.trim() }); });
+    child.on("error", (err) => { clearTimeout(timer); resolve({ code: 1, output: out.trim(), error: err.message }); });
   });
+}
+
+// ── Task-spec surface — the MCP authoring lanes ride the SAME loop store; a
+//    task IS a loop row renamed: program = code, slots = manifest.roles ──────
+
+export interface TaskSpec {
+  slug: string; name: string; description: string; program: string;
+  slots: Array<{ name: string; label?: string; description?: string; agent: string | null }>;
+}
+
+const specOf = (row: LoopRow): TaskSpec => ({
+  slug: row.slug, name: row.name, description: row.description, program: row.code,
+  slots: (row.manifest.roles ?? []).map((r) => ({
+    name: r.name, ...(r.label ? { label: r.label } : {}), ...(r.description ? { description: r.description } : {}),
+    agent: r.default ?? null,
+  })),
+});
+
+export function listTaskSpecs(): TaskSpec[] {
+  return listRows<LoopRow>(LOOPS_DIR).filter((r) => !r.builtIn).map(specOf)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function getTaskSpec(ref: string): TaskSpec {
+  return specOf(getLoop(ref));
+}
+
+export function saveTaskSpec(input: {
+  slug?: string; name: string; description?: string; program?: string;
+  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null }>;
+}): TaskSpec {
+  const name = String(input.name ?? "").trim();
+  if (!name) throw new Error("a task needs a name");
+  const slug = input.slug ? String(input.slug) : slugify(name);
+  const existing = readRow<LoopRow>(LOOPS_DIR, slug);
+  const roles: LoopRole[] = Array.isArray(input.slots) && input.slots.length
+    ? input.slots.map((sl, i) => ({
+        name: String(sl.name ?? `slot-${i + 1}`),
+        label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`),
+        ...(sl.description ? { description: String(sl.description) } : {}),
+        default: sl.agent ? String(sl.agent) : null,
+      }))
+    : existing?.manifest.roles ?? [{ name: "main", label: "Main", description: "The agent this task runs on.", default: null }];
+  const row: LoopRow = {
+    id: slug, slug, scope: "personal", ownerUserId: null, name,
+    description: String(input.description ?? existing?.description ?? ""),
+    builtIn: false, updatedAt: new Date().toISOString(),
+    manifest: { ...(existing?.manifest ?? { version: 1, type: "turn" }), roles },
+    code: String(input.program ?? existing?.code ?? ""),
+  };
+  writeRow(LOOPS_DIR, slug, row);
+  return specOf(row);
+}
+
+/** Run a task NOW, outside any schedule — the program through the slotted
+ *  (or given) agent's headless CLI; the transcript goes back to the caller. */
+export async function runTaskNow(ref: string, agentId?: string): Promise<{ status: string; output: string }> {
+  const row = getLoop(ref);
+  const agents = listCliAgents();
+  const wanted = agentId || row.manifest.roles?.[0]?.default || "";
+  const agent = agents.find((a) => a.id === wanted) ?? agents[0];
+  if (!agent) throw new Error("no agents exist to run this task");
+  const line = composeHeadless(agent, row.code || row.description || row.name);
+  const r = await execHeadless(line);
+  return { status: r.code === 0 ? "ok" : "failed", output: r.error ? `${r.output}\n${r.error}`.trim() : r.output };
+}
+
+export function listTaskRunsFor(ref: string): Array<{ id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }> {
+  const rows = getLocalDb().prepare(
+    `SELECT r.* FROM loop_runs r JOIN loop_schedules s ON r.schedule_id = s.id
+     WHERE s.loop_slug = ? ORDER BY r.started_at DESC LIMIT 30`).all(String(ref)) as RunRow[];
+  return rows.map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output }));
 }
 
 // ── IPC — the exact lanes the main-era UX rides ──────────────────────────────

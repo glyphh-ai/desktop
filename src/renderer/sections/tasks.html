@@ -1,49 +1,27 @@
-        <!-- Tasks — THE work primitive (the collapse, 2026-09-10): an ordered
-             set of STEPS, each slotted to a CLI agent (Claude for x, Gemini
-             for y), run once, on a cron, or repeated. help/tasks-page.ts
-             renders; execution is main's local-tasks engine. -->
+        <!-- Tasks — the loops page RENAMED (his collapse, 2026-09-10): a task
+             is a PROGRAM the agent builds — a spec, not a fixed thing; only
+             the slots→agents are fixed. Scheduled or one-off. Same ids
+             (loop-*), same lanes, same look — only the word changed. -->
         <div class="help-section" data-section="tasks">
           <h2>Tasks</h2>
-          <p class="section-desc">Stepped work your agents run — slot an agent per step, run it once or on a schedule.</p>
-          <div id="gtasks-toolbar" class="crud-toolbar">
-            <input id="gtask-search" type="text" class="crud-search" placeholder="Search tasks..." spellcheck="false" autocomplete="off" />
-            <button id="gtask-new-btn" class="action-btn primary">+ New</button>
+          <p class="section-desc">Programs your agents build and run — slots are fixed, the spec is theirs. One-off or scheduled.</p>
+          <div id="loops-toolbar" class="crud-toolbar">
+            <input id="loop-search" type="text" class="crud-search" placeholder="Search tasks..." spellcheck="false" autocomplete="off" />
+            <button id="loop-new-btn" class="action-btn primary">+ New with AI</button>
           </div>
-          <div id="gtasks-list" class="app-list-wrap"></div>
-          <div id="gtask-editor" class="crud-inline-form hidden">
+          <div id="loops-list" class="crud-cards"></div>
+          <div id="loop-editor" class="crud-inline-form hidden">
             <div class="crud-inline-header">
-              <a class="crud-breadcrumb-back" id="gtask-back-link">&larr; Tasks</a>
+              <a class="crud-breadcrumb-back" id="loop-back-link">&larr; Tasks</a>
+              <a id="loop-ai-btn" class="lib-ai-link" title="Have your default agent change this task"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
               <div class="crud-spacer"></div>
-              <button id="gtask-run-btn" class="action-btn primary" type="button" title="Run this task now">&#9654; Run now</button>
+              <span id="loop-builtin-badge" class="lib-badge hidden">Built-in</span>
             </div>
-            <div id="gtask-form-error" class="crud-form-error hidden"></div>
-            <div class="app-builder-split">
-            <div class="app-builder-controls">
-              <label class="settings-label">Name</label>
-              <input type="text" id="gtask-name" class="settings-input" placeholder="morning digest" spellcheck="false" autocomplete="off" />
-              <label class="settings-label">Description</label>
-              <input type="text" id="gtask-desc" class="settings-input" placeholder="what this task does" spellcheck="false" autocomplete="off" />
-              <label class="settings-label" style="margin-top:16px;">Steps <span class="settings-hint-inline">each step runs on ITS agent; a step sees the previous step's output</span></label>
-              <div id="gtask-steps"></div>
-              <button type="button" id="gtask-step-add" class="action-btn" style="margin-top:8px;">+ Add step</button>
-              <label class="settings-label" style="margin-top:16px;">Repeat <span class="settings-hint-inline">walk the steps this many times — an iteration ending in DONE stops early</span></label>
-              <input type="number" id="gtask-repeat" class="settings-input" min="1" max="25" value="1" style="max-width:120px;" />
-              <div class="settings-actions" style="margin-top:28px;">
-                <button id="gtask-delete-btn" class="action-btn danger hidden" type="button">Delete</button>
-                <div style="flex:1;"></div>
-                <button id="gtask-cancel-btn" class="action-btn" type="button">Cancel</button>
-                <button id="gtask-save-btn" class="action-btn primary" type="button">Save</button>
-              </div>
-            </div>
-            <div class="app-builder-preview">
-              <div class="layout-setup-pane">
-                <label class="settings-label" style="margin-top:0;">Schedule</label>
-                <p class="settings-hint" style="margin:2px 0 8px;">Five-field cron — e.g. <code>0 9 * * 1-5</code> is weekdays at 9. No schedules = a one-off task.</p>
-                <div id="gtask-schedules"></div>
-                <label class="settings-label" style="margin-top:18px;">Runs</label>
-                <div id="gtask-runs" class="settings-hint">Save the task to see its runs.</div>
-              </div>
-            </div>
+            <div id="loop-form-error" class="crud-form-error hidden"></div>
+            <div class="lib-split">
+              <div id="loop-detail" class="lib-split-form lib-read"></div>
+              <div class="lib-split-divider" id="loop-split-divider"></div>
+              <div id="loop-flow-host" class="lib-split-flow"></div>
             </div>
           </div>
         </div>

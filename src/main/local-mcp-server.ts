@@ -22,9 +22,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
-import { listTasks, runTask, saveTaskRow, listTaskRuns } from "./local-tasks.js";
-import { getLocalDb } from "./local-db.js";
-import { listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
+import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -116,44 +114,56 @@ function buildMcpServer(): McpServer {
   const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
   mcp.tool(
     "tasks_list",
-    "List the user's Glyphh TASKS — stepped work where each step slots a CLI agent, runnable once or on a cron. Returns [{ slug, name, description, steps: [{ agent, model?, program }], repeat }].",
+    "List the user's Glyphh TASKS. A task is a PROGRAM — a spec an agent authors and can rewrite; only the slots\u2192agents are fixed. Returns [{ slug, name, description, program, slots: [{ name, label?, agent }] }].",
     {},
-    async () => text(listTasks()),
+    async () => text(listTaskSpecs()),
+  );
+  mcp.tool(
+    "task_get",
+    "Read one Glyphh task in full — its program (the spec) and its slots.",
+    { slug: z.string().describe("Task slug from tasks_list") },
+    async ({ slug }) => {
+      try { return text(getTaskSpec(slug)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
   );
   mcp.tool(
     "task_save",
-    "Create or update a Glyphh task. steps run in order, each through its slotted agent (agent = a CLI-agent id from the user's roster; empty = first agent); every step after the first also receives the previous step's output. repeat (1-25) re-walks the steps; an iteration ending in DONE stops early. Schedule it from the Tasks UI or run it with task_run.",
+    "Create or update a Glyphh task. The program is the SPEC the slotted agent runs — write it freely (steps inside it can carry prompts or reference Glyphh skills via skill_get); the agent building the task owns its shape. slots fix which CLI agent runs it (agent = an id from the user's roster; null = first agent). Saved tasks appear in the Tasks UI, where the user schedules them on a cron or runs them one-off.",
     {
       slug: z.string().optional().describe("Existing task slug to update; omit to create"),
       name: z.string().describe("Task name"),
       description: z.string().optional(),
-      steps: z.array(z.object({
+      program: z.string().optional().describe("The spec the slotted agent runs"),
+      slots: z.array(z.object({
         name: z.string().optional(),
-        agent: z.string().describe("CLI-agent id for this step (see the user's agents; empty = first)"),
-        model: z.string().optional().describe("Model override for this step"),
-        program: z.string().describe("What this step's agent does"),
-      })).describe("Ordered steps"),
-      repeat: z.number().optional().describe("Walk the steps this many times (default 1, max 25)"),
+        label: z.string().optional(),
+        description: z.string().optional().describe("What this slot is for"),
+        agent: z.string().nullable().optional().describe("CLI-agent id bound to this slot (null = first agent)"),
+      })).optional().describe("The fixed slots\u2192agents; omit to keep existing (default: one Main slot)"),
     },
     async (input) => {
-      try { return text(saveTaskRow(input as never)); }
+      try { return text(saveTaskSpec(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
   mcp.tool(
     "task_run",
-    "Run a Glyphh task NOW (all steps, headlessly, each through its slotted agent). Returns { status, output } — the full step transcript.",
-    { slug: z.string().describe("Task slug from tasks_list") },
-    async ({ slug }) => {
-      try { return text(await runTask(slug)); }
+    "Run a Glyphh task NOW — its program through the slotted agent's headless CLI. Returns { status, output }.",
+    {
+      slug: z.string().describe("Task slug from tasks_list"),
+      agent: z.string().optional().describe("CLI-agent id override for this run"),
+    },
+    async ({ slug, agent }) => {
+      try { return text(await runTaskNow(slug, agent)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
   mcp.tool(
     "task_runs",
-    "A Glyphh task's recent runs (newest first): { id, startedAt, durationMs, status, error, output }.",
+    "A Glyphh task's recent scheduled runs (newest first): { id, startedAt, durationMs, status, error, output }.",
     { slug: z.string().describe("Task slug") },
-    async ({ slug }) => text(listTaskRuns(slug)),
+    async ({ slug }) => text(listTaskRunsFor(slug)),
   );
   mcp.tool(
     "skills_list",
