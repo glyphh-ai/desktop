@@ -399,7 +399,7 @@ function setTab(tab: string): void {
 
 // ── Models tab ───────────────────────────────────────────────────────────
 
-const WS_MODELS_PAGE_SIZE = 10;
+const WS_MODELS_PAGE_SIZE = 15;   // 15 everywhere — the one pagination size (his rule)
 let wsModelsPage = 0;
 let wsConnPage = 0;
 let wsModelsProvider = "";   // "" = every provider
