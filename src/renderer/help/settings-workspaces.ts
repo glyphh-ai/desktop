@@ -440,7 +440,23 @@ function paintModels(): void {
   }
   const table = document.createElement("table");
   table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th class="ws-model-toggle-cell" title="Visible when the org forces semantic routing">Auto exempt</th><th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th class="ws-model-toggle-cell">Auto exempt <button type="button" class="ws-info-btn" id="ws-exempt-info" title="What is Auto exempt?">&#9432;</button></th><th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
+  table.querySelector("#ws-exempt-info")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    document.querySelector(".ws-info-pop")?.remove();
+    const pop = document.createElement("div");
+    pop.className = "mdl-provider-drop ws-info-pop";
+    pop.textContent = "Allows this role to use this model directly even when Force semantic routing is enabled at the org level. Without an exemption, members on this role see only \"Auto\" — the gateway picks the model for each request from the role's allowed set.";
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 300))}px`;
+    pop.style.top = `${r.bottom + 6}px`;
+    pop.style.zIndex = "10000";
+    document.body.appendChild(pop);
+    const away = (e: MouseEvent): void => {
+      if (!pop.contains(e.target as Node)) { pop.remove(); document.removeEventListener("mousedown", away, true); }
+    };
+    document.addEventListener("mousedown", away, true);
+  });
   const tbody = document.createElement("tbody");
   const pg = paginate(rows, wsModelsPage, WS_MODELS_PAGE_SIZE);
   wsModelsPage = pg.state.page;
