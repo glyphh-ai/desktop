@@ -34,6 +34,66 @@
 </head>
 <body>
   <div id="glyphh-mobile-root"></div>
+  <script>
+    // BOOT TRAP (his report, 2026-09-11: "platform mobile is a blank page").
+    // A blank phone screen has two usual causes and hides both: a runtime
+    // exception before first render, or a STALE SERVICE WORKER serving dead
+    // cached assets. This paints any boot error on screen, and if nothing
+    // has mounted after 6s it unregisters SWs + clears caches and offers a
+    // one-tap reload — so the device diagnoses (or heals) itself.
+    (function () {
+      var errs = [];
+      function panel() {
+        var p = document.getElementById('glyphh-boot-trap');
+        if (p) return p;
+        p = document.createElement('div');
+        p.id = 'glyphh-boot-trap';
+        p.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;background:#2a1215;color:#ffd7d9;border:1px solid #a2191f;border-radius:10px;padding:12px;font:12px -apple-system,system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;';
+        document.body.appendChild(p);
+        return p;
+      }
+      function show(msg) {
+        errs.push(msg);
+        panel().textContent = errs.join('\n');
+      }
+      window.addEventListener('error', function (e) {
+        show((e.message || 'script error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno : ''));
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        show('promise: ' + ((r && (r.message || r.toString())) || 'rejected'));
+      });
+      setTimeout(function () {
+        var root = document.getElementById('glyphh-mobile-root');
+        if (root && root.childElementCount > 0) return;   // app is up
+        var p = panel();
+        var note = errs.length ? errs.join('\n') + '\n\n' : '';
+        p.textContent = note + 'The app did not start. Clearing cached copies…';
+        var done = function () {
+          var btn = document.createElement('button');
+          btn.textContent = 'Reload';
+          btn.style.cssText = 'margin-top:10px;padding:8px 16px;border-radius:8px;border:0;background:#ffd7d9;color:#2a1215;font-weight:600;';
+          btn.onclick = function () { location.reload(); };
+          p.appendChild(document.createElement('br'));
+          p.appendChild(btn);
+        };
+        var work = [];
+        try {
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            work.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+              return Promise.all(rs.map(function (r) { return r.unregister(); }));
+            }));
+          }
+          if (window.caches && caches.keys) {
+            work.push(caches.keys().then(function (ks) {
+              return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+            }));
+          }
+        } catch (e) { /* trap must never throw */ }
+        Promise.all(work).then(done, done);
+      }, 6000);
+    })();
+  </script>
   <!-- serve.mjs injects window.__GLYPHH_*__ config before this script -->
   <script src="/glyphh-mobile.js" defer></script>
 </body>
