@@ -522,7 +522,15 @@ export function buildContract(client, deps) {
     },
 
     // ── Connections (ConnectionsClient) ──────────────────────────────────────────
-    connectionsList: read(() => client.connections.resolvedTools(), toLegacyConnections, EMPTY.connections),
+    // The ORG list first, for its SIDE-EFFECT (his report, 2026-09-11: a
+    // freshly connected org account was invisible): /api/org/connections
+    // SYNCS the Pipedream account mirror; resolvedTools reads the mirror and
+    // never syncs. Members 403 on the org lane — swallowed, harmless.
+    connectionsList: read(
+      () => client.connections.pipedreamList().catch(() => null).then(() => client.connections.resolvedTools()),
+      toLegacyConnections,
+      EMPTY.connections,
+    ),
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
