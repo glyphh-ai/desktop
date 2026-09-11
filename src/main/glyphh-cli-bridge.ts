@@ -412,7 +412,10 @@ export function registerGlyphhCliBridge(): void {
     c.pending.delete(p.id);
     c.proc.stdin.write(JSON.stringify({
       type: "control_response",
-      response: { subtype: "success", request_id: requestId, response: p.allow ? { behavior: "allow", updatedInput: null } : { behavior: "deny", message: "The user declined." } },
+      // updatedInput must be an OBJECT or ABSENT — null failed the CLI's
+      // canUseTool validation, so every ALLOWED permission died with
+      // "invalid permission result" (his Gmail open, 2026-09-11).
+      response: { subtype: "success", request_id: requestId, response: p.allow ? { behavior: "allow" } : { behavior: "deny", message: "The user declined." } },
     }) + "\n");
     return true;
   });
