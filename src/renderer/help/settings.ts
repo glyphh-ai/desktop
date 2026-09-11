@@ -3,6 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
+import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling } from "./settings-billing.js";
 import { accountApi } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
@@ -10,7 +11,7 @@ import { initMembers, loadMembers } from "./settings-members.js";
 
 // The account panels are big enough to own their own modules; Settings just
 // initialises them and re-exports their loaders for navigation.ts.
-export { loadBilling, loadProfile, loadMembers };
+export { loadBilling, loadProfile, loadMembers, loadWorkspacesPanel };
 
 // ── Settings ─────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ function initDesktopPanel(): void {
 
 function initSettings() {
   initDesktopPanel();
+  initWorkspaces();
   // Billing / Organization / Account-profile own their wiring; they're
   // idempotent, so init here and let the sub-nav trigger their loads.
   initBilling();

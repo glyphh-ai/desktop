@@ -13,7 +13,7 @@ import { loadCliAgents, initCliAgentsEvents } from "./cli-agents.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
@@ -807,6 +807,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
+  else if (sub === "workspaces") void loadWorkspacesPanel();
   // Organization › General — the org record page (admin-gated nav).
   else if (sub === "org-general") void loadOrgPanel();
   else if (sub === "account") void loadProfile();

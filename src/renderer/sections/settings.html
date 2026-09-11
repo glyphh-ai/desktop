@@ -17,6 +17,7 @@
               <button class="settings-nav-item platform-only" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></button>
               <div class="settings-nav-group platform-only">Security</div>
               <button class="settings-nav-item platform-only" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
+              <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
@@ -401,6 +402,246 @@
               <!--
                    top-right driving everything. settings-domains.ts paints it
                    via the shared traffic painter (apps.ts owns the shape). -->
+              <!-- Workspaces — ported from the platform's configure/workspaces
+                   page and its data layer (platform/app/lib/workspaces/hooks.js).
+                   A workspace IS the governance layer: which models, which
+                   shared and personal connections (down to single tools), a
+                   rate limit and a credit cap. org_admin only; the server
+                   enforces every write and the base workspace's undeletability. -->
+              <div class="settings-panel" data-sub="domains">
+                <div id="dom-admin-only" class="crud-empty hidden">Only an organization admin can manage domains.</div>
+                <!-- The whole page is rendered by the shared list-page scaffold
+                     (settings-list-page.ts) via settings-domains.ts, so it is
+                     identical to every other Security page. -->
+                <div id="dom-body"><div id="dom-root"></div></div>
+              </div>
+
+              <!-- Hosting › Metrics (his order, 2026-09-02): the edge-traffic
+                   charts moved off Domains, with domain/app/timeline filters
+                   top-right driving everything. settings-domains.ts paints it
+                   via the shared traffic painter (apps.ts owns the shape). -->
+              <div class="settings-panel" data-sub="metrics">
+                <div id="mx-admin-only" class="crud-empty hidden">Only an organization admin can see hosting metrics.</div>
+                <div id="mx-body">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <h2 style="margin:0;">Metrics</h2>
+                    <div style="flex:1;"></div>
+                    <select id="mx-domain" class="dash-usage-select" title="Domain">
+                      <option value="">All domains</option>
+                    </select>
+                    <select id="mx-app" class="dash-usage-select" title="App">
+                      <option value="">All apps</option>
+                    </select>
+                    <select id="mx-days" class="dash-usage-select" title="Date range">
+                      <option value="7">7 days</option>
+                      <option value="30" selected>30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                  </div>
+                  <p class="section-desc" style="margin-top:6px;">Requests to your custom domains at the Glyphh edge — every hostname, every app.</p>
+                  <div id="mx-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <!-- Engagement cards (his order, 2026-09-02): visitors,
+                       sessions, bounce, avg session — paintTelemetry fills. -->
+                  <div id="mx-cards" class="dash-grid" style="margin-bottom:12px;"></div>
+                  <p class="settings-hint" id="mx-totals" style="margin:0 0 10px;"></p>
+                  <div class="dash-chart-wrap" style="height:220px;">
+                    <canvas id="mx-chart"></canvas>
+                    <div class="dash-chart-empty hidden" id="mx-empty">No edge traffic in this window.</div>
+                  </div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;">
+                    <div style="flex:1;min-width:260px;"><label class="settings-label">Top pages</label><div id="mx-pages" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:260px;"><label class="settings-label">Referrers</label><div id="mx-refs" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:260px;"><label class="settings-label">Error paths</label><div id="mx-errpaths" class="mbr-list"></div></div>
+                  </div>
+                  <div id="mx-hosts" class="mbr-list" style="margin-top:14px;"></div>
+                </div>
+              </div>
+
+              <!-- Organization › Clients (his order, 2026-09-02): workspaces
+                   the org creates + FUNDS for its clients — the consultancy
+                   model. settings-clients.ts renders. -->
+              <div class="settings-panel" data-sub="clients">
+                <div id="cl-admin-only" class="crud-empty hidden">Only an organization admin can manage client workspaces.</div>
+                <!-- The whole page is the shared list-page scaffold
+                     (settings-list-page.ts) via settings-clients.ts — search,
+                     table, pagination, editor: identical to every admin page. -->
+                <div id="cl-body"><div id="cl-root"></div></div>
+              </div>
+
+              <!-- Marketing › Links (his order, 2026-09-02): org-minted
+                   campaign URLs; the edge ties clicks + sessions back to each
+                   code. settings-marketing.ts renders the list + create modal
+                   via the shared list-page scaffold. -->
+              <div class="settings-panel" data-sub="mkt-links">
+                <div id="mkt-admin-only" class="crud-empty hidden">Only an organization admin can manage marketing links.</div>
+                <div id="mkt-body"><div id="mkt-root"></div></div>
+              </div>
+
+              <div class="settings-panel" data-sub="workspaces">
+                <div id="ws-admin-only" class="crud-empty hidden">Only an organization admin can manage roles.</div>
+
+                <div id="ws-body">
+                  <div id="ws-error" class="settings-error hidden"></div>
+
+                  <!-- LIST — the standard list-page grammar (Skills/Loops):
+                       crud-toolbar with search left + the create action right,
+                       a lib-table of rows (rendered by settings-workspaces.ts),
+                       crud-empty + pagination. -->
+                  <div id="ws-list-view">
+                    <h2>Roles <span id="ws-status" class="set-save-state"></span></h2>
+                    <p class="section-desc">Access tiers for your members. A role narrows what the org already allows — it can never grant past it.</p>
+                    <div class="crud-toolbar">
+                      <div class="search-clear-wrap"><input id="ws-search" type="text" class="crud-search" placeholder="Search roles…" spellcheck="false" autocomplete="off" /></div>
+                      <button id="ws-new-btn" class="action-btn primary" type="button">+ New role</button>
+                    </div>
+                    <div id="ws-list"></div>
+                  </div>
+
+                  <!-- EDITOR — the inline-form standard (Skills/Loops): a
+                       breadcrumb back in a crud-inline-header; the tabbed,
+                       live-saving body below is unchanged. -->
+                  <div id="ws-edit-view" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="ws-back">&larr; Roles</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div class="app-detail-tabs" id="ws-tabs">
+                      <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
+                      <button class="app-detail-tab" data-wstab="models" type="button">Models</button>
+                      <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
+                    </div>
+
+                    <div class="ws-tab active" data-wstab="general">
+                      <div class="acct-section">
+                        <div class="acct-row">
+                          <div class="acct-field acct-field-wide">
+                            <label class="settings-label" for="ws-name">Name</label>
+                            <input id="ws-name" type="text" class="settings-input" autocomplete="off" />
+                          </div>
+                        </div>
+                        <h4 class="acct-row-head">Rate limit</h4>
+                        <p class="section-desc">Gateway calls allowed per window. Leave either blank for no limit.</p>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-rate-calls">Calls</label>
+                            <input id="ws-rate-calls" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-rate-window">Per (seconds)</label>
+                            <input id="ws-rate-window" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                        </div>
+                        <h4 class="acct-row-head">Credit cap</h4>
+                        <p class="section-desc">Gateway credits per period. Resets on calendar boundaries — daily at midnight UTC, weekly on Mondays, monthly on the 1st. Blank = none.</p>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-cap">Credits</label>
+                            <input id="ws-cap" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-cap-period">Period</label>
+                            <select id="ws-cap-period" class="settings-input">
+                              <option value="1">Daily</option>
+                              <option value="7">Weekly</option>
+                              <option value="30" selected>Monthly</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="ws-tab" data-wstab="models">
+                      <label class="settings-toggle" style="margin-top:12px;">
+                        <input type="checkbox" id="ws-limit-models" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title">Limit this role to specific models</span>
+                          <span class="toggle-desc" id="ws-models-hint">Off — it can use every model the org supports.</span>
+                        </div>
+                      </label>
+                      <div class="crud-toolbar" style="margin-top:12px;">
+                        <input id="ws-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
+                        <button id="ws-models-filter" class="action-btn ws-filter-btn" type="button" title="Filter by provider" aria-label="Filter by provider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="ws-models-filter-label" class="hidden"></span></button>
+                      </div>
+                      <div id="ws-models-grid"></div>
+                      <div id="ws-models-pager"></div>
+                    </div>
+
+                    <div class="ws-tab" data-wstab="connections">
+                      <div id="ws-conn-chrome">
+                      <div class="app-detail-tabs" id="ws-conn-tabs" style="margin-top:10px;">
+                        <button class="app-detail-tab active" data-wsconn="personal" type="button">Personal</button>
+                        <button class="app-detail-tab" data-wsconn="shared" type="button">Shared</button>
+                      </div>
+                      <p class="section-desc" id="ws-conn-blurb"></p>
+
+                      <label class="settings-toggle hidden" id="ws-mcp-row">
+                        <input type="checkbox" id="ws-allow-mcp" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title">Allow custom MCP connections</span>
+                          <span class="toggle-desc">Members may register their own MCP servers on the desktop's Connections page. Also requires the org-wide setting.</span>
+                        </div>
+                      </label>
+
+                      <label class="settings-toggle" style="margin-top:12px;">
+                        <input type="checkbox" id="ws-limit-conns" />
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-info">
+                          <span class="toggle-title" id="ws-limit-conns-title">Restrict connections</span>
+                          <span class="toggle-desc" id="ws-limit-conns-hint"></span>
+                        </div>
+                      </label>
+
+                      <div id="ws-conn-list-wrap" class="hidden">
+                        <!-- The STANDARD list toolbar — search stretches, the
+                             primary action sits normal-sized at the right. -->
+                        <div class="crud-toolbar" style="margin:20px 0 16px;">
+                          <input id="ws-conn-search" type="text" class="crud-search" placeholder="Search connections…" spellcheck="false" autocomplete="off" />
+                          <button id="ws-conn-add" class="action-btn primary" type="button">Allow another</button>
+                        </div>
+                        <div id="ws-conn-grid"></div>
+                        <div id="ws-conn-pager"></div>
+                      </div>
+
+                      </div><!-- /ws-conn-chrome -->
+
+                      <!-- Tool drill-down — the STANDARD inline form: crumb
+                           back, subheading, row-grammar toggle rows. It
+                           replaces the whole tab (chrome hides with it);
+                           removal from the role is the table's toggle. -->
+                      <div id="ws-tools-view" class="crud-inline-form hidden">
+                        <div class="crud-inline-header">
+                          <a class="crud-breadcrumb-back" id="ws-tools-back">&larr; Connections</a>
+                          <div class="crud-spacer"></div>
+                        </div>
+                        <div class="ws-tools-head">
+                          <h3 class="settings-subheading" id="ws-tools-name" style="margin-top:0;">—</h3>
+                          <label class="settings-toggle ws-model-allow" title="Toggle every tool">
+                            <input type="checkbox" id="ws-tools-all" />
+                            <span class="toggle-switch"></span>
+                          </label>
+                        </div>
+                        <p class="section-desc" id="ws-tools-hint">Turn a tool off to hide it — members with this role won't see or be able to call it.</p>
+                        <div id="ws-tools-list"></div>
+                      </div>
+                    </div>
+
+                    <!-- The standard Security editor footer (his spec,
+                         2026-09-01, matching Domains): Delete bottom-left with
+                         a confirm, Cancel + Save bottom-right. General fields
+                         are STAGED — Save commits them; the Models/Connections
+                         allow-toggles keep committing live. -->
+                    <div class="crud-edit-foot">
+                      <button id="ws-del-btn" class="action-btn danger" type="button">Delete</button>
+                      <div class="crud-spacer"></div>
+                      <button id="ws-cancel-btn" class="action-btn secondary" type="button">Cancel</button>
+                      <button id="ws-save-btn" class="action-btn primary" type="button">Save</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div class="settings-panel" data-sub="org-general">
                 <h2>General <span id="org-panel-status" class="set-save-state"></span></h2>
                 <p class="section-desc">Your organization's name and image.</p>
