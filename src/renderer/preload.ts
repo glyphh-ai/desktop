@@ -379,6 +379,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Everything is `{ ok, data }` — the renderer paints the server's refusal
   // rather than assuming the caller is allowed.
   workspacesList: () => ipcRenderer.invoke("workspaces-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => ipcRenderer.invoke("gateway-metrics", opts) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,

@@ -431,7 +431,11 @@ function paintModels(): void {
   if (pagerHost) pagerHost.textContent = "";
   grid.innerHTML = "";
   if (!catalog.length) {
-    grid.innerHTML = `<div class="crud-empty">No org models yet — add them under Settings › Models.</div>`;
+    grid.innerHTML = `<div class="crud-empty">No org models yet — add them under <a href="#" id="ws-models-link">Models</a>.</div>`;
+    grid.querySelector("#ws-models-link")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      void import("./navigation.js").then((m) => m.openSettings("models"));
+    });
     return;
   }
   if (!rows.length) {

@@ -22,7 +22,11 @@
               <button class="settings-nav-item platform-only" data-sub="oauth"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9.5 12l2 2 3.5-4"/></svg><span>OAuth</span></button>
               <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
               <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
+              <!-- Gateway (his order, 2026-09-11): the LiteLLM router surfaces —
+                   the org's model catalog + the telemetry page. -->
+              <div class="settings-nav-group platform-only">Gateway</div>
               <button id="nav-models" class="settings-nav-item platform-only" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
+              <button class="settings-nav-item platform-only" data-sub="gateway"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg><span>Metrics</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
@@ -591,6 +595,81 @@
                    The program/payout SDK surface ships separately;
                    settings-developer.ts renders a "coming online" state until
                    it lands. -->
+<!-- Gateway › Metrics — the org's router telemetry (gateway-metrics.ts).
+     Mirrors the Platform › Usage grammar: dash-cards, a filtered per-day
+     chart, a performance chart on the SAME filters, and a by-model table.
+     Metadata only — prompts/completions are never stored by the gateway. -->
+<div class="settings-panel" data-sub="gateway">
+  <h2>Metrics</h2>
+  <p class="section-desc">Gateway telemetry — requests, tokens, spend, and speed across your providers and models. The gateway records request metadata only; prompts and completions are never stored.</p>
+  <div id="gw-error" class="settings-error hidden"></div>
+  <div id="gw-admin-only" class="crud-empty hidden">Only an org admin can view gateway metrics.</div>
+  <div id="gw-body">
+    <div id="gw-unconfigured" class="crud-empty hidden">Gateway telemetry isn't configured on this server yet.</div>
+    <div class="dash-cards">
+      <div class="dash-card">
+        <div class="dash-card-label">Requests</div>
+        <div class="dash-card-value" id="gw-requests">—</div>
+        <div class="dash-card-sub" id="gw-requests-sub">last 30 days</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-label">Tokens</div>
+        <div class="dash-card-value" id="gw-tokens">—</div>
+        <div class="dash-card-sub">in + out</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-label">Spend</div>
+        <div class="dash-card-value" id="gw-spend">—</div>
+        <div class="dash-card-sub">provider cost, window</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-card-label">Avg speed</div>
+        <div class="dash-card-value" id="gw-latency">—</div>
+        <div class="dash-card-sub" id="gw-latency-sub">per request</div>
+      </div>
+    </div>
+    <div class="dash-card dash-card-wide">
+      <div class="dash-card-head">
+        <div>
+          <div class="dash-card-label">Tokens · Spend per day</div>
+          <div class="dash-card-value dash-card-value-sm" id="gw-total">—</div>
+          <div class="dash-card-sub" id="gw-range">last 30 days</div>
+        </div>
+        <div class="dash-usage-filters">
+          <select id="gw-role" class="dash-usage-select" title="Role">
+            <option value="">All roles</option>
+          </select>
+          <select id="gw-days" class="dash-usage-select" title="Date range">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <button class="dash-refresh" id="gw-refresh" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="gw-chart"></canvas>
+        <div class="dash-chart-empty hidden" id="gw-empty">No gateway traffic in this window.</div>
+      </div>
+    </div>
+    <div class="dash-card dash-card-wide">
+      <div class="dash-card-head">
+        <div>
+          <div class="dash-card-label">Performance</div>
+          <div class="dash-card-sub">avg + p95 response time — same role and window as above</div>
+        </div>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="gw-perf-chart"></canvas>
+        <div class="dash-chart-empty hidden" id="gw-perf-empty">No gateway traffic in this window.</div>
+      </div>
+    </div>
+    <h3 class="settings-subheading">By model</h3>
+    <div id="gw-models"></div>
+  </div>
+</div>
               <div class="settings-panel" data-sub="models">
                 <h2>Models</h2>
                 <p class="section-desc">Your organization's providers and the models inside each.</p>

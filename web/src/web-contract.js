@@ -1066,6 +1066,9 @@ export function buildContract(client, deps) {
 
     // ── Models governance (OrgModelsClient / CatalogClient) ───────────────────────
     orgModelsList: lib(() => client.orgModels.list()),
+    // Gateway telemetry (Gateway › Metrics) — org-scoped router spend metadata.
+    gatewayMetrics: lib((opts) => client.gateway.metrics(opts || {})),
+    workspacesList: lib(() => client.workspaces.list()),
     orgCustomModelsList: lib(() => client.orgModels.listCustom()),
     // Provider rows are a CATALOG read (the whole catalog ⊕ the org's enablement state);
     // ProvidersClient itself is write-only.

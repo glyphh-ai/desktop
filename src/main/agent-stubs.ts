@@ -40,6 +40,7 @@ const ENVELOPE = [
   "org-custom-models-delete", "org-custom-models-list", "org-custom-models-save",
   "org-custom-providers-delete", "org-custom-providers-list", "org-custom-providers-save",
   "org-models-list", "org-models-set-supported",
+  "gateway-metrics",
   "org-provider-clear-key", "org-provider-disable", "org-provider-enable", "org-providers-list",
   "run-stream-attach", "run-stream-stop",
   "apikeys-create",
