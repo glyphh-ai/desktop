@@ -57,6 +57,7 @@ interface Workspace {
   budgetUsd: number | null;
   budgetHard: boolean;
   budgetPeriodDays: number | null;
+  tpmLimit: number | null;
   memberCount?: number;
 }
 
@@ -254,6 +255,7 @@ async function saveGeneral(): Promise<boolean> {
     budgetUsd: num($<HTMLInputElement>("ws-budget")?.value || ""),
     budgetHard: !!$<HTMLInputElement>("ws-budget-hard")?.checked,
     budgetPeriodDays: Number($<HTMLSelectElement>("ws-budget-period")?.value) || 30,
+    tpmLimit: num($<HTMLInputElement>("ws-tpm")?.value || ""),
   });
 }
 
@@ -446,6 +448,7 @@ async function openEditor(w: Workspace): Promise<void> {
   const period = $<HTMLSelectElement>("ws-cap-period");
   if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
   set("ws-budget", w.budgetUsd == null ? "" : String(w.budgetUsd));
+  set("ws-tpm", w.tpmLimit == null ? "" : String(w.tpmLimit));
   const bperiod = $<HTMLSelectElement>("ws-budget-period");
   if (bperiod) bperiod.value = String([1, 7, 30].includes(w.budgetPeriodDays ?? 30) ? w.budgetPeriodDays ?? 30 : 30);
   const hard = $<HTMLInputElement>("ws-budget-hard");
