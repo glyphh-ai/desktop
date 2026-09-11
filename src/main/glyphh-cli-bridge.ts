@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
+import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -162,6 +163,28 @@ interface RunPayload {
   prompt?: string;
 }
 
+/** The bridge's own --mcp-config: the SAME local MCP wiring the terminal
+ *  lane rides (his report, 2026-09-11: the chat view spawned a bare claude
+ *  and every Glyphh tool/connector "disconnected"). One file, one long-lived
+ *  token, refreshed with the live port on every spawn. */
+function bridgeMcpFile(): string | null {
+  try {
+    const { port } = localMcpStatus();
+    if (!port) return null;
+    const file = path.join(STORE_DIR, "bridge-mcp.json");
+    let token: string | undefined;
+    try {
+      const existing = JSON.parse(readFileSync(file, "utf-8")) as { mcpServers?: { glyphh?: { headers?: { Authorization?: string } } } };
+      token = /^Bearer (.+)$/.exec(existing.mcpServers?.glyphh?.headers?.Authorization ?? "")?.[1];
+    } catch { /* first write */ }
+    if (!token) token = localMcpGenToken("glyphh-panel", 365).token;
+    const cfg = { mcpServers: { glyphh: { type: "http", url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: `Bearer ${token}` } } } };
+    mkdirSync(STORE_DIR, { recursive: true });
+    writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+    return file;
+  } catch { return null; }
+}
+
 function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   const permission = p.permission ?? "ask";
   const resume = resumeIds.get(p.chatId);
@@ -175,6 +198,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   ];
   if (p.model?.trim()) parts.push("--model", p.model.trim());
   if (resume) parts.push("--resume", resume);
+  const mcp = bridgeMcpFile();
+  if (mcp) parts.push("--mcp-config", mcp);
   // The login shell resolves the user's real PATH — Electron's GUI env
   // doesn't carry it, and `claude` lives wherever the user installed it.
   const line = parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
@@ -245,7 +270,8 @@ function writeControl(c: LiveChat, request: Record<string, unknown>): string {
 // ── IPC surface — the exact channels the parked renderer calls ───────────────
 
 export function registerGlyphhCliBridge(): void {
-  ipcMain.handle("glyphh-agent-run", (e, p: RunPayload & { steer?: string; prompt?: string }) => {
+  ipcMain.handle("glyphh-agent-run", async (e, p: RunPayload & { steer?: string; prompt?: string }) => {
+    await startLocalMcpServer().catch(() => { /* the spawn still runs, tool-less but honest */ });
     // The composer's contract (unchanged from the old engine): the user turn
     // is already IN the chat store when run arrives — same-renderer IPC
     // ordering guarantees the save landed first. `steer` is a hidden prefix
