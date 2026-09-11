@@ -324,7 +324,8 @@ export function openSettingsModal(sub?: string): void {
   // Already open — just switch the sub-panel.
   // Desktop lands on General now — Account left the nav rail for the user
   // menu (his order, 2026-09-10), so it can't be the modal's landing row.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "org-general" : "general";
+  // Platform LANDS on the Dashboard (his order, 2026-09-11) — not General.
+  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "general";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
@@ -515,7 +516,7 @@ export function openSettingsModal(sub?: string): void {
   gateAdminSubs();
   initOrgSwitcher();
   initCollapsibleNavGroups();
-  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "org-general" : "account"));
+  selectSettingsSub(sub || (document.body.classList.contains("platform-shell") ? "dash" : "account"));
 }
 
 // ── Collapsible rail sections (his order, 2026-09-02, PLATFORM only) ─────────
@@ -792,7 +793,7 @@ const settingsSubAlias = (sub: string): string => {
   // Drips is a desktop-machine feature (no web); MCP shows EVERYWHERE (his
   // order, 2026-08-25). General/Voice/Appearance hide only on the platform.
   if (target === "drips" && document.documentElement.classList.contains("glyphh-web")) {
-    return document.body.classList.contains("platform-shell") ? "org-general" : "general";
+    return document.body.classList.contains("platform-shell") ? "dash" : "general";
   }
   if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "org-general";
   return target;
