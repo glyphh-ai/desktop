@@ -328,6 +328,18 @@ export function registerGlyphhCliBridge(): void {
   ipcMain.handle("glyphh-agent-classify-paths", (_e, p: { paths: string[] }) => classifyPaths(p?.paths ?? []));
   ipcMain.handle("glyphh-agent-save-clipboard-image", (_e, p: { bytes: ArrayBuffer }) => saveClipboardImage(p.bytes));
 
+  // Terminal ⇄ Chat handoff: the chat view adopts a CLI session id so its
+  // next spawn --resumes the SAME conversation the terminal view had.
+  ipcMain.handle("glyphh-agent-bind-session", (_e, p: { chatId: string; cliSessionId: string }) => {
+    if (!p?.chatId || !p?.cliSessionId) return false;
+    const c = live.get(p.chatId);
+    if (c && c.proc.exitCode === null) return resumeIds.get(p.chatId) === p.cliSessionId; // live process keeps its session
+    resumeIds.set(p.chatId, p.cliSessionId);
+    return true;
+  });
+  // The chat's CURRENT CLI session id — the terminal view resumes it.
+  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string }) => resumeIds.get(p?.chatId ?? "") ?? null);
+
   ipcMain.handle("glyphh-agent-sessions-load", () => loadSessionsFile());
   ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null }) => {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null });

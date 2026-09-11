@@ -4483,6 +4483,23 @@ async function init(): Promise<void> {
       // AGENT cards (his order, 2026-09-10): the dev tools that rode the
       // glyphh agent's ⋯ menu follow each CLI agent — a ⋮ right of Expand.
       if ((e.tile.slug || "").startsWith("agent:")) {
+        // CHAT ⇄ TERMINAL (his ruling, 2026-09-11): two views of ONE CLI
+        // session. Chat parks this pty and opens the glyphh panel bound to
+        // the agent's newest CLI session; the terminal button on the chat
+        // card comes back through openAgentCliCard, which resumes the pty.
+        const chatAgentId = (e.tile.slug || "").slice(6);
+        const chatBtn = document.createElement("button");
+        chatBtn.className = "ws-icon-btn echo-card-devtools";
+        chatBtn.title = "Chat view";
+        chatBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+        chatBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(chatAgentId);
+        });
+        const headEl = card.querySelector(".echo-card-head")!;
+        const expandEl = card.querySelector(".echo-card-expand");
+        if (expandEl?.nextSibling) headEl.insertBefore(chatBtn, expandEl.nextSibling);
+        else headEl.appendChild(chatBtn);
         const AGENT_DEV_TOOLS: Array<{ view: string; label: string }> = [
           { view: "files", label: "Files" },
           { view: "terminal", label: "Terminal" },
@@ -4744,6 +4761,59 @@ async function init(): Promise<void> {
      *  — or an app open that clears it (a PINNED cell captures those clicks,
      *  so pinned layouts hold on) — parks the agent home and the composer
      *  returns. */
+    /** The agent's CHAT VIEW — the glyphh panel (code surface) bound to this
+     *  CLI agent's session. Same card grammar as the terminal view; the >_
+     *  button hops back, resuming the parked pty. */
+    const openAgentChatCard = (agentId: string): void => {
+      const row = cliAgentRows.find((x) => x.id === agentId);
+      if (!row) return;
+      // Park the terminal card if it's up — same slot etiquette as nav-away.
+      const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
+      if (term) closeCard(term, { parkTerms: true });
+      const existing = openList.find((x) => x.tile.slug === `agent-chat:${agentId}`);
+      const entry = existing ?? adHoc({ name: row.name, slug: `agent-chat:${agentId}`, kind: "agent" });
+      if (!existing) {
+        const card = openShell(entry);
+        if (!card) return;
+        card.classList.add("echo-agent-card");
+        card.querySelector<HTMLElement>(".echo-card-body")!.innerHTML =
+          `<div class="ws-agent-placeholder" data-agent-host="agent:${agentId}"></div>`;
+        // The >_ hop back to the terminal view of the SAME session.
+        const termBtn = document.createElement("button");
+        termBtn.className = "ws-icon-btn echo-card-devtools";
+        termBtn.title = "Terminal view";
+        termBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+        termBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          void (async () => {
+            // The chat's CLI session follows into the terminal (--resume).
+            const chatFor = `agent:${agentId}`;
+            void chatFor;
+            const store = (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string) => Promise<string | null> } }).glyphh;
+            const chatId = (window as unknown as { __glyphhChatIdForAgent?: (id: string) => string | null }).__glyphhChatIdForAgent?.(agentId) ?? null;
+            const sid = chatId ? await store?.glyphhCliSessionOf?.(chatId) : null;
+            const chatCard = openList.find((x) => x.tile.slug === `agent-chat:${agentId}`);
+            if (chatCard) closeCard(chatCard, { keepSession: true });
+            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli?.(agentId, undefined, sid ? { resumeId: sid } : undefined);
+          })();
+        });
+        const headEl = card.querySelector(".echo-card-head")!;
+        const expandEl = card.querySelector(".echo-card-expand");
+        if (expandEl?.nextSibling) headEl.insertBefore(termBtn, expandEl.nextSibling);
+        else headEl.appendChild(termBtn);
+        scheduleAgentSync();
+      } else if (existing.card) flash(existing.card);
+      // Bind the glyphh panel to this agent: its folder, its newest CLI
+      // session (the terminal's conversation), its name.
+      void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cwd: string; mtime: number }> }> } })
+        .glyphh?.cliSessionsList?.().then((r) => {
+          const newest = r?.ok ? r.sessions.find((x) => !row.cwd || x.cwd === row.cwd) : undefined;
+          (window as unknown as { __glyphhOpenForAgent?: (a: { id: string; name: string; cwd?: string | null; model?: string | null; resumeId?: string | null }) => void })
+            .__glyphhOpenForAgent?.({ id: agentId, name: row.name, cwd: row.cwd ?? null, model: (row as { model?: string | null }).model ?? null, resumeId: newest?.id ?? null });
+        });
+    };
+    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = openAgentChatCard;
+
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
       if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }
@@ -5364,6 +5434,11 @@ async function init(): Promise<void> {
         (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
         return;
       }
+      // The TRUE glyphh agent is the chat view of a CLI loop (his ruling,
+      // 2026-09-11) — the first configured loop takes the tile. No loops
+      // configured yet → the bare panel, which still runs the default CLI.
+      const first = cliAgentRows[0];
+      if (first) { openAgentChatCard(first.id); return; }
       void openAgentPanel();
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
