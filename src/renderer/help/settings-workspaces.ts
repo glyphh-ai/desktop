@@ -56,6 +56,7 @@ interface Workspace {
   rateLimitWindowSeconds: number | null;
   budgetUsd: number | null;
   budgetHard: boolean;
+  budgetPeriodDays: number | null;
   memberCount?: number;
 }
 
@@ -90,7 +91,8 @@ type ConnMode = keyof typeof MODE;
 
 let workspaces: Workspace[] = [];
 let gwKeys: GatewayKeyLite[] = [];
-let roleSpend = new Map<string, number>();   // ws id → 30-day gateway USD
+// ws id → gateway USD, one map per budget window (daily/weekly/monthly).
+let roleSpend: Record<number, Map<string, number>> = { 1: new Map(), 7: new Map(), 30: new Map() };
 let editing: Workspace | null = null;
 let catalog: CatalogModel[] = [];
 /** Shared connectors the org has (Pipedream apps + custom MCP), the universe
@@ -246,6 +248,7 @@ async function saveGeneral(): Promise<boolean> {
     capPeriodDays: Number($<HTMLSelectElement>("ws-cap-period")?.value) || 30,
     budgetUsd: num($<HTMLInputElement>("ws-budget")?.value || ""),
     budgetHard: !!$<HTMLInputElement>("ws-budget-hard")?.checked,
+    budgetPeriodDays: Number($<HTMLSelectElement>("ws-budget-period")?.value) || 30,
   });
 }
 
@@ -282,7 +285,9 @@ const modelSummary = (w: Workspace): string =>
 function budgetCell(w: Workspace): HTMLElement {
   const td = document.createElement("td");
   td.className = "lib-table-dim";
-  const spend = roleSpend.get(w.id) ?? 0;
+  const period = [1, 7, 30].includes(w.budgetPeriodDays ?? 30) ? (w.budgetPeriodDays ?? 30) : 30;
+  const label = period === 1 ? "daily" : period === 7 ? "weekly" : "monthly";
+  const spend = roleSpend[period]?.get(w.id) ?? 0;
   const usd = (n: number): string => `$${n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(2)}`;
   if (w.budgetUsd == null) {
     td.textContent = spend > 0 ? usd(spend) : "—";
@@ -291,8 +296,8 @@ function budgetCell(w: Workspace): HTMLElement {
   const pct = w.budgetUsd > 0 ? spend / w.budgetUsd : 1;
   const dot = document.createElement("span");
   dot.className = `ws-budget-dot ${pct >= 1 ? "red" : pct >= 0.7 ? "yellow" : "green"}`;
-  dot.title = `${Math.round(pct * 100)}% of budget (30 days)`;
-  td.append(dot, ` ${usd(spend)} / ${usd(w.budgetUsd)}${w.budgetHard ? " · hard" : ""}`);
+  dot.title = `${Math.round(pct * 100)}% of the ${label} budget`;
+  td.append(dot, ` ${usd(spend)} / ${usd(w.budgetUsd)} ${label}${w.budgetHard ? " · hard" : ""}`);
   return td;
 }
 
@@ -436,6 +441,8 @@ async function openEditor(w: Workspace): Promise<void> {
   const period = $<HTMLSelectElement>("ws-cap-period");
   if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
   set("ws-budget", w.budgetUsd == null ? "" : String(w.budgetUsd));
+  const bperiod = $<HTMLSelectElement>("ws-budget-period");
+  if (bperiod) bperiod.value = String([1, 7, 30].includes(w.budgetPeriodDays ?? 30) ? w.budgetPeriodDays ?? 30 : 30);
   const hard = $<HTMLInputElement>("ws-budget-hard");
   if (hard) hard.checked = !!w.budgetHard;
   hydrating = false;
@@ -1072,12 +1079,18 @@ async function loadWorkspaces(): Promise<void> {
   paintList();
   // Keys + 30-day spend enrich the table when the gateway lanes answer —
   // an unconfigured gateway must never blank the roles page.
-  const [keys, metrics] = await Promise.all([
+  const windows = [1, 7, 30] as const;
+  const [keys, ...spends] = await Promise.all([
     via<GatewayKeyLite[]>((c) => c.gateway?.keys?.(), "gatewayKeysList").catch(() => null),
-    via<{ byRole?: Array<{ key: string; spendUsd: number }> }>((c) => c.gateway?.metrics?.({ days: 30 }), "gatewayMetrics", { days: 30 }).catch(() => null),
+    ...windows.map((days) =>
+      via<{ byRole?: Array<{ key: string; spendUsd: number }> }>((c) => c.gateway?.metrics?.({ days }), "gatewayMetrics", { days }).catch(() => null)),
   ]);
-  gwKeys = keys ?? [];
-  roleSpend = new Map((metrics?.byRole ?? []).map((r) => [r.key, r.spendUsd]));
+  gwKeys = (keys as GatewayKeyLite[] | null) ?? [];
+  roleSpend = { 1: new Map(), 7: new Map(), 30: new Map() };
+  windows.forEach((days, i) => {
+    const m = spends[i] as { byRole?: Array<{ key: string; spendUsd: number }> } | null;
+    roleSpend[days] = new Map((m?.byRole ?? []).map((r) => [r.key, r.spendUsd]));
+  });
   paintList();
   paintRoleKeys();
 }

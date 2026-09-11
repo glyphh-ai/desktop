@@ -904,11 +904,19 @@
                           </div>
                         </div>
                         <h4 class="acct-row-head">Budget</h4>
-                        <p class="section-desc">Monthly gateway spend budget in USD — the roles list paints green under 70%, yellow to the line, red over it. Blank = untracked.</p>
+                        <p class="section-desc">Gateway spend budget in USD per period — the same calendar boundaries as the credit cap. The roles list paints green under 70%, yellow to the line, red over it. Blank = untracked.</p>
                         <div class="acct-row">
                           <div class="acct-field">
-                            <label class="settings-label" for="ws-budget">USD / month</label>
+                            <label class="settings-label" for="ws-budget">USD</label>
                             <input id="ws-budget" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-budget-period">Period</label>
+                            <select id="ws-budget-period" class="settings-input">
+                              <option value="1">Daily</option>
+                              <option value="7">Weekly</option>
+                              <option value="30" selected>Monthly</option>
+                            </select>
                           </div>
                         </div>
                         <label class="settings-toggle set-pref-row">
