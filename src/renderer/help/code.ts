@@ -3312,10 +3312,12 @@ async function dipOpenRef(ref: string): Promise<boolean> {
     return true;
   }
   const TOOLS = new Set(["files", "terminal", "diff", "preview", "browser", "plan", "monaco", "editor",
-    "tasks", "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
+    "tasks", "gpoint", "slides", "gdoc", "docs", "gdrive", "drive", "gsheet", "sheets",
+    "gdesign", "design", "gimage", "image", "gvideo", "video", "gsound", "sound"]);
   if (TOOLS.has(key)) {
-    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", design: "gdesign",
-      image: "gimage", video: "gvideo", sound: "gsound" };
+    const ALIAS: Record<string, string> = { browser: "preview", editor: "monaco", slides: "gpoint", docs: "gdoc",
+      drive: "gdrive", sheets: "gsheet", design: "gdesign", image: "gimage", video: "gvideo",
+      sound: "gsound" };
     w.__wbOpenTool?.(ALIAS[key] ?? key);
     return true;
   }
@@ -4745,6 +4747,79 @@ function paintAppsGrid(host: RailGridHost): void {
       const tb = railRecentTs[`app:${b.id}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
+  // SLIDES — Glyphh Office's first app: a FIXED tile (a builtin
+  // tool panel, not an installed app row — no row backs it, so no edit/delete).
+  const slides = document.createElement("button");
+  slides.className = "app-rail-tile";
+  slides.type = "button";
+  slides.title = "Slides — Glyphh Office";
+  const slIcon = document.createElement("div");
+  slIcon.className = "tile-icon";
+  slIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>`;
+  const slName = document.createElement("div");
+  slName.className = "tile-name";
+  slName.textContent = "Slides";
+  slides.append(slIcon, slName);
+  slides.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gpoint");
+  });
+  list.appendChild(slides);
+
+  // DOCS — Glyphh Office documents, the same fixed-tile treatment.
+  const gdocs = document.createElement("button");
+  gdocs.className = "app-rail-tile";
+  gdocs.type = "button";
+  gdocs.title = "Docs — Glyphh Office";
+  const gdIcon = document.createElement("div");
+  gdIcon.className = "tile-icon";
+  gdIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>`;
+  const gdName = document.createElement("div");
+  gdName.className = "tile-name";
+  gdName.textContent = "Docs";
+  gdocs.append(gdIcon, gdName);
+  gdocs.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdoc");
+  });
+  list.appendChild(gdocs);
+
+  // DRIVE — the Office index, same fixed-tile treatment.
+  const gdrive = document.createElement("button");
+  gdrive.className = "app-rail-tile";
+  gdrive.type = "button";
+  gdrive.title = "Drive — Glyphh Office";
+  const gvIcon = document.createElement("div");
+  gvIcon.className = "tile-icon";
+  gvIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>`;
+  const gvName = document.createElement("div");
+  gvName.className = "tile-name";
+  gvName.textContent = "Drive";
+  gdrive.append(gvIcon, gvName);
+  gdrive.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdrive");
+  });
+  // SHEETS — same fixed-tile treatment.
+  const gsheets = document.createElement("button");
+  gsheets.className = "app-rail-tile";
+  gsheets.type = "button";
+  gsheets.title = "Sheets — Glyphh Office";
+  const gsIcon = document.createElement("div");
+  gsIcon.className = "tile-icon";
+  gsIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>`;
+  const gsName = document.createElement("div");
+  gsName.className = "tile-name";
+  gsName.textContent = "Sheets";
+  gsheets.append(gsIcon, gsName);
+  gsheets.addEventListener("click", () => {
+    openCommandCenter();
+    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gsheet");
+  });
+  list.appendChild(gsheets);
+
+  list.appendChild(gdrive);
+
   // DESIGN — the org's design systems, same fixed-tile treatment.
   const gdesign = document.createElement("button");
   gdesign.className = "app-rail-tile";
@@ -5148,6 +5223,9 @@ export function initCode(): void {
     if (cmd.action === "open" && cmd.app) w.__wbOpenApp?.(cmd.app);
     else if (cmd.action === "terminal") (window as unknown as { __wbOpenTerminal?: () => void }).__wbOpenTerminal?.();
     else if (cmd.action === "tool" && (cmd as { tool?: string }).tool) (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.((cmd as { tool?: string }).tool!);
+    else if (cmd.action === "gpoint") (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
+    else if (cmd.action === "gdoc") (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
+    else if (cmd.action === "gsheet") (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "gdesign") (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign?.((cmd as { file?: string }).file, (cmd as { title?: string }).title);
     else if (cmd.action === "gmedia") (window as unknown as { __wbOpenMedia?: (view: string, assetId?: string, songId?: string) => void }).__wbOpenMedia?.((cmd as unknown as { view: string }).view, (cmd as unknown as { assetId?: string }).assetId, (cmd as unknown as { songId?: string }).songId);
     else if (cmd.action === "popup" && (cmd as { url?: string }).url) (window as unknown as { __wbOpenPopup?: (u: string) => void }).__wbOpenPopup?.((cmd as { url?: string }).url!);

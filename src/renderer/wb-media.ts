@@ -10,7 +10,7 @@
  */
 
 import { officePager, officePage } from "./wb-office-ui.js";
-import { biasThumbCrop } from "./wb-office-ui.js";
+import { biasThumbCrop } from "./wb-drive.js";
 
 
 export interface MediaAssetLite {

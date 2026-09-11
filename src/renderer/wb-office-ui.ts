@@ -70,18 +70,3 @@ export function officePage<T>(items: T[], page: number, per: number): { items: T
   const cur = Math.max(0, Math.min(pages - 1, page));
   return { items: items.slice(cur * per, cur * per + per), page: cur };
 }
-
-/** PEOPLE-AWARE crop bias: cover-cropping from dead center decapitates
- *  portraits — faces live in the upper third. Portrait-aspect images shift
- *  the crop window up; landscape/square keep the default center. Dimension
- *  probe only (Image() rides the same cached fetch) — no pixel readback, so
- *  no CORS demands on the signed URL. */
-export function biasThumbCrop(host: HTMLElement, url: string): void {
-  const im = new Image();
-  im.onload = () => {
-    if (!host.isConnected) return;
-    if (im.naturalHeight > im.naturalWidth * 1.15) host.style.backgroundPosition = "50% 22%";
-  };
-  im.src = url;
-}
-
