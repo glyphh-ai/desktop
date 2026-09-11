@@ -79,6 +79,8 @@ interface AdminPlan {
   org_name: string | null;
   /** Gateway requests/minute for orgs on this plan; null = unlimited. */
   rate_limit_rpm?: number | null;
+  gateway_trial_days?: number | null;
+  governance?: boolean;
   allowed_models?: string[] | null;
 }
 interface AdminPlanPatch {
@@ -88,6 +90,8 @@ interface AdminPlanPatch {
   max_seats?: number;
   active?: boolean;
   rate_limit_rpm?: number | null;
+  gateway_trial_days?: number | null;
+  governance?: boolean;
   allowed_models?: string[] | null;
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
@@ -970,6 +974,9 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   set("pa-plan-credits", String(microToCredits(p.included_credits)));
   set("pa-plan-seats", String(p.max_seats || 1));
   set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
+  set("pa-plan-trial", p.gateway_trial_days ? String(p.gateway_trial_days) : "");
+  const gov = $<HTMLInputElement>("pa-plan-governance");
+  if (gov) gov.checked = !!p.governance;
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = p.active;
   const priceInput = $<HTMLInputElement>("pa-price-new");
@@ -989,7 +996,9 @@ function openPlanCreate(): void {
   const title = $("pa-plan-title");
   if (title) title.textContent = "New plan";
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
-  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm", "pa-plan-models"]) set(id, "");
+  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm", "pa-plan-models", "pa-plan-trial"]) set(id, "");
+  const gov = $<HTMLInputElement>("pa-plan-governance");
+  if (gov) gov.checked = false;
   set("pa-plan-price", "0");
   set("pa-plan-credits", "0");
   set("pa-plan-seats", "1");
@@ -1014,6 +1023,11 @@ async function savePlan(): Promise<void> {
     rate_limit_rpm: inputVal("pa-plan-rpm") && Number(inputVal("pa-plan-rpm")) > 0
       ? Math.round(Number(inputVal("pa-plan-rpm")))
       : null,
+    // Empty = full gateway (null); N = the trial window in days.
+    gateway_trial_days: inputVal("pa-plan-trial") && Number(inputVal("pa-plan-trial")) > 0
+      ? Math.round(Number(inputVal("pa-plan-trial")))
+      : null,
+    governance: !!$<HTMLInputElement>("pa-plan-governance")?.checked,
     // One catalog id per line; empty clears the list (every model allowed).
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
