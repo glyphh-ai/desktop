@@ -30,8 +30,6 @@ const ENVELOPE = [
   "app-server-deploy", "app-server-deployments", "app-server-destroy", "app-servers-list",
   "app-version-set",
   "files:r2-diff",
-  "glyphh-agent-approval-respond", "glyphh-agent-ask-respond", "glyphh-agent-connect-respond",
-  "glyphh-agent-context-usage", "glyphh-agent-inject", "glyphh-agent-set-permission", "glyphh-agent-stop",
   "harness-stop-run",
   "hosting-deploy", "hosting-destroy", "hosting-status",
   "loop-apply-config", "loop-role-set",
@@ -53,13 +51,6 @@ const ENVELOPE = [
   "app-source-restore",
   "app-traffic",
   "org-domains-traffic",
-  "glyphh-agent-classify-paths",
-  "glyphh-agent-compact",
-  "glyphh-agent-pick-attachments",
-  "glyphh-agent-remember",
-  "glyphh-agent-run",
-  "glyphh-agent-save-clipboard-image",
-  "glyphh-agent-sessions-save",
   "glyphh-threads-delete",
   "glyphh-threads-get",
   "glyphh-threads-push",
@@ -138,8 +129,6 @@ export function registerAgentStubs(): void {
     ipcMain.handle(ch, () => []);
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
-  // The composer's session cache — an empty store, honestly.
-  ipcMain.handle("glyphh-agent-sessions-load", () => ({ chats: [], currentId: null }));
   // Background/resident mode is gone — report it off, refuse to arm it.
   ipcMain.handle("get-background-mode", () => false);
   ipcMain.handle("set-background-mode", () => false);

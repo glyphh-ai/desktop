@@ -398,6 +398,53 @@ function initSettings() {
       });
     });
   }
+  // Echo Agent panel transparency — applied LIVE while sliding (the CSS var
+  // drives the caret panel), persisted on release.
+  {
+    const o = document.getElementById("settings-echo-agent-opacity") as HTMLInputElement | null;
+    const ov = document.getElementById("settings-echo-agent-opacity-val");
+    const paint = (): void => {
+      if (!o) return;
+      document.documentElement.style.setProperty("--echo-agent-opacity", o.value);
+      if (ov) ov.textContent = `${Math.round(Number(o.value) * 100)}%`;
+    };
+    o?.addEventListener("input", paint);
+    o?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentOpacity", Number(o.value));
+    });
+  }
+  // TEXT transparency — its own var, independent of the panel's.
+  {
+    const t = document.getElementById("settings-echo-agent-text-opacity") as HTMLInputElement | null;
+    const tv = document.getElementById("settings-echo-agent-text-opacity-val");
+    const paint = (): void => {
+      if (!t) return;
+      document.documentElement.style.setProperty("--echo-agent-text-opacity", t.value);
+      if (tv) tv.textContent = `${Math.round(Number(t.value) * 100)}%`;
+    };
+    t?.addEventListener("input", paint);
+    t?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentTextOpacity", Number(t.value));
+    });
+  }
+  // Max panel height (vh) — how tall the agent panel may grow.
+  {
+    const m = document.getElementById("settings-echo-agent-max-h") as HTMLInputElement | null;
+    const mv = document.getElementById("settings-echo-agent-max-h-val");
+    const paint = (): void => {
+      if (!m) return;
+      document.documentElement.style.setProperty("--echo-agent-max-h", `${m.value}vh`);
+      if (mv) mv.textContent = `${m.value}%`;
+    };
+    m?.addEventListener("input", paint);
+    m?.addEventListener("change", () => {
+      paint();
+      void window.glyphh.setPreference("echoAgentMaxH", Number(m.value));
+    });
+  }
+
   // Command center: icon size (live CSS var) + apps per page (the launcher
   // re-reads on the event and re-chunks its pages).
   {

@@ -3982,9 +3982,12 @@ async function init(): Promise<void> {
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
           if (key === "glyphh") {
-            // The glyphh agent is DEAD (his order, 2026-09-10) — the mark
-            // summons the command center; CLI agents are the agents.
-            (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.();
+            // Same rule as the pages' mark (2026-08-19): OPEN the agent —
+            // never reset to a new session, never double a layout's agent.
+            const inLayout = openList.some((x) => x.layoutId != null);
+            const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
+            if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
+            void openAgentPanel();
             return;
           }
           // CC and Close all are permanent slots that go INERT with nothing
@@ -4919,7 +4922,9 @@ async function init(): Promise<void> {
             // The agent cell mounts the agent as a PANEL — the layout owns
             // it, and the center composer steps off screen until the layout
             // lets go.
-            if (v === "coding") { continue; }   // the agent seat is gone
+            // The agent seat is BACK (his order, 2026-09-11) — the tight
+            // view cut (no design/media) survives the return.
+            if (v === "coding") entry = openAgentPanel();
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
@@ -5353,9 +5358,16 @@ async function init(): Promise<void> {
      *  doubles an agent a live layout already shows (that click just focuses
      *  the composer). New sessions live on ＋ alone now. */
     const activateGlyphh = (_self?: TileEntry): void => {
-      // The glyphh agent is DEAD — the identity tile lifts the wall.
-      setShadow(!shadowPinned, !shadowPinned);
+      const inLayout = openList.some((x) => x.layoutId != null);
+      const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
+      if (inLayout && agentShowing) {
+        (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
+        return;
+      }
+      void openAgentPanel();
     };
+    // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
+    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh();
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
@@ -5581,7 +5593,7 @@ async function init(): Promise<void> {
       // its dock self — sections, tools, settings, and the glyphh mark.
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
-        if (t.navKey === "glyphh") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
+        if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
         else if (t.navKey === "tasks") w.__wbOpenSection?.("tasks");

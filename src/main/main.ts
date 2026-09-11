@@ -78,6 +78,7 @@ import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolv
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
+import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -414,6 +415,9 @@ async function boot() {
     registerGitIpc();
     // Dead ends for every retired agent-era channel (see agent-stubs.ts).
     registerAgentStubs();
+    // The Glyphh Agent panel's engine — a bridge over the claude CLI
+    // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
+    registerGlyphhCliBridge();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1244,6 +1248,7 @@ process.on("uncaughtException", (err) => {
 });
 
 app.on("will-quit", () => {
+  shutdownGlyphhCliBridge();
   cleanupAll();
 });
 
