@@ -11,6 +11,7 @@
                    search, aligned to it (his order, 2026-09-02). -->
               <div id="org-switch-settings" class="org-switch hidden"></div>
               <div class="settings-nav-group platform-only">Organization</div>
+                  <button class="settings-nav-item platform-only dash-plain" data-sub="dash"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>
               <button id="nav-org-general" class="settings-nav-item platform-only hidden" data-sub="org-general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>General</span></button>
               <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button id="nav-billing" class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
@@ -408,6 +409,75 @@
               <!--
                    top-right driving everything. settings-domains.ts paints it
                    via the shared traffic painter (apps.ts owns the shape). -->
+<div class="settings-panel" data-sub="dash">
+    <!-- The PLATFORM Dashboard — greeting header, org cards, usage chart.
+         The Usage page (plan limits) is its own panel now, identical on the
+         app and the app web (his order, 2026-08-25). -->
+    <div class="dash-head platform-only">
+      <h2 id="dash-greeting">Welcome back</h2>
+      <div class="dash-head-actions">
+        <button class="action-btn" id="dash-get-key" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2"/><path d="M15.5 7.5 19 4l1 1-3.5 3.5"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>Get API key</button>
+        <button class="action-btn primary" id="dash-discord" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.93-1.51 13.8 13.8 0 0 0-.64 1.28 18.3 18.3 0 0 0-5.5 0 13.8 13.8 0 0 0-.64-1.28c-1.71.29-3.37.8-4.93 1.51A20.3 20.3 0 0 0 .1 18.06a19.9 19.9 0 0 0 6.07 3.03c.49-.66.93-1.37 1.3-2.1a12.9 12.9 0 0 1-2.05-.98c.17-.12.34-.25.5-.38a14.2 14.2 0 0 0 12.16 0c.17.13.33.26.5.38-.65.39-1.34.71-2.05.98.38.73.81 1.44 1.3 2.1a19.8 19.8 0 0 0 6.07-3.03 20.2 20.2 0 0 0-2.58-13.69ZM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Zm7.96 0c-1.18 0-2.16-1.08-2.16-2.42s.95-2.42 2.16-2.42c1.21 0 2.18 1.09 2.16 2.42 0 1.34-.95 2.42-2.16 2.42Z"/></svg>Discord</button>
+      </div>
+    </div>
+    <div class="platform-only">
+    <div class="dash-grid">
+      <div class="dash-card">
+        <div class="dash-card-label" id="dash-credits-label">Organization credits</div>
+        <div class="dash-card-value" id="dash-credits-value">—</div>
+        <div class="dash-card-sub" id="dash-credits-sub">available</div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-label">Spend this month</div>
+        <div class="dash-card-value" id="dash-spend-value">—</div>
+        <div class="dash-card-sub" id="dash-spend-sub">credits used</div>
+      </div>
+
+      <div class="dash-card">
+        <div class="dash-card-label">Apps deployed</div>
+        <div class="dash-card-value" id="dash-apps-value">—</div>
+        <div class="dash-card-sub" id="dash-apps-sub">hosted on this machine</div>
+      </div>
+    </div>
+    <div class="dash-card dash-card-wide">
+      <div class="dash-card-head">
+        <div>
+          <div class="dash-card-label">Usage</div>
+          <div class="dash-card-value dash-card-value-sm" id="dash-usage-total">—</div>
+          <div class="dash-card-sub" id="dash-usage-range">last 30 days</div>
+        </div>
+        <div class="dash-usage-filters">
+          <select id="dash-usage-days" class="dash-usage-select" title="Date range">
+            <option value="7">7 days</option>
+            <option value="30" selected>30 days</option>
+            <option value="90">90 days</option>
+          </select>
+          <select id="dash-usage-group" class="dash-usage-select" title="Stack by">
+            <option value="model" selected>By model</option>
+            <option value="source">By source</option>
+          </select>
+          <select id="dash-usage-filter" class="dash-usage-select" title="Narrow to one">
+            <option value="">All models</option>
+          </select>
+          <!-- Org admins only (populated + revealed by the member roster call);
+               the one usage control the desktop lacked vs. the platform. -->
+          <select id="dash-usage-member" class="dash-usage-select hidden" title="Member">
+            <option value="">All members</option>
+          </select>
+          <button class="dash-refresh" id="dash-refresh" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="dash-chart-wrap">
+        <canvas id="dash-usage-chart"></canvas>
+        <div class="dash-chart-empty hidden" id="dash-usage-empty">No usage yet — connect an AI and start driving your apps.</div>
+      </div>
+    </div>
+              </div>
+</div>
+
 <div class="settings-panel" data-sub="usage">
     <!-- Platform dashboard header (his spec, 2026-08-24): time-of-day
          greeting left; Get API key (secondary) + Buy credits (primary)

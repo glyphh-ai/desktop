@@ -5,7 +5,7 @@
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
@@ -804,7 +804,8 @@ function loadSettingsSub(sub: string): void {
   // THE PURGE: the settings shell is the minimal platform — account, org,
   // members, billing (the license), apps, download, support, docs,
   // and the super-admin Plans/Orgs console.
-  if (sub === "mcp") loadMcp();
+  if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
+  else if (sub === "mcp") loadMcp();
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
