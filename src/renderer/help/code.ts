@@ -284,7 +284,6 @@ async function refreshModelList(force?: boolean): Promise<void> {
   // this session will actually run, not the ambient loop pick.
   picker.overlayRoleSelections(current()?.models ?? pendingModels);
   paintModelChip();
-  refreshCtxMeter();
 }
 
 function renderModelMenu(): void {
@@ -299,7 +298,6 @@ function renderModelMenu(): void {
       void saveStore();
     }
     paintModelChip();
-    refreshCtxMeter();
   });
 }
 
@@ -493,141 +491,15 @@ function renderLoopMenu(): void {
   requestAnimationFrame(() => search.focus());
 }
 
-/** Manual compaction (meter click / .compact) — steers the fold with an
- *  optional one-shot focus, reports the outcome into the thread. */
-async function runManualCompact(focus: string): Promise<void> {
-  const c = current();
-  if (!c || thinking) return;
-  const meter = el("code-ctx-meter");
-  meter?.classList.add("compacting");
-  try {
-    const r = await window.glyphh.glyphhCompact?.(c.id, focus);
-    const u = await window.glyphh.glyphhContextUsage?.(c.id).catch(() => null);
-    const pct = u ? ` — context now ${Math.round(u.ratio * 100)}%` : "";
-    c.messages.push({
-      role: "assistant",
-      text: r?.ok ? `✓ Compacted${pct}.` : `⚠ Compaction skipped: ${r?.reason || "unknown"}`,
-      at: Date.now(),
-    });
-  } catch (err) {
-    c.messages.push({ role: "assistant", text: `⚠ ${err instanceof Error ? err.message : String(err)}`, at: Date.now() });
-  }
-  meter?.classList.remove("compacting");
-  void saveStore();
-  renderThread();
-  refreshCtxMeter();
-}
 
 // ── Context panel (meter click) — one shared history, one row per model
 //    lane that might serve it. Local is the binding lane (compaction keys
 //    off it — declined escalations fall back to local, so the history must
 //    always stay local-servable); remote lanes show how far the SAME history
 //    sits from their windows. Extensible: renders whatever lanes main sends.
-async function renderCtxPop(): Promise<void> {
-  const pop = el("code-ctx-pop");
-  if (!pop || !currentId) return;
-  pop.innerHTML = `<div class="ctx-pop-empty">Measuring…</div>`;
-  const u = await window.glyphh.glyphhContextUsage?.(currentId).catch(() => null);
-  if (!u) { pop.innerHTML = `<div class="ctx-pop-empty">Context unavailable.</div>`; return; }
-  const lanes = u.lanes?.length
-    ? u.lanes
-    : [{ id: "local", kind: "local" as const, tokens: u.tokens, budget: u.budget, ratio: u.ratio, foldAt: u.foldAt }];
-  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-  const fmt = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
-  pop.innerHTML = `
-    <div class="drop-pane">
-    <div class="effort-head">
-      <span class="effort-title">Compaction</span>
-      <button id="ctx-info-btn" class="model-info-btn" type="button" title="How compaction works">i</button>
-    </div>
-    <div class="effort-desc">How close each model is to folding.</div>
-    ${lanes.map((l) => {
-      const pct = Math.round(l.ratio * 100);
-      const hot = l.foldAt != null && l.ratio >= l.foldAt;
-      return `
-      <div class="ctx-lane">
-        <div class="ctx-lane-head">
-          <span class="ctx-lane-name">${esc(l.id)}</span>
-          <span class="ctx-lane-kind">${l.kind === "local" ? "local" : "remote"}</span>
-        </div>
-        <div class="ctx-lane-bar">
-          ${l.foldAt != null ? `<div class="ctx-lane-tick" style="left:${l.foldAt * 100}%"></div>` : ""}
-          <div class="ctx-lane-fill${hot ? " hot" : ""}" style="width:${pct}%"></div>
-        </div>
-        <div class="ctx-lane-stats">${fmt(l.tokens)} of ${fmt(l.budget)} tokens · ${pct}%${l.foldAt != null ? ` — compacts at ${Math.round(l.foldAt * 100)}%` : ""}</div>
-      </div>`;
-    }).join("")}
-    <div class="ctx-compact-row">
-      <input id="ctx-compact-focus" type="text" placeholder="what the summary must keep (optional)" spellcheck="false" />
-      <button id="ctx-compact-btn" type="button" class="ctx-compact-btn"${thinking ? " disabled" : ""}>Compact now</button>
-    </div>
-    </div>`;
-  // ⓘ — the explanation opens IN THIS POPUP behind a back arrow, like every
-  // other chip.
-  const ctxPane = pop.querySelector<HTMLElement>(".drop-pane");
-  pop.querySelector<HTMLButtonElement>("#ctx-info-btn")?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    if (!ctxPane) return;
-    showDropDetail(pop, ctxPane, {
-      title: "Compaction",
-      body: [
-        "One shared history, measured against every model that can serve it.",
-        "",
-        "The local lane is the binding one — declined escalations fall back to the local model, so the history must always fit it. When it crosses the tick, older turns fold into a summary and every lane shrinks together.",
-        "",
-        "Compact now folds immediately; the optional focus tells the summary what it must keep.",
-      ].join("\n"),
-    });
-  });
-  const focusEl = pop.querySelector<HTMLInputElement>("#ctx-compact-focus");
-  focusEl?.addEventListener("click", (ev) => ev.stopPropagation());
-  const go = () => {
-    el("code-ctx-pop")?.classList.add("hidden");
-    void runManualCompact((focusEl?.value || "").trim());
-  };
-  focusEl?.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !thinking) go(); });
-  pop.querySelector<HTMLButtonElement>("#ctx-compact-btn")?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    if (!thinking) go();
-  });
-}
 
-// ── Compaction meter — how full the fold window is (tick = fold point) ──
 let meterTimer: ReturnType<typeof setTimeout> | null = null;
 
-function refreshCtxMeter(): void {
-  if (meterTimer) clearTimeout(meterTimer);
-  meterTimer = setTimeout(() => {
-    meterTimer = null;
-    const meter = el("code-ctx-meter");
-    if (!meter) return;
-    if (!currentId) {
-      // a LANDING (lazy new): nothing to measure — show an explicitly
-      // empty meter, not the previous session's frozen fill
-      const fill = meter.querySelector<HTMLElement>(".ctx-fill");
-      if (fill) { fill.style.width = "0%"; fill.classList.remove("hot"); }
-      meter.style.setProperty("--ctx-pct", "0%");
-      meter.classList.remove("hot");
-      meter.title = "Context — empty (new session)";
-      return;
-    }
-    void window.glyphh.glyphhContextUsage?.(currentId).then((u) => {
-      const fill = meter.querySelector<HTMLElement>(".ctx-fill");
-      const tick = meter.querySelector<HTMLElement>(".ctx-tick");
-      if (!fill || !tick) return;
-      const pct = Math.round(u.ratio * 100);
-      fill.style.width = `${pct}%`;
-      fill.classList.toggle("hot", u.ratio >= u.foldAt);
-      meter.style.setProperty("--ctx-pct", `${pct}%`);
-      meter.classList.toggle("hot", u.ratio >= u.foldAt);
-      tick.style.left = `${u.foldAt * 100}%`;
-      // Bar tracks the local lane (the one compaction keys off); the title
-      // sketches every lane, the click panel has the full picture.
-      const laneBits = (u.lanes || []).map((l) => `${l.id} ${Math.round(l.ratio * 100)}%`).join(" · ");
-      meter.title = `Context — ${laneBits || `${pct}%`} — compacts at ${Math.round(u.foldAt * 100)}% of local. Click for details.`;
-    }).catch(() => { /* meter is cosmetic */ });
-  }, 350);
-}
 
 /** A chip's drop-up opens UP AND TO THE LEFT: its right edge stays on the
  *  chip, so a menu wider than its chip grows into the page instead of past
@@ -739,7 +611,6 @@ function initComposerControls(): void {
     lp?.classList.toggle("hidden");
     if (lp && !lp.classList.contains("hidden")) openChipDropUp(lp);
   });
-  // Context panel — per-lane distance to compaction, anchored to the meter.
   const ctxWrap = el("code-ctx-wrap");
   if (ctxWrap) {
     const cpop = document.createElement("div");
@@ -747,18 +618,6 @@ function initComposerControls(): void {
     cpop.className = "code-drop-up code-ctx-pop hidden";
     ctxWrap.appendChild(cpop);
   }
-  el("code-ctx-meter")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (!current()) return;
-    el("code-mode-menu")?.classList.add("hidden");
-    el("code-effort-pop")?.classList.add("hidden");
-    el("code-model-menu")?.classList.add("hidden");
-    const cpop = el("code-ctx-pop");
-    if (!cpop) return;
-    const opening = cpop.classList.contains("hidden");
-    cpop.classList.toggle("hidden");
-    if (opening) { openChipDropUp(cpop); void renderCtxPop(); }
-  });
   // The mic's device/mode drop-up (restored 2026-08-26 — the pill-composer
   // rewrite dropped the caret, and with it the only way to pick a microphone
   // or flip hold-to-record from the composer).
@@ -1254,7 +1113,7 @@ function hydrateMessagesIfNeeded(id: string): void {
   void threadStore.ensureMessages(id).then((loaded) => {
     if (!loaded) return;
     renderHistory();
-    if (currentId === id) { renderThread(); refreshCtxMeter(); }
+    if (currentId === id) { renderThread(); }
   });
 }
 const current = (): CodeChat | null => chats.find((c) => c.id === currentId) ?? null;
@@ -1888,7 +1747,6 @@ function historyRow(c: CodeChat): HTMLDivElement {
     ensureCodeSection();
     renderHistory();
     renderThread();
-    refreshCtxMeter();
     void checkWorkdirGate();
     applySessionFolder(c);   // the workbench follows the thread's folder
     // The opened session's OWN source drives the chip, the head locus and the
@@ -2074,7 +1932,6 @@ function openLocalSession(id: string): void {
   ensureCodeSection();
   renderHistory();
   renderThread();
-  refreshCtxMeter();
   void checkWorkdirGate();
   // The opened session's stored source drives the chip/locus/run (see the rail
   // row handler) — not the pending pick that was showing before.
@@ -3480,21 +3337,6 @@ function send(): void {
   }
   // Dot-commands (.dip slack, .drip rain, …) run through the command parser —
   // the composer doubles as the command input.
-  // `.compact [focus]` → fold the session's older turns now, optionally
-  // steering what the summary must keep.
-  const comp = /^\.compact(?:\s+(.+))?$/is.exec(text);
-  if (comp) {
-    if (!current()) newChat();
-    const cc = current()!;
-    cc.messages.push({ role: "user", text, at: Date.now() });
-    ta.value = "";
-    autoGrow(ta);
-    void saveStore();
-    renderHistory();
-    renderThread();
-    void runManualCompact((comp[1] || "").trim());
-    return;
-  }
   // `.remember <fact>` → Glyphh's persistent memory (memory.md), loaded
   // into every session's prompt prefix.
   const rem = /^\.remember\s+(.+)/is.exec(text);
@@ -3570,7 +3412,6 @@ function send(): void {
   setThinking(true);
   renderHistory();
   renderThread();
-  refreshCtxMeter();
   // Main assembles the prompt from the store — the save must land first.
   // A session must run inside a folder the user chose: the first send on a
   // fresh setup pops the OS folder picker, then the run proceeds.
@@ -3863,7 +3704,6 @@ function finishRun(chatId: string, text: string, stopped = false): void {
     broadcastTimeline(false);
     setThinking(false);
     renderThread();
-    refreshCtxMeter();
     // Anything typed while this run was in flight goes now, as its own turn.
     flushPendingNotes();
     // Speak the reply (if Voice autoplay is on) and, in hands-free mode, start
@@ -5012,7 +4852,6 @@ export function loadCode(): void {
     // currentId still resumes, and only highlights while on the agent.
     renderHistory();
     renderThread();
-    refreshCtxMeter();
     void checkWorkdirGate();
   })();
   // Boot the ported workbench engine (idempotent) — it owns the workdir
@@ -5297,7 +5136,6 @@ export function initCode(): void {
     void saveStore();
     renderHistory();
     renderThread();
-    refreshCtxMeter();
     void checkWorkdirGate();
     if (!navigate) return;
     gotoSection("agent");
@@ -5967,7 +5805,6 @@ export function initCode(): void {
     if (c && c.messages.length > 0) {
       lastSession = c.id;
       renderThread();
-      refreshCtxMeter();
       repaintSourceUi();
       void checkWorkdirGate();
     } else {

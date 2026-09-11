@@ -15,7 +15,7 @@ export { loadBilling, loadProfile, loadMembers, loadWorkspacesPanel };
 
 // ── Settings ─────────────────────────────────────────────
 
-// General has no footer Save — every control in it (compaction guidance,
+// General has no footer Save — every control in it
 // toggles) owns its own save.
 
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
@@ -73,34 +73,6 @@ function initSettings() {
   initBilling();
   initProfile();
   initMembers();
-  // Compaction guidance saves ITSELF — debounced while typing, immediately on
-  // blur — with the standard "Saved" flash. No Save button (General's rule:
-  // every control owns its own save).
-  {
-    const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-    const status = document.getElementById("glyphh-agent-compact-status");
-    let timer = 0;
-    const save = (): void => {
-      if (!wcp) return;
-      const value = wcp.value.trim();
-      // The loader stamps the stored value into data-saved — an untouched (or
-      // reverted) field neither writes nor flashes.
-      if (value === (wcp.dataset.saved ?? "")) return;
-      wcp.dataset.saved = value;
-      void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", value)).then(() => {
-        if (status) {
-          status.textContent = "Saved";
-          status.className = "set-save-state success";
-          setTimeout(() => { status.textContent = ""; }, 1600);
-        }
-      });
-    };
-    wcp?.addEventListener("input", () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(save, 700);
-    });
-    wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
-  }
 
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
@@ -594,13 +566,6 @@ async function loadSettings() {
   // Members hides its own nav item unless the caller is an org admin, so this
   // has to run on Settings open, not only when the tab is clicked.
   void loadMembers();
-  // Glyphh: standing compaction guidance + training capture
-  const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
-  if (wcp) {
-    wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
-    // Baseline for the auto-save (initSettings): unchanged content never writes.
-    wcp.dataset.saved = wcp.value.trim();
-  }
 
   // The Account header's ORG + PLAN chips. Name, email, role and the avatar
   // come from the server profile via loadProfile() — one painter each, so the
