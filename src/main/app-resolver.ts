@@ -62,7 +62,6 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
-  | { action: "gdesign"; file?: string; title?: string }
   | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound"; assetId?: string; songId?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
@@ -226,11 +225,6 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   return { slug: app.slug, name: app.name };
 }
 
-
-/** Open the Design panel — with a file, straight into that system's studio. */
-export function openDesignPanel(file?: string, title?: string): void {
-  sendWbCmd(file ? { action: "gdesign", file, title } : { action: "tool", tool: "gdesign" });
-}
 
 /** Open a media panel (Image / Video / Sounds) — optionally straight at an
  *  asset, or (Sounds) straight into a SONG's editor page. */

@@ -26,7 +26,7 @@ import * as appsStore from "./apps-store";
 // Apps-page fixtures, not org apps — an install or deploy under their slugs is
 // refused at the manifest, where the slug first exists (glyphh-agent-tools.ts
 // and apps-ipc.ts refuse the slug-carrying seams the same way).
-const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gimage", "gvideo", "gsound"]);
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gimage", "gvideo", "gsound"]);
 
 /** Throw the refusal when a workdir manifest names a built-in work panel. */
 function refuseBuiltinWorkpanel(slug: string): void {

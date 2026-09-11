@@ -246,7 +246,7 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   ipcMain.handle("has-mcp-access", () => hasMcpAccess());
 
 
-  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gimage", "gvideo", "gsound"]);
+  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gimage", "gvideo", "gsound"]);
   const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
   const entryKind = (o: Record<string, unknown>): "web" | "native" | "glyphh" => {
