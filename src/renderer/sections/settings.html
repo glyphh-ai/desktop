@@ -19,6 +19,8 @@
               <div class="settings-nav-group platform-only">Security</div>
               <button class="settings-nav-item platform-only" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
+              <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
+              <button id="nav-models" class="settings-nav-item platform-only" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
@@ -516,7 +518,25 @@
                    The program/payout SDK surface ships separately;
                    settings-developer.ts renders a "coming online" state until
                    it lands. -->
-                            <!-- Workspaces — ported from the platform's configure/workspaces
+              <div class="settings-panel" data-sub="models">
+                <h2>Models</h2>
+                <p class="section-desc">Your organization's providers and the models inside each.</p>
+                <div id="models-admin-error" class="crud-form-error hidden"></div>
+                <div id="models-plan-note" class="settings-callout hidden" role="status">Your plan limits which models are available. Upgrade to a paid plan to utilize all available models.</div>
+
+                <div class="crud-toolbar">
+                  <input id="models-search" type="text" class="crud-search" placeholder="Search providers and models…" spellcheck="false" autocomplete="off" />
+                  <button id="provider-new-btn" class="action-btn primary" type="button">+ New provider</button>
+                </div>
+                <div id="models-provider-list"></div>
+                <div id="models-pager"></div>
+              </div>
+
+              <!-- Organization › General — the org record (name, image,
+                   address, seats), moved out from under Billing (his spec,
+                   2026-08-24). Ids unchanged so settings-org-panel.ts binds;
+                   the nav item is admin-gated in gateAdminSubs. -->
+                                          <!-- Workspaces — ported from the platform's configure/workspaces
                    page and its data layer (platform/app/lib/workspaces/hooks.js).
                    A workspace IS the governance layer: which models, which
                    shared and personal connections (down to single tools), a
