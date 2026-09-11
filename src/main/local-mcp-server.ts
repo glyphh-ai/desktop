@@ -24,6 +24,7 @@ import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
 import { listCliAgents } from "./cli-agents.js";
+import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -204,6 +205,32 @@ function buildMcpServer(): McpServer {
   );
 
   // ── Custom MCP connections — the user's own servers, aggregated ─────
+  // ── Connected APPS (Pipedream Connect, server-executed) ──────────────
+  // The org/personal connector reach (Gmail, Slack, 3,500 more) — governed
+  // and METERED server-side; this lane just carries the call. Distinct from
+  // connections_* below, which are the user's own LOCAL custom MCP servers.
+  mcp.tool(
+    "connector_tools",
+    "The user's CONNECTED APPS (Gmail, Slack, Google Drive — 3,500+ via the org's connections) and each app's callable tools with input schemas. Governed server-side: this lists exactly what YOU may call. Invoke with connector_call.",
+    {},
+    async () => {
+      const tools = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog();
+      return text(tools.map((t) => ({ app: t.slug, tool: t.name, description: t.description, inputSchema: t.inputSchema })));
+    },
+  );
+  mcp.tool(
+    "connector_call",
+    "Call one connected app's tool (from connector_tools). Executes on the Glyphh server under the org's governance — the account binding, allow-lists, and metering all apply there.",
+    {
+      app: z.string().describe("The connection slug (connector_tools 'app')"),
+      tool: z.string().describe("The tool key to invoke"),
+      props: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments per its inputSchema"),
+    },
+    async ({ app, tool, props }) => {
+      try { return text(await callConnectorTool(app, tool, props ?? {})); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
   mcp.tool(
     "connections_list_tools",
     "List the tools published by the user's CUSTOM MCP CONNECTIONS (their own servers, dialed locally). Returns [{ connection, name, description, inputSchema }]. Call one with connections_call_tool.",
