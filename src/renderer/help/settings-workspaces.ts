@@ -91,6 +91,10 @@ type ConnMode = keyof typeof MODE;
 
 let workspaces: Workspace[] = [];
 let gwKeys: GatewayKeyLite[] = [];
+// The org's ENABLED vendors — the provider-keys block lists these, NOT the
+// supported-model catalog (an enabled vendor with no models toggled on yet
+// must still take a role key; his report, 2026-09-11).
+let orgProviderRows: Array<{ slug: string; name: string }> = [];
 // ws id → gateway USD, one map per budget window (daily/weekly/monthly).
 let roleSpend: Record<number, Map<string, number>> = { 1: new Map(), 7: new Map(), 30: new Map() };
 let editing: Workspace | null = null;
@@ -133,6 +137,7 @@ interface SdkWorkspaces {
     clearProviderKey?: (id: string, slug: string) => Promise<void>;
   };
   models?: { available?: () => Promise<Array<{ id: string; kind: string; name: string; providerSlug: string }>> };
+  catalog?: { providers?: () => Promise<Array<{ slug: string; name: string; enabledForOrg?: boolean }>> };
   gateway?: {
     keys?: () => Promise<GatewayKeyLite[]>;
     metrics?: (opts: { days?: number }) => Promise<{ byRole?: Array<{ key: string; spendUsd: number }> }>;
@@ -508,8 +513,9 @@ function paintProviderKeys(): void {
   const host = $("ws-provider-keys");
   if (!host || !editing) return;
   host.innerHTML = "";
-  // Only the vendors this org actually reaches — the same set the model list shows.
-  const providers = [...new Set(catalog.map((m) => m.provider).filter(Boolean))].sort();
+  // The org's ENABLED vendors, straight off the providers read — enabled with
+  // zero supported models still takes a role key.
+  const providers = orgProviderRows;
   if (!providers.length) {
     host.innerHTML = `<div class="crud-empty">No enabled providers yet \u2014 the org adds vendor keys under Models.</div>`;
     return;
@@ -518,11 +524,11 @@ function paintProviderKeys(): void {
   table.className = "lib-table";
   table.innerHTML = `<thead><tr><th>Provider</th><th>Key</th><th class="ws-model-toggle-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
-  for (const slug of providers) {
+  for (const { slug, name: provName } of providers) {
     const has = wsProviderKeys.has(slug);
     const tr = document.createElement("tr");
     const name = document.createElement("td");
-    name.textContent = slug;
+    name.textContent = provName;
     const state = document.createElement("td");
     const actions = document.createElement("td");
     actions.className = "ws-model-toggle-cell";
@@ -1291,7 +1297,7 @@ export async function loadWorkspacesPanel(): Promise<void> {
   await loadWorkspaces();
   // The three universes a workspace narrows within. Each is independent — a
   // failed connector load must not blank the model list.
-  const [models, connectors, cap] = await Promise.all([
+  const [models, connectors, cap, provs] = await Promise.all([
     // The MODELS PAGE's own list (rates included) — the role tab mirrors it,
     // active (supported) models only.
     via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>>(
@@ -1306,7 +1312,13 @@ export async function loadWorkspacesPanel(): Promise<void> {
         ]).then(([pipedream, mcp]) => ({ pipedream, mcp }))
         : undefined), "workspacesOrgConnectors"),
     via<Record<string, string[]>>((c) => c.connections?.orgConnectionTools?.(), "workspacesOrgToolCap"),
+    via<Array<{ slug: string; name: string; enabledForOrg?: boolean }>>(
+      (c) => c.catalog?.providers?.(), "orgProvidersList").catch(() => null),
   ]);
+  orgProviderRows = (provs ?? [])
+    .filter((pr) => pr.enabledForOrg === true)
+    .map((pr) => ({ slug: pr.slug, name: pr.name || pr.slug }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   // The role picker offers ONLY what the org actually reaches (his report,
   // 2026-09-11): enabled provider AND supported model — never the raw catalog.
   catalog = (models || []).filter((m) => m.supported !== false && m.providerEnabled !== false).map((m) => ({
@@ -1325,5 +1337,5 @@ export async function loadWorkspacesPanel(): Promise<void> {
   orgConnectors = [...byId.values()];
   for (const c of orgConnectors) connMeta.set(c.id, { name: c.name, icon: c.icon });
   orgToolCap = cap || {};
-  if (editing) { paintModels(); paintConnections(); }
+  if (editing) { paintModels(); paintProviderKeys(); paintConnections(); }
 }
