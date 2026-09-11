@@ -8,6 +8,7 @@
 // one surface a theme never overrides.
 
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef } from 'react';
 import { SETTINGS_GROUPS, type SpaceId } from './mock';
 import {
@@ -62,6 +63,34 @@ function toDisplayUser(u: { name?: string | null; email?: string | null; avatarU
   return { name, email, initials, avatarUrl: u?.avatarUrl || null, role: u?.role || '', tier: u?.tier || '', isPlatformAdmin: !!u?.isPlatformAdmin };
 }
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
+const THEMES: { id: string; name: string; desc?: string }[] = [
+  { id: 'system', name: 'System', desc: 'Match your device' },
+  { id: 'light', name: 'Light' },
+  { id: 'dark', name: 'Dark' },
+  { id: 'purple', name: 'Purple' },
+  { id: 'aurora', name: 'Aurora' },
+  { id: 'prism', name: 'Prism' },
+  { id: 'github', name: 'GitHub' },
+  { id: 'highvis', name: 'High contrast' },
+  { id: 'claude', name: 'Claude' },
+  { id: 'chatgpt', name: 'ChatGPT' },
+  { id: 'gemini', name: 'Gemini' },
+  { id: 'dracula', name: 'Dracula' },
+  { id: 'nord', name: 'Nord' },
+  { id: 'synthwave', name: 'Synthwave' },
+  { id: 'matrix', name: 'Matrix' },
+];
+/** The IANA zone list when the runtime supports it (modern browsers); else null. */
+let _zones: string[] | null | undefined;
+function tzList(): string[] | null {
+  if (_zones !== undefined) return _zones;
+  try {
+    const sv = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+    _zones = sv ? sv('timeZone') : null;
+  } catch { _zones = null; }
+  return _zones;
+}
 
 const APP_VERSION = typeof __GLYPHH_VERSION__ !== 'undefined' ? __GLYPHH_VERSION__ : '';
 
