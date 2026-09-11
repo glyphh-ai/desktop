@@ -39,6 +39,11 @@ export interface CliAgentRow {
   mcp: boolean;
   /** Start the terminal here (like a workspace's working folder). "" = current. */
   cwd: string;
+  /** Glyphh's ONE permission vocabulary, projected onto each CLI's native
+   *  controls (the loop enforces; we only standardize the words):
+   *  safe = read/plan only · ask = the CLI's default prompting · auto = run
+   *  without prompting. Absent = ask. */
+  permission?: "safe" | "ask" | "auto";
   /** Pass an API key to the CLI: the env-var NAME rides here; the VALUE
    *  lives in the agent's env file (0600) and is never readable back — list
    *  rows carry only a first/last glimpse (`hint`) for recognition. */
@@ -249,6 +254,84 @@ function ensureCursorMcp(id: string): void {
  *    custom — the command verbatim; mcp.json sits beside the agent for
  *             whatever the CLI can consume */
 /** Each CLI's model flag — appended when the agent (or an override) names one. */
+// ── The LOOP WRAPPER's capability matrix (his direction, 2026-09-11) ────────
+// One declared profile per supported loop: what each CLI can do, and how
+// Glyphh's permission vocabulary projects onto its native flags. Everything
+// upstream (task slots, schedules, org loop pickers) filters against THIS
+// instead of discovering gaps at runtime; adding a loop = a profile + a
+// compose branch, nothing else.
+//
+// Flag names are the least stable part of every CLI's surface — an unknown
+// projection is OMITTED (the CLI falls back to its own default prompting),
+// never a hard error.
+
+export interface CliProfile {
+  /** Print/exec mode exists — schedules + task_run can ride this loop. */
+  headless: boolean;
+  /** `resume last` affordance (session mode "last"). */
+  resumeLast: boolean;
+  /** Resume a SPECIFIC session id (rail Recents / card dropdown). */
+  resumeById: boolean;
+  /** Takes a model flag on the line. */
+  modelFlag: boolean;
+  /** Glyphh local MCP wiring exists for this loop. */
+  mcp: boolean;
+  /** Honors a base-URL env override — the org router lane's seam. */
+  baseUrlEnv: string[];
+  /** Interactive permission projection; missing key = omit the flag. */
+  perm: Partial<Record<"safe" | "auto", string>>;
+  /** Headless projection (unattended runs prompt no one). */
+  permHeadless: Partial<Record<"safe" | "auto", string>>;
+}
+
+export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
+  claude: {
+    headless: true, resumeLast: true, resumeById: true, modelFlag: true, mcp: true,
+    baseUrlEnv: ["ANTHROPIC_BASE_URL"],
+    perm: { safe: " --permission-mode plan", auto: " --permission-mode bypassPermissions" },
+    permHeadless: { auto: " --dangerously-skip-permissions" },
+  },
+  codex: {
+    headless: true, resumeLast: true, resumeById: true, modelFlag: true, mcp: true,
+    baseUrlEnv: ["OPENAI_BASE_URL"],
+    perm: { safe: " --sandbox read-only", auto: " --full-auto" },
+    permHeadless: { safe: " --sandbox read-only", auto: " --full-auto" },
+  },
+  gemini: {
+    headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
+    baseUrlEnv: ["GOOGLE_GEMINI_BASE_URL"],
+    perm: { auto: " --yolo" },
+    permHeadless: { auto: " --yolo" },
+  },
+  copilot: {
+    headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: true,
+    baseUrlEnv: [],
+    perm: {},
+    permHeadless: {},
+  },
+  cursor: {
+    headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: true,
+    baseUrlEnv: [],
+    perm: {},
+    permHeadless: {},
+  },
+  custom: {
+    headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
+    baseUrlEnv: [],
+    perm: {},
+    permHeadless: {},
+  },
+};
+
+/** The agent's permission mode as this CLI's flag ("" when the mode is ask,
+ *  unknown, or the loop has no such control). */
+function permFlag(row: Pick<CliAgentRow, "cli" | "permission">, headless: boolean): string {
+  const mode = row.permission;
+  if (!mode || mode === "ask") return "";
+  const table = headless ? CLI_PROFILES[row.cli]?.permHeadless : CLI_PROFILES[row.cli]?.perm;
+  return table?.[mode] ?? "";
+}
+
 function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   if (!model) return "";
   const m = model.replace(/"/g, "");
@@ -276,19 +359,19 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   let core: string;
   switch (row.cli) {
     case "claude":
-      core = `${row.cmd}${modelFlag(row.cli, m)} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
       break;
     case "codex": {
       const token = row.mcp ? mcpTokenOf(row.id) : "";
       const { port } = localMcpStatus();
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${modelFlag(row.cli, m)} exec '${p}'`
+        + `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} exec '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
     }
     case "gemini":
-      core = `${row.cmd}${modelFlag(row.cli, m)} -p '${p}'`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} -p '${p}'`;
       break;
     default:
       throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex or gemini for scheduled loops`);
@@ -317,7 +400,8 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       : row.cli === "gemini" ? ` -i '${p0.replace(/'/g, "'\\''")}'`
       : ""
     : "";
-  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}`;
+  const permPart = permFlag(row, false);
+  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -326,11 +410,11 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} --mcp-config "${mcpFile(row.id)}"`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /
@@ -448,7 +532,7 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; session?: string; model?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; session?: string; model?: string; permission?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
     try {
       const name = String(input.name ?? "").trim();
       const cmd = String(input.cmd ?? "").trim();
@@ -468,6 +552,8 @@ export function registerCliAgentsIpc(): void {
         model: String(input.model ?? existing?.model ?? "").trim(),
         session: input.session === "new" || input.session === "last" ? input.session
           : input.session === "keep" ? "keep" : (existing?.session ?? "keep"),
+        permission: input.permission === "safe" || input.permission === "auto" ? input.permission
+          : input.permission === "ask" ? "ask" : (existing?.permission ?? "ask"),
         apiKey: existing?.apiKey ?? null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,

@@ -71,6 +71,7 @@ function showEditor(agent: CliAgent | null): void {
   (el<HTMLInputElement>("cagent-folder-input")!).value = agent?.cwd ?? "";
   (el<HTMLInputElement>("cagent-mcp")!).checked = agent ? agent.mcp : true;
   (el<HTMLSelectElement>("cagent-session")!).value = agent?.session ?? "keep";
+  (el<HTMLSelectElement>("cagent-permission")!).value = (agent as { permission?: string } | null)?.permission ?? "ask";
   // API key: WRITE-ONLY. The value field starts empty; a stored key shows
   // its first/last glimpse in the hint so the user knows WHICH key it is.
   (el<HTMLInputElement>("cagent-apikey-on")!).checked = !!agent?.apiKey;
@@ -264,6 +265,7 @@ export function initCliAgentsEvents(): void {
       model: el<HTMLInputElement>("cagent-model")?.value ?? "",
       mcp: el<HTMLInputElement>("cagent-mcp")?.checked !== false,
       session: el<HTMLSelectElement>("cagent-session")?.value ?? "keep",
+      permission: el<HTMLSelectElement>("cagent-permission")?.value ?? "ask",
       apiKeyOn: el<HTMLInputElement>("cagent-apikey-on")?.checked === true,
       apiKeyName: el<HTMLInputElement>("cagent-apikey-name")?.value ?? "",
       // Only a TYPED value travels — empty means keep what's stored.
