@@ -4729,11 +4729,16 @@ async function init(): Promise<void> {
         termBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
         termBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const agentCard = openList.find((x) => x.card && x.tile.kind === "agent");
-          const boundId = agentCard?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
-          if (!boundId) return;
-          if (agentCard) closeCard(agentCard, { keepSession: true });
-          (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(boundId);
+          void (async () => {
+            const agentCard = openList.find((x) => x.card && x.tile.kind === "agent");
+            const boundId = agentCard?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
+            if (!boundId) return;
+            // The chat's live CLI session follows into the terminal.
+            const chatId = (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId?.() ?? null;
+            const sid = chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId) : null;
+            if (agentCard) closeCard(agentCard, { keepSession: true });
+            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
+          })();
         });
         headActions.insertBefore(termBtn, headActions.firstChild);
       }
@@ -8601,7 +8606,16 @@ async function init(): Promise<void> {
       return b;
     };
     const chat = btn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-      () => (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id));
+      () => {
+        // The SAME conversation follows into chat: newest session in this
+        // agent's lane backfills the thread and binds the resume.
+        void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cwd: string }> }> } })
+          .glyphh?.cliSessionsList?.().then((r) => {
+            const newest = r?.ok ? r.sessions[0] : undefined;
+            (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+            if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id });
+          });
+      });
     const drips = btn("Drips", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
       () => document.getElementById("code-drips-btn")?.click());
     const recents = btn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,

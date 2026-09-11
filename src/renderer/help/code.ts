@@ -1279,6 +1279,34 @@ function syncSpaceAttrs(): void {
 // The workbench's web FS gate reads this to tell a CLOUD-pending landing (no
 // pod yet — quiet empty state) apart from a desktop source that's offline.
 (window as unknown as { __glyphhActiveSource?: () => Source }).__glyphhActiveSource = () => activeSource();
+// VIEW TOGGLES carry the conversation (his report, 2026-09-11): adopting a
+// CLI session backfills its transcript as the chat history and binds the
+// bridge to --resume it. Fresh opens never call this — the one-opener law
+// (zero state writes) applies to DOORS, not to session-preserving toggles.
+(window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId = () => currentId;
+(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string }) => void })
+  .__glyphhAdoptCliSession = (a) => {
+    void (async () => {
+      const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId);
+      if (!t?.ok) return;
+      let c = chats.find((x) => (x as { cliSessionId?: string }).cliSessionId === a.sessionId);
+      if (!c) {
+        c = { id: `c${Date.now().toString(36)}`, title: t.title || a.agentName, createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
+        (c as { cliSessionId?: string }).cliSessionId = a.sessionId;
+        if (t.cwd) { c.workdir = t.cwd; c.source = { kind: "local", path: t.cwd }; }
+        // The transcript IS the history — painted once, then the live bridge
+        // stream continues it.
+        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
+        chats.unshift(c);
+      }
+      currentId = c.id;
+      lastSession = c.id;
+      void window.glyphh.glyphhBindCliSession?.(c.id, a.sessionId);
+      void saveStore();
+      renderHistory();
+      renderThread();
+    })();
+  };
   // Space labels: the source chip's "Your spaces" list names a workspace by
   // the session that made it, when that session still exists here.
   (window as unknown as { __glyphhSessionTitleFor?: (id: string) => string }).__glyphhSessionTitleFor = (id: string) =>

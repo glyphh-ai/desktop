@@ -16,7 +16,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
@@ -339,6 +339,48 @@ export function registerGlyphhCliBridge(): void {
   });
   // The chat's CURRENT CLI session id — the terminal view resumes it.
   ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string }) => resumeIds.get(p?.chatId ?? "") ?? null);
+
+  // The CLI transcript IS the history (his report, 2026-09-11: switching
+  // views must carry the conversation). Plain text turns only — tool frames
+  // and meta stay in the terminal view where they belong.
+  ipcMain.handle("glyphh-agent-transcript", (_e, p: { sessionId: string }) => {
+    const base = `${String(p?.sessionId ?? "")}.jsonl`;
+    if (!/^[\w-]+\.jsonl$/.test(base)) return { ok: false, error: "bad session id" };
+    const root = path.join(homedir(), ".claude", "projects");
+    let file = "";
+    try {
+      for (const d of readdirSync(root)) {
+        const f = path.join(root, d, base);
+        if (existsSync(f)) { file = f; break; }
+      }
+    } catch { /* no store yet */ }
+    if (!file) return { ok: false, error: "session not found" };
+    const turns: Array<{ role: "user" | "assistant"; text: string }> = [];
+    let title = "";
+    let cwd = "";
+    try {
+      for (const line of readFileSync(file, "utf-8").split("\n")) {
+        if (!line.trim()) continue;
+        let j: Record<string, unknown>;
+        try { j = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+        if (!cwd && typeof j.cwd === "string") cwd = j.cwd;
+        if (!title && j.type === "summary" && typeof j.summary === "string") title = j.summary;
+        if (j.type !== "user" && j.type !== "assistant") continue;
+        const content = (j.message as { content?: unknown } | undefined)?.content;
+        let text = "";
+        if (typeof content === "string") text = content;
+        else if (Array.isArray(content)) {
+          text = (content as Array<{ type?: string; text?: string }>)
+            .filter((b) => b.type === "text" && b.text)
+            .map((b) => b.text as string).join("\n");
+        }
+        // Tool results ride user frames — text-less frames are the tool lane.
+        if (text.trim()) turns.push({ role: j.type as "user" | "assistant", text: text.trim() });
+      }
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    if (!title) title = turns.find((t) => t.role === "user")?.text.slice(0, 80) ?? "Session";
+    return { ok: true, title, cwd, turns: turns.slice(-200) };
+  });
 
   ipcMain.handle("glyphh-agent-sessions-load", () => loadSessionsFile());
   ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null }) => {

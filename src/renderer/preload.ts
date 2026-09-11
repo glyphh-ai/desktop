@@ -1081,6 +1081,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
   glyphhBindCliSession: (chatId: string, cliSessionId: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId }) as Promise<boolean>,
   glyphhCliSessionOf: (chatId: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId }) as Promise<string | null>,
+  glyphhCliTranscript: (sessionId: string) => ipcRenderer.invoke("glyphh-agent-transcript", { sessionId }) as Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>,
   /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
    *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */
   glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") =>
