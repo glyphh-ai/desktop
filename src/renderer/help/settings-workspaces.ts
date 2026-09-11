@@ -112,7 +112,7 @@ interface SdkWorkspaces {
     delete?: (id: string) => Promise<void>;
   };
   models?: { available?: () => Promise<Array<{ id: string; kind: string; name: string; providerSlug: string }>> };
-  orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean }>> };
+  orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>> };
   connections?: {
     pipedreamList?: () => Promise<Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>>;
     orgMcpList?: () => Promise<Array<{ slug: string; name: string; enabled?: boolean }>>;
@@ -1053,7 +1053,7 @@ export async function loadWorkspacesPanel(): Promise<void> {
   const [models, connectors, cap] = await Promise.all([
     // The MODELS PAGE's own list (rates included) — the role tab mirrors it,
     // active (supported) models only.
-    via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean }>>(
+    via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>>(
       (c) => c.orgModels?.list?.(), "orgModelsList"),
     via<{ pipedream?: Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>; mcp?: Array<{ slug: string; name: string; enabled?: boolean }> }>(
       // The two shared-connector lists are one read on the desktop; on web they
@@ -1066,7 +1066,9 @@ export async function loadWorkspacesPanel(): Promise<void> {
         : undefined), "workspacesOrgConnectors"),
     via<Record<string, string[]>>((c) => c.connections?.orgConnectionTools?.(), "workspacesOrgToolCap"),
   ]);
-  catalog = (models || []).filter((m) => m.supported !== false).map((m) => ({
+  // The role picker offers ONLY what the org actually reaches (his report,
+  // 2026-09-11): enabled provider AND supported model — never the raw catalog.
+  catalog = (models || []).filter((m) => m.supported !== false && m.providerEnabled !== false).map((m) => ({
     key: m.id, kind: m.kind, displayName: m.name, provider: m.providerSlug,
     inCr: m.inputCreditsPerMTok ?? 0, outCr: m.outputCreditsPerMTok ?? 0,
   }));
