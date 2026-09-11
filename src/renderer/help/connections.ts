@@ -121,9 +121,16 @@ export async function loadConnections(): Promise<void> {
 
 function renderConnectionsList(): void {
   const q = connSearch.trim().toLowerCase();
-  const scoped = requiredFilter
-    ? connections.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))
+  // PLATFORM = the ORG ADMIN surface (his order, 2026-09-11): org-level
+  // connections only — members' personal accounts never render here. The
+  // desktop member page keeps both axes.
+  const onPlatform = document.body.classList.contains("platform-shell");
+  const orgOnly = onPlatform
+    ? connections.filter((c) => (c as { org?: boolean }).org === true || (c as { kind?: string }).kind === "org")
     : connections;
+  const scoped = requiredFilter
+    ? orgOnly.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))
+    : orgOnly;
   const items = q
     ? scoped.filter((c) => (c.label || c.appName).toLowerCase().includes(q) || c.appSlug.toLowerCase().includes(q))
     : scoped;

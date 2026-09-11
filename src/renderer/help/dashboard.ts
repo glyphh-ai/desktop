@@ -49,9 +49,12 @@ function fmtInt(n: number): string {
   return Math.max(0, Math.round(n)).toLocaleString();
 }
 
-/** Credits on the chart axis/tooltip — whole numbers, thousands separated. */
+/** Credits — whole numbers get thousands separators; a FRACTION shows one
+ *  decimal (sub-credit spend is real: micro-credit metering means "0.2
+ *  credits" is the honest number, never a floored 0 beside a floored 49). */
 function fmtCredits(n: number): string {
-  return fmtInt(n);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? fmtInt(n) : (Math.round(n * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 /** "Jul 5" from a "YYYY-MM-DD" bucket (parsed as local, not UTC). */
@@ -664,13 +667,13 @@ export async function loadUsageMetrics(): Promise<void> {
       }
     } else {
       $a("dash-credits-label").textContent = "Organization credits";
-      $a("dash-credits-value").textContent = fmtInt(data.credits);
+      $a("dash-credits-value").textContent = fmtCredits(data.credits);
       $a("dash-credits-sub").textContent = data.allowance > 0
         ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
         : (planName ? `${planName} plan` : "available");
     }
 
-    $a("dash-spend-value").textContent = fmtInt(data.spendCredits);
+    $a("dash-spend-value").textContent = fmtCredits(data.spendCredits);
     $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);

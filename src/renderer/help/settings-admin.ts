@@ -1308,20 +1308,19 @@ async function refreshAdminUsage(): Promise<void> {
   const orgId = $<HTMLSelectElement>("pa-usage-org")?.value || undefined;
   const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(orgId ? { orgId } : {}) };
   // The rollups are independent — one failing must not blank the rest.
-  const [daysRes, usersRes, runtimesRes, revenueRes] = await Promise.allSettled([
+  const [daysRes, usersRes, revenueRes] = await Promise.allSettled([
     read((a) => a.usageDaily?.(query), (g) => g.adminUsageDaily?.(query)),
     read((a) => a.usageByUser?.(win, orgId ? { orgId } : {}), (g) => g.adminUsageByUser?.(win, orgId)),
-    read((a) => a.usageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
     read((a) => a.revenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminRevenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
   ]);
   const problems: string[] = [];
   const days: AdminUsageDay[] = daysRes.status === "fulfilled" ? (daysRes.value?.days || []) : (problems.push("daily series"), []);
   const users: AdminUsageByUser[] = usersRes.status === "fulfilled" ? (usersRes.value?.users || []) : (problems.push("top spenders"), []);
-  const runtimes: AdminUsageByRuntime[] = runtimesRes.status === "fulfilled" ? (runtimesRes.value?.runtimes || []) : (problems.push("runtime breakdown"), []);
+  const runtimes: AdminUsageByRuntime[] = [];   // runtime axis retired with the cloud runtime
   setErr("pa-usage-error", problems.length ? `Couldn't load the ${problems.join(", ")} — ${errText(
     (daysRes.status === "rejected" && daysRes.reason) ||
     (usersRes.status === "rejected" && usersRes.reason) ||
-    (runtimesRes.status === "rejected" && runtimesRes.reason))}` : "");
+    (revenueRes.status === "rejected" && revenueRes.reason))}` : "");
 
   const credits = days.reduce((s, d) => s + microToCredits(d.credits), 0);
   const requests = days.reduce((s, d) => s + (d.requests || 0), 0);

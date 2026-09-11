@@ -155,12 +155,15 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
             windowEnd: me.windowEnd || null,
           }
         : null,
-      credits: Math.floor((credits?.balance || 0) / MICRO),
+      // NOT floored (his report, 2026-09-11: "down 1 credit but 0 spent" —
+      // balance floored DOWN while spend floored to 0 on the same fraction).
+      // One decimal of truth; the renderer decides the display.
+      credits: Math.round(((credits?.balance || 0) / MICRO) * 10) / 10,
       // Whole credits already, straight off the plan record.
       allowance: plan?.monthlyCredits ?? Math.floor((credits?.allowance || 0) / MICRO),
       // UsageSummary.credits is already WHOLE credits (the summary endpoint
       // converts from micro server-side) — dividing again zeroed this card.
-      spendCredits: Math.round(usage?.credits || 0),
+      spendCredits: Math.round((usage?.credits || 0) * 10) / 10,
       // The summary counts ledger events — one per metered request.
       requests: usage?.events || 0,
       // Count live deployments only, exactly like the Apps tab: the seeded
