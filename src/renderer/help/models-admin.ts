@@ -57,7 +57,7 @@ interface CustomModelRow {
   active: boolean;
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;   // 15 everywhere — the one pagination size (his rule)
 
 let models: OrgModelRow[] = [];
 let providers: ProviderRow[] = [];
