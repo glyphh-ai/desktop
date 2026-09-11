@@ -44,10 +44,6 @@ import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
-import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
-import { initGDocs, type GDocPanel } from "./wb-gdoc.js";
-import { initGDrive, type GDrivePanel } from "./wb-drive.js";
-import { initGSheets, type GSheetPanel } from "./wb-sheets.js";
 import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
 import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
 
@@ -106,7 +102,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail" | "gdesign" | "gimage" | "gvideo" | "gsound";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -196,53 +192,12 @@ interface PreviewSlot {
   tabs?: PreviewTab[]; activeTab?: number;
 }
 
-/** gPoint — Glyphh power points. The deck library (~/.glyphh/gpoints) as
- *  cards; opening one flips the SAME slot into a reader (slide rail + stage).
- *  `file` is runtime-only — a restored layout always lands on the library.
- *  There are NO edit affordances anywhere: the agent builds decks. */
-interface GPointSlot {
-  id: number; view: "gpoint";
-  /** The open deck's filename inside the gpoints folder (unset = library). */
-  file?: string;
-  /** The open deck's title — the reader bar and slot header show it. */
-  title?: string;
-  /** Current slide — survives re-renders and seeds presenter mode. */
-  slideIdx?: number;
-  /** Reader slide-rail width (px) — the drag handle's setting. */
-  railWidth?: number;
-  sticky?: boolean;
-}
-/** Docs — Glyphh Office documents (markdown → paper). Library ↔ document;
- *  `file` is runtime-only, a restored layout lands on the library. */
-interface GDocSlot {
-  id: number; view: "gdoc";
-  file?: string;
-  title?: string;
-  sticky?: boolean;
-}
-/** Sheets — Glyphh Office workbooks (grid + shared formula engine). */
-interface GSheetSlot {
-  id: number; view: "gsheet";
-  file?: string;
-  title?: string;
-  tab?: number;
-  rowPage?: number;
-  page?: number;
-  sticky?: boolean;
-}
-
 /** Design — Glyphh Design systems (library ↔ studio; wb-design.ts). */
 interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 
 /** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
 interface GMediaSlot extends MediaSlotState { sticky?: boolean }
 
-/** Drive — folders + pointers over every Office file. */
-interface GDriveSlot {
-  id: number; view: "gdrive";
-  folderId?: string | null;
-  sticky?: boolean;
-}
 interface PlanSlot {
   id: number; view: "plan";
   sticky?: boolean;
@@ -269,7 +224,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -314,14 +269,10 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
-  gsheet:   { title: "Sheets",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
   gdesign:  { title: "Design",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg>` },
   gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
   gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
   gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
-  gdrive:   { title: "Drive",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
-  gdoc:     { title: "Docs",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
-  gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
 };
 
 // ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
@@ -992,7 +943,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -1158,7 +1109,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gdesign" | "gimage" | "gvideo" | "gsound");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1229,7 +1180,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1346,10 +1297,6 @@ async function init(): Promise<void> {
     if (view === "echo") return { id, view };
     if (view === "rail") return { id, view };
     if (view === "tasks") return { id, view };
-    if (view === "gpoint") return { id, view };
-    if (view === "gdoc") return { id, view };
-    if (view === "gdrive") return { id, view };
-    if (view === "gsheet") return { id, view };
     if (view === "gdesign") return { id, view };
     if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
@@ -1804,7 +1751,6 @@ async function init(): Promise<void> {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
     const title = slot.view === "app" ? slot.name
       : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
-      : slot.view === "gpoint" && slot.file ? (slot.title || meta.title)
       : meta.title;
     const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
@@ -1819,8 +1765,7 @@ async function init(): Promise<void> {
     // Pop-out: web panels (http apps, the Browser) and Slides can leave the
     // app for a standalone OS window. Glyphh apps stay — their file:// entry
     // needs the in-app webview capabilities.
-    const canPopout = slot.view === "gpoint"
-      || slot.view === "preview"
+    const canPopout = slot.view === "preview"
       || (slot.view === "app" && !slot.glyphh && /^https?:\/\//i.test(slot.url));
     const popoutBtn = canPopout
       ? `<button class="ws-icon-btn slot-popout" title="Pop out — its own window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
@@ -1859,13 +1804,9 @@ async function init(): Promise<void> {
       ev.stopPropagation();
       const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
       if (!yo?.panelPopout) return;
-      if (slot.view === "gpoint") {
-        void yo.panelPopout({ kind: "slides", file: slot.file, title: slot.title || "Slides" });
-      } else {
-        const url = slot.view === "app" ? slot.url : (slot as PreviewSlot).url || "";
-        if (!/^https?:\/\//i.test(url)) return;
-        void yo.panelPopout({ kind: "url", url, title });
-      }
+      const url = slot.view === "app" ? slot.url : (slot as PreviewSlot).url || "";
+      if (!/^https?:\/\//i.test(url)) return;
+      void yo.panelPopout({ kind: "url", url, title });
       closeSlot(slot.id);
     });
     wrap.querySelectorAll<HTMLElement>(".slot-rail-hide").forEach((btn) => {
@@ -1958,24 +1899,7 @@ async function init(): Promise<void> {
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
-    else if (slot.view === "gpoint") {
-      // Sync, inline-styled first paint — immune to CSS/theme/module state.
-      // The real render replaces it; if that dies, this text stays visible.
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
-      void renderGPointIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gdoc") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
-      void renderGDocIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gdrive") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
-      void renderGDriveIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gsheet") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
-      void renderGSheetIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gdesign") {
+    else if (slot.view === "gdesign") {
       body.classList.add("ws-gdesign-body");
       void renderDesignIntoSlot(body, slot, wrap);
     } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
@@ -2001,106 +1925,6 @@ async function init(): Promise<void> {
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
-
-  // ── gPoint — Glyphh power points (implementation: wb-gpoint.ts) ─────────
-  // The workbench lends the panel its confirm modal, a repaint and a live
-  // slot lookup; everything deck-shaped lives in the module. A lazy singleton
-  // behind a HOISTED renderer — the same shape as every other panel's render
-  // function, so the dispatch works no matter when the first render fires
-  // (a const assigned mid-init is in the TDZ for any render before it).
-  let gpointPanel: GPointPanel | null = null;
-  function gpointPanelInstance(): GPointPanel {
-    if (!gpointPanel) {
-      gpointPanel = initGPoint({
-        confirm: (o) => appConfirm(o),
-        slotById: (id) => {
-          // Rails first, then ECHO — the command center hosts tool slots on
-          // tile entries, not rails, so the reader's slide reports found no
-          // slot there: clicking a slide navigated the stage but slideIdx
-          // never synced, and Present started from the stale slide (his
-          // report, 2026-09-08).
-          const s = rails.flatMap((r) => r.slots).find((sl) => sl.id === id && sl.view === "gpoint")
-            ?? echoCtl?.toolSlotById(id);
-          return s?.view === "gpoint" ? (s as GPointSlot) : undefined;
-        },
-        icon: VIEW_META.gpoint.icon,
-      });
-    }
-    return gpointPanel;
-  }
-  function renderGPointIntoSlot(body: HTMLElement, slot: GPointSlot, wrap: HTMLElement): Promise<void> {
-    return gpointPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  // ── Docs — Glyphh Office documents (implementation: wb-gdoc.ts) ──────────
-  let gdocPanel: GDocPanel | null = null;
-  function gdocPanelInstance(): GDocPanel {
-    if (!gdocPanel) {
-      gdocPanel = initGDocs({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gdoc.icon,
-      });
-    }
-    return gdocPanel;
-  }
-  function renderGDocIntoSlot(body: HTMLElement, slot: GDocSlot, wrap: HTMLElement): Promise<void> {
-    return gdocPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  // ── Drive — folders + pointers over every Office file (wb-drive.ts) ──────
-  let gdrivePanel: GDrivePanel | null = null;
-  function gdrivePanelInstance(): GDrivePanel {
-    if (!gdrivePanel) {
-      gdrivePanel = initGDrive({
-        confirm: (o) => appConfirm(o),
-        icons: {
-          slides: VIEW_META.gpoint.icon,
-          docs: VIEW_META.gdoc.icon,
-          sheets: VIEW_META.gsheet.icon,
-          folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>`,
-        },
-        openFile: (kind, file, title) => {
-          if (kind === "slides") (window as unknown as { __wbOpenGPoint?: (f?: string, t?: string) => void }).__wbOpenGPoint?.(file, title);
-          else if (kind === "sheets") (window as unknown as { __wbOpenGSheet?: (f?: string, t?: string) => void }).__wbOpenGSheet?.(file, title);
-          else (window as unknown as { __wbOpenGDoc?: (f?: string, t?: string) => void }).__wbOpenGDoc?.(file, title);
-        },
-      });
-    }
-    return gdrivePanel;
-  }
-  function renderGDriveIntoSlot(body: HTMLElement, slot: GDriveSlot, wrap: HTMLElement): Promise<void> {
-    return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  // The Apps page's Drive work-panel card lands here — reuse the open Drive
-  // panel or place one (Drive has no file payload; the panel lists everything).
-  (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => {
-    openToolWithPayload("gdrive", () => {});
-  };
-
-  // ── Sheets — workbooks (wb-sheets.ts) ─────────────────────────────────────
-  let gsheetPanel: GSheetPanel | null = null;
-  function gsheetPanelInstance(): GSheetPanel {
-    if (!gsheetPanel) {
-      gsheetPanel = initGSheets({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gsheet.icon,
-      });
-    }
-    return gsheetPanel;
-  }
-  function renderGSheetIntoSlot(body: HTMLElement, slot: GSheetSlot, wrap: HTMLElement): Promise<void> {
-    return gsheetPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet = (file, title) => {
-    openToolWithPayload("gsheet", (t) => {
-      const sl = t as GSheetSlot;
-      if (!file) return;
-      gsheetPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
-    });
-  };
 
   // ── Design — org design systems (wb-design.ts) ───────────────────────────
   let gdesignPanel: DesignPanel | null = null;
@@ -2165,28 +1989,6 @@ async function init(): Promise<void> {
       if (existing >= 0) { sl.tabs[existing].content = content; sl.activeIdx = existing; return; }
       sl.tabs.push({ name, path, content, dirty: false });
       sl.activeIdx = sl.tabs.length - 1;
-    });
-  };
-
-  (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc = (file, title) => {
-    openToolWithPayload("gdoc", (t) => {
-      const sl = t as GDocSlot;
-      if (!file) return;
-      gdocPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
-    });
-  };
-
-  // The agent's open_gpoint (and any main-side opener) lands here: reuse the
-  // open gPoint panel or place one, optionally straight onto a deck.
-  (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint = (file, title) => {
-    openToolWithPayload("gpoint", (t) => {
-      const sl = t as GPointSlot;
-      if (!file) return;
-      gpointPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
     });
   };
 
@@ -3222,38 +3024,9 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "preview",
       };
-      // Slides — Glyphh Office's first app rides the wall beside the Browser.
-      const slidesTile: EchoTile = {
-        name: VIEW_META.gpoint.title,
-        slug: "gpoint",
-        glyphSvg: VIEW_META.gpoint.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gpoint",
-      };
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
       // (The mascot HOME tile is gone from the pages — the DOCK leads with
       // the glyphh mark now; two marks was one too many.)
-      const docsTile: EchoTile = {
-        name: VIEW_META.gdoc.title,
-        slug: "gdoc",
-        glyphSvg: VIEW_META.gdoc.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gdoc",
-      };
-      const driveTile: EchoTile = {
-        name: VIEW_META.gdrive.title,
-        slug: "gdrive",
-        glyphSvg: VIEW_META.gdrive.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gdrive",
-      };
-      const sheetsTile: EchoTile = {
-        name: VIEW_META.gsheet.title,
-        slug: "gsheet",
-        glyphSvg: VIEW_META.gsheet.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gsheet",
-      };
       const designTile: EchoTile = {
         name: VIEW_META.gdesign.title,
         slug: "gdesign",
@@ -3287,7 +3060,7 @@ async function init(): Promise<void> {
       // agent composer's ⋯ developer-tools menu (help/code.ts), a development
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
-      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, gimageTile, gvideoTile, gsoundTile]
+      const toolTiles = [designTile, gimageTile, gvideoTile, gsoundTile]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
       // AGENT tiles ride the wall like workspaces do — one per saved CLI config.
       cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
@@ -4875,8 +4648,7 @@ async function init(): Promise<void> {
       // Pop-out — same rule as the rail-slot header: web panels (http apps,
       // the Browser) and Slides can leave the app for a standalone OS window.
       // Glyphh apps stay (their file:// entry needs in-app webview caps).
-      const canPop = e.tile.toolView === "gpoint"
-        || e.tile.toolView === "preview"
+      const canPop = e.tile.toolView === "preview"
         || (e.tile.kind === "app" && !e.tile.glyphh && /^https?:\/\//i.test(e.tile.url || ""));
       if (canPop) {
         const popBtn = document.createElement("button");
@@ -4888,16 +4660,11 @@ async function init(): Promise<void> {
           ev.stopPropagation();
           const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
           if (!yo?.panelPopout) return;
-          if (e.tile.toolView === "gpoint") {
-            const s = e.toolSlot as GPointSlot | undefined;
-            void yo.panelPopout({ kind: "slides", file: s?.file, title: s?.title || "Slides" });
-          } else {
-            const url = e.tile.toolView === "preview"
-              ? ((e.toolSlot as PreviewSlot | undefined)?.url || "")
-              : (e.tile.url || "");
-            if (!/^https?:\/\//i.test(url)) return;
-            void yo.panelPopout({ kind: "url", url, title: e.tile.name });
-          }
+          const url = e.tile.toolView === "preview"
+            ? ((e.toolSlot as PreviewSlot | undefined)?.url || "")
+            : (e.tile.url || "");
+          if (!/^https?:\/\//i.test(url)) return;
+          void yo.panelPopout({ kind: "url", url, title: e.tile.name });
           closeCard(e);
         });
       }
@@ -5253,10 +5020,8 @@ async function init(): Promise<void> {
             // The agent cell mounts the agent as a PANEL — the layout owns
             // it, and the center composer steps off screen until the layout
             // lets go.
-            // HEAD's agent-seat removal survives the Office return: coding
-            // cells still skip; the office views rejoin the tool list.
             if (v === "coding") { continue; }   // the agent seat is gone
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -5668,22 +5433,7 @@ async function init(): Promise<void> {
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
-        else if (slot.view === "gpoint") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
-          void renderGPointIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdoc") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
-          void renderGDocIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdrive") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
-          void renderGDriveIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gsheet") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
-          void renderGSheetIntoSlot(body, slot, card);
-        } else if (slot.view === "gdesign") {
+        else if (slot.view === "gdesign") {
           body.classList.add("ws-gdesign-body");
           void renderDesignIntoSlot(body, slot, card);
         } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
@@ -6117,7 +5867,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -9521,7 +9271,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail", "gdesign", "gimage", "gvideo", "gsound"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9786,8 +9536,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
