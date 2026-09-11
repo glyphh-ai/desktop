@@ -9,7 +9,7 @@
  * untouched. Every write rides the SDK surface; the server enforces org_admin.
  */
 
-import { renderPaginationBar } from "./shared.js";
+import { renderPaginationBar, confirmAction } from "./shared.js";
 import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
@@ -502,20 +502,50 @@ function renderList(): void {
       });
       head.appendChild(lab);
     }
-    // ⋮ to the RIGHT of the toggle: Edit always; Delete only for CUSTOM
-    // providers (gateway providers are the platform's, not the org's).
-    const kebab = icoBtn(`<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`, "More");
-    kebab.addEventListener("click", (ev) => {
+    // KEY STATE (his order, 2026-09-11): a set key shows the green check; the
+    // red ✗ beside it confirms, then turns the provider OFF for the whole org
+    // (disable clears the key server-side — the message states exactly that).
+    if (e.gateway?.hasByokKey) {
+      const check = document.createElement("span");
+      check.className = "mdl-key-check";
+      check.title = "API key is set";
+      check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      const removeKey = icoBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`, "Remove the API key");
+      removeKey.classList.add("mdl-key-remove");
+      removeKey.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void (async () => {
+          const sure = await confirmAction({
+            title: `Remove the ${e.gateway!.name} API key?`,
+            body: "Removing the key turns off this provider for all users in your organization.",
+            confirmLabel: "Remove key",
+            danger: true,
+          });
+          if (!sure) return;
+          const r = await window.glyphh.orgProviderDisable(e.gateway!.slug);
+          if (!r?.ok) { showError(r?.error || "Couldn't remove the key"); return; }
+          e.gateway!.hasByokKey = false;
+          e.gateway!.enabledForOrg = false;
+          showError("");
+          renderList();
+        })();
+      });
+      head.appendChild(check);
+      head.appendChild(removeKey);
+    }
+    // Edit — the Catalog page's pencil, replacing the old ⋮ menu (his order).
+    const editBtn = icoBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`, "Edit");
+    editBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      openRowMenu(kebab, [
-        { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => {
-          if (e.gateway) void editGatewayProviderModal(e.gateway);
-          else void editCustomProviderModal(e.customProv!);
-        } },
-        ...(e.customProv ? [{ icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => { void deleteProviderConfirm(e.customProv!); } }] : []),
-      ]);
+      if (e.gateway) void editGatewayProviderModal(e.gateway);
+      else void editCustomProviderModal(e.customProv!);
     });
-    head.appendChild(kebab);
+    head.appendChild(editBtn);
+    if (e.customProv) {
+      const delBtn = icoBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`, "Delete provider");
+      delBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
+      head.appendChild(delBtn);
+    }
     head.addEventListener("click", () => {
       if (expanded.has(e.key)) expanded.delete(e.key);
       else expanded.add(e.key);

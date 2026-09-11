@@ -20291,3 +20291,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* Agent card dev-tools kebab — sits with the head's icon buttons. */
 .echo-card-devtools svg { width: 15px; height: 15px; }
+
+/* Org Models — the vendor row's key state (✓ set · ✗ removes + disables) */
+.mdl-key-check { display: inline-flex; width: 18px; height: 18px; color: #2ecc71; flex: none; }
+.mdl-key-check svg { width: 100%; height: 100%; }
+.mdl-key-remove { color: #f43f5e; }
