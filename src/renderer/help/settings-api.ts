@@ -42,6 +42,21 @@ export interface Subscription {
   maxSeats: number;
 }
 
+/** Micro-credits (1 credit = 1e6). */
+export interface CreditsBreakdown {
+  balance: number;
+  allowance: number;
+  grants: number;
+  purchases: number;
+}
+
+/** Micro-credits. */
+export interface Autotopup {
+  enabled: boolean;
+  thresholdCredits: number;
+  topupCredits: number;
+}
+
 /** USD cents; `created` is unix SECONDS. */
 export interface Invoice {
   id: string;
@@ -117,14 +132,22 @@ interface SdkAccountHandle {
   billing?: {
     plans?: () => Promise<BillingPlan[]>;
     status?: () => Promise<Subscription>;
+    credits?: () => Promise<CreditsBreakdown>;
     invoices?: () => Promise<Invoice[]>;
+    autotopup?: () => Promise<Autotopup>;
+    setAutotopup?: (input: Autotopup) => Promise<Autotopup>;
     subscribe?: (tier: string) => Promise<{ url: string }>;
     changePlan?: (tier: string) => Promise<PlanChange>;
+    topup?: (input: { credits: number; embedded?: boolean }) => Promise<{ url?: string; clientSecret?: string }>;
     config?: () => Promise<{ publishableKey: string | null }>;
     portal?: () => Promise<{ url: string }>;
   };
   org?: {
     get?: () => Promise<Org>; update?: (patch: OrgUpdate) => Promise<Org>;
+    domains?: () => Promise<OrgDomain[]>; addDomain?: (domain: string) => Promise<OrgDomain>;
+    verifyDomain?: (id: string) => Promise<OrgDomain>; removeDomain?: (id: string) => Promise<void>;
+    setDomainApexApp?: (id: string, appId: string | null) => Promise<OrgDomain>;
+    setDomainWildcard?: (id: string, wildcard: boolean) => Promise<OrgDomain>;
   };
   profile?: { get?: () => Promise<Profile>; update?: (patch: ProfileUpdate) => Promise<Profile> };
   members?: {
@@ -139,15 +162,40 @@ interface SdkAccountHandle {
   };
 }
 
+/** One org white-label domain (server docs/custom-domains.md). */
+export interface OrgDomain {
+  apexAppId?: string | null;
+  wildcard?: boolean;
+  id: string;
+  domain: string;
+  status: string;
+  sso: string | null;
+  error: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  dns: Array<{ type: string; name: string; value: string }>;
+  hostnames: Record<string, string>;
+}
+
 interface DesktopAccountIpc {
   billingPlans?: () => Promise<BillingPlan[]>;
   billingStatus?: () => Promise<Subscription>;
+  billingCredits?: () => Promise<CreditsBreakdown>;
   billingInvoices?: () => Promise<Invoice[]>;
+  billingAutotopupGet?: () => Promise<Autotopup>;
+  billingAutotopupSet?: (input: Autotopup) => Promise<{ ok: boolean; config?: Autotopup; error?: string }>;
   billingSubscribe?: (tier: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
   billingChangePlan?: (tier: string) => Promise<{ ok: boolean; change?: PlanChange; error?: string }>;
+  billingTopup?: (credits: number, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
   billingConfig?: () => Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>;
   billingPortal?: () => Promise<{ ok: boolean; url?: string; error?: string }>;
   accountOrgGet?: () => Promise<Org>;
+  orgDomainsList?: () => Promise<OrgDomain[]>;
+  orgDomainAdd?: (domain: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainVerify?: (id: string) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainApexSet?: (id: string, appId: string | null) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainWildcardSet?: (id: string, wildcard: boolean) => Promise<{ ok: boolean; domain?: OrgDomain; error?: string }>;
+  orgDomainRemove?: (id: string) => Promise<{ ok: boolean; removed?: boolean; error?: string }>;
   accountOrgUpdate?: (patch: OrgUpdate) => Promise<{ ok: boolean; org?: Org; error?: string }>;
   accountProfileGet?: () => Promise<Profile>;
   accountProfileUpdate?: (patch: ProfileUpdate) => Promise<{ ok: boolean; profile?: Profile; error?: string }>;
@@ -164,14 +212,26 @@ interface DesktopAccountIpc {
 export interface AccountApi {
   plans(): Promise<BillingPlan[]>;
   status(): Promise<Subscription>;
+  credits(): Promise<CreditsBreakdown>;
   invoices(): Promise<Invoice[]>;
+  autotopup(): Promise<Autotopup>;
+  setAutotopup(input: Autotopup): Promise<WriteResult<Autotopup>>;
   subscribe(tier: string): Promise<WriteResult<string>>;
   changePlan(tier: string): Promise<WriteResult<PlanChange>>;
+  topup(microCredits: number): Promise<WriteResult<string>>;
+  /** Embedded Checkout: a client secret to mount in-app. */
+  topupEmbedded(microCredits: number): Promise<WriteResult<string>>;
   /** The public Stripe key, or null → embedded unavailable, use hosted. */
   billingConfig(): Promise<string | null>;
   portal(): Promise<WriteResult<string>>;
   org(): Promise<Org>;
   updateOrg(patch: OrgUpdate): Promise<WriteResult<Org>>;
+  orgDomains(): Promise<OrgDomain[]>;
+  addOrgDomain(domain: string): Promise<WriteResult<OrgDomain>>;
+  verifyOrgDomain(id: string): Promise<WriteResult<OrgDomain>>;
+  removeOrgDomain(id: string): Promise<WriteResult<unknown>>;
+  setOrgDomainApexApp(id: string, appId: string | null): Promise<WriteResult<OrgDomain>>;
+  setOrgDomainWildcard(id: string, wildcard: boolean): Promise<WriteResult<OrgDomain>>;
   orgApps(): Promise<Array<{ id: string; name: string; slug: string }>>;
   profile(): Promise<Profile>;
   updateProfile(patch: ProfileUpdate): Promise<WriteResult<Profile>>;
@@ -238,12 +298,23 @@ export function accountApi(): AccountApi {
     return {
       plans: () => need(b.plans, b),
       status: () => need(b.status, b),
+      credits: () => need(b.credits, b),
       invoices: () => need(b.invoices, b),
+      autotopup: () => need(b.autotopup, b),
+      setAutotopup: (input) => web(b.setAutotopup && (() => b.setAutotopup!(input))),
       subscribe: async (tier) => {
         const r = await web(b.subscribe && (() => b.subscribe!(tier)));
         return r.ok ? { ok: true, data: r.data.url } : r;
       },
       changePlan: (tier) => web(b.changePlan && (() => b.changePlan!(tier))),
+      topup: async (micro) => {
+        const r = await web(b.topup && (() => b.topup!({ credits: micro })));
+        return r.ok && r.data.url ? { ok: true, data: r.data.url } : r.ok ? { ok: false, error: "no checkout url" } : r;
+      },
+      topupEmbedded: async (micro) => {
+        const r = await web(b.topup && (() => b.topup!({ credits: micro, embedded: true })));
+        return r.ok && r.data.clientSecret ? { ok: true, data: r.data.clientSecret } : r.ok ? { ok: false, error: "no client secret" } : r;
+      },
       billingConfig: async () => {
         try { return b.config ? (await b.config()).publishableKey : null; } catch { return null; }
       },
@@ -253,6 +324,12 @@ export function accountApi(): AccountApi {
       },
       org: () => need(o?.get, o),
       updateOrg: (patch) => web(o?.update && (() => o.update!(patch))),
+      orgDomains: () => need(o?.domains, o),
+      addOrgDomain: (domain) => web(o?.addDomain && (() => o.addDomain!(domain))),
+      verifyOrgDomain: (id) => web(o?.verifyDomain && (() => o.verifyDomain!(id))),
+      removeOrgDomain: (id) => web(o?.removeDomain && (() => o.removeDomain!(id))),
+      setOrgDomainApexApp: (id, appId) => web(o?.setDomainApexApp && (() => o.setDomainApexApp!(id, appId))),
+      setOrgDomainWildcard: (id, wildcard) => web(o?.setDomainWildcard && (() => o.setDomainWildcard!(id, wildcard))),
       orgApps: async () => {
         const apps = (window as unknown as { glyphhSdk?: { apps?: { mine?: () => Promise<Array<{ id: string; name: string; slug: string }>> } } }).glyphhSdk?.apps;
         return apps?.mine ? (await apps.mine()).map((a) => ({ id: a.id, name: a.name, slug: a.slug })) : [];
@@ -274,15 +351,26 @@ export function accountApi(): AccountApi {
   return {
     plans: () => need(g?.billingPlans, g),
     status: () => need(g?.billingStatus, g),
+    credits: () => need(g?.billingCredits, g),
     invoices: () => need(g?.billingInvoices, g),
+    autotopup: () => need(g?.billingAutotopupGet, g),
+    setAutotopup: (input) => ipc(g?.billingAutotopupSet && (() => g.billingAutotopupSet!(input)), "config"),
     subscribe: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier)), "url"),
     changePlan: (tier) => ipc(g?.billingChangePlan && (() => g.billingChangePlan!(tier)), "change"),
+    topup: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro)), "url"),
+    topupEmbedded: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro, true)), "clientSecret"),
     billingConfig: async () => {
       try { const r = await g?.billingConfig?.(); return r?.ok ? (r.publishableKey ?? null) : null; } catch { return null; }
     },
     portal: () => ipc(g?.billingPortal && (() => g.billingPortal!()), "url"),
     org: () => need(g?.accountOrgGet, g),
     updateOrg: (patch) => ipc(g?.accountOrgUpdate && (() => g.accountOrgUpdate!(patch)), "org"),
+    orgDomains: () => need(g?.orgDomainsList, g),
+    addOrgDomain: (domain) => ipc(g?.orgDomainAdd && (() => g.orgDomainAdd!(domain)), "domain"),
+    verifyOrgDomain: (id) => ipc(g?.orgDomainVerify && (() => g.orgDomainVerify!(id)), "domain"),
+    removeOrgDomain: (id) => ipc(g?.orgDomainRemove && (() => g.orgDomainRemove!(id)), "removed"),
+    setOrgDomainApexApp: (id, appId) => ipc(g?.orgDomainApexSet && (() => g.orgDomainApexSet!(id, appId)), "domain"),
+    setOrgDomainWildcard: (id, wildcard) => ipc(g?.orgDomainWildcardSet && (() => g.orgDomainWildcardSet!(id, wildcard)), "domain"),
     orgApps: async () => {
       const list = (window as unknown as { glyphh?: { panelAppsList?: () => Promise<Array<{ id: string; name: string; slug: string; appArchetype?: string | null }>> } }).glyphh?.panelAppsList;
       if (!list) return [];
@@ -307,8 +395,33 @@ export function accountApi(): AccountApi {
 export const MICRO = 1_000_000;
 
 /** Top-up rate — DISPLAY only; the server prices the actual purchase. */
+export const USD_PER_CREDIT = 0.024;
+export const creditsForUsd = (usd: number): number => Math.floor((usd || 0) / USD_PER_CREDIT);
 /** VOLUME DISCOUNTS — mirrors the server's TOPUP_DISCOUNT_TIERS (pricing.ts);
  *  thresholds in credits, fraction off the flat rate. Keep them in sync. */
+export const TOPUP_DISCOUNT_TIERS: ReadonlyArray<readonly [number, number]> = [
+  [10_000, 0.30],
+  [5_000, 0.20],
+  [2_500, 0.10],
+];
+export const topupDiscount = (credits: number): number => {
+  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) if (credits >= min) return frac;
+  return 0;
+};
+/** The DISCOUNTED price of a credit bucket, in whole USD (display). */
+export const usdForCredits = (credits: number): number =>
+  Math.round(credits * USD_PER_CREDIT * (1 - topupDiscount(credits)) * 100) / 100;
+/** Credit buckets for the top-up cards (the price derives per tier). */
+export const TOPUP_CREDIT_BUCKETS = [1_000, 2_500, 5_000, 10_000];
+/** Credits a CUSTOM USD amount buys — the best tier the resulting size earns. */
+export const creditsForUsdTiered = (usd: number): number => {
+  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) {
+    const c = Math.floor((usd || 0) / (USD_PER_CREDIT * (1 - frac)));
+    if (c >= min) return c;
+  }
+  return creditsForUsd(usd);
+};
+
 export const toCredits = (micro: number): number => Math.floor((micro || 0) / MICRO);
 export const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
 

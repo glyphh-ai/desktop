@@ -4,7 +4,7 @@
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
@@ -13,7 +13,7 @@ import { loadCliAgents, initCliAgentsEvents } from "./cli-agents.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel } from "./settings.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
@@ -808,6 +808,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
   else if (sub === "workspaces") void loadWorkspacesPanel();
+  else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   // Organization › General — the org record page (admin-gated nav).
   else if (sub === "org-general") void loadOrgPanel();
   else if (sub === "account") void loadProfile();

@@ -4,7 +4,7 @@
 
 import { confirmAction } from "./shared.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
-import { initBilling, loadBilling } from "./settings-billing.js";
+import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
 import { accountApi } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initMembers, loadMembers } from "./settings-members.js";
@@ -646,3 +646,109 @@ async function loadSettings() {
 export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };
+
+/** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
+ *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
+let uaWired = false;
+
+export async function loadUsageAppView(): Promise<void> {
+  const el = (id: string) => document.getElementById(id);
+  if (!el("usage-app-view")) return;
+  closeBuyForm();
+  if (!uaWired) {
+    uaWired = true;
+    el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
+    // Buy usage credits → the shared Need-more-usage form (settings-billing
+    // owns it; Billing opens the same one breadcrumbed ← Billing).
+    el("ua-buy")?.addEventListener("click", () => openBuyForm("usage"));
+    // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
+    const showLimitForm = (on: boolean) => {
+      el("ua-main")?.classList.toggle("hidden", on);
+      el("ua-limit-form")?.classList.toggle("hidden", !on);
+    };
+    el("ua-adjust-limit")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+        (el("ua-limit-input") as HTMLInputElement).value = cap > 0 ? String(cap) : "";
+        showLimitForm(true);
+        (el("ua-limit-input") as HTMLInputElement | null)?.focus();
+      })();
+    });
+    el("ua-limit-back")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-cancel")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-save")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Math.max(0, Number((el("ua-limit-input") as HTMLInputElement).value) || 0);
+        await window.glyphh.setPreference?.("billingMonthlyCapUsd", cap);
+        const capEl = el("ua-cap");
+        if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
+        showLimitForm(false);
+      })();
+    });
+    const toggle = el("ua-autotopup") as HTMLInputElement | null;
+    toggle?.addEventListener("change", () => {
+      void (async () => {
+        const api = accountApi();
+        try {
+          const cfg = await api.autotopup();
+          await api.setAutotopup({ ...cfg, enabled: toggle.checked });
+        } catch { toggle.checked = !toggle.checked; }
+        const st = el("ua-reload-state");
+        if (st) st.textContent = toggle.checked ? "On" : "Off";
+      })();
+    });
+  }
+  // The ONE account transport (SDK on web, IPC on desktop) — the page is
+  // identical on both surfaces by construction.
+  const api = accountApi();
+  // MEMBERS see their own usage and nothing org-financial (his scoping order,
+  // 2026-08-24): no org balance, no buying, no auto top-up. The server 403s
+  // the billing reads/writes for them regardless — this hides the controls.
+  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
+    document.querySelector(".ua-credits-toggle")?.classList.toggle("hidden", !admin);
+    el("ua-balance-row")?.classList.toggle("hidden", !admin);
+  }).catch(() => { /* signed out — the page renders read-only anyway */ });
+  try {
+    // dashboardData is the LEDGER truth on both surfaces (desktop home-ipc /
+    // the web contract): month-to-date spend from usage.summary, the plan's
+    // name + allowance off the catalog, the org balance. The old derivation
+    // (allowance − remaining grant credits) INVENTED spend after any
+    // mid-cycle plan change — a fresh Basic upgrade read as "1,800 spent".
+    const [data, topup] = await Promise.all([
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; credits?: number; allowance?: number; spendCredits?: number } | undefined>,
+      api.autotopup().catch(() => null),
+    ]);
+    const planEl = el("ua-plan");
+    if (planEl && data?.plan) {
+      planEl.textContent = data.plan.includes(" ") ? data.plan
+        : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
+    }
+    const allowance = Math.max(0, data?.allowance ?? 0);      // whole credits
+    const used = Math.max(0, Math.round(data?.spendCredits ?? 0));
+    const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
+    const fill = el("ua-month-fill");
+    if (fill) fill.style.width = `${pct}%`;
+    const pctEl = el("ua-month-pct");
+    if (pctEl) pctEl.textContent = allowance > 0 ? `${pct}% used` : "—";
+    const reset = new Date();
+    reset.setMonth(reset.getMonth() + 1, 1);
+    const resetEl = el("ua-month-reset");
+    if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+    const spentEl = el("ua-spent");
+    if (spentEl) spentEl.textContent = `${used.toLocaleString()} credits`;
+    const spentReset = el("ua-spent-reset");
+    if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
+    const balEl = el("ua-balance");
+    if (balEl) balEl.textContent = Math.max(0, data?.credits ?? 0).toLocaleString();
+    const t = el("ua-autotopup") as HTMLInputElement | null;
+    if (t && topup) t.checked = !!topup.enabled;
+    const reload = el("ua-reload-state");
+    if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
+    const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+    const capEl = el("ua-cap");
+    if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
+    const upd = el("ua-updated");
+    if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  } catch { /* offline — the view keeps its dashes */ }
+}
