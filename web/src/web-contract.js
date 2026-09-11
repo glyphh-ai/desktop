@@ -558,12 +558,22 @@ export function buildContract(client, deps) {
       const popup = window.open('about:blank', '_blank', 'popup,width=520,height=720');
       if (!popup) return { ok: false, error: 'Popup blocked — allow popups for this site' };
       try {
-        const before = new Set((await client.connections.personalList().catch(() => [])).map((c) => c.id));
-        const session = await client.connections.personalConnect(appSlug);
+        // SCOPE follows the SURFACE (his report, 2026-09-11: an org admin's
+        // "org level" connect landed as a PERSONAL account): the platform
+        // shell is the ORG admin surface — connect the org account there;
+        // everywhere else stays the member's own.
+        const onPlatform = document.body.classList.contains('platform-shell');
+        const listNow = () => onPlatform
+          ? client.connections.pipedreamList().catch(() => []).then((r) => (Array.isArray(r) ? r : []))
+          : client.connections.personalList().catch(() => []);
+        const before = new Set((await listNow()).map((c) => c.id));
+        const session = onPlatform
+          ? await client.connections.pipedreamConnect(appSlug)
+          : await client.connections.personalConnect(appSlug);
         if (!session?.connectUrl) { popup.close(); return { ok: false, error: 'Failed to get connect token' }; }
         popup.location = session.connectUrl;
         const landed = async () => {
-          const now = await client.connections.personalList().catch(() => []);
+          const now = await listNow();
           return now.some((c) => !before.has(c.id));
         };
         for (let i = 0; i < 150; i++) {                     // <= 5 minutes
