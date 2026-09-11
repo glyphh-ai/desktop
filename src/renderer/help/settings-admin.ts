@@ -967,7 +967,6 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   set("pa-plan-credits", String(microToCredits(p.included_credits)));
   set("pa-plan-seats", String(p.max_seats || 1));
   set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
-  set("pa-plan-models", (p.allowed_models ?? []).join("\n"));
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = p.active;
   const priceInput = $<HTMLInputElement>("pa-price-new");
@@ -1013,10 +1012,6 @@ async function savePlan(): Promise<void> {
       ? Math.round(Number(inputVal("pa-plan-rpm")))
       : null,
     // One catalog id per line; empty clears the list (every model allowed).
-    allowed_models: (() => {
-      const ids = inputVal("pa-plan-models").split("\n").map((l) => l.trim()).filter(Boolean);
-      return ids.length ? ids : null;
-    })(),
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
   if (btn) btn.disabled = true;
