@@ -7,6 +7,7 @@
  */
 
 import "dotenv/config";
+import { ConnectorManager } from "./connectors";
 
 // Fix process.cwd() in packaged Electron apps — .asar is a file, not a directory,
 // which causes ENOTDIR when child_process.spawn inherits cwd.
@@ -106,6 +107,7 @@ import { migrateFromFiles } from "./stores/migrate-from-files";
 
 
 let mainWindow: BrowserWindow | null = null;
+let connectorManager: ConnectorManager | null = null;
 let homeView: HomeView;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
@@ -978,6 +980,15 @@ async function boot() {
   registerCliAgentsIpc();
   registerLocalLibraryIpc();
   registerMcpConnectionsIpc();
+  // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
+  connectorManager = new ConnectorManager();
+  connectorManager.on("changed", () => {
+    mainWindow?.webContents.send("connectors-changed");
+  });
+  connectorManager.on("connect-progress", (p) => {
+    mainWindow?.webContents.send("connectors-connect-progress", p);
+  });
+  connectorManager.init().catch((err) => console.error("[connectors]", err instanceof Error ? err.message : err));
   startLoopScheduler();
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
@@ -1000,6 +1011,7 @@ async function boot() {
 
   // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
   registerHomeIpc({
+    connectorManager,
   });
 
   ipcMain.on("open-external", (_e, url: string) => {

@@ -6,6 +6,7 @@
  */
 
 import { ipcMain, webContents } from "electron";
+import type { ConnectorManager } from "./connectors";
 import {
   syncLocalMcpServer,
   stopLocalMcpServer,
@@ -20,6 +21,8 @@ import { getClient } from "./glyphh-client";
 import { ForbiddenError } from "@glyphh/sdk";
 
 interface HomeIpcDeps {
+  /** Pipedream Connect surface (catalog, OAuth connect, accounts) — null pre-init. */
+  connectorManager: ConnectorManager | null;
 }
 
 export function registerHomeIpc(deps: HomeIpcDeps): void {
@@ -186,4 +189,31 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
 
 
+
+  // ── Connectors (Pipedream Connect) — RESTORED 2026-09-11 ────────────────
+  const cm = () => deps.connectorManager;
+  ipcMain.handle("connectors-get-apps", async (_e, search?: string, offset?: number) => {
+    if (!cm()) return { apps: [], hasMore: false };
+    return cm()!.getApps(search, offset);
+  });
+  ipcMain.handle("connectors-get-accounts", async () => {
+    if (!cm()) return [];
+    return cm()!.getAccounts();
+  });
+  ipcMain.handle("connectors-connect", async (_e, appSlug: string) => {
+    if (!cm()) return { ok: false, error: "Not initialized" };
+    return cm()!.connectApp(appSlug);
+  });
+  ipcMain.handle("connectors-disconnect", async (_e, accountId: string) => {
+    if (!cm()) return false;
+    return cm()!.disconnectAccount(accountId);
+  });
+  ipcMain.handle("connectors-refresh-mcp", async () => {
+    if (!cm()) return { ok: false, error: "Not initialized", toolCount: 0 };
+    return cm()!.refreshMcp();
+  });
+  ipcMain.handle("connectors-list-tools", async () => {
+    if (!cm()) return [];
+    return cm()!.listTools();
+  });
 }

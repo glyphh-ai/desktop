@@ -1,4 +1,5 @@
 import { app, ipcMain, dialog, BrowserWindow, screen, net } from "electron";
+import { getClient } from "./glyphh-client";
 import { refreshForceWebSlugs } from "./force-web";
 import fs from "fs";
 import path from "path";
@@ -434,5 +435,119 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     }
 
     return { ok: false, error: "This bundle uses the legacy local-app format, which is no longer supported." };
+  });
+
+  // ── Connections (first-class connected accounts) ─────────────
+  // Desktop is a MEMBER surface: the list is the caller's own (personal)
+  // connections plus the org-shared ones (read-only); every mutation acts on
+  // a PERSONAL connection.
+  //
+  // The renderer's Connection contract predates the SDK and is keyed by `id`
+  // with Pipedream-flavoured fields, while the SDK addresses connections by
+  // `slug`. Adapt here — the IPC shape is the stable boundary — and keep an
+  // id→slug index so the per-connection handlers can resolve either.
+  interface ConnRef { slug: string; org: boolean }
+  const connIndex = new Map<string, ConnRef>();
+
+  ipcMain.handle("connections-list", async () => {
+    try {
+      const client = getClient();
+      // Personal rows carry the rich fields (id, label, health); the resolved
+      // list contributes the org-shared ones the member may use but not edit.
+      const [personal, resolved, live] = await Promise.all([
+        client.connections.personalList(),
+        client.connections.list().catch(() => []),
+        // Governance truth: what the caller's agents can ACTUALLY call.
+        // Null on failure → badges stay off rather than false-accusing.
+        client.connections.resolvedTools().then((r) => r.connections).catch(() => null),
+      ]);
+      // A connection that's connected but absent from the resolved catalog is
+      // BLOCKED by policy; present with zero tools = all its tools are blocked.
+      const governance = (slug: string): { agentAllowed?: boolean; agentTools?: number; agentAvailable?: number } => {
+        if (!live) return {};
+        const conn = live.find((x) => x.slug === slug);
+        if (!conn) return { agentAllowed: false, agentTools: 0, agentAvailable: 0 };
+        return { agentAllowed: true, agentTools: conn.tools.length, agentAvailable: conn.availableTools.length };
+      };
+      connIndex.clear();
+      const connections = personal.map((c) => {
+        connIndex.set(c.id, { slug: c.appSlug, org: false });
+        return {
+          id: c.id,
+          accountId: c.id,
+          appSlug: c.appSlug,
+          appName: c.appName || c.name || c.appSlug,
+          label: c.label,
+          healthy: c.healthy,
+          hiddenTools: [] as string[],
+          createdAt: "",
+          org: false,
+          ...governance(c.appSlug),
+        };
+      });
+      const personalSlugs = new Set(personal.map((c) => c.appSlug));
+      for (const c of resolved) {
+        // Custom MCP renders from its own card list; only connector accounts here.
+        if (c.kind !== "pipedream" || c.scope !== "org" || personalSlugs.has(c.slug)) continue;
+        connIndex.set(c.slug, { slug: c.slug, org: true });
+        connections.push({
+          id: c.slug,
+          accountId: c.slug,
+          appSlug: c.slug,
+          appName: c.name || c.slug,
+          label: null,
+          healthy: c.enabled,
+          hiddenTools: [],
+          createdAt: "",
+          org: true,
+          ...governance(c.slug),
+        });
+      }
+      return { ok: true, connections };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), connections: [] }; }
+  });
+
+  /** Resolve a renderer connection id (or a bare slug) to its SDK slug. */
+  const connSlug = (id: string): string => connIndex.get(id)?.slug ?? id;
+
+  ipcMain.handle("connection-rename", async (_e, id: string, label: string) => {
+    try { return { ok: true, connection: await getClient().connections.renamePersonalConnection(id, label) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("connection-tools-list", async (_e, id: string) => {
+    try {
+      const slug = connSlug(id);
+      const { connections } = await getClient().connections.resolvedTools();
+      const conn = connections.find((c) => c.slug === slug);
+      if (!conn) return { ok: true, tools: [] };
+      // The server stores what's ALLOWED; the renderer speaks hides.
+      const allowed = new Set(conn.tools.map((t) => t.key));
+      return {
+        ok: true,
+        tools: conn.availableTools.map((t) => ({
+          name: t.key,
+          description: t.description ?? t.name,
+          hidden: !allowed.has(t.key),
+        })),
+      };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), tools: [] }; }
+  });
+  ipcMain.handle("connection-tools-set", async (_e, id: string, hiddenTools: string[]) => {
+    try {
+      const slug = connSlug(id);
+      const { connections } = await getClient().connections.resolvedTools();
+      const conn = connections.find((c) => c.slug === slug);
+      const hidden = new Set(hiddenTools);
+      const allowed = (conn?.availableTools ?? []).map((t) => t.key).filter((k) => !hidden.has(k));
+      await getClient().connections.setPersonalConnectionTools(slug, allowed);
+      return { ok: true, connection: conn ?? null };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("connection-disconnect", async (_e, id: string) => {
+    try { const r = await getClient().connections.personalDisconnect(id); return { ok: r?.ok !== false }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 }

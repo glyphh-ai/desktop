@@ -29,8 +29,6 @@ const ENVELOPE = [
   "app-release-notes", "app-release-org-review", "app-release-promote", "app-releases",
   "app-server-deploy", "app-server-deployments", "app-server-destroy", "app-servers-list",
   "app-version-set",
-  "connection-disconnect", "connection-rename", "connection-tools-list", "connection-tools-set",
-  "connectors-connect", "connectors-disconnect", "connectors-list-tools", "connectors-refresh-mcp",
   "files:r2-diff",
   "glyphh-agent-approval-respond", "glyphh-agent-ask-respond", "glyphh-agent-connect-respond",
   "glyphh-agent-context-usage", "glyphh-agent-inject", "glyphh-agent-set-permission", "glyphh-agent-stop",
@@ -126,7 +124,6 @@ const ENVELOPE = [
 
 /** Channels whose callers destructure a bare array. */
 const EMPTY_LIST = [
-  "connections-list", "connectors-get-accounts",
   "glyphh-threads-list",
 ] as const;
 
@@ -138,7 +135,6 @@ export function registerAgentStubs(): void {
     ipcMain.handle(ch, () => []);
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
-  ipcMain.handle("connectors-get-apps", () => ({ apps: [], hasMore: false }));
   // The composer's session cache — an empty store, honestly.
   ipcMain.handle("glyphh-agent-sessions-load", () => ({ chats: [], currentId: null }));
   // Background/resident mode is gone — report it off, refuse to arm it.
