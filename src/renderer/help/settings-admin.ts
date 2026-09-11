@@ -24,6 +24,7 @@
 
 import { escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
+import { icoBtn, MDL_SVG } from "./models-admin.js";
 
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
@@ -122,6 +123,9 @@ interface SdkAdmin {
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
+  providerKeys?: (slug: string) => Promise<{ keys: AdminProviderKey[] }>;
+  addProviderKey?: (slug: string, key: string, label?: string) => Promise<{ key: AdminProviderKey }>;
+  setProviderKeyActive?: (id: string, active: boolean) => Promise<{ key: AdminProviderKey }>;
   removeProviderKey?: (id: string) => Promise<void>;
   planPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   addPlanPrice?: (tier: string, stripePriceId: string) => Promise<AdminPlanPrice>;
@@ -149,6 +153,9 @@ interface DesktopAdminIpc {
   adminPlans?: () => Promise<{ plans: AdminPlan[] }>;
   adminPlanUpdate?: (tier: string, patch: AdminPlanPatch) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
   adminPlanCreate?: (input: AdminPlanPatch & { tier: string }) => Promise<{ ok: boolean; plan?: AdminPlan; error?: string }>;
+  adminProviderKeys?: (slug: string) => Promise<{ ok: boolean; keys?: AdminProviderKey[]; error?: string }>;
+  adminProviderKeyAdd?: (slug: string, key: string, label?: string) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
+  adminProviderKeyActive?: (id: string, active: boolean) => Promise<{ ok: boolean; key?: AdminProviderKey; error?: string }>;
   adminProviderKeyRemove?: (id: string) => Promise<{ ok: boolean; error?: string }>;
   adminPlanPrices?: (tier: string) => Promise<AdminPlanPrice[]>;
   adminPlanPriceAdd?: (tier: string, priceId: string) => Promise<{ ok: boolean; price?: AdminPlanPrice; error?: string }>;
@@ -284,6 +291,495 @@ const inputVal = (id: string): string => ($<HTMLInputElement>(id)?.value ?? "").
 /** "" → null, else a non-negative integer — the blank-clears convention the
  *  platform's model/plan forms used. */
 const numOrNull = (s: string): number | null => (s === "" ? null : Math.max(0, Math.round(Number(s) || 0)));
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Catalog (global models)
+// ═══════════════════════════════════════════════════════════════════════════
+
+let models: AdminModel[] = [];
+let editingModel: AdminModel | null = null;
+let modelsWired = false;
+
+const modelId = (m: AdminModel): string => `${m.provider}::${m.model}`;
+
+function showModelEditor(on: boolean): void {
+  $("pa-models-list-view")?.classList.toggle("hidden", on);
+  $("pa-model-editor")?.classList.toggle("hidden", !on);
+}
+
+interface CatalogProvider { slug: string; name: string; kind: string; baseUrl: string | null; alias: string | null }
+let providers: CatalogProvider[] = [];
+/** The slug being edited, or null when the form is creating a new provider. */
+let editingProviderSlug: string | null = null;
+
+async function loadProviders(): Promise<void> {
+  try {
+    // Web first: the raw SDK client; desktop: the models IPC.
+    const sdk = (window as unknown as { glyphhSdk?: { catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
+    if (sdk?.catalog?.providers) {
+      providers = await sdk.catalog.providers();
+    } else {
+      const r = await (window.glyphh as unknown as {
+        orgProvidersList?: () => Promise<{ ok: boolean; data?: CatalogProvider[] }>;
+      }).orgProvidersList?.();
+      if (r?.ok && Array.isArray(r.data)) providers = r.data;
+    }
+  } catch { /* offline — the model-derived rows still paint */ }
+  paintCatalog();
+}
+
+/** True while the model editor is CREATING (provider pinned by the + row). */
+let creatingModelProvider: string | null = null;
+const catalogExpanded = new Set<string>();
+let catalogPage = 0;
+
+/** ONE list (his spec, 2026-08-24, same as the org Models page): the PROVIDERS,
+ *  expandable to the catalog models inside each. Search matches providers AND
+ *  models (a model match auto-opens its provider); paginated over providers. */
+function paintCatalog(): void {
+  const wrap = $("pa-catalog-list");
+  if (!wrap) return;
+  const q = inputVal("pa-models-search").toLowerCase();
+  const counts = new Map<string, { total: number; active: number }>();
+  for (const m of models) {
+    const cur = counts.get(m.provider) || { total: 0, active: 0 };
+    cur.total += 1;
+    if (m.active) cur.active += 1;
+    counts.set(m.provider, cur);
+  }
+  const rows: CatalogProvider[] = providers.length
+    ? providers
+    : [...counts.keys()].map((slug) => ({ slug, name: slug, kind: "proxied", baseUrl: null, alias: null }));
+  const entries = rows
+    .map((p) => ({
+      p,
+      autoOpen: !!q && models.some((m) => m.provider === p.slug &&
+        (m.display_name.toLowerCase().includes(q) || m.model.toLowerCase().includes(q))),
+    }))
+    .filter((e) => !q || e.p.name.toLowerCase().includes(q) || e.p.slug.toLowerCase().includes(q) || e.autoOpen)
+    .sort((a, b) => a.p.name.localeCompare(b.p.name));
+
+  const state = { page: catalogPage, pageSize: 15, total: entries.length, totalPages: Math.max(1, Math.ceil(entries.length / 15)) };
+  if (state.page >= state.totalPages) { state.page = state.totalPages - 1; catalogPage = state.page; }
+  const slice = entries.slice(state.page * state.pageSize, (state.page + 1) * state.pageSize);
+
+  wrap.innerHTML = "";
+  if (!slice.length) {
+    wrap.innerHTML = `<div class="crud-empty">${q ? "No providers or models match your search." : "No providers yet — add one above."}</div>`;
+  }
+  for (const { p, autoOpen } of slice) {
+    const c = counts.get(p.slug) || { total: 0, active: 0 };
+    const isOpen = catalogExpanded.has(p.slug) || autoOpen;
+    const row = document.createElement("div");
+    row.className = "mdl-prov-row";
+
+    const head = document.createElement("div");
+    head.className = "mdl-prov-head" + (isOpen ? " open" : "");
+    const chev = document.createElement("span");
+    chev.className = "mdl-prov-chevron";
+    chev.innerHTML = MDL_SVG.chevron;
+    const info = document.createElement("div");
+    info.className = "mdl-prov-info";
+    const name = document.createElement("div");
+    name.className = "mdl-td-name";
+    name.textContent = p.name;
+    const chip = document.createElement("span");
+    chip.className = "mdl-type-chip glyphh";
+    chip.textContent = "Proxied";   // the only kind there is (2026-08-26)
+    name.appendChild(chip);
+    const sub = document.createElement("div");
+    sub.className = "mdl-td-sub";
+    sub.textContent = `${fmtInt(c.total)} models · ${fmtInt(c.active)} active` + (p.baseUrl ? ` · ${p.baseUrl}` : "");
+    info.append(name, sub);
+    head.append(chev, info);
+
+    const add = icoBtn(MDL_SVG.plus, "Add a model");
+    add.addEventListener("click", (ev) => { ev.stopPropagation(); openModelCreate(p.slug); });
+    const edit = icoBtn(MDL_SVG.edit, "Edit provider");
+    edit.addEventListener("click", (ev) => { ev.stopPropagation(); openProviderEditor(p); });
+    head.append(add, edit);
+    head.addEventListener("click", () => {
+      if (catalogExpanded.has(p.slug)) catalogExpanded.delete(p.slug);
+      else catalogExpanded.add(p.slug);
+      paintCatalog();
+    });
+    row.appendChild(head);
+
+    if (isOpen) {
+      const body = document.createElement("div");
+      body.className = "mdl-prov-models";
+      const list = models
+        .filter((m) => m.provider === p.slug)
+        .sort((a, b) => a.display_name.localeCompare(b.display_name));
+      if (!list.length) body.innerHTML = `<div class="crud-empty">No models yet — add one with +.</div>`;
+      for (const m of list) {
+        const line = document.createElement("div");
+        line.className = "mdl-model-line";
+        const mi = document.createElement("div");
+        mi.className = "mdl-model-info";
+        const mn = document.createElement("div");
+        mn.className = "mdl-td-name";
+        mn.textContent = m.display_name;
+        const rates = m.input_credits_per_mtok == null && m.output_credits_per_mtok == null
+          ? "BYOK / direct"
+          : `${fmtInt(microToCredits(m.input_credits_per_mtok))}/${fmtInt(microToCredits(m.output_credits_per_mtok))} cr`;
+        const ms = document.createElement("div");
+        ms.className = "mdl-td-sub mono";
+        ms.textContent = `${m.model} · ${rates}`;
+        mi.append(mn, ms);
+        const editIc = icoBtn(MDL_SVG.edit, "Edit model");
+        editIc.addEventListener("click", (ev) => { ev.stopPropagation(); openModelEditor(m); });
+        const lab = document.createElement("label");
+        lab.className = "settings-toggle mdl-toggle";
+        lab.title = "Active — visible to every organization's catalog";
+        lab.innerHTML = `<input type="checkbox" ${m.active ? "checked" : ""} /><span class="toggle-switch"></span>`;
+        const box = lab.querySelector("input") as HTMLInputElement;
+        box.addEventListener("change", () => {
+          void (async () => {
+            const res = await write<AdminModel>(
+              (a) => a.updateModel?.(m.provider, m.model, { active: box.checked })?.then((r) => r.model),
+              (g) => g.adminModelUpdate?.(m.provider, m.model, { active: box.checked }), "model");
+            if (!res.ok) { box.checked = !box.checked; setErr("pa-models-error", res.error); return; }
+            m.active = box.checked;
+            setErr("pa-models-error", "");
+            paintCatalog();
+          })();
+        });
+        line.append(mi, editIc, lab);
+        body.appendChild(line);
+      }
+      row.appendChild(body);
+    }
+    wrap.appendChild(row);
+  }
+
+  const pager = $("pa-catalog-pager");
+  if (pager) {
+    pager.innerHTML = "";
+    if (state.totalPages > 1) pager.appendChild(renderPaginationBar(state, (pg) => { catalogPage = pg; paintCatalog(); }));
+  }
+}
+
+/** The provider editor replaces the WHOLE catalog list view (the model/plan
+ *  editor standard) — only the form + its ← Providers breadcrumb show. */
+function showProviderEditor(on: boolean): void {
+  $("pa-models-list-view")?.classList.toggle("hidden", on);
+  $("pa-provider-create")?.classList.toggle("hidden", !on);
+  if (!on) editingProviderSlug = null;
+}
+
+/** Open the provider form pre-filled for an EDIT (slug is identity — locked). */
+function openProviderEditor(p: CatalogProvider): void {
+  editingProviderSlug = p.slug;
+  setErr("pa-provider-create-error", "");
+  const title = $("pa-provider-title");
+  if (title) title.textContent = `${p.name} · ${p.slug}`;
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  set("pa-pc-slug", p.slug);
+  set("pa-pc-name", p.name);
+  set("pa-pc-url", p.baseUrl || "");
+  const slug = $<HTMLInputElement>("pa-pc-slug");
+  if (slug) slug.readOnly = true;
+  const save = $<HTMLButtonElement>("pa-pc-save");
+  if (save) save.textContent = "Save provider";
+  showProviderEditor(true);
+  // Platform keys exist only for a SAVED provider — the section shows on edit.
+  $("pa-pc-keys-group")?.classList.remove("hidden");
+  providerKeys = [];
+  paintProviderKeys();
+  void refreshProviderKeys();
+}
+
+// ── Platform provider keys (rotation: append + activate/deactivate) ─────────
+interface AdminProviderKey { id: string; label: string; hint: string; active: boolean; createdAt: string }
+let providerKeys: AdminProviderKey[] = [];
+
+async function refreshProviderKeys(): Promise<void> {
+  const slug = editingProviderSlug;
+  if (!slug) return;
+  // BOTH transports (the file's read() contract) — window.glyphh on web is a
+  // fabricating Proxy, so an IPC-only call silently resolves undefined there.
+  try {
+    const r = await read(
+      (a) => a.providerKeys?.(slug)?.then((x) => x.keys),
+      (g) => g.adminProviderKeys?.(slug)?.then((x) => x.keys ?? []),
+    );
+    if (Array.isArray(r)) providerKeys = r;
+    setErr("pa-provider-create-error", "");
+  } catch (err) {
+    setErr("pa-provider-create-error", `Couldn't load keys — ${errText(err)}`);
+  }
+  paintProviderKeys();
+}
+
+function paintProviderKeys(): void {
+  const wrap = $("pa-pc-keys-list");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!providerKeys.length) {
+    wrap.innerHTML = `<div class="crud-empty">No platform keys yet — the gateway falls back to the server's env keys.</div>`;
+    return;
+  }
+  const { table, tbody } = mkTable(["Key", "Label", "Status", "Added"], true);
+  for (const k of providerKeys) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lib-table-name">••••${escapeHtml(k.hint)}</td><td class="lib-table-desc"></td><td></td><td class="lib-table-dim">${escapeHtml(fmtDate(k.createdAt))}</td>`;
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = k.label || "—";
+    (tr.querySelector("td:nth-child(3)") as HTMLElement).innerHTML = k.active
+      ? `<span class="lib-badge">Active</span>` : `<span class="lib-table-dim">Off</span>`;
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.edit, label: k.active ? "Deactivate" : "Activate", onClick: () => {
+        void (async () => {
+          const r = await write<AdminProviderKey>(
+            (a) => a.setProviderKeyActive?.(k.id, !k.active)?.then((x) => x.key),
+            (g) => g.adminProviderKeyActive?.(k.id, !k.active), "key");
+          if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
+          await refreshProviderKeys();
+        })();
+      } },
+      { icon: ROW_MENU_ICONS.delete, label: "Remove", danger: true, onClick: () => {
+        void (async () => {
+          const sure = await confirmAction({ title: `Remove key ••••${k.hint}?`, body: "Calls stop using it immediately. This cannot be undone.", confirmLabel: "Remove", danger: true });
+          if (!sure) return;
+          const r = await write<unknown>(
+            (a) => a.removeProviderKey?.(k.id)?.then(() => true),
+            (g) => g.adminProviderKeyRemove?.(k.id), "ok");
+          if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
+          await refreshProviderKeys();
+        })();
+      } },
+    ]));
+    tbody.appendChild(tr);
+  }
+  wrap.appendChild(table);
+}
+
+async function addProviderKeyFromForm(): Promise<void> {
+  const slug = editingProviderSlug;
+  if (!slug) return;
+  const key = inputVal("pa-pc-key-new").trim();
+  if (key.length < 8) { setErr("pa-provider-create-error", "Paste the full API key."); return; }
+  const label = inputVal("pa-pc-key-label").trim();
+  const btn = $<HTMLButtonElement>("pa-pc-key-add");
+  if (btn) btn.disabled = true;
+  const r = await write<AdminProviderKey>(
+    (a) => a.addProviderKey?.(slug, key, label || undefined)?.then((x) => x.key),
+    (g) => g.adminProviderKeyAdd?.(slug, key, label || undefined), "key");
+  if (btn) btn.disabled = false;
+  if (!r.ok) { setErr("pa-provider-create-error", r.error); return; }
+  setErr("pa-provider-create-error", "");
+  for (const id of ["pa-pc-key-new", "pa-pc-key-label"]) { const el = $<HTMLInputElement>(id); if (el) el.value = ""; }
+  await refreshProviderKeys();
+}
+
+/** The two credit-rate inputs are per-unit; the unit depends on the model's modality.
+ *  Relabel them so a super-admin pricing an image model sees "per image", not "per token". */
+const RATE_UNIT_TEXT: Record<string, string> = { mtok: "1M tokens", image: "image", second: "second", mchar: "1M chars", kchar: "1K chars", minute: "minute", hour: "hour", generation: "generation" };
+function relabelModelRates(unit: string): void {
+  const t = RATE_UNIT_TEXT[unit] ?? "unit";
+  const inl = $("pa-model-in-label"); if (inl) inl.textContent = `Input credits / ${t}`;
+  const outl = $("pa-model-out-label"); if (outl) outl.textContent = `Output credits / ${t}`;
+}
+
+function openModelEditor(m: AdminModel): void {
+  editingModel = m;
+  creatingModelProvider = null;
+  $("pa-model-identity")?.classList.add("hidden");
+  setErr("pa-model-form-error", "");
+  const title = $("pa-model-title");
+  if (title) title.textContent = `${m.display_name} · ${modelId(m)}`;
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  set("pa-model-name", m.display_name);
+  set("pa-model-alias", m.alias || "");
+  const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = m.modality || "chat";
+  const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = m.rate_unit || "mtok";
+  relabelModelRates(m.rate_unit || "mtok");
+  set("pa-model-in", m.input_credits_per_mtok == null ? "" : String(microToCredits(m.input_credits_per_mtok)));
+  set("pa-model-out", m.output_credits_per_mtok == null ? "" : String(microToCredits(m.output_credits_per_mtok)));
+  set("pa-model-ctx", m.context_window == null ? "" : String(m.context_window));
+  set("pa-model-max", m.max_output_tokens == null ? "" : String(m.max_output_tokens));
+  set("pa-model-lc-threshold", m.long_context_threshold == null ? "" : String(m.long_context_threshold));
+  set("pa-model-lc-in", m.long_context_input_mult == null ? "" : String(m.long_context_input_mult));
+  set("pa-model-lc-out", m.long_context_output_mult == null ? "" : String(m.long_context_output_mult));
+  const active = $<HTMLInputElement>("pa-model-active");
+  if (active) active.checked = m.active;
+  const defaultOn = $<HTMLInputElement>("pa-model-default-on");
+  if (defaultOn) defaultOn.checked = m.default_on;
+  showModelEditor(true);
+}
+
+/** CREATE mode — the + on a provider row. Same editor page, identity shown. */
+function openModelCreate(providerSlug: string): void {
+  editingModel = null;
+  creatingModelProvider = providerSlug;
+  setErr("pa-model-form-error", "");
+  const title = $("pa-model-title");
+  if (title) title.textContent = "New model";
+  $("pa-model-identity")?.classList.remove("hidden");
+  const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
+  set("pa-model-provider", providerSlug);
+  set("pa-model-id", "");
+  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-in", "pa-model-out", "pa-model-ctx", "pa-model-max", "pa-model-lc-threshold", "pa-model-lc-in", "pa-model-lc-out"]) set(id, "");
+  const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = "chat";
+  const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = "mtok";
+  relabelModelRates("mtok");
+  const active = $<HTMLInputElement>("pa-model-active"); if (active) active.checked = true;
+  const defaultOn = $<HTMLInputElement>("pa-model-default-on"); if (defaultOn) defaultOn.checked = false;
+  showModelEditor(true);
+}
+
+async function saveModel(): Promise<void> {
+  // CREATE: the + row pinned a provider; release into the global catalog.
+  if (!editingModel && creatingModelProvider) {
+    const id = inputVal("pa-model-id").trim();
+    const name = inputVal("pa-model-name");
+    if (!id || !name) { setErr("pa-model-form-error", "The model needs an id and a display name."); return; }
+    const inCr0 = numOrNull(inputVal("pa-model-in")) ?? 0;
+    const outCr0 = numOrNull(inputVal("pa-model-out")) ?? 0;
+    const ctx0 = numOrNull(inputVal("pa-model-ctx"));
+    const input = {
+      id,
+      providerSlug: creatingModelProvider,
+      name,
+      kind: "proxied" as const,
+      modality: inputVal("pa-model-modality") || "chat",
+      rateUnit: inputVal("pa-model-rate-unit") || "mtok",
+      ...(inputVal("pa-model-alias").trim() ? { alias: inputVal("pa-model-alias").trim() } : {}),
+      ...(ctx0 ? { contextWindow: ctx0 } : {}),
+      inputCreditsPerMTok: inCr0,
+      outputCreditsPerMTok: outCr0,
+    };
+    const btn = $<HTMLButtonElement>("pa-model-save");
+    if (btn) btn.disabled = true;
+    const res = await write(
+      (a) => a.createModel?.(input),
+      (g) => g.adminModelCreate?.(input), "model");
+    if (btn) btn.disabled = false;
+    if (!res.ok) { setErr("pa-model-form-error", res.error); return; }
+    catalogExpanded.add(creatingModelProvider);
+    creatingModelProvider = null;
+    showModelEditor(false);
+    await loadAdminModels();
+    return;
+  }
+  if (!editingModel) return;
+  const name = inputVal("pa-model-name");
+  if (!name) { setErr("pa-model-form-error", "The model needs a display name."); return; }
+  const alias = inputVal("pa-model-alias");
+  // Wire rates are MICRO-credits per MTok (the platform page's exact scale):
+  // whole credits typed here × 1e6; blank clears to "not per-token priced".
+  const inCr = numOrNull(inputVal("pa-model-in"));
+  const outCr = numOrNull(inputVal("pa-model-out"));
+  const ctx = numOrNull(inputVal("pa-model-ctx"));
+  const max = numOrNull(inputVal("pa-model-max"));
+  const patch: AdminModelPatch = {
+    display_name: name,
+    alias: alias || null,
+    active: !!$<HTMLInputElement>("pa-model-active")?.checked,
+    default_on: !!$<HTMLInputElement>("pa-model-default-on")?.checked,
+    modality: inputVal("pa-model-modality") || "chat",
+    rate_unit: inputVal("pa-model-rate-unit") || "mtok",
+    input_credits_per_mtok: inCr == null ? null : inCr * MICRO,
+    output_credits_per_mtok: outCr == null ? null : outCr * MICRO,
+    // context_window/max_output_tokens must be POSITIVE ints on the wire —
+    // 0 or blank clears to "unrecorded".
+    context_window: ctx || null,
+    max_output_tokens: max || null,
+    // Long-context tier — blank clears back to flat pricing.
+    long_context_threshold: numOrNull(inputVal("pa-model-lc-threshold")) || null,
+    long_context_input_mult: numOrNull(inputVal("pa-model-lc-in")) || null,
+    long_context_output_mult: numOrNull(inputVal("pa-model-lc-out")) || null,
+  };
+  const btn = $<HTMLButtonElement>("pa-model-save");
+  if (btn) btn.disabled = true;
+  const res = await write<AdminModel>(
+    (a) => a.updateModel?.(editingModel!.provider, editingModel!.model, patch)?.then((r) => r.model),
+    (g) => g.adminModelUpdate?.(editingModel!.provider, editingModel!.model, patch), "model");
+  if (btn) btn.disabled = false;
+  if (!res.ok) { setErr("pa-model-form-error", res.error); return; }
+  showModelEditor(false);
+  await loadAdminModels();
+}
+
+/** The release flows — the old platform's add-provider / add-model forms. */
+function wireCatalogCreate(): void {
+  // Relabel the editor's rate inputs when the modality's unit changes.
+  $("pa-model-rate-unit")?.addEventListener("change", () => relabelModelRates(inputVal("pa-model-rate-unit")));
+  // + Provider = CREATE mode: reset whatever an edit left in the shared form.
+  $("pa-provider-add-btn")?.addEventListener("click", () => {
+    editingProviderSlug = null;
+    for (const id of ["pa-pc-slug", "pa-pc-name", "pa-pc-url"]) { const el = $<HTMLInputElement>(id); if (el) el.value = ""; }
+    const slug = $<HTMLInputElement>("pa-pc-slug");
+    if (slug) slug.readOnly = false;
+    const save = $<HTMLButtonElement>("pa-pc-save");
+    if (save) save.textContent = "Release provider";
+    const title = $("pa-provider-title");
+    if (title) title.textContent = "New provider";
+    setErr("pa-provider-create-error", "");
+    $("pa-pc-keys-group")?.classList.add("hidden"); // keys attach after the first save
+    showProviderEditor(true);
+  });
+  $("pa-pc-key-add")?.addEventListener("click", () => { void addProviderKeyFromForm(); });
+  $("pa-pc-key-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addProviderKeyFromForm(); });
+  $("pa-provider-back")?.addEventListener("click", () => showProviderEditor(false));
+  $("pa-pc-cancel")?.addEventListener("click", () => showProviderEditor(false));
+
+  $("pa-pc-save")?.addEventListener("click", () => {
+    void (async () => {
+      const url = inputVal("pa-pc-url").trim();
+      const input = {
+        slug: (editingProviderSlug ?? inputVal("pa-pc-slug").trim().toLowerCase()),
+        name: inputVal("pa-pc-name").trim(),
+        kind: "proxied" as const,   // every provider is served over an API now
+        // POST /api/admin/providers upserts: omitted baseUrl KEEPS the stored
+        // one, null CLEARS it — an edit that empties the field means "clear".
+        ...(url ? { baseUrl: url } : editingProviderSlug ? { baseUrl: null } : {}),
+      };
+      if (!input.slug || !input.name) { setErr("pa-provider-create-error", "Slug and name are required."); return; }
+      const res = await write(
+        (a) => a.createProvider?.(input),
+        (g) => g.adminProviderCreate?.(input), "provider");
+      if (!res.ok) { setErr("pa-provider-create-error", res.error); return; }
+      setErr("pa-provider-create-error", "");
+      showProviderEditor(false);
+      await Promise.all([loadAdminModelsAsync(), loadProviders()]);
+    })();
+  });
+
+}
+
+/** The load body, awaitable (the create flows refresh through it). */
+async function loadAdminModelsAsync(): Promise<void> {
+  const allowed = await isSuperAdmin();
+  if (allowed === false) { gatePanel("pa-models-gate", "pa-models-body", false); return; }
+  gatePanel("pa-models-gate", "pa-models-body", true);
+  showModelEditor(false);
+  showProviderEditor(false);
+  const wrap = $("pa-models-list");
+  if (wrap && !models.length) wrap.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  try {
+    const r = await read((a) => a.models?.(), (g) => g.adminModels?.());
+    models = r?.models || [];
+    setErr("pa-models-error", "");
+  } catch (err) {
+    setErr("pa-models-error", `Couldn't load the catalog — ${errText(err)}`);
+    models = [];
+  }
+  paintCatalog();
+  void loadProviders(); // repaints when the provider list lands
+}
+
+export function loadAdminModels(): void {
+  if (!modelsWired) {
+    modelsWired = true;
+    $("pa-models-search")?.addEventListener("input", () => { catalogPage = 0; paintCatalog(); });
+    $("pa-model-back")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
+    $("pa-model-cancel")?.addEventListener("click", () => { editingModel = null; showModelEditor(false); });
+    $("pa-model-save")?.addEventListener("click", () => { void saveModel(); });
+    wireCatalogCreate();
+  }
+  void loadAdminModelsAsync();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Plans (global tiers + Stripe price history)
@@ -597,7 +1093,344 @@ export function loadAdminPlans(): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Orgs (list + plan/member management)
+// Usage (platform rollups)
+// ═══════════════════════════════════════════════════════════════════════════
+
+let usageChart: { destroy: () => void } | null = null;
+let usageFinChart: { destroy: () => void } | null = null;
+let usageWired = false;
+
+// Cost = the meter's uniform COGS basis: the catalog prices models at 62.5
+// credits per vendor dollar, so one burned credit = 1/62.5 = $0.016 of vendor
+// spend (matches the meter's C_MICRO_USD). Revenue is NEVER derived from
+// credits (his correction, 2026-09-02: spent credits may be free grants) —
+// it is Stripe's collected cash.
+const USD_PER_CREDIT_COST = 0.016;
+
+const cssVar = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+/** "Jul 5" from a "YYYY-MM-DD" bucket (dashboard.ts's exact treatment). */
+function shortDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+const isoDay = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Per-day credits chart — the SAME Chart.js grammar as the Usage panel's
+ *  loadUsageChart (dashboard.ts), single platform-wide series. */
+function renderUsageChart(days: AdminUsageDay[]): void {
+  const canvas = $<HTMLCanvasElement>("pa-usage-chart");
+  const empty = $("pa-usage-empty");
+  if (!canvas || typeof Chart === "undefined") return;
+  if (usageChart) { usageChart.destroy(); usageChart = null; }
+  const hasData = days.some((d) => d.credits > 0 || d.requests > 0);
+  empty?.classList.toggle("hidden", hasData);
+  canvas.style.visibility = hasData ? "visible" : "hidden";
+  if (!hasData) return;
+  const byDay = new Map(days.map((d) => [d.day, d]));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  usageChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: days.map((d) => shortDay(d.day)),
+      datasets: [{
+        label: "credits",
+        data: days.map((d) => microToCredits(d.credits)),
+        backgroundColor: cssVar("--accent") || "#af5fff",
+        borderRadius: 3,
+        maxBarThickness: 34,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (c: { parsed: { y: number }; dataIndex: number }) => {
+              const cell = byDay.get(days[c.dataIndex]?.day || "");
+              return `${fmtInt(c.parsed.y)} credits${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: cssVar("--text-3") || "#868686", maxRotation: 0, autoSkip: true } },
+        y: {
+          beginAtZero: true,
+          grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtInt(v) },
+        },
+      },
+    },
+  });
+}
+
+// Last-loaded rollups — the tab search bars filter these client-side.
+let lastUsageUsers: AdminUsageByUser[] = [];
+let lastUsageRuntimes: AdminUsageByRuntime[] = [];
+
+/** Token spend + revenue + cost as LINES, same window/org as the bar chart.
+ *  Revenue is REAL Stripe cash by day (empty when Stripe is unconfigured). */
+function renderUsageFinChart(days: AdminUsageDay[], stripeByDay: Map<string, number>): void {
+  const canvas = $<HTMLCanvasElement>("pa-usage-fin-chart");
+  const empty = $("pa-usage-fin-empty");
+  if (!canvas || typeof Chart === "undefined") return;
+  if (usageFinChart) { usageFinChart.destroy(); usageFinChart = null; }
+  const hasData = days.some((d) => d.credits > 0 || (d.inputTokens ?? 0) + (d.outputTokens ?? 0) > 0);
+  empty?.classList.toggle("hidden", hasData);
+  canvas.style.visibility = hasData ? "visible" : "hidden";
+  if (!hasData) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const accent = cssVar("--accent") || "#af5fff";
+  usageFinChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: days.map((d) => shortDay(d.day)),
+      datasets: [
+        {
+          label: "Tokens", yAxisID: "yTok",
+          data: days.map((d) => (d.inputTokens ?? 0) + (d.outputTokens ?? 0)),
+          borderColor: cssVar("--text-3") || "#868686", backgroundColor: "transparent",
+          borderWidth: 1.5, pointRadius: 0, tension: 0.25, borderDash: [4, 3],
+        },
+        {
+          label: "Revenue $ (Stripe)", yAxisID: "yUsd",
+          data: days.map((d) => (stripeByDay.get(d.day) ?? 0) / 100),
+          borderColor: accent, backgroundColor: "transparent",
+          borderWidth: 2, pointRadius: 0, tension: 0.25,
+        },
+        {
+          label: "Cost $", yAxisID: "yUsd",
+          data: days.map((d) => microToCredits(d.credits) * USD_PER_CREDIT_COST),
+          borderColor: "#e5a50a", backgroundColor: "transparent",
+          borderWidth: 2, pointRadius: 0, tension: 0.25,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: cssVar("--text-3") || "#868686", boxWidth: 14 } },
+        tooltip: {
+          callbacks: {
+            label: (c: { dataset: { label?: string }; parsed: { y: number } }) =>
+              c.dataset.label === "Tokens" ? `${fmtInt(c.parsed.y)} tokens` : `${c.dataset.label ?? ""} ${c.parsed.y.toFixed(2)}`,
+          },
+        },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: cssVar("--text-3") || "#868686", maxRotation: 0, autoSkip: true } },
+        yUsd: {
+          beginAtZero: true, position: "left",
+          grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => `$${fmtInt(v)}` },
+        },
+        yTok: {
+          beginAtZero: true, position: "right",
+          grid: { display: false },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtInt(v) },
+        },
+      },
+    },
+  });
+}
+
+function paintUsageUsers(all: AdminUsageByUser[]): void {
+  const wrap = $("pa-usage-users");
+  if (!wrap) return;
+  lastUsageUsers = all;
+  const q = inputVal("pa-usage-users-search").trim().toLowerCase();
+  const users = q ? all.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(q)) : all;
+  wrap.innerHTML = "";
+  if (!users.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No members match your search." : "No usage in this window."}</div>`; return; }
+  const { table, tbody } = mkTable(["Member", "Email", "Requests", "Credits"], false);
+  for (const u of users) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="lib-table-name"></td>
+      <td class="lib-table-desc"></td>
+      <td class="lib-table-dim">${fmtInt(u.requests)}</td>
+      <td>${fmtInt(microToCredits(u.credits))}</td>`;
+    const name = tr.querySelector(".lib-table-name");
+    if (name) name.textContent = u.name || "—";
+    const email = tr.querySelector(".lib-table-desc");
+    if (email) email.textContent = u.email || u.userId;
+    tbody.appendChild(tr);
+  }
+  wrap.appendChild(table);
+}
+
+function paintUsageRuntimes(all: AdminUsageByRuntime[]): void {
+  const wrap = $("pa-usage-runtimes");
+  if (!wrap) return;
+  lastUsageRuntimes = all;
+  const q = inputVal("pa-usage-runtimes-search").trim().toLowerCase();
+  const runtimes = q ? all.filter((r) => `${r.region} ${r.mode} ${r.tier}`.toLowerCase().includes(q)) : all;
+  wrap.innerHTML = "";
+  if (!runtimes.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "Nothing matches your search." : "No runtime usage in this window."}</div>`; return; }
+  const { table, tbody } = mkTable(["Region", "Mode", "Tier", "Orgs", "Requests", "Credits"], false);
+  for (const r of runtimes) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="lib-table-name"></td>
+      <td class="lib-table-desc"></td>
+      <td></td>
+      <td class="lib-table-dim">${fmtInt(r.orgs)}</td>
+      <td class="lib-table-dim">${fmtInt(r.requests)}</td>
+      <td>${fmtInt(microToCredits(r.credits))}</td>`;
+    const region = tr.querySelector(".lib-table-name");
+    if (region) region.textContent = r.region;
+    const mode = tr.querySelector(".lib-table-desc");
+    if (mode) mode.textContent = r.mode;
+    const tier = tr.querySelector("td:nth-child(3)");
+    if (tier) tier.textContent = r.tier;
+    tbody.appendChild(tr);
+  }
+  wrap.appendChild(table);
+}
+
+async function refreshAdminUsage(): Promise<void> {
+  const win = parseInt($<HTMLSelectElement>("pa-usage-days")?.value || "30", 10);
+  const to = new Date();
+  const from = new Date();
+  from.setDate(to.getDate() - (win - 1));
+  // ONE filter set drives everything (his order, 2026-09-02): the bar chart's
+  // org + window scope the cards, both charts, and the other two tabs.
+  const orgId = $<HTMLSelectElement>("pa-usage-org")?.value || undefined;
+  const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(orgId ? { orgId } : {}) };
+  // The rollups are independent — one failing must not blank the rest.
+  const [daysRes, usersRes, runtimesRes, revenueRes] = await Promise.allSettled([
+    read((a) => a.usageDaily?.(query), (g) => g.adminUsageDaily?.(query)),
+    read((a) => a.usageByUser?.(win, orgId ? { orgId } : {}), (g) => g.adminUsageByUser?.(win, orgId)),
+    read((a) => a.usageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
+    read((a) => a.revenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminRevenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
+  ]);
+  const problems: string[] = [];
+  const days: AdminUsageDay[] = daysRes.status === "fulfilled" ? (daysRes.value?.days || []) : (problems.push("daily series"), []);
+  const users: AdminUsageByUser[] = usersRes.status === "fulfilled" ? (usersRes.value?.users || []) : (problems.push("top spenders"), []);
+  const runtimes: AdminUsageByRuntime[] = runtimesRes.status === "fulfilled" ? (runtimesRes.value?.runtimes || []) : (problems.push("runtime breakdown"), []);
+  setErr("pa-usage-error", problems.length ? `Couldn't load the ${problems.join(", ")} — ${errText(
+    (daysRes.status === "rejected" && daysRes.reason) ||
+    (usersRes.status === "rejected" && usersRes.reason) ||
+    (runtimesRes.status === "rejected" && runtimesRes.reason))}` : "");
+
+  const credits = days.reduce((s, d) => s + microToCredits(d.credits), 0);
+  const requests = days.reduce((s, d) => s + (d.requests || 0), 0);
+  const set = (id: string, v: string): void => { const el = $(id); if (el) el.textContent = v; };
+  set("pa-usage-credits", fmtInt(credits));
+  set("pa-usage-requests", fmtInt(requests));
+  set("pa-usage-active", fmtInt(users.length));
+  set("pa-usage-total", `${fmtInt(credits)} credits · ${fmtInt(requests)} calls`);
+  set("pa-usage-range", `last ${win} days`);
+  // REVENUE = Stripe's collected cash, never credits (his correction,
+  // 2026-09-02: spent credits may be free grants). Cost stays the COGS basis.
+  const revenue: AdminRevenue | null = revenueRes.status === "fulfilled" ? (revenueRes.value ?? null) : null;
+  set("pa-usage-revenue", revenue?.stripe ? `$${(revenue.stripe.totalUsdCents / 100).toFixed(2)}` : "—");
+  const revSub = document.querySelector("#pa-usage-revenue + .dash-card-sub");
+  if (revSub) revSub.textContent = revenue?.stripe ? "collected via Stripe" : "Stripe not configured";
+  const costUsd = credits * USD_PER_CREDIT_COST;
+  set("pa-usage-cost", `$${costUsd.toFixed(2)}`);
+  // Gross margin (his order, 2026-09-02): (Stripe cash − COGS burn) / cash.
+  // Honest caveat carried in the card's sub: revenue is cash COLLECTED in the
+  // window while cost is credits BURNED in it — different bases (credits
+  // bought one month burn in another), so this is the cash-vs-burn margin.
+  const revUsd = revenue?.stripe ? revenue.stripe.totalUsdCents / 100 : null;
+  // MARGIN = profit ÷ COST (his metric, 2026-09-02: "$1.15 spent, $1,567
+  // made" should read as a huge number, not a ~100%-capped gross margin).
+  // Reads as a × multiple past 10x; the accountant's gross-margin-of-revenue
+  // rides in the sub for reconciliation.
+  if (revUsd && revUsd > 0 && costUsd > 0) {
+    const markup = (revUsd - costUsd) / costUsd;
+    set("pa-usage-margin", markup >= 10 ? `${fmtInt(markup)}×` : `${(markup * 100).toFixed(1)}%`);
+    set("pa-usage-margin-sub", `profit ÷ cost · gross ${(((revUsd - costUsd) / revUsd) * 100).toFixed(2)}% of revenue`);
+  } else {
+    set("pa-usage-margin", "—");
+    set("pa-usage-margin-sub", "profit ÷ cost, window");
+  }
+  // The paid-vs-free credits math (he asked for it explicitly): what entered
+  // the window by lot kind + the exact all-time burn split.
+  const mix = $("pa-usage-credit-mix");
+  if (mix) {
+    if (revenue) {
+      const m = (v?: number): string => fmtInt(microToCredits(v ?? 0));
+      const freeIn = (revenue.lotsInWindow.grant ?? 0) + (revenue.lotsInWindow.admin ?? 0);
+      const freeBurn = (revenue.consumedAllTime.grant ?? 0) + (revenue.consumedAllTime.admin ?? 0);
+      mix.textContent =
+        `Credits added in window: ${m(revenue.lotsInWindow.purchase)} purchased · ${m(freeIn)} free/granted. ` +
+        `Burned all-time: ${m(revenue.consumedAllTime.purchase)} paid · ${m(freeBurn)} free (windowed burn split isn't tracked per-debit).`;
+    } else mix.textContent = "";
+  }
+  set("pa-usage-fin-range", `last ${win} days${orgId ? " · one org" : " · all orgs"}`);
+  renderUsageChart(days);
+  renderUsageFinChart(days, new Map((revenue?.stripe?.byDay ?? []).map((d) => [d.day, d.usdCents])));
+  paintUsageUsers(users);
+  paintUsageRuntimes(runtimes);
+}
+
+/** The one date window all three Usage tabs share — three selects, one value. */
+function syncUsageDays(from: string): void {
+  const v = $<HTMLSelectElement>(from)?.value || "30";
+  for (const id of ["pa-usage-days", "pa-usage-days-spenders", "pa-usage-days-runtime"]) {
+    const el = $<HTMLSelectElement>(id);
+    if (el && el.value !== v) el.value = v;
+  }
+}
+
+export function loadAdminUsage(): void {
+  if (!usageWired) {
+    usageWired = true;
+    for (const id of ["pa-usage-days", "pa-usage-days-spenders", "pa-usage-days-runtime"]) {
+      $(id)?.addEventListener("change", () => { syncUsageDays(id); void refreshAdminUsage(); });
+    }
+    $("pa-usage-refresh")?.addEventListener("click", () => { void refreshAdminUsage(); });
+    // The All-orgs filter — populated once, drives every card/chart/tab.
+    $("pa-usage-org")?.addEventListener("change", () => { void refreshAdminUsage(); });
+    void read((a) => a.orgs?.({ limit: 500 }), (g) => g.adminOrgs?.({ limit: 500 }))
+      .then((r) => {
+        const sel = $<HTMLSelectElement>("pa-usage-org");
+        if (!sel || !r?.orgs) return;
+        for (const o of [...r.orgs].sort((a, b) => a.name.localeCompare(b.name))) {
+          const opt = document.createElement("option");
+          opt.value = o.id;
+          opt.textContent = o.name;
+          sel.appendChild(opt);
+        }
+      })
+      .catch(() => { /* the select degrades to All orgs */ });
+    // Tab strip (his order, 2026-09-02): one tab per section.
+    document.querySelectorAll<HTMLButtonElement>("#pa-usage-tabs .app-detail-tab").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.utab || "daily";
+        document.querySelectorAll<HTMLButtonElement>("#pa-usage-tabs .app-detail-tab").forEach((b) =>
+          b.classList.toggle("active", b === btn));
+        $("pa-usage-tab-daily")?.classList.toggle("hidden", tab !== "daily");
+        $("pa-usage-tab-spenders")?.classList.toggle("hidden", tab !== "spenders");
+        $("pa-usage-tab-runtime")?.classList.toggle("hidden", tab !== "runtime");
+      });
+    });
+    // The search bars filter the loaded rollups in place.
+    $("pa-usage-users-search")?.addEventListener("input", () => paintUsageUsers(lastUsageUsers));
+    $("pa-usage-runtimes-search")?.addEventListener("input", () => paintUsageRuntimes(lastUsageRuntimes));
+  }
+  void (async () => {
+    const allowed = await isSuperAdmin();
+    if (allowed === false) { gatePanel("pa-usage-gate", "pa-usage-body", false); return; }
+    gatePanel("pa-usage-gate", "pa-usage-body", true);
+    await refreshAdminUsage();
+  })();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Orgs (list + credit grants)
 // ═══════════════════════════════════════════════════════════════════════════
 
 let orgs: AdminOrgRow[] = [];

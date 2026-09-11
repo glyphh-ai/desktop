@@ -21,7 +21,7 @@ import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadAdminPlans, loadAdminOrgs } from "./settings-admin.js";
+import { loadAdminPlans, loadAdminOrgs, loadAdminModels, loadAdminUsage } from "./settings-admin.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -818,7 +818,9 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "members") void loadMembers();
   // The Platform group — the super-admin console (settings-admin.ts). Each
   // loader re-checks the role and paints an honest gate; the server enforces.
+  else if (sub === "padmin-models") loadAdminModels();
   else if (sub === "padmin-plans") loadAdminPlans();
+  else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }

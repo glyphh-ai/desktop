@@ -25,7 +25,9 @@
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
                    super_admin role; the server enforces the role regardless. -->
               <div class="settings-nav-group nav-super platform-only hidden">Platform</div>
+              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><line x1="12" y1="22.08" x2="12" y2="12"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><circle cx="12" cy="12" r="1"/></svg><span>Catalog</span></button>
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-plans"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Plans</span></button>
+              <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-orgs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>Orgs</span></button>
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
@@ -1071,7 +1073,266 @@
               <!-- Catalog — the GLOBAL model catalog (admin/models). -->
               <!-- Plans — global tier pricing + the Stripe price HISTORY
                    (plan_prices: append + promote, never mutate). -->
-              <div class="settings-panel" data-sub="padmin-plans">
+              <div class="settings-panel" data-sub="padmin-models">
+                <h2>Model Catalog</h2>
+                <p class="section-desc">The global catalog every organization draws from — display names, credit rates, context windows, availability. Changes apply platform-wide.</p>
+                <div id="pa-models-gate" class="crud-empty hidden">Only a platform super admin can manage the catalog.</div>
+                <div id="pa-models-body">
+                  <div id="pa-models-error" class="settings-error hidden"></div>
+
+                  <div id="pa-models-list-view">
+                    <div class="crud-toolbar">
+                      <input id="pa-models-search" type="text" class="crud-search" placeholder="Search providers and models…" spellcheck="false" autocomplete="off" />
+                      <button id="pa-provider-add-btn" class="action-btn primary" type="button">+ New provider</button>
+                    </div>
+                    <div id="pa-catalog-list"></div>
+                    <div id="pa-catalog-pager"></div>
+                  </div>
+
+                  <!-- Provider editor — the SAME full-panel standard as the
+                       model/plan editors: only the form shows, breadcrumb back. -->
+                  <div id="pa-provider-create" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-provider-back">&larr; Providers</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div class="crud-form-error hidden" id="pa-provider-create-error"></div>
+                    <h3 class="settings-subheading" id="pa-provider-title">New provider</h3>
+                    <label class="settings-label">Slug</label>
+                    <input id="pa-pc-slug" class="settings-input settings-input-md" placeholder="mistral" spellcheck="false" />
+                    <label class="settings-label">Name</label>
+                    <input id="pa-pc-name" class="settings-input settings-input-md" placeholder="Mistral" />
+                    <label class="settings-label">Base URL <span class="auth-shell-label-aside">optional</span></label>
+                    <input id="pa-pc-url" class="settings-input" placeholder="https://api.mistral.ai" spellcheck="false" />
+                    <!-- PLATFORM API KEYS — several per provider (rotation:
+                         append + activate/deactivate). Encrypted in the DB;
+                         write-only: rows show label + last-4, never the key. -->
+                    <div id="pa-pc-keys-group" class="hidden">
+                      <h4 class="acct-row-head">API keys</h4>
+                      <p class="section-desc">The platform keys the gateway calls this vendor with — several allowed; each call picks a random active key, so rotation is add-the-new, deactivate-the-old. Stored encrypted, never shown again.</p>
+                      <div id="pa-pc-keys-list"></div>
+                      <div class="settings-inline" style="margin-top:8px">
+                        <input id="pa-pc-key-new" type="password" class="settings-input" placeholder="paste the API key…" spellcheck="false" autocomplete="off" />
+                        <input id="pa-pc-key-label" type="text" class="settings-input settings-input-md" placeholder="label (optional)" spellcheck="false" autocomplete="off" />
+                        <button id="pa-pc-key-add" class="action-btn primary" type="button">Add key</button>
+                      </div>
+                    </div>
+                    <div class="settings-actions" style="margin-top:28px;">
+                      <div style="flex:1;"></div>
+                      <button id="pa-pc-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-pc-save" class="action-btn primary" type="button">Release provider</button>
+                    </div>
+                  </div>
+
+                  <!-- Model editor — the app form standard: breadcrumb back,
+                       stacked label-above-input, Cancel + primary Save in a
+                       bottom .settings-actions. -->
+                  <div id="pa-model-editor" class="crud-inline-form hidden">
+                    <div class="crud-inline-header">
+                      <a class="crud-breadcrumb-back" id="pa-model-back">&larr; Catalog</a>
+                      <div class="crud-spacer"></div>
+                    </div>
+                    <div id="pa-model-form-error" class="crud-form-error hidden"></div>
+                    <h3 class="settings-subheading" id="pa-model-title">—</h3>
+                    <div id="pa-model-identity" class="hidden">
+                      <label class="settings-label">Provider</label>
+                      <input id="pa-model-provider" class="settings-input settings-input-md" readonly />
+                      <label class="settings-label">Model id</label>
+                      <input id="pa-model-id" class="settings-input" placeholder="claude-fable-5" spellcheck="false" autocomplete="off" />
+                    </div>
+                    <label class="settings-label" for="pa-model-name">Display name</label>
+                    <input id="pa-model-name" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <label class="settings-label" for="pa-model-alias">Alias <span class="mdl-hint">(short @-mention; blank = none)</span></label>
+                    <input id="pa-model-alias" type="text" class="settings-input" spellcheck="false" autocomplete="off" />
+                    <div class="settings-inline">
+                      <span>
+                        <label class="settings-label" for="pa-model-modality">Modality</label>
+                        <select id="pa-model-modality" class="settings-input settings-input-md">
+                          <option value="chat">Chat</option>
+                          <option value="image">Image</option>
+                          <option value="video">Video</option>
+                          <option value="speech">Speech (TTS)</option>
+                          <option value="transcription">Transcription (STT)</option>
+                        </select>
+                      </span>
+                      <span>
+                        <label class="settings-label" for="pa-model-rate-unit">Rate unit</label>
+                        <select id="pa-model-rate-unit" class="settings-input settings-input-md">
+                          <option value="mtok">per 1M tokens</option>
+                          <option value="image">per image</option>
+                          <option value="second">per second</option>
+                          <option value="mchar">per 1M chars</option>
+                          <option value="minute">per minute</option>
+                        </select>
+                      </span>
+                    </div>
+                    <label class="settings-label" for="pa-model-in"><span id="pa-model-in-label">Input credits / 1M tokens</span> <span class="mdl-hint">(blank = unpriced)</span></label>
+                    <input id="pa-model-in" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-out"><span id="pa-model-out-label">Output credits / 1M tokens</span> <span class="mdl-hint">(blank = unpriced)</span></label>
+                    <input id="pa-model-out" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-ctx">Context window <span class="mdl-hint">(tokens; what the gateway fits requests to)</span></label>
+                    <input id="pa-model-ctx" type="number" min="0" class="settings-input" placeholder="—" />
+                    <label class="settings-label" for="pa-model-max">Max output tokens</label>
+                    <input id="pa-model-max" type="number" min="0" class="settings-input" placeholder="—" />
+                    <!-- Long-context tier: the vendor bills the WHOLE request at the
+                         multipliers once the prompt crosses the threshold (Gemini Pro's
+                         >200K shape). All three blank = flat pricing. -->
+                    <label class="settings-label" for="pa-model-lc-threshold">Long-context threshold <span class="mdl-hint">(prompt tokens; blank = flat pricing)</span></label>
+                    <input id="pa-model-lc-threshold" type="number" min="0" class="settings-input" placeholder="e.g. 200000" />
+                    <div style="display:flex;gap:10px;">
+                      <div style="flex:1;">
+                        <label class="settings-label" for="pa-model-lc-in">Input ×</label>
+                        <input id="pa-model-lc-in" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 2" />
+                      </div>
+                      <div style="flex:1;">
+                        <label class="settings-label" for="pa-model-lc-out">Output ×</label>
+                        <input id="pa-model-lc-out" type="number" min="1" step="0.05" class="settings-input" placeholder="e.g. 1.5" />
+                      </div>
+                    </div>
+                    <label class="settings-toggle" style="margin-top:12px;">
+                      <input type="checkbox" id="pa-model-active" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Active</span>
+                        <span class="toggle-desc">Inactive models disappear from every org's catalog until reactivated.</span>
+                      </div>
+                    </label>
+                    <label class="settings-toggle" style="margin-top:12px;">
+                      <input type="checkbox" id="pa-model-default-on" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Default on</span>
+                        <span class="toggle-desc">Orgs with no explicit override support this model automatically; off leaves it opt-in per org.</span>
+                      </div>
+                    </label>
+                    <div class="settings-actions" style="margin-top:16px;">
+                      <button id="pa-model-cancel" class="action-btn" type="button">Cancel</button>
+                      <button id="pa-model-save" class="action-btn primary" type="button">Save</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Plans — global tier pricing + the Stripe price HISTORY
+                   (plan_prices: append + promote, never mutate). -->
+                            <div class="settings-panel" data-sub="padmin-usage">
+                <h2>Platform Usage</h2>
+                <p class="section-desc">What the whole platform spent and where — every organization, every runtime.</p>
+                <div id="pa-usage-gate" class="crud-empty hidden">Only a platform super admin can see platform usage.</div>
+                <div id="pa-usage-body">
+                  <div id="pa-usage-error" class="settings-error hidden"></div>
+                  <!-- Three tabs, one per section (his order, 2026-09-02). -->
+                  <div class="app-detail-tabs" id="pa-usage-tabs" style="margin:4px 0 14px;">
+                    <button class="app-detail-tab active" data-utab="daily" type="button">Per day</button>
+                    <button class="app-detail-tab" data-utab="spenders" type="button">Top spenders</button>
+                    <button class="app-detail-tab" data-utab="runtime" type="button">By runtime</button>
+                  </div>
+                  <div id="pa-usage-tab-daily">
+                  <div class="dash-grid">
+                    <div class="dash-card">
+                      <div class="dash-card-label">Credits spent</div>
+                      <div class="dash-card-value" id="pa-usage-credits">—</div>
+                      <div class="dash-card-sub">in the window</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Requests</div>
+                      <div class="dash-card-value" id="pa-usage-requests">—</div>
+                      <div class="dash-card-sub">billable calls</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Active users</div>
+                      <div class="dash-card-value" id="pa-usage-active">—</div>
+                      <div class="dash-card-sub">with usage</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Revenue</div>
+                      <div class="dash-card-value" id="pa-usage-revenue">—</div>
+                      <div class="dash-card-sub">collected via Stripe</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Cost</div>
+                      <div class="dash-card-value" id="pa-usage-cost">—</div>
+                      <div class="dash-card-sub">COGS basis</div>
+                    </div>
+                    <div class="dash-card">
+                      <div class="dash-card-label">Margin</div>
+                      <div class="dash-card-value" id="pa-usage-margin">—</div>
+                      <div class="dash-card-sub" id="pa-usage-margin-sub">profit ÷ cost, window</div>
+                    </div>
+                  </div>
+                  <!-- The paid-vs-free credits math (his order, 2026-09-02). -->
+                  <p class="settings-hint" id="pa-usage-credit-mix" style="margin:2px 0 12px;"></p>
+                  <div class="dash-card dash-card-wide">
+                    <div class="dash-card-head">
+                      <div>
+                        <div class="dash-card-label">Per day</div>
+                        <div class="dash-card-value dash-card-value-sm" id="pa-usage-total">—</div>
+                        <div class="dash-card-sub" id="pa-usage-range">last 30 days</div>
+                      </div>
+                      <div class="dash-usage-filters">
+                        <select id="pa-usage-org" class="dash-usage-select" title="Organization">
+                          <option value="">All orgs</option>
+                        </select>
+                        <select id="pa-usage-days" class="dash-usage-select" title="Date range">
+                          <option value="7">7 days</option>
+                          <option value="30" selected>30 days</option>
+                          <option value="90">90 days</option>
+                        </select>
+                        <button class="dash-refresh" id="pa-usage-refresh" title="Refresh">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="dash-chart-wrap">
+                      <canvas id="pa-usage-chart"></canvas>
+                      <div class="dash-chart-empty hidden" id="pa-usage-empty">No usage in this window.</div>
+                    </div>
+                  </div>
+                  <!-- Financials (his order, 2026-09-02): token spend, revenue,
+                       cost as lines — the SAME window + org the bar chart uses. -->
+                  <div class="dash-card dash-card-wide">
+                    <div class="dash-card-head">
+                      <div>
+                        <div class="dash-card-label">Tokens · Revenue · Cost</div>
+                        <div class="dash-card-sub" id="pa-usage-fin-range">same window as above</div>
+                      </div>
+                    </div>
+                    <div class="dash-chart-wrap">
+                      <canvas id="pa-usage-fin-chart"></canvas>
+                      <div class="dash-chart-empty hidden" id="pa-usage-fin-empty">No usage in this window.</div>
+                    </div>
+                  </div>
+                  </div>
+
+                  <div id="pa-usage-tab-spenders" class="hidden">
+                    <div class="crud-toolbar">
+                      <div class="search-clear-wrap"><input id="pa-usage-users-search" type="text" class="crud-search" placeholder="Search members…" spellcheck="false" autocomplete="off" /></div>
+                      <select id="pa-usage-days-spenders" class="dash-usage-select" title="Date range">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </div>
+                    <div id="pa-usage-users"></div>
+                  </div>
+
+                  <div id="pa-usage-tab-runtime" class="hidden">
+                    <div class="crud-toolbar">
+                      <div class="search-clear-wrap"><input id="pa-usage-runtimes-search" type="text" class="crud-search" placeholder="Search region, mode, tier…" spellcheck="false" autocomplete="off" /></div>
+                      <select id="pa-usage-days-runtime" class="dash-usage-select" title="Date range">
+                        <option value="7">7 days</option>
+                        <option value="30" selected>30 days</option>
+                        <option value="90">90 days</option>
+                      </select>
+                    </div>
+                    <p class="section-desc">Where it ran — region × shared or dedicated × plan tier.</p>
+                    <div id="pa-usage-runtimes"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Orgs — the org list + admin credit grants. -->
+                            <div class="settings-panel" data-sub="padmin-plans">
                 <h2>Plans</h2>
                 <p class="section-desc">The global plan tiers — per-seat price, monthly credit allowance, seat caps, availability — and each tier's Stripe price history.</p>
                 <div id="pa-plans-gate" class="crud-empty hidden">Only a platform super admin can manage plans.</div>
