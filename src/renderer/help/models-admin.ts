@@ -533,14 +533,18 @@ function renderList(): void {
       head.appendChild(check);
       head.appendChild(removeKey);
     }
-    // Edit — the Catalog page's pencil, replacing the old ⋮ menu (his order).
-    const editBtn = icoBtn(MDL_SVG.edit, "Edit");
-    editBtn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      if (e.gateway) void editGatewayProviderModal(e.gateway);
-      else void editCustomProviderModal(e.customProv!);
-    });
-    head.appendChild(editBtn);
+    // Edit — the Catalog page's pencil, replacing the old ⋮ menu. With a key
+    // SET the row shows ✓/✗ instead (his order, 2026-09-11): remove the key
+    // first, then edit.
+    if (!e.gateway?.hasByokKey) {
+      const editBtn = icoBtn(MDL_SVG.edit, "Edit");
+      editBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (e.gateway) void editGatewayProviderModal(e.gateway);
+        else void editCustomProviderModal(e.customProv!);
+      });
+      head.appendChild(editBtn);
+    }
     if (e.customProv) {
       const delBtn = icoBtn(MDL_SVG.trash, "Delete provider");
       delBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
