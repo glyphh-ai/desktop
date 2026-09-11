@@ -4764,9 +4764,9 @@ async function init(): Promise<void> {
     /** The agent's CHAT VIEW — the glyphh panel (code surface) bound to this
      *  CLI agent's session. Same card grammar as the terminal view; the >_
      *  button hops back, resuming the parked pty. */
-    const openAgentChatCard = (agentId: string): void => {
+    const openAgentChatCard = (agentId: string): TileEntry | null => {
       const row = cliAgentRows.find((x) => x.id === agentId);
-      if (!row) return;
+      if (!row) return null;
       // Park the terminal card if it's up — same slot etiquette as nav-away.
       const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
       if (term) closeCard(term, { parkTerms: true });
@@ -4774,7 +4774,7 @@ async function init(): Promise<void> {
       const entry = existing ?? adHoc({ name: row.name, slug: `agent-chat:${agentId}`, kind: "agent" });
       if (!existing) {
         const card = openShell(entry);
-        if (!card) return;
+        if (!card) return null;
         card.classList.add("echo-agent-card");
         card.querySelector<HTMLElement>(".echo-card-body")!.innerHTML =
           `<div class="ws-agent-placeholder" data-agent-host="agent:${agentId}"></div>`;
@@ -4811,8 +4811,9 @@ async function init(): Promise<void> {
           (window as unknown as { __glyphhOpenForAgent?: (a: { id: string; name: string; cwd?: string | null; model?: string | null; resumeId?: string | null }) => void })
             .__glyphhOpenForAgent?.({ id: agentId, name: row.name, cwd: row.cwd ?? null, model: (row as { model?: string | null }).model ?? null, resumeId: newest?.id ?? null });
         });
+      return entry;
     };
-    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = openAgentChatCard;
+    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentChatCard(id); };
 
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
@@ -4992,9 +4993,9 @@ async function init(): Promise<void> {
             // The agent cell mounts the agent as a PANEL — the layout owns
             // it, and the center composer steps off screen until the layout
             // lets go.
-            // The agent seat is BACK (his order, 2026-09-11) — the tight
-            // view cut (no design/media) survives the return.
-            if (v === "coding") entry = openAgentPanel();
+            // The agent seat is BACK (his order, 2026-09-11) — and it is the
+            // SAME surface the glyphh tile opens (his report: two versions).
+            if (v === "coding") entry = (cliAgentRows[0] ? openAgentChatCard(cliAgentRows[0].id) : null) ?? openAgentPanel();
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)

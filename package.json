@@ -6,10 +6,10 @@
   "description": "Glyphh Desktop — Your AI workspace.",
   "main": "dist/main/main.js",
   "scripts": {
-    "dev": "WILLIAM_TRAINING_CAPTURE=1 npm run build && ELECTRON_RUN_AS_NODE= electron .",
+    "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
     "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:app-libs",
     "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/pdf-raster.ts --bundle --outfile=dist/renderer/pdf-raster.js --platform=browser --format=iife && esbuild node_modules/pdfjs-dist/build/pdf.worker.mjs --bundle --outfile=dist/renderer/pdf-raster-worker.js --platform=browser --format=esm --minify && shx cp src/renderer/pdf-raster.html dist/renderer/",
-    "build:main": "tsc",
+    "build:main": "rm -rf dist/main && tsc",
     "build:app-libs": "node scripts/build-app-libs.mjs",
     "pack:apps": "node scripts/pack-apps.mjs",
     "build:skill-flow": "esbuild src/renderer/skill-flow.tsx --bundle --outfile=dist/renderer/skill-flow.js --platform=browser --format=iife --jsx=automatic --loader:.css=css",
