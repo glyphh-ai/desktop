@@ -1365,7 +1365,10 @@ function leaveSessionToLanding(): void {
   renderThread();
   void checkWorkdirGate();
   syncSpaceAttrs();
-  openCommandCenter();
+  // IN A LAYOUT (his report, 2026-09-11): ‹ goes back to the panel's OWN
+  // landing IN PLACE — summoning the command center here tore the whole
+  // layout down. Outside a layout the wall is the landing, as before.
+  if (!document.body.classList.contains("echo-layout-active")) openCommandCenter();
 }
 
 /**
