@@ -440,7 +440,7 @@ function paintModels(): void {
   }
   const table = document.createElement("table");
   table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th>Cost</th><th class="ws-model-toggle-cell" title="Visible when the org forces semantic routing">Auto exempt</th><th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Provider</th><th>Name</th><th class="ws-model-toggle-cell" title="Visible when the org forces semantic routing">Auto exempt</th><th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
   const tbody = document.createElement("tbody");
   const pg = paginate(rows, wsModelsPage, WS_MODELS_PAGE_SIZE);
   wsModelsPage = pg.state.page;
@@ -450,12 +450,10 @@ function paintModels(): void {
     tr.innerHTML =
       `<td class="lib-table-desc"></td>` +
       `<td class="lib-table-name"></td>` +
-      `<td class="lib-table-dim"></td>` +
       `<td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-exempt"><input type="checkbox" /><span class="toggle-switch"></span></label></td>` +
       `<td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-allow"><input type="checkbox" /><span class="toggle-switch"></span></label></td>`;
     (tr.children[0] as HTMLElement).textContent = m.kind === "proxied" ? (m.provider || "proxy") : "on-device";
     (tr.children[1] as HTMLElement).textContent = m.displayName;
-    (tr.children[2] as HTMLElement).textContent = `${m.inCr}/${m.outCr} cr per MTok`;
     // AUTO EXEMPT (owner, 2026-09-11): with org-forced semantic routing,
     // members see only "Auto" — plus the models this toggle exempts for the
     // role (frontier access). Routing always runs the role's FULL allowed

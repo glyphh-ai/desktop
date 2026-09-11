@@ -15263,7 +15263,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-table .ws-conn-icon-cell .ws-conn-icon img { width: 20px; height: 20px; border-radius: 5px; }
 /* Role editor models table: the toggle column hugs the right edge. */
 .lib-table .ws-model-toggle-cell { width: 56px; text-align: right; text-overflow: clip; }
-.ws-model-allow { padding: 0; border: none; background: none; display: inline-flex; }
+.ws-model-allow, .ws-model-exempt { padding: 0; border: none; background: none; display: inline-flex; }
 .ak-token-modal { width: min(480px, 92vw); }
 .ak-token-modal .settings-inline { margin-top: 12px; }
 .ak-token-modal .settings-input { font-family: var(--mono, monospace); font-size: 12px; }
