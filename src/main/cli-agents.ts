@@ -1,12 +1,19 @@
 /**
- * cli-agents.ts — AGENTS as CLI configs (the build after THE PURGE,
- * 2026-09-10). An agent is a named, icon-carrying pre-config for a CLI
- * (Claude first): the command to run, plus optional Glyphh MCP wiring.
+ * cli-agents.ts — LOOPS: the CLI pre-configs (the build after THE PURGE,
+ * 2026-09-10; renamed Agents → Loops 2026-09-11 on his ruling — "the loops
+ * should in fact be loops but they are what we are currently calling
+ * agents"). A loop is a named, icon-carrying pre-config for a CLI (Claude
+ * first): the command to run, plus optional Glyphh MCP wiring. THE CLI IS
+ * THE LOOP — Glyphh owns no agent-loop logic of its own.
  *
- *   ~/.glyphh/agents/<id>/agent.json   — { id, name, icon, cmd, mcp, … }
- *   ~/.glyphh/agents/<id>/mcp.json     — written when mcp is on: the
+ *   ~/.glyphh/loops/<id>/agent.json    — { id, name, icon, cmd, mcp, … }
+ *   ~/.glyphh/loops/<id>/mcp.json      — written when mcp is on: the
  *                                        --mcp-config file pointing the CLI
  *                                        at this machine's local MCP server
+ *
+ * The directory moved from agents/ (glyphh-home-migrate.ts); the FILE names
+ * inside stay agent.json — they are per-loop records, not a surface name,
+ * and rewriting them would churn every install for nothing.
  *
  * "Open" anywhere (echo card, layout cell) plays the pre-config: the
  * composed command types into a fresh terminal panel. The list rows carry
@@ -20,7 +27,7 @@ import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 
-export const AGENTS_DIR = path.join(homedir(), ".glyphh", "agents");
+export const AGENTS_DIR = path.join(homedir(), ".glyphh", "loops");
 
 export interface CliAgentRow {
   id: string;

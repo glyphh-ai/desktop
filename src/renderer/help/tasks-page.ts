@@ -18,14 +18,14 @@ let all: LoopSummary[] = [];
 let page = 0;
 let current: Loop | null = null;
 
-const listEl = $a("loops-list");
-const toolbar = $a("loops-toolbar");
-const editor = $a("loop-editor");
-const searchInput = $a<HTMLInputElement>("loop-search");
-const formError = $a("loop-form-error");
-const detailEl = $a("loop-detail");
-const flowHost = $a("loop-flow-host");
-const builtinBadge = $a("loop-builtin-badge");
+const listEl = $a("tasks-list");
+const toolbar = $a("tasks-toolbar");
+const editor = $a("task-editor");
+const searchInput = $a<HTMLInputElement>("task-search");
+const formError = $a("task-form-error");
+const detailEl = $a("task-detail");
+const flowHost = $a("task-flow-host");
+const builtinBadge = $a("task-builtin-badge");
 
 function fail(msg: string): void {
   formError.textContent = msg;
@@ -152,15 +152,15 @@ async function openDetail(ref: string): Promise<void> {
     ${slotDescs ? `<div style="margin-top:18px;"><span class="lib-read-label">What each slot is for</span><div class="lib-read-meta" style="margin-top:6px;">${slotDescs}</div></div>` : ""}
     <hr class="lib-divider" /><span class="lib-read-label">Program</span>
     <p class="settings-hint" style="margin:4px 0 6px;">What the slotted agent runs — the prompt a scheduled or recursive execution plays.</p>
-    <textarea id="loop-program" class="settings-input" rows="8" spellcheck="false" style="font-family:ui-monospace,monospace;width:100%;"></textarea>
+    <textarea id="task-program" class="settings-input" rows="8" spellcheck="false" style="font-family:ui-monospace,monospace;width:100%;"></textarea>
     <hr class="lib-divider" /><span class="lib-read-label">Schedule</span>
     <p class="settings-hint" style="margin:4px 0 6px;">Run this task on a cron (five fields — e.g. <code>0 9 * * 1-5</code> is weekdays at 9). No schedules = a one-off task.</p>
-    <div id="loop-schedule-host"></div>
+    <div id="task-schedule-host"></div>
     ${current.builtIn ? "" : `<div class="settings-actions lib-detail-actions">
-      <button id="loop-delete-btn" class="action-btn danger">Delete</button>
+      <button id="task-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
     </div>`}`;
-  const prog = detailEl.querySelector<HTMLTextAreaElement>("#loop-program");
+  const prog = detailEl.querySelector<HTMLTextAreaElement>("#task-program");
   if (prog) {
     prog.value = current.code || "";
     prog.addEventListener("change", () => {
@@ -171,7 +171,7 @@ async function openDetail(ref: string): Promise<void> {
   }
   void renderScheduleBlock(resolvedRoles);
 
-  detailEl.querySelector("#loop-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  detailEl.querySelector("#task-delete-btn")?.addEventListener("click", () => void deleteCurrent());
   if (!current.builtIn) {
     wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
       const res = await window.glyphh.libraryLoopUpdate(current!.slug, patch);
@@ -212,29 +212,29 @@ function renderDefaultModels(
     const def = manifestDefault(r.name);
     if (builtIn) {
       const label = r.choices.find((c) => c.id === def)?.name || "Platform default";
-      return `<div class="loop-model-row"><span class="loop-model-label">${escapeHtml(r.label || r.name)}</span><span class="lib-read-value">${escapeHtml(label)}</span></div>`;
+      return `<div class="task-model-row"><span class="task-model-label">${escapeHtml(r.label || r.name)}</span><span class="lib-read-value">${escapeHtml(label)}</span></div>`;
     }
     const opts = [`<option value="">Auto — first agent</option>`]
       .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === def ? " selected" : ""}>${escapeHtml(c.name)}</option>`));
-    return `<div class="loop-model-row">
-      <span class="loop-model-label">${escapeHtml(r.label || r.name)}</span>
-      <select class="settings-input loop-model-select" data-role="${escapeHtml(r.name)}">${opts.join("")}</select>
-      <input class="settings-input loop-model-override" data-role="${escapeHtml(r.name)}" value="${escapeHtml(r.model ?? "")}" placeholder="model override" spellcheck="false" autocomplete="off" style="max-width:170px;font-family:ui-monospace,monospace;" />
+    return `<div class="task-model-row">
+      <span class="task-model-label">${escapeHtml(r.label || r.name)}</span>
+      <select class="settings-input task-model-select" data-role="${escapeHtml(r.name)}">${opts.join("")}</select>
+      <input class="settings-input task-model-override" data-role="${escapeHtml(r.name)}" value="${escapeHtml(r.model ?? "")}" placeholder="model override" spellcheck="false" autocomplete="off" style="max-width:170px;font-family:ui-monospace,monospace;" />
     </div>`;
   }).join("");
   return `<hr class="lib-divider" />
     <span class="lib-read-label">Agents</span>
     <p class="settings-hint" style="margin:4px 0 8px;">${builtIn
       ? "Built-in tasks run on the default agent — this can't be changed."
-      : "The AGENT each slot runs on (it brings its model; a workspace can override)."}</p>
-    <div class="loop-model-list">${rows}</div>
-    <div id="loop-model-msg" class="settings-hint hidden" style="margin:8px 0 0;"></div>`;
+      : "The AGENT each slot runs on (it brings its loop, prompt and model)."}</p>
+    <div class="task-model-list">${rows}</div>
+    <div id="task-model-msg" class="settings-hint hidden" style="margin:8px 0 0;"></div>`;
 }
 
 /** Persist a default-model change to the loop's manifest (org_admin-gated
  *  server-side — a member's write surfaces as an inline permission message). */
 function wireDefaultModelPickers(): void {
-  const msg = detailEl.querySelector<HTMLElement>("#loop-model-msg");
+  const msg = detailEl.querySelector<HTMLElement>("#task-model-msg");
   const report = (res: { ok: boolean; error?: string } | undefined): void => {
     if (!msg) return;
     if (res?.ok) { msg.textContent = "Saved."; msg.classList.remove("hidden", "danger"); }
@@ -243,7 +243,7 @@ function wireDefaultModelPickers(): void {
       msg.classList.remove("hidden"); msg.classList.add("danger");
     }
   };
-  detailEl.querySelectorAll<HTMLSelectElement>(".loop-model-select").forEach((sel) => {
+  detailEl.querySelectorAll<HTMLSelectElement>(".task-model-select").forEach((sel) => {
     sel.addEventListener("change", () => {
       void (async () => {
         if (!current) return;
@@ -257,12 +257,12 @@ function wireDefaultModelPickers(): void {
   });
   // The slot's model OVERRIDE — written with the CURRENT agent so the same
   // lane never clobbers the binding; empty clears back to the agent's model.
-  detailEl.querySelectorAll<HTMLInputElement>(".loop-model-override").forEach((inp) => {
+  detailEl.querySelectorAll<HTMLInputElement>(".task-model-override").forEach((inp) => {
     inp.addEventListener("change", () => {
       void (async () => {
         if (!current) return;
         const role = inp.dataset.role!;
-        const agentSel = detailEl.querySelector<HTMLSelectElement>(`.loop-model-select[data-role="${role}"]`);
+        const agentSel = detailEl.querySelector<HTMLSelectElement>(`.task-model-select[data-role="${role}"]`);
         inp.disabled = true;
         const res = await window.glyphh.loopSetRoleDefault(current.id, role, agentSel?.value || null, inp.value.trim() || null);
         inp.disabled = false;
@@ -273,23 +273,23 @@ function wireDefaultModelPickers(): void {
 }
 
 export function initTasksPage(): void {
-  wireSplitDivider($a("loop-split-divider"), detailEl);
+  wireSplitDivider($a("task-split-divider"), detailEl);
   searchInput.addEventListener("input", renderList);
-  $a("loop-back-link").addEventListener("click", () => renderList());
-  $a("loops-refresh-btn").addEventListener("click", () => void loadTasksPage());
+  $a("task-back-link").addEventListener("click", () => renderList());
+  $a("tasks-refresh-btn").addEventListener("click", () => void loadTasksPage());
   (window as unknown as { __glyphhOpenTask?: (slug: string) => void }).__glyphhOpenTask = openTaskForEdit;
   // The scheduled-runs monitor is the WORKBENCH tool panel (chart, next
   // fires, run history) — the old Scheduled Tasks surface, one click away.
-  $a("loops-scheduled-btn").addEventListener("click", () => {
+  $a("tasks-scheduled-btn").addEventListener("click", () => {
     (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks");
   });
 
   // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
   // 2026-09-10) — no default set, the modal points at Settings → General.
-  $a("loop-new-btn").addEventListener("click", () => {
+  $a("task-new-btn").addEventListener("click", () => {
     void openDefaultAgent("Create a new Glyphh task for me using the Glyphh MCP tools: call task_save with a name, a description, and a program — the program is the SPEC the slotted agent runs; steps inside it can carry a prompt or reference a Glyphh skill (see skills_list / skill_get). Ask me what the task should do, then save it.");
   });
-  $a("loop-ai-btn")?.classList.add("hidden");
+  $a("task-ai-btn")?.classList.add("hidden");
 
 }
 
@@ -301,7 +301,7 @@ type ScheduleApi = {
 };
 
 async function renderScheduleBlock(roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"]): Promise<void> {
-  const host = detailEl.querySelector<HTMLElement>("#loop-schedule-host");
+  const host = detailEl.querySelector<HTMLElement>("#task-schedule-host");
   if (!host || !current) return;
   const api = window.glyphh as unknown as ScheduleApi;
   const rows = (await api.loopSchedulesList?.(current.slug).catch(() => null))?.data ?? [];
@@ -309,26 +309,26 @@ async function renderScheduleBlock(roles: Awaited<ReturnType<typeof window.glyph
   const agentOpts = (sel?: string): string => agents.map((a) => `<option value="${escapeHtml(a.id)}"${a.id === sel ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
   const defAgent = roles[0]?.modelId ?? agents[0]?.id ?? "";
   host.innerHTML = `
-    ${rows.map((r) => `<div class="loop-model-row" data-sched="${escapeHtml(r.id)}">
-      <span class="loop-model-label">${escapeHtml(cronToWords(r.cron))}</span>\n      <span class="lib-table-dim" style="font-family:ui-monospace,monospace;">${escapeHtml(r.cron)}</span>
+    ${rows.map((r) => `<div class="task-model-row" data-sched="${escapeHtml(r.id)}">
+      <span class="task-model-label">${escapeHtml(cronToWords(r.cron))}</span>\n      <span class="lib-table-dim" style="font-family:ui-monospace,monospace;">${escapeHtml(r.cron)}</span>
       <span class="lib-table-dim">${escapeHtml(agents.find((a) => a.id === r.agentId)?.name || r.agentId)}${r.enabled ? "" : " · paused"}</span>
-      <button type="button" class="action-btn loop-sched-del" data-id="${escapeHtml(r.id)}">Remove</button>
+      <button type="button" class="action-btn task-sched-del" data-id="${escapeHtml(r.id)}">Remove</button>
     </div>`).join("")}
-    <div class="loop-model-row">
-      <button type="button" id="loop-sched-add" class="action-btn primary">+ Add schedule</button>
+    <div class="task-model-row">
+      <button type="button" id="task-sched-add" class="action-btn primary">+ Add schedule</button>
     </div>
-    <div id="loop-sched-msg" class="settings-hint hidden"></div>`;
-  host.querySelector("#loop-sched-add")?.addEventListener("click", () => {
+    <div id="task-sched-msg" class="settings-hint hidden"></div>`;
+  host.querySelector("#task-sched-add")?.addEventListener("click", () => {
     void scheduleModal(agents, defAgent).then((picked) => {
       if (!picked || !current) return;
       void api.loopScheduleSave?.({ loopSlug: current.slug, agentId: picked.agentId, cron: picked.cron }).then((r) => {
-        const msg = host.querySelector<HTMLElement>("#loop-sched-msg");
+        const msg = host.querySelector<HTMLElement>("#task-sched-msg");
         if (!r?.ok) { if (msg) { msg.textContent = r?.error || "couldn't save"; msg.classList.remove("hidden"); } return; }
         void renderScheduleBlock(roles);
       });
     });
   });
-  host.querySelectorAll<HTMLElement>(".loop-sched-del").forEach((b) => b.addEventListener("click", () => {
+  host.querySelectorAll<HTMLElement>(".task-sched-del").forEach((b) => b.addEventListener("click", () => {
     const id = b.dataset.id;
     if (!id) return;
     void api.loopScheduleDelete?.(id).then(() => void renderScheduleBlock(roles));

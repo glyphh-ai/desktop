@@ -93,36 +93,39 @@ export interface GuardrailsPolicy {
   maxConcurrent?: number;
 }
 
-export interface AgentSelections {
-  roles?: Record<string, string>;
-  skills?: string[];
-  apps?: string[];
-}
-
+/** An agent — a STANDING WORKER (main/local-agents.ts). The pre-purge shape
+ *  minus `scope`/`ownerUserId`: sharing was server-enforced and there is no
+ *  server behind this any more. `prompt` and `model` are the additions —
+ *  the standing instruction, and an override on the loop's own model. */
 export interface AgentSummary {
   id: string;
   slug: string;
-  scope: "personal" | "org";
-  ownerUserId: string | null;
   name: string;
   description: string;
+  /** The standing instruction every one of its runs opens with. */
+  prompt: string;
+  /** The CLI loop it runs on (a cli-agents id). */
   loopId: string | null;
+  /** Model override; "" = the loop's own. */
+  model: string;
+  skills: string[];
+  apps: string[];
   live: boolean;
-  /** What it is pointed at — role→model, skills. Cards render the model cast. */
-  selections?: AgentSelections;
+  createdAt: string;
   updatedAt: string;
 }
 
 export interface Agent extends AgentSummary {
   guardrails: GuardrailsPolicy | null;
-  guardrailsEffective: GuardrailsPolicy | null;
 }
 
 export interface AgentTask {
   id: string;
   agentId: string;
   name: string;
-  kind: "skill" | "loop" | "app_command";
+  /** A task spec (~/.glyphh/tasks) or a skill (~/.glyphh/skills). The
+   *  pre-purge "loop" kind IS this "task" kind — the store was renamed. */
+  kind: "task" | "skill";
   target: string;
   args: Record<string, unknown>;
   cron: string;

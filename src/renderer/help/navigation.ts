@@ -13,7 +13,8 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadCliAgents, initCliAgentsEvents } from "./cli-agents.js";
+import { loadLoops, initLoopsEvents } from "./loops.js";
+import { loadAgents, initAgentsEvents } from "./agents.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -141,7 +142,8 @@ export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "drips") loadDrips();
-  else if (sec === "agents") loadCliAgents();
+  else if (sec === "loops") loadLoops();
+  else if (sec === "agents") void loadAgents();
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "connections") void loadConnections();
   else if (sec === "tasks") loadTasksPage();
@@ -198,7 +200,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "agents", "skills", "connections", "tasks"].includes(section)) {
+  if (["apps", "layouts", "drips", "loops", "agents", "skills", "connections", "tasks"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -1141,7 +1143,8 @@ export function initHelp() {
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
-  boot("agents", initCliAgentsEvents);
+  boot("loops", initLoopsEvents);
+  boot("agents", initAgentsEvents);
   boot("skills", initSkillsLibraryEvents);
   boot("connections", initConnections);
   boot("tasks", initTasksPage);

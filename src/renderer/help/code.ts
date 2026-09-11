@@ -13,6 +13,7 @@
 
 import { showDropDetail, confirmAction, placeDropup } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { visibleAppRows, type HouseDefault } from "./app-list.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -438,9 +439,10 @@ function showModeInfoModal(): void {
   document.body.appendChild(overlay);
 }
 
-// ── Loop drop-up — pick which agent loop runs the session ──
-// Loops come from the server (Build → Loops, role-scoped); offline keeps the
-// built-in Default. canBuild gates the (stub) Loops tab in the nav.
+// ── Loop drop-up — pick which CLI loop runs the session ──
+// Loops are LOCAL: the Loops page's CLI pre-configs (~/.glyphh/loops), the
+// same roster the wall's tiles and the workspace cells ride. Nothing here
+// comes from the server any more — the CLI is the loop.
 async function refreshLoops(): Promise<void> {
   // LOOPS are the configured CLI loops (his ruling, 2026-09-11: the CLI is
   // the loop) — the same roster the wall's agent tiles ride. description
@@ -4175,7 +4177,7 @@ interface RailSectionDef { toggle: string; body: string; pref: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
-  { toggle: "rail-agents-toggle", body: "rail-agents-body", pref: "railPanelAgentsOpen" },
+  { toggle: "rail-loops-toggle", body: "rail-loops-body", pref: "railPanelLoopsOpen" },
   { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
 ];
 
@@ -4540,11 +4542,16 @@ function railPager(page: number, totalPages: number, onPage: (p: number) => void
 async function loadRecentApps(): Promise<void> {
   try {
     const yoAgents = (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: RailCliAgent[] }> });
-    const [apps, layouts, recents, agentsRes] = await Promise.all([
+    const [apps, layouts, recents, agentsRes, houseDefaults, hiddenDefaults] = await Promise.all([
       window.glyphh.panelAppsList?.() ?? Promise.resolve([]),
       window.glyphh.layoutsList?.() ?? Promise.resolve([]),
       window.glyphh.recentsList?.() ?? Promise.resolve([]),
       yoAgents.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
+      // The wall's other two inputs — the rail was skipping both, which is
+      // half of why the lists disagreed.
+      (window.glyphh as unknown as { appsDefaults?: () => Promise<HouseDefault[]> })
+        .appsDefaults?.().catch(() => [] as HouseDefault[]) ?? Promise.resolve([] as HouseDefault[]),
+      window.glyphh.getPreference?.("ccHiddenDefaults", []) ?? Promise.resolve([]),
     ]);
     railAgents = agentsRes?.ok ? agentsRes.agents : [];
     void loadRailSessions();
@@ -4554,10 +4561,14 @@ async function loadRecentApps(): Promise<void> {
       void (window.glyphh as unknown as { webIconFetch?: (u: string) => Promise<string> })
         .webIconFetch?.(url).then((d) => { if (d) { railCliMarks[cli] = d; renderRecentApps(); } }).catch(() => {});
     }
-    // Palette parity: web apps (have a url) + native library apps. The
-    // agent's own row (glyphh-self) stays OUT — the Glyphh mark in the
-    // header is the chat entry, not an app in the list.
-    railApps = ((apps || []) as unknown as RailApp[]).filter((a) => a.url || a.isBrowser === false);
+    // THE SAME LIST the echo wall builds (help/app-list.ts) — his rule,
+    // 2026-09-11. The rail used to keep url-less native rows and skip the
+    // house defaults, so the two surfaces showed different apps.
+    railApps = visibleAppRows(
+      (apps || []) as unknown as RailApp[],
+      houseDefaults as HouseDefault[],
+      hiddenDefaults as unknown[],
+    ) as RailApp[];
     railLayouts = (layouts || []) as unknown as RailLayout[];
     railRecentTs = {};
     // the wall's arranged order (same preference the command centre writes)
@@ -4648,24 +4659,12 @@ function paintAppsGrid(host: RailGridHost): void {
       const tb = railRecentTs[`app:${b.id}`] || 0;
       return ta !== tb ? tb - ta : (a.name || "").localeCompare(b.name || "");
     });
-  // DESIGN — the org's design systems, same fixed-tile treatment.
-  const gdesign = document.createElement("button");
-  gdesign.className = "app-rail-tile";
-  gdesign.type = "button";
-  gdesign.title = "Design — the org's design systems";
-  const dzIcon = document.createElement("div");
-  dzIcon.className = "tile-icon";
-  dzIcon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" style="width:22px;height:22px"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4"/></svg>`;
-  const dzName = document.createElement("div");
-  dzName.className = "tile-name";
-  dzName.textContent = "Design";
-  gdesign.append(dzIcon, dzName);
-  gdesign.addEventListener("click", () => {
-    openCommandCenter();
-    (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("gdesign");
-  });
-  list.appendChild(gdesign);
-
+  // NOTHING is hand-injected here. The rail renders the SAME set the echo
+  // wall does; a fixed tile prepended in this one place is how Design
+  // outlived its own panel (his report, 2026-09-11 — wb-design.ts and
+  // openDesignPanel were deleted in the retrenchment, so the tile opened
+  // nothing). New surfaces join by becoming an app row, not by being
+  // special-cased into one of the two lists.
   const ap = railPaginate(apps, host.page, RAIL_APPS_PER_PAGE);
   host.page = ap.page;
   for (const a of ap.items) {
@@ -4818,8 +4817,8 @@ function initRailApps(): void {
     ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
-  const leftAgents: RailGridHost | null = el<HTMLDivElement>("recent-agents-list")
-    ? { list: el<HTMLDivElement>("recent-agents-list")!, search: el<HTMLInputElement>("recent-agents-search"), page: 0 }
+  const leftAgents: RailGridHost | null = el<HTMLDivElement>("recent-loops-list")
+    ? { list: el<HTMLDivElement>("recent-loops-list")!, search: el<HTMLInputElement>("recent-loops-search"), page: 0 }
     : null;
   if (leftAgents) registerRailGridHost("agents", leftAgents);
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);

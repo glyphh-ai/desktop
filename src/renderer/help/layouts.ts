@@ -646,7 +646,7 @@ function renderGridPreview() {
       let label = cell.panelId ? panelLabel(cell.panelId) : "\u2014";
       if (cell.panelId && isToolPanel(cell.panelId)) label = toolPanelLabel(cell.panelId);
       else if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
-      else if (cell.panelId === "agents-tabbed") label = "Agents (tabbed)";
+      else if (cell.panelId === "agents-tabbed") label = "Loops (tabbed)";
       const pin = cell.sticky
         ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
         : "";
@@ -856,7 +856,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
-    cliAgentRows.length ? `<div class="cell-panel-group-label">Agents</div>` : "",
+    cliAgentRows.length ? `<div class="cell-panel-group-label">Loops</div>` : "",
     ...cliAgentRows.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.icon ? `${a.icon} ` : ""}${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Apps</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),

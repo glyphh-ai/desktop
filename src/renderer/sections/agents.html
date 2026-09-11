@@ -1,0 +1,98 @@
+        <!-- Agents — the workforce roster (restored 2026-09-11 from
+             4cae30db^, ported to local storage). An agent is a STANDING
+             WORKER: a name, a prompt, the LOOP it runs on, and the scheduled
+             tasks it fires. Where a session is you driving a loop, an agent
+             is the same machinery running without you.
+
+             The detail view is READ + OPERATIONAL: live/pause, task
+             enable/disable, reschedule, run-now, run feeds, delete. Its Edit
+             button opens the same form "+ New" does. -->
+        <div class="help-section" data-section="agents">
+          <h2>Agents</h2>
+          <p class="section-desc">Your standing workforce — the loop and prompt each agent runs, and its schedule with real last-run status.</p>
+          <div id="agents-toolbar" class="crud-toolbar">
+            <input id="agent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
+            <button id="agent-new-btn" class="action-btn primary">+ New with AI</button>
+            <button id="agent-manual-new-btn" class="action-btn" title="Create an agent by hand">+ New</button>
+          </div>
+          <div id="agents-list" class="crud-cards"></div>
+
+          <!-- Detail — read + operational (live/pause, schedule, run feeds). -->
+          <div id="agent-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="agent-back-link">&larr; Agents</a>
+              <a id="agent-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <div class="crud-spacer"></div>
+              <button id="agent-edit-btn" class="action-btn" type="button" title="Edit this agent by hand">Edit</button>
+              <label class="lib-switch" title="Keep this agent's tasks armed">
+                <span class="lib-switch-label">Live</span>
+                <input type="checkbox" id="agent-live" />
+                <span class="lib-switch-track"><span class="lib-switch-thumb"></span></span>
+              </label>
+            </div>
+            <div id="agent-form-error" class="crud-form-error hidden"></div>
+            <div class="lib-split">
+              <div id="agent-detail" class="lib-split-form lib-read"></div>
+              <div class="lib-split-divider" id="agent-split-divider"></div>
+              <div id="agent-side" class="lib-split-side"></div>
+            </div>
+          </div>
+
+          <!-- Manual create/edit form — the APP FORM STANDARD (app-add-form's
+               shape): breadcrumb back, stacked label-above-input fields for
+               every field the store can persist, Cancel + Save at the bottom. -->
+          <div id="agent-form" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <a class="crud-breadcrumb-back" id="agent-form-back">&larr; Agents</a>
+              <div class="crud-spacer"></div>
+            </div>
+            <div id="agent-form-err" class="crud-form-error hidden"></div>
+
+            <label class="settings-label">Name</label>
+            <input id="agent-f-name" type="text" class="settings-input" placeholder="e.g. Morning briefing" spellcheck="false" autocomplete="off" />
+
+            <label class="settings-label">Slug <span class="field-hint-inline">&mdash; lowercase letters, digits and dashes</span></label>
+            <input id="agent-f-slug" type="text" class="settings-input" placeholder="morning-briefing" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
+
+            <label class="settings-label">Description</label>
+            <textarea id="agent-f-desc" class="settings-input" rows="3" placeholder="What this agent is for" spellcheck="true" style="resize:vertical;"></textarea>
+
+            <label class="settings-label">Prompt <span class="field-hint-inline">&mdash; the standing instruction every run opens with</span></label>
+            <textarea id="agent-f-prompt" class="settings-input" rows="6" placeholder="You are the morning briefing agent. Keep it to five bullets…" spellcheck="true" style="resize:vertical;"></textarea>
+
+            <label class="settings-label">Loop</label>
+            <select id="agent-f-loop" class="settings-input"></select>
+            <p class="field-hint">The CLI this agent's work runs on. Its own model is used unless you override it below.</p>
+
+            <label class="settings-label">Model <span class="field-hint-inline">&mdash; optional; blank uses the loop's own</span></label>
+            <select id="agent-f-model" class="settings-input"></select>
+
+            <!-- Skills the agent may load — the local skills library. -->
+            <div id="agent-f-skills"></div>
+
+            <label class="settings-label">Apps <span class="field-hint-inline">&mdash; app slugs this agent may drive, comma-separated (optional)</span></label>
+            <input id="agent-f-apps" type="text" class="settings-input" placeholder="crm, receipts" spellcheck="false" autocomplete="off" />
+
+            <label class="settings-label">Scheduled tasks</label>
+            <p class="field-hint" style="margin-top:-6px;">A task is a binding: an existing task or skill, plus a schedule.</p>
+            <div id="agent-f-tasks"></div>
+            <button id="agent-f-task-add" class="action-btn" type="button" style="align-self:flex-start;">+ Add task</button>
+
+            <label class="settings-label">Guardrails <span class="field-hint-inline">&mdash; blank = no cap</span></label>
+            <div class="lib-guard-grid">
+              <div><label class="settings-label agent-f-gr-label">Max input tokens</label><input id="agent-f-gr-maxin" type="number" min="0" class="settings-input" placeholder="per call" /></div>
+              <div><label class="settings-label agent-f-gr-label">Max output tokens</label><input id="agent-f-gr-maxout" type="number" min="0" class="settings-input" placeholder="per call" /></div>
+              <div><label class="settings-label agent-f-gr-label">Window (seconds)</label><input id="agent-f-gr-window" type="number" min="0" class="settings-input" placeholder="e.g. 3600" /></div>
+              <div><label class="settings-label agent-f-gr-label">Tokens per window</label><input id="agent-f-gr-wtokens" type="number" min="0" class="settings-input" placeholder="e.g. 200000" /></div>
+              <div><label class="settings-label agent-f-gr-label">Calls per window</label><input id="agent-f-gr-wcalls" type="number" min="0" class="settings-input" placeholder="e.g. 100" /></div>
+              <div><label class="settings-label agent-f-gr-label">Max concurrent</label><input id="agent-f-gr-conc" type="number" min="0" class="settings-input" placeholder="e.g. 2" /></div>
+            </div>
+
+            <div class="settings-actions" style="margin-top:16px;">
+              <button id="agent-f-delete" class="action-btn danger">Delete</button>
+              <div style="flex:1;"></div>
+              <button id="agent-f-cancel" class="action-btn">Cancel</button>
+              <button id="agent-f-save" class="action-btn primary">Save</button>
+            </div>
+          </div>
+        </div>

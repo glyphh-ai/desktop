@@ -1,11 +1,18 @@
 /**
- * cli-agents.ts — the AGENTS section: CLI pre-configs (Claude first).
+ * loops.ts — the LOOPS section: CLI pre-configs (Claude first).
  *
- * A card per agent (icon + name + command); clicking a card opens the inline
+ * THE CLI IS THE LOOP (his architecture, 2026-09-11: "i don't want to own
+ * the loop... it should be the cli"). Glyphh owns no agent-loop logic; a
+ * Loop here is a named config for someone else's CLI.
+ *
+ * A card per loop (icon + name + command); clicking a card opens the inline
  * editor; ▶ Open plays the pre-config into a terminal card on the workbench
- * (code-workbench's __wbOpenAgentCli). Storage is main's ~/.glyphh/agents
+ * (code-workbench's __wbOpenAgentCli). Storage is main's ~/.glyphh/loops
  * store via the cli-agents-* IPC; saves announce "glyphh:cli-agents-changed"
  * so the echo wall and the layout editor pick up new tiles/cells live.
+ *
+ * The cli-agents-* channel + method names are the UNDER-THE-HOOD spelling
+ * and stay: these really are CLI agent configs. Only the surface is "Loop".
  */
 
 import { paginate, renderPaginationBar, confirmAction } from "./shared.js";
@@ -50,42 +57,42 @@ const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;"
 const announce = (): void => { window.dispatchEvent(new CustomEvent("glyphh:cli-agents-changed")); };
 
 function showList(): void {
-  el("cagent-editor")?.classList.add("hidden");
-  el("cagents-list")?.classList.remove("hidden");
-  el("cagents-toolbar")?.classList.remove("hidden");
+  el("loop-editor")?.classList.add("hidden");
+  el("loops-list")?.classList.remove("hidden");
+  el("loops-toolbar")?.classList.remove("hidden");
 }
 
 function showEditor(agent: CliAgent | null): void {
   editing = agent;
-  el("cagents-list")?.classList.add("hidden");
-  el("cagents-toolbar")?.classList.add("hidden");
-  const ed = el("cagent-editor");
+  el("loops-list")?.classList.add("hidden");
+  el("loops-toolbar")?.classList.add("hidden");
+  const ed = el("loop-editor");
   ed?.classList.remove("hidden");
-  el("cagent-form-error")?.classList.add("hidden");
-  (el<HTMLInputElement>("cagent-name")!).value = agent?.name ?? "";
-  (el<HTMLSelectElement>("cagent-cli")!).value = agent?.cli ?? "claude";
-  (el<HTMLInputElement>("cagent-icon")!).value = agent?.icon ?? "";
+  el("loop-form-error")?.classList.add("hidden");
+  (el<HTMLInputElement>("loop-name")!).value = agent?.name ?? "";
+  (el<HTMLSelectElement>("loop-cli")!).value = agent?.cli ?? "claude";
+  (el<HTMLInputElement>("loop-icon")!).value = agent?.icon ?? "";
   // The Claude case is one click: a new agent lands pre-filled.
-  (el<HTMLInputElement>("cagent-cmd")!).value = agent?.cmd ?? "claude";
-  (el<HTMLInputElement>("cagent-model")!).value = agent?.model ?? "";
-  (el<HTMLInputElement>("cagent-folder-input")!).value = agent?.cwd ?? "";
-  (el<HTMLInputElement>("cagent-mcp")!).checked = agent ? agent.mcp : true;
-  (el<HTMLSelectElement>("cagent-session")!).value = agent?.session ?? "keep";
-  (el<HTMLSelectElement>("cagent-permission")!).value = (agent as { permission?: string } | null)?.permission ?? "ask";
+  (el<HTMLInputElement>("loop-cmd")!).value = agent?.cmd ?? "claude";
+  (el<HTMLInputElement>("loop-model")!).value = agent?.model ?? "";
+  (el<HTMLInputElement>("loop-folder-input")!).value = agent?.cwd ?? "";
+  (el<HTMLInputElement>("loop-mcp")!).checked = agent ? agent.mcp : true;
+  (el<HTMLSelectElement>("loop-session")!).value = agent?.session ?? "keep";
+  (el<HTMLSelectElement>("loop-permission")!).value = (agent as { permission?: string } | null)?.permission ?? "ask";
   // API key: WRITE-ONLY. The value field starts empty; a stored key shows
   // its first/last glimpse in the hint so the user knows WHICH key it is.
-  (el<HTMLInputElement>("cagent-apikey-on")!).checked = !!agent?.apiKey;
-  (el<HTMLInputElement>("cagent-apikey-name")!).value = agent?.apiKey?.name ?? "";
-  (el<HTMLInputElement>("cagent-apikey-value")!).value = "";
-  const kh = el("cagent-apikey-hint");
+  (el<HTMLInputElement>("loop-apikey-on")!).checked = !!agent?.apiKey;
+  (el<HTMLInputElement>("loop-apikey-name")!).value = agent?.apiKey?.name ?? "";
+  (el<HTMLInputElement>("loop-apikey-value")!).value = "";
+  const kh = el("loop-apikey-hint");
   if (kh) kh.textContent = agent?.apiKey ? `Current Key: ${agent.apiKey.hint}` : "";
-  el("cagent-apikey-current")?.classList.toggle("hidden", !agent?.apiKey);
+  el("loop-apikey-current")?.classList.toggle("hidden", !agent?.apiKey);
   syncApiKeyRow();
   syncCliRow();
-  el("cagent-open-btn")?.classList.toggle("hidden", !agent);
-  el("cagent-delete-btn")?.classList.toggle("hidden", !agent);
-  const head = el("cagent-detail-head");
-  if (head) head.innerHTML = `<div class="edit-head-name">${agent ? esc(agent.name) : "New agent"}</div>`;
+  el("loop-open-btn")?.classList.toggle("hidden", !agent);
+  el("loop-delete-btn")?.classList.toggle("hidden", !agent);
+  const head = el("loop-detail-head");
+  if (head) head.innerHTML = `<div class="edit-head-name">${agent ? esc(agent.name) : "New loop"}</div>`;
   paintPreview();
 }
 
@@ -101,10 +108,10 @@ const CLI_KEY_NAMES: Record<string, string> = {
 
 /** Branded CLIs wear their own marks — the emoji field is for custom ones. */
 function syncCliRow(): void {
-  const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
-  el("cagent-icon-row")?.classList.toggle("hidden", cli in CLI_MARK_URLS);
+  const cli = el<HTMLSelectElement>("loop-cli")?.value ?? "claude";
+  el("loop-icon-row")?.classList.toggle("hidden", cli in CLI_MARK_URLS);
   // The Variable field follows the CLI unless the user typed their own.
-  const nameEl = el<HTMLInputElement>("cagent-apikey-name");
+  const nameEl = el<HTMLInputElement>("loop-apikey-name");
   if (nameEl) {
     const cur = nameEl.value.trim();
     if (!cur || Object.values(CLI_KEY_NAMES).includes(cur)) nameEl.value = CLI_KEY_NAMES[cli] ?? "";
@@ -112,23 +119,23 @@ function syncCliRow(): void {
 }
 
 function syncApiKeyRow(): void {
-  const on = el<HTMLInputElement>("cagent-apikey-on")?.checked === true;
-  el("cagent-apikey-fields")?.classList.toggle("hidden", !on);
+  const on = el<HTMLInputElement>("loop-apikey-on")?.checked === true;
+  el("loop-apikey-fields")?.classList.toggle("hidden", !on);
 }
 
 function paintPreview(): void {
-  const preview = el("cagent-cmd-preview");
+  const preview = el("loop-cmd-preview");
   if (!preview) return;
-  const cmd = (el<HTMLInputElement>("cagent-cmd")?.value ?? "").trim();
-  const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
-  const mcp = el<HTMLInputElement>("cagent-mcp")?.checked !== false;
+  const cmd = (el<HTMLInputElement>("loop-cmd")?.value ?? "").trim();
+  const cli = el<HTMLSelectElement>("loop-cli")?.value ?? "claude";
+  const mcp = el<HTMLInputElement>("loop-mcp")?.checked !== false;
   if (!cmd) { preview.textContent = ""; return; }
   // Honest per-CLI wiring note — claude takes a flag; codex takes -c
   // overrides; gemini/copilot/cursor get their settings files written.
   const wiring = !mcp ? ""
-    : cli === "claude" ? ' --mcp-config "~/.glyphh/agents/<agent>/mcp.json"'
+    : cli === "claude" ? ' --mcp-config "~/.glyphh/loops/<loop>/mcp.json"'
     : cli === "codex" ? " -c mcp_servers.glyphh.… (composed at open)"
-    : cli === "custom" ? "  (mcp.json written beside the agent)"
+    : cli === "custom" ? "  (mcp.json written beside the loop)"
     : "  (glyphh added to the CLI's own MCP settings at open)";
   preview.textContent = `runs: ${cmd}${wiring}`;
 }
@@ -138,15 +145,15 @@ const AGENT_CARD_GLYPH = `<svg viewBox="0 0 24 24" fill="none" style="width:26px
 /** The SAME shape Apps/Workspaces render: a card grid, 15 to a page (his
  *  rule, 2026-09-10). Click edits; double-click (or the editor's ▶) opens. */
 function renderList(): void {
-  const list = el("cagents-list");
+  const list = el("loops-list");
   if (!list) return;
-  const q = (el<HTMLInputElement>("cagent-search")?.value ?? "").trim().toLowerCase();
+  const q = (el<HTMLInputElement>("loop-search")?.value ?? "").trim().toLowerCase();
   const filtered = q ? all.filter((a) => a.name.toLowerCase().includes(q) || a.cmd.toLowerCase().includes(q)) : all;
   list.innerHTML = "";
   if (!filtered.length) {
     list.innerHTML = q
-      ? `<div class="crud-empty">No agents matching "${esc(q)}"</div>`
-      : `<div class="crud-empty">No agents yet — <b>+ New</b> pre-wires Claude in two fields.</div>`;
+      ? `<div class="crud-empty">No loops matching "${esc(q)}"</div>`
+      : `<div class="crud-empty">No loops yet — <b>+ New</b> pre-wires Claude in two fields.</div>`;
     return;
   }
   const { items, state } = paginate(filtered, listPage);
@@ -155,21 +162,21 @@ function renderList(): void {
   grid.className = "app-grid";
   for (const a of items) {
     const card = document.createElement("div");
-    card.className = "app-card cagent-card";
+    card.className = "app-card loop-card";
     card.dataset.id = a.id;
     card.innerHTML = `
-      <div class="app-card-icon"${a.cli in CLI_MARK_URLS ? ` data-role="cagent-mark" data-cli="${esc(a.cli)}"` : ""}>${a.cli in CLI_MARK_URLS
+      <div class="app-card-icon"${a.cli in CLI_MARK_URLS ? ` data-role="loop-mark" data-cli="${esc(a.cli)}"` : ""}>${a.cli in CLI_MARK_URLS
         ? AGENT_CARD_GLYPH
-        : a.icon ? `<span class="cagent-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
+        : a.icon ? `<span class="loop-card-emoji">${esc(a.icon)}</span>` : AGENT_CARD_GLYPH}</div>
       <div class="app-card-name">${esc(a.name)}</div>
       <div class="app-card-id" style="font-family:ui-monospace,monospace;">${esc(a.cmd)}${a.mcp ? " · glyphh tools" : ""}</div>`;
     grid.appendChild(card);
   }
   list.appendChild(grid);
   // Branded cards swap the placeholder glyph for their fetched mark.
-  grid.querySelectorAll<HTMLElement>('[data-role="cagent-mark"]').forEach((elm) => {
+  grid.querySelectorAll<HTMLElement>('[data-role="loop-mark"]').forEach((elm) => {
     void cliMark(elm.dataset.cli || "").then((data) => {
-      if (data) elm.innerHTML = `<img class="cagent-card-mark" src="${data}" alt="" />`;
+      if (data) elm.innerHTML = `<img class="loop-card-mark" src="${data}" alt="" />`;
     });
   });
   if (state.totalPages > 1) {
@@ -183,25 +190,25 @@ async function refresh(): Promise<void> {
   renderList();
 }
 
-export function loadCliAgents(): void {
+export function loadLoops(): void {
   showList();
   void refresh();
 }
 
-export function initCliAgentsEvents(): void {
-  el("cagent-new-btn")?.addEventListener("click", () => showEditor(null));
-  el("cagents-refresh-btn")?.addEventListener("click", () => loadCliAgents());
-  el("cagent-back-link")?.addEventListener("click", () => { showList(); });
-  el<HTMLInputElement>("cagent-search")?.addEventListener("input", renderList);
-  el<HTMLInputElement>("cagent-cmd")?.addEventListener("input", paintPreview);
-  el<HTMLInputElement>("cagent-mcp")?.addEventListener("change", paintPreview);
-  el<HTMLInputElement>("cagent-apikey-on")?.addEventListener("change", () => { syncApiKeyRow(); syncCliRow(); });
-  el("cagent-apikey-delete")?.addEventListener("click", () => {
+export function initLoopsEvents(): void {
+  el("loop-new-btn")?.addEventListener("click", () => showEditor(null));
+  el("loops-refresh-btn")?.addEventListener("click", () => loadLoops());
+  el("loop-back-link")?.addEventListener("click", () => { showList(); });
+  el<HTMLInputElement>("loop-search")?.addEventListener("input", renderList);
+  el<HTMLInputElement>("loop-cmd")?.addEventListener("input", paintPreview);
+  el<HTMLInputElement>("loop-mcp")?.addEventListener("change", paintPreview);
+  el<HTMLInputElement>("loop-apikey-on")?.addEventListener("change", () => { syncApiKeyRow(); syncCliRow(); });
+  el("loop-apikey-delete")?.addEventListener("click", () => {
     if (!editing?.apiKey) return;
     const doomed = editing;
     void confirmAction({
       title: `Remove the stored ${doomed.apiKey!.name}?`,
-      body: "The key file is deleted from disk; the agent opens without it until a new key is saved.",
+      body: "The key file is deleted from disk; the loop opens without it until a new key is saved.",
       confirmLabel: "Remove",
       danger: true,
     }).then((yes) => {
@@ -216,12 +223,12 @@ export function initCliAgentsEvents(): void {
       });
     });
   });
-  el<HTMLSelectElement>("cagent-cli")?.addEventListener("change", () => {
+  el<HTMLSelectElement>("loop-cli")?.addEventListener("change", () => {
     syncCliRow();
     // Picking a branded CLI seeds the command if the field is empty or still
     // the OTHER brand's default.
-    const cli = el<HTMLSelectElement>("cagent-cli")?.value ?? "claude";
-    const cmd = el<HTMLInputElement>("cagent-cmd");
+    const cli = el<HTMLSelectElement>("loop-cli")?.value ?? "claude";
+    const cmd = el<HTMLInputElement>("loop-cmd");
     const CLI_DEFAULT_CMDS: Record<string, string> = { claude: "claude", codex: "codex", gemini: "gemini", copilot: "copilot", cursor: "cursor-agent" };
     if (cmd && cli in CLI_DEFAULT_CMDS) {
       const cur = cmd.value.trim();
@@ -231,45 +238,45 @@ export function initCliAgentsEvents(): void {
   });
   const pickFolder = (): void => {
     void api().layoutsPickFolder?.().then((dir) => {
-      if (dir) { const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = dir; }
+      if (dir) { const f = el<HTMLInputElement>("loop-folder-input"); if (f) f.value = dir; }
     });
   };
-  el("cagent-folder-pick")?.addEventListener("click", pickFolder);
+  el("loop-folder-pick")?.addEventListener("click", pickFolder);
   // The readonly field IS the picker — clicking it opens the dialog too.
-  el("cagent-folder-input")?.addEventListener("click", pickFolder);
-  el("cagent-folder-clear")?.addEventListener("click", () => {
-    const f = el<HTMLInputElement>("cagent-folder-input"); if (f) f.value = "";
+  el("loop-folder-input")?.addEventListener("click", pickFolder);
+  el("loop-folder-clear")?.addEventListener("click", () => {
+    const f = el<HTMLInputElement>("loop-folder-input"); if (f) f.value = "";
   });
 
-  el("cagents-list")?.addEventListener("click", (ev) => {
-    const card = (ev.target as HTMLElement).closest<HTMLElement>(".cagent-card");
+  el("loops-list")?.addEventListener("click", (ev) => {
+    const card = (ev.target as HTMLElement).closest<HTMLElement>(".loop-card");
     if (!card?.dataset.id) return;
     const agent = all.find((a) => a.id === card.dataset.id);
     if (agent) showEditor(agent);
   });
-  el("cagents-list")?.addEventListener("dblclick", (ev) => {
-    const card = (ev.target as HTMLElement).closest<HTMLElement>(".cagent-card");
+  el("loops-list")?.addEventListener("dblclick", (ev) => {
+    const card = (ev.target as HTMLElement).closest<HTMLElement>(".loop-card");
     if (!card?.dataset.id) return;
     (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(card.dataset.id);
   });
 
-  el("cagent-save-btn")?.addEventListener("click", () => {
-    const err = el("cagent-form-error");
+  el("loop-save-btn")?.addEventListener("click", () => {
+    const err = el("loop-form-error");
     const input = {
       ...(editing ? { id: editing.id } : {}),
-      name: el<HTMLInputElement>("cagent-name")?.value ?? "",
-      cli: el<HTMLSelectElement>("cagent-cli")?.value ?? "claude",
-      icon: el<HTMLInputElement>("cagent-icon")?.value ?? "",
-      cmd: el<HTMLInputElement>("cagent-cmd")?.value ?? "",
-      cwd: el<HTMLInputElement>("cagent-folder-input")?.value ?? "",
-      model: el<HTMLInputElement>("cagent-model")?.value ?? "",
-      mcp: el<HTMLInputElement>("cagent-mcp")?.checked !== false,
-      session: el<HTMLSelectElement>("cagent-session")?.value ?? "keep",
-      permission: el<HTMLSelectElement>("cagent-permission")?.value ?? "ask",
-      apiKeyOn: el<HTMLInputElement>("cagent-apikey-on")?.checked === true,
-      apiKeyName: el<HTMLInputElement>("cagent-apikey-name")?.value ?? "",
+      name: el<HTMLInputElement>("loop-name")?.value ?? "",
+      cli: el<HTMLSelectElement>("loop-cli")?.value ?? "claude",
+      icon: el<HTMLInputElement>("loop-icon")?.value ?? "",
+      cmd: el<HTMLInputElement>("loop-cmd")?.value ?? "",
+      cwd: el<HTMLInputElement>("loop-folder-input")?.value ?? "",
+      model: el<HTMLInputElement>("loop-model")?.value ?? "",
+      mcp: el<HTMLInputElement>("loop-mcp")?.checked !== false,
+      session: el<HTMLSelectElement>("loop-session")?.value ?? "keep",
+      permission: el<HTMLSelectElement>("loop-permission")?.value ?? "ask",
+      apiKeyOn: el<HTMLInputElement>("loop-apikey-on")?.checked === true,
+      apiKeyName: el<HTMLInputElement>("loop-apikey-name")?.value ?? "",
       // Only a TYPED value travels — empty means keep what's stored.
-      apiKeyValue: el<HTMLInputElement>("cagent-apikey-value")?.value ?? "",
+      apiKeyValue: el<HTMLInputElement>("loop-apikey-value")?.value ?? "",
     };
     void api().cliAgentsSave?.(input).then((r) => {
       if (!r?.ok) {
@@ -281,8 +288,8 @@ export function initCliAgentsEvents(): void {
     });
   });
 
-  el("cagent-cancel-btn")?.addEventListener("click", () => { showList(); });
-  el("cagent-delete-btn")?.addEventListener("click", () => {
+  el("loop-cancel-btn")?.addEventListener("click", () => { showList(); });
+  el("loop-delete-btn")?.addEventListener("click", () => {
     if (!editing) return;
     const doomed = editing;
     void confirmAction({
@@ -300,7 +307,7 @@ export function initCliAgentsEvents(): void {
     });
   });
 
-  el("cagent-open-btn")?.addEventListener("click", () => {
+  el("loop-open-btn")?.addEventListener("click", () => {
     if (!editing) return;
     (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(editing.id);
   });

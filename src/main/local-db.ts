@@ -228,6 +228,30 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_loop_runs_schedule ON loop_runs (schedule_id, started_at);
     `,
   },
+  {
+    // AGENTS restored (2026-09-11): an agent is a standing worker that OWNS
+    // schedules. Rather than stand up a parallel scheduler, an agent's task
+    // IS a loop_schedules row stamped with its owner — so the existing cron
+    // arming, run capture and run feed all serve it unchanged.
+    //   owner_agent_id  the agent that owns this task (NULL = a loose
+    //                   schedule made straight from the Tasks page)
+    //   kind/target     what fires: a task spec ("task", target = its slug,
+    //                   the legacy loop_slug meaning) or a skill ("skill",
+    //                   target = the skill slug). Existing rows are task
+    //                   specs, hence the defaults.
+    //   args            JSON arguments handed to the target
+    // NOTE: agent_id on this table is the CLI LOOP that runs the task —
+    // named before the rename; it is NOT the owning agent.
+    version: 10,
+    sql: `
+      ALTER TABLE loop_schedules ADD COLUMN owner_agent_id TEXT;
+      ALTER TABLE loop_schedules ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+      ALTER TABLE loop_schedules ADD COLUMN target TEXT NOT NULL DEFAULT '';
+      ALTER TABLE loop_schedules ADD COLUMN args TEXT NOT NULL DEFAULT '{}';
+      UPDATE loop_schedules SET target = loop_slug WHERE target = '';
+      CREATE INDEX IF NOT EXISTS idx_loop_schedules_owner ON loop_schedules (owner_agent_id);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

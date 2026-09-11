@@ -95,8 +95,10 @@ import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
+import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerCliAgentsIpc } from "./cli-agents";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
+import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
 import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
@@ -224,6 +226,10 @@ async function boot() {
   // The RUNTIME name — the menu bar, Quit item, and About panel read this,
   // overriding package.json productName. It said "Yo" long after the rebrand.
   app.setName("Glyphh");
+
+  // Rotate ~/.glyphh to the current vocabulary (loops→tasks, agents→loops)
+  // BEFORE anything opens a directory under it. Idempotent.
+  migrateGlyphhHome();
 
   // The app data seam's desktop credential: glyphh-app webviews get the
   // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
@@ -983,6 +989,7 @@ async function boot() {
   registerWorkspaceStateIpc();
   registerCliAgentsIpc();
   registerLocalLibraryIpc();
+  registerLocalAgentsIpc();
   registerMcpConnectionsIpc();
   // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
   connectorManager = new ConnectorManager();
@@ -994,6 +1001,9 @@ async function boot() {
   });
   connectorManager.init().catch((err) => console.error("[connectors]", err instanceof Error ? err.message : err));
   startLoopScheduler();
+  // Agents own schedules too: a parked agent must not fire. Runs AFTER the
+  // generic arming, which only knows each row own enabled flag.
+  reconcileAgentSchedules();
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();

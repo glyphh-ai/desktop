@@ -5035,6 +5035,17 @@ ol.docs-list li::before {
   overflow-y: auto;
   min-height: 0;
 }
+/* The form SCROLLS (overflow-y above) and is a flex column, so any control
+   sitting directly in it is a shrinkable flex item: once the fields overflow,
+   textareas collapse to a sliver with their own text overlapping (his report,
+   2026-09-11). Most forms dodge this by nesting fields in a wrapper; the
+   stacked ones don't, so pin every direct child's height to its content. */
+.crud-inline-form > .settings-input,
+.crud-inline-form > label,
+.crud-inline-form > p,
+.crud-inline-form > .lib-guard-grid { flex: 0 0 auto; }
+.crud-inline-form > textarea.settings-input { min-height: 2.6em; }
+
 .crud-inline-form .settings-actions,
 #app-detail .settings-actions {
   justify-content: flex-end;
@@ -5252,13 +5263,13 @@ ol.docs-list li::before {
 }
 
 /* ── Loop detail: editable default-model pickers ── */
-.loop-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.loop-model-row { display: flex; align-items: center; gap: 10px; }
-.loop-model-label {
+.task-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.task-model-row { display: flex; align-items: center; gap: 10px; }
+.task-model-label {
   flex: 0 0 120px; font-size: 12px; color: var(--text-2);
   text-align: right; text-transform: capitalize;
 }
-.loop-model-select { max-width: 300px; }
+.task-model-select { max-width: 300px; }
 .settings-hint.danger { color: var(--danger, #f87171); }
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
@@ -15055,11 +15066,15 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* ── Library editors — the app-standard form on the left, the live React-Flow
    view on the right. Form fields are the same settings-label/settings-input
    system the Apps page uses; only the split shell is new. ── */
-#skill-editor.crud-inline-form, #loop-editor.crud-inline-form, #agent-editor.crud-inline-form,
-#agent-form.crud-inline-form, #ws-edit-view.crud-inline-form { max-width: none; }
+/* SPLIT editors only — a form beside a live pane needs the width. A plain
+   stacked form (#agent-form) must KEEP crud-inline-form's 620px cap or it
+   runs the full width of the panel and stops looking like every other form
+   in the app (his report, 2026-09-11). */
+#skill-editor.crud-inline-form, #task-editor.crud-inline-form, #agent-editor.crud-inline-form,
+#ws-edit-view.crud-inline-form { max-width: none; }
 /* The same horizontal rule the Apps detail draws under its header (its tab
    bar's border-bottom) — ties the two-column editors to one look. */
-#skill-editor .crud-inline-header, #loop-editor .crud-inline-header, #agent-editor .crud-inline-header {
+#skill-editor .crud-inline-header, #task-editor .crud-inline-header, #agent-editor .crud-inline-header {
   border-bottom: 1px solid var(--border);
   padding-bottom: 10px;
 }
@@ -15188,7 +15203,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    every cell ellipsizes, and the secondary columns drop out as it tightens.
    All three share the same 5-column shape: Name · Description · <facet> ·
    <state> · ⋯ */
-#skills-list, #loops-list, #agents-list { container-type: inline-size; }
+#skills-list, #tasks-list, #agents-list { container-type: inline-size; }
 .lib-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 .lib-table th, .lib-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-table th:nth-child(1), .lib-table td:nth-child(1) { width: 26%; }
@@ -20272,23 +20287,23 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 
 /* ── Agents section (CLI pre-configs, help/cli-agents.ts) ──── */
-.cagent-card-emoji { font-size: 24px; line-height: 1; }
-.cagent-card-mark { width: 26px; height: 26px; border-radius: 6px; }
+.loop-card-emoji { font-size: 24px; line-height: 1; }
+.loop-card-mark { width: 26px; height: 26px; border-radius: 6px; }
 /* The Agents editor rides the Apps/Workspaces split — same release. */
-#cagent-editor.crud-inline-form { max-width: none !important; }
-.cagent-key-current {
+#loop-editor.crud-inline-form { max-width: none !important; }
+.loop-key-current {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   margin-top: 8px; font: 12px ui-monospace, monospace; color: var(--text-2);
 }
-.cagent-key-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.cagent-key-actions > svg { width: 16px; height: 16px; color: var(--success); }
-#cagent-apikey-delete {
+.loop-key-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.loop-key-actions > svg { width: 16px; height: 16px; color: var(--success); }
+#loop-apikey-delete {
   display: flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border: none; border-radius: 6px;
   background: transparent; color: var(--text-3); cursor: pointer;
 }
-#cagent-apikey-delete svg { width: 14px; height: 14px; }
-#cagent-apikey-delete:hover { color: #f43f5e; background: var(--surface-2); }
+#loop-apikey-delete svg { width: 14px; height: 14px; }
+#loop-apikey-delete:hover { color: #f43f5e; background: var(--surface-2); }
 
 /* Agent terminal header (his spec, 2026-09-11): the tab row becomes the
    session-name row with the shared control cluster — identical to the chat
@@ -20298,7 +20313,9 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
   font-size: 12px; font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
 }
-.ws-agent-recents-menu { max-height: 320px; overflow-y: auto; width: 260px; }
+/* The agent terminal head's recents IS the chat head's dropdown —
+   .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
+   own on purpose: one surface, two places it can be opened from. */
 
 /* Agent card dev-tools kebab — sits with the head's icon buttons. */
 .echo-card-devtools svg { width: 15px; height: 15px; }

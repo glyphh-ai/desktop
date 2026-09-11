@@ -1,19 +1,28 @@
 /**
- * local-library.ts — LOOPS, SKILLS and SCHEDULED TASKS, local
- * (the build, 2026-09-10: the main-era UX returns; storage + execution move
- * onto this machine).
+ * local-library.ts — TASKS and SKILLS, local (the build, 2026-09-10: the
+ * main-era UX returns; storage + execution move onto this machine).
  *
- *   ~/.glyphh/loops/<slug>.json    — a loop: the main-era shape (manifest
- *                                    with roles, code = the PROGRAM). A
- *                                    role's `default` names the CLI AGENT
- *                                    that fills the slot (agents carry their
- *                                    model; a workspace/schedule can override).
+ *   ~/.glyphh/tasks/<slug>.json    — a task spec: the main-era shape
+ *                                    (manifest with roles, code = the
+ *                                    PROGRAM). A role's `default` names the
+ *                                    LOOP that fills the slot (loops carry
+ *                                    their model; a workspace/schedule can
+ *                                    override).
  *   ~/.glyphh/skills/<slug>.json   — a skill: manifest + prompt + code.
  *   user-state.sqlite              — loop_schedules + loop_runs (migration 9).
  *
- * EXECUTION: a scheduled (or run-now) task runs its loop HEADLESSLY — the
- * slotted agent's CLI in print mode (claude -p / codex exec / gemini -p)
- * with the loop's program as the prompt, output captured as the run record.
+ * NAMING (2026-09-11): this file's `LoopRow`/`loop_*` identifiers are the
+ * MAIN-ERA sense of "loop" — a program with role slots — which the Tasks
+ * page has always rendered ("a task IS a loop row renamed", below). His
+ * current vocabulary gives "Loop" to the CLI pre-configs in cli-agents.ts.
+ * The directory moved to tasks/ to end the collision; the internal type
+ * names and the two SQLite tables keep the old spelling until they are
+ * renamed under their own migration — do NOT read `LoopRow` here as a CLI
+ * loop.
+ *
+ * EXECUTION: a scheduled (or run-now) task runs HEADLESSLY — the slotted
+ * loop's CLI in print mode (claude -p / codex exec / gemini -p) with the
+ * task's program as the prompt, output captured as the run record.
  */
 
 import fs from "fs";
@@ -25,7 +34,7 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
 
-const LOOPS_DIR = path.join(homedir(), ".glyphh", "loops");
+const TASKS_DIR = path.join(homedir(), ".glyphh", "tasks");
 const SKILLS_DIR = path.join(homedir(), ".glyphh", "skills");
 
 interface LoopRole { name: string; label?: string; description?: string; default?: string | null; model?: string | null }
@@ -74,13 +83,13 @@ function listRows<T>(dir: string): T[] {
 }
 
 function getLoop(ref: string): LoopRow {
-  const row = readRow<LoopRow>(LOOPS_DIR, String(ref));
+  const row = readRow<LoopRow>(TASKS_DIR, String(ref));
   if (!row) throw new Error(`loop "${ref}" not found`);
   return row;
 }
 function saveLoop(row: LoopRow): LoopRow {
   row.updatedAt = new Date().toISOString();
-  writeRow(LOOPS_DIR, row.slug, row);
+  writeRow(TASKS_DIR, row.slug, row);
   return row;
 }
 export function listSkillRows(): SkillRow[] { return listRows<SkillRow>(SKILLS_DIR); }
@@ -115,6 +124,39 @@ function getSkill(ref: string): SkillRow {
 export interface ScheduleRow {
   id: string; agent_id: string; name: string; loop_slug: string;
   cron: string; enabled: number; created_at: string;
+  /** The AGENT that owns this task, if any (local-agents.ts). NULL = a loose
+   *  schedule made straight from the Tasks page. */
+  owner_agent_id: string | null;
+  /** What fires: a task spec or a skill. `target` is its slug. */
+  kind: "task" | "skill";
+  target: string;
+  /** JSON blob of arguments handed to the target. */
+  args: string;
+}
+
+/** What an AGENT contributes to a run: which CLI loop actually runs it, the
+ *  standing prompt that rides ahead of the target's own program, and an
+ *  optional model override.
+ *
+ *  A TASK SLOT NAMES AN AGENT (his rule, 2026-09-11: "tasks are still
+ *  referencing loops and not agents"). The agent is the unit of standing
+ *  work; the loop is an implementation detail it carries. Tasks therefore
+ *  never pick a CLI directly — they pick who does the work.
+ *
+ *  Injected rather than imported: local-agents.ts depends on this module, so
+ *  reaching back for agent rows directly would close an import cycle. */
+export interface ScheduleContext { loopId: string; prompt: string; model?: string }
+/** An agent as a slot CHOICE — id, display name, and the loop behind it. */
+export interface SlotAgent { id: string; name: string; loopId: string | null }
+
+let agentContext: ((agentId: string) => ScheduleContext | null) | null = null;
+let agentChoices: (() => SlotAgent[]) | null = null;
+export function setAgentProviders(
+  ctx: (agentId: string) => ScheduleContext | null,
+  list: () => SlotAgent[],
+): void {
+  agentContext = ctx;
+  agentChoices = list;
 }
 interface RunRow { id: string; schedule_id: string; started_at: string; duration_ms: number | null; status: string; error: string | null; output: string | null }
 
@@ -122,7 +164,7 @@ const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36
 
 const liveJobs = new Map<string, ScheduledTask>();
 
-function armSchedule(row: ScheduleRow): void {
+export function armSchedule(row: ScheduleRow): void {
   liveJobs.get(row.id)?.stop();
   liveJobs.delete(row.id);
   if (!row.enabled || !cron.validate(row.cron)) return;
@@ -145,14 +187,37 @@ export function stopLoopScheduler(): void {
   liveJobs.clear();
 }
 
-/** One run: the loop's program through the slotted agent's headless CLI. */
-async function runSchedule(scheduleId: string): Promise<void> {
+/** What a schedule actually asks for: the target's own text, plus the model
+ *  its slot names. Throws with a readable reason the run feed can show. */
+function promptForSchedule(sched: ScheduleRow): { text: string; slotModel?: string } {
+  const ref = sched.target || sched.loop_slug;
+  if (sched.kind === "skill") {
+    const skill = getSkill(ref);
+    const text = skill.prompt || skill.description || skill.name;
+    return { text, ...(skill.manifest.model ? { slotModel: skill.manifest.model } : {}) };
+  }
+  const spec = getLoop(ref);
+  // The slot whose default IS this loop names the model; else the first slot.
+  const slot = (spec.manifest.roles ?? []).find((r) => r.default === sched.agent_id) ?? spec.manifest.roles?.[0];
+  const text = spec.code || spec.description || spec.name;
+  return { text, ...(slot?.model ? { slotModel: slot.model } : {}) };
+}
+
+/** One run: the target's program, through the AGENT doing the work.
+ *
+ *  The agent supplies the loop, the standing prompt and any model override —
+ *  that is what makes it a worker and not just a cron entry. `agent_id` on
+ *  the row is whoever was slotted; an owning agent (an Agents-page task)
+ *  wins over it. Rows written before slots named agents hold a LOOP id
+ *  there, so an unresolvable agent falls back to reading it as one. */
+export async function runSchedule(scheduleId: string): Promise<void> {
   const db = getLocalDb();
   const sched = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(scheduleId) as ScheduleRow | undefined;
   if (!sched) throw new Error("schedule not found");
-  const loop = getLoop(sched.loop_slug);
-  const agent = listCliAgents().find((a) => a.id === sched.agent_id) as CliAgentListed | undefined;
-  if (!agent) throw new Error(`agent "${sched.agent_id}" not found`);
+  const who = sched.owner_agent_id || sched.agent_id;
+  const ctx = who ? agentContext?.(who) ?? null : null;
+  const loopId = ctx?.loopId || sched.agent_id;
+  const loop = listCliAgents().find((a) => a.id === loopId) as CliAgentListed | undefined;
   const runId = rid();
   const startedAt = new Date().toISOString();
   db.prepare("INSERT INTO loop_runs (id, schedule_id, started_at, status) VALUES (?, ?, ?, 'running')")
@@ -164,8 +229,11 @@ async function runSchedule(scheduleId: string): Promise<void> {
   };
   let line: string;
   try {
-    const schedRole = (loop.manifest.roles ?? []).find((r) => r.default === sched.agent_id) ?? loop.manifest.roles?.[0];
-    line = composeHeadless(agent, loop.code || loop.description || loop.name, schedRole?.model ?? undefined);
+    if (!loop) throw new Error(`loop "${loopId}" not found`);
+    const { text, slotModel } = promptForSchedule(sched);
+    // The agent's standing prompt frames the task's own program.
+    const prompt = ctx?.prompt ? `${ctx.prompt}\n\n${text}` : text;
+    line = composeHeadless(loop, prompt, ctx?.model ?? slotModel);
   } catch (err) {
     finish("failed", err instanceof Error ? err.message : String(err), null);
     return;
@@ -204,7 +272,7 @@ const specOf = (row: LoopRow): TaskSpec => ({
 });
 
 export function listTaskSpecs(): TaskSpec[] {
-  return listRows<LoopRow>(LOOPS_DIR).filter((r) => !r.builtIn).map(specOf)
+  return listRows<LoopRow>(TASKS_DIR).filter((r) => !r.builtIn).map(specOf)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -219,7 +287,7 @@ export function saveTaskSpec(input: {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a task needs a name");
   const slug = input.slug ? String(input.slug) : slugify(name);
-  const existing = readRow<LoopRow>(LOOPS_DIR, slug);
+  const existing = readRow<LoopRow>(TASKS_DIR, slug);
   const roles: LoopRole[] = Array.isArray(input.slots) && input.slots.length
     ? input.slots.map((sl, i) => ({
         name: String(sl.name ?? `slot-${i + 1}`),
@@ -236,7 +304,7 @@ export function saveTaskSpec(input: {
     manifest: { ...(existing?.manifest ?? { version: 1, type: "turn" }), roles },
     code: String(input.program ?? existing?.code ?? ""),
   };
-  writeRow(LOOPS_DIR, slug, row);
+  writeRow(TASKS_DIR, slug, row);
   return specOf(row);
 }
 
@@ -244,12 +312,20 @@ export function saveTaskSpec(input: {
  *  (or given) agent's headless CLI; the transcript goes back to the caller. */
 export async function runTaskNow(ref: string, agentId?: string): Promise<{ status: string; output: string }> {
   const row = getLoop(ref);
-  const agents = listCliAgents();
+  // WHO does it: the given agent, else the first slot's agent, else the only
+  // agent there is. No agent = nothing to run it — say so rather than
+  // silently borrowing some CLI.
+  const roster = agentChoices?.() ?? [];
   const wanted = agentId || row.manifest.roles?.[0]?.default || "";
-  const agent = agents.find((a) => a.id === wanted) ?? agents[0];
-  if (!agent) throw new Error("no agents exist to run this task");
-  const runRole = (row.manifest.roles ?? []).find((r) => r.default === agent.id) ?? row.manifest.roles?.[0];
-  const line = composeHeadless(agent, row.code || row.description || row.name, runRole?.model ?? undefined);
+  const who = roster.find((a) => a.id === wanted) ?? roster[0];
+  const ctx = who ? agentContext?.(who.id) ?? null : null;
+  // Pre-agent rows slotted a LOOP id directly; fall back to reading it that way.
+  const loopId = ctx?.loopId || wanted;
+  const loop = listCliAgents().find((a) => a.id === loopId) as CliAgentListed | undefined;
+  if (!loop) throw new Error(who ? `agent "${who.name}" has no loop to run on` : "no agents exist to run this task");
+  const slot = (row.manifest.roles ?? []).find((r) => r.default === who?.id) ?? row.manifest.roles?.[0];
+  const program = row.code || row.description || row.name;
+  const line = composeHeadless(loop, ctx?.prompt ? `${ctx.prompt}\n\n${program}` : program, ctx?.model ?? slot?.model ?? undefined);
   const r = await execHeadless(line);
   return { status: r.code === 0 ? "ok" : "failed", output: r.error ? `${r.output}\n${r.error}`.trim() : r.output };
 }
@@ -266,7 +342,7 @@ export function listTaskRunsFor(ref: string): Array<{ id: string; startedAt: str
 export function registerLocalLibraryIpc(): void {
   // LOOPS
   ipcMain.handle("loops-list", () => ({
-    loops: listRows<LoopRow>(LOOPS_DIR)
+    loops: listRows<LoopRow>(TASKS_DIR)
       .map(({ manifest: _m, code: _c, ...summary }) => summary)
       .sort((a, b) => a.name.localeCompare(b.name)),
   }));
@@ -280,7 +356,7 @@ export function registerLocalLibraryIpc(): void {
     return saveLoop(row);
   }));
   ipcMain.handle("library-loop-delete", (_e, ref: string) => env(() => {
-    fs.rmSync(path.join(LOOPS_DIR, `${String(ref)}.json`), { force: true });
+    fs.rmSync(path.join(TASKS_DIR, `${String(ref)}.json`), { force: true });
     const db = getLocalDb();
     for (const s of loadSchedules().filter((x) => x.loop_slug === String(ref))) {
       liveJobs.get(s.id)?.stop();
@@ -292,14 +368,14 @@ export function registerLocalLibraryIpc(): void {
   ipcMain.handle("loops-create", (_e, input: { name?: string } | undefined) => env(() => {
     const name = String(input?.name ?? "New loop").trim() || "New loop";
     const slug = slugify(name);
-    if (readRow(LOOPS_DIR, slug)) throw new Error(`a loop named "${slug}" already exists`);
+    if (readRow(TASKS_DIR, slug)) throw new Error(`a loop named "${slug}" already exists`);
     const row: LoopRow = {
       id: slug, slug, scope: "personal", ownerUserId: null,
       name, description: "", builtIn: false, updatedAt: new Date().toISOString(),
       manifest: { version: 1, type: "turn", roles: [{ name: "main", label: "Main", description: "The agent this loop runs on.", default: null }] },
       code: "",
     };
-    writeRow(LOOPS_DIR, slug, row);
+    writeRow(TASKS_DIR, slug, row);
     return row;
   }));
   // Roles resolve with CHOICES = the CLI AGENTS (a role's default names an
@@ -311,8 +387,8 @@ export function registerLocalLibraryIpc(): void {
     const loop = typeof arg === "string" ? arg : String(arg?.loop ?? "");
     try {
       const row = getLoop(String(loop));
-      const agents = listCliAgents();
-      const choices = agents.map((a) => ({ id: a.id, name: a.model ? `${a.name} — ${a.model}` : a.name }));
+      // A slot picks an AGENT, not a CLI — the agent brings its own loop.
+      const choices = (agentChoices?.() ?? []).map((a) => ({ id: a.id, name: a.name }));
       const roles = (row.manifest.roles ?? []).map((r) => ({
         name: r.name, label: r.label, description: r.description,
         modelId: r.default ?? null,
@@ -374,13 +450,21 @@ export function registerLocalLibraryIpc(): void {
   }));
 
   // SCHEDULED TASKS — the Tasks view's exact lanes over the local scheduler.
-  ipcMain.handle("library-agents-list", () => env(() => {
-    const withTasks = new Set(loadSchedules().map((s) => s.agent_id));
-    return listCliAgents()
-      .filter((a) => withTasks.has(a.id))
-      .map((a) => ({ id: a.id, slug: a.id, name: a.name }));
+  // Who has scheduled work, for the workbench Tasks panel's grouping. Slots
+  // name AGENTS now; rows written before that hold a LOOP id in agent_id, so
+  // an id the roster doesn't know falls back to reading it as a loop.
+  ipcMain.handle("tasks-agents-list", () => env(() => {
+    const withTasks = [...new Set(loadSchedules().map((s) => s.agent_id).filter(Boolean))];
+    const roster = agentChoices?.() ?? [];
+    const loops = listCliAgents();
+    return withTasks.map((id) => {
+      const agent = roster.find((a) => a.id === id);
+      if (agent) return { id, slug: id, name: agent.name };
+      const loop = loops.find((l) => l.id === id);
+      return { id, slug: id, name: loop ? `${loop.name} (loop)` : id };
+    });
   }));
-  ipcMain.handle("library-agent-tasks", (_e, ref: string) => env(() => {
+  ipcMain.handle("tasks-for-agent", (_e, ref: string) => env(() => {
     const db = getLocalDb();
     return loadSchedules().filter((s) => s.agent_id === String(ref)).map((s) => {
       const last = db.prepare("SELECT started_at, status, error FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 1")
@@ -392,14 +476,14 @@ export function registerLocalLibraryIpc(): void {
       };
     });
   }));
-  ipcMain.handle("library-agent-task-runs", (_e, _ref: string, taskId: string) => env(() =>
+  ipcMain.handle("tasks-run-list", (_e, _ref: string, taskId: string) => env(() =>
     (getLocalDb().prepare("SELECT * FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 30").all(String(taskId)) as RunRow[])
       .map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output }))));
-  ipcMain.handle("library-agent-task-run-now", async (_e, _ref: string, taskId: string) => {
+  ipcMain.handle("tasks-run-now", async (_e, _ref: string, taskId: string) => {
     try { await runSchedule(String(taskId)); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("library-agent-task-update", (_e, _ref: string, taskId: string, patch: { enabled?: boolean }) => env(() => {
+  ipcMain.handle("tasks-set-enabled", (_e, _ref: string, taskId: string, patch: { enabled?: boolean }) => env(() => {
     const db = getLocalDb();
     if (patch?.enabled !== undefined) {
       db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(patch.enabled ? 1 : 0, String(taskId));
