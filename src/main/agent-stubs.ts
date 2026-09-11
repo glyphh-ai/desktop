@@ -42,6 +42,7 @@ const ENVELOPE = [
   "org-models-list", "org-models-set-supported",
   "gateway-metrics",
   "workspace-provider-keys", "workspace-provider-key-set", "workspace-provider-key-clear",
+  "gateway-keys-list", "gateway-keys-create", "gateway-keys-revoke",
   "org-provider-clear-key", "org-provider-disable", "org-provider-enable", "org-providers-list",
   "run-stream-attach", "run-stream-stop",
   "apikeys-create",

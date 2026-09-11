@@ -26,6 +26,7 @@
                    the org's model catalog + the telemetry page. -->
               <div class="settings-nav-group platform-only">Gateway</div>
               <button id="nav-models" class="settings-nav-item platform-only" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg><span>Models</span></button>
+              <button class="settings-nav-item platform-only" data-sub="gateway-keys"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 0-3 3l1.9-1.9L12 14l2-2 1.4 1.4L17.7 11l-2.3-2.3z"/><circle cx="7.5" cy="15.5" r="1.5"/></svg><span>API Keys</span></button>
               <button class="settings-nav-item platform-only" data-sub="gateway"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg><span>Metrics</span></button>
               <!-- Platform — the super-admin console (Catalog / Plans / Usage /
                    Orgs). Hidden until gateAdminSubs (navigation.ts) sees a
@@ -595,6 +596,52 @@
                    The program/payout SDK surface ships separately;
                    settings-developer.ts renders a "coming online" state until
                    it lands. -->
+<!-- Gateway › API Keys — the keys the gateway hands out (gateway-keys.ts).
+     The pre-purge Settings › API Keys grammar (aa04a2cc^) rebound to router
+     virtual keys: each key is minted against ONE role (models + vendor
+     credential resolution), named, with its own expiry; the token shows once.
+     Registry rows never die — telemetry outlives the key. -->
+<div class="settings-panel" data-sub="gateway-keys">
+  <h2>API Keys</h2>
+  <p class="section-desc">Keys the gateway hands out. Each key is bound to a role — it reaches that role's models through <code>https://router.glyphh.ai</code> — and the token is shown once on creation. Revoking kills the key immediately; its metrics stay.</p>
+  <div id="gwk-error" class="settings-error hidden"></div>
+  <div id="gwk-admin-only" class="crud-empty hidden">Only an org admin can manage gateway keys.</div>
+
+  <div id="gwk-list-view">
+    <div class="crud-toolbar">
+      <input id="gwk-search" type="text" class="crud-search" placeholder="Search keys…" spellcheck="false" autocomplete="off" />
+      <button id="gwk-new-btn" class="action-btn primary" type="button">+ New key</button>
+    </div>
+    <div id="gwk-empty" class="crud-empty hidden">No keys yet.</div>
+    <div id="gwk-list" class="mbr-list"></div>
+  </div>
+
+  <div id="gwk-editor" class="crud-inline-form hidden">
+    <div class="crud-inline-header">
+      <a class="crud-breadcrumb-back" id="gwk-back-link">&larr; API keys</a>
+      <div class="crud-spacer"></div>
+    </div>
+    <div id="gwk-form-error" class="crud-form-error hidden"></div>
+    <label class="settings-label" for="gwk-name">Name</label>
+    <input id="gwk-name" type="text" class="settings-input" placeholder="e.g. CI pipeline" spellcheck="false" autocomplete="off" />
+    <label class="settings-label" for="gwk-role">Role</label>
+    <select id="gwk-role" class="settings-input"></select>
+    <label class="settings-label" for="gwk-expires">Expiration</label>
+    <select id="gwk-expires" class="settings-input">
+      <option value="">Never</option>
+      <option value="7">7 days</option>
+      <option value="30" selected>30 days</option>
+      <option value="90">90 days</option>
+      <option value="365">1 year</option>
+    </select>
+    <div id="gwk-never-warn" class="settings-warn hidden" style="margin-top:10px;">A key that never expires stays valid until you revoke it — anyone holding it keeps access indefinitely. Prefer an expiry.</div>
+    <p class="settings-hint">The key reaches the role&rsquo;s models as they stand right now, and burns the role&rsquo;s vendor keys (or the org&rsquo;s where the role has none). The token is shown once, right here, on creation.</p>
+    <div class="settings-actions" style="margin-top:8px;">
+      <button id="gwk-cancel-btn" class="action-btn" type="button">Cancel</button>
+      <button id="gwk-create-btn" class="action-btn primary" type="button">Create key</button>
+    </div>
+  </div>
+</div>
 <!-- Gateway › Metrics — the org's router telemetry (gateway-metrics.ts).
      Mirrors the Platform › Usage grammar: dash-cards, a filtered per-day
      chart, a performance chart on the SAME filters, and a by-model table.

@@ -438,6 +438,9 @@ declare global {
       workspaceProviderKeys: (id: string) => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       workspaceProviderKeySet: (id: string, slug: string, key: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       workspaceProviderKeyClear: (id: string, slug: string) => Promise<{ ok: boolean; error?: string }>;
+      gatewayKeysList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      gatewayKeysCreate: (input: { name: string; workspaceId: string; days?: number }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      gatewayKeysRevoke: (id: string) => Promise<{ ok: boolean; error?: string }>;
       orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgCustomModelsSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;

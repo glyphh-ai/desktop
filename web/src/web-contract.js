@@ -1085,6 +1085,9 @@ export function buildContract(client, deps) {
     orgModelsList: lib(() => client.orgModels.list()),
     // Gateway telemetry (Gateway › Metrics) — org-scoped router spend metadata.
     gatewayMetrics: lib((opts) => client.gateway.metrics(opts || {})),
+    gatewayKeysList: lib(() => client.gateway.keys()),
+    gatewayKeysCreate: lib((input) => client.gateway.createKey(input)),
+    gatewayKeysRevoke: lib((id) => client.gateway.revokeKey(id).then(() => ({ ok: true }))),
     workspacesList: lib(() => client.workspaces.list()),
     // Role provider keys — the org key is the default; a role key overrides it.
     workspaceProviderKeys: lib((id) => client.workspaces.providerKeys(id)),
