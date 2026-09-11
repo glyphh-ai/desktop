@@ -210,8 +210,14 @@ export async function loadUsageChart(): Promise<void> {
   const shown = only ? series.points.filter((p) => p.key === only) : series.points;
   const credits = shown.reduce((s, p) => s + p.credits, 0);
   const calls = shown.reduce((s, p) => s + p.requests, 0);
-  $a("dash-usage-total").textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
-  $a("dash-usage-range").textContent = `last ${win} days`;
+  // GUARDED (his report, 2026-09-11): these loaders now run on surfaces
+  // where the chart DOM may not exist (web platform) — absent DOM = no-op,
+  // never a boot-killing rejection.
+  const totalEl = document.getElementById("dash-usage-total");
+  const rangeEl = document.getElementById("dash-usage-range");
+  if (totalEl) totalEl.textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
+  if (rangeEl) rangeEl.textContent = `last ${win} days`;
+  if (!totalEl) return;
   renderChart(series, only);
 }
 
