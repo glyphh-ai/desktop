@@ -4732,14 +4732,26 @@ async function init(): Promise<void> {
         termBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           void (async () => {
-            const agentCard = openList.find((x) => x.card && x.tile.kind === "agent");
-            const boundId = agentCard?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
-            if (!boundId) return;
+            const boundId = openList.find((x) => x.card && x.tile.kind === "agent")?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
+            if (!boundId) return;   // nowhere to go — the chat STAYS (never close-into-nothing)
             // The chat's live CLI session follows into the terminal.
             const chatId = (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId?.() ?? null;
             const sid = chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId) : null;
-            if (agentCard) closeCard(agentCard, { keepSession: true });
+            // OPEN FIRST, close after (his report, 2026-09-11: close-first
+            // left nothing when the async open missed — 'the arrow closes
+            // the agent'). The chat card only leaves once the terminal card
+            // is really on screen.
             (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
+            const closeChatWhenTermUp = (tries = 0): void => {
+              const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
+              if (term) {
+                const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
+                if (chatCard) closeCard(chatCard, { keepSession: true });
+                return;
+              }
+              if (tries < 80) requestAnimationFrame(() => closeChatWhenTermUp(tries + 1));
+            };
+            closeChatWhenTermUp();
           })();
         });
         headActions.insertBefore(termBtn, headActions.firstChild);
