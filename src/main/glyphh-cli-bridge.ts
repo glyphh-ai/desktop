@@ -22,6 +22,7 @@ import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -161,6 +162,8 @@ interface RunPayload {
   steer?: string;
   model?: string;
   prompt?: string;
+  /** The picked LOOP (a CLI agent id) — decides WHICH CLI runs this chat. */
+  loop?: string;
 }
 
 /** The bridge's own --mcp-config: the SAME local MCP wiring the terminal
@@ -185,6 +188,75 @@ function bridgeMcpFile(): string | null {
   } catch { return null; }
 }
 
+/** The chat's LOOP: the picked CLI agent, else the first configured one,
+ *  else a bare claude default (his ruling, 2026-09-11: every vendor loop
+ *  works — codex must never open claude's session). */
+function loopOf(p: RunPayload): CliAgentListed | null {
+  const rows = listCliAgents();
+  return rows.find((r) => r.id === p.loop) ?? rows[0] ?? null;
+}
+
+/** Non-claude loops run PER-TURN headless (codex exec --json / gemini -p):
+ *  no persistent control channel, so the turn streams as one growing delta
+ *  and closes. composeHeadless rides the agent's OWN env/mcp/model wiring. */
+function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sender: WebContents): { runId: string } {
+  const runId = `${p.chatId}:${Date.now()}`;
+  const line = composeHeadless(agent, text, p.model);
+  const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
+    cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
+    env: { ...process.env },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const chat: LiveChat = {
+    proc: proc as ChildProcessWithoutNullStreams,
+    runId, sender,
+    cliSessionId: null,
+    permission: p.permission ?? "ask",
+    buf: "",
+    usage: { inTokens: 0, outTokens: 0 },
+    nextControl: 1,
+    pending: new Map(),
+  };
+  live.set(p.chatId, chat);
+  emit(chat, "glyphh-agent:setup", { phase: "ready", model: p.model ?? agent.model ?? undefined });
+  let sawJson = false;
+  proc.stdout.on("data", (b: Buffer) => {
+    const chunk = b.toString("utf-8");
+    chat.buf += chunk;
+    let i: number;
+    let plainCarry = "";
+    while ((i = chat.buf.indexOf("\n")) >= 0) {
+      const lineStr = chat.buf.slice(0, i);
+      chat.buf = chat.buf.slice(i + 1);
+      const t = lineStr.trim();
+      if (!t) continue;
+      // codex --json: JSONL events; item.completed agent_message carries text.
+      if (t.startsWith("{")) {
+        try {
+          const j = JSON.parse(t) as { type?: string; item?: { type?: string; text?: string }; msg?: { type?: string; message?: string } };
+          sawJson = true;
+          const itemText = j.item?.type === "agent_message" ? j.item.text
+            : j.msg?.type === "agent_message" ? j.msg.message : undefined;
+          if (itemText) emit(chat, "glyphh-agent:delta", { runId, delta: itemText });
+          else if (j.item?.type && j.item.type !== "agent_message") emit(chat, "glyphh-agent:tool", { runId, phase: "start", name: j.item.type, title: j.item.type });
+          continue;
+        } catch { /* not a frame — fall through as text */ }
+      }
+      if (!sawJson) plainCarry += lineStr + "\n";
+    }
+    if (plainCarry) emit(chat, "glyphh-agent:delta", { runId, delta: plainCarry });
+  });
+  let errTail = "";
+  proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
+  proc.on("exit", (code) => {
+    live.delete(p.chatId);
+    if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
+    if (code !== 0 && code !== null) emit(chat, "glyphh-agent:error", { runId, error: errTail.trim() || `${agent.cli} exited ${code}` });
+    emit(chat, "glyphh-agent:done", { runId, stopped: false });
+  });
+  return { runId };
+}
+
 function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   const permission = p.permission ?? "ask";
   const resume = resumeIds.get(p.chatId);
@@ -195,6 +267,11 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     "--include-partial-messages",
     "--verbose",
     "--permission-mode", PERM_FLAG[permission],
+    // Permission prompts RIDE THE CONTROL CHANNEL (his report, 2026-09-11:
+    // every MCP call answered "permission not granted" — headless default
+    // denies when no prompt route exists). stdio = ask the client, i.e. us;
+    // the can_use_tool handler above turns each ask into an approval card.
+    "--permission-prompt-tool", "stdio",
   ];
   if (p.model?.trim()) parts.push("--model", p.model.trim());
   if (resume) parts.push("--resume", resume);
@@ -282,6 +359,14 @@ export function registerGlyphhCliBridge(): void {
     const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
     const steer = String(p.steer ?? "").trim();
     const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
+    const agent = loopOf(p);
+    // Non-claude loops: one headless turn per send, on the LOOP'S OWN CLI.
+    if (agent && agent.cli !== "claude") {
+      const prior = live.get(p.chatId);
+      if (prior && prior.proc.exitCode === null) { try { prior.proc.kill("SIGTERM"); } catch { /* racing exit */ } }
+      if (!text) return { runId: `${p.chatId}:${Date.now()}` };
+      return runHeadlessTurn(p, agent, text, e.sender);
+    }
     let c = live.get(p.chatId);
     if (c && c.proc.exitCode !== null) { live.delete(p.chatId); c = undefined; }
     if (!c) c = spawnChat(p, e.sender);

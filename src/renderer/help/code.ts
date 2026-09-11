@@ -16,7 +16,6 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
 import { formatMarkdown } from "../format-markdown.js";
-import * as picker from "./model-picker.js";
 import { initVoiceMic, registerComposerSubmit, renderMicMenu, onTurnComplete, maybeSpeakFirstLine, briefSteer } from "./voice-mic.js";
 import { onSpeaking, stopReply, isSpeaking } from "./voice-out.js";
 import { attachSlashMenu } from "./slash-menu.js";
@@ -260,43 +259,107 @@ function setLoop(id: string): void {
 // renders a dropdown. Resolution and rendering live in model-picker.ts; this file
 // only owns the chip and when to refresh.
 
+// ── Model selector — the SERVER'S available catalog (his spec, 2026-09-11):
+// catalog ∩ org-supported ∩ role, filtered to the picked loop's provider;
+// a proxied/unknown loop sees the FULL list regardless of loop.
+interface AvailModel { id: string; name: string; providerSlug: string; pickerVisible?: boolean }
+let availModels: AvailModel[] = [];
+const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+
+function modelsForLoop(): AvailModel[] {
+  const cli = loops.find((l) => l.id === activeLoop())?.description ?? "";
+  const prov = LOOP_PROVIDER[cli];
+  const vis = availModels.filter((m) => m.pickerVisible !== false);
+  if (!prov) return vis;
+  const scoped = vis.filter((m) => m.providerSlug === prov);
+  return scoped.length ? scoped : vis;
+}
+
+function selectedModel(): AvailModel | null {
+  const id = current()?.models?.["default"] ?? pendingModels?.["default"] ?? null;
+  return availModels.find((m) => m.id === id) ?? null;
+}
+
 function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
-  mc.textContent = picker.chipText();
-  mc.title = picker.chipTitle();
+  const sel = selectedModel();
+  mc.textContent = `Model: ${sel?.name ?? "Default"}`;
+  mc.title = sel ? `${sel.name} — ${sel.providerSlug}` : "The loop's own default model";
   mc.className = "code-chip";
 }
 
-/** Where the active session EXECUTES. (The context still rides model
- *  resolution; on-device models are gone, so it no longer changes the SET.) */
-function modelContext(): "local" | "cloud" {
-  return String((activeSource() as { kind?: string })?.kind || "").startsWith("cloud") ? "cloud" : "local";
-}
-
-/** Re-resolve the current loop's slots. Called on load, on every loop change,
- *  and on a local↔cloud source change — different context, different choices. */
-async function refreshModelList(force?: boolean): Promise<void> {
-  await picker.refreshRoles(activeLoop(), force, modelContext());
-  // THIS session's own cast wins the display — the chip and menu show what
-  // this session will actually run, not the ambient loop pick.
-  picker.overlayRoleSelections(current()?.models ?? pendingModels);
+async function refreshModelList(_force?: boolean): Promise<void> {
+  try {
+    const r = await window.glyphh.workspacesModelCatalog?.();
+    if (r?.ok && Array.isArray(r.data)) availModels = r.data as AvailModel[];
+  } catch { /* offline — the last list stands */ }
   paintModelChip();
 }
 
 function renderModelMenu(): void {
   const menu = el("code-model-menu");
   if (!menu) return;
-  picker.renderMenu(menu, activeLoop(), () => {
-    // The pick binds to THIS session (and stays the ambient default for new
-    // ones via the loop store the picker already wrote).
+  menu.textContent = "";
+  const pane = document.createElement("div");
+  pane.className = "drop-pane";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search";
+  search.placeholder = "Search models…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  search.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  const list = document.createElement("div");
+  list.className = "loop-drop-list";
+  pane.append(search, list);
+  menu.appendChild(pane);
+  const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const choose = (id: string | null): void => {
     const c = current();
-    if (c) {
-      c.models = Object.fromEntries(picker.currentRoles().filter((r) => r.modelId).map((r) => [r.name, r.modelId!]));
-      void saveStore();
-    }
+    if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
+    else pendingModels = id ? { default: id } : null;
     paintModelChip();
-  });
+    menu.classList.add("hidden");
+  };
+  const paint = (): void => {
+    list.textContent = "";
+    const q = search.value.trim().toLowerCase();
+    const rows = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
+    const def = document.createElement("button");
+    def.type = "button";
+    def.className = "code-drop-item" + (selectedModel() ? "" : " selected");
+    def.textContent = "Default — the loop decides";
+    def.addEventListener("click", () => choose(null));
+    list.appendChild(def);
+    if (!rows.length) {
+      const empty = document.createElement("div");
+      empty.className = "drop-empty";
+      empty.textContent = q ? `No models matching "${q}"` : "No models reachable — the org enables them under Models.";
+      list.appendChild(empty);
+      return;
+    }
+    for (const m of rows.slice(0, 200)) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "code-drop-item drop-item-2line" + (selectedModel()?.id === m.id ? " selected" : "");
+      const main = document.createElement("div");
+      main.className = "drop-main";
+      const span = document.createElement("span");
+      span.textContent = m.name;
+      main.appendChild(span);
+      if (selectedModel()?.id === m.id) main.insertAdjacentHTML("beforeend", check);
+      const sub = document.createElement("div");
+      sub.className = "drop-sub";
+      sub.textContent = m.providerSlug;
+      item.append(main, sub);
+      item.addEventListener("click", () => choose(m.id));
+      list.appendChild(item);
+    }
+  };
+  search.addEventListener("input", paint);
+  paint();
+  requestAnimationFrame(() => search.focus());
 }
 
 // ── Mode drop-up ──
@@ -379,13 +442,15 @@ function showModeInfoModal(): void {
 // Loops come from the server (Build → Loops, role-scoped); offline keeps the
 // built-in Default. canBuild gates the (stub) Loops tab in the nav.
 async function refreshLoops(): Promise<void> {
+  // LOOPS are the configured CLI loops (his ruling, 2026-09-11: the CLI is
+  // the loop) — the same roster the wall's agent tiles ride. description
+  // carries the cli name; the model chip filters by it.
   try {
-    const r = await window.glyphh.loopsList?.();
-    // Memory loops (type:"memory" — the SDK contract's discriminator) power the
-    // rotor — they are NOT work loops the user picks, so keep them out of the
-    // loop dropdown on every surface. (This filtered on `kind` for a while,
-    // which is not a field loops have — memory rotors leaked into the list.)
-    if (r?.loops?.length) { loops = r.loops.filter((l) => (l as { type?: string }).type !== "memory"); loopsCanBuild = !!r.canBuild; }
+    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string }> }> }).cliAgentsList?.();
+    if (r?.ok && r.agents.length) {
+      loops = r.agents.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "" }));
+      loopsCanBuild = false;
+    }
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
     paintChips();
   } catch { /* offline — the built-in default stands */ }
@@ -569,12 +634,12 @@ function initComposerControls(): void {
       mmenu.classList.toggle("hidden");
       if (opening) {
         openChipDropUp(mmenu);
-        picker.focusSearch(mmenu);
+        mmenu.querySelector("input")?.focus();
         // Re-resolve behind the open menu, FORCING past the cache — so a model
         // an admin just added/removed on the platform shows on the next open,
         // no app restart. The rows repaint if the server disagrees.
         void refreshModelList(true).then(() => {
-          if (!mmenu.classList.contains("hidden")) { renderModelMenu(); picker.focusSearch(mmenu); }
+          if (!mmenu.classList.contains("hidden")) { renderModelMenu(); mmenu.querySelector("input")?.focus(); }
         });
       }
     });
@@ -1225,12 +1290,9 @@ function ensureCodeSection(): void {
 (window as unknown as { __agentUseModel?: (modelId: string) => Promise<boolean> }).__agentUseModel =
   async (modelId: string): Promise<boolean> => {
     try {
-      await picker.refreshRoles(activeLoop());
-      const role = picker.currentRoles()[0];
-      if (!role) return false;
-      await window.glyphh.loopRoleSet?.(activeLoop(), role.name, modelId);
       const c = current();
-      if (c) { c.models = { ...c.models, [role.name]: modelId }; void saveStore(); }
+      if (c) { c.models = { default: modelId }; void saveStore(); }
+      else pendingModels = { default: modelId };
       await refreshModelList(true);
       return true;
     } catch { return false; }
@@ -1284,6 +1346,16 @@ function syncSpaceAttrs(): void {
 // bridge to --resume it. Fresh opens never call this — the one-opener law
 // (zero state writes) applies to DOORS, not to session-preserving toggles.
 (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId = () => currentId;
+// The chat card names its LOOP on open — the run must ride THAT CLI
+// (his report, 2026-09-11: a codex loop opened claude's session).
+(window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop = (id) => {
+  glyphhLoop = id;
+  const c = current();
+  if (c) { c.loop = id; void saveStore(); }
+  else pendingLoop = id;
+  paintChips();
+  void refreshModelList();
+};
 (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string }) => void })
   .__glyphhAdoptCliSession = (a) => {
     void (async () => {
@@ -2337,30 +2409,10 @@ function pickSource(next: Source): void {
   void refreshModelList();
 }
 
-/** Mount the source chip above the composer (once). */
-function mountSourceChip(): void {
-  if (sourceChip) { sourceChip.setSource(activeSource()); return; }
-  // The chip mounts AFTER prefs restore (async) — land it in whichever slot is
-  // live right now: the landing's chips row when the composer sits on Home,
-  // else its place above the agent composer.
-  const host = (document.body.classList.contains("composer-on-home") && document.getElementById("dash-source-slot"))
-    || el("code-source-slot");
-  if (!host) return;
-  sourceChip = createSourceChip({
-    getSource: activeSource,
-    onPick: pickSource,
-    getSessionId: () => current()?.id ?? null,
-  });
-  host.appendChild(sourceChip.el);
-  // The GIT chip sits AFTER the folder in the landing row: repo picker on a
-  // cloud source (what the remote agent checks out), hidden on local (the
-  // passive branch mirror covers local).
-  if (!gitChip) {
-    gitChip = createGitChip({ getSource: activeSource, onPick: pickSource });
-    const branchMirror = document.getElementById("dash-wd-branch-wrap");
-    branchMirror?.insertAdjacentElement("afterend", gitChip.el);
-  }
-}
+/** The source pill is GONE (his order, 2026-09-11): there is no remote —
+ *  every session runs on this machine. The source machinery stays internal
+ *  (folder/branch resolution rides it); nothing mounts. */
+function mountSourceChip(): void { /* nothing mounts — no remote exists */ }
 
 /** The composer's resting prompt. */
 function readyPlaceholder(): string {
@@ -3127,11 +3179,9 @@ function syncThinking(): void {
   setThinking(!!currentRun());
 }
 
-/** THIS session's bound model for the primary slot, or null (ambient pick). */
+/** THIS session's bound model, or null (the loop's own default). */
 function sessionModel(c: CodeChat | null | undefined): string | null {
-  if (!c?.models) return null;
-  const primary = picker.currentRoles()[0]?.name ?? "default";
-  return c.models[primary] ?? c.models["default"] ?? null;
+  return c?.models?.["default"] ?? null;
 }
 
 function stopThinking(): void {
@@ -3473,27 +3523,11 @@ function send(): void {
 // provisions once, reuses it for later turns), persisted via saveStore.
 const remoteAborters = new Map<string, AbortController>();
 
-/** The model a CLOUD turn runs on — the picker's resolved primary slot (the
- *  pod does not resolve loop roles itself). A rover loop hops the distinct
- *  pickable models per turn, mirroring desktop main's roverLast. */
-const remoteRoverLast = new Map<string, number>();
+/** The model a turn runs on: the session's bound pick, else the loop's own
+ *  default (null — the CLI decides). Rover/slot machinery left with the
+ *  picker (his spec, 2026-09-11: one model list from the server). */
 function resolveRemoteTurnModel(): string | null {
-  // A session-bound model wins outright — five layouts, five casts, no
-  // cross-talk (his rule, 2026-08-20). Rover hopping applies only unbound.
-  const bound = sessionModel(current());
-  if (bound) return bound;
-  const roles = picker.currentRoles();
-  const primary = roles[0]?.modelId ?? null;
-  const type = (loops.find((l) => l.id === activeLoop()) as { type?: string } | undefined)?.type;
-  if (type === "rover") {
-    const pool = [...new Set(roles.map((r) => r.modelId).filter((m): m is string => !!m))];
-    if (pool.length > 0) {
-      const next = ((remoteRoverLast.get(activeLoop()) ?? -1) + 1) % pool.length;
-      remoteRoverLast.set(activeLoop(), next);
-      return pool[next] ?? primary;
-    }
-  }
-  return primary;
+  return sessionModel(current());
 }
 
 /** Provision (or reuse) a Fly runtime for this chat's remote source and stream
@@ -5534,7 +5568,9 @@ export function initCode(): void {
   // renderHistory) — never the global landing.
   // ‹ — back to this tab's + New Session screen. (It used to open the session
   // LIST, which is reachable from the rail's recents.)
-  el("code-session-back")?.addEventListener("click", () => { if (current()) forgetCurrentSession(); });
+  // ‹ = the terminal hop, nothing else (his order, 2026-09-11: it closed
+  // the whole agent). Same handler the >_ icon rides.
+  el("code-session-back")?.addEventListener("click", () => { document.getElementById("code-term-toggle")?.click(); });
   el("code-session-kebab")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (headKebabEl) { closeHeadKebab(); return; }
@@ -5749,8 +5785,8 @@ export function initCode(): void {
     // at menu creation ran before this preference loaded, so without this the
     // chip shows the fallback until the menu is first opened.
     await refreshModelList();
-    // Cold start can race auth: no slots yet → one quiet retry.
-    if (!picker.currentRoles().length) setTimeout(() => void refreshModelList(), 2500);
+    // Cold start can race auth: an empty catalog gets one quiet retry.
+    if (!availModels.length) setTimeout(() => void refreshModelList(), 2500);
   })();
   // Opening a layout can switch the active loop (+ its slot models) out from
   // under the composer. Re-sync the chip from the stored preference so it shows

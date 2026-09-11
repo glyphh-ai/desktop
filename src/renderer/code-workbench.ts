@@ -4717,6 +4717,8 @@ async function init(): Promise<void> {
       const holder = openList.find((x) => x.card && x.tile.kind === "agent");
       const card = holder?.card ?? null;
       if (card) card.dataset.boundAgent = agentId;
+      (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(agentId);
+      uiStateSet("agentLastView", "chat");
       // The >_ toggle rides the panel's OWN header cluster, first in the
       // row — identical anatomy to the terminal header. Injected once into
       // the singleton; the bound agent is read live at click.
@@ -5372,11 +5374,15 @@ async function init(): Promise<void> {
         (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
         return;
       }
-      // The TRUE glyphh agent is the chat view of a CLI loop (his ruling,
-      // 2026-09-11) — the first configured loop takes the tile. No loops
-      // configured yet → the bare panel, which still runs the default CLI.
+      // The tile honors the REMEMBERED view (his rule, 2026-09-11: start in
+      // terminal is fine, but revert when possible) — chat only when the
+      // last-used view was chat; terminal otherwise.
       const first = cliAgentRows[0];
-      if (first) { openAgentChatCard(first.id); return; }
+      if (first) {
+        if (uiStateGet("agentLastView") === "chat") openAgentChatCard(first.id);
+        else openAgentCliCard(cliAgentTileOf(first));
+        return;
+      }
       void openAgentPanel();
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
@@ -5731,6 +5737,7 @@ async function init(): Promise<void> {
           }
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
           setPendingAgentTermMeta({ id: a.id, name: t.name });
+          uiStateSet("agentLastView", "terminal");
           activateTile(entry);
           pendingParkedTerms = null;
           if (parked && prompt) {
