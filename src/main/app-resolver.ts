@@ -62,7 +62,6 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
-  | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound"; assetId?: string; songId?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -223,14 +222,6 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   // window management this app no longer does.
   sendWbCmd({ action: "open", app: toWbRef(app) });
   return { slug: app.slug, name: app.name };
-}
-
-
-/** Open a media panel (Image / Video / Sounds) — optionally straight at an
- *  asset, or (Sounds) straight into a SONG's editor page. */
-export function openMediaPanel(view: "gimage" | "gvideo" | "gsound", assetId?: string, songId?: string): void {
-  void songId;   // Band is gone (THE PURGE) — song deep-links have no panel
-  sendWbCmd(assetId ? { action: "gmedia", view, assetId } : { action: "tool", tool: view });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview

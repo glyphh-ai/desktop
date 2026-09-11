@@ -44,7 +44,6 @@ import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
-import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -101,7 +100,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail" | "gimage" | "gvideo" | "gsound";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -192,8 +191,6 @@ interface PreviewSlot {
 }
 
 
-/** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
-interface GMediaSlot extends MediaSlotState { sticky?: boolean }
 
 interface PlanSlot {
   id: number; view: "plan";
@@ -221,7 +218,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GMediaSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -266,9 +263,6 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
-  gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
-  gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
-  gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
 };
 
 // ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
@@ -939,7 +933,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail" || v === "gimage" || v === "gvideo" || v === "gsound") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail") {
           slots.push(makeSlot(v));
         }
       }
@@ -1105,7 +1099,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gimage" | "gvideo" | "gsound");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1176,7 +1170,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gimage" | "gvideo" | "gsound"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1293,7 +1287,6 @@ async function init(): Promise<void> {
     if (view === "echo") return { id, view };
     if (view === "rail") return { id, view };
     if (view === "tasks") return { id, view };
-    if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1894,10 +1887,6 @@ async function init(): Promise<void> {
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
-    else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
-      body.classList.add("ws-gmedia-body");
-      void renderMediaIntoSlot(body, slot, wrap);
-    }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
@@ -1917,35 +1906,6 @@ async function init(): Promise<void> {
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
-
-  // ── Media — Image / Video / Sounds (wb-media.ts) ──────────────────────────
-  let gmediaPanel: MediaPanel | null = null;
-  function gmediaPanelInstance(): MediaPanel {
-    if (!gmediaPanel) {
-      gmediaPanel = initMedia({
-        confirm: (o) => appConfirm(o),
-        icons: {
-          gimage: VIEW_META.gimage.icon,
-          gvideo: VIEW_META.gvideo.icon,
-          gsound: VIEW_META.gsound.icon,
-        },
-      });
-    }
-    return gmediaPanel;
-  }
-  function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
-    return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
-    void songId;   // Band is gone (THE PURGE) — song deep-links have no panel
-    openToolWithPayload(view, (t) => {
-      const m = t as GMediaSlot;
-      if (assetId) {
-        gmediaPanelInstance().invalidate();
-        m.assetId = assetId;
-      }
-    });
-  };
 
   // Drive's text/code files open IN THE EDITOR as content tabs (drive://
   // paths — viewable, copyable; a disk save is refused by the write bridge).
@@ -2995,34 +2955,12 @@ async function init(): Promise<void> {
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
       // (The mascot HOME tile is gone from the pages — the DOCK leads with
       // the glyphh mark now; two marks was one too many.)
-      const gimageTile: EchoTile = {
-        name: VIEW_META.gimage.title,
-        slug: "gimage",
-        glyphSvg: VIEW_META.gimage.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gimage",
-      };
-      const gvideoTile: EchoTile = {
-        name: VIEW_META.gvideo.title,
-        slug: "gvideo",
-        glyphSvg: VIEW_META.gvideo.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gvideo",
-      };
-      const gsoundTile: EchoTile = {
-        name: VIEW_META.gsound.title,
-        slug: "gsound",
-        glyphSvg: VIEW_META.gsound.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gsound",
-      };
       // The DEV workbench tools (his rule, 2026-08-21, REVERSING 08-20): Files/
       // Terminal/Editor/Diff/Plan/Releases are OFF the wall — they live in the
       // agent composer's ⋯ developer-tools menu (help/code.ts), a development
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
-      const toolTiles = [gimageTile, gvideoTile, gsoundTile]
-        .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
+      const toolTiles: EchoTile[] = [];
       // AGENT tiles ride the wall like workspaces do — one per saved CLI config.
       cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
@@ -4982,7 +4920,7 @@ async function init(): Promise<void> {
             // it, and the center composer steps off screen until the layout
             // lets go.
             if (v === "coding") { continue; }   // the agent seat is gone
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail" || v === "gimage" || v === "gvideo" || v === "gsound") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -5394,10 +5332,6 @@ async function init(): Promise<void> {
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
-        else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
-          body.classList.add("ws-gmedia-body");
-          void renderMediaIntoSlot(body, slot, card);
-        }
     };
 
     let openingLayout = false;
@@ -5825,7 +5759,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gimage" | "gvideo" | "gsound"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -9229,7 +9163,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail", "gimage", "gvideo", "gsound"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9494,8 +9428,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail", "gimage", "gvideo", "gsound"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gimage" | "gvideo" | "gsound"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
