@@ -3,6 +3,7 @@
  */
 
 import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
+import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
@@ -812,6 +813,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "billing") void loadBilling();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
+  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
   else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   // Organization › General — the org record page (admin-gated nav).
