@@ -392,6 +392,69 @@ interface ListEntry {
   autoOpen?: boolean;
 }
 
+/** The provider dropdown's narrowing — "" = all. */
+let providerFilter = "";
+
+/** A searchable provider dropdown (search on top) — shared by the org
+ *  Models page and the Roles model picker (his order, 2026-09-11). */
+export function openProviderDropdown(
+  anchor: HTMLElement,
+  options: Array<{ slug: string; name: string }>,
+  current: string,
+  onPick: (slug: string, name: string) => void,
+): void {
+  document.querySelector(".mdl-provider-drop")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "code-drop mdl-provider-drop";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search";
+  search.placeholder = "Search providers…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  const listHost = document.createElement("div");
+  listHost.className = "mdl-provider-drop-list";
+  menu.append(search, listHost);
+  const names = [{ slug: "", name: "All providers" }].concat(options);
+  const paint = (): void => {
+    const q = search.value.trim().toLowerCase();
+    listHost.textContent = "";
+    for (const n of names.filter((x) => !q || x.name.toLowerCase().includes(q) || x.slug.includes(q))) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "code-drop-item" + (n.slug === current ? " active" : "");
+      row.textContent = n.name;
+      row.addEventListener("click", () => { menu.remove(); onPick(n.slug, n.name); });
+      listHost.appendChild(row);
+    }
+  };
+  search.addEventListener("input", paint);
+  paint();
+  const r = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 280))}px`;
+  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.zIndex = "10000";
+  document.body.appendChild(menu);
+  const dismiss = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+  };
+  document.addEventListener("mousedown", dismiss, true);
+  search.focus();
+}
+
+function openProviderFilter(anchor: HTMLElement): void {
+  const options = providers.map((p) => ({ slug: p.slug, name: p.name }))
+    .concat(customProviders.map((p) => ({ slug: p.slug, name: p.name })));
+  openProviderDropdown(anchor, options, providerFilter, (slug, name) => {
+    providerFilter = slug;
+    const btn = el("models-provider-filter");
+    if (btn) btn.innerHTML = `${slug ? name : "All providers"} <span style="opacity:.6;">▾</span>`;
+    page = 0;
+    renderList();
+  });
+}
+
 function listEntries(): ListEntry[] {
   const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
   const gw: ListEntry[] = providers.map((p) => ({
@@ -410,11 +473,14 @@ function listEntries(): ListEntry[] {
       + (p.has_key && p.key_hint ? ` · Key: ${p.key_hint}` : ""),
     customProv: p,
   }));
+  const scoped = providerFilter
+    ? gw.concat(own).filter((e) => (e.gateway?.slug ?? e.customProv?.slug) === providerFilter)
+    : gw.concat(own);
   const matchModels = (e: ListEntry): boolean => {
     if (e.gateway) return models.some((m) => m.kind === "proxied" && m.providerSlug === e.gateway!.slug && m.name.toLowerCase().includes(q));
     return custom.some((m) => m.provider_slug === e.customProv!.slug && m.name.toLowerCase().includes(q));
   };
-  return [...gw, ...own]
+  return scoped
     .map((e) => ({ ...e, autoOpen: !!q && matchModels(e) }))
     .filter((e) => !q || e.name.toLowerCase().includes(q) || e.type.toLowerCase().includes(q) || e.autoOpen)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -652,6 +718,7 @@ export function loadModelsAdmin(): void {
   if (!initialized) {
     initialized = true;
     el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
+    el("models-provider-filter")?.addEventListener("click", (ev) => { ev.stopPropagation(); openProviderFilter(ev.currentTarget as HTMLElement); });
     el("provider-new-btn")?.addEventListener("click", () => void newProviderModal());
   }
   void refresh();

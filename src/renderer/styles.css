@@ -20296,3 +20296,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .mdl-key-check { display: inline-flex; width: 18px; height: 18px; color: #2ecc71; flex: none; }
 .mdl-key-check svg { width: 100%; height: 100%; }
 .mdl-key-remove { color: #f43f5e; }
+
+/* Provider filter drop (org Models + Roles): search on top, capped list */
+.mdl-provider-drop { position: fixed; width: 260px; padding: 6px; }
+.mdl-provider-drop-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; }
+.mdl-provider-drop .code-drop-item.active { color: var(--accent); }

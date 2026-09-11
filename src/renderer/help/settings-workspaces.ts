@@ -27,6 +27,7 @@
  */
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { openProviderDropdown } from "./models-admin.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 import { formModal } from "./settings-list-page.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
@@ -475,17 +476,15 @@ function paintModels(): void {
 
 /** The funnel next to the search — pick ONE provider (or all). */
 function openModelsFilter(anchor: HTMLElement): void {
+  // The SAME searchable dropdown the org Models page uses (his order,
+  // 2026-09-11) — options are only the providers the org actually EXPOSES
+  // (catalog is already enabled-provider ∩ supported-model).
   const providers = [...new Set(catalog.map((m) => m.provider || (m.kind === "proxied" ? "" : "on-device")).filter(Boolean))].sort();
-  const dot = (on: boolean): string => on
-    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`
-    : `<svg viewBox="0 0 24 24" fill="none"></svg>`;
-  openRowMenu(anchor, [
-    { icon: dot(!wsModelsProvider), label: "All providers", onClick: () => { wsModelsProvider = ""; wsModelsPage = 0; paintModels(); } },
-    ...providers.map((pr) => ({
-      icon: dot(wsModelsProvider === pr), label: pr,
-      onClick: () => { wsModelsProvider = pr; wsModelsPage = 0; paintModels(); },
-    })),
-  ]);
+  openProviderDropdown(anchor, providers.map((pr) => ({ slug: pr, name: pr })), wsModelsProvider, (slug) => {
+    wsModelsProvider = slug;
+    wsModelsPage = 0;
+    paintModels();
+  });
 }
 
 // ── Connections tab ──────────────────────────────────────────────────────
