@@ -380,6 +380,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // rather than assuming the caller is allowed.
   workspacesList: () => ipcRenderer.invoke("workspaces-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => ipcRenderer.invoke("gateway-metrics", opts) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspaceProviderKeys: (id: string) => ipcRenderer.invoke("workspace-provider-keys", id) as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
+  workspaceProviderKeySet: (id: string, slug: string, key: string) => ipcRenderer.invoke("workspace-provider-key-set", id, slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  workspaceProviderKeyClear: (id: string, slug: string) => ipcRenderer.invoke("workspace-provider-key-clear", id, slug) as Promise<{ ok: boolean; error?: string }>,
   workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,

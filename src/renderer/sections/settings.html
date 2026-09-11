@@ -678,7 +678,7 @@
 
                 <div class="crud-toolbar">
                   <input id="models-search" type="text" class="crud-search" placeholder="Search providers and models…" spellcheck="false" autocomplete="off" />
-                  <button id="models-provider-filter" class="action-btn" type="button" title="Filter by provider">All providers <span style="opacity:.6;">▾</span></button>
+                  <button id="models-provider-filter" class="action-btn ws-filter-btn" type="button" title="Filter by provider" aria-label="Filter by provider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="models-provider-filter-label" class="hidden"></span></button>
                   <button id="provider-new-btn" class="action-btn primary" type="button">+ New provider</button>
                 </div>
                 <div id="models-provider-list"></div>
@@ -867,6 +867,13 @@
                           <span class="toggle-desc" id="ws-models-hint">Off — it can use every model the org supports.</span>
                         </div>
                       </label>
+                      <!-- Role provider keys (his order, 2026-09-11): key allocation
+                           follows the org's cost structure — the org key is the
+                           default and a key here overrides it for THIS role. -->
+                      <h3 class="settings-subheading" style="margin-top:16px;">Provider keys</h3>
+                      <p class="section-desc">Members with this role use the organization's vendor keys unless you set one here — a role key overrides the org key, so this role's usage bills to its own vendor account.</p>
+                      <div id="ws-provider-keys"></div>
+                      <h3 class="settings-subheading" style="margin-top:16px;">Models</h3>
                       <div class="crud-toolbar" style="margin-top:12px;">
                         <input id="ws-models-search" type="text" class="crud-search" placeholder="Search models…" spellcheck="false" autocomplete="off" />
                         <button id="ws-models-filter" class="action-btn ws-filter-btn" type="button" title="Filter by provider" aria-label="Filter by provider"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="ws-models-filter-label" class="hidden"></span></button>

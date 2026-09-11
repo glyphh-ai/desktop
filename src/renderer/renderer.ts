@@ -435,6 +435,9 @@ declare global {
       workspacesAppSearch: (search: string, limit?: number) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspaceProviderKeys: (id: string) => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
+      workspaceProviderKeySet: (id: string, slug: string, key: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      workspaceProviderKeyClear: (id: string, slug: string) => Promise<{ ok: boolean; error?: string }>;
       orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgCustomModelsList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       orgCustomModelsSave: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;

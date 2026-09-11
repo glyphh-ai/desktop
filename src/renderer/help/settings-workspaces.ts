@@ -27,7 +27,7 @@
  */
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
-import { openProviderDropdown } from "./models-admin.js";
+import { openProviderDropdown, MDL_SVG, icoBtn } from "./models-admin.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 import { formModal } from "./settings-list-page.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
@@ -111,6 +111,9 @@ interface SdkWorkspaces {
     create?: (input: Record<string, unknown>) => Promise<Workspace>;
     update?: (id: string, input: Record<string, unknown>) => Promise<Workspace>;
     delete?: (id: string) => Promise<void>;
+    providerKeys?: (id: string) => Promise<Array<{ providerSlug: string; updatedAt: string }>>;
+    setProviderKey?: (id: string, slug: string, key: string) => Promise<{ providerSlug: string }>;
+    clearProviderKey?: (id: string, slug: string) => Promise<void>;
   };
   models?: { available?: () => Promise<Array<{ id: string; kind: string; name: string; providerSlug: string }>> };
   orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>> };
@@ -382,7 +385,10 @@ async function openEditor(w: Workspace): Promise<void> {
   const period = $<HTMLSelectElement>("ws-cap-period");
   if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
   hydrating = false;
+  wsProviderKeys = new Set();
   paintModels();
+  paintProviderKeys();
+  void loadProviderKeys(w.id);
   paintConnections();
   // The picker needs the org's own connectors + the tool cap; the allowed
   // slugs need names and icons the record doesn't carry.
@@ -404,6 +410,95 @@ const WS_MODELS_PAGE_SIZE = 15;   // 15 everywhere — the one pagination size (
 let wsModelsPage = 0;
 let wsConnPage = 0;
 let wsModelsProvider = "";   // "" = every provider
+
+// ── role provider keys (his order, 2026-09-11) ──────────────────────────────
+// The org key is the DEFAULT credential for a vendor; a role key overrides it
+// for this workspace's members (separate vendor billing per role). Presence
+// only ever crosses the wire.
+let wsProviderKeys = new Set<string>();
+
+async function loadProviderKeys(id: string): Promise<void> {
+  const rows = await via<Array<{ providerSlug: string }>>(
+    (c) => c.workspaces?.providerKeys?.(id), "workspaceProviderKeys", id);
+  if (editing?.id !== id) return;
+  wsProviderKeys = new Set((rows ?? []).map((r) => r.providerSlug));
+  paintProviderKeys();
+}
+
+function roleKeyModal(slug: string): void {
+  if (!editing) return;
+  const id = editing.id;
+  void formModal({
+    title: `${slug} key for ${editing.name}`,
+    fields: [{ key: "key", label: "API key", placeholder: "sk-…", required: true }],
+    submitLabel: "Save key",
+    onSubmit: async (values) => {
+      const r = await via<{ providerSlug: string }>(
+        (c) => c.workspaces?.setProviderKey?.(id, slug, values.key!), "workspaceProviderKeySet", id, slug, values.key!);
+      return r ? { ok: true as const } : { ok: false as const, error: "Couldn\u2019t save the key." };
+    },
+  }).then((saved) => {
+    if (saved && editing?.id === id) { wsProviderKeys.add(slug); paintProviderKeys(); }
+  });
+}
+
+function paintProviderKeys(): void {
+  const host = $("ws-provider-keys");
+  if (!host || !editing) return;
+  host.innerHTML = "";
+  // Only the vendors this org actually reaches — the same set the model list shows.
+  const providers = [...new Set(catalog.map((m) => m.provider).filter(Boolean))].sort();
+  if (!providers.length) {
+    host.innerHTML = `<div class="crud-empty">No enabled providers yet \u2014 the org adds vendor keys under Models.</div>`;
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Provider</th><th>Key</th><th class="ws-model-toggle-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const slug of providers) {
+    const has = wsProviderKeys.has(slug);
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.textContent = slug;
+    const state = document.createElement("td");
+    const actions = document.createElement("td");
+    actions.className = "ws-model-toggle-cell";
+    if (has) {
+      state.innerHTML = `<span class="mdl-key-check" title="This role has its own key"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Role key`;
+      const removeKey = icoBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`, "Remove the role key");
+      removeKey.classList.add("mdl-key-remove");
+      removeKey.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void (async () => {
+          const ws = editing;
+          if (!ws) return;
+          const sure = await confirmAction({
+            title: `Remove the ${slug} role key?`,
+            body: `Members with this role go back to the organization\u2019s ${slug} key.`,
+            confirmLabel: "Remove key",
+            danger: true,
+          });
+          if (!sure) return;
+          // A void DELETE gives `via` nothing to return — re-read the truth
+          // instead of guessing; failures surface through setError regardless.
+          await via<unknown>((c) => c.workspaces?.clearProviderKey?.(ws.id, slug)?.then(() => ({ ok: true })), "workspaceProviderKeyClear", ws.id, slug);
+          void loadProviderKeys(ws.id);
+        })();
+      });
+      actions.appendChild(removeKey);
+    } else {
+      state.textContent = "Org key";
+      const edit = icoBtn(MDL_SVG.edit, "Set a key for this role");
+      edit.addEventListener("click", (ev) => { ev.stopPropagation(); roleKeyModal(slug); });
+      actions.appendChild(edit);
+    }
+    tr.append(name, state, actions);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
 
 function paintModels(): void {
   const grid = $("ws-models-grid");

@@ -448,8 +448,13 @@ function openProviderFilter(anchor: HTMLElement): void {
     .concat(customProviders.map((p) => ({ slug: p.slug, name: p.name })));
   openProviderDropdown(anchor, options, providerFilter, (slug, name) => {
     providerFilter = slug;
-    const btn = el("models-provider-filter");
-    if (btn) btn.innerHTML = `${slug ? name : "All providers"} <span style="opacity:.6;">▾</span>`;
+    // The funnel icon IS the "All providers" state (his order, 2026-09-11) —
+    // the label only appears when a provider is actually narrowing the list.
+    const label = el("models-provider-filter-label");
+    if (label) {
+      label.textContent = slug ? name : "";
+      label.classList.toggle("hidden", !slug);
+    }
     page = 0;
     renderList();
   });

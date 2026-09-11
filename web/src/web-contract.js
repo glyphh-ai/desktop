@@ -1069,6 +1069,10 @@ export function buildContract(client, deps) {
     // Gateway telemetry (Gateway › Metrics) — org-scoped router spend metadata.
     gatewayMetrics: lib((opts) => client.gateway.metrics(opts || {})),
     workspacesList: lib(() => client.workspaces.list()),
+    // Role provider keys — the org key is the default; a role key overrides it.
+    workspaceProviderKeys: lib((id) => client.workspaces.providerKeys(id)),
+    workspaceProviderKeySet: lib((id, slug, key) => client.workspaces.setProviderKey(id, slug, key)),
+    workspaceProviderKeyClear: lib((id, slug) => client.workspaces.clearProviderKey(id, slug).then(() => ({ ok: true }))),
     orgCustomModelsList: lib(() => client.orgModels.listCustom()),
     // Provider rows are a CATALOG read (the whole catalog ⊕ the org's enablement state);
     // ProvidersClient itself is write-only.
