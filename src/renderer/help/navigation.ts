@@ -882,6 +882,7 @@ const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
+  connections: { host: "settings-connections-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
