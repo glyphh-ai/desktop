@@ -314,9 +314,12 @@ let editingProviderSlug: string | null = null;
 
 async function loadProviders(): Promise<void> {
   try {
-    // Web first: the raw SDK client; desktop: the models IPC.
-    const sdk = (window as unknown as { glyphhSdk?: { catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
-    if (sdk?.catalog?.providers) {
+    // ADMIN lane first (ALL providers, inactive candidates included — the
+    // org catalog lane hides them); then the org lane; desktop: models IPC.
+    const sdk = (window as unknown as { glyphhSdk?: { admin?: { providers?: () => Promise<{ providers: CatalogProvider[] }> }; catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
+    if (sdk?.admin?.providers) {
+      providers = (await sdk.admin.providers()).providers;
+    } else if (sdk?.catalog?.providers) {
       providers = await sdk.catalog.providers();
     } else {
       const r = await (window.glyphh as unknown as {
