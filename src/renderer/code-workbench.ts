@@ -5325,6 +5325,12 @@ async function init(): Promise<void> {
           Object.assign(slot as unknown as Record<string, unknown>, e.pendingSlotState);
           e.pendingSlotState = undefined;
         }
+        // AGENT terminals stamp from the ENTRY SLUG — every door (layout
+        // cells, restores, fresh opens) carries it, so the agent header can
+        // never miss (his report, 2026-09-11: a layout cell rendered tabs).
+        if (slot.view === "terminal" && (t.slug || "").startsWith("agent:")) {
+          (slot as TermSlot).agent = { id: (t.slug || "").slice(6), name: t.name };
+        }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
         else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
