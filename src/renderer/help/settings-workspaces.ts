@@ -54,6 +54,19 @@ interface Workspace {
   capPeriodDays: number | null;
   rateLimitCalls: number | null;
   rateLimitWindowSeconds: number | null;
+  budgetUsd: number | null;
+  budgetHard: boolean;
+  memberCount?: number;
+}
+
+interface GatewayKeyLite {
+  id: string;
+  name: string;
+  workspaceId: string;
+  tokenHint: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
 }
 
 interface CatalogModel { key: string; kind: string; displayName: string; provider: string; inCr: number; outCr: number }
@@ -76,6 +89,8 @@ type ConnMode = keyof typeof MODE;
 // ── State ────────────────────────────────────────────────────────────────
 
 let workspaces: Workspace[] = [];
+let gwKeys: GatewayKeyLite[] = [];
+let roleSpend = new Map<string, number>();   // ws id → 30-day gateway USD
 let editing: Workspace | null = null;
 let catalog: CatalogModel[] = [];
 /** Shared connectors the org has (Pipedream apps + custom MCP), the universe
@@ -116,6 +131,10 @@ interface SdkWorkspaces {
     clearProviderKey?: (id: string, slug: string) => Promise<void>;
   };
   models?: { available?: () => Promise<Array<{ id: string; kind: string; name: string; providerSlug: string }>> };
+  gateway?: {
+    keys?: () => Promise<GatewayKeyLite[]>;
+    metrics?: (opts: { days?: number }) => Promise<{ byRole?: Array<{ key: string; spendUsd: number }> }>;
+  };
   orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>> };
   connections?: {
     pipedreamList?: () => Promise<Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>>;
@@ -225,6 +244,8 @@ async function saveGeneral(): Promise<boolean> {
     rateLimitWindowSeconds: num($<HTMLInputElement>("ws-rate-window")?.value || ""),
     creditsCap: cap == null ? null : cap * MICRO,
     capPeriodDays: Number($<HTMLSelectElement>("ws-cap-period")?.value) || 30,
+    budgetUsd: num($<HTMLInputElement>("ws-budget")?.value || ""),
+    budgetHard: !!$<HTMLInputElement>("ws-budget-hard")?.checked,
   });
 }
 
@@ -256,6 +277,32 @@ function connSummary(w: Workspace): string {
 const modelSummary = (w: Workspace): string =>
   w.limitModels ? `${w.allowedModels?.length ?? 0} models` : "All models";
 
+/** Spend vs budget with the traffic light (his spec, 2026-09-11): green under
+ *  70%, yellow to the line, red over. No budget → plain spend (or —). */
+function budgetCell(w: Workspace): HTMLElement {
+  const td = document.createElement("td");
+  td.className = "lib-table-dim";
+  const spend = roleSpend.get(w.id) ?? 0;
+  const usd = (n: number): string => `$${n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(2)}`;
+  if (w.budgetUsd == null) {
+    td.textContent = spend > 0 ? usd(spend) : "—";
+    return td;
+  }
+  const pct = w.budgetUsd > 0 ? spend / w.budgetUsd : 1;
+  const dot = document.createElement("span");
+  dot.className = `ws-budget-dot ${pct >= 1 ? "red" : pct >= 0.7 ? "yellow" : "green"}`;
+  dot.title = `${Math.round(pct * 100)}% of budget (30 days)`;
+  td.append(dot, ` ${usd(spend)} / ${usd(w.budgetUsd)}${w.budgetHard ? " · hard" : ""}`);
+  return td;
+}
+
+const keysSummary = (w: Workspace): string => {
+  const mine = gwKeys.filter((k) => k.workspaceId === w.id);
+  if (!mine.length) return "—";
+  const live = mine.filter((k) => !k.revokedAt && !(k.expiresAt && Date.parse(k.expiresAt) < Date.now())).length;
+  return live === mine.length ? String(mine.length) : `${live} of ${mine.length}`;
+};
+
 /** The standard list-page grammar (Skills/Loops): a lib-table with the row
  *  anatomy name / meta / dim + a kebab cell, crud-empty states, pagination.
  *  Row click opens the editor; the base workspace keeps its undeletability
@@ -279,14 +326,16 @@ function paintList(): void {
   wsPage = state.page;
   const table = document.createElement("table");
   table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Name</th><th>Access</th><th>Limits</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Name</th><th>Members</th><th>Models</th><th>Keys</th><th>Limits</th><th>Spend / Budget</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   for (const w of items) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
+      <td class="lib-table-dim"></td>
       <td class="lib-table-desc"></td>
-      <td class="lib-table-dim"></td>`;
+      <td class="lib-table-dim"></td>
+      <td class="lib-table-dim ws-limits-cell"></td>`;
     const nameCell = tr.querySelector(".lib-table-name");
     if (nameCell) {
       nameCell.textContent = w.name;
@@ -298,10 +347,12 @@ function paintList(): void {
         nameCell.append(" ", badge);
       }
     }
-    const access = tr.querySelector(".lib-table-desc");
-    if (access) access.textContent = `${modelSummary(w)} · ${connSummary(w)}`;
-    const limits = tr.querySelector(".lib-table-dim");
-    if (limits) limits.textContent = `${rateSummary(w)} · ${capSummary(w)}`;
+    const cells = tr.querySelectorAll("td");
+    if (cells[1]) cells[1].textContent = String(w.memberCount ?? 0);
+    if (cells[2]) cells[2].textContent = modelSummary(w);
+    if (cells[3]) cells[3].textContent = keysSummary(w);
+    if (cells[4]) cells[4].textContent = `${rateSummary(w)} · ${capSummary(w)}`;
+    tr.appendChild(budgetCell(w));
     tr.addEventListener("click", () => { void openEditor(w); });
     tr.appendChild(kebabCell(() => [
       { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => { void openEditor(w); } },
@@ -384,7 +435,11 @@ async function openEditor(w: Workspace): Promise<void> {
   set("ws-cap", w.creditsCap == null ? "" : String(Math.round(Number(w.creditsCap) / MICRO)));
   const period = $<HTMLSelectElement>("ws-cap-period");
   if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
+  set("ws-budget", w.budgetUsd == null ? "" : String(w.budgetUsd));
+  const hard = $<HTMLInputElement>("ws-budget-hard");
+  if (hard) hard.checked = !!w.budgetHard;
   hydrating = false;
+  paintRoleKeys();
   wsProviderKeys = new Set();
   paintModels();
   paintProviderKeys();
@@ -1015,6 +1070,55 @@ async function loadWorkspaces(): Promise<void> {
   const rows = await via<Workspace[]>((c) => c.workspaces?.list?.(), "workspacesList");
   workspaces = rows || [];
   paintList();
+  // Keys + 30-day spend enrich the table when the gateway lanes answer —
+  // an unconfigured gateway must never blank the roles page.
+  const [keys, metrics] = await Promise.all([
+    via<GatewayKeyLite[]>((c) => c.gateway?.keys?.(), "gatewayKeysList").catch(() => null),
+    via<{ byRole?: Array<{ key: string; spendUsd: number }> }>((c) => c.gateway?.metrics?.({ days: 30 }), "gatewayMetrics", { days: 30 }).catch(() => null),
+  ]);
+  gwKeys = keys ?? [];
+  roleSpend = new Map((metrics?.byRole ?? []).map((r) => [r.key, r.spendUsd]));
+  paintList();
+  paintRoleKeys();
+}
+
+/** The role's minted keys, read-only (his order, 2026-09-11) — minting and
+ *  revoking live under Gateway › API Keys. */
+function paintRoleKeys(): void {
+  const host = $("ws-keys-list");
+  if (!host || !editing) return;
+  host.innerHTML = "";
+  const mine = gwKeys.filter((k) => k.workspaceId === editing!.id);
+  if (!mine.length) {
+    host.innerHTML = `<div class="crud-empty">No keys minted for this role yet — mint one under Gateway › API Keys.</div>`;
+    return;
+  }
+  const day = (iso: string | null): string =>
+    iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
+  const status = (k: GatewayKeyLite): string => {
+    if (k.revokedAt) return `Revoked ${day(k.revokedAt)}`;
+    if (k.expiresAt && Date.parse(k.expiresAt) < Date.now()) return `Expired ${day(k.expiresAt)}`;
+    return k.expiresAt ? `Expires ${day(k.expiresAt)}` : "Never expires";
+  };
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Key</th><th>Created</th><th>Status</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const k of mine) {
+    const dead = !!k.revokedAt || !!(k.expiresAt && Date.parse(k.expiresAt) < Date.now());
+    const tr = document.createElement("tr");
+    if (dead) tr.style.opacity = "0.55";
+    tr.innerHTML = `<td class="lib-table-name"><span class="ak-name"></span><span class="ak-prefix"></span></td>` +
+      `<td class="lib-table-dim"></td><td class="lib-table-dim"></td>`;
+    (tr.querySelector(".ak-name") as HTMLElement).textContent = k.name || "(unnamed)";
+    (tr.querySelector(".ak-prefix") as HTMLElement).textContent = k.tokenHint;
+    const tds = tr.querySelectorAll("td");
+    if (tds[1]) tds[1].textContent = day(k.createdAt);
+    if (tds[2]) tds[2].textContent = status(k);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
 }
 
 /** Security › Marketplace — the org's blocked-apps governance page. */

@@ -20301,6 +20301,15 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 /* Provider filter drop (org Models + Roles): search on top, capped list.
    OWN panel chrome — appended to <body>, it inherits nothing (his report:
    it rendered as glass over the page). */
+/* Roles list: the budget traffic light (his spec, 2026-09-11). */
+.ws-budget-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 2px; vertical-align: middle;
+}
+.ws-budget-dot.green { background: #33d17a; }
+.ws-budget-dot.yellow { background: #e5a50a; }
+.ws-budget-dot.red { background: #e01b24; }
+
 /* ── Models: the + New Provider install modal (his order, 2026-09-11) ─────── */
 .mdl-install-modal { width: 540px; max-width: 92vw; }
 .mdl-install-list, .mdl-install-models {

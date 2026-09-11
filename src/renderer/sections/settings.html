@@ -864,6 +864,7 @@
                       <button class="app-detail-tab active" data-wstab="general" type="button">General</button>
                       <button class="app-detail-tab" data-wstab="models" type="button">Models</button>
                       <button class="app-detail-tab" data-wstab="connections" type="button">Connections</button>
+                      <button class="app-detail-tab" data-wstab="keys" type="button">Keys</button>
                     </div>
 
                     <div class="ws-tab active" data-wstab="general">
@@ -902,7 +903,30 @@
                             </select>
                           </div>
                         </div>
+                        <h4 class="acct-row-head">Budget</h4>
+                        <p class="section-desc">Monthly gateway spend budget in USD — the roles list paints green under 70%, yellow to the line, red over it. Blank = untracked.</p>
+                        <div class="acct-row">
+                          <div class="acct-field">
+                            <label class="settings-label" for="ws-budget">USD / month</label>
+                            <input id="ws-budget" type="number" min="0" class="settings-input" placeholder="none" />
+                          </div>
+                        </div>
+                        <label class="settings-toggle set-pref-row">
+                          <div class="set-pref-text">
+                            <div class="set-pref-title">Hard limit</div>
+                            <div class="set-pref-desc">Keys minted for this role stop working once the budget is spent — enforced at the gateway when keys are minted. Off means the color is advisory only.</div>
+                          </div>
+                          <input type="checkbox" id="ws-budget-hard" />
+                          <span class="toggle-switch"></span>
+                        </label>
                       </div>
+                    </div>
+
+                    <!-- Keys — READ-ONLY: the gateway keys minted against this
+                         role (minting lives under Gateway › API Keys). -->
+                    <div class="ws-tab" data-wstab="keys">
+                      <p class="section-desc" style="margin-top:12px;">Keys the gateway has handed out for this role — minted under Gateway &rsaquo; API Keys. Revoked keys stay listed; their metrics live on.</p>
+                      <div id="ws-keys-list"></div>
                     </div>
 
                     <div class="ws-tab" data-wstab="models">
