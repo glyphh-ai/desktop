@@ -20301,6 +20301,23 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 /* Provider filter drop (org Models + Roles): search on top, capped list.
    OWN panel chrome — appended to <body>, it inherits nothing (his report:
    it rendered as glass over the page). */
+/* ── Models: the + New Provider install modal (his order, 2026-09-11) ─────── */
+.mdl-install-modal { width: 540px; max-width: 92vw; }
+.mdl-install-list, .mdl-install-models {
+  max-height: 200px; overflow-y: auto; margin: 6px 0 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.mdl-install-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 10px; cursor: pointer;
+}
+.mdl-install-row:hover { background: rgba(255, 255, 255, 0.04); }
+.mdl-install-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.mdl-install-model {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 10px;
+}
+
 .mdl-provider-drop {
   position: fixed; width: 260px; padding: 6px;
   background: var(--surface-2, #1c1c1f);

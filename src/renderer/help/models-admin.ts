@@ -241,8 +241,8 @@ export function icoBtn(svg: string, title: string): HTMLButtonElement {
 
 // ── provider forms (modals) ──────────────────────────────────────────────────
 
-async function newProviderModal(): Promise<void> {
-  const v = await formModal("New provider", [
+async function newCustomProviderModal(): Promise<void> {
+  const v = await formModal("New custom provider", [
     { id: "name", label: "Name", placeholder: "Together AI" },
     { id: "slug", label: "Slug", placeholder: "together" },
     { id: "url", label: "Base URL", hint: "— OpenAI-compatible, speaks /chat/completions", placeholder: "https://api.together.xyz/v1" },
@@ -256,6 +256,192 @@ async function newProviderModal(): Promise<void> {
   showError("");
   expanded.add(`custom:${slug}`);
   void refresh();
+}
+
+/**
+ * + New Provider (his order, 2026-09-11): ONE modal installs a vendor — a
+ * searchable list of every catalog provider not yet installed, the API key
+ * next to it, and that vendor's models as Supported toggles so the org picks
+ * its set in the same breath. The page list then shows installed providers
+ * only; the org returns here (or to the row's toggles) to adjust later.
+ * Custom (own base URL) providers keep their form via the link at the foot.
+ */
+async function installProviderModal(): Promise<void> {
+  document.querySelectorAll(".yo-modal.mdl-form-overlay").forEach((n) => n.remove());
+  const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  let panelsWereHidden = false;
+  if (!isWeb) void hidePanelsForModal().then((h) => { panelsWereHidden = h; });
+
+  const overlay = document.createElement("div");
+  overlay.className = "yo-modal mdl-form-overlay";
+  const backdrop = document.createElement("div");
+  backdrop.className = "yo-modal-backdrop";
+  const panel = document.createElement("div");
+  panel.className = "yo-modal-panel mdl-form-modal mdl-install-modal";
+
+  const head = document.createElement("div");
+  head.className = "yo-modal-title";
+  head.textContent = "New provider";
+  panel.appendChild(head);
+
+  const searchLab = document.createElement("label");
+  searchLab.className = "settings-label";
+  searchLab.textContent = "Provider";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "settings-input";
+  search.placeholder = "Search providers…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  const list = document.createElement("div");
+  list.className = "mdl-install-list";
+  panel.append(searchLab, search, list);
+
+  // The key + models sections appear once a vendor is chosen.
+  const keyLab = document.createElement("label");
+  keyLab.className = "settings-label hidden";
+  keyLab.innerHTML = `API key <span class="settings-hint">— pays the vendor directly; write-only</span>`;
+  const key = document.createElement("input");
+  key.type = "password";
+  key.className = "settings-input hidden";
+  key.placeholder = "sk-…";
+  key.autocomplete = "new-password";
+  key.spellcheck = false;
+  const modelsLab = document.createElement("label");
+  modelsLab.className = "settings-label hidden";
+  modelsLab.innerHTML = `Models <span class="settings-hint">— toggle on the models to install; you can change these any time</span>`;
+  const modelList = document.createElement("div");
+  modelList.className = "mdl-install-models hidden";
+  panel.append(keyLab, key, modelsLab, modelList);
+
+  const err = document.createElement("div");
+  err.className = "crud-form-error hidden";
+  panel.appendChild(err);
+
+  const actions = document.createElement("div");
+  actions.className = "settings-actions";
+  actions.style.marginTop = "16px";
+  const customLink = document.createElement("a");
+  customLink.href = "#";
+  customLink.className = "settings-hint";
+  customLink.textContent = "Custom provider (own base URL)…";
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  const cancel = document.createElement("button");
+  cancel.className = "action-btn";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  const install = document.createElement("button");
+  install.className = "action-btn primary";
+  install.type = "button";
+  install.textContent = "Install";
+  install.disabled = true;
+  actions.append(customLink, spacer, cancel, install);
+  panel.appendChild(actions);
+
+  let selected: ProviderRow | null = null;
+  const picks = new Set<string>();
+
+  const paintModels = (): void => {
+    modelList.textContent = "";
+    if (!selected) return;
+    const rows = models.filter((m) => m.kind === "proxied" && m.providerSlug === selected!.slug);
+    if (!rows.length) {
+      modelList.innerHTML = `<div class="crud-empty">No catalog models under this provider yet.</div>`;
+      return;
+    }
+    for (const m of rows) {
+      const line = document.createElement("div");
+      line.className = "mdl-install-model";
+      const n = document.createElement("div");
+      n.className = "mdl-td-name";
+      n.textContent = m.name;
+      const lab = document.createElement("label");
+      lab.className = "settings-toggle mdl-toggle";
+      lab.title = "Install — roles can pick this model";
+      lab.innerHTML = `<input type="checkbox" ${picks.has(m.id) ? "checked" : ""} /><span class="toggle-switch"></span>`;
+      (lab.querySelector("input") as HTMLInputElement).addEventListener("change", (ev) => {
+        if ((ev.target as HTMLInputElement).checked) picks.add(m.id); else picks.delete(m.id);
+      });
+      line.append(n, lab);
+      modelList.appendChild(line);
+    }
+  };
+
+  const paintList = (): void => {
+    const q = search.value.trim().toLowerCase();
+    list.textContent = "";
+    const candidates = providers
+      .filter((p) => !p.enabledForOrg)
+      .filter((p) => !q || p.name.toLowerCase().includes(q) || p.slug.includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!candidates.length) {
+      list.innerHTML = `<div class="crud-empty">${q ? "No providers match." : "Every provider is already installed."}</div>`;
+      return;
+    }
+    for (const p of candidates) {
+      const row = document.createElement("div");
+      row.className = "mdl-install-row" + (selected?.slug === p.slug ? " selected" : "");
+      const n = document.createElement("div");
+      n.className = "mdl-td-name";
+      n.textContent = p.name;
+      const sub = document.createElement("div");
+      sub.className = "mdl-td-sub mono";
+      sub.textContent = `${models.filter((m) => m.kind === "proxied" && m.providerSlug === p.slug).length} models`;
+      row.append(n, sub);
+      row.addEventListener("click", () => {
+        selected = p;
+        picks.clear();
+        install.disabled = false;
+        for (const elx of [keyLab, key, modelsLab, modelList]) elx.classList.remove("hidden");
+        paintList();
+        paintModels();
+        key.focus();
+      });
+      list.appendChild(row);
+    }
+  };
+  search.addEventListener("input", paintList);
+  paintList();
+
+  const close = (): void => {
+    overlay.remove();
+    if (!isWeb) restorePanelsForModal(panelsWereHidden);
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", close);
+  cancel.addEventListener("click", close);
+  customLink.addEventListener("click", (ev) => { ev.preventDefault(); close(); void newCustomProviderModal(); });
+
+  install.addEventListener("click", () => {
+    if (!selected) return;
+    install.disabled = true;
+    void (async () => {
+      const slug = selected!.slug;
+      const r = await window.glyphh.orgProviderEnable(slug, key.value.trim() || undefined);
+      if (!r?.ok) {
+        err.textContent = r?.error || "Install failed";
+        err.classList.remove("hidden");
+        install.disabled = false;
+        return;
+      }
+      // Per-model installs — NEVER the bulk lane, which resets every other
+      // provider's supported set to exactly the ids it is handed.
+      const results = await Promise.all([...picks].map((id) => window.glyphh.orgModelsSetSupported(id, true)));
+      const bad = results.find((x) => !x?.ok);
+      if (bad) showError(bad.error || "Some models didn't install");
+      else showError("");
+      expanded.add(`gw:${slug}`);
+      close();
+      void refresh();
+    })();
+  });
+
+  overlay.append(backdrop, panel);
+  document.body.appendChild(overlay);
+  search.focus();
 }
 
 async function editCustomProviderModal(p: CustomProviderRow): Promise<void> {
@@ -462,7 +648,9 @@ function openProviderFilter(anchor: HTMLElement): void {
 
 function listEntries(): ListEntry[] {
   const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
-  const gw: ListEntry[] = providers.map((p) => ({
+  // Installed vendors only (his order, 2026-09-11) — the whole catalog lives
+  // in the + New Provider modal; the page is what the org actually runs.
+  const gw: ListEntry[] = providers.filter((p) => p.enabledForOrg).map((p) => ({
     key: `gw:${p.slug}`,
     name: p.name,
     type: "Glyphh",
@@ -724,7 +912,7 @@ export function loadModelsAdmin(): void {
     initialized = true;
     el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
     el("models-provider-filter")?.addEventListener("click", (ev) => { ev.stopPropagation(); openProviderFilter(ev.currentTarget as HTMLElement); });
-    el("provider-new-btn")?.addEventListener("click", () => void newProviderModal());
+    el("provider-new-btn")?.addEventListener("click", () => void installProviderModal());
   }
   void refresh();
 }

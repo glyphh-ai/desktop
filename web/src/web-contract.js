@@ -232,6 +232,23 @@ export function buildContract(client, deps) {
     // the API. Writes update the cache optimistically, then persist; a logged-out
     // read resolves to the caller's default (never throws). `theme`/`backgroundMode`
     // are plain keys in the same map, so desktop and web share pref keys.
+    // Workbench/ui-state map (nav collapse, layouts, panel memory). Desktop
+    // keeps per-user FILES behind these names; the web keeps the ONE
+    // workbenchUiState pref (server-side law) — same shape either way. This
+    // lane was desktop-only until 2026-09-11, so every platform refresh
+    // silently forgot the map (the proxy swallowed the missing shims).
+    wsStateLoad: async () => {
+      try {
+        const raw = (await prefsCache.get()).workbenchUiState;
+        if (!raw) return {};
+        const map = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return map && typeof map === 'object' ? map : {};
+      } catch { return {}; }
+    },
+    wsStateSave: async (snapshot) => {
+      await prefsCache.set('workbenchUiState', JSON.stringify(snapshot || {}));
+      return true;
+    },
     getPreference: async (key, defaultVal) => {
       const map = await prefsCache.get();
       return key in map ? map[key] : (defaultVal === undefined ? null : defaultVal);

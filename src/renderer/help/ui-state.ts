@@ -170,3 +170,8 @@ function flush(): void {
 export function flushUiState(): void {
   if (flushTimer) { clearTimeout(flushTimer); flush(); }
 }
+
+// The last toggle before a refresh must survive. The flush lives with the
+// OWNER module: the platform shell never ran the workbench's pagehide hook,
+// so any write inside the debounce window died with the page.
+window.addEventListener("pagehide", flushUiState);
