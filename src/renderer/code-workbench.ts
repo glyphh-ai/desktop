@@ -5721,7 +5721,6 @@ async function init(): Promise<void> {
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
           setPendingAgentTermMeta({ id: a.id, name: t.name });
           activateTile(entry);
-          setPendingAgentTermMeta(null);
           pendingParkedTerms = null;
           if (parked && prompt) {
             // The session is already live — the task types in as a message.
@@ -8501,12 +8500,19 @@ async function init(): Promise<void> {
     }
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   // The agent stamp rides a pending var because the slot is minted inside
-  // activateTile — set just before, consumed by the FIRST terminal render.
-  let pendingAgentTermMeta: { id: string; name: string } | null = null;
-  function setPendingAgentTermMeta(m: { id: string; name: string } | null): void { pendingAgentTermMeta = m; }
+  // activateTile — and PLACEMENT MAY RENDER ASYNC, so the stamp carries a
+  // short deadline instead of being nulled right after activate (nulling it
+  // synchronously raced the render and the tab row won — his screenshot).
+  let pendingAgentTermMeta: { id: string; name: string; at: number } | null = null;
+  function setPendingAgentTermMeta(m: { id: string; name: string } | null): void {
+    pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
+  }
 
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
-    if (!slot.agent && pendingAgentTermMeta) { slot.agent = pendingAgentTermMeta; pendingAgentTermMeta = null; }
+    if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
+      slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
+      pendingAgentTermMeta = null;
+    }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
     // pod has no pty surface. Say so honestly instead of opening a local shell
     // that silently works on the WRONG filesystem.
