@@ -5580,18 +5580,14 @@ export function initCode(): void {
     const controls = el("code-session-controls");
     const home = el("code-source-slot");            // where they live in the composer
     const headActions = document.querySelector<HTMLElement>(".session-head-actions");
-    const placeControls = (): void => {
-      if (!controls || !home || !headActions) return;
-      const inLayout = document.body.classList.contains("echo-agent-in-layout");
-      const target = inLayout ? headActions : home;
-      if (controls.parentElement !== target) {
-        // In the head, sit BEFORE the kebab; in the composer, append at the end.
-        if (inLayout) headActions.insertBefore(controls, headActions.firstChild);
-        else home.appendChild(controls);
-      }
-    };
-    placeControls();
-    new MutationObserver(placeControls).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    // UNCONDITIONAL (his spec, 2026-09-11): the cluster lives in the HEAD,
+    // never the input box — the terminal and chat headers stay identical.
+    if (controls && headActions && controls.parentElement !== headActions) {
+      const toggle = document.getElementById("code-term-toggle");
+      if (toggle && toggle.parentElement === headActions) headActions.insertBefore(controls, toggle.nextSibling);
+      else headActions.insertBefore(controls, headActions.firstChild);
+    }
+    void home;
   }
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();

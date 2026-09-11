@@ -20290,6 +20290,16 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 #cagent-apikey-delete svg { width: 14px; height: 14px; }
 #cagent-apikey-delete:hover { color: #f43f5e; background: var(--surface-2); }
 
+/* Agent terminal header (his spec, 2026-09-11): the tab row becomes the
+   session-name row with the shared control cluster — identical to the chat
+   head. Plain terminals keep their tabs; this styles only the agent face. */
+.ws-agent-termhead { display: flex; align-items: center; gap: 4px; padding: 3px 8px; }
+.ws-agent-term-title {
+  font-size: 12px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
+}
+.ws-agent-recents-menu { max-height: 320px; overflow-y: auto; width: 260px; }
+
 /* Agent card dev-tools kebab — sits with the head's icon buttons. */
 .echo-card-devtools svg { width: 15px; height: 15px; }
 

@@ -137,6 +137,10 @@ interface TermSlot {
   terminals: WbTerminal[];
   activeIdx: number;
   sticky?: boolean;
+  /** Set ONLY by openAgentCliCard: this terminal is an AGENT view, and its
+   *  tab row becomes the agent header (session name + the shared control
+   *  cluster). Plain terminals never carry it — their tabs are untouched. */
+  agent?: { id: string; name: string };
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
@@ -4483,86 +4487,25 @@ async function init(): Promise<void> {
       // AGENT cards (his order, 2026-09-10): the dev tools that rode the
       // glyphh agent's ⋯ menu follow each CLI agent — a ⋮ right of Expand.
       if ((e.tile.slug || "").startsWith("agent:")) {
-        // CHAT ⇄ TERMINAL (his ruling, 2026-09-11): two views of ONE CLI
-        // session. Chat parks this pty and opens the glyphh panel bound to
-        // the agent's newest CLI session; the terminal button on the chat
-        // card comes back through openAgentCliCard, which resumes the pty.
-        const chatAgentId = (e.tile.slug || "").slice(6);
-        const chatBtn = document.createElement("button");
-        chatBtn.className = "ws-icon-btn echo-card-devtools";
-        chatBtn.title = "Chat view";
-        chatBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
-        chatBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(chatAgentId);
-        });
-        const headEl = card.querySelector(".echo-card-head")!;
-        const expandEl = card.querySelector(".echo-card-expand");
-        if (expandEl) headEl.insertBefore(chatBtn, expandEl);
-        else headEl.appendChild(chatBtn);
-        const AGENT_DEV_TOOLS: Array<{ view: string; label: string }> = [
-          { view: "files", label: "Files" },
-          { view: "terminal", label: "Terminal" },
-          { view: "monaco", label: "Editor" },
-          { view: "preview", label: "Browser" },
-          { view: "diff", label: "Diff" },
-          { view: "plan", label: "Plan" },
-          { view: "rail", label: "Rail" },
-        ];
-        const devBtn = document.createElement("button");
-        devBtn.className = "ws-icon-btn echo-card-devtools";
-        devBtn.title = "Developer tools";
-        devBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
-        const head = card.querySelector(".echo-card-head")!;
-        const expand = card.querySelector(".echo-card-expand");
-        if (expand?.nextSibling) head.insertBefore(devBtn, expand.nextSibling);
-        else head.appendChild(devBtn);
-        const agentId = (e.tile.slug || "").slice(6);
-        const wbW = window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; fresh?: boolean; cwd?: string }) => void };
-        const histBtn = document.createElement("button");
-        histBtn.className = "ws-icon-btn echo-card-sessions";
-        histBtn.title = "Recent sessions";
-        histBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>`;
-        histBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          // The MAIN-era wb-session-menu (search + folder groups + pin +
-          // delete), served by help/code.ts over the CLI session stores.
-          const agentRow = cliAgentRows.find((x) => x.id === agentId);
-          const menuApi = (window as unknown as { __glyphhSessionsMenu?: (anchor: HTMLElement, opts: { cli?: string; cwd?: string; onPick: (sess: { id: string; cwd: string }) => void }) => void }).__glyphhSessionsMenu;
-          if (!menuApi) return;
-          menuApi(histBtn, {
-            cli: agentRow?.cli ?? "claude",
-            cwd: agentRow?.cwd || undefined,
-            onPick: (sess) => { closeCard(e); wbW.__wbOpenAgentCli?.(agentId, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined }); },
-          });
-        });
-        const plusBtn = document.createElement("button");
-        plusBtn.className = "ws-icon-btn echo-card-newsession";
-        plusBtn.title = "New session";
-        plusBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
-        plusBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          closeCard(e);
-          wbW.__wbOpenAgentCli?.(agentId, undefined, { fresh: true });
-        });
-        const expandRef = card.querySelector(".echo-card-expand");
-        if (expandRef) { head.insertBefore(histBtn, expandRef); head.insertBefore(plusBtn, expandRef); }
-        devBtn.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          // Each entry is a TOGGLE: ✓ marks a tool that's open; picking an
-          // open one closes its card instead of re-opening it.
-          showTileMenu(ev as MouseEvent, AGENT_DEV_TOOLS.map((t) => {
-            const open = openList.find((x) => x.card && x.tile.kind === "tool" && x.tile.toolView === t.view);
-            return {
-              label: t.label,
-              checked: !!open,
-              onPick: () => {
-                if (open) closeCard(open);
-                else (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view);
-              },
-            };
-          }));
-        });
+        // The agent card's HEAD stays bare (his spec, 2026-09-11): the
+        // toggle/recents/+/⋮ cluster lives on the agent HEADER ROW (the old
+        // tab row). The dev-tools menu is served to that row from here,
+        // where showTileMenu is in scope.
+        (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu = (ev: MouseEvent) => {
+          const AGENT_DEV_TOOLS: Array<{ view: string; label: string }> = [
+            { view: "files", label: "Files" },
+            { view: "terminal", label: "Terminal" },
+            { view: "monaco", label: "Editor" },
+            { view: "preview", label: "Browser" },
+            { view: "diff", label: "Diff" },
+            { view: "plan", label: "Plan" },
+            { view: "rail", label: "Rail" },
+          ];
+          showTileMenu(ev, AGENT_DEV_TOOLS.map((t) => ({
+            label: t.label,
+            onPick: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view),
+          })));
+        };
       }
       // Pop-out — same rule as the rail-slot header: web panels (http apps,
       // the Browser) and Slides can leave the app for a standalone OS window.
@@ -4774,22 +4717,25 @@ async function init(): Promise<void> {
       const holder = openList.find((x) => x.card && x.tile.kind === "agent");
       const card = holder?.card ?? null;
       if (card) card.dataset.boundAgent = agentId;
-      if (card && !card.querySelector(".echo-card-termhop")) {
+      // The >_ toggle rides the panel's OWN header cluster, first in the
+      // row — identical anatomy to the terminal header. Injected once into
+      // the singleton; the bound agent is read live at click.
+      const headActions = document.querySelector<HTMLElement>(".session-head-actions");
+      if (headActions && !document.getElementById("code-term-toggle")) {
         const termBtn = document.createElement("button");
-        termBtn.className = "ws-icon-btn echo-card-devtools echo-card-termhop";
+        termBtn.id = "code-term-toggle";
+        termBtn.className = "code-icon-btn";
         termBtn.title = "Terminal view";
-        termBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+        termBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
         termBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          const boundId = card.dataset.boundAgent || agentId;
-          const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
-          if (chatCard) closeCard(chatCard, { keepSession: true });
+          const agentCard = openList.find((x) => x.card && x.tile.kind === "agent");
+          const boundId = agentCard?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
+          if (!boundId) return;
+          if (agentCard) closeCard(agentCard, { keepSession: true });
           (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(boundId);
         });
-        const headEl = card.querySelector(".echo-card-head");
-        const expandEl = card.querySelector(".echo-card-expand");
-        if (headEl && expandEl) headEl.insertBefore(termBtn, expandEl);
-        else headEl?.appendChild(termBtn);
+        headActions.insertBefore(termBtn, headActions.firstChild);
       }
       return entry;
     };
@@ -5773,7 +5719,9 @@ async function init(): Promise<void> {
             if (stale) { parkedTerms.delete(`agent::agent:${a.id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
           }
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
+          setPendingAgentTermMeta({ id: a.id, name: t.name });
           activateTile(entry);
+          setPendingAgentTermMeta(null);
           pendingParkedTerms = null;
           if (parked && prompt) {
             // The session is already live — the task types in as a message.
@@ -8552,7 +8500,13 @@ async function init(): Promise<void> {
       try { t.options.theme = theme; } catch { liveTerms.delete(t); }
     }
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  // The agent stamp rides a pending var because the slot is minted inside
+  // activateTile — set just before, consumed by the FIRST terminal render.
+  let pendingAgentTermMeta: { id: string; name: string } | null = null;
+  function setPendingAgentTermMeta(m: { id: string; name: string } | null): void { pendingAgentTermMeta = m; }
+
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
+    if (!slot.agent && pendingAgentTermMeta) { slot.agent = pendingAgentTermMeta; pendingAgentTermMeta = null; }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
     // pod has no pty surface. Say so honestly instead of opening a local shell
     // that silently works on the WRONG filesystem.
@@ -8573,6 +8527,7 @@ async function init(): Promise<void> {
     mountTerminal(hostEl, slot);
   }
   function paintTermTabs(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot): void {
+    if (slot.agent) { paintAgentTermHead(tabsEl, slot.agent); return; }
     tabsEl.innerHTML = "";
     slot.terminals.forEach((t, i) => {
       const tab = document.createElement("div");
@@ -8608,6 +8563,72 @@ async function init(): Promise<void> {
     });
     tabsEl.appendChild(add);
   }
+  /** The AGENT terminal's header row (his spec, 2026-09-11): where a plain
+   *  terminal shows "1. zsh" tabs, the agent shows the SESSION NAME and the
+   *  same control cluster the chat head carries — identical rows, two views. */
+  function paintAgentTermHead(tabsEl: HTMLElement, agent: { id: string; name: string }): void {
+    tabsEl.innerHTML = "";
+    tabsEl.classList.add("ws-agent-termhead");
+    const title = document.createElement("span");
+    title.className = "ws-agent-term-title";
+    title.textContent = agent.name;
+    // The CLI's newest session in this agent's lane names the row.
+    void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }> } })
+      .glyphh?.cliSessionsList?.().then((r) => {
+        const first = r?.ok ? r.sessions[0] : undefined;
+        if (first?.title) title.textContent = first.title;
+      });
+    const spacer = document.createElement("span");
+    spacer.style.flex = "1";
+    const btn = (label: string, svg: string, onClick: (ev: MouseEvent) => void): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.className = "code-icon-btn";
+      b.title = label;
+      b.innerHTML = svg;
+      b.addEventListener("click", (ev) => { ev.stopPropagation(); onClick(ev as MouseEvent); });
+      return b;
+    };
+    const chat = btn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+      () => (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id));
+    const drips = btn("Drips", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
+      () => document.getElementById("code-drips-btn")?.click());
+    const recents = btn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+      (ev) => {
+        document.querySelector(".ws-agent-recents-menu")?.remove();
+        void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }> } })
+          .glyphh?.cliSessionsList?.().then((r) => {
+            const menu = document.createElement("div");
+            menu.className = "code-drop ws-agent-recents-menu";
+            const rows = r?.ok ? r.sessions.slice(0, 20) : [];
+            if (!rows.length) menu.innerHTML = `<div class="ctx-pop-empty">No sessions yet.</div>`;
+            for (const sess of rows) {
+              const item = document.createElement("button");
+              item.type = "button";
+              item.className = "code-drop-item";
+              item.textContent = sess.title;
+              item.addEventListener("click", () => {
+                menu.remove();
+                (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(agent.id, undefined, { resumeId: sess.id });
+              });
+              menu.appendChild(item);
+            }
+            const rect = (ev.currentTarget as HTMLElement | null)?.getBoundingClientRect() ?? { left: ev.clientX, bottom: ev.clientY } as DOMRect;
+            menu.style.position = "fixed";
+            menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 280))}px`;
+            menu.style.top = `${rect.bottom + 6}px`;
+            menu.style.zIndex = "10000";
+            document.body.appendChild(menu);
+            const away = (e: MouseEvent): void => { if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", away, true); } };
+            document.addEventListener("mousedown", away, true);
+          });
+      });
+    const fresh = btn("New session", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+      () => (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void }).__wbOpenAgentCli?.(agent.id, undefined, { fresh: true }));
+    const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
+      (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
+    tabsEl.append(title, spacer, chat, drips, recents, fresh, dev);
+  }
+
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {
     hostEl.innerHTML = "";
     const wbt = slot.terminals[slot.activeIdx];
