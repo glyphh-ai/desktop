@@ -4761,10 +4761,10 @@ async function init(): Promise<void> {
      *  — or an app open that clears it (a PINNED cell captures those clicks,
      *  so pinned layouts hold on) — parks the agent home and the composer
      *  returns. */
-    /** The agent's CHAT VIEW — THE one agent card (openAgentPanel), bound to
-     *  this CLI loop's session. No second card identity exists (his report,
-     *  2026-09-11: two versions of the same thing); the terminal hop (>_)
-     *  rides the card head, LEFT of expand, and resumes the same session. */
+    /** The agent's CHAT VIEW — openAgentPanel, PERIOD (his report,
+     *  2026-09-11: every extra state write forked the head). The only
+     *  addition is the >_ hop, LEFT of expand, which reopens the loop's
+     *  terminal card; the CLI's own continue-last carries the session. */
     const openAgentChatCard = (agentId: string): TileEntry | null => {
       const row = cliAgentRows.find((x) => x.id === agentId);
       if (!row) return null;
@@ -4773,6 +4773,7 @@ async function init(): Promise<void> {
       const entry = openAgentPanel();
       const holder = openList.find((x) => x.card && x.tile.kind === "agent");
       const card = holder?.card ?? null;
+      if (card) card.dataset.boundAgent = agentId;
       if (card && !card.querySelector(".echo-card-termhop")) {
         const termBtn = document.createElement("button");
         termBtn.className = "ws-icon-btn echo-card-devtools echo-card-termhop";
@@ -4780,29 +4781,16 @@ async function init(): Promise<void> {
         termBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
         termBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
-          void (async () => {
-            const store = (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string) => Promise<string | null> } }).glyphh;
-            const boundId = (card.dataset.boundAgent || agentId);
-            const chatId = (window as unknown as { __glyphhChatIdForAgent?: (id: string) => string | null }).__glyphhChatIdForAgent?.(boundId) ?? null;
-            const sid = chatId ? await store?.glyphhCliSessionOf?.(chatId) : null;
-            const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
-            if (chatCard) closeCard(chatCard, { keepSession: true });
-            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
-          })();
+          const boundId = card.dataset.boundAgent || agentId;
+          const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
+          if (chatCard) closeCard(chatCard, { keepSession: true });
+          (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(boundId);
         });
         const headEl = card.querySelector(".echo-card-head");
         const expandEl = card.querySelector(".echo-card-expand");
         if (headEl && expandEl) headEl.insertBefore(termBtn, expandEl);
         else headEl?.appendChild(termBtn);
       }
-      if (card) card.dataset.boundAgent = agentId;
-      // Bind the panel to this loop: its folder, its newest CLI session.
-      void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; cwd: string; mtime: number }> }> } })
-        .glyphh?.cliSessionsList?.().then((r) => {
-          const newest = r?.ok ? r.sessions.find((x) => !row.cwd || x.cwd === row.cwd) : undefined;
-          (window as unknown as { __glyphhOpenForAgent?: (a: { id: string; name: string; cwd?: string | null; model?: string | null; resumeId?: string | null }) => void })
-            .__glyphhOpenForAgent?.({ id: agentId, name: row.name, cwd: row.cwd ?? null, model: (row as { model?: string | null }).model ?? null, resumeId: newest?.id ?? null });
-        });
       return entry;
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentChatCard(id); };
