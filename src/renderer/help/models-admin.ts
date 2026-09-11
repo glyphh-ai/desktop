@@ -66,6 +66,9 @@ let custom: CustomModelRow[] = [];
 let initialized = false;
 let page = 0;
 const expanded = new Set<string>();
+/** Rows the user CLOSED while a search had auto-opened them — a search
+ *  suggests, it never pins (his report, 2026-09-11). Cleared per query. */
+const searchClosed = new Set<string>();
 
 const el = (id: string) => document.getElementById(id);
 
@@ -457,7 +460,7 @@ function renderList(): void {
   for (const e of slice) {
     const row = document.createElement("div");
     row.className = "mdl-prov-row";
-    const isOpen = expanded.has(e.key) || !!e.autoOpen;
+    const isOpen = expanded.has(e.key) || (!!e.autoOpen && !searchClosed.has(e.key));
 
     const head = document.createElement("div");
     head.className = "mdl-prov-head" + (isOpen ? " open" : "");
@@ -551,8 +554,8 @@ function renderList(): void {
       head.appendChild(delBtn);
     }
     head.addEventListener("click", () => {
-      if (expanded.has(e.key)) expanded.delete(e.key);
-      else expanded.add(e.key);
+      if (isOpen) { expanded.delete(e.key); if (e.autoOpen) searchClosed.add(e.key); }
+      else { expanded.add(e.key); searchClosed.delete(e.key); }
       renderList();
     });
     row.appendChild(head);
@@ -648,7 +651,7 @@ async function refresh(): Promise<void> {
 export function loadModelsAdmin(): void {
   if (!initialized) {
     initialized = true;
-    el("models-search")?.addEventListener("input", () => { page = 0; renderList(); });
+    el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
     el("provider-new-btn")?.addEventListener("click", () => void newProviderModal());
   }
   void refresh();
