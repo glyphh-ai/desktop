@@ -20358,3 +20358,24 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 }
 .ws-info-btn:hover { color: var(--text); }
 .ws-info-pop { width: 290px; padding: 12px 14px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+
+/* ── Plan gating (help/plan-gate.ts) ──────────────────────────────────────
+   A locked surface stays VISIBLE and inert (his call: visible + disabled +
+   upsell, never hidden — an admin has to be able to see what they'd get).
+   The dim is on the CONTROLS, not the copy, so the explanation stays
+   readable while the things you can't use recede. */
+.plan-locked .settings-input,
+.plan-locked .action-btn,
+.plan-locked input,
+.plan-locked select,
+.plan-locked textarea,
+.plan-locked button { opacity: 0.45; cursor: not-allowed; }
+.plan-locked-note {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 14px; padding: 10px 12px;
+  border: 1px solid var(--border-2); border-left: 3px solid var(--accent);
+  border-radius: 8px; background: var(--surface-2);
+  color: var(--text-2); font-size: 13px; line-height: 1.45;
+}
+/* The note itself is never dimmed — it is the one thing that must read. */
+.plan-locked > .plan-locked-note { opacity: 1; }

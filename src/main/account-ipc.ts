@@ -39,6 +39,9 @@ function fail(err: unknown): { ok: false; error: string } {
 
 export function registerAccountIpc(): void {
   // ── Billing (reads) ─────────────────────────────────────────────────────
+  // THE licensing read — the SDK's one place (client.plans). Every gated
+  // surface on desktop AND the platform answers here, nowhere else.
+  ipcMain.handle("plan-gates", () => getClient().plans.gates());
   ipcMain.handle("billing-plans", () => getClient().billing.plans());
   ipcMain.handle("billing-status", () => getClient().billing.status());
   ipcMain.handle("billing-credits", () => getClient().billing.credits());

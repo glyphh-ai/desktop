@@ -1055,6 +1055,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   tasksAgentsList: () => ipcRenderer.invoke("tasks-agents-list") as Promise<LibEnvelope>,
   // AGENTS (local-agents.ts) — the standing workforce. Distinct from the
   // tasks* lane above, which groups schedules by the LOOP that runs them.
+  /** THE licensing read (SDK client.plans) — one place, every surface. */
+  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,

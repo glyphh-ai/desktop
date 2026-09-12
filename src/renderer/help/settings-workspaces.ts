@@ -27,6 +27,7 @@
  */
 
 import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { gateSurface } from "./plan-gate.js";
 import { openProviderDropdown, MDL_SVG, icoBtn } from "./models-admin.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
 import { formModal } from "./settings-list-page.js";
@@ -1296,6 +1297,11 @@ export async function loadWorkspacesPanel(): Promise<void> {
   const role = account?.role || "";
   if (!role || !["org_admin", "admin", "super_admin"].includes(role)) { showPanel(false); return; }
   showPanel(true);
+  // THE licensing read (help/plan-gate.ts → SDK client.plans). Roles ARE the
+  // governance layer, so this whole surface is what Pro buys: shown, inert,
+  // and labelled — never hidden, or nobody discovers it exists.
+  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="workspaces"]'),
+    "governance", "Roles");
 
   await loadWorkspaces();
   // The three universes a workspace narrows within. Each is independent — a
