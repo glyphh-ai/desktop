@@ -5035,17 +5035,6 @@ ol.docs-list li::before {
   overflow-y: auto;
   min-height: 0;
 }
-/* The form SCROLLS (overflow-y above) and is a flex column, so any control
-   sitting directly in it is a shrinkable flex item: once the fields overflow,
-   textareas collapse to a sliver with their own text overlapping (his report,
-   2026-09-11). Most forms dodge this by nesting fields in a wrapper; the
-   stacked ones don't, so pin every direct child's height to its content. */
-.crud-inline-form > .settings-input,
-.crud-inline-form > label,
-.crud-inline-form > p,
-.crud-inline-form > .lib-guard-grid { flex: 0 0 auto; }
-.crud-inline-form > textarea.settings-input { min-height: 2.6em; }
-
 .crud-inline-form .settings-actions,
 #app-detail .settings-actions {
   justify-content: flex-end;
@@ -15066,12 +15055,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* ── Library editors — the app-standard form on the left, the live React-Flow
    view on the right. Form fields are the same settings-label/settings-input
    system the Apps page uses; only the split shell is new. ── */
-/* SPLIT editors only — a form beside a live pane needs the width. A plain
-   stacked form (#agent-form) must KEEP crud-inline-form's 620px cap or it
-   runs the full width of the panel and stops looking like every other form
-   in the app (his report, 2026-09-11). */
+/* SPLIT editors — a form beside a live pane needs the full width; the 620px
+   column comes from .app-builder-controls, not from this cap. */
 #skill-editor.crud-inline-form, #task-editor.crud-inline-form, #agent-editor.crud-inline-form,
-#ws-edit-view.crud-inline-form { max-width: none; }
+#agent-form.crud-inline-form, #ws-edit-view.crud-inline-form { max-width: none; }
 /* The same horizontal rule the Apps detail draws under its header (its tab
    bar's border-bottom) — ties the two-column editors to one look. */
 #skill-editor .crud-inline-header, #task-editor .crud-inline-header, #agent-editor .crud-inline-header {

@@ -48,6 +48,13 @@
             </div>
             <div id="agent-form-err" class="crud-form-error hidden"></div>
 
+            <!-- The app's standard two-column form shell (app-builder-split):
+                 the 620px field column left on the page gutter, guidance in
+                 the pane on the right. Same shape the Loops and Apps editors
+                 use — a stacked full-width form was crowding both edges. -->
+            <div class="app-builder-split">
+            <div class="app-builder-controls">
+
             <label class="settings-label">Name</label>
             <input id="agent-f-name" type="text" class="settings-input" placeholder="e.g. Morning briefing" spellcheck="false" autocomplete="off" />
 
@@ -93,6 +100,33 @@
               <div style="flex:1;"></div>
               <button id="agent-f-cancel" class="action-btn">Cancel</button>
               <button id="agent-f-save" class="action-btn primary">Save</button>
+            </div>
+            </div>
+
+            <div class="app-builder-preview">
+              <div class="layout-setup-pane">
+                <label class="settings-label" style="margin-top:0;">What an agent is</label>
+                <p class="settings-hint">A session is you driving a loop. An <b>agent</b> is that same machinery running without you &mdash; on a schedule, with a standing brief, reporting what it did.</p>
+
+                <label class="settings-label">Prompt</label>
+                <p class="settings-hint">The brief every run opens with, before the task's own program. Write it like you'd brief a person on their first day: what the job is, what "done" looks like, what to leave alone.</p>
+
+                <label class="settings-label">Loop and model</label>
+                <p class="settings-hint">The <b>loop</b> is the CLI that does the work &mdash; it brings its own command, folder and tools. The <b>model</b> is optional: leave it on the loop's own unless this agent needs something different. The list narrows to what the chosen loop can actually address.</p>
+
+                <label class="settings-label">Skills and apps</label>
+                <p class="settings-hint">What it may reach for. Skills are instruction packs from the Skills page; apps are the slugs it's allowed to drive. Both are permissions, not instructions &mdash; naming one here doesn't make the agent use it.</p>
+
+                <label class="settings-label">Scheduled tasks</label>
+                <p class="settings-hint">Each task binds something that already exists &mdash; a task or a skill &mdash; to a schedule. They fire on the agent's loop with its prompt in front. Tasks only run while the agent is <b>Live</b>; pausing it parks every one without losing the schedule.</p>
+
+                <label class="settings-label">Guardrails</label>
+                <p class="settings-hint">Ceilings for unattended work, so a loop that misbehaves at 3am can't run all night. Blank means no cap.</p>
+
+                <label class="settings-label">After saving</label>
+                <p class="settings-hint">The detail view is where you operate it: pause it, toggle a task, change a schedule, run one now, and read the output of every firing.</p>
+              </div>
+            </div>
             </div>
           </div>
         </div>
