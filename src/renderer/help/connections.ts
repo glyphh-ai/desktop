@@ -19,6 +19,7 @@ let connections: Conn[] = [];
 // server dials the endpoint and holds the (write-only) auth headers.
 let customServers: McpConn[] = [];
 let customAllowed = false;   // org × role policy (server-enforced; this only shows/hides UI)
+let isAdminUser = false;     // decides which AXIS the platform page shows (org vs personal)
 let connSearch = "";
 let currentConnId: string | null = null;
 let currentCustomSlug: string | null = null;
@@ -103,6 +104,12 @@ export function releaseConnections(): void {
 
 export async function loadConnections(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  // Which AXIS the platform page shows depends on the role (his ruling,
+  // 2026-09-12) — resolved WITH the data reads, before the first paint: a
+  // fire-and-forget here would race renderConnectionsList and flash the
+  // wrong axis.
+  const account = await window.glyphh.getAccountInfo?.().catch(() => null);
+  isAdminUser = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
   // The org × role policy can change with any heartbeat, so re-check it on
   // every load — it hides the "+ Custom MCP" button AND the custom cards.
   const [res, custom, gate] = await Promise.all([
@@ -121,12 +128,14 @@ export async function loadConnections(): Promise<void> {
 
 function renderConnectionsList(): void {
   const q = connSearch.trim().toLowerCase();
-  // PLATFORM = the ORG ADMIN surface (his order, 2026-09-11): org-level
-  // connections only — members' personal accounts never render here. The
-  // desktop member page keeps both axes.
+  // PLATFORM, split by role (his ruling, 2026-09-12): the ADMIN manages the
+  // org-level connections; a MEMBER sees just THEIR connections — the org's
+  // shared ones never render as theirs to manage. Desktop keeps both axes.
   const onPlatform = document.body.classList.contains("platform-shell");
+  const isOrg = (c: unknown): boolean =>
+    (c as { org?: boolean }).org === true || (c as { kind?: string }).kind === "org";
   const orgOnly = onPlatform
-    ? connections.filter((c) => (c as { org?: boolean }).org === true || (c as { kind?: string }).kind === "org")
+    ? (isAdminUser ? connections.filter(isOrg) : connections.filter((c) => !isOrg(c)))
     : connections;
   const scoped = requiredFilter
     ? orgOnly.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))

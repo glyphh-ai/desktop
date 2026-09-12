@@ -620,6 +620,13 @@ export async function loadDashboard(): Promise<void> {
 export async function loadUsageMembers(): Promise<void> {
   const sel = document.getElementById("dash-usage-member") as HTMLSelectElement | null;
   if (!sel) return;
+  // Members see ONLY themselves (his ruling, 2026-09-12) — the roster filter
+  // is the admin's. Explicit role check: the members read succeeding is not
+  // proof of adminship, and the dropdown was leaking the roster to everyone.
+  // The server pins non-admin usage reads to self regardless.
+  const account = await window.glyphh.getAccountInfo?.().catch(() => null);
+  const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
+  if (!admin) { sel.classList.add("hidden"); return; }
   try {
     const members = await accountApi().members();
     if (!members?.length) { sel.classList.add("hidden"); return; }

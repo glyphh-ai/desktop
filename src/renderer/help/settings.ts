@@ -669,6 +669,12 @@ export { loadSettings, initSettings };
 let uaWired = false;
 
 export async function loadUsageAppView(): Promise<void> {
+  // The spend limit is the ORG ADMIN's control (his ruling, 2026-09-12) —
+  // members see the cap but cannot adjust it.
+  void window.glyphh.getAccountInfo?.().then((info) => {
+    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
+    el("ua-adjust-limit")?.classList.toggle("hidden", !admin);
+  });
   const el = (id: string) => document.getElementById(id);
   if (!el("usage-app-view")) return;
   closeBuyForm();
@@ -684,6 +690,8 @@ export async function loadUsageAppView(): Promise<void> {
       el("ua-limit-form")?.classList.toggle("hidden", !on);
     };
     el("ua-adjust-limit")?.addEventListener("click", () => {
+      // Belt and braces beside the hide below — a member must never reach
+      // the form even if the button is resurrected by other DOM work.
       void (async () => {
         const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
         (el("ua-limit-input") as HTMLInputElement).value = cap > 0 ? String(cap) : "";

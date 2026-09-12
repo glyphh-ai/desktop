@@ -257,6 +257,30 @@ export async function loadOrgLoops(): Promise<void> {
   host.innerHTML = `<div class="crud-empty">Loading…</div>`;
   fail("org-loops-error", "");
 
+  // MEMBERS see just THEIR loops (his ruling, 2026-09-12): the role-narrowed
+  // available list, read-only — no org toggles, no support-list management.
+  const account = await window.glyphh.getAccountInfo?.().catch(() => null);
+  const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
+  if (!admin) {
+    const mine = await api().loopsAvailable?.().catch(() => null) ?? null;
+    host.innerHTML = "";
+    const rows = mine?.ok ? (mine.data ?? []) : [];
+    if (!rows.length) {
+      host.innerHTML = `<div class="crud-empty">No loops available to you yet — ask an org admin.</div>`;
+      return;
+    }
+    for (const loop of rows) {
+      const div = document.createElement("div");
+      div.className = "crud-row";
+      div.innerHTML = `<div class="crud-cell" style="flex:1;"><b></b> <span class="mdl-hint"></span></div>`;
+      (div.querySelector("b") as HTMLElement).textContent = loop.name;
+      (div.querySelector(".mdl-hint") as HTMLElement).textContent =
+        `${loop.provider}${loop.isDefault ? " · default" : ""}${loop.model ? ` · ${loop.model}` : ""}`;
+      host.appendChild(div);
+    }
+    return;
+  }
+
   const res = await api().orgLoopsList?.().catch(() => null) ?? null;
   if (!res?.ok) {
     host.innerHTML = "";
