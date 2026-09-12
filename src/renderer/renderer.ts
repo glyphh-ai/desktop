@@ -410,6 +410,9 @@ declare global {
       librarySkillUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
+      loopsAvailable: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgLoopsList: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      orgLoopSet: (cli: string, enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
       planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;
       libraryAgentsList: () => Promise<LibEnvelope>;
       libraryAgentTasks: (ref: string) => Promise<LibEnvelope>;

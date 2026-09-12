@@ -20379,3 +20379,24 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 }
 /* The note itself is never dimmed — it is the one thing that must read. */
 .plan-locked > .plan-locked-note { opacity: 1; }
+
+/* ── Loops as SETTINGS (help/settings-loops.ts) ───────────────────────────
+   The fixed set, one expandable row each — the model catalog's grammar:
+   name + optional sub-label left, the enable toggle pinned right, the
+   configuration underneath. No New, no Delete: loops are settings. */
+.loop-acc { border: 1px solid var(--border-2); border-radius: 10px; margin-bottom: 8px; background: var(--surface); }
+.loop-acc-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; cursor: pointer; user-select: none;
+}
+.loop-acc-head:hover { background: var(--hover); border-radius: 10px; }
+.loop-acc.open > .loop-acc-head { border-bottom: 1px solid var(--border-2); border-radius: 10px 10px 0 0; }
+.loop-acc-chev { width: 14px; height: 14px; color: var(--text-3); transition: transform 0.15s; flex: none; }
+.loop-acc.open .loop-acc-chev { transform: rotate(90deg); }
+.loop-acc-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.loop-acc-sub { font-size: 12px; color: var(--text-3); }
+.loop-acc-spacer { flex: 1; }
+/* The toggle is its own control — clicking it must not expand the row. */
+.loop-acc-toggle { margin: 0; flex: none; }
+.loop-acc-body { padding: 6px 14px 16px; display: flex; flex-direction: column; }
+.loop-acc-body > .settings-input { flex: 0 0 auto; }

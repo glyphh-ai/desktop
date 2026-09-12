@@ -15,6 +15,7 @@ import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
+import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -817,6 +818,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "billing") void loadBilling();
   else if (sub === "workspaces") void loadWorkspacesPanel();
   else if (sub === "models") loadModelsAdmin();
+  else if (sub === "loops") void loadSettingsLoops();
+  else if (sub === "org-loops") void loadOrgLoops();
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
