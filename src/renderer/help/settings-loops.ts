@@ -51,7 +51,7 @@ const api = () => window.glyphh as unknown as {
   cliAgentsList?: () => Promise<{ ok: boolean; agents: LoopConfig[] }>;
   cliAgentsSave?: (input: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
-  workspacesModelCatalog?: () => Promise<{ ok: boolean; models?: Array<{ id: string; name: string; providerSlug?: string }> }>;
+  workspacesModelCatalog?: () => Promise<{ ok: boolean; data?: Array<{ id: string; name: string; providerSlug?: string }> }>;
 };
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
@@ -121,7 +121,7 @@ export async function loadSettingsLoops(): Promise<void> {
     api().cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
     api().workspacesModelCatalog?.().catch(() => null) ?? Promise.resolve(null),
   ]);
-  models = catalog?.ok ? catalog.models ?? [] : [];
+  models = catalog?.ok ? catalog.data ?? [] : [];
   const allowed = availRes?.ok ? availRes.data ?? [] : [];
   const configs = new Map((cfgRes?.ok ? cfgRes.agents : []).map((c) => [c.cli, c]));
 
@@ -331,7 +331,7 @@ export async function loadAgentDefaults(): Promise<void> {
     prefs.getPreference?.("defaultModel", "") ?? Promise.resolve(""),
   ]);
   const loops = availRes?.ok ? availRes.data ?? [] : [];
-  models = catalog?.ok ? catalog.models ?? [] : [];
+  models = catalog?.ok ? catalog.data ?? [] : [];
 
   if (!loops.length) {
     loopSel.innerHTML = `<option value="">No loops available</option>`;

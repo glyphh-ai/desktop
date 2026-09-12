@@ -713,6 +713,10 @@ export function buildContract(client, deps) {
     //    and planGates falling back to CLOSED renders Roles and SSO locked
     //    for orgs that pay for them.
     loopsAvailable: lib(() => client.loops.list()),
+    // Settings → General's model list (the role-narrowed available set). A
+    // missing shim here fails SILENTLY through the proxy — the dropdown just
+    // never fills (his report, 2026-09-12).
+    workspacesModelCatalog: lib(() => client.models.available()),
     orgLoopsList: lib(() => client.orgLoops.list()),
     orgLoopSet: lib((cli, enabled) => client.orgLoops.setEnabled(cli, enabled)),
     /** THE licensing read — one place, every surface (SDK client.plans). */

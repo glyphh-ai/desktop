@@ -64,13 +64,24 @@
                      the loops are what the role allows, the models are that
                      loop's allowed models. Nothing here is free text — you
                      cannot default to something you may not use. -->
-                <h3 class="settings-subheading" style="margin-top:4px;">Agent defaults</h3>
-                <p class="section-desc">What a new workspace and a fresh agent panel start with.</p>
-                <label class="settings-label">Default loop</label>
-                <select id="set-default-loop" class="settings-input"></select>
-                <label class="settings-label">Default model</label>
-                <select id="set-default-model" class="settings-input"></select>
-                <p class="settings-hint" id="set-default-hint" style="margin-top:6px;"></p>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default loop</div>
+                    <div class="set-pref-desc">What a new workspace and a fresh agent panel start with — only the loops your role allows.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop" class="settings-input"></select>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default model</div>
+                    <div class="set-pref-desc" id="set-default-hint">The loop's allowed models, from your organization's catalog.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-model" class="settings-input"></select>
+                  </div>
+                </div>
 
                 <label class="settings-toggle" style="display:none;">
                   <input type="checkbox" id="toggle-auto-update" checked />
