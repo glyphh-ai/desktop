@@ -821,6 +821,11 @@
                   <button id="conncfg-new" class="action-btn primary" type="button">+ New connection</button>
                 </div>
                 <div id="conncfg-accordion" style="margin-top:14px;"></div>
+                <!-- The REAL connections section is adopted in here (its
+                     toolbar + list hidden): the catalog modal, the Custom MCP
+                     form and the tools pane are the originals, driven by the
+                     buttons above — one implementation, not two. -->
+                <div id="conncfg-legacy" class="conncfg-legacy"></div>
               </div>
               <div class="settings-panel" data-sub="org-library">
                 <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>

@@ -575,11 +575,16 @@ export function buildContract(client, deps) {
       const popup = window.open('about:blank', '_blank', 'popup,width=520,height=720');
       if (!popup) return { ok: false, error: 'Popup blocked — allow popups for this site' };
       try {
-        // SCOPE follows the SURFACE (his report, 2026-09-11: an org admin's
-        // "org level" connect landed as a PERSONAL account): the platform
-        // shell is the ORG admin surface — connect the org account there;
-        // everywhere else stays the member's own.
-        const onPlatform = document.body.classList.contains('platform-shell');
+        // SCOPE follows the ROLE, not the surface (his report, 2026-09-12:
+        // "this action requires an organization administrator"). The platform
+        // is every member's surface now, so keying off platform-shell sent a
+        // MEMBER down the org_admin connect route, which refuses them. An
+        // admin still connects org accounts there; a member connects their
+        // own.
+        const me = await client.me().catch(() => null);
+        const role = me?.role ?? me?.member?.role ?? '';
+        const isAdmin = ['org_admin', 'admin', 'super_admin'].includes(role);
+        const onPlatform = document.body.classList.contains('platform-shell') && isAdmin;
         const listNow = () => onPlatform
           ? client.connections.pipedreamList().catch(() => []).then((r) => (Array.isArray(r) ? r : []))
           : client.connections.personalList().catch(() => []);
@@ -644,6 +649,50 @@ export function buildContract(client, deps) {
       ({ personal, org }) => toLegacyMcpConnections(personal, org, apiUrl),
       EMPTY.mcpConnections,
     ),
+    // The custom-MCP WRITE lane. Missing shims fail SILENTLY through the
+    // proxy, so a row's tools never rendered and edits went nowhere on the
+    // platform (his report, 2026-09-12).
+    mcpConnectionsTools: async (slug) => {
+      // The MEMBER-legal read. connections.mcpTools() hits
+      // /api/org/mcp-connections/:slug/tools, which is org_admin — a member
+      // expanding their own row got "requires an organization administrator"
+      // (his report, 2026-09-12). /api/connections/tools is the resolved,
+      // per-caller view and carries the same shape the desktop returns.
+      try {
+        const { connections } = await client.connections.resolvedTools();
+        const row = (connections ?? []).find((c) => c.slug === slug);
+        if (!row) return { ok: true, tools: [] };
+        const allowed = new Set((row.tools ?? []).map((t) => t.name));
+        const tools = (row.availableTools ?? row.tools ?? []).map((t) => ({
+          name: t.name,
+          description: t.description ?? '',
+          hidden: !allowed.has(t.name),
+        }));
+        return { ok: true, tools };
+      } catch (err) { return { ok: false, error: String(err?.message || err), tools: [] }; }
+    },
+    mcpConnectionsCreate: async (fields) => {
+      try {
+        const slug = String(fields?.name ?? '').trim().toLowerCase().replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'mcp';
+        const res = await client.connections.personalMcpCreate({
+          slug, name: fields.name, url: fields.url,
+          ...(fields.headers && Object.keys(fields.headers).length ? { headers: fields.headers } : {}),
+        });
+        return { ok: true, connection: res?.connection ?? { slug, name: fields.name } };
+      } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+    },
+    mcpConnectionsUpdate: async (slug, fields) => {
+      try {
+        await client.connections.personalMcpUpdate(slug, fields);
+        return { ok: true };
+      } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+    },
+    mcpConnectionsDelete: async (slug) => {
+      try {
+        await client.connections.personalMcpRemove(slug);
+        return { ok: true };
+      } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+    },
     // Governance gate for "+ Custom MCP" — mirrors the desktop (home-ipc):
     // probe the personal MCP surface; a 403 means the org/role disallows it,
     // anything else (incl. an empty list) means allowed. The old hard-closed

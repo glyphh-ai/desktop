@@ -20389,6 +20389,15 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .loop-acc-spacer { flex: 1; }
 /* The toggle is its own control — clicking it must not expand the row. */
 .loop-acc-toggle { margin: 0; flex: none; }
+/* The row kebab sits to the RIGHT of the toggle, in a slot that is ALWAYS
+   reserved — a row without a menu (org connections) must not let its toggle
+   drift right past the others. */
+.loop-acc-kebab-slot { flex: none; width: 24px; margin-left: 8px; display: inline-flex; justify-content: flex-end; align-items: center; }
+/* The glyph takes the muted text colour like every other row menu — inside an
+   accordion head it was inheriting the head's text colour (his report,
+   2026-09-12: "the three dots are white"). */
+.loop-acc-kebab-slot .lib-row-kebab { color: var(--text-3); font-size: 16px; line-height: 1; }
+.loop-acc-kebab-slot .lib-row-kebab:hover { color: var(--text); background: var(--hover); }
 .loop-acc-body { padding: 6px 14px 16px; display: flex; flex-direction: column; }
 .loop-acc-body > .settings-input { flex: 0 0 auto; }
 
@@ -20411,6 +20420,51 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .orglib-pill-skill { border-color: color-mix(in srgb, #f59e0b 40%, transparent); color: #f59e0b; }
 .orglib-desc { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Settings → Connections: the tools SECTION collapses like the row above it. */
+.conncfg-tools-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; padding: 10px 0; }
+.conncfg-tools-chev { width: 13px; height: 13px; color: var(--text-3); transition: transform 0.15s; flex: none; }
+.conncfg-tools.open .conncfg-tools-chev { transform: rotate(90deg); }
+.conncfg-tools .conncfg-tools-body { display: none; }
+.conncfg-tools.open .conncfg-tools-body { display: block; }
+
+/* Settings → Connections: the value column is a SHARE of the row, not a
+   fixed pixel width — it tracks the panel instead of leaving a ragged gap at
+   any other size (his correction, 2026-09-12: "fix the percentage"). */
+.settings-panel[data-sub="connections-cfg"] .set-pref-row > .set-pref-text { flex: 1 1 auto; min-width: 0; }
+.settings-panel[data-sub="connections-cfg"] .set-pref-value { flex: 0 0 55%; width: 55%; }
+.settings-panel[data-sub="connections-cfg"] .set-pref-value > * { width: 100%; }
+.settings-panel[data-sub="connections-cfg"] .set-pref-value > .settings-toggle { width: auto; margin-left: auto; }
+
 /* Settings → Connections (help/settings-connections.ts): the far-left icon
    in the accordion head and the app rows of the New-connection modal. */
-.conncfg-icon { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; margin-right: 10px; flex-shrink: 0; }
+.conncfg-icon { width: 20px; height: 20px; border-radius: 5px; margin-right: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
+.conncfg-icon img { width: 100%; height: 100%; object-fit: contain; border-radius: 5px; }
+.conncfg-icon-initial { font-size: 11px; font-weight: 600; color: var(--text-2); }
+/* The adopted section is a PARTS BIN, not a page: only its catalog modal and
+   its tools pane are wanted. The toolbar, the card list and the page-level
+   detail editor (breadcrumb + head + Cancel/Save) all stay hidden — the tools
+   pane has already relocated into the open accordion row by the time the
+   detail un-hides itself (his report, 2026-09-12: the editor rendered under
+   the list). */
+.conncfg-legacy #connections-toolbar,
+.conncfg-legacy #connections-list { display: none !important; }
+/* The page EDITOR is hidden wherever it sits inside this page — bin, row, or
+   anywhere a previous build left it. Scoping the hide to the bin let a node
+   that had been relocated render its breadcrumb, Remove/Cancel/Save and its
+   own field layout inside the accordion (his report, 2026-09-12). */
+.settings-panel[data-sub="connections-cfg"] #conn-detail { display: none !important; }
+/* …EXCEPT the Custom MCP form, which IS that same node. Hiding it outright
+   made "+ Custom MCP" a no-op (his report, 2026-09-12): the button fired, the
+   form opened, and it opened inside something invisible. The host flips this
+   class for the duration of that flow. */
+
+/* While the Custom MCP form is open it OWNS the page: the header, the search
+   toolbar and the accordion step aside, exactly as the Connections page hides
+   its list behind its editor. */
+.settings-panel[data-sub="connections-cfg"].editing > h2,
+.settings-panel[data-sub="connections-cfg"].editing > .section-desc,
+.settings-panel[data-sub="connections-cfg"].editing > .crud-toolbar,
+.settings-panel[data-sub="connections-cfg"].editing > #conncfg-accordion { display: none !important; }
+/* Inside an OPEN ROW the detail is the row's form — visible there, hidden in
+   the parts-bin host it came from. */
+

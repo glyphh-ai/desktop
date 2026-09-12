@@ -11,6 +11,7 @@
 
 import fs from "fs";
 import { clearGatewayCreds } from "./gateway-token.js";
+import { primeAllLoopEnv } from "./cli-agents.js";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
@@ -204,6 +205,9 @@ export async function initAuth(): Promise<void> {
       attachStart();
       // Prefs are the SERVER map now (zero-local law); warm it with the session.
       void loadPreferences();
+      // Every loop's env gets the router URL + this member's key NOW, so the
+      // first launch — whichever path composes it — is already proxied.
+      void primeAllLoopEnv();
     }
   }
   if (accountTimer) clearInterval(accountTimer);

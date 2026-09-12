@@ -63,6 +63,38 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
 }
 
 /**
+ * PRIME every loop's env so a launch — ANY launch path — starts proxied.
+ *
+ * The composers source `~/.glyphh/loops/<id>/env` when it exists; only
+ * `cli-agent-open` used to write it, so a loop started through the workbench's
+ * synchronous compose path or a scheduled run began life unproxied (his
+ * report, 2026-09-12: "I want us to start an agent with the url set for
+ * proxy — it is an ease of use thing"). Priming at sign-in means the file is
+ * always there and current before anything composes a command.
+ *
+ * BYOK still wins: a loop carrying its own key has the gateway lines STRIPPED
+ * rather than written, which is also how a member's key surviving an org
+ * change gets cleaned up.
+ *
+ * Best-effort and silent: no creds (no plan, closed trial, offline) simply
+ * leaves every loop on whatever the CLI is already logged into.
+ */
+export async function primeGatewayEnv(
+  loops: Array<{ id: string; cli: string; hasOwnKey: boolean }>,
+  baseUrlVarsFor: (cli: string) => string[],
+): Promise<void> {
+  const creds = await gatewayCreds();
+  for (const l of loops) {
+    const vars = baseUrlVarsFor(l.cli);
+    if (!vars.length) continue; // copilot / cursor have no base-URL seam
+    try {
+      if (creds && !l.hasOwnKey) writeGatewayEnv(l.id, l.cli, vars, creds);
+      else clearGatewayEnv(l.id, l.cli, vars);
+    } catch { /* one unreadable loop must not stop the rest */ }
+  }
+}
+
+/**
  * Forget the credential entirely — memo AND the copies on disk.
  *
  * Called on LOGOUT. Without this a minted router key survives sign-out in

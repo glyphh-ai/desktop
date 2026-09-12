@@ -60,6 +60,12 @@ let adoptedHomes: Array<{ n: HTMLElement; parent: HTMLElement | null; next: Node
 let adoptedToolsHost: HTMLElement | null = null;
 let toolsPaneHome: { parent: HTMLElement; next: Node | null } | null = null;
 
+/** Re-point where the tools pane lands — the Settings accordion hosts it in
+ *  the EXPANDED row, so the host changes per open. */
+export function setConnectionsToolsHost(host: HTMLElement | null): void {
+  adoptedToolsHost = host;
+}
+
 /** Move the tools pane to the adopted host (open) or back home (close). */
 function placeToolsPane(open: boolean): void {
   const pane = document.querySelector<HTMLElement>(".conn-tools-pane");
@@ -124,7 +130,14 @@ export async function loadConnections(): Promise<void> {
   renderConnectionsList();
   // Real Pipedream catalog icons, then re-render.
   void primeConnectedIcons(connections.map(connIconApp), renderConnectionsList);
+  // Anyone else painting the same data (Settings → Connections) refreshes
+  // here — ONE load path, so a connect/install/delete lands everywhere.
+  for (const cb of changeHooks) { try { cb(); } catch { /* a broken listener is not this page's problem */ } }
 }
+
+/** Subscribe to "the connection set changed" — fired after every load. */
+const changeHooks = new Set<() => void>();
+export function onConnectionsChanged(cb: () => void): void { changeHooks.add(cb); }
 
 function renderConnectionsList(): void {
   const q = connSearch.trim().toLowerCase();
@@ -250,7 +263,7 @@ function renderConnectionsList(): void {
   listEl.appendChild(grid);
 }
 
-async function openConnDetail(id: string): Promise<void> {
+export async function openConnDetail(id: string): Promise<void> {
   const c = connections.find((x) => x.id === id);
   if (!c) return;
   currentConnId = id;
@@ -380,7 +393,7 @@ async function saveHiddenTools(): Promise<void> {
   }
 }
 
-function closeConnDetail(): void {
+export function closeConnDetail(): void {
   placeToolsPane(false);
   detailEl.classList.add("hidden");
   currentConnId = null;
@@ -478,7 +491,7 @@ function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
   void loadCustomStatus(conn);
 }
 
-function openCustomDetail(slug: string): void {
+export function openCustomDetail(slug: string): void {
   const c = customServers.find((x) => x.slug === slug);
   if (c) openCustomForm("edit", c);
 }

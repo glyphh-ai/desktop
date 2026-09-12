@@ -69,6 +69,11 @@ export function row(
   title: string, sub: string, on: boolean,
   onToggle: (v: boolean) => void,
   body: (host: HTMLElement) => void,
+  /** Rebuild the body on EVERY open. Connections needs this: its tools pane
+   *  is one shared node that moves to whichever row is open, so a row built
+   *  once comes back empty after another row borrowed it (his report,
+   *  2026-09-12). Loops keep the build-once default. */
+  rebuildEachOpen = false,
 ): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "loop-acc";
@@ -83,7 +88,9 @@ export function row(
   (head.querySelector(".loop-acc-sub") as HTMLElement).textContent = sub;
 
   const sw = document.createElement("label");
-  sw.className = "settings-toggle loop-acc-toggle";
+  // The BARE toggle variant (ws-model-allow) — a row toggle carries no
+  // card chrome; .settings-toggle alone is the standalone-card variant.
+  sw.className = "settings-toggle ws-model-allow loop-acc-toggle";
   sw.innerHTML = `<input type="checkbox" /><span class="toggle-switch"></span>`;
   const box = sw.querySelector("input") as HTMLInputElement;
   box.checked = on;
@@ -100,7 +107,7 @@ export function row(
     wrap.classList.toggle("open", !open);
     // Build on FIRST open — a page of five collapsed forms is five model
     // lists nobody asked for.
-    if (!built && !open) { built = true; body(panel); }
+    if (!open && (rebuildEachOpen || !built)) { built = true; body(panel); }
   });
   wrap.append(head, panel);
   return wrap;

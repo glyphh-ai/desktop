@@ -243,7 +243,7 @@ function renderTable(): void {
     const toggleTd = document.createElement("td");
     toggleTd.className = "ws-model-toggle-cell";
     const toggle = document.createElement("label");
-    toggle.className = "settings-toggle";
+    toggle.className = "settings-toggle ws-model-allow";
     toggle.innerHTML = `<input type="checkbox" ${it.enabled ? "checked" : ""} /><span class="toggle-switch"></span>`;
     toggle.querySelector("input")!.addEventListener("change", (ev) => {
       const on = (ev.target as HTMLInputElement).checked;
@@ -287,7 +287,7 @@ async function openAccessModal(it: Item): Promise<void> {
   for (const r of roles) {
     const tr = document.createElement("tr");
     tr.innerHTML = `<td class="lib-table-name"></td>
-      <td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="checkbox" data-ws="${r.id}" ${it.grantedWorkspaceIds.includes(r.id) ? "checked" : ""} /><span class="toggle-switch"></span></label></td>`;
+      <td class="ws-model-toggle-cell"><label class="settings-toggle ws-model-allow"><input type="checkbox" data-ws="${r.id}" ${it.grantedWorkspaceIds.includes(r.id) ? "checked" : ""} /><span class="toggle-switch"></span></label></td>`;
     (tr.querySelector(".lib-table-name") as HTMLElement).textContent = r.name;
     tbody.appendChild(tr);
   }

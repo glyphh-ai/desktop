@@ -26,7 +26,7 @@ import path from "path";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { gatewayCreds, writeGatewayEnv, clearGatewayEnv } from "./gateway-token.js";
+import { gatewayCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv } from "./gateway-token.js";
 
 export const AGENTS_DIR = path.join(homedir(), ".glyphh", "loops");
 
@@ -446,6 +446,23 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   return fs.existsSync(envFile(row.id))
     ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
     : line;
+}
+
+/**
+ * Write the gateway env for EVERY configured loop, so any launch path starts
+ * proxied (his ruling, 2026-09-12 — ease of use, not enforcement). Called at
+ * sign-in; `cli-agent-open` still refreshes the one loop it opens, which
+ * covers a credential that changed mid-session.
+ */
+export async function primeAllLoopEnv(): Promise<void> {
+  let ids: string[] = [];
+  try { ids = fs.readdirSync(AGENTS_DIR); } catch { return; }
+  const loops: Array<{ id: string; cli: string; hasOwnKey: boolean }> = [];
+  for (const id of ids) {
+    const row = readAgent(id);
+    if (row) loops.push({ id: row.id, cli: row.cli, hasOwnKey: !!row.apiKey });
+  }
+  await primeGatewayEnv(loops, (cli) => CLI_PROFILES[cli as keyof typeof CLI_PROFILES]?.baseUrlEnv ?? []);
 }
 
 export function listCliAgents(): CliAgentListed[] {
