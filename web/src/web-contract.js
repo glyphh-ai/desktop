@@ -717,6 +717,27 @@ export function buildContract(client, deps) {
     // missing shim here fails SILENTLY through the proxy — the dropdown just
     // never fills (his report, 2026-09-12).
     workspacesModelCatalog: lib(() => client.models.available()),
+    // LOOP CONFIGS on web (his ruling, 2026-09-12: members see the SAME page
+    // on the platform). Desktop stores these in ~/.glyphh; the web stores the
+    // per-user map in server prefs — user-scoped server config, never local.
+    cliAgentsList: async () => {
+      try {
+        const raw = (await prefsCache.get()).webLoopConfigs;
+        const map = raw ? JSON.parse(raw) : {};
+        return { ok: true, agents: Object.values(map) };
+      } catch { return { ok: false, agents: [] }; }
+    },
+    cliAgentsSave: async (input) => {
+      try {
+        const raw = (await prefsCache.get()).webLoopConfigs;
+        const map = raw ? JSON.parse(raw) : {};
+        const cli = String(input?.cli ?? input?.id ?? '');
+        if (!cli) return { ok: false, error: 'missing cli' };
+        map[cli] = { ...(map[cli] || {}), ...input, id: cli, cli };
+        await prefsCache.set('webLoopConfigs', JSON.stringify(map));
+        return { ok: true };
+      } catch (err) { return { ok: false, error: String(err?.message || err) }; }
+    },
     orgLoopsList: lib(() => client.orgLoops.list()),
     orgLoopSet: lib((cli, enabled) => client.orgLoops.setEnabled(cli, enabled)),
     /** THE licensing read — one place, every surface (SDK client.plans). */

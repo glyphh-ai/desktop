@@ -9,7 +9,7 @@
  * kebab revoke. Revoked keys STAY in the list — telemetry outlives the key.
  */
 
-import { escapeHtml, confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { escapeHtml, confirmAction, promptAction, paginate, renderPaginationBar } from "./shared.js";
 import { gateSurface } from "./plan-gate.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 
@@ -30,6 +30,11 @@ interface SdkGatewayKeys {
     keys?: () => Promise<GatewayKey[]>;
     createKey?: (input: { name: string; workspaceId: string; days?: number }) => Promise<MintedGatewayKey>;
     revokeKey?: (id: string) => Promise<void>;
+    myKeys?: () => Promise<{ allowed: boolean; reason: string; keys: GatewayKey[] }>;
+    mintMyKey?: (name: string, days?: number) => Promise<MintedGatewayKey>;
+    revokeMyKey?: (id: string) => Promise<void>;
+    memberKeysEnabled?: () => Promise<{ enabled: boolean }>;
+    setMemberKeysEnabled?: (enabled: boolean) => Promise<{ enabled: boolean }>;
   };
   workspaces?: { list?: () => Promise<WorkspaceLite[]> };
 }
@@ -259,16 +264,31 @@ export async function loadGatewayKeys(): Promise<void> {
     "gateway", "The gateway");
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
-  $("gwk-admin-only")?.classList.toggle("hidden", admin);
+  // MEMBERS get their own keys view (his ruling, 2026-09-12) — never the
+  // admin-only wall when the doors are open.
+  $("gwk-admin-only")?.classList.add("hidden");
+  $("gwk-member-view")?.classList.toggle("hidden", admin);
   $("gwk-list-view")?.classList.toggle("hidden", !admin);
-  if (!admin) return;
+  if (!admin) { await loadMemberKeys(); return; }
   initGatewayKeys();
   setError("");
   try {
-    const [rows] = await Promise.all([
+    const [rows, memberSwitch] = await Promise.all([
       via<GatewayKey[]>((c) => c.gateway?.keys?.(), "gatewayKeysList"),
+      via<{ enabled: boolean }>((c) => c.gateway?.memberKeysEnabled?.(), "gatewayMemberKeysEnabled").catch(() => null),
       loadRoles(),
     ]);
+    const sw = $("gwk-member-switch") as HTMLInputElement | null;
+    if (sw) {
+      sw.checked = !!memberSwitch?.enabled;
+      if (!sw.dataset.wired) {
+        sw.dataset.wired = "1";
+        sw.addEventListener("change", () => {
+          void via((c) => c.gateway?.setMemberKeysEnabled?.(sw.checked), "gatewaySetMemberKeys", sw.checked)
+            .catch((e) => { sw.checked = !sw.checked; setError(e instanceof Error ? e.message : String(e)); });
+        });
+      }
+    }
     keys = rows ?? [];
     render();
   } catch (e) {
@@ -316,4 +336,65 @@ function initGatewayKeys(): void {
       } catch (e) { formError((e as Error).message); }
     })();
   });
+}
+
+// ── The MEMBER view: your own keys (his ruling, 2026-09-12) ─────────────────
+async function loadMemberKeys(): Promise<void> {
+  const blocked = $("gwk-member-blocked");
+  const open = $("gwk-member-open");
+  let mine: { allowed: boolean; reason: string; keys: GatewayKey[] } | null = null;
+  try {
+    mine = await via<{ allowed: boolean; reason: string; keys: GatewayKey[] }>(
+      (c) => c.gateway?.myKeys?.(), "gatewayMyKeys");
+  } catch (e) {
+    setError(e instanceof Error ? e.message : String(e));
+    return;
+  }
+  const allowed = !!mine?.allowed;
+  blocked?.classList.toggle("hidden", allowed);
+  open?.classList.toggle("hidden", !allowed);
+  if (!allowed) {
+    if (blocked) blocked.textContent = mine?.reason || "Member API keys are not available.";
+    return;
+  }
+  const list = $("gwk-member-list");
+  const empty = $("gwk-member-empty");
+  const rows = (mine?.keys ?? []).filter((k) => !k.revokedAt);
+  empty?.classList.toggle("hidden", rows.length > 0);
+  if (list) {
+    list.innerHTML = "";
+    for (const k of rows) {
+      const row = document.createElement("div");
+      row.className = "crud-row";
+      row.innerHTML = `<div class="crud-cell" style="flex:1;"><b></b> <span class="mdl-hint"></span></div>
+        <button class="action-btn" data-revoke type="button">Revoke</button>`;
+      (row.querySelector("b") as HTMLElement).textContent = k.name;
+      (row.querySelector(".mdl-hint") as HTMLElement).textContent =
+        `${k.tokenHint ?? ""}${k.expiresAt ? ` · expires ${new Date(k.expiresAt).toLocaleDateString()}` : " · never expires"}`;
+      row.querySelector("[data-revoke]")?.addEventListener("click", () => {
+        void confirmAction({ title: `Revoke ${k.name}?`, body: "Anything using this key stops working immediately.", confirmLabel: "Revoke", danger: true })
+          .then(async (yes) => {
+            if (!yes) return;
+            await via((c) => c.gateway?.revokeMyKey?.(k.id), "gatewayRevokeMyKey", k.id);
+            await loadMemberKeys();
+          })
+          .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      });
+      list.appendChild(row);
+    }
+  }
+  const btn = $("gwk-member-new");
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => {
+      void promptAction("New API key — name it", "", "e.g. my laptop", "Mint")
+        .then(async (name) => {
+          if (!name) return;
+          const minted = await via<MintedGatewayKey>((c) => c.gateway?.mintMyKey?.(name), "gatewayMintMyKey", name);
+          if (minted) showTokenModal(minted.key.name, minted.token);
+          await loadMemberKeys();
+        })
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    });
+  }
 }

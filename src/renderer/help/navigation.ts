@@ -16,6 +16,7 @@ import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
 import { loadOrgLibrary } from "./org-library.js";
+import { loadSettingsConnections } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -655,6 +656,11 @@ function gateAdminSubs(): void {
     // The server enforces the role on every route regardless.
     document.querySelectorAll<HTMLElement>(".settings-nav:not(.docs-nav) > .nav-admin")
       .forEach((el) => el.classList.toggle("hidden", !admin));
+    // MEMBERS' Build → Loops is the SAME page as App → Settings → Loops (his
+    // ruling, 2026-09-12) — their loops, their configs, no org toggles. The
+    // button retargets; admins keep the org support list.
+    const buildLoops = document.querySelector<HTMLElement>('.settings-nav-item[data-sub="org-loops"], .settings-nav-item[data-sub="loops"].platform-only');
+    if (buildLoops && !admin) buildLoops.dataset.sub = "loops";
     // Members on the PLATFORM see nothing org-financial and no catalog:
     // Billing is org_admin's alone; Models/Marketplace open to admins too.
     // The server 403s the reads regardless — this hides the doors. Desktop
@@ -828,6 +834,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "loops") void loadSettingsLoops();
   else if (sub === "org-loops") void loadOrgLoops();
   else if (sub === "org-library") loadOrgLibrary();
+  else if (sub === "connections-cfg") void loadSettingsConnections();
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }

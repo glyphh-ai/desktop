@@ -65,7 +65,7 @@ function fail(hostId: string, msg: string): void {
 }
 
 /** The accordion row: a header that expands, with a toggle pinned right. */
-function row(
+export function row(
   title: string, sub: string, on: boolean,
   onToggle: (v: boolean) => void,
   body: (host: HTMLElement) => void,

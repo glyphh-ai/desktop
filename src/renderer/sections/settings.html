@@ -21,7 +21,7 @@
                    Tasks (the former loop library), Agents, Skills. -->
               <div class="settings-nav-group platform-only">Build</div>
               <button class="settings-nav-item platform-only" data-sub="org-loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
-              <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
+              <button class="settings-nav-item platform-only" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <button id="nav-org-library" class="settings-nav-item platform-only hidden" data-sub="org-library"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Library</span></button>
               <div class="settings-nav-group platform-only nav-admin hidden">Security</div>
               <button class="settings-nav-item platform-only nav-admin hidden" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
@@ -44,6 +44,7 @@
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
@@ -663,11 +664,33 @@
   <div id="gwk-error" class="settings-error hidden"></div>
   <div id="gwk-admin-only" class="crud-empty hidden">Only an org admin can manage gateway keys.</div>
 
+  <!-- MEMBER VIEW (his ruling, 2026-09-12): your own keys, mintable when the
+       plan carries the gateway AND the org admin allows it. -->
+  <div id="gwk-member-view" class="hidden">
+    <div id="gwk-member-blocked" class="crud-empty hidden"></div>
+    <div id="gwk-member-open" class="hidden">
+      <div class="crud-toolbar">
+        <div class="crud-spacer"></div>
+        <button id="gwk-member-new" class="action-btn primary" type="button">+ New key</button>
+      </div>
+      <div id="gwk-member-empty" class="crud-empty hidden">No keys yet — mint one to call the gateway from your own tools.</div>
+      <div id="gwk-member-list" class="mbr-list"></div>
+    </div>
+  </div>
+
   <div id="gwk-list-view">
     <div class="crud-toolbar">
       <input id="gwk-search" type="text" class="crud-search" placeholder="Search keys…" spellcheck="false" autocomplete="off" />
       <button id="gwk-new-btn" class="action-btn primary" type="button">+ New key</button>
     </div>
+    <label class="settings-toggle set-pref-row">
+      <div class="set-pref-text">
+        <div class="set-pref-title">Members can mint their own keys</div>
+        <div class="set-pref-desc">Each key is scoped by the member's role — models, rate and budget — and lands in their own spend line. Off hides the door; existing keys keep working until revoked.</div>
+      </div>
+      <input type="checkbox" id="gwk-member-switch" />
+      <span class="toggle-switch"></span>
+    </label>
     <div id="gwk-empty" class="crud-empty hidden">No keys yet.</div>
     <div id="gwk-list" class="mbr-list"></div>
   </div>
@@ -788,6 +811,17 @@
               <!-- ORGANIZATION -> LOOPS: the same accordion, but the toggle is
                    the ORG's support list (org_loops). A loop off here is off
                    for every member, whatever their role says. -->
+              <div class="settings-panel" data-sub="connections-cfg">
+                <h2>Connections</h2>
+                <p class="section-desc">The apps and MCP servers your agents can reach. Turn one on and shape its tools — org connections are managed by an admin and shown read-only.</p>
+                <div id="conncfg-error" class="settings-error hidden"></div>
+                <div class="crud-toolbar">
+                  <div class="search-clear-wrap"><input id="conncfg-search" type="text" class="crud-search" placeholder="Search connections…" spellcheck="false" autocomplete="off" /></div>
+                  <button id="conncfg-custom" class="action-btn hidden" type="button">+ Custom MCP</button>
+                  <button id="conncfg-new" class="action-btn primary" type="button">+ New connection</button>
+                </div>
+                <div id="conncfg-accordion" style="margin-top:14px;"></div>
+              </div>
               <div class="settings-panel" data-sub="org-library">
                 <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>
 
