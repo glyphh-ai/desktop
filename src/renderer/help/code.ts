@@ -4217,7 +4217,6 @@ interface RailSectionDef { toggle: string; body: string; pref: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
   { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
   { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
-  { toggle: "rail-loops-toggle", body: "rail-loops-body", pref: "railPanelLoopsOpen" },
   { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
 ];
 
@@ -4857,10 +4856,7 @@ function initRailApps(): void {
     ? { list: el<HTMLDivElement>("recent-layouts-list")!, search: el<HTMLInputElement>("recent-layouts-search"), page: 0 }
     : null;
   if (leftLayouts) registerRailGridHost("layouts", leftLayouts);
-  const leftAgents: RailGridHost | null = el<HTMLDivElement>("recent-loops-list")
-    ? { list: el<HTMLDivElement>("recent-loops-list")!, search: el<HTMLInputElement>("recent-loops-search"), page: 0 }
-    : null;
-  if (leftAgents) registerRailGridHost("agents", leftAgents);
+  // (Loops left the rail — they are SETTINGS now, not a browsable tray.)
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
@@ -4881,8 +4877,6 @@ function initRailApps(): void {
   });
   // Layouts search — its own page + list.
   if (leftLayouts) wireRailSearch(leftLayouts.search, () => { leftLayouts.page = 0; paintLayoutsGrid(leftLayouts); });
-  // Agents search — same contract.
-  if (leftAgents) wireRailSearch(leftAgents.search, () => { leftAgents.page = 0; paintAgentsGrid(leftAgents); });
 
 }
 

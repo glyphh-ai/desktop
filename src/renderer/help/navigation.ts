@@ -13,7 +13,6 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadLoops, initLoopsEvents } from "./loops.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
 import { loadConnections, initConnections } from "./connections.js";
@@ -143,7 +142,6 @@ export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "drips") loadDrips();
-  else if (sec === "loops") loadLoops();
   else if (sec === "agents") void loadAgents();
   else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "connections") void loadConnections();
@@ -201,7 +199,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "loops", "agents", "skills", "connections", "tasks"].includes(section)) {
+  if (["apps", "layouts", "drips", "agents", "skills", "connections", "tasks"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -1146,7 +1144,6 @@ export function initHelp() {
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
-  boot("loops", initLoopsEvents);
   boot("agents", initAgentsEvents);
   boot("skills", initSkillsLibraryEvents);
   boot("connections", initConnections);

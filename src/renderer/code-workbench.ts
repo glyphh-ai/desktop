@@ -284,9 +284,7 @@ const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as {
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
-  // Loops wears the PRE-PURGE loops icon, restored verbatim (his order:
-  // "make sure you use the old loops icon") — 4cae30db^:code-workbench.ts:354.
-  { key: "loops",       title: "Loops",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/><path d="M7 21.9l-4-4 4-4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/></svg>` },
+  // (Loops left the wall — they are SETTINGS now, not a card you open.)
   // Agents keeps the robot mark it always wore — the key freed up when the
   // CLI pre-configs became Loops.
   { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
@@ -424,7 +422,7 @@ const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
   layouts: "Workspaces",
-  skills: "Skills", tasks: "Tasks", loops: "Loops", agents: "Agents", models: "Models", drips: "Drips",
+  skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",
 };
 
