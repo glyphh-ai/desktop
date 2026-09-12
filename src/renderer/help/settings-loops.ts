@@ -186,7 +186,7 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   roleDefault.value = "";
   roleDefault.textContent = loop.model
     ? `Your role's default — ${models.find((m) => m.id === loop.model)?.name ?? loop.model}`
-    : "The CLI's own default";
+    : `${loop.name} default`;
   modelSel.appendChild(roleDefault);
   for (const m of list) {
     const o = document.createElement("option");
@@ -385,7 +385,7 @@ export async function loadAgentDefaults(): Promise<void> {
     inherit.value = "";
     inherit.textContent = active.model
       ? `Use my role's default — ${models.find((m) => m.id === active.model)?.name ?? active.model}`
-      : `Use ${active.name}'s own default`;
+      : `${active.name} default`;
     modelSel.appendChild(inherit);
     for (const m of list) {
       const o = document.createElement("option");
