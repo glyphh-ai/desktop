@@ -158,10 +158,26 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
     d.innerHTML = html;
     return d.firstElementChild as HTMLElement;
   };
+  // THE ROW GRAMMAR (his report, 2026-09-12): label + description LEFT, the
+  // control RIGHT — the same set-pref-row every settings page uses. Stacked
+  // full-width labels were the one page not following the form layout.
+  const prefRow = (title: string, desc: string, control: HTMLElement): HTMLElement => {
+    const row = document.createElement("div");
+    row.className = "set-pref-row";
+    const text = document.createElement("div");
+    text.className = "set-pref-text";
+    text.innerHTML = `<div class="set-pref-title"></div>${desc ? `<div class="set-pref-desc"></div>` : ""}`;
+    (text.querySelector(".set-pref-title") as HTMLElement).textContent = title;
+    if (desc) (text.querySelector(".set-pref-desc") as HTMLElement).textContent = desc;
+    const value = document.createElement("div");
+    value.className = "set-pref-value";
+    value.appendChild(control);
+    row.append(text, value);
+    return row;
+  };
 
   // MODEL — the role's allowed models for this loop's provider. The role's
   // own default is the first option, so "unset" means "what my role says".
-  const modelLabel = mk(`<label class="settings-label">Model</label>`);
   const modelSel = document.createElement("select");
   modelSel.className = "settings-input";
   const pool = models.filter((m) => !loop.provider || m.providerSlug === loop.provider);
@@ -182,7 +198,6 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   modelSel.addEventListener("change", () => void save(cli, { model: modelSel.value }));
 
   // COMMAND
-  const cmdLabel = mk(`<label class="settings-label">Command <span class="settings-hint-inline">what the terminal runs — flags welcome</span></label>`);
   const cmd = document.createElement("input");
   cmd.type = "text";
   cmd.className = "settings-input";
@@ -191,8 +206,6 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   cmd.addEventListener("change", () => void save(cli, { cmd: cmd.value }));
 
   // WORKING FOLDER
-  const cwdLabel = mk(`<label class="settings-label" style="margin-top:14px;">Working folder</label>`);
-  const cwdHint = mk(`<div class="settings-hint" style="margin:-2px 0 8px;">Opening this loop starts its terminal here. Empty uses the current folder.</div>`);
   const cwdRow = mk(`<div class="layout-folder-row"></div>`);
   const cwd = document.createElement("input");
   cwd.className = "settings-input";
@@ -215,7 +228,6 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   cwdRow.append(cwd, pick, clear);
 
   // SESSION + PERMISSION
-  const sessLabel = mk(`<label class="settings-label" style="margin-top:14px;">Session</label>`);
   const sess = document.createElement("select");
   sess.className = "settings-input";
   sess.innerHTML = `
@@ -225,8 +237,6 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   sess.value = cfg?.session ?? "keep";
   sess.addEventListener("change", () => void save(cli, { session: sess.value }));
 
-  const permLabel = mk(`<label class="settings-label" style="margin-top:14px;">Permissions</label>`);
-  const permHint = mk(`<div class="settings-hint" style="margin:-2px 0 6px;">One Glyphh vocabulary, enforced by the CLI's own controls.</div>`);
   const perm = document.createElement("select");
   perm.className = "settings-input";
   perm.innerHTML = `
@@ -237,7 +247,7 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   perm.addEventListener("change", () => void save(cli, { permission: perm.value }));
 
   // MCP
-  const mcp = mk(`<label class="settings-toggle set-pref-row" style="margin-top:14px;">
+  const mcp = mk(`<label class="settings-toggle set-pref-row">
       <div class="set-pref-text"><div class="set-pref-title">Connect Glyphh tools (MCP)</div></div>
       <input type="checkbox" /><span class="toggle-switch"></span>
     </label>`);
@@ -245,8 +255,14 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
   mcpBox.checked = cfg?.mcp !== false;
   mcpBox.addEventListener("change", () => void save(cli, { mcp: mcpBox.checked }));
 
-  panel.append(modelLabel, modelSel, cmdLabel, cmd, cwdLabel, cwdHint, cwdRow,
-    sessLabel, sess, permLabel, permHint, perm, mcp);
+  panel.append(
+    prefRow("Model", "Your role's allowed models for this loop.", modelSel),
+    prefRow("Command", "What the terminal runs — flags welcome.", cmd),
+    prefRow("Working folder", "Opening this loop starts its terminal here. Empty uses the current folder.", cwdRow),
+    prefRow("Session", "", sess),
+    prefRow("Permissions", "One Glyphh vocabulary, enforced by the CLI's own controls.", perm),
+    mcp,
+  );
 }
 
 // ── Organization → Loops (the org's support list) ────────────────────────────
