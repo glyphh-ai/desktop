@@ -705,6 +705,19 @@ export function buildContract(client, deps) {
       }
     },
 
+    // ── LOOPS + licensing (his rule: the web has the SAME tooling as the
+    //    desktop minus the file system). These are the WEB HALF of the
+    //    desktop's loops-available / org-loops-list / org-loop-set /
+    //    plan-gates IPC. Without them the proxy answers undefined SILENTLY:
+    //    Organization -> Loops is platform-only and would never load at all,
+    //    and planGates falling back to CLOSED renders Roles and SSO locked
+    //    for orgs that pay for them.
+    loopsAvailable: lib(() => client.loops.available()),
+    orgLoopsList: lib(() => client.orgLoops.list()),
+    orgLoopSet: lib((cli, enabled) => client.orgLoops.setEnabled(cli, enabled)),
+    /** THE licensing read — one place, every surface (SDK client.plans). */
+    planGates: () => client.plans.gates(),
+
     // ── Skills / Agents (library {ok,data} envelope) ──────────────────────────────
     librarySkillsList: lib(() => client.skills.list()),
     librarySkillGet: lib((ref) => client.skills.get(ref)),

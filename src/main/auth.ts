@@ -10,6 +10,7 @@
  */
 
 import fs from "fs";
+import { clearGatewayCreds } from "./gateway-token.js";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
@@ -241,6 +242,11 @@ export function logout(): void {
   // `loaded=true`, so the next user's loadPreferences() no-opped and they
   // booted from the prior user's wall state, icon order, and UI state.
   clearPreferences();
+  // THE GATEWAY CREDENTIAL is the same class of leak, and worse: a minted
+  // router key sits in every loop's env file, which is what the CLI actually
+  // reads. Left behind, the next person at this machine keeps authenticating
+  // as the last one and billing their org. Memo + files, both.
+  clearGatewayCreds();
   attachStop();
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory

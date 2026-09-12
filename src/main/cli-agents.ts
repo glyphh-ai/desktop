@@ -63,6 +63,10 @@ export interface CliAgentRow {
    *    last — re-attach if parked; else start the CLI RESUMING its own last
    *           conversation (claude --continue / codex resume --last). */
   session: "keep" | "new" | "last";
+  /** The member's own switch in Settings -> Loops. Policy decides what is
+   *  OFFERED; this is what they turned on. Absent = on, so a loop that
+   *  predates the switch keeps working. */
+  enabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +113,7 @@ function readAgent(id: string): CliAgentRow | null {
     row.session = row.session === "new" || row.session === "last" ? row.session
       : legacyKeep === false ? "new" : "keep";
     row.apiKey = row.apiKey && typeof row.apiKey === "object" && row.apiKey.name ? row.apiKey : null;
+    row.enabled = row.enabled !== false;
     return row;
   } catch {
     return null;
@@ -546,14 +551,17 @@ export function registerCliAgentsIpc(): void {
 
   // Create-or-update: id is the slug of the FIRST name and never moves (echo
   // tiles + layout cells reference agent:<id>).
-  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; session?: string; model?: string; permission?: string; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
+  ipcMain.handle("cli-agents-save", (_e, input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean; cli?: string; cwd?: string; session?: string; model?: string; permission?: string; enabled?: boolean; apiKeyOn?: boolean; apiKeyName?: string; apiKeyValue?: string }) => {
     try {
-      const name = String(input.name ?? "").trim();
-      const cmd = String(input.cmd ?? "").trim();
-      if (!name) return { ok: false, error: "an agent needs a name" };
-      if (!cmd) return { ok: false, error: "an agent needs a command (e.g. claude)" };
-      const id = input.id ? String(input.id) : slug(name);
+      // A PARTIAL save PATCHES an existing loop: Settings -> Loops saves one
+      // field at a time (a toggle, a dropdown), and demanding the whole row
+      // back on every change is how a toggle ends up writing nothing.
+      const id = input.id ? String(input.id) : slug(String(input.name ?? ""));
       const existing = readAgent(id);
+      const name = String(input.name ?? existing?.name ?? "").trim();
+      const cmd = String(input.cmd ?? existing?.cmd ?? "").trim();
+      if (!name) return { ok: false, error: "a loop needs a name" };
+      if (!cmd) return { ok: false, error: "a loop needs a command (e.g. claude)" };
       const now = new Date().toISOString();
       const row: CliAgentRow = {
         id,
@@ -569,6 +577,7 @@ export function registerCliAgentsIpc(): void {
         permission: input.permission === "safe" || input.permission === "auto" ? input.permission
           : input.permission === "ask" ? "ask" : (existing?.permission ?? "ask"),
         apiKey: existing?.apiKey ?? null,
+        enabled: input.enabled === undefined ? existing?.enabled !== false : !!input.enabled,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };

@@ -26,7 +26,7 @@
  * the SDK returns orgRoleId.
  */
 
-import { confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { confirmAction, paginate, renderPaginationBar, escapeHtml } from "./shared.js";
 import { gateSurface } from "./plan-gate.js";
 import { openProviderDropdown, MDL_SVG, icoBtn } from "./models-admin.js";
 import { kebabCell, ROW_MENU_ICONS, openRowMenu } from "./lib-editor.js";
@@ -44,6 +44,10 @@ interface Workspace {
   isBase: boolean;
   limitModels: boolean;
   allowedModels: string[];
+  /** LOOPS: which CLIs this role may drive, each with its default model, at
+   *  most one flagged the role's default, and whether it routes semantically. */
+  limitLoops?: boolean;
+  loopGrants?: LoopGrant[];
   limitConnections: boolean;
   allowedConnections: string[];
   allowedConnectionTools: Record<string, string[]>;
@@ -129,11 +133,17 @@ const $ = <T extends HTMLElement>(id: string): T | null => document.getElementBy
 // reports a bare "<method> failed".
 
 interface SdkWorkspaces {
+  /** The ORG's loop support list — the catalog a role narrows from. */
+  orgLoops?: { list?: () => Promise<OrgLoopRow[]> };
+  /** The org's members — who can hold this role. */
+  members?: { list?: () => Promise<OrgMember[]> };
   workspaces?: {
     list?: () => Promise<Workspace[]>;
     create?: (input: Record<string, unknown>) => Promise<Workspace>;
     update?: (id: string, input: Record<string, unknown>) => Promise<Workspace>;
     delete?: (id: string) => Promise<void>;
+    /** Move a member to a role. The only verb: everyone holds one. */
+    assign?: (userId: string, workspaceId: string) => Promise<void>;
     providerKeys?: (id: string) => Promise<Array<{ providerSlug: string; updatedAt: string }>>;
     setProviderKey?: (id: string, slug: string, key: string) => Promise<{ providerSlug: string }>;
     clearProviderKey?: (id: string, slug: string) => Promise<void>;
@@ -466,6 +476,9 @@ async function openEditor(w: Workspace): Promise<void> {
   void hydrateMeta([...(w.allowedConnections || []), ...(w.allowedPersonalConnections || [])]);
 }
 
+/** One loop's grant on a role. */
+interface LoopGrant { cli: string; model: string; isDefault?: boolean; forceAuto?: boolean }
+
 function setTab(tab: string): void {
   for (const b of Array.from(document.querySelectorAll<HTMLElement>("#ws-tabs .app-detail-tab"))) {
     b.classList.toggle("active", b.dataset.wstab === tab);
@@ -473,6 +486,11 @@ function setTab(tab: string): void {
   for (const p of Array.from(document.querySelectorAll<HTMLElement>(".ws-tab"))) {
     p.classList.toggle("active", p.dataset.wstab === tab);
   }
+  // Paint on ENTRY, not on role load — these two fetch, and a role editor
+  // that pulled the org's members and loop catalog every time you opened
+  // General would pay for tabs nobody clicked.
+  if (tab === "loops") void paintLoopsTab();
+  if (tab === "members") void paintMembersTab();
 }
 
 // ── Models tab ───────────────────────────────────────────────────────────
@@ -617,7 +635,7 @@ function paintModels(): void {
     document.querySelector(".ws-info-pop")?.remove();
     const pop = document.createElement("div");
     pop.className = "mdl-provider-drop ws-info-pop";
-    pop.textContent = "Allows this role to use this model directly even when Force semantic routing is enabled at the org level. Without an exemption, members on this role see only \"Auto\" — the gateway picks the model for each request from the role's allowed set.";
+    pop.textContent = "Allows this role to use this model directly even when one of its loops is set to force auto (Roles \u2192 Loops). Without an exemption, members see only \"Auto\" on that loop \u2014 the gateway picks the model for each request from the role's allowed set.";
     const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
     pop.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 300))}px`;
     pop.style.top = `${r.bottom + 6}px`;
@@ -1247,6 +1265,20 @@ export function initWorkspaces(): void {
     e.stopPropagation();
     openModelsFilter(e.currentTarget as HTMLElement);
   });
+  // LOOPS tab — the limit switch. On with no grants yet means "allowed: none",
+  // which is a real (if strict) answer; the table is how you widen it.
+  $("ws-limit-loops")?.addEventListener("change", (e) => {
+    const on = (e.currentTarget as HTMLInputElement).checked;
+    void patch({ limitLoops: on },
+      on ? "Limited to selected loops" : "Every org loop allowed").then(paintLoopsTab);
+  });
+  // MEMBERS tab — search filters in place; + Add opens the org's roster.
+  $<HTMLInputElement>("ws-members-search")?.addEventListener("input", () => {
+    wsMembersPage = 0;
+    void paintMembersTab();
+  });
+  $("ws-members-add")?.addEventListener("click", () => void openAddMemberModal());
+
   $("ws-limit-models")?.addEventListener("change", (e) => {
     const on = (e.currentTarget as HTMLInputElement).checked;
     void commitModels(on ? catalog.map((m) => m.key) : null,
@@ -1347,4 +1379,282 @@ export async function loadWorkspacesPanel(): Promise<void> {
   for (const c of orgConnectors) connMeta.set(c.id, { name: c.name, icon: c.icon });
   orgToolCap = cap || {};
   if (editing) { paintModels(); paintProviderKeys(); paintConnections(); }
+}
+
+// ── Loops tab ────────────────────────────────────────────────────────────
+//
+// Which CLIs this role may drive. Each row carries the model it opens with,
+// whether it is the role's default, and whether it routes semantically —
+// per-loop, so a coding loop keeps its model while a summarising one is
+// auto-routed (his ruling, 2026-09-12). Models come from the role's OWN
+// allowed set: a role can never default to a model it may not use.
+
+interface OrgLoopRow { cli: string; name: string; provider: string; enabled: boolean }
+let orgLoopCatalog: OrgLoopRow[] = [];
+
+const grantsOf = (w: Workspace | null): LoopGrant[] =>
+  Array.isArray(w?.loopGrants) ? w!.loopGrants! : [];
+
+/** Commit the whole grant list — the server normalises it (known CLIs, one
+ *  row each, at most one default), so the UI never has to police that. */
+async function commitLoops(grants: LoopGrant[], msg: string): Promise<void> {
+  await patch({ loopGrants: grants }, msg);
+}
+
+async function paintLoopsTab(): Promise<void> {
+  const grid = $("ws-loops-grid");
+  const toggle = $<HTMLInputElement>("ws-limit-loops");
+  const hint = $("ws-loops-hint");
+  if (!grid || !editing) return;
+
+  if (!orgLoopCatalog.length) {
+    const r = await via<OrgLoopRow[]>((c) => c.orgLoops?.list?.(), "orgLoopsList");
+    orgLoopCatalog = (r ?? []).filter((l) => l.enabled);
+  }
+  const limited = editing.limitLoops === true;
+  if (toggle) toggle.checked = limited;
+  if (hint) {
+    hint.textContent = limited
+      ? "Only the loops ticked below, each opening on the model you choose."
+      : "Off — this role can use every loop the org runs.";
+  }
+  const grants = new Map(grantsOf(editing).map((g) => [g.cli, g]));
+  // The role's OWN models, so a default can never name one it may not use.
+  const allowed = modelsOf(editing);
+  const usable = allowed === null ? catalog : catalog.filter((m) => allowed.includes(m.key));
+
+  grid.innerHTML = "";
+  if (!orgLoopCatalog.length) {
+    grid.innerHTML = `<div class="crud-empty">Your organization hasn't enabled any loops yet — Organization &rarr; Loops.</div>`;
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Loop</th><th>Default model</th>`
+    + `<th class="ws-model-toggle-cell">Force auto</th>`
+    + `<th class="ws-model-toggle-cell">Default</th>`
+    + `<th class="ws-model-toggle-cell">Allowed</th></tr></thead>`;
+  const body = document.createElement("tbody");
+
+  for (const loop of orgLoopCatalog) {
+    const g = grants.get(loop.cli);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lib-table-name"></td><td></td>`
+      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="checkbox" class="wl-force" /><span class="toggle-switch"></span></label></td>`
+      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="radio" name="wl-default" class="wl-default" /><span class="toggle-switch"></span></label></td>`
+      + `<td class="ws-model-toggle-cell"><label class="settings-toggle"><input type="checkbox" class="wl-on" /><span class="toggle-switch"></span></label></td>`;
+    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = loop.name;
+
+    // Default model — this loop's vendor, within the role's allowed set.
+    const sel = document.createElement("select");
+    sel.className = "settings-input ws-loop-model";
+    const pool = usable.filter((m) => !loop.provider || m.provider === loop.provider);
+    const list = pool.length ? pool : usable;
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = "The CLI's own default";
+    sel.appendChild(auto);
+    for (const m of list) {
+      const o = document.createElement("option");
+      o.value = m.key;
+      o.textContent = m.displayName || m.key;
+      sel.appendChild(o);
+    }
+    sel.value = g?.model ?? "";
+    (tr.children[1] as HTMLElement).appendChild(sel);
+
+    const on = tr.querySelector<HTMLInputElement>(".wl-on")!;
+    const force = tr.querySelector<HTMLInputElement>(".wl-force")!;
+    const dflt = tr.querySelector<HTMLInputElement>(".wl-default")!;
+    on.checked = !!g;
+    force.checked = g?.forceAuto === true;
+    dflt.checked = g?.isDefault === true;
+    // A loop this role doesn't grant can't carry a model or a flag.
+    sel.disabled = force.disabled = dflt.disabled = !g;
+    // Forcing auto makes the default model moot — the gateway chooses.
+    if (force.checked) sel.disabled = true;
+
+    /** Rebuild the whole list from the table, so one write is one truth. */
+    const commit = (msg: string): void => {
+      const next: LoopGrant[] = [];
+      for (const row of Array.from(body.querySelectorAll<HTMLElement>("tr"))) {
+        const cli = row.dataset.cli!;
+        if (!row.querySelector<HTMLInputElement>(".wl-on")!.checked) continue;
+        const f = row.querySelector<HTMLInputElement>(".wl-force")!.checked;
+        const d = row.querySelector<HTMLInputElement>(".wl-default")!.checked;
+        next.push({
+          cli,
+          model: row.querySelector<HTMLSelectElement>(".ws-loop-model")!.value,
+          ...(d ? { isDefault: true } : {}),
+          ...(f ? { forceAuto: true } : {}),
+        });
+      }
+      void commitLoops(next, msg).then(paintLoopsTab);
+    };
+    on.addEventListener("change", () => commit(on.checked ? `${loop.name} allowed` : `${loop.name} removed`));
+    force.addEventListener("change", () => commit(force.checked ? `${loop.name} routes automatically` : `${loop.name} picks its model`));
+    // Radio, so the browser clears the others — only one default can exist.
+    dflt.addEventListener("change", () => commit(`${loop.name} is the default loop`));
+    sel.addEventListener("change", () => commit("Default model set"));
+
+    tr.dataset.cli = loop.cli;
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  grid.appendChild(table);
+}
+
+// ── Members tab ──────────────────────────────────────────────────────────
+//
+// Who holds this role. The models page's grammar: search, pagination, an add
+// button that opens the org's members in a modal, and a per-row kebab whose
+// Remove hands the member back to the BASE role.
+//
+// There is no "unassign" on the server and there shouldn't be: everyone
+// belongs to a role, and the base role IS "no special role". Removal is an
+// assignment like any other.
+
+interface OrgMember { userId: string; email: string; name: string | null; role: string; workspaceId: string | null }
+const WS_MEMBERS_PAGE_SIZE = 15;   // 15 everywhere — the one pagination size
+let wsMembers: OrgMember[] = [];
+let wsMembersPage = 0;
+
+async function loadOrgMembers(force = false): Promise<void> {
+  if (wsMembers.length && !force) return;
+  wsMembers = (await via<OrgMember[]>((c) => c.members?.list?.(), "orgMembersList")) ?? [];
+}
+
+/** Move a member to a role — assignment is the only verb there is. */
+async function assignMember(userId: string, workspaceId: string, msg: string): Promise<void> {
+  setStatus("Saving…", "");
+  const ok = await via<void>((c) => c.workspaces?.assign?.(userId, workspaceId), "workspacesAssign", userId, workspaceId);
+  if (ok === null) { setStatus("Not saved", "error"); return; }
+  setStatus(msg, "success");
+  await loadOrgMembers(true);
+  await paintMembersTab();
+}
+
+async function paintMembersTab(): Promise<void> {
+  const grid = $("ws-members-grid");
+  const pager = $("ws-members-pager");
+  if (!grid || !editing) return;
+  await loadOrgMembers();
+
+  const q = ($<HTMLInputElement>("ws-members-search")?.value || "").trim().toLowerCase();
+  const mine = wsMembers
+    .filter((m) => m.workspaceId === editing!.id)
+    .filter((m) => !q || `${m.name ?? ""} ${m.email}`.toLowerCase().includes(q));
+
+  grid.innerHTML = "";
+  if (pager) pager.innerHTML = "";
+  if (!mine.length) {
+    grid.innerHTML = q
+      ? `<div class="crud-empty">No members matching "${escapeHtml(q)}"</div>`
+      : `<div class="crud-empty">No one holds this role yet — <b>+ Add member</b> assigns someone.</div>`;
+    return;
+  }
+
+  const { items, state } = paginate(mine, wsMembersPage, WS_MEMBERS_PAGE_SIZE);
+  wsMembersPage = state.page;
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Name</th><th>Email</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const body = document.createElement("tbody");
+  for (const m of items) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-desc"></td>`;
+    (tr.querySelector(".lib-table-name") as HTMLElement).textContent = m.name || "—";
+    (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = m.email;
+    tr.appendChild(kebabCell(() => [
+      { icon: ROW_MENU_ICONS.delete, label: "Remove", danger: true, onClick: () => {
+        void (async () => {
+          const sure = await confirmAction({
+            title: `Remove ${m.name || m.email} from ${editing!.name}?`,
+            body: "They move back to the base role and keep whatever it allows.",
+            confirmLabel: "Remove", danger: true,
+          });
+          if (!sure) return;
+          const base = workspaces.find((w) => w.isBase);
+          if (!base) { setError("This organization has no base role to move them to."); return; }
+          await assignMember(m.userId, base.id, "Removed from this role");
+        })();
+      } },
+    ]));
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  grid.appendChild(table);
+  if (state.totalPages > 1 && pager) {
+    pager.appendChild(renderPaginationBar(state, (p) => { wsMembersPage = p; void paintMembersTab(); }));
+  }
+}
+
+/** + Add member — the org's members, minus the ones already here. */
+async function openAddMemberModal(): Promise<void> {
+  if (!editing) return;
+  await loadOrgMembers(true);
+  const candidates = wsMembers.filter((m) => m.workspaceId !== editing!.id);
+
+  const host = document.createElement("div");
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "crud-search";
+  search.placeholder = "Search members…";
+  search.spellcheck = false;
+  const list = document.createElement("div");
+  list.className = "ws-add-member-list";
+  host.append(search, list);
+
+  const paint = (): void => {
+    const q = search.value.trim().toLowerCase();
+    const rows = candidates.filter((m) => !q || `${m.name ?? ""} ${m.email}`.toLowerCase().includes(q));
+    list.innerHTML = "";
+    if (!rows.length) {
+      list.innerHTML = `<div class="crud-empty">${candidates.length ? "No members match." : "Everyone in the organization already holds this role."}</div>`;
+      return;
+    }
+    const table = document.createElement("table");
+    table.className = "lib-table";
+    table.innerHTML = `<thead><tr><th>Name</th><th>Email</th></tr></thead>`;
+    const body = document.createElement("tbody");
+    for (const m of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="lib-table-name"></td><td class="lib-table-desc"></td>`;
+      (tr.querySelector(".lib-table-name") as HTMLElement).textContent = m.name || "—";
+      (tr.querySelector(".lib-table-desc") as HTMLElement).textContent = m.email;
+      tr.addEventListener("click", () => {
+        close();
+        void assignMember(m.userId, editing!.id, `${m.name || m.email} added`);
+      });
+      body.appendChild(tr);
+    }
+    table.appendChild(body);
+    list.appendChild(table);
+  };
+  search.addEventListener("input", paint);
+  paint();
+
+  // formModal is FIELD-based; this needs a searchable table, so it uses the
+  // same overlay chrome directly. Picking a row IS the action — a Save button
+  // would be a second click for a choice already made.
+  const overlay = document.createElement("div");
+  overlay.className = "confirm-overlay";
+  overlay.innerHTML = `<div class="confirm-box ws-add-member-box" role="dialog" aria-modal="true">
+      <div class="confirm-head"><h3></h3></div>
+      <div class="confirm-body"></div>
+      <div class="confirm-actions"><button type="button" class="action-btn ws-add-cancel">Close</button></div>
+    </div>`;
+  (overlay.querySelector("h3") as HTMLElement).textContent = `Add to ${editing.name}`;
+  overlay.querySelector(".confirm-body")!.appendChild(host);
+  const hidden = await hidePanelsForModal();
+  const close = (): void => { overlay.remove(); restorePanelsForModal(hidden); };
+  overlay.querySelector(".ws-add-cancel")!.addEventListener("click", close);
+  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key !== "Escape") return;
+    document.removeEventListener("keydown", esc);
+    close();
+  });
+  document.body.appendChild(overlay);
+  search.focus();
 }

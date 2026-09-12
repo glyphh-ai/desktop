@@ -49,7 +49,7 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
   if (inflight) return inflight;
   inflight = (async () => {
     try {
-      const r = await getClient().http.post<{ baseUrl?: string; token?: string }>("/api/gateway/token", {});
+      const r = await getClient().gateway.token();
       if (!r?.baseUrl || !r?.token) return null;
       cached = { baseUrl: r.baseUrl, token: r.token };
       return cached;
@@ -62,9 +62,45 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
   return inflight;
 }
 
-/** Drop the memo — after a sign-out, or an org switch. */
+/**
+ * Forget the credential entirely — memo AND the copies on disk.
+ *
+ * Called on LOGOUT. Without this a minted router key survives sign-out in
+ * every loop's env file, so the next person at the machine keeps
+ * authenticating as the last one and billing their org. The memo alone is
+ * not enough: the env files are what the CLI actually reads.
+ */
 export function clearGatewayCreds(): void {
   cached = null;
+  let ids: string[] = [];
+  try { ids = fs.readdirSync(path.join(homedir(), ".glyphh", "loops")); } catch { return; }
+  for (const id of ids) {
+    // Strip every variable we could have written, whatever CLI the loop is —
+    // a loop's vendor may have changed since the key was put there.
+    const vars = [...ALL_BASE_URL_VARS, ...Object.values(KEY_ENV)];
+    try { stripVars(id, vars); } catch { /* a loop we cannot read is one we cannot leak from */ }
+  }
+}
+
+/** Every base-URL variable any loop could carry. */
+const ALL_BASE_URL_VARS = [
+  "ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "GOOGLE_GEMINI_BASE_URL",
+];
+
+/** Remove `vars` from a loop's env file, keeping whatever else is in it. */
+function stripVars(id: string, vars: string[]): void {
+  const ours = new Set(vars);
+  let kept: string;
+  try {
+    kept = fs.readFileSync(envFile(id), "utf-8")
+      .split("\n")
+      .filter((l) => { const n = /^(\w+)=/.exec(l)?.[1]; return l.trim() && (!n || !ours.has(n)); })
+      .join("\n");
+  } catch {
+    return;
+  }
+  if (kept) fs.writeFileSync(envFile(id), `${kept}\n`, { encoding: "utf-8", mode: 0o600 });
+  else fs.rmSync(envFile(id), { force: true });
 }
 
 const envFile = (id: string): string => path.join(homedir(), ".glyphh", "loops", id, "env");
@@ -100,16 +136,5 @@ export function writeGatewayEnv(
 /** Strip the gateway lines, leaving anything the member set themselves. */
 export function clearGatewayEnv(id: string, cli: string, baseUrlVars: string[]): void {
   const keyVar = KEY_ENV[cli];
-  const ours = new Set([...baseUrlVars, ...(keyVar ? [keyVar] : [])]);
-  let kept: string;
-  try {
-    kept = fs.readFileSync(envFile(id), "utf-8")
-      .split("\n")
-      .filter((l) => { const n = /^(\w+)=/.exec(l)?.[1]; return l.trim() && (!n || !ours.has(n)); })
-      .join("\n");
-  } catch {
-    return;
-  }
-  if (kept) fs.writeFileSync(envFile(id), `${kept}\n`, { encoding: "utf-8", mode: 0o600 });
-  else fs.rmSync(envFile(id), { force: true });
+  stripVars(id, [...baseUrlVars, ...(keyVar ? [keyVar] : [])]);
 }

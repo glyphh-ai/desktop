@@ -132,7 +132,9 @@ async function loadOptions(): Promise<void> {
   ]);
   loops = loopsRes?.ok ? loopsRes.agents : [];
   // loopsList is the TASK SPEC store (renamed; see local-library.ts).
-  taskSpecs = (loopsRes && specsRes?.ok ? (specsRes.loops ?? []) : []).map((t) => ({ slug: t.slug, name: t.name }));
+  // Independent of the loops call — gating them together meant one failure
+  // silently emptied the other list.
+  taskSpecs = (specsRes?.ok ? specsRes.loops ?? [] : []).map((t) => ({ slug: t.slug, name: t.name }));
   const sk = skillsRes?.ok ? (skillsRes.data as Array<{ slug: string; name: string }> | undefined) ?? [] : [];
   skills = sk.map((s) => ({ slug: s.slug, name: s.name }));
   models = (modelsRes?.ok ? modelsRes.models ?? [] : []).filter((m) => m.pickerVisible !== false);

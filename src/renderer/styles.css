@@ -20384,3 +20384,9 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .loop-acc-toggle { margin: 0; flex: none; }
 .loop-acc-body { padding: 6px 14px 16px; display: flex; flex-direction: column; }
 .loop-acc-body > .settings-input { flex: 0 0 auto; }
+
+/* Role → Members: the +Add picker is a searchable table, so it needs room
+   the field-based form modal doesn't reserve. */
+.ws-add-member-box { min-width: min(560px, 92vw); }
+.ws-add-member-list { max-height: 46vh; overflow-y: auto; margin-top: 10px; }
+.ws-add-member-list tr { cursor: pointer; }

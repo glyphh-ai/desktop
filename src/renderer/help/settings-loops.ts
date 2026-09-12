@@ -141,6 +141,8 @@ export async function loadSettingsLoops(): Promise<void> {
   }
 }
 
+/** One field at a time — main PATCHES an existing loop, so a toggle does not
+ *  have to post the whole row back. */
 async function save(cli: string, patch: Record<string, unknown>): Promise<void> {
   const r = await api().cliAgentsSave?.({ id: cli, cli, ...patch });
   if (r && !r.ok) fail("loops-error", r.error || "couldn't save that loop");
