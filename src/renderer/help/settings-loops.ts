@@ -15,7 +15,6 @@
  * shows that loop's configuration — the shape the model catalog uses.
  */
 
-import { escapeHtml } from "./shared.js";
 
 /** A loop the caller may use, as /api/loops/available resolves it. */
 interface AvailableLoop {
@@ -276,4 +275,99 @@ export async function loadOrgLoops(): Promise<void> {
       },
     ));
   }
+}
+
+// ── Settings → General: the agent defaults ───────────────────────────────────
+
+/**
+ * The default LOOP and MODEL a new session opens with.
+ *
+ * Both lists come from the org → role policy, so neither can name something
+ * the member may not use. "Use my role's default" is the first option in each
+ * and the stored value for it is "" — that way a policy change follows the
+ * member automatically instead of freezing whatever was true the day they
+ * last opened this page.
+ */
+export async function loadAgentDefaults(): Promise<void> {
+  const loopSel = el<HTMLSelectElement>("set-default-loop");
+  const modelSel = el<HTMLSelectElement>("set-default-model");
+  const hint = el("set-default-hint");
+  if (!loopSel || !modelSel) return;
+
+  const prefs = window.glyphh as unknown as {
+    getPreference?: (k: string, d: unknown) => Promise<unknown>;
+    setPreference?: (k: string, v: unknown) => void;
+  };
+  const [availRes, catalog, savedLoop, savedModel] = await Promise.all([
+    api().loopsAvailable?.().catch(() => null) ?? Promise.resolve(null),
+    api().workspacesModelCatalog?.().catch(() => null) ?? Promise.resolve(null),
+    prefs.getPreference?.("defaultLoop", "") ?? Promise.resolve(""),
+    prefs.getPreference?.("defaultModel", "") ?? Promise.resolve(""),
+  ]);
+  const loops = availRes?.ok ? availRes.data ?? [] : [];
+  models = catalog?.ok ? catalog.models ?? [] : [];
+
+  if (!loops.length) {
+    loopSel.innerHTML = `<option value="">No loops available</option>`;
+    modelSel.innerHTML = `<option value="">No loops available</option>`;
+    loopSel.disabled = true;
+    modelSel.disabled = true;
+    if (hint) hint.textContent = "Your organization hasn't turned on any loops, or your role doesn't allow them.";
+    return;
+  }
+  loopSel.disabled = false;
+  modelSel.disabled = false;
+
+  const roleLoop = loops.find((l) => l.isDefault) ?? loops[0]!;
+  loopSel.innerHTML = "";
+  const auto = document.createElement("option");
+  auto.value = "";
+  auto.textContent = `Use my role's default — ${roleLoop.name}`;
+  loopSel.appendChild(auto);
+  for (const l of loops) {
+    const o = document.createElement("option");
+    o.value = l.cli;
+    o.textContent = l.name;
+    loopSel.appendChild(o);
+  }
+  const wantLoop = String(savedLoop ?? "");
+  loopSel.value = loops.some((l) => l.cli === wantLoop) ? wantLoop : "";
+
+  /** The model list follows whichever loop is selected. */
+  const paintModels = (selected: string): void => {
+    const active = loops.find((l) => l.cli === (loopSel.value || roleLoop.cli)) ?? roleLoop;
+    const pool = models.filter((m) => !active.provider || m.providerSlug === active.provider);
+    const list = pool.length ? pool : models;
+    modelSel.innerHTML = "";
+    const inherit = document.createElement("option");
+    inherit.value = "";
+    inherit.textContent = active.model
+      ? `Use my role's default — ${models.find((m) => m.id === active.model)?.name ?? active.model}`
+      : `Use ${active.name}'s own default`;
+    modelSel.appendChild(inherit);
+    for (const m of list) {
+      const o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.name || m.id;
+      modelSel.appendChild(o);
+    }
+    modelSel.value = list.some((m) => m.id === selected) ? selected : "";
+    if (hint) {
+      hint.textContent = `A new workspace and a fresh agent panel open with ${active.name}`
+        + `${modelSel.value ? ` on ${list.find((m) => m.id === modelSel.value)?.name ?? modelSel.value}` : ""}.`;
+    }
+  };
+  paintModels(String(savedModel ?? ""));
+
+  loopSel.addEventListener("change", () => {
+    prefs.setPreference?.("defaultLoop", loopSel.value);
+    // A model from the previous loop's vendor is meaningless under the new
+    // one — reset rather than silently keeping an unreachable binding.
+    prefs.setPreference?.("defaultModel", "");
+    paintModels("");
+  });
+  modelSel.addEventListener("change", () => {
+    prefs.setPreference?.("defaultModel", modelSel.value);
+    paintModels(modelSel.value);
+  });
 }

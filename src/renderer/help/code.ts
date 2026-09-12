@@ -443,6 +443,25 @@ function showModeInfoModal(): void {
 // Loops are LOCAL: the Loops page's CLI pre-configs (~/.glyphh/loops), the
 // same roster the wall's tiles and the workspace cells ride. Nothing here
 // comes from the server any more — the CLI is the loop.
+/** The loop a fresh session opens on: the member's Settings → General
+ *  choice, else whichever loop the role flags as its default. Both are
+ *  policy-bound — neither can name a loop the member may not use. */
+async function defaultLoopId(): Promise<string> {
+  const g = window.glyphh as unknown as {
+    getPreference?: (k: string, d: unknown) => Promise<unknown>;
+    loopsAvailable?: () => Promise<{ ok: boolean; data?: Array<{ cli: string; isDefault: boolean }> }>;
+  };
+  try {
+    const pref = String((await g.getPreference?.("defaultLoop", "")) ?? "");
+    if (pref && loops.some((l) => l.id === pref)) return pref;
+    const r = await g.loopsAvailable?.();
+    const role = r?.ok ? (r.data ?? []).find((l) => l.isDefault)?.cli : "";
+    return role && loops.some((l) => l.id === role) ? role : "";
+  } catch {
+    return "";
+  }
+}
+
 async function refreshLoops(): Promise<void> {
   // LOOPS are the configured CLI loops (his ruling, 2026-09-11: the CLI is
   // the loop) — the same roster the wall's agent tiles ride. description
@@ -453,7 +472,11 @@ async function refreshLoops(): Promise<void> {
       loops = r.agents.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "" }));
       loopsCanBuild = false;
     }
-    if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = loops[0]?.id || "default";
+    // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
+    // loop decides what a session with no loop of its own opens on; empty
+    // means "my role's default", which /api/loops/available flags. Only
+    // then does first-in-the-list apply.
+    if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = await defaultLoopId() || loops[0]?.id || "default";
     paintChips();
   } catch { /* offline — the built-in default stands */ }
 }
@@ -3182,8 +3205,25 @@ function syncThinking(): void {
 }
 
 /** THIS session's bound model, or null (the loop's own default). */
+/** The model a session runs on: its own pick, else the member's Settings →
+ *  General default. Read lazily (defaultModelPref) so a chat that never
+ *  chose one still opens on the configured default rather than "whatever
+ *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
-  return c?.models?.["default"] ?? null;
+  return c?.models?.["default"] ?? defaultModelPref ?? null;
+}
+
+/** Settings → General's default model, memoised for the session. Empty
+ *  string means "inherit" — the loop's own, or the role's default for it. */
+let defaultModelPref: string | null = null;
+async function loadDefaultModelPref(): Promise<void> {
+  try {
+    const v = String((await (window.glyphh as unknown as { getPreference?: (k: string, d: unknown) => Promise<unknown> })
+      .getPreference?.("defaultModel", "")) ?? "");
+    defaultModelPref = v || null;
+  } catch {
+    defaultModelPref = null;
+  }
 }
 
 function stopThinking(): void {
@@ -5778,6 +5818,7 @@ export function initCode(): void {
     if (MODES.some((x) => x.id === m)) { defaultMode = m as typeof glyphhMode; glyphhMode = defaultMode; }
     const lp = String((await window.glyphh.getPreference?.("glyphhLoop", "default")) || "default");
     glyphhLoop = lp;
+    void loadDefaultModelPref();
     void refreshLoops();
     paintChips();
     // The model chip renders from the STORED loop's slots — the early refresh
