@@ -714,7 +714,13 @@ function renderList(): void {
 
   wrap.textContent = "";
   if (!slice.length) {
-    wrap.innerHTML = `<div class="crud-empty">No providers match your search.</div>`;
+    // An untouched search box means the ORG has nothing configured — say that,
+    // not "no match" (his report, 2026-09-12: a fresh org read as a broken
+    // search). Only a real query earns the no-match line.
+    const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim();
+    wrap.innerHTML = q
+      ? `<div class="crud-empty">No providers match your search.</div>`
+      : `<div class="crud-empty">No models configured yet — add a provider with + New provider to get started.</div>`;
   }
   for (const e of slice) {
     const row = document.createElement("div");

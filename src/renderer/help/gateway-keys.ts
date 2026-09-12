@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, paginate, renderPaginationBar } from "./shared.js";
+import { gateSurface } from "./plan-gate.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
 
 interface GatewayKey {
@@ -251,6 +252,11 @@ async function loadRoles(): Promise<void> {
 }
 
 export async function loadGatewayKeys(): Promise<void> {
+  // LICENSE first (his order, 2026-09-12: keys + metrics gate like every other
+  // paid surface — same banner, same Billing door). Locked still paints the
+  // page inert below the note; the server's E_ENTITLEMENT holds regardless.
+  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="gateway-keys"]'),
+    "gateway", "The gateway");
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
   $("gwk-admin-only")?.classList.toggle("hidden", admin);

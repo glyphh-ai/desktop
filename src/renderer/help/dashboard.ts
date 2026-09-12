@@ -925,7 +925,10 @@ export function initDashboardEvents(): void {
     window.open(typeof raw === "string" && raw ? raw : "https://discord.gg/P3yynv4v9", "_blank", "noopener");
   });
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
-    gotoSection("settings", "apikeys");
+    // "apikeys" died with the old keys page — the gateway keys page is where
+    // keys are minted now (his report, 2026-09-12: the button opened a blank
+    // panel because no sub by that name exists).
+    gotoSection("settings", "gateway-keys");
   });
   paintDashGreeting();
   // the refresh button rides the chart card in Settings › Usage

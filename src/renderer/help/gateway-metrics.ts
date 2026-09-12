@@ -12,6 +12,8 @@
  * stubs the channel — this page is platform-only).
  */
 
+import { gateSurface } from "./plan-gate.js";
+
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
 
@@ -317,6 +319,9 @@ async function refresh(): Promise<void> {
 }
 
 export async function loadGatewayMetrics(): Promise<void> {
+  // LICENSE first — same banner + Billing door as every gated page.
+  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="gateway"]'),
+    "gateway", "The gateway");
   // Same admin gate as the org pages — the server 403s regardless.
   const account = await window.glyphh.getAccountInfo().catch(() => null);
   const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);

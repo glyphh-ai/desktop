@@ -100,14 +100,28 @@ export async function gateSurface(
   if (!allowed) {
     const note = document.createElement("div");
     note.className = "plan-locked-note";
-    note.textContent = `${what} is on a paid plan. You can see how it works here — upgrade to use it.`;
+    const msg = document.createElement("span");
+    msg.textContent = `${what} is on a paid plan. You can see how it works here — upgrade to use it. `;
+    // The SAME door on every gated page (his order, 2026-09-12): a link to
+    // Billing right in the banner. Navigating = clicking the Billing nav item,
+    // the user's own path — importing navigation.ts here would cycle through
+    // the very pages that import this gate.
+    const link = document.createElement("a");
+    link.href = "#";
+    link.className = "plan-locked-link";
+    link.textContent = "Upgrade plan →";
+    link.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      document.querySelector<HTMLButtonElement>('.settings-nav-item[data-sub="billing"]')?.click();
+    });
+    note.append(msg, link);
     host.prepend(note);
     // Name the REAL tier once the catalog answers; the note reads correctly
     // either way, so a slow or failed lookup never blocks the paint.
     void carriers().then((by) => {
       const plan = by[capability];
       if (plan && note.isConnected) {
-        note.textContent = `${what} is on ${plan}. You can see how it works here — upgrade to use it.`;
+        msg.textContent = `${what} is on ${plan}. You can see how it works here — upgrade to use it. `;
       }
     });
   }

@@ -660,12 +660,12 @@ export function buildContract(client, deps) {
     },
 
     // ── Loops (LoopsClient) ───────────────────────────────────────────────────────
-    loopsList: read(() => client.loops.list(), toLegacyLoops, EMPTY.loops),
+    loopsList: read(() => client.tasks.list(), toLegacyLoops, EMPTY.loops),
     // (loop, force?, context?) — force is meaningless here (no main-process
     // cache on web); context="cloud" resolves without on-device models, whose
     // weights only exist on a desktop machine.
     loopRoles: (loop, _force, context) =>
-      read(() => client.loops.roles(loop, loopSelections()[loop] || {}, context === "cloud" ? { context: "cloud" } : {}), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
+      read(() => client.tasks.roles(loop, loopSelections()[loop] || {}, context === "cloud" ? { context: "cloud" } : {}), (roles) => toLegacyLoopRoles(loop, roles), (error) => EMPTY.loopRoles(loop, error))(),
     // Bind a slot to a model (null clears back to the loop's default). The
     // desktop stores picks in main-process prefs; on web they live in
     // localStorage and ride the roles call as `select=` params. This method
@@ -678,19 +678,19 @@ export function buildContract(client, deps) {
       all[loop] = forLoop;
       try { localStorage.setItem(LOOP_SELECTIONS_KEY, JSON.stringify(all)); } catch { /* storage full/blocked */ }
       try {
-        const roles = await client.loops.roles(loop, forLoop);
+        const roles = await client.tasks.roles(loop, forLoop);
         return toLegacyLoopRoles(loop, roles);
       } catch (err) {
         return EMPTY.loopRoles(loop, err?.message || String(err));
       }
     },
-    libraryLoopGet: lib((ref) => client.loops.get(ref)),
+    libraryLoopGet: lib((ref) => client.tasks.get(ref)),
     // Mirror of the desktop's loop-set-role-default IPC: read the loop, patch
     // the role slot's default in the manifest, write it back. Pure SDK — the
     // web bridge lacked this, so changing a model in a loop crashed on web.
     loopSetRoleDefault: async (loopId, role, modelId) => {
       try {
-        const loop = await client.loops.get(loopId);
+        const loop = await client.tasks.get(loopId);
         const manifest = { ...(loop.manifest ?? {}) };
         const roles = Array.isArray(manifest.roles) && manifest.roles.length
           ? manifest.roles.map((r) => ({ ...r }))
@@ -698,7 +698,7 @@ export function buildContract(client, deps) {
         const slot = roles.find((r) => r.name === role);
         if (slot) slot.default = modelId ?? null;
         else roles.push({ name: role, default: modelId ?? null });
-        await client.loops.update(loop.id ?? loopId, { manifest: { ...manifest, roles } });
+        await client.tasks.update(loop.id ?? loopId, { manifest: { ...manifest, roles } });
         return { ok: true };
       } catch (e) {
         return { ok: false, error: String((e && e.message) || e) };
@@ -712,7 +712,7 @@ export function buildContract(client, deps) {
     //    Organization -> Loops is platform-only and would never load at all,
     //    and planGates falling back to CLOSED renders Roles and SSO locked
     //    for orgs that pay for them.
-    loopsAvailable: lib(() => client.loops.available()),
+    loopsAvailable: lib(() => client.loops.list()),
     orgLoopsList: lib(() => client.orgLoops.list()),
     orgLoopSet: lib((cli, enabled) => client.orgLoops.setEnabled(cli, enabled)),
     /** THE licensing read — one place, every surface (SDK client.plans). */
@@ -974,11 +974,11 @@ export function buildContract(client, deps) {
     },
     // Library sharing + marketplace (skills + loops) — free installs, approvals.
     libraryShare: async (kind, ref) => {
-      try { return { ok: true, ...(await (kind === "skill" ? client.skills.share(ref) : client.loops.share(ref))) }; }
+      try { return { ok: true, ...(await (kind === "skill" ? client.skills.share(ref) : client.tasks.share(ref))) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     libraryPublish: async (kind, ref) => {
-      try { return { ok: true, ...(await (kind === "skill" ? client.skills.publish(ref) : client.loops.publish(ref))) }; }
+      try { return { ok: true, ...(await (kind === "skill" ? client.skills.publish(ref) : client.tasks.publish(ref))) }; }
       catch (err) { return { ok: false, error: err?.message || String(err) }; }
     },
     libraryPending: async () => {

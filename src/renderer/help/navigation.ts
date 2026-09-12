@@ -15,6 +15,7 @@ import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadAgents, initAgentsEvents } from "./agents.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
+import { loadOrgLibrary } from "./org-library.js";
 import { loadConnections, initConnections } from "./connections.js";
 import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
@@ -818,6 +819,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "models") loadModelsAdmin();
   else if (sub === "loops") void loadSettingsLoops();
   else if (sub === "org-loops") void loadOrgLoops();
+  else if (sub === "org-library") loadOrgLibrary();
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
@@ -836,6 +838,11 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
+  // The BUILD group's restored pages — Tasks (the former loop library),
+  // Agents, Skills — adopt their sections exactly as apps/connections do.
+  else if (sub === "tasks") { mountSettingsSection("tasks"); loadTasksPage(); }
+  else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
+  else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -893,6 +900,11 @@ const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
+  // The BUILD group (his order, 2026-09-12): the restored library pages ride
+  // the same whole-node adoption into the platform nav.
+  agents: { host: "settings-agents-host" },
+  skills: { host: "settings-skills-host" },
+  tasks: { host: "settings-tasks-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),

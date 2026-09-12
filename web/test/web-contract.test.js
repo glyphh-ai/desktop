@@ -41,8 +41,8 @@ function authedClient() {
       personalMcpList: vi.fn(async () => [{ slug: 'p', name: 'P', url: 'u', enabled: true }]),
       orgMcpList: vi.fn(async () => [{ slug: 'o', name: 'O', url: 'u', enabled: true }]),
     },
-    loops: {
-      list: vi.fn(async () => ({ loops: [{ id: '1', name: 'Default', description: 'd', builtIn: true }] })),
+    tasks: {
+      list: vi.fn(async () => ({ tasks: [{ id: '1', name: 'Default', description: 'd', builtIn: true }] })),
       roles: vi.fn(async () => [{ name: 'planner', modelId: 'm', choices: [] }]),
       get: vi.fn(async () => ({ id: '1' })),
     },
@@ -63,7 +63,7 @@ function rejectingClient() {
   const rej = { get: boom, list: boom, roles: boom, apps: boom, resolvedTools: boom, personalMcpList: boom, orgMcpList: boom, deployed: boom, mine: boom, listCustom: boom, providers: boom, status: boom, credits: boom, allocation: boom, summary: boom, update: boom, prefs: boom, setPrefs: boom, ticket: boom };
   return {
     me: boom,
-    org: rej, billing: rej, usage: rej, profile: rej, connections: rej, loops: rej,
+    org: rej, billing: rej, usage: rej, profile: rej, connections: rej, tasks: rej,
     skills: rej, agents: rej, layouts: rej, drips: rej, apps: rej, orgModels: rej,
     catalog: rej, support: rej,
   };

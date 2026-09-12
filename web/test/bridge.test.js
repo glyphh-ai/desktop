@@ -30,8 +30,8 @@ const fake = {
     personalMcpList: vi.fn(async () => [{ slug: 'p', name: 'P', url: 'u', enabled: true }]),
     orgMcpList: vi.fn(async () => [{ slug: 'o', name: 'O', url: 'u', enabled: true }]),
   },
-  loops: {
-    list: vi.fn(async () => ({ loops: [{ id: '1', name: 'Default', description: 'd', builtIn: true }] })),
+  tasks: {
+    list: vi.fn(async () => ({ tasks: [{ id: '1', name: 'Default', description: 'd', builtIn: true }] })),
     roles: vi.fn(async () => [{ name: 'planner', modelId: 'm', choices: [] }]),
     get: vi.fn(async () => ({ id: '1', slug: 'web' })),
   },
@@ -98,22 +98,22 @@ describe('bridge KNOWN wiring', () => {
     expect(out.connections.map((c) => c.kind)).toEqual(['org', 'personal']);
   });
 
-  it('loopsList → loops.list, canBuild true', async () => {
+  it('loopsList → tasks.list, canBuild true', async () => {
     const out = await glyphh.loopsList();
-    expect(fake.loops.list).toHaveBeenCalled();
+    expect(fake.tasks.list).toHaveBeenCalled();
     expect(out).toMatchObject({ ok: true, canBuild: true });
   });
 
-  it('loopRoles(loop) → loops.roles(loop, selections, context), envelope', async () => {
+  it('loopRoles(loop) → tasks.roles(loop, selections, context), envelope', async () => {
     const out = await glyphh.loopRoles('web');
     // Second arg: the web's stored per-loop model picks (localStorage; empty
     // here) — loopRoleSet writes them, loopRoles rides them. Third: the
     // execution context opts — empty unless the caller passes "cloud".
-    expect(fake.loops.roles).toHaveBeenCalledWith('web', {}, {});
+    expect(fake.tasks.roles).toHaveBeenCalledWith('web', {}, {});
     expect(out).toEqual({ ok: true, loop: 'web', roles: [{ name: 'planner', modelId: 'm', choices: [] }] });
 
     await glyphh.loopRoles('web', false, 'cloud');
-    expect(fake.loops.roles).toHaveBeenCalledWith('web', {}, { context: 'cloud' });
+    expect(fake.tasks.roles).toHaveBeenCalledWith('web', {}, { context: 'cloud' });
   });
 
   it('librarySkillsList → skills.list wrapped in {ok,data}', async () => {

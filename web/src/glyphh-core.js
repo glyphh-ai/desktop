@@ -444,7 +444,9 @@ export function toLegacyMcpConnections(personal, org, apiUrl) {
  * @param {{loops: Array<{id:string,name:string,description:string,builtIn:boolean}>}} res
  */
 export function toLegacyLoops(res) {
-  const loops = (res?.loops ?? []).map((l) => ({
+  // The library lane was renamed tasks (2026-09-12): the server answers
+  // { tasks }; legacy callers still speak { loops }. One bridge, here.
+  const loops = (res?.tasks ?? res?.loops ?? []).map((l) => ({
     id: l.id,
     name: l.name,
     description: l.description,

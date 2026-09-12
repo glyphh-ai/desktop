@@ -13,16 +13,20 @@
                   <button class="settings-nav-item platform-only dash-plain" data-sub="dash"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>Dashboard</span></button>
               <div class="settings-nav-group platform-only">Organization</div>
               <button id="nav-org-general" class="settings-nav-item platform-only hidden" data-sub="org-general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>General</span></button>
-              <button class="settings-nav-item platform-only" data-sub="org-loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
               <button class="settings-nav-item platform-only" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button id="nav-billing" class="settings-nav-item" data-sub="billing"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></svg><span>Billing</span></button>
               <button class="settings-nav-item platform-only" data-sub="download"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><span>Download</span></button>
-              <button class="settings-nav-item platform-only" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span></button>
+              <!-- BUILD (his order, 2026-09-12): the maker destinations — Loops (the
+                   CLI support list), Apps, Connections, and the restored library:
+                   Tasks (the former loop library), Agents, Skills. -->
+              <div class="settings-nav-group platform-only">Build</div>
+              <button class="settings-nav-item platform-only" data-sub="org-loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
+              <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
+              <button class="settings-nav-item platform-only" data-sub="org-library"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg><span>Library</span></button>
               <div class="settings-nav-group platform-only">Security</div>
               <button class="settings-nav-item platform-only" data-sub="members"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16.2 4.8a3.6 3.6 0 0 1 0 6.6"/><path d="M18 14.2a6.5 6.5 0 0 1 3.5 5.8"/></svg><span>Members</span></button>
               <button class="settings-nav-item platform-only" data-sub="oauth"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9.5 12l2 2 3.5-4"/></svg><span>OAuth</span></button>
               <button class="settings-nav-item platform-only" data-sub="workspaces"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="8" height="6" rx="1.8"/><rect x="14" y="14" width="7" height="6" rx="1.8"/></svg><span>Roles</span></button>
-              <button class="settings-nav-item platform-only" data-sub="connections"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-3"/><path d="M9 10V4"/><path d="M15 10V4"/><path d="M18 10v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4v-4z"/></svg><span>Connections</span></button>
               <!-- Gateway (his order, 2026-09-11): the LiteLLM router surfaces —
                    the org's model catalog + the telemetry page. -->
               <div class="settings-nav-group platform-only">Gateway</div>
@@ -773,6 +777,25 @@
               <!-- ORGANIZATION -> LOOPS: the same accordion, but the toggle is
                    the ORG's support list (org_loops). A loop off here is off
                    for every member, whatever their role says. -->
+              <div class="settings-panel" data-sub="org-library">
+                <div id="orglib-admin-only" class="crud-empty hidden">Only an organization admin can manage the library.</div>
+
+                <div id="orglib-body">
+                  <div id="orglib-error" class="settings-error hidden"></div>
+
+                  <!-- LIST — the standard list-page grammar (Roles): h2 +
+                       section-desc, crud-toolbar with search + the type
+                       funnel, the lib-table below (org-library.ts). -->
+                  <h2>Library</h2>
+                  <p class="section-desc">Your organization's curated tasks, agents and skills — reviewed promotions, versioned, with per-role access. Apps are managed on their own page.</p>
+                  <div class="crud-toolbar">
+                    <div class="search-clear-wrap"><input id="orglib-search" type="text" class="crud-search" placeholder="Search the library…" spellcheck="false" autocomplete="off" /></div>
+                    <button id="orglib-filter" class="action-btn ws-filter-btn" type="button" title="Filter by type" aria-label="Filter by type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg><span id="orglib-filter-label" class="hidden"></span></button>
+                  </div>
+                  <div id="orglib-queue" class="hidden"></div>
+                  <div id="orglib-list"></div>
+                </div>
+              </div>
               <div class="settings-panel" data-sub="org-loops">
                 <h2>Loops</h2>
                 <p class="section-desc">Which CLIs your organization runs. Turning one off removes it from every member, whatever their role allows.</p>
@@ -1844,6 +1867,12 @@
               </div>
               <div class="settings-panel settings-panel-section" data-sub="agents">
                 <div id="settings-agents-host"></div>
+              </div>
+              <div class="settings-panel settings-panel-section" data-sub="skills">
+                <div id="settings-skills-host"></div>
+              </div>
+              <div class="settings-panel settings-panel-section" data-sub="tasks">
+                <div id="settings-tasks-host"></div>
               </div>
 
               <!-- Layouts — the layout builder/library management page moved in

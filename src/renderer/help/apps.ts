@@ -3,7 +3,7 @@
  */
 
 import {
-  paginate, renderPaginationBar, confirmAction, promptAction, clearInvalid,
+  paginate, renderPaginationBar, confirmAction, promptAction, clearInvalid, escapeHtml,
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
@@ -416,8 +416,14 @@ function renderAppsList() {
 
   if (query && filtered.length === 0) {
     if (panelsVisible === 0) {
-      appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps matching "${query}"</div>`);
+      appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps matching "${escapeHtml(query)}"</div>`);
     }
+    return;
+  }
+  // ZERO apps, no query — the standard empty line every list page carries
+  // (his report, 2026-09-12: a bare grid reads as broken, not as empty).
+  if (filtered.length === 0) {
+    appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps yet — <b>+ New</b> scaffolds your first one.</div>`);
     return;
   }
 
