@@ -647,6 +647,9 @@ function gateAdminSubs(): void {
     const orgAdmin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
     const admin = orgAdmin || info?.role === "admin";
     document.getElementById("nav-org-general")?.classList.toggle("hidden", !admin);
+    // The LIBRARY is the admin's curation surface (his ruling, 2026-09-12) —
+    // members meet the library through Marketplace/installs, never this door.
+    document.getElementById("nav-org-library")?.classList.toggle("hidden", !admin);
     // Members on the PLATFORM see nothing org-financial and no catalog:
     // Billing is org_admin's alone; Models/Marketplace open to admins too.
     // The server 403s the reads regardless — this hides the doors. Desktop
