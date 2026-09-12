@@ -167,7 +167,7 @@ function renderList(): void {
   current = null;
 
   if (all.length === 0) {
-    listEl.innerHTML = `<div class="crud-empty">No agents yet — "+ New with AI" describes the standing work to the agent, "+ New" builds one by hand.</div>`;
+    listEl.innerHTML = `<div class="crud-empty">No agents yet — <b>+ New</b> builds one.</div>`;
     return;
   }
   if (filtered.length === 0) {

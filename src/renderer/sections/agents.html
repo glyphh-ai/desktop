@@ -12,7 +12,7 @@
           <p class="section-desc">Your standing workforce — the loop and prompt each agent runs, and its schedule with real last-run status.</p>
           <div id="agents-toolbar" class="crud-toolbar">
             <input id="agent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
-            <button id="agent-new-btn" class="action-btn primary">+ New with AI</button>
+            <button id="agent-new-btn" class="action-btn primary hidden">+ New with AI</button>
             <button id="agent-manual-new-btn" class="action-btn" title="Create an agent by hand">+ New</button>
           </div>
           <div id="agents-list" class="crud-cards"></div>
@@ -21,7 +21,7 @@
           <div id="agent-editor" class="crud-inline-form hidden">
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="agent-back-link">&larr; Agents</a>
-              <a id="agent-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <a id="agent-ai-btn" class="lib-ai-link hidden" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
               <div class="crud-spacer"></div>
               <button id="agent-edit-btn" class="action-btn" type="button" title="Edit this agent by hand">Edit</button>
               <label class="lib-switch" title="Keep this agent's tasks armed">
