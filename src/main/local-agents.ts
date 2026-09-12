@@ -53,8 +53,12 @@ export interface AgentRow {
   description: string;
   /** The standing instruction every one of this agent's runs opens with. */
   prompt: string;
-  /** Which CLI loop runs it (a cli-agents.ts id). */
+  /** Which CLI loop runs it (a cli-agents.ts id). Null when the agent is a
+   *  PROVIDER agent instead — an agent is one or the other, never both. */
   loopId: string | null;
+  /** The provider slug when this agent is a provider+model agent (no CLI):
+   *  the model on its own, for work that is just thinking and writing. */
+  provider: string;
   /** Optional model override; empty = the loop's own model. */
   model: string;
   /** Skill slugs this agent may load. */
@@ -124,7 +128,7 @@ export function getAgent(ref: string): AgentRow {
 
 interface AgentInput {
   slug?: string; name?: string; description?: string; prompt?: string;
-  loopId?: string | null; model?: string; skills?: string[]; apps?: string[];
+  loopId?: string | null; provider?: string; model?: string; skills?: string[]; apps?: string[];
   live?: boolean; guardrails?: GuardrailsPolicy | null;
 }
 
@@ -161,6 +165,7 @@ export function saveAgent(input: AgentInput): AgentRow {
     description: String(input.description ?? existing?.description ?? ""),
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
     loopId: input.loopId === undefined ? existing?.loopId ?? null : (input.loopId || null),
+    provider: input.provider === undefined ? existing?.provider ?? "" : String(input.provider || ""),
     model: String(input.model ?? existing?.model ?? ""),
     skills: Array.isArray(input.skills) ? input.skills.map(String) : existing?.skills ?? [],
     apps: Array.isArray(input.apps) ? input.apps.map(String) : existing?.apps ?? [],
@@ -335,7 +340,12 @@ export function agentTaskRunning(taskId: string): boolean {
  *  the loop that does the work, the standing prompt, the model override. */
 function agentContext(agentId: string): ScheduleContext | null {
   const agent = readAgent(agentId);
-  if (!agent || !agent.loopId) return null;
+  if (!agent) return null;
+  // A PROVIDER agent has no CLI to spawn — its turn goes through the gateway
+  // (router.glyphh.ai + a minted member key), which is not wired yet. Return
+  // nothing rather than quietly borrowing some other loop's CLI; the run
+  // records a readable failure instead of doing the wrong work silently.
+  if (!agent.loopId) return null;
   return {
     loopId: agent.loopId,
     prompt: agent.prompt,
@@ -346,7 +356,11 @@ function agentContext(agentId: string): ScheduleContext | null {
 /** The roster a TASK SLOT picks from. Paused agents still appear — a slot
  *  binding is authoring, not arming; the live switch is what arms. */
 function agentRoster(): SlotAgent[] {
-  return listAgents().map((a) => ({ id: a.id, name: a.name, loopId: a.loopId }));
+  return listAgents().map((a) => ({
+    id: a.id,
+    name: a.provider ? `${a.name} — ${a.provider}` : a.name,
+    loopId: a.loopId,
+  }));
 }
 
 export function registerLocalAgentsIpc(): void {

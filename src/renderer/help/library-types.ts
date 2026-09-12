@@ -104,8 +104,11 @@ export interface AgentSummary {
   description: string;
   /** The standing instruction every one of its runs opens with. */
   prompt: string;
-  /** The CLI loop it runs on (a cli-agents id). */
+  /** The CLI loop it runs on (a cli-agents id). Null when it is a PROVIDER
+   *  agent — an agent is one or the other, never both. */
   loopId: string | null;
+  /** The provider slug when this is a provider+model agent (no CLI). */
+  provider: string;
   /** Model override; "" = the loop's own. */
   model: string;
   skills: string[];

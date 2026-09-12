@@ -74,7 +74,6 @@ function showEditor(agent: CliAgent | null): void {
   (el<HTMLInputElement>("loop-icon")!).value = agent?.icon ?? "";
   // The Claude case is one click: a new agent lands pre-filled.
   (el<HTMLInputElement>("loop-cmd")!).value = agent?.cmd ?? "claude";
-  (el<HTMLInputElement>("loop-model")!).value = agent?.model ?? "";
   (el<HTMLInputElement>("loop-folder-input")!).value = agent?.cwd ?? "";
   (el<HTMLInputElement>("loop-mcp")!).checked = agent ? agent.mcp : true;
   (el<HTMLSelectElement>("loop-session")!).value = agent?.session ?? "keep";
@@ -89,6 +88,7 @@ function showEditor(agent: CliAgent | null): void {
   el("loop-apikey-current")?.classList.toggle("hidden", !agent?.apiKey);
   syncApiKeyRow();
   syncCliRow();
+  paintModelRow(agent?.model ?? "");
   el("loop-open-btn")?.classList.toggle("hidden", !agent);
   el("loop-delete-btn")?.classList.toggle("hidden", !agent);
   const head = el("loop-detail-head");
@@ -106,10 +106,60 @@ const CLI_KEY_NAMES: Record<string, string> = {
   cursor: "CURSOR_API_KEY",
 };
 
+/** A governed model, as the server's effective set hands it over. */
+interface CatalogModel { id: string; name: string; providerSlug?: string; pickerVisible?: boolean }
+let models: CatalogModel[] = [];
+
+/** Vendor → the catalog's provider slug. Claude's models come from Anthropic
+ *  as a PROVIDER on the server; an unrecognized CLI (custom, or one proxied
+ *  through the router) gets the whole list rather than an empty one. */
+const CLI_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+
+/** The server's effective set — catalog ∩ provider-enabled ∩ (org-supported,
+ *  only on a governance plan) ∩ the caller's role grant. All of that is
+ *  resolved server-side; this just renders what comes back. */
+async function loadModels(): Promise<void> {
+  const r = await (window.glyphh as unknown as { workspacesModelCatalog?: () => Promise<{ ok: boolean; models?: CatalogModel[] }> })
+    .workspacesModelCatalog?.().catch(() => null);
+  models = (r?.ok ? r.models ?? [] : []).filter((m) => m.pickerVisible !== false);
+}
+
+/** Paint the Model dropdown for whichever CLI is selected. */
+function paintModelRow(selected: string): void {
+  const sel = el<HTMLSelectElement>("loop-model");
+  if (!sel) return;
+  const cli = el<HTMLSelectElement>("loop-cli")?.value ?? "claude";
+  const want = CLI_PROVIDER[cli];
+  const pool = want ? models.filter((m) => m.providerSlug === want) : models;
+  const list = pool.length ? pool : models;
+  sel.innerHTML = "";
+  const auto = document.createElement("option");
+  auto.value = "";
+  auto.textContent = "The CLI's default";
+  sel.appendChild(auto);
+  for (const m of list) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.name || m.id;
+    sel.appendChild(opt);
+  }
+  // A model the org has since stopped supporting still shows its binding
+  // rather than silently snapping the loop to something else.
+  if (selected && !list.some((m) => m.id === selected)) {
+    const opt = document.createElement("option");
+    opt.value = selected;
+    opt.textContent = `${selected} (not available)`;
+    sel.appendChild(opt);
+  }
+  sel.value = selected || "";
+}
+
 /** Branded CLIs wear their own marks — the emoji field is for custom ones. */
 function syncCliRow(): void {
   const cli = el<HTMLSelectElement>("loop-cli")?.value ?? "claude";
   el("loop-icon-row")?.classList.toggle("hidden", cli in CLI_MARK_URLS);
+  // The model list follows the CLI's vendor.
+  paintModelRow(el<HTMLSelectElement>("loop-model")?.value ?? "");
   // The Variable field follows the CLI unless the user typed their own.
   const nameEl = el<HTMLInputElement>("loop-apikey-name");
   if (nameEl) {
@@ -192,6 +242,9 @@ async function refresh(): Promise<void> {
 
 export function loadLoops(): void {
   showList();
+  // The governed catalog rides along — the Model field is a dropdown over
+  // the effective set, not a slug anyone can mistype.
+  void loadModels();
   void refresh();
 }
 
@@ -269,7 +322,7 @@ export function initLoopsEvents(): void {
       icon: el<HTMLInputElement>("loop-icon")?.value ?? "",
       cmd: el<HTMLInputElement>("loop-cmd")?.value ?? "",
       cwd: el<HTMLInputElement>("loop-folder-input")?.value ?? "",
-      model: el<HTMLInputElement>("loop-model")?.value ?? "",
+      model: el<HTMLSelectElement>("loop-model")?.value ?? "",
       mcp: el<HTMLInputElement>("loop-mcp")?.checked !== false,
       session: el<HTMLSelectElement>("loop-session")?.value ?? "keep",
       permission: el<HTMLSelectElement>("loop-permission")?.value ?? "ask",

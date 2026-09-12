@@ -61,7 +61,9 @@ const fName = $a<HTMLInputElement>("agent-f-name");
 const fSlug = $a<HTMLInputElement>("agent-f-slug");
 const fDesc = $a<HTMLTextAreaElement>("agent-f-desc");
 const fPrompt = $a<HTMLTextAreaElement>("agent-f-prompt");
+const fSource = $a<HTMLSelectElement>("agent-f-source");
 const fLoop = $a<HTMLSelectElement>("agent-f-loop");
+const fProvider = $a<HTMLSelectElement>("agent-f-provider");
 const fModel = $a<HTMLSelectElement>("agent-f-model");
 const fSkills = $a("agent-f-skills");
 const fApps = $a<HTMLInputElement>("agent-f-apps");
@@ -108,7 +110,7 @@ function hueFor(id: string): number {
 /** The agent's cast as a small round badge: the loop's initial on a stable
  *  per-loop color, plus the model override when it carries one. */
 function castBadges(agent: AgentSummary): string {
-  const ids = [agent.loopId, agent.model].filter((x): x is string => !!x);
+  const ids = [agent.provider || agent.loopId, agent.model].filter((x): x is string => !!x);
   if (!ids.length) return "";
   const dots = ids.map((id) => {
     const bare = id.includes("::") ? id.slice(id.indexOf("::") + 2) : id;
@@ -523,7 +525,9 @@ async function openDetail(id: string): Promise<void> {
     <h3 class="lib-read-title">${escapeHtml(current.name)}</h3>
     <p class="lib-read-desc">${escapeHtml(current.description || "")}</p>
     <div class="lib-read-meta">
-      ${readRow("Loop", loopName(current.loopId))}
+      ${current.provider
+        ? readRow("Provider", current.provider)
+        : readRow("Loop", loopName(current.loopId))}
       ${readRow("Model", current.model ? modelName(current.model) : "the loop's own")}
       ${current.skills?.length ? readRow("Skills", current.skills.join(", ")) : ""}
       ${current.apps?.length ? readRow("Apps", current.apps.join(", ")) : ""}
@@ -729,23 +733,72 @@ function readSkills(): string[] {
   return out;
 }
 
-/** Vendor → the catalog's provider slug, so the model list narrows to what
- *  the chosen loop can actually address (the agent panel's rule). An
- *  unrecognized CLI gets the full list rather than an empty one. */
+/** Vendor → the catalog's provider slug, so a loop's models narrow to what
+ *  its CLI can actually address. An unrecognized CLI (custom, or one proxied
+ *  through the router) gets the full list rather than an empty one. */
 const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
 
-/** Repaint the Model dropdown for whichever loop is selected. */
+/** The org's PROVIDERS, derived from the effective set rather than fetched.
+ *  Every slug present in `models.available()` is by definition one the org
+ *  enabled and supports — and, on a governance plan, one this member's role
+ *  allows. Reading them off the catalog keeps the two in step by
+ *  construction; a separate provider list could disagree with the models. */
+function providerSlugs(): string[] {
+  return [...new Set(models.map((m) => m.providerSlug).filter((s): s is string => !!s))].sort();
+}
+
+function paintFormProvider(selected: string): void {
+  if (!fProvider) return;
+  const slugs = providerSlugs();
+  fProvider.innerHTML = "";
+  if (!slugs.length) {
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "(no providers enabled for this org)";
+    fProvider.appendChild(none);
+    return;
+  }
+  for (const s of slugs) {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    fProvider.appendChild(opt);
+  }
+  fProvider.value = selected && slugs.includes(selected) ? selected : slugs[0]!;
+}
+
+/** Show the Loop row or the Provider row — an agent is one or the other. */
+function syncSourceRow(): void {
+  const provider = fSource?.value === "provider";
+  $a("agent-f-loop-row")?.classList.toggle("hidden", provider);
+  $a("agent-f-provider-row")?.classList.toggle("hidden", !provider);
+}
+
+/** Repaint the Model dropdown for whichever SOURCE is selected: a loop
+ *  narrows by its CLI's vendor, a provider by itself. */
 function paintFormModel(selected: string): void {
   if (!fModel) return;
-  const loop = loops.find((l) => l.id === fLoop.value);
-  const want = loop?.cli ? LOOP_PROVIDER[loop.cli] : undefined;
+  const byProvider = fSource?.value === "provider";
+  const want = byProvider
+    ? (fProvider?.value || undefined)
+    : (() => { const l = loops.find((x) => x.id === fLoop.value); return l?.cli ? LOOP_PROVIDER[l.cli] : undefined; })();
   const pool = want ? models.filter((m) => m.providerSlug === want) : models;
-  const list = pool.length ? pool : models;
+  // A loop whose vendor isn't in the catalog still offers everything; a
+  // PROVIDER that offers nothing stays empty — that is a real answer.
+  const list = pool.length ? pool : (byProvider ? [] : models);
   fModel.innerHTML = "";
-  const auto = document.createElement("option");
-  auto.value = "";
-  auto.textContent = loop?.model ? `The loop's own — ${loop.model}` : "The loop's own";
-  fModel.appendChild(auto);
+  if (!byProvider) {
+    const loop = loops.find((l) => l.id === fLoop.value);
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = loop?.model ? `The loop's own — ${loop.model}` : "The loop's own";
+    fModel.appendChild(auto);
+  } else if (!list.length) {
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "(no models for this provider)";
+    fModel.appendChild(none);
+  }
   for (const m of list) {
     const opt = document.createElement("option");
     opt.value = m.id;
@@ -755,7 +808,7 @@ function paintFormModel(selected: string): void {
   if (selected && !list.some((m) => m.id === selected)) {
     const opt = document.createElement("option");
     opt.value = selected;
-    opt.textContent = `${selected} (not in the catalog)`;
+    opt.textContent = `${selected} (not available)`;
     fModel.appendChild(opt);
   }
   fModel.value = selected || "";
@@ -798,6 +851,10 @@ async function openForm(agent: Agent | null): Promise<void> {
   fDesc.value = agent?.description ?? "";
   fPrompt.value = agent?.prompt ?? "";
   fLoop.value = agent?.loopId ?? loops[0]?.id ?? "";
+  // An agent is a LOOP or a PROVIDER — whichever it carries decides the shape.
+  if (fSource) fSource.value = agent?.provider ? "provider" : "loop";
+  paintFormProvider(agent?.provider ?? "");
+  syncSourceRow();
   fApps.value = (agent?.apps ?? []).join(", ");
   paintFormModel(agent?.model ?? "");
   renderSkillsControl(agent?.skills ?? []);
@@ -849,7 +906,10 @@ async function saveForm(): Promise<void> {
     name,
     description: fDesc.value.trim(),
     prompt: fPrompt.value,
-    loopId: fLoop.value || null,
+    // Exactly one source is carried; the other is cleared, so a switched
+    // agent never keeps a stale binding the form no longer shows.
+    loopId: fSource?.value === "provider" ? null : (fLoop.value || null),
+    provider: fSource?.value === "provider" ? (fProvider?.value || "") : "",
     model: fModel.value || "",
     skills: readSkills(),
     apps: fApps.value.split(",").map((s) => s.trim()).filter(Boolean),
@@ -934,6 +994,8 @@ export function initAgentsEvents(): void {
   $a("agent-f-task-add")?.addEventListener("click", () => addTaskDraft(null));
   // The loop decides which models are addressable.
   fLoop?.addEventListener("change", () => paintFormModel(fModel?.value ?? ""));
+  fProvider?.addEventListener("change", () => paintFormModel(""));
+  fSource?.addEventListener("change", () => { syncSourceRow(); paintFormModel(""); });
   // Create mode: a blank slug fills itself from the name.
   fName?.addEventListener("blur", () => {
     if (!formAgent && !fSlug.value.trim() && fName.value.trim()) fSlug.value = slugify(fName.value);

@@ -216,10 +216,12 @@ function renderDefaultModels(
     }
     const opts = [`<option value="">Auto — first agent</option>`]
       .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === def ? " selected" : ""}>${escapeHtml(c.name)}</option>`));
+    // NO model override here (his rule, 2026-09-11): a slot names WHO does
+    // the work, and the agent brings its own model. Overriding the model at
+    // the task would fork one agent's cast per task it appears in.
     return `<div class="task-model-row">
       <span class="task-model-label">${escapeHtml(r.label || r.name)}</span>
       <select class="settings-input task-model-select" data-role="${escapeHtml(r.name)}">${opts.join("")}</select>
-      <input class="settings-input task-model-override" data-role="${escapeHtml(r.name)}" value="${escapeHtml(r.model ?? "")}" placeholder="model override" spellcheck="false" autocomplete="off" style="max-width:170px;font-family:ui-monospace,monospace;" />
     </div>`;
   }).join("");
   return `<hr class="lib-divider" />
@@ -255,21 +257,8 @@ function wireDefaultModelPickers(): void {
       })();
     });
   });
-  // The slot's model OVERRIDE — written with the CURRENT agent so the same
-  // lane never clobbers the binding; empty clears back to the agent's model.
-  detailEl.querySelectorAll<HTMLInputElement>(".task-model-override").forEach((inp) => {
-    inp.addEventListener("change", () => {
-      void (async () => {
-        if (!current) return;
-        const role = inp.dataset.role!;
-        const agentSel = detailEl.querySelector<HTMLSelectElement>(`.task-model-select[data-role="${role}"]`);
-        inp.disabled = true;
-        const res = await window.glyphh.loopSetRoleDefault(current.id, role, agentSel?.value || null, inp.value.trim() || null);
-        inp.disabled = false;
-        report(res);
-      })();
-    });
-  });
+  // (No model-override lane — the slot names the AGENT and the agent brings
+  // its model. Overriding here forked one agent's cast per task.)
 }
 
 export function initTasksPage(): void {

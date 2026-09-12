@@ -67,11 +67,24 @@
             <label class="settings-label">Prompt <span class="field-hint-inline">&mdash; the standing instruction every run opens with</span></label>
             <textarea id="agent-f-prompt" class="settings-input" rows="6" placeholder="You are the morning briefing agent. Keep it to five bullets…" spellcheck="true" style="resize:vertical;"></textarea>
 
-            <label class="settings-label">Loop</label>
-            <select id="agent-f-loop" class="settings-input"></select>
-            <p class="field-hint">The CLI this agent's work runs on. Its own model is used unless you override it below.</p>
+            <label class="settings-label">Runs on</label>
+            <select id="agent-f-source" class="settings-input">
+              <option value="loop">A coding loop &mdash; a CLI with tools and a folder</option>
+              <option value="provider">A provider and model &mdash; no CLI</option>
+            </select>
+            <p class="field-hint">A loop brings its own command, tools and working folder. A provider is the model on its own &mdash; the right shape for work that is just thinking and writing.</p>
 
-            <label class="settings-label">Model <span class="field-hint-inline">&mdash; optional; blank uses the loop's own</span></label>
+            <div id="agent-f-loop-row">
+              <label class="settings-label">Loop</label>
+              <select id="agent-f-loop" class="settings-input"></select>
+            </div>
+
+            <div id="agent-f-provider-row" class="hidden">
+              <label class="settings-label">Provider</label>
+              <select id="agent-f-provider" class="settings-input"></select>
+            </div>
+
+            <label class="settings-label">Model <span class="field-hint-inline">&mdash; filtered by whichever is chosen above</span></label>
             <select id="agent-f-model" class="settings-input"></select>
 
             <!-- Skills the agent may load — the local skills library. -->
