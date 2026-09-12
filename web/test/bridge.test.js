@@ -19,6 +19,10 @@ const fake = {
     update: vi.fn(async () => ({})),
   },
   connections: {
+    // connectionsList calls this FIRST for its org-sync side-effect
+    // (web-contract.js) — without it the double throws and the whole
+    // read falls back to empty, which is what broke this suite.
+    pipedreamList: vi.fn(async () => []),
     resolvedTools: vi.fn(async () => ({
       connections: [{ slug: 'gmail', name: 'Gmail', scope: 'personal', tools: [{ name: 'send' }], availableTools: [{ name: 'send' }, { name: 'find' }] }],
     })),

@@ -32,6 +32,10 @@ function authedClient() {
     },
     profile: { get: vi.fn(async () => ({ timezone: 'UTC' })), update: vi.fn(async () => ({})), prefs: vi.fn(async () => ({ theme: 'nord' })), setPrefs: vi.fn(async (p) => p) },
     connections: {
+      // connectionsList calls this FIRST for its org-sync side-effect
+      // (web-contract.js) — without it the double throws and the whole
+      // read falls back to empty, which is what broke this suite.
+      pipedreamList: vi.fn(async () => []),
       resolvedTools: vi.fn(async () => ({ connections: [{ slug: 'gmail', name: 'Gmail', scope: 'personal', tools: [{ name: 'send' }], availableTools: [{ name: 'send' }, { name: 'find' }] }] })),
       apps: vi.fn(async () => ({ apps: [{ id: 'slack', name: 'Slack', icon: null }] })),
       personalMcpList: vi.fn(async () => [{ slug: 'p', name: 'P', url: 'u', enabled: true }]),
