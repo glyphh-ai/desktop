@@ -31,13 +31,28 @@ const CLOSED: PlanGates = {
   gatewayAllowed: false, trialEndsAt: null, governance: false, sso: false, rpm: 0,
 };
 
-/** Which plan carries each capability — the upsell line's copy. */
-const CARRIED_BY: Record<string, string> = {
-  governance: "Pro",
-  sso: "Enterprise",
-};
-
 let cached: Promise<PlanGates> | null = null;
+let carrierCache: Promise<Record<string, string>> | null = null;
+
+/** Which plan carries each capability, READ FROM THE CATALOG — the cheapest
+ *  active tier whose column is true. Hardcoding "Pro" here would be correct
+ *  today and a lie the day the matrix moves; the whole point of two plan
+ *  columns is that the tiers are data. */
+function carriers(): Promise<Record<string, string>> {
+  carrierCache ??= (window.glyphh as unknown as {
+    billingPlans?: () => Promise<Array<{ tier: string; displayName?: string; monthlyUsdCents?: number; sso?: boolean; governance?: boolean }>>;
+  }).billingPlans?.()
+    .then((plans) => {
+      const byPrice = [...(plans ?? [])].sort((a, b) => (a.monthlyUsdCents ?? 0) - (b.monthlyUsdCents ?? 0));
+      const name = (has: (p: typeof byPrice[number]) => boolean): string => {
+        const hit = byPrice.find(has);
+        return hit ? (hit.displayName || hit.tier) : "a paid plan";
+      };
+      return { governance: name((p) => !!p.governance), sso: name((p) => !!p.sso) };
+    })
+    .catch(() => ({})) ?? Promise.resolve({});
+  return carrierCache;
+}
 
 /** The org's gates. The SDK caches with a TTL; this de-duplicates within a
  *  paint so twenty gated controls cost one IPC round-trip. */
@@ -50,6 +65,7 @@ export function planGates(): Promise<PlanGates> {
 /** Drop the memo — after a plan change, so the UI re-gates immediately. */
 export function invalidatePlanGates(): void {
   cached = null;
+  carrierCache = null;
 }
 
 /**
@@ -84,9 +100,16 @@ export async function gateSurface(
   if (!allowed) {
     const note = document.createElement("div");
     note.className = "plan-locked-note";
-    const plan = CARRIED_BY[capability] ?? "a paid plan";
-    note.textContent = `${what} is on ${plan}. You can see how it works here — upgrade to use it.`;
+    note.textContent = `${what} is on a paid plan. You can see how it works here — upgrade to use it.`;
     host.prepend(note);
+    // Name the REAL tier once the catalog answers; the note reads correctly
+    // either way, so a slow or failed lookup never blocks the paint.
+    void carriers().then((by) => {
+      const plan = by[capability];
+      if (plan && note.isConnected) {
+        note.textContent = `${what} is on ${plan}. You can see how it works here — upgrade to use it.`;
+      }
+    });
   }
   return allowed;
 }

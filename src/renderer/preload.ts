@@ -188,6 +188,9 @@ export interface AccountBillingPlan {
   monthlyCredits: number;
   maxSeats: number;
   sso: boolean;
+  /** Role governance — which tier carries it (help/plan-gate.ts names the
+   *  real plan in an upsell from this rather than hardcoding a tier). */
+  governance?: boolean;
   /** A PROVISIONED per-org plan: a real invoiced deal, not the generic tier. */
   bespoke?: boolean;
 }
