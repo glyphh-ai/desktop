@@ -1160,14 +1160,10 @@
                           <div class="acct-field acct-field-wide">
                             <label class="settings-label" for="org-panel-name">Organization name</label>
                             <input id="org-panel-name" type="text" class="settings-input" autocomplete="off" />
-                        <label class="settings-toggle set-pref-row" style="margin-top:16px;">
-                          <div class="set-pref-text">
-                            <div class="set-pref-title">Force semantic routing</div>
-                            <div class="set-pref-desc">Members' model pickers show only "Auto" — the gateway picks the best model from each member's role-allowed set per request. Roles can exempt specific models (Roles &rarr; Models).</div>
-                          </div>
-                          <input type="checkbox" id="org-panel-semantic-routing" />
-                          <span class="toggle-switch"></span>
-                        </label>
+                        <!-- (Force semantic routing left the org, 2026-09-12: it is a
+                             ROLE control now, per loop — Roles -> Loops -> force auto.
+                             One org switch could not tell a coding loop from a
+                             summarising one.) -->
                           </div>
                         </div>
                       </div>

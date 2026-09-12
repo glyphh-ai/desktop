@@ -26,6 +26,7 @@ import path from "path";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { gatewayCreds, writeGatewayEnv, clearGatewayEnv } from "./gateway-token.js";
 
 export const AGENTS_DIR = path.join(homedir(), ".glyphh", "loops");
 
@@ -384,7 +385,10 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex or gemini for scheduled loops`);
   }
   const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${core}` : core;
-  return row.apiKey && fs.existsSync(envFile(row.id))
+  // Source the env file whenever it EXISTS, not only when a BYOK key is set:
+  // the gateway injection writes the same file (base URL + minted key), and
+  // gating on row.apiKey would have made the whole last mile a silent no-op.
+  return fs.existsSync(envFile(row.id))
     ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
     : line;
 }
@@ -431,7 +435,10 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   const line = cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
   // The API key sources INVISIBLY — the terminal shows the file path, never
   // the value.
-  return row.apiKey && fs.existsSync(envFile(row.id))
+  // Source the env file whenever it EXISTS, not only when a BYOK key is set:
+  // the gateway injection writes the same file (base URL + minted key), and
+  // gating on row.apiKey would have made the whole last mile a silent no-op.
+  return fs.existsSync(envFile(row.id))
     ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
     : line;
 }
@@ -624,6 +631,23 @@ export function registerCliAgentsIpc(): void {
           if (row.cli === "gemini") ensureGeminiTheme(overrides.light);
         } catch (err) {
           console.warn("[agents] theme pin failed:", err instanceof Error ? err.message : err);
+        }
+      }
+      // THE GATEWAY INJECTION (the last mile): point the CLI at the router
+      // and hand it this member's minted key, so the role's models, rate and
+      // budget bind and the spend lands under their name. BYOK WINS — a loop
+      // the member gave its own key keeps using it; re-routing their traffic
+      // through our meter without asking would be the wrong surprise.
+      const cliProfile = CLI_PROFILES[row.cli];
+      if (cliProfile?.baseUrlEnv.length) {
+        if (row.apiKey) {
+          clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+        } else {
+          const creds = await gatewayCreds();
+          // No creds is a NORMAL answer (no plan, closed trial, offline) —
+          // the loop then runs on whatever the CLI is already logged into.
+          if (creds) writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, creds);
+          else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
         }
       }
       if (row.mcp) {

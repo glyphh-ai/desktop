@@ -53,8 +53,6 @@ const ADDR_FIELDS: Array<[keyof Address, string]> = [
 function paint(): void {
   const name = $("org-panel-name") as HTMLInputElement | null;
   if (name && document.activeElement !== name) name.value = org?.name || "";
-  const sem = $("org-panel-semantic-routing") as HTMLInputElement | null;
-  if (sem) sem.checked = (org as { forceSemanticRouting?: boolean } | null)?.forceSemanticRouting === true;
   const a = org?.address;
   for (const [key, id] of ADDR_FIELDS) {
     const el = $(id) as HTMLInputElement | null;
@@ -109,9 +107,6 @@ export async function loadOrgPanel(): Promise<void> {
 export function initOrgPanel(): void {
   if (wired) return;
   wired = true;
-  ($("org-panel-semantic-routing") as HTMLInputElement | null)?.addEventListener("change", (e) => {
-    void save({ forceSemanticRouting: (e.target as HTMLInputElement).checked } as OrgUpdate);
-  });
   ($("org-panel-name") as HTMLInputElement | null)?.addEventListener("blur", (e) => {
     void save({ name: (e.target as HTMLInputElement).value.trim() });
   });
