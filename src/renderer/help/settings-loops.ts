@@ -1,3 +1,4 @@
+import { gateSurface } from "./plan-gate.js";
 /**
  * settings-loops.ts — LOOPS AS SETTINGS (his ruling, 2026-09-12: "they are
  * fixed settings -> loops").
@@ -277,6 +278,11 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
 export async function loadOrgLoops(): Promise<void> {
   const host = el("org-loops-accordion");
   if (!host) return;
+  // On Free the default loops are ON and stay on (his rule, 2026-09-13): the
+  // org list paints, the toggles are disabled, the standard banner carries the
+  // Billing door. Members' own Settings → Loops is untouched by this gate.
+  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="org-loops"]'),
+    "governance", "Loop governance");
   host.innerHTML = `<div class="crud-empty">Loading…</div>`;
   fail("org-loops-error", "");
 

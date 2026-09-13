@@ -10,6 +10,7 @@
  */
 
 import { renderPaginationBar, confirmAction } from "./shared.js";
+import { gateSurface } from "./plan-gate.js";
 import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
@@ -914,6 +915,11 @@ async function refresh(): Promise<void> {
 }
 
 export function loadModelsAdmin(): void {
+  // LICENSE first (his rule, 2026-09-13): on Free every supported model is
+  // available and the list is NOT editable — visible, on, disabled, with the
+  // standard banner + Billing door. The server answers E_ENTITLEMENT anyway.
+  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="models"]'),
+    "governance", "Model governance");
   if (!initialized) {
     initialized = true;
     el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
