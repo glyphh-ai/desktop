@@ -20,14 +20,14 @@ import { WORKSPACES_DIR, workspaceId } from "./layout-manager.js";
 interface Entry { v: string; at: number }
 type Snapshot = Record<string, Entry>;
 
-const GLOBAL_FILE = path.join(WORKSPACES_DIR, "_global.json");
+const GLOBAL_FILE = path.join(WORKSPACES_DIR(), "_global.json");
 
 const WS_KEY_RE = /^(?:workbench:namedlayout|workbench:layoutsession|echo:layout):([^:]+)/;
 
 /** Which file an entry lives in: the named workspace's, or the global one. */
 function shardOf(key: string): string {
   const ws = WS_KEY_RE.exec(key)?.[1];
-  return ws ? path.join(WORKSPACES_DIR, workspaceId(ws), "state.json") : GLOBAL_FILE;
+  return ws ? path.join(WORKSPACES_DIR(), workspaceId(ws), "state.json") : GLOBAL_FILE;
 }
 
 function readShard(file: string): Snapshot {
@@ -55,7 +55,7 @@ export function loadWorkspaceState(): Snapshot {
   const merged: Snapshot = {};
   const files: string[] = [GLOBAL_FILE];
   try {
-    for (const id of fs.readdirSync(WORKSPACES_DIR)) files.push(path.join(WORKSPACES_DIR, id, "state.json"));
+    for (const id of fs.readdirSync(WORKSPACES_DIR())) files.push(path.join(WORKSPACES_DIR(), id, "state.json"));
   } catch { /* no workspaces yet */ }
   for (const f of files) Object.assign(merged, readShard(f));
   return merged;
@@ -76,7 +76,7 @@ export function saveWorkspaceState(snapshot: Snapshot): void {
   const known = new Set(shards.keys());
   const existing: string[] = [GLOBAL_FILE];
   try {
-    for (const id of fs.readdirSync(WORKSPACES_DIR)) existing.push(path.join(WORKSPACES_DIR, id, "state.json"));
+    for (const id of fs.readdirSync(WORKSPACES_DIR())) existing.push(path.join(WORKSPACES_DIR(), id, "state.json"));
   } catch { /* none */ }
   for (const f of existing) if (!known.has(f) && fs.existsSync(f)) writeShard(f, {});
   for (const [file, shard] of shards) writeShard(file, shard);

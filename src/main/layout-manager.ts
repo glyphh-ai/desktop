@@ -40,7 +40,7 @@ export interface ServerLayout {
   space?: "chat" | "cowork" | "code";
 }
 
-export const WORKSPACES_DIR = path.join(homedir(), ".glyphh", "workspaces");
+export const WORKSPACES_DIR = (): string => userScopedPath("workspaces");
 
 /** The folder id a workspace persists under — its name, slugged. */
 export function workspaceId(name: string): string {
@@ -91,9 +91,9 @@ export interface GridLayout {
 export async function fetchServerLayouts(): Promise<ServerLayout[]> {
   const out: ServerLayout[] = [];
   let ids: string[] = [];
-  try { ids = fs.readdirSync(WORKSPACES_DIR); } catch { return out; }
+  try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return out; }
   for (const id of ids) {
-    const file = path.join(WORKSPACES_DIR, id, "workspace.json");
+    const file = path.join(WORKSPACES_DIR(), id, "workspace.json");
     try {
       const grid = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
       if (!Array.isArray(grid.cells)) continue;
@@ -145,7 +145,7 @@ export class LayoutManager {
   async deleteLayout(name: string): Promise<boolean> {
     if (!this.layouts.has(name)) return false;
     this.layouts.delete(name);
-    try { fs.rmSync(path.join(WORKSPACES_DIR, workspaceId(name)), { recursive: true, force: true }); }
+    try { fs.rmSync(path.join(WORKSPACES_DIR(), workspaceId(name)), { recursive: true, force: true }); }
     catch { /* already gone */ }
     return true;
   }
@@ -174,7 +174,7 @@ export class LayoutManager {
         const grid = obj.version === 2
           ? (obj as unknown as GridLayout)
           : this.migrateLayout(obj as unknown as LegacyLayout);
-        if (!fs.existsSync(path.join(WORKSPACES_DIR, workspaceId(grid.name), "workspace.json"))) {
+        if (!fs.existsSync(path.join(WORKSPACES_DIR(), workspaceId(grid.name), "workspace.json"))) {
           this.persistOne(grid);
         }
       }
@@ -183,10 +183,10 @@ export class LayoutManager {
     } catch { /* no legacy cache — nothing to import */ }
 
     let ids: string[] = [];
-    try { ids = fs.readdirSync(WORKSPACES_DIR); } catch { return; }
+    try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return; }
     for (const id of ids) {
       try {
-        const grid = JSON.parse(fs.readFileSync(path.join(WORKSPACES_DIR, id, "workspace.json"), "utf-8")) as GridLayout;
+        const grid = JSON.parse(fs.readFileSync(path.join(WORKSPACES_DIR(), id, "workspace.json"), "utf-8")) as GridLayout;
         if (grid.name && Array.isArray(grid.cells)) this.layouts.set(grid.name, grid);
       } catch { /* not a workspace folder — skip */ }
     }
@@ -194,7 +194,7 @@ export class LayoutManager {
 
   private persistOne(grid: GridLayout): void {
     try {
-      const dir = path.join(WORKSPACES_DIR, workspaceId(grid.name));
+      const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, "workspace.json");
       fs.writeFileSync(`${file}.tmp`, JSON.stringify(grid, null, 2), "utf-8");

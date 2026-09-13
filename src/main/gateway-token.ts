@@ -22,6 +22,7 @@ import fs from "fs";
 import path from "path";
 import { homedir } from "os";
 import { getClient } from "./glyphh-client.js";
+import { userScopedPath } from "./app-paths.js";
 
 /** What the CLI needs to talk to the gateway instead of the vendor. */
 export interface GatewayCreds { baseUrl: string; token: string }
@@ -105,7 +106,7 @@ export async function primeGatewayEnv(
 export function clearGatewayCreds(): void {
   cached = null;
   let ids: string[] = [];
-  try { ids = fs.readdirSync(path.join(homedir(), ".glyphh", "loops")); } catch { return; }
+  try { ids = fs.readdirSync(userScopedPath("loops")); } catch { return; }
   for (const id of ids) {
     // Strip every variable we could have written, whatever CLI the loop is —
     // a loop's vendor may have changed since the key was put there.
@@ -135,7 +136,7 @@ function stripVars(id: string, vars: string[]): void {
   else fs.rmSync(envFile(id), { force: true });
 }
 
-const envFile = (id: string): string => path.join(homedir(), ".glyphh", "loops", id, "env");
+const envFile = (id: string): string => userScopedPath("loops", id, "env");
 
 /**
  * Write the gateway lines into a loop's env file so its next launch routes

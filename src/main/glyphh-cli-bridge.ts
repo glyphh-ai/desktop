@@ -23,11 +23,12 @@ import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
+import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
-const STORE_DIR = path.join(homedir(), ".glyphh");
-const SESSIONS_FILE = path.join(STORE_DIR, "agent-sessions.json");
+const STORE_DIR = (): string => userScopedDir();
+const SESSIONS_FILE = path.join(STORE_DIR(), "agent-sessions.json");
 
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null }
 
@@ -40,7 +41,7 @@ function loadSessionsFile(): SessionsSnapshot {
 
 function saveSessionsFile(snap: SessionsSnapshot): void {
   try {
-    mkdirSync(STORE_DIR, { recursive: true });
+    mkdirSync(STORE_DIR(), { recursive: true });
     writeFileSync(SESSIONS_FILE, JSON.stringify(snap), "utf-8");
   } catch { /* a failed save loses nothing but the recents ordering */ }
 }
@@ -174,7 +175,7 @@ function bridgeMcpFile(): string | null {
   try {
     const { port } = localMcpStatus();
     if (!port) return null;
-    const file = path.join(STORE_DIR, "bridge-mcp.json");
+    const file = path.join(STORE_DIR(), "bridge-mcp.json");
     let token: string | undefined;
     try {
       const existing = JSON.parse(readFileSync(file, "utf-8")) as { mcpServers?: { glyphh?: { headers?: { Authorization?: string } } } };
@@ -182,7 +183,7 @@ function bridgeMcpFile(): string | null {
     } catch { /* first write */ }
     if (!token) token = localMcpGenToken("glyphh-panel", 365).token;
     const cfg = { mcpServers: { glyphh: { type: "http", url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: `Bearer ${token}` } } } };
-    mkdirSync(STORE_DIR, { recursive: true });
+    mkdirSync(STORE_DIR(), { recursive: true });
     writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
     return file;
   } catch { return null; }

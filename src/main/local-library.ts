@@ -27,6 +27,7 @@
 
 import fs from "fs";
 import path from "path";
+import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { spawn } from "child_process";
 import { ipcMain } from "electron";
@@ -34,8 +35,8 @@ import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
 
-const TASKS_DIR = path.join(homedir(), ".glyphh", "tasks");
-const SKILLS_DIR = path.join(homedir(), ".glyphh", "skills");
+const TASKS_DIR = (): string => userScopedPath("tasks");
+const SKILLS_DIR = (): string => userScopedPath("skills");
 
 interface LoopRole { name: string; label?: string; description?: string; default?: string | null; model?: string | null }
 interface LoopManifest { version?: number; type?: "turn" | "memory"; roles?: LoopRole[]; skills?: string[]; connections?: string[]; layout?: string }
@@ -83,22 +84,22 @@ function listRows<T>(dir: string): T[] {
 }
 
 function getLoop(ref: string): LoopRow {
-  const row = readRow<LoopRow>(TASKS_DIR, String(ref));
+  const row = readRow<LoopRow>(TASKS_DIR(), String(ref));
   if (!row) throw new Error(`loop "${ref}" not found`);
   return row;
 }
 function saveLoop(row: LoopRow): LoopRow {
   row.updatedAt = new Date().toISOString();
-  writeRow(TASKS_DIR, row.slug, row);
+  writeRow(TASKS_DIR(), row.slug, row);
   return row;
 }
-export function listSkillRows(): SkillRow[] { return listRows<SkillRow>(SKILLS_DIR); }
+export function listSkillRows(): SkillRow[] { return listRows<SkillRow>(SKILLS_DIR()); }
 export function getSkillRow(ref: string): SkillRow { return getSkill(ref); }
 export function saveSkillRow(input: { slug?: string; name: string; description?: string; prompt?: string }): SkillRow {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a skill needs a name");
   const slug = input.slug ? String(input.slug) : slugify(name);
-  const existing = readRow<SkillRow>(SKILLS_DIR, slug);
+  const existing = readRow<SkillRow>(SKILLS_DIR(), slug);
   const now = new Date().toISOString();
   const row: SkillRow = {
     id: slug, slug, scope: "personal", name,
@@ -109,12 +110,12 @@ export function saveSkillRow(input: { slug?: string; name: string; description?:
     prompt: String(input.prompt ?? existing?.prompt ?? ""),
     code: existing?.code ?? "",
   };
-  writeRow(SKILLS_DIR, slug, row);
+  writeRow(SKILLS_DIR(), slug, row);
   return row;
 }
 
 function getSkill(ref: string): SkillRow {
-  const row = readRow<SkillRow>(SKILLS_DIR, String(ref));
+  const row = readRow<SkillRow>(SKILLS_DIR(), String(ref));
   if (!row) throw new Error(`skill "${ref}" not found`);
   return row;
 }
@@ -272,7 +273,7 @@ const specOf = (row: LoopRow): TaskSpec => ({
 });
 
 export function listTaskSpecs(): TaskSpec[] {
-  return listRows<LoopRow>(TASKS_DIR).filter((r) => !r.builtIn).map(specOf)
+  return listRows<LoopRow>(TASKS_DIR()).filter((r) => !r.builtIn).map(specOf)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -287,7 +288,7 @@ export function saveTaskSpec(input: {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a task needs a name");
   const slug = input.slug ? String(input.slug) : slugify(name);
-  const existing = readRow<LoopRow>(TASKS_DIR, slug);
+  const existing = readRow<LoopRow>(TASKS_DIR(), slug);
   const roles: LoopRole[] = Array.isArray(input.slots) && input.slots.length
     ? input.slots.map((sl, i) => ({
         name: String(sl.name ?? `slot-${i + 1}`),
@@ -304,7 +305,7 @@ export function saveTaskSpec(input: {
     manifest: { ...(existing?.manifest ?? { version: 1, type: "turn" }), roles },
     code: String(input.program ?? existing?.code ?? ""),
   };
-  writeRow(TASKS_DIR, slug, row);
+  writeRow(TASKS_DIR(), slug, row);
   return specOf(row);
 }
 
@@ -342,7 +343,7 @@ export function listTaskRunsFor(ref: string): Array<{ id: string; startedAt: str
 export function registerLocalLibraryIpc(): void {
   // LOOPS
   ipcMain.handle("loops-list", () => ({
-    loops: listRows<LoopRow>(TASKS_DIR)
+    loops: listRows<LoopRow>(TASKS_DIR())
       .map(({ manifest: _m, code: _c, ...summary }) => summary)
       .sort((a, b) => a.name.localeCompare(b.name)),
   }));
@@ -356,7 +357,7 @@ export function registerLocalLibraryIpc(): void {
     return saveLoop(row);
   }));
   ipcMain.handle("library-loop-delete", (_e, ref: string) => env(() => {
-    fs.rmSync(path.join(TASKS_DIR, `${String(ref)}.json`), { force: true });
+    fs.rmSync(path.join(TASKS_DIR(), `${String(ref)}.json`), { force: true });
     const db = getLocalDb();
     for (const s of loadSchedules().filter((x) => x.loop_slug === String(ref))) {
       liveJobs.get(s.id)?.stop();
@@ -368,14 +369,14 @@ export function registerLocalLibraryIpc(): void {
   ipcMain.handle("loops-create", (_e, input: { name?: string } | undefined) => env(() => {
     const name = String(input?.name ?? "New loop").trim() || "New loop";
     const slug = slugify(name);
-    if (readRow(TASKS_DIR, slug)) throw new Error(`a loop named "${slug}" already exists`);
+    if (readRow(TASKS_DIR(), slug)) throw new Error(`a loop named "${slug}" already exists`);
     const row: LoopRow = {
       id: slug, slug, scope: "personal", ownerUserId: null,
       name, description: "", builtIn: false, updatedAt: new Date().toISOString(),
       manifest: { version: 1, type: "turn", roles: [{ name: "main", label: "Main", description: "The agent this loop runs on.", default: null }] },
       code: "",
     };
-    writeRow(TASKS_DIR, slug, row);
+    writeRow(TASKS_DIR(), slug, row);
     return row;
   }));
   // Roles resolve with CHOICES = the CLI AGENTS (a role's default names an
@@ -416,7 +417,7 @@ export function registerLocalLibraryIpc(): void {
 
   // SKILLS
   ipcMain.handle("library-skills-list", () => env(() =>
-    listRows<SkillRow>(SKILLS_DIR)
+    listRows<SkillRow>(SKILLS_DIR())
       .map(({ manifest: _m, prompt: _p, code: _c, ...summary }) => summary)
       .sort((a, b) => a.name.localeCompare(b.name))));
   ipcMain.handle("library-skill-get", (_e, ref: string) => env(() => getSkill(ref)));
@@ -429,23 +430,23 @@ export function registerLocalLibraryIpc(): void {
     if (patch.manifest !== undefined && patch.manifest) row.manifest = patch.manifest;
     row.schedule = row.manifest.schedule ?? null;
     row.updatedAt = new Date().toISOString();
-    writeRow(SKILLS_DIR, row.slug, row);
+    writeRow(SKILLS_DIR(), row.slug, row);
     return row;
   }));
   ipcMain.handle("library-skill-delete", (_e, ref: string) => env(() => {
-    fs.rmSync(path.join(SKILLS_DIR, `${String(ref)}.json`), { force: true });
+    fs.rmSync(path.join(SKILLS_DIR(), `${String(ref)}.json`), { force: true });
     return { deleted: true };
   }));
   ipcMain.handle("skills-create", (_e, input: { name?: string } | undefined) => env(() => {
     const name = String(input?.name ?? "New skill").trim() || "New skill";
     const slug = slugify(name);
-    if (readRow(SKILLS_DIR, slug)) throw new Error(`a skill named "${slug}" already exists`);
+    if (readRow(SKILLS_DIR(), slug)) throw new Error(`a skill named "${slug}" already exists`);
     const row: SkillRow = {
       id: slug, slug, scope: "personal", name, description: "",
       hasCode: false, builtIn: false, schedule: null, updatedAt: new Date().toISOString(),
       manifest: { version: 1 }, prompt: "", code: "",
     };
-    writeRow(SKILLS_DIR, slug, row);
+    writeRow(SKILLS_DIR(), slug, row);
     return row;
   }));
 

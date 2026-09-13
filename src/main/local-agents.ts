@@ -23,6 +23,7 @@
 
 import fs from "fs";
 import path from "path";
+import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import cron from "node-cron";
@@ -32,7 +33,7 @@ import {
   type ScheduleRow, type ScheduleContext, type SlotAgent,
 } from "./local-library.js";
 
-const AGENTS_DIR = path.join(homedir(), ".glyphh", "agents");
+const AGENTS_DIR = (): string => userScopedPath("agents");
 
 /** Local caps. Blank fields mean "no cap" — the pre-purge page called these
  *  guardrails and inherited an org ceiling; locally there is no ceiling, so
@@ -100,20 +101,20 @@ const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36
 // ── Store ────────────────────────────────────────────────────────────────────
 
 function readAgent(slug: string): AgentRow | null {
-  try { return JSON.parse(fs.readFileSync(path.join(AGENTS_DIR, `${slug}.json`), "utf-8")) as AgentRow; }
+  try { return JSON.parse(fs.readFileSync(path.join(AGENTS_DIR(), `${slug}.json`), "utf-8")) as AgentRow; }
   catch { return null; }
 }
 
 function writeAgent(row: AgentRow): void {
-  fs.mkdirSync(AGENTS_DIR, { recursive: true });
-  const file = path.join(AGENTS_DIR, `${row.slug}.json`);
+  fs.mkdirSync(AGENTS_DIR(), { recursive: true });
+  const file = path.join(AGENTS_DIR(), `${row.slug}.json`);
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(row, null, 2), "utf-8");
   fs.renameSync(`${file}.tmp`, file);
 }
 
 export function listAgents(): AgentRow[] {
   let names: string[] = [];
-  try { names = fs.readdirSync(AGENTS_DIR).filter((n) => n.endsWith(".json")); } catch { return []; }
+  try { names = fs.readdirSync(AGENTS_DIR()).filter((n) => n.endsWith(".json")); } catch { return []; }
   return names
     .map((n) => readAgent(n.slice(0, -5)))
     .filter((a): a is AgentRow => !!a)
@@ -188,7 +189,7 @@ export function deleteAgent(ref: string): void {
   for (const t of rawTasksOf(slug)) disarm(t.id);
   db.prepare("DELETE FROM loop_runs WHERE schedule_id IN (SELECT id FROM loop_schedules WHERE owner_agent_id = ?)").run(slug);
   db.prepare("DELETE FROM loop_schedules WHERE owner_agent_id = ?").run(slug);
-  fs.rmSync(path.join(AGENTS_DIR, `${slug}.json`), { force: true });
+  fs.rmSync(path.join(AGENTS_DIR(), `${slug}.json`), { force: true });
 }
 
 // ── Tasks (schedule rows owned by an agent) ──────────────────────────────────

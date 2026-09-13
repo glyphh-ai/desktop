@@ -19,13 +19,14 @@ import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { userScopedPath } from "./app-paths.js";
 
-const ROOT = join(homedir(), ".glyphh", "office");
-const DIRS = { docs: join(ROOT, "docs"), sheets: join(ROOT, "sheets"), slides: join(ROOT, "slides"), design: join(ROOT, "design") } as const;
+const ROOT = (): string => userScopedPath("office");
+const DIRS = { docs: join(ROOT(), "docs"), sheets: join(ROOT(), "sheets"), slides: join(ROOT(), "slides"), design: join(ROOT(), "design") } as const;
 /** Asset bytes live beside the documents: design/assets/<stem>/<assetId>. */
 const DESIGN_ASSETS = join(DIRS.design, "assets");
-const DRIVE_FILE = join(ROOT, "drive.json");
-const SUGGESTIONS_FILE = join(ROOT, "suggestions.json");
+const DRIVE_FILE = join(ROOT(), "drive.json");
+const SUGGESTIONS_FILE = join(ROOT(), "suggestions.json");
 
 // ── wire shapes (what the server used to return) ─────────────────────────────
 

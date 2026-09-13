@@ -37,7 +37,7 @@ app.commandLine.appendSwitch("use-mock-keychain");
 import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
-import { glyphhPath } from "./app-paths.js";
+import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
@@ -295,7 +295,7 @@ async function boot() {
   });
 
   // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
-  const skillsDir = glyphhPath("skills");
+  const skillsDir = userScopedPath("skills");
   electronSession.defaultSession.webRequest.onBeforeRequest(
     { urls: ["file://*chart.umd.min.js"] },
     (details: { url: string }, callback: (response: { redirectURL?: string }) => void) => {

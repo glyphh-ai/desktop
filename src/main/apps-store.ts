@@ -16,9 +16,10 @@
 
 import fs from "fs";
 import path from "path";
+import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 
-export const APPS_DIR = path.join(homedir(), ".glyphh", "apps");
+export const APPS_DIR = (): string => userScopedPath("apps");
 
 /** The stored row — the fields org-apps' toRow() projection reads. */
 export interface LocalAppRow {
@@ -54,10 +55,10 @@ export interface CreateEntryInput {
 
 export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug">> & { secretNames?: string[] };
 
-const rowFile = (slug: string): string => path.join(APPS_DIR, slug, "app.json");
+const rowFile = (slug: string): string => path.join(APPS_DIR(), slug, "app.json");
 
 function writeRow(row: LocalAppRow): void {
-  const dir = path.join(APPS_DIR, row.slug);
+  const dir = path.join(APPS_DIR(), row.slug);
   fs.mkdirSync(dir, { recursive: true });
   const file = rowFile(row.slug);
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(row, null, 2), "utf-8");
@@ -76,7 +77,7 @@ function readRow(slug: string): LocalAppRow | null {
 /** Every registered app on this machine. */
 export async function mine(): Promise<LocalAppRow[]> {
   let ids: string[] = [];
-  try { ids = fs.readdirSync(APPS_DIR); } catch { return []; }
+  try { ids = fs.readdirSync(APPS_DIR()); } catch { return []; }
   const rows: LocalAppRow[] = [];
   for (const id of ids) {
     const row = readRow(id);
@@ -130,7 +131,7 @@ export async function updateEntry(slug: string, patch: UpdateEntryInput): Promis
 }
 
 export async function removeEntry(slug: string): Promise<void> {
-  try { fs.rmSync(path.join(APPS_DIR, slug.toLowerCase().trim()), { recursive: true, force: true }); }
+  try { fs.rmSync(path.join(APPS_DIR(), slug.toLowerCase().trim()), { recursive: true, force: true }); }
   catch { /* already gone */ }
 }
 

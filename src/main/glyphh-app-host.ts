@@ -40,7 +40,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { glyphhPath, appsRoot, appDir } from "./app-paths.js";
+import { userScopedPath, glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
@@ -127,7 +127,7 @@ const KNOWN_CAPABILITIES = new Set([
 const DARWIN_ONLY_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
 
 function customAppsDir(): string {
-  return glyphhPath("custom-apps");
+  return userScopedPath("custom-apps");
 }
 
 /** The active account's org id — the namespace for locally-held apps. Cached

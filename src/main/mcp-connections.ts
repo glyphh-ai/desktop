@@ -22,6 +22,7 @@ import os from "os";
 import http from "http";
 import { ipcMain, shell } from "electron";
 import { getClient } from "./glyphh-client.js";
+import { userScopedPath } from "./app-paths.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
@@ -29,7 +30,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { UnauthorizedError, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
-const CONN_DIR = path.join(os.homedir(), ".glyphh", "connections");
+const CONN_DIR = (): string => userScopedPath("connections");
 
 export interface McpConnRow {
   slug: string;
@@ -49,8 +50,8 @@ interface ConnSecrets {
   codeVerifier?: string;
 }
 
-const rowFile = (slug: string): string => path.join(CONN_DIR, `${slug}.json`);
-const secretsFile = (slug: string): string => path.join(CONN_DIR, `${slug}.secrets.json`);
+const rowFile = (slug: string): string => path.join(CONN_DIR(), `${slug}.json`);
+const secretsFile = (slug: string): string => path.join(CONN_DIR(), `${slug}.secrets.json`);
 const slugify = (name: string): string =>
   name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "mcp";
 
@@ -59,7 +60,7 @@ function readRow(slug: string): McpConnRow | null {
   catch { return null; }
 }
 function writeRow(row: McpConnRow): void {
-  fs.mkdirSync(CONN_DIR, { recursive: true });
+  fs.mkdirSync(CONN_DIR(), { recursive: true });
   fs.writeFileSync(rowFile(row.slug), JSON.stringify(row, null, 2), "utf-8");
 }
 function readSecrets(slug: string): ConnSecrets {
@@ -67,7 +68,7 @@ function readSecrets(slug: string): ConnSecrets {
   catch { return {}; }
 }
 function writeSecrets(slug: string, sec: ConnSecrets): void {
-  fs.mkdirSync(CONN_DIR, { recursive: true });
+  fs.mkdirSync(CONN_DIR(), { recursive: true });
   fs.writeFileSync(secretsFile(slug), JSON.stringify(sec, null, 2), { encoding: "utf-8", mode: 0o600 });
 }
 /**
@@ -100,7 +101,7 @@ async function syncFromServer(): Promise<McpConnRow[]> {
 
 export function listConnRows(): McpConnRow[] {
   let names: string[] = [];
-  try { names = fs.readdirSync(CONN_DIR).filter((n) => n.endsWith(".json") && !n.endsWith(".secrets.json")); }
+  try { names = fs.readdirSync(CONN_DIR()).filter((n) => n.endsWith(".json") && !n.endsWith(".secrets.json")); }
   catch { return []; }
   const out: McpConnRow[] = [];
   for (const n of names) {

@@ -34,7 +34,7 @@ import fs from "fs";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
-import { glyphhPath } from "./app-paths.js";
+import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { getClient } from "./glyphh-client.js";
 
@@ -59,7 +59,7 @@ function requireDeps(): AppServicesDeps {
 const appDbs = new Map<string, Database.Database>();
 
 export function appDataDir(slug: string): string {
-  return glyphhPath("app-data", slug);
+  return userScopedPath("app-data", slug);
 }
 
 function getAppDb(slug: string): Database.Database {

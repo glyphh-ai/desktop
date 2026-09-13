@@ -18,6 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { ipcMain } from "electron";
 import * as store from "./office-store";
+import { userScopedPath } from "./app-paths.js";
 
 export interface GPointMeta {
   /** Bare filename in the org library, e.g. "q3-review.html". */
@@ -142,7 +143,7 @@ const metaOf = (m: WireMeta): GPointMeta => ({
 let migrationDone = false;
 async function migrateLocalDecks(): Promise<void> {
   if (migrationDone) return;
-  const dir = join(homedir(), ".glyphh", "gpoints");
+  const dir = userScopedPath("gpoints");
   let names: string[];
   try {
     names = (await fsp.readdir(dir)).filter((n) => /\.html$/i.test(n));

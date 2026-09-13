@@ -23,12 +23,13 @@
 
 import fs from "fs";
 import path from "path";
+import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { gatewayCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv } from "./gateway-token.js";
 
-export const AGENTS_DIR = path.join(homedir(), ".glyphh", "loops");
+export const AGENTS_DIR = (): string => userScopedPath("loops");
 
 export interface CliAgentRow {
   id: string;
@@ -74,12 +75,12 @@ export interface CliAgentRow {
 /** What renderers get: the row plus the fully composed command to run. */
 export type CliAgentListed = CliAgentRow & { command: string };
 
-const agentFile = (id: string): string => path.join(AGENTS_DIR, id, "agent.json");
-const mcpFile = (id: string): string => path.join(AGENTS_DIR, id, "mcp.json");
+const agentFile = (id: string): string => path.join(AGENTS_DIR(), id, "agent.json");
+const mcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.json");
 /** The secret side of `apiKey`: NAME="value" lines the composed command
  *  sources invisibly (`set -a; . file; set +a`) — the value never types
  *  into the visible terminal and never rides agent.json. */
-const envFile = (id: string): string => path.join(AGENTS_DIR, id, "env");
+const envFile = (id: string): string => path.join(AGENTS_DIR(), id, "env");
 
 const keyHint = (value: string): string =>
   value.length <= 8 ? `${value.slice(0, 2)}…` : `${value.slice(0, 4)}…${value.slice(-4)}`;
@@ -94,7 +95,7 @@ function readEnvValue(id: string, name: string): string {
 }
 
 function writeEnvValue(id: string, name: string, value: string): void {
-  fs.mkdirSync(path.join(AGENTS_DIR, id), { recursive: true });
+  fs.mkdirSync(path.join(AGENTS_DIR(), id), { recursive: true });
   fs.writeFileSync(envFile(id), `${name}="${value.replace(/"/g, '\\"')}"\n`, { encoding: "utf-8", mode: 0o600 });
 }
 
@@ -121,7 +122,7 @@ function readAgent(id: string): CliAgentRow | null {
 }
 
 function writeAgent(row: CliAgentRow): void {
-  const dir = path.join(AGENTS_DIR, row.id);
+  const dir = path.join(AGENTS_DIR(), row.id);
   fs.mkdirSync(dir, { recursive: true });
   const file = agentFile(row.id);
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(row, null, 2), "utf-8");
@@ -150,7 +151,7 @@ function ensureMcpConfig(id: string): void {
       },
     },
   };
-  fs.mkdirSync(path.join(AGENTS_DIR, id), { recursive: true });
+  fs.mkdirSync(path.join(AGENTS_DIR(), id), { recursive: true });
   fs.writeFileSync(mcpFile(id), JSON.stringify(cfg, null, 2), "utf-8");
 }
 
@@ -456,7 +457,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
  */
 export async function primeAllLoopEnv(): Promise<void> {
   let ids: string[] = [];
-  try { ids = fs.readdirSync(AGENTS_DIR); } catch { return; }
+  try { ids = fs.readdirSync(AGENTS_DIR()); } catch { return; }
   const loops: Array<{ id: string; cli: string; hasOwnKey: boolean }> = [];
   for (const id of ids) {
     const row = readAgent(id);
@@ -467,7 +468,7 @@ export async function primeAllLoopEnv(): Promise<void> {
 
 export function listCliAgents(): CliAgentListed[] {
   let ids: string[] = [];
-  try { ids = fs.readdirSync(AGENTS_DIR); } catch { return []; }
+  try { ids = fs.readdirSync(AGENTS_DIR()); } catch { return []; }
   const out: CliAgentListed[] = [];
   for (const id of ids) {
     const row = readAgent(id);
@@ -638,7 +639,7 @@ export function registerCliAgentsIpc(): void {
 
   ipcMain.handle("cli-agents-delete", (_e, id: string) => {
     try {
-      fs.rmSync(path.join(AGENTS_DIR, String(id)), { recursive: true, force: true });
+      fs.rmSync(path.join(AGENTS_DIR(), String(id)), { recursive: true, force: true });
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
