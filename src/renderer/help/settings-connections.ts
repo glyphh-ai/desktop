@@ -109,9 +109,7 @@ export async function loadSettingsConnections(): Promise<void> {
       key: `pd:${c.id}`,
       kind: c.org ? "org" : "pipedream",
       name: c.label || c.appName,
-      sub: c.org
-        ? ((c as { connected?: boolean }).connected ? "Org connection · connected as you" : "Org connection · not connected")
-        : c.appName,
+      sub: c.org ? "Org connection" : c.appName,
       // ON = at least one tool exposed. hiddenTools carries the truth.
       enabled: true,
       icon: null,
