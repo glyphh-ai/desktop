@@ -23,6 +23,7 @@ const fake = {
     // (web-contract.js) — without it the double throws and the whole
     // read falls back to empty, which is what broke this suite.
     pipedreamList: vi.fn(async () => []),
+    personalList: vi.fn(async () => [{ id: 'gmail', appSlug: 'gmail', appName: 'Gmail', name: 'Gmail', enabled: true, healthy: true }]),
     resolvedTools: vi.fn(async () => ({
       connections: [{ slug: 'gmail', name: 'Gmail', scope: 'personal', tools: [{ name: 'send' }], availableTools: [{ name: 'send' }, { name: 'find' }] }],
     })),

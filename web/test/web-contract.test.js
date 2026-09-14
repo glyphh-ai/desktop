@@ -36,6 +36,10 @@ function authedClient() {
       // (web-contract.js) — without it the double throws and the whole
       // read falls back to empty, which is what broke this suite.
       pipedreamList: vi.fn(async () => []),
+      // The management list builds from the RAW rows now (his rule,
+      // 2026-09-13): real ids + the governed `enabled` bit; resolvedTools
+      // only hydrates the tool counts.
+      personalList: vi.fn(async () => [{ id: 'gmail', appSlug: 'gmail', appName: 'Gmail', name: 'Gmail', enabled: true, healthy: true }]),
       resolvedTools: vi.fn(async () => ({ connections: [{ slug: 'gmail', name: 'Gmail', scope: 'personal', tools: [{ name: 'send' }], availableTools: [{ name: 'send' }, { name: 'find' }] }] })),
       apps: vi.fn(async () => ({ apps: [{ id: 'slack', name: 'Slack', icon: null }] })),
       personalMcpList: vi.fn(async () => [{ slug: 'p', name: 'P', url: 'u', enabled: true }]),
