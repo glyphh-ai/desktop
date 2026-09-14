@@ -27,7 +27,8 @@ import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { gatewayCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv } from "./gateway-token.js";
+import { gatewayCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
+import { bridgeWrap } from "./memory-bridge.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -142,17 +143,37 @@ function ensureMcpConfig(id: string): void {
     token = /^Bearer (.+)$/.exec(existing.mcpServers?.glyphh?.headers?.Authorization ?? "")?.[1];
   } catch { /* first write */ }
   if (!token) token = localMcpGenToken(`agent:${id}`, 365).token;
-  const cfg = {
-    mcpServers: {
-      glyphh: {
-        type: "http",
-        url: `http://127.0.0.1:${port}/mcp`,
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    },
-  };
   fs.mkdirSync(path.join(AGENTS_DIR(), id), { recursive: true });
-  fs.writeFileSync(mcpFile(id), JSON.stringify(cfg, null, 2), "utf-8");
+  upsertMcpServer(mcpFile(id), "glyphh", {
+    type: "http",
+    url: `http://127.0.0.1:${port}/mcp`,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+/** Upsert ONE server entry into an mcpServers JSON file, every other key preserved. */
+function upsertMcpServer(file: string, key: string, entry: Record<string, unknown>): void {
+  let cfg: Record<string, unknown> = {};
+  try { cfg = JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>; } catch { /* first write */ }
+  const servers = (cfg.mcpServers && typeof cfg.mcpServers === "object" ? cfg.mcpServers : {}) as Record<string, unknown>;
+  servers[key] = entry;
+  cfg.mcpServers = servers;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");
+}
+
+/** The REMOTE MCP server — the gateway's /mcp, where the org's connections
+ *  (Pipedream apps, custom servers) live (his ruling, 2026-09-14: "the MCP
+ *  server becomes remote"). The member's own gateway key authenticates it,
+ *  so every tool call is metered to them and reaches THEIR connected
+ *  accounts. Written into every CLI's MCP seam beside the local entry. */
+function ensureRemoteMcp(id: string, cli: string, creds: GatewayCreds | null): void {
+  if (!creds) return;
+  const entry = { type: "http", url: `${creds.baseUrl.replace(/\/$/, "")}/mcp`, headers: { Authorization: `Bearer ${creds.token}` } };
+  upsertMcpServer(mcpFile(id), "glyphh_gateway", entry);
+  if (cli === "gemini") upsertMcpServer(path.join(homedir(), ".gemini", "settings.json"), "glyphh_gateway", { httpUrl: entry.url, headers: entry.headers });
+  if (cli === "copilot") upsertMcpServer(path.join(homedir(), ".copilot", "mcp-config.json"), "glyphh_gateway", entry);
+  if (cli === "cursor") upsertMcpServer(path.join(homedir(), ".cursor", "mcp.json"), "glyphh_gateway", { url: entry.url, headers: entry.headers });
 }
 
 /** The agent's minted bearer, read back from its mcp.json. */
@@ -363,29 +384,47 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
  *  (claude --resume <id> / codex resume <id>) — the rail Recents rides it. */
 export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }
 
+/** The SESSION's mode (the composer's chip: ask/plan/acceptEdits/auto)
+ *  projected onto a CLI's headless flags. Provided per turn, it OVERRIDES
+ *  the loop config's own permission — the chip must transition the current
+ *  session (his report, 2026-09-14: codex stayed in ask whatever the chip
+ *  said). "ask" maps to no flag: a non-interactive exec keeps its default. */
+export type SessionPermission = "ask" | "plan" | "acceptEdits" | "auto";
+const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPermission, string>>> = {
+  claude: { plan: " --permission-mode plan", acceptEdits: " --permission-mode acceptEdits", auto: " --dangerously-skip-permissions" },
+  codex: { plan: " --sandbox read-only", acceptEdits: " --full-auto", auto: " --dangerously-bypass-approvals-and-sandbox" },
+  gemini: { acceptEdits: " --approval-mode auto_edit", auto: " --yolo" },
+  copilot: {}, cursor: {}, custom: {},
+};
+
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
- *  scheduler runs these. */
-export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string): string {
+ *  scheduler runs these (no session mode → the loop config's permission
+ *  stands); chat turns pass the SESSION's mode, which wins. */
+export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string): string {
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
   const m = (model ?? row.model ?? "").trim();
+  const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
+  const rid = (resumeId ?? "").replace(/'/g, "");
   let core: string;
   switch (row.cli) {
     case "claude":
-      core = `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
       break;
     case "codex": {
       const token = row.mcp ? mcpTokenOf(row.id) : "";
       const { port } = localMcpStatus();
+      // Chained turns resume the CLI's own persisted session (codex 0.154:
+      // `exec resume <id>`), so a chat's turns share one context.
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} exec '${p}'`
+        + `${row.cmd}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""} '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
     }
     case "gemini":
-      core = `${row.cmd}${modelFlag(row.cli, m)}${permFlag(row, true)} -p '${p}'`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm} -p '${p}'`;
       break;
     default:
       throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex or gemini for scheduled loops`);
@@ -466,30 +505,62 @@ export async function primeAllLoopEnv(): Promise<void> {
   await primeGatewayEnv(loops, (cli) => CLI_PROFILES[cli as keyof typeof CLI_PROFILES]?.baseUrlEnv ?? []);
 }
 
+/** The branded loops' out-of-the-box rows — what a FRESH account drives
+ *  before it ever touches Settings → Loops. Virtual until a save/open
+ *  materializes a file: an explicit row (even disabled) always wins. Without
+ *  this a new user has NO loops at all — the composer's picker is stuck on
+ *  "Default", the rail's recents have no agent to resume on, and a one-field
+ *  Settings → Loops save dies on "a loop needs a name" because there is no
+ *  existing row to patch (his report, 2026-09-14). */
+const DEFAULT_LOOP_NAMES: Partial<Record<CliAgentRow["cli"], string>> = {
+  claude: "Claude", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor",
+};
+function defaultRowFor(id: string): CliAgentRow | null {
+  const name = DEFAULT_LOOP_NAMES[id as CliAgentRow["cli"]];
+  if (!name) return null;
+  const now = new Date().toISOString();
+  return {
+    id, name, cli: id as CliAgentRow["cli"], icon: "", cmd: id,
+    model: "", mcp: true, cwd: "", session: "keep", apiKey: null,
+    createdAt: now, updatedAt: now,
+  };
+}
+
 export function listCliAgents(): CliAgentListed[] {
   let ids: string[] = [];
-  try { ids = fs.readdirSync(AGENTS_DIR()); } catch { return []; }
+  try { ids = fs.readdirSync(AGENTS_DIR()); } catch { ids = []; }
   const out: CliAgentListed[] = [];
   for (const id of ids) {
     const row = readAgent(id);
     if (row) out.push({ ...row, command: composeCommand(row) });
   }
+  // EVERY branded loop exists (his report, 2026-09-14: the picker showed
+  // only Claude while the rest were enabled) — an explicit row (even a
+  // disabled one) always wins its slot; only absent loops get the virtual.
+  for (const cli of Object.keys(DEFAULT_LOOP_NAMES)) {
+    if (!out.some((r) => r.cli === cli)) {
+      const def = defaultRowFor(cli)!;
+      out.push({ ...def, command: composeCommand(def) });
+    }
+  }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ── Recent CLI sessions — the rail's Recents list ───────────────────────────
-// Claude's store is the source: ~/.claude/projects/<munged-cwd>/<id>.jsonl,
-// one file per session. The head of the file carries the real cwd and the
-// first user message; mtime orders the list. (Codex/Gemini read differently —
-// they join here when their stores are wired.)
+// Each CLI's OWN store is the source (his order, 2026-09-10; codex joined
+// 2026-09-14 — "the recents gap"):
+//   claude — ~/.claude/projects/<munged-cwd>/<id>.jsonl, one file per session
+//   codex  — ~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-<ts>-<id>.jsonl
+// The head of each file carries the real cwd and the first user message;
+// mtime orders the merged list. (Gemini joins when its store is wired.)
 
-export interface CliSessionRow { id: string; cli: "claude"; title: string; cwd: string; mtime: number }
+export interface CliSessionRow { id: string; cli: "claude" | "codex"; title: string; cwd: string; mtime: number }
 
-export function listCliSessions(limit = 20): CliSessionRow[] {
+function claudeSessionFiles(): Array<{ file: string; mtime: number; cli: "claude" }> {
   const root = path.join(homedir(), ".claude", "projects");
   let dirs: string[] = [];
   try { dirs = fs.readdirSync(root); } catch { return []; }
-  const files: Array<{ file: string; mtime: number }> = [];
+  const files: Array<{ file: string; mtime: number; cli: "claude" }> = [];
   for (const d of dirs) {
     const dir = path.join(root, d);
     let names: string[] = [];
@@ -497,18 +568,82 @@ export function listCliSessions(limit = 20): CliSessionRow[] {
     for (const n of names) {
       try {
         const st = fs.statSync(path.join(dir, n));
-        if (st.size > 0) files.push({ file: path.join(dir, n), mtime: st.mtimeMs });
+        if (st.size > 0) files.push({ file: path.join(dir, n), mtime: st.mtimeMs, cli: "claude" });
       } catch { /* raced */ }
     }
   }
+  return files;
+}
+
+function codexSessionFiles(): Array<{ file: string; mtime: number; cli: "codex" }> {
+  const root = path.join(homedir(), ".codex", "sessions");
+  const files: Array<{ file: string; mtime: number; cli: "codex" }> = [];
+  const walk = (dir: string, depth: number): void => {
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { return; }
+    for (const n of names) {
+      const p = path.join(dir, n);
+      try {
+        const st = fs.statSync(p);
+        if (st.isDirectory()) { if (depth < 3) walk(p, depth + 1); }
+        else if (n.endsWith(".jsonl") && st.size > 0) files.push({ file: p, mtime: st.mtimeMs, cli: "codex" });
+      } catch { /* raced */ }
+    }
+  };
+  walk(root, 0);
+  return files;
+}
+
+export function listCliSessions(limit = 40): CliSessionRow[] {
+  const files = [...claudeSessionFiles(), ...codexSessionFiles()];
   files.sort((a, b) => b.mtime - a.mtime);
   const out: CliSessionRow[] = [];
-  for (const f of files.slice(0, limit * 2)) {
-    const row = readClaudeSessionHead(f.file, f.mtime);
+  for (const f of files.slice(0, limit * 3)) {
+    const row = f.cli === "codex" ? readCodexSessionHead(f.file, f.mtime) : readClaudeSessionHead(f.file, f.mtime);
     if (row) out.push(row);
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/** Codex rollout head: session_meta carries id + cwd; the title is the first
+ *  REAL user message (instruction/environment preludes skipped). */
+function readCodexSessionHead(file: string, mtime: number): CliSessionRow | null {
+  let head = "";
+  try {
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(65_536);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    head = buf.toString("utf-8", 0, n);
+  } catch { return null; }
+  let id = "";
+  let cwd = "";
+  let title = "";
+  for (const line of head.split("\n")) {
+    if (!line.trim()) continue;
+    let j: { type?: string; payload?: Record<string, unknown> };
+    try { j = JSON.parse(line) as typeof j; } catch { continue; }
+    const p = j.payload ?? {};
+    if (j.type === "session_meta") {
+      if (typeof p.id === "string") id = p.id;
+      if (typeof p.cwd === "string") cwd = p.cwd;
+    }
+    if (!title && p.type === "message" && p.role === "user" && Array.isArray(p.content)) {
+      const t = (p.content as Array<{ type?: string; text?: string }>)
+        .find((c) => c.type === "input_text" && c.text)?.text ?? "";
+      // codex prepends AGENTS.md instructions + environment context as user
+      // messages — nothing a human typed; skip until the real first message.
+      if (t && !/^(#|<INSTRUCTIONS|<environment_context|<ENVIRONMENT)/.test(t.trim())) title = t;
+    }
+    if (id && cwd && title) break;
+  }
+  if (!title) return null;   // meta-only file — nothing a human would resume
+  // The filename tail carries the id too — the fallback when meta is absent.
+  if (!id) id = /rollout-[\dT-]+-([0-9a-f-]{36})\.jsonl$/.exec(path.basename(file))?.[1] ?? "";
+  if (!id) return null;
+  title = title.replace(/\s+/g, " ").trim().slice(0, 80);
+  return { id, cli: "codex", title, cwd, mtime };
 }
 
 function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | null {
@@ -549,10 +684,15 @@ export function registerCliAgentsIpc(): void {
       const base = `${String(id)}.jsonl`;
       if (!/^[\w-]+\.jsonl$/.test(base)) throw new Error("bad session id");
       const root = path.join(homedir(), ".claude", "projects");
-      for (const d of fs.readdirSync(root)) {
+      let dirs: string[] = [];
+      try { dirs = fs.readdirSync(root); } catch { dirs = []; }
+      for (const d of dirs) {
         const f = path.join(root, d, base);
         if (fs.existsSync(f)) { fs.rmSync(f); return { ok: true }; }
       }
+      // codex — rollout filenames END with the session id.
+      const hit = codexSessionFiles().find((f) => f.file.endsWith(`-${String(id)}.jsonl`));
+      if (hit) { fs.rmSync(hit.file); return { ok: true }; }
       throw new Error("session not found");
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -575,7 +715,9 @@ export function registerCliAgentsIpc(): void {
       // field at a time (a toggle, a dropdown), and demanding the whole row
       // back on every change is how a toggle ends up writing nothing.
       const id = input.id ? String(input.id) : slug(String(input.name ?? ""));
-      const existing = readAgent(id);
+      // A branded loop with no file yet patches over its virtual default row,
+      // so Settings → Loops' one-field saves work on a fresh account.
+      const existing = readAgent(id) ?? defaultRowFor(id);
       const name = String(input.name ?? existing?.name ?? "").trim();
       const cmd = String(input.cmd ?? existing?.cmd ?? "").trim();
       if (!name) return { ok: false, error: "a loop needs a name" };
@@ -650,7 +792,9 @@ export function registerCliAgentsIpc(): void {
   // itself types into the terminal the renderer opens.
   ipcMain.handle("cli-agent-open", async (_e, id: string, overrides?: OpenOverrides) => {
     try {
-      const row = readAgent(String(id));
+      // The virtual default Claude loop opens like a saved one (the same row
+      // listCliAgents serves) — nothing is written until the user configures it.
+      const row = readAgent(String(id)) ?? defaultRowFor(String(id));
       if (!row) return { ok: false, error: "agent not found" };
       if (overrides?.light !== undefined) {
         try {
@@ -667,18 +811,32 @@ export function registerCliAgentsIpc(): void {
       // through our meter without asking would be the wrong surprise.
       const cliProfile = CLI_PROFILES[row.cli];
       if (cliProfile?.baseUrlEnv.length) {
+        // THE MEMORY BRIDGE (his order, 2026-09-14): when enabled, the
+        // Anthropic-wire lane (claude, v1) routes through the loopback
+        // bridge — capture + fact injection; every other shape stays
+        // untouched. The bridge forwards auth as-is, so it wraps the
+        // gateway lane AND the CLI's own login alike.
+        const bridged = row.cli === "claude" ? await bridgeWrap("https://api.anthropic.com").catch(() => null) : null;
         if (row.apiKey) {
-          clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+          if (bridged) writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
+          else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
         } else {
           const creds = await gatewayCreds();
           // No creds is a NORMAL answer (no plan, closed trial, offline) —
           // the loop then runs on whatever the CLI is already logged into.
-          if (creds) writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, creds);
-          else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+          if (creds) {
+            const wrapped = row.cli === "claude" ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
+            writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
+          } else if (bridged) {
+            writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
+          } else {
+            clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+          }
         }
       }
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
+        ensureRemoteMcp(row.id, row.cli, await gatewayCreds());
         if (row.cli === "gemini") {
           ensureGeminiMcp(row.id);
           if (row.apiKey?.name === "GEMINI_API_KEY") ensureGeminiKeyAuth();
