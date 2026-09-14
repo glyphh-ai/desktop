@@ -94,10 +94,10 @@ export async function loadSettingsConnections(): Promise<void> {
 
   const conns = (res as { connections?: Conn[] })?.connections ?? [];
   const mcps = (custom as { connections?: McpConn[] })?.connections ?? [];
-  // A MEMBER sees ONLY their own connections (his ruling, 2026-09-12) — org
-  // rows are the admin's surface and never render here.
-  const mine = <T extends { org?: boolean; kind?: string }>(rows: T[]): T[] =>
-    isAdminUser ? rows : rows.filter((r) => r.org !== true && r.kind !== "org");
+  // Members SEE org connections too — that is where they connect their own
+  // account (his ruling, 2026-09-14, superseding the 09-12 members-only list);
+  // only the shaping stays admin-only.
+  const mine = <T extends { org?: boolean; kind?: string }>(rows: T[]): T[] => rows;
   // DEDUPE: the uniform /api/connections list already carries custom-MCP
   // rows, so listing both lanes showed the same connection twice — and the
   // copy from the wrong lane routed its writes to the org routes, which
@@ -109,7 +109,9 @@ export async function loadSettingsConnections(): Promise<void> {
       key: `pd:${c.id}`,
       kind: c.org ? "org" : "pipedream",
       name: c.label || c.appName,
-      sub: c.org ? "Org connection" : c.appName,
+      sub: c.org
+        ? ((c as { connected?: boolean }).connected ? "Org connection · connected as you" : "Org connection · not connected")
+        : c.appName,
       // ON = at least one tool exposed. hiddenTools carries the truth.
       enabled: true,
       icon: null,

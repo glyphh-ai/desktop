@@ -470,37 +470,41 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
         return { agentAllowed: true, agentTools: conn.tools.length, agentAvailable: conn.availableTools.length };
       };
       connIndex.clear();
-      const connections = personal.map((c) => {
-        connIndex.set(c.id, { slug: c.appSlug, org: false });
-        return {
-          id: c.id,
-          accountId: c.id,
-          appSlug: c.appSlug,
-          appName: c.appName || c.name || c.appSlug,
-          label: c.label,
-          healthy: c.healthy,
-          hiddenTools: [] as string[],
-          createdAt: "",
-          org: false,
-          ...governance(c.appSlug),
-        };
-      });
-      const personalSlugs = new Set(personal.map((c) => c.appSlug));
+      // ONE row per ORG connection (an admin-added app), carrying the caller's
+      // own account on it when they have connected one (his ruling, 2026-09-14:
+      // the org connection is the thing; a member's account rides it). A
+      // personal account with no org record is legacy and still listed.
+      const byApp = new Map(personal.map((c) => [c.appSlug, c]));
+      const connections: Array<Record<string, unknown>> = [];
+      const seenApps = new Set<string>();
       for (const c of resolved) {
-        // Custom MCP renders from its own card list; only connector accounts here.
-        if (c.kind !== "pipedream" || c.scope !== "org" || personalSlugs.has(c.slug)) continue;
+        if (c.kind !== "pipedream" || c.scope !== "org") continue;
+        const mine = byApp.get(c.slug);
+        seenApps.add(c.slug);
+        const id = mine ? mine.id : c.slug;
+        connIndex.set(id, { slug: c.slug, org: !mine });
         connIndex.set(c.slug, { slug: c.slug, org: true });
         connections.push({
-          id: c.slug,
-          accountId: c.slug,
+          id,
+          accountId: mine ? mine.id : null,
           appSlug: c.slug,
           appName: c.name || c.slug,
-          label: null,
-          healthy: c.enabled,
-          hiddenTools: [],
+          label: mine?.label ?? null,
+          healthy: mine ? mine.healthy : c.enabled,
+          connected: !!mine,
+          hiddenTools: [] as string[],
           createdAt: "",
           org: true,
           ...governance(c.slug),
+        });
+      }
+      for (const c of personal) {
+        if (seenApps.has(c.appSlug)) continue;
+        connIndex.set(c.id, { slug: c.appSlug, org: false });
+        connections.push({
+          id: c.id, accountId: c.id, appSlug: c.appSlug, appName: c.appName || c.name || c.appSlug,
+          label: c.label, healthy: c.healthy, connected: true, hiddenTools: [] as string[], createdAt: "", org: false,
+          ...governance(c.appSlug),
         });
       }
       return { ok: true, connections };
