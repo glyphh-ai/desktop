@@ -84,6 +84,39 @@
                   </div>
                 </div>
 
+                <!-- EMBEDDINGS (his order, 2026-09-14): on-device ONNX is the
+                     default; a Together AI key + model upgrade every
+                     chunk/embed lane. Calls go DIRECT to Together from this
+                     machine — never through the glyphh server. -->
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Embeddings model</div>
+                    <div class="set-pref-desc">On-device is the default. Pick a Together AI model for a major quality upgrade — needs your Together key; calls go directly from this machine.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-embeddings-model" class="settings-input"></select>
+                  </div>
+                </div>
+                <div class="set-pref-row" id="set-embeddings-key-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Together AI key</div>
+                    <div class="set-pref-desc" id="set-embeddings-key-hint">Write-only — stored on this machine, never sent to Glyphh.</div>
+                  </div>
+                  <div class="set-pref-value" style="display:flex; gap:6px;">
+                    <input type="password" id="set-embeddings-key" class="settings-input" placeholder="together_…" autocomplete="new-password" spellcheck="false" />
+                    <button type="button" id="set-embeddings-key-clear" class="layout-folder-icon" title="Remove key"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+                  </div>
+                </div>
+
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Memory bridge</div>
+                    <div class="set-pref-desc">Routes Claude-loop traffic through a local bridge that remembers your sessions — each turn is chunked, embedded, and relevant context is injected back into future prompts. Applies at the next loop open.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-memory-bridge" />
+                  <span class="toggle-switch"></span>
+                </label>
+
                 <label class="settings-toggle" style="display:none;">
                   <input type="checkbox" id="toggle-auto-update" checked />
                   <span class="toggle-switch"></span>
@@ -271,6 +304,9 @@
                   </div>
                 </div>
 
+                <!-- Echo Agent sliders — OFF the surface (his order, 2026-09-14: "remove the echo agent configs");
+                     the prefs + CSS vars behind them stay wired (remove = hide, never delete). -->
+                <div id="settings-echo-agent-group" class="hidden">
                 <h3 class="settings-subheading">Echo Agent</h3>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
@@ -301,6 +337,7 @@
                     <input type="range" id="settings-echo-agent-max-h" min="20" max="100" step="5" />
                     <span id="settings-echo-agent-max-h-val" class="settings-hint"></span>
                   </div>
+                </div>
                 </div>
 
                 <h3 class="settings-subheading">Browser</h3>
