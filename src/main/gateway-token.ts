@@ -35,7 +35,17 @@ const KEY_ENV: Record<string, string> = {
 };
 
 let cached: GatewayCreds | null = null;
+let mcpCached: GatewayCreds | null = null;
 let inflight: Promise<GatewayCreds | null> | null = null;
+
+/** The member's credential for the server's REMOTE MCP (/mcp) — handed out
+ *  whether or not the gateway lane is on. Null only when the server has no
+ *  key for this member (offline, not signed in). */
+export async function mcpCreds(): Promise<GatewayCreds | null> {
+  if (mcpCached) return mcpCached;
+  await gatewayCreds();
+  return mcpCached;
+}
 
 /**
  * The member's gateway credential, or null when the gateway isn't available
@@ -52,6 +62,11 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
     try {
       const r = await getClient().gateway.token();
       if (!r?.baseUrl || !r?.token) return null;
+      mcpCached = { baseUrl: r.baseUrl, token: r.token };
+      // gateway:false = the org's lane is OFF (his ruling, 2026-09-14: the
+      // CLI rides its own login unless the org pays for / forces the
+      // gateway). The credential still authenticates the server's /mcp.
+      if (r.gateway === false) return null;
       cached = { baseUrl: r.baseUrl, token: r.token };
       return cached;
     } catch {
@@ -105,6 +120,7 @@ export async function primeGatewayEnv(
  */
 export function clearGatewayCreds(): void {
   cached = null;
+  mcpCached = null;
   let ids: string[] = [];
   try { ids = fs.readdirSync(userScopedPath("loops")); } catch { return; }
   for (const id of ids) {
@@ -170,4 +186,24 @@ export function writeGatewayEnv(
 export function clearGatewayEnv(id: string, cli: string, baseUrlVars: string[]): void {
   const keyVar = KEY_ENV[cli];
   stripVars(id, [...baseUrlVars, ...(keyVar ? [keyVar] : [])]);
+}
+
+/** Write ONLY the base-URL vars (no key line) — the memory bridge's lane for
+ *  loops on their own auth: the CLI keeps its login/key, the traffic just
+ *  routes through the loopback bridge. */
+export function writeBaseUrlOnly(id: string, cli: string, baseUrlVars: string[], baseUrl: string): void {
+  const keyVar = KEY_ENV[cli];
+  const ours = new Set([...baseUrlVars, ...(keyVar ? [keyVar] : [])]);
+  let kept = "";
+  try {
+    kept = fs.readFileSync(envFile(id), "utf-8")
+      .split("\n")
+      .filter((l) => { const n = /^(\w+)=/.exec(l)?.[1]; return l.trim() && (!n || !ours.has(n)); })
+      .join("\n");
+    if (kept) kept += "\n";
+  } catch { /* first write */ }
+  const lines = baseUrlVars.map((v) => `${v}="${baseUrl}"`);
+  const dir = path.dirname(envFile(id));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(envFile(id), `${kept}${lines.join("\n")}\n`, { encoding: "utf-8", mode: 0o600 });
 }

@@ -27,7 +27,7 @@ import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { gatewayCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
+import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
@@ -836,7 +836,7 @@ export function registerCliAgentsIpc(): void {
       }
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
-        ensureRemoteMcp(row.id, row.cli, await gatewayCreds());
+        ensureRemoteMcp(row.id, row.cli, await mcpCreds());
         if (row.cli === "gemini") {
           ensureGeminiMcp(row.id);
           if (row.apiKey?.name === "GEMINI_API_KEY") ensureGeminiKeyAuth();
