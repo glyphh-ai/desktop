@@ -3,7 +3,7 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { loadAgentDefaults } from "./settings-loops.js";
+import { loadAgentDefaults, loadEmbeddingsSettings } from "./settings-loops.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
 import { accountApi } from "./settings-api.js";
@@ -121,6 +121,8 @@ function initSettings() {
   // Agent defaults — the loop + model a new session opens with, both drawn
   // from the org → role policy (help/settings-loops.ts).
   void loadAgentDefaults();
+  // Embeddings upgrade — ONNX default, Together AI BYOK (desktop-only).
+  void loadEmbeddingsSettings();
 
   // Default workspace — what a fresh boot opens when there's nothing to
   // restore (code-workbench restoreWallOnce reads the same pref). Options are

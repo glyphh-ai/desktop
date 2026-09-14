@@ -452,7 +452,7 @@ declare global {
       gatewayKeysList: () => Promise<{ ok: boolean; data?: unknown[]; error?: string }>;
       gatewayKeysCreate: (input: { name: string; workspaceId: string; days?: number }) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       gatewayKeysRevoke: (id: string) => Promise<{ ok: boolean; error?: string }>;
-      glyphhBindCliSession?: (chatId: string, cliSessionId: string) => Promise<boolean>;
+      glyphhBindCliSession?: (chatId: string, cliSessionId: string, cli?: string) => Promise<boolean>;
       glyphhCliSessionOf?: (chatId: string) => Promise<string | null>;
       glyphhCliTranscript?: (sessionId: string) => Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>;
       orgModelsSetSupported: (id: string, supported: boolean) => Promise<{ ok: boolean; data?: unknown; error?: string }>;

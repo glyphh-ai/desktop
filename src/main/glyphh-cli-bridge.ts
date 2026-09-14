@@ -64,7 +64,13 @@ interface LiveChat {
 
 const live = new Map<string, LiveChat>();
 /** chatId → the CLI session to resume when the chat's process is cold. */
+// PER-CLI bindings (his ruling, 2026-09-14: "some way to map sessions
+// across loops" WITHOUT the spider web) — the glyphh thread is the session
+// of record; each CLI holds AT MOST ONE session binding per thread, keyed
+// chatId::cli. Ids never translate between CLIs; a loop switch means the
+// new CLI starts (compaction-seeded) and earns its own binding.
 const resumeIds = new Map<string, string>();
+const rkey = (chatId: string, cli: string): string => `${chatId}::${cli || "claude"}`;
 
 const PERM_FLAG: Record<LiveChat["permission"], string> = {
   ask: "default",
@@ -84,8 +90,11 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
 
   if (type === "system" && ev.subtype === "init") {
     const sid = typeof ev.session_id === "string" ? ev.session_id : null;
-    if (sid) { c.cliSessionId = sid; resumeIds.set(chatId, sid); }
-    emit(c, "glyphh-agent:setup", { phase: "ready", model: typeof ev.model === "string" ? ev.model : undefined });
+    if (sid) { c.cliSessionId = sid; resumeIds.set(rkey(chatId, "claude"), sid); }
+    // The renderer PERSISTS the binding on its chat row — the resume map is
+    // memory-only, and without this a restart forgot which CLI session an
+    // organic chat rides (first hop/run started fresh).
+    emit(c, "glyphh-agent:setup", { phase: "ready", model: typeof ev.model === "string" ? ev.model : undefined, cliSessionId: sid ?? undefined });
     return;
   }
 
@@ -165,6 +174,10 @@ interface RunPayload {
   prompt?: string;
   /** The picked LOOP (a CLI agent id) — decides WHICH CLI runs this chat. */
   loop?: string;
+  /** The chat's persisted CLI session — re-primes the in-memory resume map
+   *  after a restart, so the first run/hop resumes instead of starting
+   *  fresh (his report, 2026-09-14: the first terminal hop was empty). */
+  cliSessionId?: string;
 }
 
 /** The bridge's own --mcp-config: the SAME local MCP wiring the terminal
@@ -194,7 +207,13 @@ function bridgeMcpFile(): string | null {
  *  works — codex must never open claude's session). */
 function loopOf(p: RunPayload): CliAgentListed | null {
   const rows = listCliAgents();
-  return rows.find((r) => r.id === p.loop) ?? rows[0] ?? null;
+  const hit = rows.find((r) => r.id === p.loop);
+  if (hit) return hit;
+  // NEVER a silent reroute (his report, 2026-09-14: a codex session ran on
+  // claude): a named loop that misses the roster is a bug worth one loud
+  // line before the fallback stands in.
+  if (p.loop) console.warn("[cli-bridge] loop not in roster — falling back", { loop: p.loop, roster: rows.map((r) => r.id) });
+  return rows.find((r) => r.cli === "claude") ?? rows[0] ?? null;
 }
 
 /** Non-claude loops run PER-TURN headless (codex exec --json / gemini -p):
@@ -202,7 +221,13 @@ function loopOf(p: RunPayload): CliAgentListed | null {
  *  and closes. composeHeadless rides the agent's OWN env/mcp/model wiring. */
 function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sender: WebContents): { runId: string } {
   const runId = `${p.chatId}:${Date.now()}`;
-  const line = composeHeadless(agent, text, p.model);
+  // The SESSION's mode rides every turn — the composer chip transitions the
+  // running conversation, not just the loop's config default. And the chat
+  // CHAINS through the CLI's own persisted session (codex exec resume) so
+  // turns share context and the >_ hop resumes a rollout that exists (his
+  // report, 2026-09-14: "No saved session found" — nothing captured the id
+  // and every turn ran fresh).
+  const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)));
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
     env: { ...process.env },
@@ -234,8 +259,14 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
       // codex --json: JSONL events; item.completed agent_message carries text.
       if (t.startsWith("{")) {
         try {
-          const j = JSON.parse(t) as { type?: string; item?: { type?: string; text?: string }; msg?: { type?: string; message?: string } };
+          const j = JSON.parse(t) as { type?: string; thread_id?: string; session_id?: string; item?: { type?: string; text?: string }; msg?: { type?: string; message?: string; session_id?: string } };
           sawJson = true;
+          // codex 0.154 exec --json: thread.started carries the persisted
+          // session id — the resume key for chained turns AND the >_ hop.
+          const sid = (typeof j.thread_id === "string" && j.thread_id)
+            || (typeof j.session_id === "string" && j.session_id)
+            || (typeof j.msg?.session_id === "string" && j.msg.session_id) || "";
+          if (sid && !resumeIds.get(rkey(p.chatId, agent.cli))) { chat.cliSessionId = sid; resumeIds.set(rkey(p.chatId, agent.cli), sid); }
           const itemText = j.item?.type === "agent_message" ? j.item.text
             : j.msg?.type === "agent_message" ? j.msg.message : undefined;
           if (itemText) emit(chat, "glyphh-agent:delta", { runId, delta: itemText });
@@ -260,7 +291,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
 
 function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   const permission = p.permission ?? "ask";
-  const resume = resumeIds.get(p.chatId);
+  const resume = resumeIds.get(rkey(p.chatId, "claude"));
   const parts = [
     "claude", "-p",
     "--input-format", "stream-json",
@@ -350,6 +381,10 @@ function writeControl(c: LiveChat, request: Record<string, unknown>): string {
 export function registerGlyphhCliBridge(): void {
   ipcMain.handle("glyphh-agent-run", async (e, p: RunPayload & { steer?: string; prompt?: string }) => {
     await startLocalMcpServer().catch(() => { /* the spawn still runs, tool-less but honest */ });
+    // Re-prime the in-memory resume map from the chat's persisted binding —
+    // after a restart the map is empty and a run would start a FRESH CLI
+    // session, silently dropping the conversation's context.
+    // (re-primed per-CLI below, once the loop has resolved)
     // The composer's contract (unchanged from the old engine): the user turn
     // is already IN the chat store when run arrives — same-renderer IPC
     // ordering guarantees the save landed first. `steer` is a hidden prefix
@@ -361,6 +396,12 @@ export function registerGlyphhCliBridge(): void {
     const steer = String(p.steer ?? "").trim();
     const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
     const agent = loopOf(p);
+    // Re-prime the per-CLI binding from the chat's persisted map — the
+    // in-memory map is empty after a restart, and a run would start a fresh
+    // CLI session, silently dropping the conversation's context.
+    if (agent && p.cliSessionId && !resumeIds.get(rkey(p.chatId, agent.cli))) {
+      resumeIds.set(rkey(p.chatId, agent.cli), p.cliSessionId);
+    }
     // Non-claude loops: one headless turn per send, on the LOOP'S OWN CLI.
     if (agent && agent.cli !== "claude") {
       const prior = live.get(p.chatId);
@@ -448,12 +489,13 @@ export function registerGlyphhCliBridge(): void {
   ipcMain.handle("glyphh-agent-bind-session", (_e, p: { chatId: string; cliSessionId: string }) => {
     if (!p?.chatId || !p?.cliSessionId) return false;
     const c = live.get(p.chatId);
-    if (c && c.proc.exitCode === null) return resumeIds.get(p.chatId) === p.cliSessionId; // live process keeps its session
-    resumeIds.set(p.chatId, p.cliSessionId);
+    const bindCli = (p as { cli?: string }).cli || "claude";
+    if (c && c.proc.exitCode === null) return resumeIds.get(rkey(p.chatId, bindCli)) === p.cliSessionId; // live process keeps its session
+    resumeIds.set(rkey(p.chatId, bindCli), p.cliSessionId);
     return true;
   });
   // The chat's CURRENT CLI session id — the terminal view resumes it.
-  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string }) => resumeIds.get(p?.chatId ?? "") ?? null);
+  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string; cli?: string }) => resumeIds.get(rkey(p?.chatId ?? "", p?.cli || "claude")) ?? null);
 
   // The CLI transcript IS the history (his report, 2026-09-11: switching
   // views must carry the conversation). Plain text turns only — tool frames
@@ -469,6 +511,26 @@ export function registerGlyphhCliBridge(): void {
         if (existsSync(f)) { file = f; break; }
       }
     } catch { /* no store yet */ }
+    // Not in claude's store — a CODEX rollout carries the id in its filename
+    // (one combined history, his order 2026-09-14: adoption must work for
+    // every CLI the recents list).
+    if (!file) {
+      const codexRoot = path.join(homedir(), ".codex", "sessions");
+      const walk = (dir: string, depth: number): string => {
+        let names: string[] = [];
+        try { names = readdirSync(dir); } catch { return ""; }
+        for (const n of names) {
+          const f = path.join(dir, n);
+          try {
+            if (n.endsWith(`-${String(p.sessionId)}.jsonl`)) return f;
+            if (depth < 3 && !n.includes(".")) { const hit = walk(f, depth + 1); if (hit) return hit; }
+          } catch { /* raced */ }
+        }
+        return "";
+      };
+      const codexFile = walk(codexRoot, 0);
+      if (codexFile) return codexTranscript(codexFile);
+    }
     if (!file) return { ok: false, error: "session not found" };
     const turns: Array<{ role: "user" | "assistant"; text: string }> = [];
     let title = "";
@@ -502,6 +564,33 @@ export function registerGlyphhCliBridge(): void {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null });
     return true;
   });
+}
+
+/** A codex rollout as chat turns — user input_text (instruction/environment
+ *  preludes skipped) and assistant output text, plus session_meta's cwd. */
+function codexTranscript(file: string): { ok: true; title: string; cwd: string; turns: Array<{ role: "user" | "assistant"; text: string }> } | { ok: false; error: string } {
+  const turns: Array<{ role: "user" | "assistant"; text: string }> = [];
+  let cwd = "";
+  try {
+    for (const line of readFileSync(file, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      let j: { type?: string; payload?: Record<string, unknown> };
+      try { j = JSON.parse(line) as typeof j; } catch { continue; }
+      const p = j.payload ?? {};
+      if (j.type === "session_meta" && typeof p.cwd === "string") cwd = p.cwd;
+      if (j.type !== "response_item" || p.type !== "message") continue;
+      const role = p.role === "user" ? "user" : p.role === "assistant" ? "assistant" : null;
+      if (!role || !Array.isArray(p.content)) continue;
+      const text = (p.content as Array<{ type?: string; text?: string }>)
+        .filter((c) => (c.type === "input_text" || c.type === "output_text" || c.type === "text") && c.text)
+        .map((c) => c.text as string).join("\n").trim();
+      if (!text) continue;
+      if (role === "user" && /^(#|<INSTRUCTIONS|<environment_context|<ENVIRONMENT)/.test(text)) continue;
+      turns.push({ role, text });
+    }
+  } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  const title = turns.find((t) => t.role === "user")?.text.replace(/\s+/g, " ").slice(0, 80) ?? "Session";
+  return { ok: true, title, cwd, turns: turns.slice(-200) };
 }
 
 /** Everything down on quit — the CLI processes are the app's children. */

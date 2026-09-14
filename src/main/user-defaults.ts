@@ -22,6 +22,11 @@ import fs from "fs";
 import path from "path";
 import { WORKSPACES_DIR, workspaceId, type GridLayout } from "./layout-manager.js";
 
+// Cell panelIds use the OPENER'S vocabulary (code-workbench layout cells):
+// built-in panels are "tool:<view>" and the agent surface is "tool:coding".
+// The first seed wrote bare names ("rail", "glyphh") that resolve as app
+// rows and die — every default workspace opened EMPTY (his log, 2026-09-14).
+
 /** Rail | Glyphh — the everyday two-panel arrangement. */
 function vibe(): GridLayout {
   return {
@@ -32,8 +37,8 @@ function vibe(): GridLayout {
     colWidths: [0.22, 0.78],
     rowHeights: [1],
     cells: [
-      { panelId: "rail", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "glyphh", col: 1, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
+      { panelId: "tool:rail", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:coding", col: 1, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
     ],
   };
 }
@@ -52,14 +57,49 @@ function dev(): GridLayout {
     colWidths: [0.16, 0.2, 0.36, 0.28],
     rowHeights: [0.5, 0.5],
     cells: [
-      { panelId: "rail", col: 0, row: 0, colSpan: 1, rowSpan: 2 },
-      { panelId: "files", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "diff", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "editor", col: 2, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
-      { panelId: "terminal", col: 2, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "glyphh", col: 3, row: 0, colSpan: 1, rowSpan: 2 },
+      { panelId: "tool:rail", col: 0, row: 0, colSpan: 1, rowSpan: 2 },
+      { panelId: "tool:files", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:diff", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:monaco", col: 2, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
+      { panelId: "tool:terminal", col: 2, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:coding", col: 3, row: 0, colSpan: 1, rowSpan: 2 },
     ],
   };
+}
+
+// The first seed's bare panelIds → the opener's canonical ids. Only these
+// exact names are touched: they can only have come from that seed (the
+// editor and starter templates always wrote tool:/app ids), and desktop-
+// target layouts are skipped — their cells name native apps.
+const SEED_ID_FIX: Record<string, string> = {
+  rail: "tool:rail",
+  files: "tool:files",
+  diff: "tool:diff",
+  editor: "tool:monaco",
+  terminal: "tool:terminal",
+  glyphh: "tool:coding",
+};
+
+/** Rewrite bare seeded panelIds in existing workspace files (idempotent). */
+function repairSeededIds(): void {
+  let ids: string[] = [];
+  try { ids = fs.readdirSync(WORKSPACES_DIR()); } catch { return; }
+  for (const id of ids) {
+    const file = path.join(WORKSPACES_DIR(), id, "workspace.json");
+    try {
+      const grid = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
+      if (!Array.isArray(grid.cells) || grid.target === "desktop") continue;
+      let changed = false;
+      for (const c of grid.cells) {
+        const fix = SEED_ID_FIX[(c.panelId || "").trim().toLowerCase()];
+        if (fix) { c.panelId = fix; changed = true; }
+      }
+      if (changed) {
+        fs.writeFileSync(file, JSON.stringify(grid, null, 2), "utf-8");
+        console.info("[user-defaults] repaired seeded panel ids in", id);
+      }
+    } catch { /* not a workspace folder — skip */ }
+  }
 }
 
 /** Write one workspace if the user doesn't already have that id. */
@@ -81,6 +121,7 @@ function ensure(grid: GridLayout): boolean {
 export function provisionUserDefaults(): void {
   try {
     fs.mkdirSync(WORKSPACES_DIR(), { recursive: true });
+    repairSeededIds();
     const made = [vibe(), dev()].filter(ensure).length;
     if (made) console.info("[user-defaults] provisioned", made, "workspace(s)");
   } catch (err) {

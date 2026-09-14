@@ -12,6 +12,7 @@
  */
 
 import { showDropDetail, confirmAction, placeDropup } from "./shared.js";
+import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
@@ -117,7 +118,7 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
 // Loop: which agent loop runs the session. This chip replaced the old effort
 // dial; the dial's turn/token tiers are gone with it — an attended session is
 // governed by its human, budgets by the resolved model's own limits.
-let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }> = [
+let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean }> = [
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
@@ -260,18 +261,27 @@ function setLoop(id: string): void {
 // renders a dropdown. Resolution and rendering live in model-picker.ts; this file
 // only owns the chip and when to refresh.
 
-// ── Model selector — the SERVER'S available catalog (his spec, 2026-09-11):
-// catalog ∩ org-supported ∩ role, filtered to the picked loop's provider;
-// a proxied/unknown loop sees the FULL list regardless of loop.
+// ── Model selector — the SERVER'S available catalog (his spec, 2026-09-11,
+// layered 2026-09-14): the server list is already catalog ∩ the org's
+// provider/model filter ∩ role (governance plans). Per loop:
+//   own key   → the loop's HOME provider slice (Claude = anthropic, …)
+//   gateway   → THE LAST MILE: the whole gateway-enabled set, cross-vendor
+//               included (claude → gemini rides the router's translation).
 interface AvailModel { id: string; name: string; providerSlug: string; pickerVisible?: boolean }
 let availModels: AvailModel[] = [];
-const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+// The gateway plan gate — refreshed with the model list; false until known.
+let gatewayLaneOn = false;
+const LOOP_PROVIDER: Record<string, string> = {
+  claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor",
+};
 
 function modelsForLoop(): AvailModel[] {
-  const cli = loops.find((l) => l.id === activeLoop())?.description ?? "";
-  const prov = LOOP_PROVIDER[cli];
+  const l = loops.find((x) => x.id === activeLoop());
+  const prov = LOOP_PROVIDER[l?.description ?? ""];
   const vis = availModels.filter((m) => m.pickerVisible !== false);
-  if (!prov) return vis;
+  // A loop with NO personal key rides the gateway (BYOK wins; org key is
+  // the default lane) — its picker is every model the gateway can serve.
+  if (!prov || (gatewayLaneOn && !l?.ownKey)) return vis;
   const scoped = vis.filter((m) => m.providerSlug === prov);
   return scoped.length ? scoped : vis;
 }
@@ -292,8 +302,12 @@ function paintModelChip(): void {
 
 async function refreshModelList(_force?: boolean): Promise<void> {
   try {
-    const r = await window.glyphh.workspacesModelCatalog?.();
+    const [r, gates] = await Promise.all([
+      window.glyphh.workspacesModelCatalog?.(),
+      planGates().catch(() => null),
+    ]);
     if (r?.ok && Array.isArray(r.data)) availModels = r.data as AvailModel[];
+    if (gates) gatewayLaneOn = gates.gatewayAllowed;
   } catch { /* offline — the last list stands */ }
   paintModelChip();
 }
@@ -467,9 +481,12 @@ async function refreshLoops(): Promise<void> {
   // the loop) — the same roster the wall's agent tiles ride. description
   // carries the cli name; the model chip filters by it.
   try {
-    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string }> }> }).cliAgentsList?.();
-    if (r?.ok && r.agents.length) {
-      loops = r.agents.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "" }));
+    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean }> }> }).cliAgentsList?.();
+    const rows = r?.ok ? r.agents.filter((a) => a.enabled !== false) : [];
+    if (rows.length) {
+      // ownKey (a personal BYOK key on the loop) keeps its picker on the
+      // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
+      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey }));
       loopsCanBuild = false;
     }
     // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
@@ -1371,6 +1388,24 @@ function syncSpaceAttrs(): void {
 // bridge to --resume it. Fresh opens never call this — the one-opener law
 // (zero state writes) applies to DOORS, not to session-preserving toggles.
 (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId = () => currentId;
+// The session's ACTIVE LOOP — what the workbench's >_ terminal switcher
+// follows (his report, 2026-09-14: it always switched to claude because it
+// read the agent bound at card-open, not the loop the session rides now).
+(window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop = () => activeLoop();
+// The chat's PERSISTED CLI session FOR ONE CLI — the >_ hop's fallback when
+// the bridge's in-memory map hasn't been primed yet (fresh boot). Bindings
+// are per-CLI (his ruling, 2026-09-14): a claude sid must never feed a
+// codex resume.
+function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
+  if (!c) return null;
+  const activeCli = cli || loops.find((x) => x.id === (c.loop || ""))?.description || "claude";
+  const map = (c as { cliSessionIds?: Record<string, string> }).cliSessionIds;
+  if (map?.[activeCli]) return map[activeCli];
+  // Legacy single-slot binding was always the claude lane.
+  return activeCli === "claude" ? ((c as { cliSessionId?: string }).cliSessionId ?? null) : null;
+}
+(window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId =
+  (cli?: string) => sessionCliSid(current() ?? undefined, cli);
 // The chat card names its LOOP on open — the run must ride THAT CLI
 // (his report, 2026-09-11: a codex loop opened claude's session).
 (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop = (id) => {
@@ -1381,11 +1416,11 @@ function syncSpaceAttrs(): void {
   paintChips();
   void refreshModelList();
 };
-(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string }) => void })
+(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
   .__glyphhAdoptCliSession = (a) => {
     void (async () => {
       const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId);
-      if (!t?.ok) return;
+      if (!t?.ok) { console.warn("[agent] adopt: transcript unavailable", { sessionId: a.sessionId, error: t?.error }); return; }
       let c = chats.find((x) => (x as { cliSessionId?: string }).cliSessionId === a.sessionId);
       if (!c) {
         c = { id: `c${Date.now().toString(36)}`, title: t.title || a.agentName, createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
@@ -1396,9 +1431,15 @@ function syncSpaceAttrs(): void {
         c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
         chats.unshift(c);
       }
+      // The adopted session RUNS ON ITS OWN CLI — without the loop stamp the
+      // run payload names no loop and main falls back to claude (his report,
+      // 2026-09-14: a codex session ran on claude).
+      if (a.agentId) c.loop = a.agentId;
+      const cli = a.cli || "claude";
+      ((c as { cliSessionIds?: Record<string, string> }).cliSessionIds ??= {})[cli] = a.sessionId;
       currentId = c.id;
       lastSession = c.id;
-      void window.glyphh.glyphhBindCliSession?.(c.id, a.sessionId);
+      void window.glyphh.glyphhBindCliSession?.(c.id, a.sessionId, cli);
       void saveStore();
       renderHistory();
       renderThread();
@@ -1680,7 +1721,8 @@ const IC_TRASH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" st
 function openHeadKebab(anchor: HTMLElement): void {
   closeHeadKebab();
   const c = current();
-  if (!c) return;
+  // NEVER silent (the house rule): a no-op click reads as a broken button.
+  if (!c) { console.warn("[agent] session kebab: no session yet — nothing to rename/pin/delete"); return; }
   const m = document.createElement("div");
   m.className = "code-menu session-head-menu";
   const mk = (icon: string, label: string, danger: boolean, on: () => void): HTMLButtonElement => {
@@ -1706,6 +1748,8 @@ function openHeadKebab(anchor: HTMLElement): void {
 
 function renderHistory(): void {
   window.dispatchEvent(new CustomEvent("agent-sessions-changed"));
+  // The rail's recents ride every history change (debounced disk re-read).
+  scheduleRailSessionsRefresh();
   // The agent head's session title rides every history repaint.
   const sessTitleEl = el("code-session-title");
   if (sessTitleEl) sessTitleEl.textContent = current()?.title ?? "New session";
@@ -3541,7 +3585,7 @@ function send(): void {
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}), ...(sessionCliSid(c) ? { cliSessionId: sessionCliSid(c)! } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
@@ -4038,6 +4082,18 @@ function paintAskDock(): void {
  *  accumulate when another session is in view). */
 function initGlyphhAgentEvents(): void {
   window.glyphh.onGlyphhAgentSetup?.((d) => {
+    // The CLI's session id PERSISTS on the chat row, PER CLI — the bridge's
+    // memory-only map forgets on restart; this is what the re-prime and the
+    // >_ hop read back (his reports, 2026-09-14).
+    const sid = (d as { cliSessionId?: string }).cliSessionId;
+    if (sid) {
+      const c = current();
+      if (c) {
+        const cli = loops.find((x) => x.id === (c.loop || ""))?.description || "claude";
+        const map = ((c as { cliSessionIds?: Record<string, string> }).cliSessionIds ??= {});
+        if (map[cli] !== sid) { map[cli] = sid; (c as { cliSessionId?: string }).cliSessionId = sid; void saveStore(); }
+      }
+    }
     if (d.phase === "downloading") {
       for (const r of liveRuns.values()) r.setupMeta = `Downloading ${d.model || "Glyphh"} — ${d.pct ?? 0}%${d.totalGB ? ` (${d.receivedGB ?? 0}/${d.totalGB}GB)` : ""}`;
     } else if (d.phase === "manifest") {
@@ -4242,13 +4298,50 @@ function initRailSections(): void {
 /** One authority over the rail stack's vertical share: with a tray open,
  *  Recents keeps its capped height and the trays take the rest; with every
  *  tray closed (or absent, as in the hidden shell rail) Recents fills. */
+/** The user's dragged Recents height (codeRecentsH) — 0 = the default cap. */
+let recentsUserH = 0;
+
 function syncRailLayout(): void {
-  const hist = el("code-history");
-  const anyTrayOpen = RAIL_SECTIONS.some((d) => {
-    const body = el(d.body);
-    return !!body && !body.classList.contains("hidden");
+  // TODAY'S list id (the old #code-history died with the shell rail — this
+  // targeted a ghost, leaving the CSS cap absolute; his report 2026-09-14).
+  // The CSS owns the default shape (content-hugging, 44vh cap, own scroll);
+  // only a DRAGGED height writes inline.
+  const hist = el("recent-sessions-list");
+  if (hist && !hist.classList.contains("hidden")) {
+    if (recentsUserH > 0) { hist.style.flex = `0 0 ${recentsUserH}px`; hist.style.maxHeight = "none"; }
+    else { hist.style.flex = ""; hist.style.maxHeight = ""; }
+  }
+}
+
+// ── Recents vertical resize (restored from 5b3cc551 — his report,
+//    2026-09-14: the drag between Recents and Apps/Workspaces was dropped) ──
+function initRecentsVsplit(): void {
+  const vs = el("recents-vsplit");
+  const hist = el("recent-sessions-list");
+  if (!vs || !hist) return;
+  void window.glyphh.getPreference?.("codeRecentsH", 0).then((v) => {
+    recentsUserH = Number(v) || 0;
+    syncRailLayout();
   });
-  if (hist && !hist.classList.contains("hidden")) hist.style.flex = anyTrayOpen ? "0 1 170px" : "1 1 auto";
+  vs.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    document.body.classList.add("code-vdragging");
+    const startY = e.clientY;
+    const startH = hist.getBoundingClientRect().height;
+    const move = (ev: MouseEvent): void => {
+      recentsUserH = Math.max(60, Math.min(Math.round(window.innerHeight * 0.6), startH + (ev.clientY - startY)));
+      hist.style.flex = `0 0 ${recentsUserH}px`;
+      hist.style.maxHeight = "none";
+    };
+    const up = (): void => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.classList.remove("code-vdragging");
+      if (recentsUserH > 0) void window.glyphh.setPreference?.("codeRecentsH", recentsUserH);
+    };
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  });
 }
 
 // ── Apps grid (rail, below Recents) — the same list + icons as the Apps page
@@ -4313,6 +4406,15 @@ const SESS_LOCAL_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="no
 const SESS_PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
 const SESS_TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
 
+// The rail follows the history LIVE (his report, 2026-09-14: the rail and
+// the dropdown disagreed — the rail only refreshed at boot): every history
+// change schedules one debounced re-read of the CLI stores.
+let railSessionsTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRailSessionsRefresh(): void {
+  if (railSessionsTimer) clearTimeout(railSessionsTimer);
+  railSessionsTimer = setTimeout(() => { railSessionsTimer = null; void loadRailSessions(); }, 800);
+}
+
 async function loadRailSessions(): Promise<void> {
   const api = window.glyphh as unknown as { cliSessionsList?: () => Promise<{ ok: boolean; sessions: RailSession[] }> };
   const [r, pins] = await Promise.all([
@@ -4321,6 +4423,9 @@ async function loadRailSessions(): Promise<void> {
   ]);
   railSessions = r?.ok ? r.sessions : [];
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
+  // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
+  // one line per refresh pins what this surface actually painted.
+  console.warn("[rail] sessions refreshed", JSON.stringify({ count: railSessions.length, newest: railSessions[0]?.title?.slice(0, 40) ?? null }));
   renderRailSessions();
 }
 
@@ -4388,12 +4493,16 @@ function sessSectionHead(label: string, title: string): HTMLDivElement {
 }
 
 function sessOpen(sess: RailSession): void {
+  // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
+  // recent opens in the agent CHAT panel, adopted with its transcript and
+  // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
   const agent = railAgents.find((a) => (a.cli || "claude") === sess.cli && !!a.cwd && a.cwd === sess.cwd)
     ?? railAgents.find((a) => (a.cli || "claude") === sess.cli)
     ?? railAgents[0];
   if (!agent) return;
-  (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
-    .__wbOpenAgentCli?.(agent.id, undefined, { resumeId: sess.id, cwd: sess.cwd || undefined });
+  (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+  (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
+    .__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: sess.id, agentId: agent.id, cli: sess.cli });
 }
 
 let sessMenuEl: HTMLDivElement | null = null;
@@ -4427,11 +4536,16 @@ document.addEventListener("mousedown", (ev) => {
   if (sessMenuEl && !(ev.target as HTMLElement).closest?.(".code-menu, .code-chat-menu-btn")) closeSessMenu();
 }, true);
 
+/** ONE COMBINED LIST, everywhere, always (his order, 2026-09-14, reversing
+ *  the same-day agent scoping): "the user's history IS the history" — every
+ *  CLI's sessions merge into one mtime-ordered list, and a click routes the
+ *  resume to the session's own CLI (sessOpen). */
 function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
   if (!host) return;
   const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
   const items = q ? railSessions.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : railSessions;
+  console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
   host.textContent = "";
   if (!items.length) {
     const empty = document.createElement("div");
@@ -4489,9 +4603,9 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
   search.addEventListener("input", () => { menuQuery = search.value; paint(); });
-  const pool = railSessions
-    .filter((x) => !opts.cli || x.cli === opts.cli)
-    .filter((x) => !opts.cwd || x.cwd === opts.cwd);
+  // ONE COMBINED LIST here too (his order, 2026-09-14) — the caller's
+  // cli/cwd describe its LANE for routing a pick, never a filter.
+  const pool = railSessions;
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
@@ -4830,7 +4944,9 @@ function paintAgentsGrid(host: RailGridHost): void {
     tile.append(icon, nm);
     tile.addEventListener("click", () => {
       openCommandCenter();
-      (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(a.id);
+      // ONE SURFACE (his order, 2026-09-14): every door opens the SAME agent
+      // chat panel, this loop set; the terminal is the >_ hop, never a door.
+      (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(a.id);
     });
     list.appendChild(tile);
   }
@@ -4860,6 +4976,7 @@ function initRailApps(): void {
   el<HTMLInputElement>("recent-sessions-search")?.addEventListener("input", renderRailSessions);
   el("rail-recents-toggle")?.addEventListener("click", () => void loadRailSessions());
   initRailSections();
+  initRecentsVsplit();
   syncRailLayout();
   void loadRecentApps();
   // The Apps + Layouts rail open-page buttons were removed (A2/A5); their
@@ -5604,14 +5721,19 @@ export function initCode(): void {
   // ‹ = the terminal hop, nothing else (his order, 2026-09-11: it closed
   // the whole agent). Same handler the >_ icon rides.
   el("code-session-back")?.addEventListener("click", () => { document.getElementById("code-term-toggle")?.click(); });
-  el("code-session-kebab")?.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    if (headKebabEl) { closeHeadKebab(); return; }
-    openHeadKebab(ev.currentTarget as HTMLElement);
-  });
+  // DELEGATED, capture-phase (his report, 2026-09-14: the ⋮ did nothing in
+  // a workspace) — the direct listener could miss the button or lose the
+  // click to an overlay handler; capture on document always sees it.
   document.addEventListener("click", (ev) => {
-    if (headKebabEl && !(ev.target as HTMLElement).closest?.(".session-head-menu, #code-session-kebab")) closeHeadKebab();
-  });
+    const kebab = (ev.target as HTMLElement).closest?.("#code-session-kebab") as HTMLElement | null;
+    if (kebab) {
+      ev.stopPropagation();
+      if (headKebabEl) { closeHeadKebab(); return; }
+      openHeadKebab(kebab);
+      return;
+    }
+    if (headKebabEl && !(ev.target as HTMLElement).closest?.(".session-head-menu")) closeHeadKebab();
+  }, true);
   // Session controls in the agent head (the coding panel's own header row is
   // hidden): + starts a new session, the clock drops the history list.
   type HeadSessionsApi = { list(): Array<{ id: string; title: string }>; currentId(): string | null; switch(id: string): void; startNew(): void };
@@ -5689,115 +5811,17 @@ export function initCode(): void {
     }
     void home;
   }
+  // ONE COMBINED HISTORY (his order, 2026-09-14: "make them all one
+  // thing") — the head's clock opens the SAME dropdown the rail and the
+  // terminal head show, refreshed from the CLI stores; a pick adopts into
+  // the one chat surface on the session's own CLI (sessOpen).
   el("code-session-history")?.addEventListener("click", (ev) => {
     ev.stopPropagation();
     const anchor = ev.currentTarget as HTMLElement;
     document.querySelector(".wb-session-menu")?.remove();
-    const sess = sessApi();
-    if (!sess) return;
-    const menu = document.createElement("div");
-    menu.className = "code-drop wb-session-menu";
-    // SEARCH at the top (his ask, 2026-08-20) — lives OUTSIDE paint() so
-    // typing filters without rebuilding the input.
-    let menuQuery = "";
-    const searchWrap = document.createElement("div");
-    searchWrap.className = "wb-session-search";
-    const search = document.createElement("input");
-    search.type = "text";
-    search.className = "loop-drop-search repo-drop-search";
-    search.placeholder = "Search sessions…";
-    search.spellcheck = false;
-    search.autocomplete = "off";
-    search.addEventListener("mousedown", (e) => e.stopPropagation());
-    searchWrap.appendChild(search);
-    menu.appendChild(searchWrap);
-    const listHost = document.createElement("div");
-    listHost.className = "wb-session-list";
-    menu.appendChild(listHost);
-    search.addEventListener("input", () => { menuQuery = search.value; paint(); });
-    const PIN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>`;
-    const TRASH_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
-    const paint = (): void => {
-      listHost.innerHTML = "";
-      const cur = currentId;
-      // THE RAIL'S PARADIGM (his ask, 2026-08-20): Pinned first (only when
-      // any exist), then the locus groups — Cloud, then one per folder —
-      // each most-recently-touched down.
-      const q = menuQuery.trim().toLowerCase();
-      const visible = chats.filter((c) => !q || c.title.toLowerCase().includes(q));
-      const pinned = visible.filter((c) => c.pinned).sort(byTouchDesc);
-      const rest = visible.filter((c) => !c.pinned).sort(byTouchDesc);
-      const sections: Array<{ label: string; title: string; rows: CodeChat[] }> = [];
-      if (pinned.length) sections.push({ label: "Pinned", title: "Pinned sessions", rows: pinned });
-      for (const g of groupRecents(rest)) sections.push({ label: g.label, title: g.title, rows: g.rows });
-      const mkRow = (c: CodeChat): HTMLElement => {
-        const row = document.createElement("div");
-        row.className = "wb-session-row" + (c.id === cur ? " selected" : "");
-        const title = document.createElement("button");
-        title.type = "button";
-        title.className = "code-drop-item wb-session-title";
-        title.textContent = c.title;
-        title.addEventListener("click", () => { menu.remove(); sessApi()?.switch(c.id); });
-        const pin = document.createElement("button");
-        pin.type = "button";
-        pin.className = "code-icon-btn wb-session-pin" + (c.pinned ? " on" : "");
-        pin.title = c.pinned ? "Unpin" : "Pin to top";
-        pin.innerHTML = PIN_SVG;
-        pin.addEventListener("click", (e) => {
-          e.stopPropagation();
-          c.pinned = !c.pinned;
-          void saveStore();
-          renderHistory();
-          paint();
-        });
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "code-icon-btn wb-session-del";
-        del.title = "Delete session";
-        del.innerHTML = TRASH_SVG;
-        del.addEventListener("click", (e) => {
-          e.stopPropagation();
-          void (async () => {
-            const sure = await confirmAction({
-              title: `Delete "${c.title}"?`,
-              body: "This session's history is gone for good.",
-              confirmLabel: "Delete",
-              danger: true,
-            });
-            if (!sure) return;
-            chats = chats.filter((x) => x.id !== c.id);
-            if (currentId === c.id) {
-              currentId = chats[0]?.id || "";
-              renderThread();
-            }
-            void saveStore();
-            renderHistory();
-            if (!chats.length) { menu.remove(); return; }
-            paint();
-          })();
-        });
-        row.append(title, pin, del);
-        return row;
-      };
-      for (const sec of sections) {
-        listHost.appendChild(recentsHead(sec.label, sec.title));
-        for (const c of sec.rows) listHost.appendChild(mkRow(c));
-      }
-      if (!visible.length) {
-        const empty = document.createElement("div");
-        empty.className = "wb-session-empty";
-        empty.textContent = q ? "No sessions match." : "No sessions yet.";
-        listHost.appendChild(empty);
-      }
-    };
-    paint();
-    // Clamp inside the viewport: right-align to the anchor, but never off
-    // either edge; below the anchor, but flip up if the bottom would clip.
-    placeDropup(anchor, menu);
-    const dismiss = (e: MouseEvent): void => {
-      if (!menu.contains(e.target as Node)) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
-    };
-    document.addEventListener("mousedown", dismiss, true);
+    void loadRailSessions().then(() => {
+      openSessionsDropdown(anchor, { onPick: (sess) => sessOpen(sess) });
+    });
   });
   startNavBadges();
   wireComposerAttachments();

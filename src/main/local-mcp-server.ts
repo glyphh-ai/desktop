@@ -24,6 +24,7 @@ import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
 import { listCliAgents } from "./cli-agents.js";
+import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 
 const DEFAULT_PORT = 7860;
@@ -330,7 +331,47 @@ function buildMcpServer(): McpServer {
     async ({ bundleBase64 }) => via("apps.install", { bundleBase64 }),
   );
 
-  // ── Local MCP servers via the client ─────────────────
+  // ── The SEMANTIC STACK — every app's own vector store + knowledge graph
+  //    (glyphh-agent-semantic.ts; restored 2026-09-14). The workpanel-app
+  //    contract's data plane: loops discover, build, and query an app's
+  //    stores through these six; scheduled tasks refresh them.
+  const semantic = (name: string, shape: Record<string, z.ZodTypeAny>): void => {
+    const def = SEMANTIC_TOOLS.find((t) => t.name === name)!;
+    mcp.tool(name, def.doc, shape, async (a: Record<string, unknown>) => {
+      try { return text(await def.run(a)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    });
+  };
+  const appArg = z.string().describe("Target app slug — the stores travel with the app");
+  const collArg = z.string().describe("Vector collection name ([a-zA-Z0-9_-])");
+  semantic("semantic_collections", { app: appArg });
+  semantic("index_files", {
+    app: appArg, collection: collArg,
+    paths: z.array(z.string()).describe("Working-folder file paths (max 50, 1MB each)"),
+    chunkChars: z.number().optional().describe("Chunk size in chars (200–4000, default 1500)"),
+  });
+  semantic("index_text", {
+    app: appArg, collection: collArg,
+    id: z.string().describe("Stable source id for these chunks"),
+    text: z.string().describe("Raw text to chunk + embed"),
+    chunkChars: z.number().optional(),
+  });
+  semantic("index_connection", {
+    app: appArg, collection: collArg,
+    slug: z.string().describe("Connection slug (from the user's connections)"),
+    tool: z.string().describe("The connector tool to run"),
+    props: z.record(z.string(), z.unknown()).optional().describe("Arguments for the connector tool"),
+  });
+  semantic("vector_search", {
+    app: appArg, collection: collArg,
+    query: z.string().describe("Semantic query text"),
+    k: z.number().optional().describe("Top-k (1–50, default 8)"),
+    filter: z.record(z.string(), z.unknown()).optional().describe("Exact-match metadata filter"),
+  });
+  semantic("graph_query", {
+    app: appArg,
+    cypher: z.string().describe("Cypher statement(s) — CREATE NODE TABLE first; Kuzu is schema-full"),
+  });
 
   // ── RPA — drive an open app panel ────────────────────
   mcp.tool(

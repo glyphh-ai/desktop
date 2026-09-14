@@ -443,6 +443,10 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // CLI agents — named pre-configs for terminal-driven CLIs (Claude first)
   cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
+  // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
+  // BYOK — key write-only, calls direct from this machine, never proxied.
+  embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; keySet: boolean; keyHint: string; models: string[] }>,
+  embeddingsConfigSet: (input: { model?: string; key?: string; clearKey?: boolean }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; keySet?: boolean; keyHint?: string; error?: string }>,
   cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
   cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
   cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
@@ -1099,8 +1103,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
-  glyphhBindCliSession: (chatId: string, cliSessionId: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId }) as Promise<boolean>,
-  glyphhCliSessionOf: (chatId: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId }) as Promise<string | null>,
+  glyphhBindCliSession: (chatId: string, cliSessionId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId, cli }) as Promise<boolean>,
+  glyphhCliSessionOf: (chatId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId, cli }) as Promise<string | null>,
   glyphhCliTranscript: (sessionId: string) => ipcRenderer.invoke("glyphh-agent-transcript", { sessionId }) as Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>,
   /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
    *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */

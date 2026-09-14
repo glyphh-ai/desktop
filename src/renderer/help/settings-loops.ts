@@ -1,4 +1,4 @@
-import { gateSurface } from "./plan-gate.js";
+import { gateSurface, planGates } from "./plan-gate.js";
 /**
  * settings-loops.ts — LOOPS AS SETTINGS (his ruling, 2026-09-12: "they are
  * fixed settings -> loops").
@@ -53,7 +53,16 @@ const api = () => window.glyphh as unknown as {
   cliAgentsSave?: (input: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
   workspacesModelCatalog?: () => Promise<{ ok: boolean; data?: Array<{ id: string; name: string; providerSlug?: string }> }>;
+  orgModelsList?: () => Promise<{ ok: boolean; data?: OrgModelLite[]; error?: string }>;
+  orgModelsSetSupported?: (id: string, supported: boolean) => Promise<{ ok: boolean; error?: string }>;
 };
+
+/** The org-support view of one catalog model, as the loop rows render it. */
+interface OrgModelLite {
+  id: string; name: string; providerSlug: string;
+  supported: boolean;
+  inputCreditsPerMTok?: number; outputCreditsPerMTok?: number;
+}
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
   document.getElementById(id) as T | null;
@@ -117,6 +126,9 @@ export function row(
 // ── Settings → Loops (the member's own) ──────────────────────────────────────
 
 let models: Array<{ id: string; name: string; providerSlug?: string }> = [];
+/** Whether the org's plan carries the gateway — keyless loops then ride it
+ *  and their model list is the whole gateway-enabled set. */
+let gatewayOn = false;
 
 export async function loadSettingsLoops(): Promise<void> {
   const host = el("loops-accordion");
@@ -124,12 +136,14 @@ export async function loadSettingsLoops(): Promise<void> {
   host.innerHTML = `<div class="crud-empty">Loading…</div>`;
   fail("loops-error", "");
 
-  const [availRes, cfgRes, catalog] = await Promise.all([
+  const [availRes, cfgRes, catalog, gates] = await Promise.all([
     api().loopsAvailable?.().catch(() => null) ?? Promise.resolve(null),
     api().cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
     api().workspacesModelCatalog?.().catch(() => null) ?? Promise.resolve(null),
+    planGates().catch(() => null),
   ]);
   models = catalog?.ok ? catalog.data ?? [] : [];
+  gatewayOn = !!gates?.gatewayAllowed;
   const allowed = availRes?.ok ? availRes.data ?? [] : [];
   const configs = new Map((cfgRes?.ok ? cfgRes.agents : []).map((c) => [c.cli, c]));
 
@@ -184,11 +198,14 @@ function buildConfigForm(panel: HTMLElement, loop: AvailableLoop, cfg: LoopConfi
     return row;
   };
 
-  // MODEL — the role's allowed models for this loop's provider. The role's
-  // own default is the first option, so "unset" means "what my role says".
+  // MODEL — the role's allowed models for this loop. Home-provider slice by
+  // default; a KEYLESS loop rides the gateway, so its list is the whole
+  // gateway-enabled set — cross-vendor included (his ruling, 2026-09-14).
+  // A personal BYOK key pins the loop to its own vendor.
   const modelSel = document.createElement("select");
   modelSel.className = "settings-input";
-  const pool = models.filter((m) => !loop.provider || m.providerSlug === loop.provider);
+  const gatewayLane = gatewayOn && !cfg?.apiKey;
+  const pool = gatewayLane ? models : models.filter((m) => !loop.provider || m.providerSlug === loop.provider);
   const list = pool.length ? pool : models;
   const roleDefault = document.createElement("option");
   roleDefault.value = "";
@@ -310,12 +327,16 @@ export async function loadOrgLoops(): Promise<void> {
     return;
   }
 
-  const res = await api().orgLoopsList?.().catch(() => null) ?? null;
+  const [res, modelsRes] = await Promise.all([
+    api().orgLoopsList?.().catch(() => null) ?? Promise.resolve(null),
+    api().orgModelsList?.().catch(() => null) ?? Promise.resolve(null),
+  ]);
   if (!res?.ok) {
     host.innerHTML = "";
     fail("org-loops-error", res?.error || "couldn't load the organization's loops");
     return;
   }
+  const orgModels = modelsRes?.ok ? modelsRes.data ?? [] : [];
   host.innerHTML = "";
   for (const loop of res.data ?? []) {
     host.appendChild(row(
@@ -325,8 +346,41 @@ export async function loadOrgLoops(): Promise<void> {
           if (r && !r.ok) { fail("org-loops-error", r.error || "couldn't change that loop"); void loadOrgLoops(); }
         });
       },
+      // THE TIE (his ruling, 2026-09-14): a loop's models ARE its gateway
+      // provider's — expanding the loop shows that provider's catalog with
+      // the same supported toggles as Gateway → Models, so the org curates
+      // the loop's picker right here.
       (panel) => {
         panel.innerHTML = `<p class="settings-hint">Members configure this loop for themselves in Settings → Loops. Turning it off here removes it from everyone, whatever their role allows.</p>`;
+        const list = orgModels.filter((m) => m.providerSlug === loop.provider);
+        if (!list.length) {
+          panel.insertAdjacentHTML("beforeend", `<div class="crud-empty" style="margin-top:12px;">No catalog models for this loop's provider yet.</div>`);
+          return;
+        }
+        for (const m of list) {
+          const line = document.createElement("div");
+          line.className = "set-pref-row";
+          const text = document.createElement("div");
+          text.className = "set-pref-text";
+          text.innerHTML = `<div class="set-pref-title"></div><div class="set-pref-desc"></div>`;
+          (text.querySelector(".set-pref-title") as HTMLElement).textContent = m.name || m.id;
+          (text.querySelector(".set-pref-desc") as HTMLElement).textContent =
+            m.inputCreditsPerMTok != null ? `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok` : m.id;
+          const sw = document.createElement("label");
+          sw.className = "settings-toggle ws-model-allow";
+          sw.title = "Supported — members can pick this model";
+          sw.innerHTML = `<input type="checkbox" ${m.supported ? "checked" : ""} /><span class="toggle-switch"></span>`;
+          const box = sw.querySelector("input") as HTMLInputElement;
+          box.addEventListener("change", () => {
+            void api().orgModelsSetSupported?.(m.id, box.checked).then((r) => {
+              if (r && !r.ok) { box.checked = !box.checked; fail("org-loops-error", r.error || "couldn't change that model"); return; }
+              m.supported = box.checked;
+              fail("org-loops-error", "");
+            });
+          });
+          line.append(text, sw);
+          panel.appendChild(line);
+        }
       },
     ));
   }
@@ -425,4 +479,53 @@ export async function loadAgentDefaults(): Promise<void> {
     prefs.setPreference?.("defaultModel", modelSel.value);
     paintModels(modelSel.value);
   });
+}
+
+// ── Settings → General: the embeddings upgrade ──────────────────────────────
+// ONNX on-device default; Together AI BYOK upgrade (his order, 2026-09-14).
+// Desktop-only — the stores and the embedder live in main; the web shim
+// answers not-ok and the rows stay in their default state.
+export async function loadEmbeddingsSettings(): Promise<void> {
+  const modelSel = el<HTMLSelectElement>("set-embeddings-model");
+  const keyInput = el<HTMLInputElement>("set-embeddings-key");
+  const keyHintEl = el("set-embeddings-key-hint");
+  const clearBtn = el<HTMLButtonElement>("set-embeddings-key-clear");
+  if (!modelSel || !keyInput) return;
+  const g = window.glyphh as unknown as {
+    embeddingsConfigGet?: () => Promise<{ ok: boolean; model: string; keySet: boolean; keyHint: string; models: string[] }>;
+    embeddingsConfigSet?: (i: { model?: string; key?: string; clearKey?: boolean }) => Promise<{ ok: boolean; keySet?: boolean; keyHint?: string; error?: string }>;
+  };
+  const cfg = await g.embeddingsConfigGet?.().catch(() => null);
+  if (!cfg?.ok) return;
+  modelSel.innerHTML = [`<option value="">On-device (default)</option>`]
+    .concat(cfg.models.map((m) => `<option value="${m}"${m === cfg.model ? " selected" : ""}>${m}</option>`))
+    .join("");
+  const paintHint = (keySet: boolean, hint: string): void => {
+    if (keyHintEl) {
+      keyHintEl.textContent = keySet
+        ? `Key set (${hint}) — write-only, stored on this machine, never sent to Glyphh.`
+        : "Write-only — stored on this machine, never sent to Glyphh.";
+    }
+  };
+  paintHint(cfg.keySet, cfg.keyHint);
+  modelSel.onchange = () => { void g.embeddingsConfigSet?.({ model: modelSel.value }); };
+  keyInput.onchange = () => {
+    const key = keyInput.value.trim();
+    if (!key) return;
+    void g.embeddingsConfigSet?.({ key }).then((r) => {
+      if (r?.ok) { keyInput.value = ""; paintHint(!!r.keySet, r.keyHint ?? ""); }
+    });
+  };
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      void g.embeddingsConfigSet?.({ clearKey: true }).then((r) => { if (r?.ok) paintHint(false, ""); });
+    };
+  }
+  // The memory bridge toggle — a plain preference; main reads it at the
+  // next loop open (cli-agents wraps the base URL through the bridge).
+  const bridgeBox = el<HTMLInputElement>("toggle-memory-bridge");
+  if (bridgeBox) {
+    void window.glyphh.getPreference?.("memoryBridgeEnabled", false).then((v) => { bridgeBox.checked = v === true; });
+    bridgeBox.onchange = () => { void window.glyphh.setPreference?.("memoryBridgeEnabled", bridgeBox.checked); };
+  }
 }

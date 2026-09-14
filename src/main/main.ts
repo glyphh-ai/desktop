@@ -97,6 +97,7 @@ import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerCliAgentsIpc } from "./cli-agents";
+import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
@@ -988,6 +989,7 @@ async function boot() {
   registerOfficeDocsIpc();
   registerWorkspaceStateIpc();
   registerCliAgentsIpc();
+  registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerLocalAgentsIpc();
   registerMcpConnectionsIpc();

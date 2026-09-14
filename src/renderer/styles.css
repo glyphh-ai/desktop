@@ -16035,6 +16035,13 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
   display: flex; flex-direction: column;
   flex: 1 1 auto; min-height: 132px; overflow: hidden;
 }
+/* RECENTS hugs its content (his report, 2026-09-14: a flexing body around a
+   capped list left a dead gap and the rail "didn't extend down") — content
+   flows Recents → vsplit → Apps → Workspaces, the user row's margin-top:auto
+   soaks the leftover. The LIST scrolls itself past a generous cap; a dragged
+   height (the vsplit) overrides inline. */
+#rail-recents-body { flex: 0 0 auto; min-height: 0; }
+#recent-sessions-list { flex: 0 1 auto; max-height: 44vh; }
 
 /* Rail section titles are CONTENT, not links — standard text colors in every
    theme rather than the ancestor accent (which read purple). */
@@ -20235,8 +20242,29 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style
    IDENTICAL to its wall seat (his rule: no spread, no zoom change) — plus a
    real backdrop so it reads as a bar over the panels. */
 #echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2000; }
+/* The peek SCRIM (his order, 2026-09-14): a theme gradient behind the
+   dropped dock — the page's own surface color, darkest at the very top,
+   gone within the dock's band — so the bar reads as descending from the
+   chrome instead of floating over the panels. */
+body.echo-dock-tucked #echo-dock-layer::before {
+  /* BELOW the drag strip — the traffic lights stay visible no matter what
+     (his order, 2026-09-14). */
+  content: ""; position: fixed; top: var(--wb-top-inset, 0px); left: 0; right: 0;
+  height: 72px;
+  background: linear-gradient(to bottom,
+    var(--bg) 0%,
+    color-mix(in srgb, var(--bg) 72%, transparent) 55%,
+    transparent 100%);
+  opacity: 0; transition: opacity 0.22s ease; pointer-events: none;
+}
+body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
+/* The wall's "tad more drop" margin is wall-only — zero on the parked bar. */
+#echo-dock-layer .echo-dock { margin-top: 0; }
 #echo-dock-layer .echo-topbar {
-  position: fixed; top: calc(var(--wb-top-inset, 0px) + 8px); left: 50%;
+  /* Hug the chrome (his report, 2026-09-14: "drops down way too far") —
+     just under the drag strip, wall margins zeroed on the parked bar. */
+  position: fixed; top: calc(var(--wb-top-inset, 0px) + 2px); left: 50%;
+  margin: 0;
   transform: translate(-50%, 0);
   transition: transform 0.22s ease;
   pointer-events: auto;

@@ -41,6 +41,25 @@
             </div>
 
 
+            <!-- Restored from bc47a1d3^ (his order, 2026-09-14) — shown ONLY
+                 when the grid carries the Glyphh agent panel (tool:coding). -->
+            <div id="layout-agent-rows" class="hidden">
+              <label class="settings-label" style="margin-top:16px;">Loop &amp; model</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this loop and its model. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
+              <div id="layout-loop-row" class="layout-loop-row">
+                <select id="layout-loop-select" class="settings-input"></select>
+                <div id="layout-loop-models" class="layout-loop-models"></div>
+              </div>
+
+              <label class="settings-label" style="margin-top:16px;">Agent session</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this workspace opens &mdash; &ldquo;resume&rdquo; brings back this workspace&rsquo;s conversation and history.</div>
+              <select id="layout-session-mode" class="settings-input">
+                <option value="keep">Keep the current session</option>
+                <option value="new">Start a new session</option>
+                <option value="last">Resume this workspace&rsquo;s last session</option>
+              </select>
+            </div>
+
             <label class="settings-label" style="margin-top:16px;">Working folder</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this folder. Leave empty to keep the current folder.</div>
             <div class="layout-folder-row">

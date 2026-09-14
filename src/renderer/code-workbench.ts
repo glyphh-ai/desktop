@@ -4360,7 +4360,7 @@ async function init(): Promise<void> {
      *  setting it on the entry afterwards was too late (the shell had
      *  already spawned) and the parked pty was orphaned. */
     let pendingParkedTerms: TermSlot | null = null;
-    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void => {
+    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean; keepSeat?: boolean }): void => {
       const card = e.card;
       if (!card) return;
       // The AGENT card IS the session. Closing it must un-current that session
@@ -4389,10 +4389,14 @@ async function init(): Promise<void> {
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       scheduleWallSave();   // the open set changed — persist it
-      if (echoGrid) {
+      if (echoGrid && !opts?.keepSeat) {
         // The freed space COLLAPSES: column-mates re-inflate over it, and an
         // emptied column is removed — the layout adjusts to fill, never
-        // reserving dead space (his order, 2026-08-30).
+        // reserving dead space (his order, 2026-08-30). keepSeat SKIPS all
+        // of this: the caller is SWAPPING the seat's occupant (the chat↔code
+        // hop) and re-seats the new card itself — collapsing here is what
+        // reset the user's dragged widths on every view switch (his repro,
+        // 2026-09-14).
         const freed = echoGrid.cells.find((c) => c.entry === e);
         echoGrid.cells = echoGrid.cells.filter((c) => c.entry !== e);
         if (freed) compactGrid(freed.col);
@@ -4660,7 +4664,17 @@ async function init(): Promise<void> {
       syncWallVisibility();
       scheduleWallSave();   // the open set changed — persist it
       // (Layout opens assign cells explicitly — never claim during one.)
-      if (echoGrid && !openingLayout) {
+      // A declared SEAT HANDOFF wins: the new card takes the donor's cell in
+      // place — one reflow, no new column (the chat↔code hop).
+      const donorCell = echoGrid && seatHandoff ? echoGrid.cells.find((c) => c.entry === seatHandoff!.donor) : null;
+      if (donorCell && seatHandoff) {
+        donorCell.entry = e;
+        e.memKey = seatHandoff.donor.memKey;
+        e.layoutId = seatHandoff.donor.layoutId;
+        const h = seatHandoff;
+        seatHandoff = null;
+        closeCard(h.donor, { ...h.closeOpts, keepSeat: true });
+      } else if (echoGrid && !openingLayout) {
         // FULL grid (his order, 2026-08-30 — the wipe rule is retired): the
         // new card joins the layout beside the definition, following the
         // SAME fill flow as the loose-card pattern (flowColumns): a fresh
@@ -4731,8 +4745,15 @@ async function init(): Promise<void> {
       const row = cliAgentRows.find((x) => x.id === agentId);
       if (!row) return null;
       const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
-      if (term) closeCard(term, { parkTerms: true });
+      // SEAT HANDOFF (his repro, 2026-09-14): the chat takes the terminal's
+      // grid seat in place — declared before the open so openShell consumes
+      // it atomically. No seat (loose card / no layout) → plain close.
+      if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
       const entry = openAgentPanel();
+      if (term && seatHandoff) {
+        seatHandoff = null;
+        closeCard(term, { parkTerms: true });
+      }
       const holder = openList.find((x) => x.card && x.tile.kind === "agent");
       const card = holder?.card ?? null;
       if (card) card.dataset.boundAgent = agentId;
@@ -4751,24 +4772,42 @@ async function init(): Promise<void> {
         termBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           void (async () => {
-            const boundId = openList.find((x) => x.card && x.tile.kind === "agent")?.card?.dataset.boundAgent || cliAgentRows[0]?.id;
+            // The ACTIVE LOOP wins (his report, 2026-09-14: the switcher
+            // always opened claude) — the session's current loop IS the CLI
+            // to hop into; the bound agent and the roster's first row are
+            // fallbacks for a session with no loop of its own.
+            const live = (window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop?.() || "";
+            const boundId = (live && live !== "default" && cliAgentRows.some((x) => x.id === live) ? live : "")
+              || openList.find((x) => x.card && x.tile.kind === "agent")?.card?.dataset.boundAgent
+              || cliAgentRows[0]?.id;
             if (!boundId) return;   // nowhere to go — the chat STAYS (never close-into-nothing)
-            // The chat's live CLI session follows into the terminal.
+            // The chat's live CLI session follows into the terminal — the
+            // bridge's live map first, else the chat's PERSISTED binding,
+            // BOTH resolved for the TARGET CLI only (his report, 2026-09-14:
+            // a claude sid fed a codex resume → "No saved session found").
+            // No binding for that CLI → the terminal opens FRESH, honestly.
+            const targetCli = cliAgentRows.find((r) => r.id === boundId)?.cli ?? "claude";
             const chatId = (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId?.() ?? null;
-            const sid = chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId) : null;
+            const sid = (chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string, cli?: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId, targetCli) : null)
+              ?? (window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId?.(targetCli);
             // OPEN FIRST, close after (his report, 2026-09-11: close-first
             // left nothing when the async open missed — 'the arrow closes
-            // the agent'). The chat card only leaves once the terminal card
-            // is really on screen.
+            // the agent'). SEAT HANDOFF (2026-09-14): the terminal takes the
+            // chat's grid cell atomically at open — one reflow, geometry
+            // kept; the rAF loop only backstops the no-seat case.
+            const hopChat = openList.find((x) => x.card && x.tile.kind === "agent");
+            if (hopChat) seatHandoff = { donor: hopChat, closeOpts: { keepSession: true } };
             (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
             const closeChatWhenTermUp = (tries = 0): void => {
               const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
               if (term) {
+                seatHandoff = null;   // consumed by the open, or moot now
                 const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
                 if (chatCard) closeCard(chatCard, { keepSession: true });
                 return;
               }
               if (tries < 80) requestAnimationFrame(() => closeChatWhenTermUp(tries + 1));
+              else seatHandoff = null;   // the open never landed — never leak the seat to a later open
             };
             closeChatWhenTermUp();
           })();
@@ -4959,7 +4998,19 @@ async function init(): Promise<void> {
             // lets go.
             // The agent seat is BACK (his order, 2026-09-11) — and it is the
             // SAME surface the glyphh tile opens (his report: two versions).
-            if (v === "coding") entry = (cliAgentRows[0] ? openAgentChatCard(cliAgentRows[0].id) : null) ?? openAgentPanel();
+            if (v === "coding") {
+              if (cliAgentRows[0]) entry = openAgentChatCard(cliAgentRows[0].id) ?? openAgentPanel();
+              else {
+                // BOOT RACE (his report, 2026-09-14): a workspace restoring at
+                // boot ran this before the agent roster landed — the seat came
+                // up bare, with no bound agent and no >_ toggle. Seat first,
+                // then bind the chat chrome the moment the roster arrives.
+                entry = openAgentPanel();
+                void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+                  if (r?.ok && r.agents[0]) { cliAgentRows = r.agents; openAgentChatCard(r.agents[0].id); }
+                }).catch(() => {});
+              }
+            }
             else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
@@ -5064,10 +5115,10 @@ async function init(): Promise<void> {
             // back", 2026-09-09) — name the cell and why it died so the next
             // report pins the path in one console line. (The agent cell is
             // legitimately skipped when the dock owns the agent.)
-            console.warn("[echo] layout cell produced no card:", {
-              layout: layout.name, panelId: cell.panelId,
-              entryMade: !!entry, cardMade: !!entry?.card,
-            });
+            // Inlined into the string: the main-process console-message
+            // forwarder only gets the pre-stringified message, so an object
+            // argument reaches the terminal log as "[object Object]".
+            console.warn(`[echo] layout cell produced no card: layout=${layout.name} panelId=${cell.panelId} entry=${!!entry} card=${!!entry?.card}`);
           }
         }
         if (gridCells.length) {
@@ -5656,7 +5707,10 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
-      if (t.cliAgent) { openAgentCliCard(t); return; }
+      // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
+      // loop tile opens the SAME agent chat panel every other door opens,
+      // with this loop set. The terminal is the >_ hop, never a door.
+      if (t.cliAgent) { openAgentChatCard(t.cliAgent.id); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -5739,6 +5793,14 @@ async function init(): Promise<void> {
     // ── The agent drives Echo too: while Echo is mounted, EVERY panel tool
     // (open / list / close / focus / clear / terminal / browser / files)
     // lands in Echo's slots — pervasive, not just clicks. ──
+    /** SEAT HANDOFF — the chat↔code hop's in-place swap (his repro,
+     *  2026-09-14: post-hoc swapping double-seated the new card and the
+     *  agent "jumped all over"). Declared BEFORE the replacement opens;
+     *  openShell consumes it atomically: the new entry takes the donor's
+     *  grid cell (geometry, memory key, layout binding intact — never a new
+     *  column), and the donor closes with its seat kept. */
+    let seatHandoff: { donor: TileEntry; closeOpts: { parkTerms?: boolean; keepSession?: boolean } } | null = null;
+
     const findTile = (slug: string): TileEntry | undefined => {
       const key = slug.trim().toLowerCase();
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
@@ -8678,9 +8740,28 @@ async function init(): Promise<void> {
   function paintAgentTermHead(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot, agent: { id: string; name: string }): void {
     tabsEl.innerHTML = "";
     tabsEl.classList.add("ws-agent-termhead");
+    // The SAME conversation follows into chat — newest session IN THIS
+    // LOOP'S LANE only; nothing in the lane opens a fresh chat.
+    const toChat = (): void => {
+      void scopedCliSessions(agent.id).then((rows) => {
+        (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+        const newest = rows[0];
+        if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli: cliAgentRows.find((r) => r.id === agent.id)?.cli });
+      });
+    };
+    // ← + session name, top left — the SAME back-to-chat the chat header
+    // carries, mirrored in CLI mode (his report, 2026-09-14: it was missing).
+    const back = document.createElement("button");
+    back.className = "code-icon-btn";
+    back.title = "Back to chat";
+    back.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+    back.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
     const title = document.createElement("span");
     title.className = "ws-agent-term-title";
     title.textContent = agent.name;
+    title.style.cursor = "pointer";
+    title.title = "Back to chat";
+    title.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
     // The CLI's newest session in this agent's lane names the row.
     void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }> } })
       .glyphh?.cliSessionsList?.().then((r) => {
@@ -8698,15 +8779,7 @@ async function init(): Promise<void> {
       return b;
     };
     const chat = btn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-      () => {
-        // The SAME conversation follows into chat — newest session IN THIS
-        // LOOP'S LANE only; nothing in the lane opens a fresh chat.
-        void scopedCliSessions(agent.id).then((rows) => {
-          (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
-          const newest = rows[0];
-          if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id });
-        });
-      });
+      toChat);
     const drips = btn("Drips", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
       () => (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips?.());
     const recents = btn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
@@ -8718,13 +8791,24 @@ async function init(): Promise<void> {
         const anchor = ev.currentTarget as HTMLElement;
         void loopLane(agent.id).then((lane) => {
           (window as unknown as { __glyphhSessionsMenu?: (
-            a: HTMLElement, o: { cli?: string; cwd?: string; onPick: (s: { id: string }) => void },
+            a: HTMLElement, o: { cli?: string; cwd?: string; onPick: (s: { id: string; cli?: string }) => void },
           ) => void }).__glyphhSessionsMenu?.(anchor, {
             ...lane,
-            // IN THIS WINDOW (his rule, 2026-09-11: "that is the entire point
-            // of that dropdown"). Picking a recent swaps the session under
-            // the card you are already looking at — it never mints another.
-            onPick: (sess) => void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id),
+            // IN THIS WINDOW (his rule, 2026-09-11) when the pick is this
+            // lane's own CLI; the list is COMBINED now (his order,
+            // 2026-09-14), so another CLI's session routes to ITS agent —
+            // a codex id must never compose into a claude resume.
+            onPick: (sess) => {
+              const sameCli = !sess.cli || sess.cli === (cliAgentRows.find((r) => r.id === agent.id)?.cli ?? "claude");
+              if (sameCli) { void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id); return; }
+              // Another CLI's session — the ONE chat surface adopts it,
+              // bound to run on ITS agent (never a cross-CLI resume).
+              const target = cliAgentRows.find((r) => r.cli === sess.cli);
+              if (!target) return;
+              (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(target.id);
+              (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
+                .__glyphhAdoptCliSession?.({ agentName: target.name, sessionId: sess.id, agentId: target.id, cli: target.cli });
+            },
           });
         });
       });
@@ -8732,7 +8816,7 @@ async function init(): Promise<void> {
       () => (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void }).__wbOpenAgentCli?.(agent.id, undefined, { fresh: true }));
     const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
       (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
-    tabsEl.append(title, spacer, chat, drips, recents, fresh, dev);
+    tabsEl.append(back, title, spacer, chat, drips, recents, fresh, dev);
   }
 
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {

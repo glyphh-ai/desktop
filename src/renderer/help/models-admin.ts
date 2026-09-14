@@ -10,7 +10,6 @@
  */
 
 import { renderPaginationBar, confirmAction } from "./shared.js";
-import { gateSurface } from "./plan-gate.js";
 import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
@@ -915,11 +914,10 @@ async function refresh(): Promise<void> {
 }
 
 export function loadModelsAdmin(): void {
-  // LICENSE first (his rule, 2026-09-13): on Free every supported model is
-  // available and the list is NOT editable — visible, on, disabled, with the
-  // standard banner + Billing door. The server answers E_ENTITLEMENT anyway.
-  void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="models"]'),
-    "governance", "Model governance");
+  // NO plan gate (his ruling, 2026-09-14, reversing 09-13): the org's model
+  // support list is org → user configuration on EVERY plan — the free-plan
+  // org admin is the primary here and toggles models for themselves. The
+  // governance gates stay on the ROLE layer (telling members apart).
   if (!initialized) {
     initialized = true;
     el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
