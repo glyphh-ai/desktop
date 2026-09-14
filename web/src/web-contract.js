@@ -25,7 +25,7 @@
  */
 import {
   libEnvelope, libError,
-  toLegacyConnections, toLegacyConnectionTools, toLegacyConnectorApps,
+  toLegacyConnectionTools, toLegacyConnectorApps,
   toLegacyMcpConnections, toLegacyLoops, toLegacyLoopRoles,
   toLegacyLayouts, toLegacyDrips, toLegacyPanelApps, toAccountInfo,
   toDashboardData, emptyDashboardData,
@@ -543,18 +543,58 @@ export function buildContract(client, deps) {
     // freshly connected org account was invisible): /api/org/connections
     // SYNCS the Pipedream account mirror; resolvedTools reads the mirror and
     // never syncs. Members 403 on the org lane — swallowed, harmless.
-    connectionsList: read(
-      () => client.connections.pipedreamList().catch(() => null).then(() => client.connections.resolvedTools()),
-      toLegacyConnections,
-      EMPTY.connections,
-    ),
+    // The MANAGEMENT list (his rule, 2026-09-13): built from the RAW org +
+    // personal rows — they carry the real uuid id and the governed `enabled`
+    // bit, and a DISABLED row must still paint (resolvedTools excludes it
+    // from the tool set by design). Tool counts hydrate from resolvedTools.
+    connectionsList: async () => {
+      try {
+        const [org, personal, resolved] = await Promise.all([
+          client.connections.pipedreamList().catch(() => []),   // also SYNCS the mirror
+          client.connections.personalList().catch(() => []),
+          client.connections.resolvedTools().catch(() => ({ connections: [] })),
+        ]);
+        const bySlug = new Map((resolved.connections ?? []).map((c) => [c.slug, c]));
+        const row = (c, isOrg) => {
+          const r = bySlug.get(c.appSlug);
+          return {
+            id: c.id, accountId: c.id, appSlug: c.appSlug, appName: c.appName,
+            label: c.name || c.appName, healthy: c.healthy !== false,
+            enabled: c.enabled !== false, hiddenTools: [], createdAt: c.createdAt || '',
+            org: isOrg,
+            agentAllowed: r ? true : (c.enabled !== false ? undefined : false),
+            agentTools: (r?.tools ?? []).length,
+            agentAvailable: (r?.availableTools ?? r?.tools ?? []).length,
+          };
+        };
+        const personalIds = new Set((personal || []).map((c) => c.id));
+        return { ok: true, connections: [
+          ...(org || []).filter((c) => !personalIds.has(c.id)).map((c) => row(c, true)),
+          ...(personal || []).map((c) => row(c, false)),
+        ] };
+      } catch (err) { return EMPTY.connections(err?.message || String(err)); }
+    },
+    // Enable/disable — org rows (and members' rows) via the org lane when the
+    // caller is an admin; a member's own via the personal lane.
+    connectionSetEnabled: async (id, enabled, isOrg) => {
+      try {
+        const conn = isOrg
+          ? await client.connections.setOrgConnectionEnabled(id, enabled)
+          : await client.connections.setPersonalConnectionEnabled(id, enabled)
+              .catch(() => client.connections.setOrgConnectionEnabled(id, enabled));
+        return { ok: true, connection: conn };
+      } catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
+    // Org ⇄ personal scope (admin only; the server refuses members).
+    connectionSetScope: async (id, scope) => {
+      try { return { ok: true, connection: await client.connections.setOrgConnectionScope(id, scope) }; }
+      catch (err) { return { ok: false, error: err?.message || String(err) }; }
+    },
     connectionToolsList: (id) =>
       read(() => client.connections.resolvedTools(), (r) => toLegacyConnectionTools(r, id), EMPTY.tools)(),
     connectorsGetApps: read((search) => client.connections.apps({ search }), toLegacyConnectorApps, EMPTY.connectorApps),
-    // Rename a connection — same envelope the desktop IPC returns. Web rows
-    // carry SLUGS as ids (toLegacyConnections), but the rename routes take the
-    // ACCOUNT UUID — resolve slug → account first (personal wins, org next),
-    // or postgres rejects the slug ("invalid input syntax for type uuid").
+    // Rename a connection — same envelope the desktop IPC returns. Rows carry
+    // the real ACCOUNT UUID now; the slug fallback survives for stale callers.
     connectionRename: async (id, label) => {
       try {
         const personal = await client.connections.personalList().catch(() => []);

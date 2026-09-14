@@ -27,6 +27,12 @@
                 <div id="conn-detail-head" class="edit-head"></div>
                 <label class="settings-label">Name</label>
                 <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
+                <!-- Scope (his rule, 2026-09-13): org-wide or the owner's own.
+                     Title left, standard bare toggle right; admins only. -->
+                <div id="conn-scope-row" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
+                  <label class="settings-label" style="margin:0;">Org connection</label>
+                  <label class="settings-toggle ws-model-allow"><input id="conn-scope-toggle" type="checkbox" /><span class="toggle-switch"></span></label>
+                </div>
                 <!-- Custom MCP: connect a remote server by URL. Auth is handled
                      automatically on first connect (OAuth). The OAuth client +
                      headers under Advanced are only for servers that need them

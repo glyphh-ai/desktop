@@ -548,6 +548,23 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
   });
   ipcMain.handle("connection-disconnect", async (_e, id: string) => {
     try { const r = await getClient().connections.personalDisconnect(id); return { ok: r?.ok !== false }; }
+    catch {
+      try { const r = await getClient().connections.pipedreamDisconnect(id); return { ok: r?.ok !== false }; }
+      catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    }
+  });
+  ipcMain.handle("connection-set-enabled", async (_e, id: string, enabled: boolean, isOrg?: boolean) => {
+    try {
+      const conns = getClient().connections;
+      const row = isOrg
+        ? await conns.setOrgConnectionEnabled(id, !!enabled)
+        : await conns.setPersonalConnectionEnabled(id, !!enabled).catch(() => conns.setOrgConnectionEnabled(id, !!enabled));
+      return { ok: true, connection: row };
+    }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("connection-set-scope", async (_e, id: string, scope: "org" | "personal") => {
+    try { return { ok: true, connection: await getClient().connections.setOrgConnectionScope(id, scope) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
 }

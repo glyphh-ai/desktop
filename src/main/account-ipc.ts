@@ -67,8 +67,14 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, config: await getClient().billing.setAutotopup(input) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("billing-subscribe", async (_e, tier: string) => {
-    try { return { ok: true as const, url: (await getClient().billing.subscribe(String(tier || ""))).url }; }
+  ipcMain.handle("billing-subscribe", async (_e, tier: string, embedded?: boolean) => {
+    try {
+      if (embedded) {
+        const change = await getClient().billing.subscribeEmbedded(String(tier || ""));
+        return { ok: true as const, clientSecret: change.clientSecret ?? "" };
+      }
+      return { ok: true as const, url: (await getClient().billing.subscribe(String(tier || ""))).url };
+    }
     catch (err) { return fail(err); }
   });
   ipcMain.handle("billing-change-plan", async (_e, tier: string) => {

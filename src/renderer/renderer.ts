@@ -254,6 +254,8 @@ declare global {
       connectionToolsList: (id: string) => Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>;
       connectionToolsSet: (id: string, hiddenTools: string[]) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;
       connectionDisconnect: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      connectionSetEnabled?: (id: string, enabled: boolean, isOrg?: boolean) => Promise<{ ok: boolean; error?: string }>;
+      connectionSetScope?: (id: string, scope: "org" | "personal") => Promise<{ ok: boolean; error?: string }>;
       // App proxies — public <slug>.glyphh.app tunnels
       appSecretsList: (id: string) => Promise<{ ok: boolean; secrets?: Array<{ key: string; at: string; hostOnly?: boolean; appReadable?: boolean }>; error?: string }>;
       appSecretsSet: (id: string, key: string, value: string, appReadable?: boolean) => Promise<{ ok: boolean; error?: string }>;

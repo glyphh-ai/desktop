@@ -670,6 +670,10 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("connection-tools-set", id, hiddenTools) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
   connectionDisconnect: (id: string) =>
     ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
+  connectionSetEnabled: (id: string, enabled: boolean, isOrg?: boolean) =>
+    ipcRenderer.invoke("connection-set-enabled", id, enabled, isOrg) as Promise<{ ok: boolean; error?: string }>,
+  connectionSetScope: (id: string, scope: "org" | "personal") =>
+    ipcRenderer.invoke("connection-set-scope", id, scope) as Promise<{ ok: boolean; error?: string }>,
   // Per-app config vars (encrypted secrets). List never includes values —
   // a value is visible only in the form where it's typed, at creation.
   appSecretsList: (id: string) =>
@@ -835,8 +839,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingAutotopupGet: () => ipcRenderer.invoke("billing-autotopup-get") as Promise<AccountAutotopup>,
   billingAutotopupSet: (input: AccountAutotopup) =>
     ipcRenderer.invoke("billing-autotopup-set", input) as Promise<{ ok: boolean; config?: AccountAutotopup; error?: string }>,
-  billingSubscribe: (tier: string) =>
-    ipcRenderer.invoke("billing-subscribe", tier) as Promise<{ ok: boolean; url?: string; error?: string }>,
+  billingSubscribe: (tier: string, embedded?: boolean) =>
+    ipcRenderer.invoke("billing-subscribe", tier, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
   billingChangePlan: (tier: string) =>
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
   billingTopup: (credits: number, embedded?: boolean) =>
