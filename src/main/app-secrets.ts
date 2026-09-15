@@ -27,7 +27,7 @@
 
 import { safeStorage } from "electron";
 import { encryptField, decryptField } from "./local-db.js";
-import { updateEntry } from "./apps-store.js";
+import { getClient } from "./glyphh-client.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
@@ -80,7 +80,7 @@ async function patchSecrets(row: AppRowLite, secrets: SecretsMap): Promise<void>
   // store (/api/apps/:slug/secrets): those values are readable server-side, while
   // everything here is safeStorage ciphertext the server must never be able to
   // decrypt. Keep it that way — see this file's header.
-  await updateEntry(row.slug, {
+  await getClient().apps.updateEntry(row.slug, {
     config: { ...(row.launchConfig || {}), secrets },
   });
   invalidateOrgApps();

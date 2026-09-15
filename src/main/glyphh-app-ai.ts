@@ -26,7 +26,6 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
-import { TOGETHER_PREFIX, togetherEmbed, defaultEmbedModel } from "./embeddings-config.js";
 
 // kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
 // OPTIONAL feature, and on some machines the prebuilt can't load — most often a
@@ -88,24 +87,13 @@ function getEmbedder(model: string): Promise<any> {
 
 async function embedTexts(texts: string[], model: string): Promise<number[][]> {
   const clipped = texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS));
-  // The UPGRADE LANE (his order, 2026-09-14): a "together:<model>" string
-  // embeds via the user's own Together AI key, direct from this machine —
-  // never proxied. Collections pin their model, so a store indexed on one
-  // lane always queries on the same one.
-  if (model.startsWith(TOGETHER_PREFIX)) return togetherEmbed(clipped, model.slice(TOGETHER_PREFIX.length));
   const extractor = await getEmbedder(model);
   const out = await extractor(clipped, { pooling: "mean", normalize: true });
   return out.tolist() as number[][];
 }
 
-/** The default model for NEW collections/embeds: the configured Together
- *  upgrade when the user enabled it, else the on-device ONNX default. */
-function activeEmbedModel(): string {
-  return defaultEmbedModel() || DEFAULT_EMBED_MODEL;
-}
-
 export async function llmEmbed(args: Record<string, unknown>): Promise<{ model: string; dim: number; vectors: number[][] }> {
-  const model = String(args.model || activeEmbedModel());
+  const model = String(args.model || DEFAULT_EMBED_MODEL);
   const texts = Array.isArray(args.texts) ? args.texts.map(String) : args.text ? [String(args.text)] : [];
   if (!texts.length) throw new Error("text or texts is required");
   if (texts.length > MAX_EMBED_BATCH) throw new Error(`max ${MAX_EMBED_BATCH} texts per call`);
@@ -210,7 +198,7 @@ export async function vectorUpsert(slug: string, args: Record<string, unknown>):
 
   const db = getVecDb(slug);
   let coll = collectionOf(db, collection);
-  const model = String(args.model || coll?.model || activeEmbedModel());
+  const model = String(args.model || coll?.model || DEFAULT_EMBED_MODEL);
   if (coll && args.model && model !== coll.model) {
     throw new Error(`collection "${collection}" uses model ${coll.model}; delete it to change models`);
   }

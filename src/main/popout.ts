@@ -17,8 +17,24 @@ import { BrowserWindow, ipcMain } from "electron";
 export function registerPopoutIpc(): void {
   ipcMain.handle("panel-popout", (_e, req: { kind?: string; url?: string; file?: string; title?: string } | undefined) => {
     try {
-      const kind = "url";
-      const title = String(req?.title || "Glyphh");
+      const kind = req?.kind === "slides" ? "slides" : "url";
+      const title = String(req?.title || (kind === "slides" ? "Slides" : "Glyphh"));
+      if (kind === "slides") {
+        const win = new BrowserWindow({
+          width: 1160, height: 740, title,
+          titleBarStyle: "hiddenInset",
+          webPreferences: {
+            preload: join(__dirname, "..", "renderer", "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        });
+        void win.loadFile(
+          join(__dirname, "..", "renderer", "popout-slides.html"),
+          req?.file ? { search: `?file=${encodeURIComponent(String(req.file))}` } : undefined,
+        );
+        return { ok: true };
+      }
       const url = String(req?.url ?? "");
       if (!/^https?:\/\//i.test(url)) throw new Error("popout needs an http(s) url");
       const win = new BrowserWindow({

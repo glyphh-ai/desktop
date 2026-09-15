@@ -24,7 +24,7 @@
 
 import { existsSync } from "node:fs";
 import { ipcMain, type WebContents } from "electron";
-import { runMaxOutputTokens, applyLoopConfig, setSelection, GLYPHH_LOOP } from "./loop-selections";
+import { runMaxOutputTokens } from "./loop-selections";
 import { registerGlyphhPermissionIpc } from "./glyphh-agent-permissions";
 import { setRunAttachments, clearRunAttachments, activeAgentRuns } from "./glyphh-agent-tools";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
@@ -89,17 +89,8 @@ export function assertGlyphhExternalAllowed(via: "relay" | "local-mcp"): void {
 export function registerGlyphhIpc(): void {
   registerGlyphhPermissionIpc();
   registerGlyphhContextIpc();
-  // The renderer's transport to the LOCAL threads store (thread-store.ts).
+  // The renderer's transport to the server threads surface (thread-store.ts).
   registerThreadsIpc();
-  // The model pick (one loop; the dropdown over the catalog — loop-selections.ts).
-  ipcMain.handle("loop-apply-config", (_e, loop: string | null, selections?: Record<string, string>) => {
-    applyLoopConfig(loop, selections);
-    return { ok: true };
-  });
-  ipcMain.handle("loop-role-set", (_e, p: { loop?: string; role?: string; modelId?: string | null }) => {
-    setSelection(String(p?.loop ?? GLYPHH_LOOP), String(p?.role ?? "default"), p?.modelId ?? null);
-    return { ok: true };
-  });
   ipcMain.handle("glyphh-agent-run", async (e, payload: { chatId: string; attachments?: AttachRef[]; workdir?: string; chat?: boolean; mode?: "chat" | "cowork" | "code"; permission?: "ask" | "plan" | "acceptEdits" | "auto"; steer?: string; model?: string; loop?: string; source?: RunSource }) => {
     const chatId = String(payload?.chatId || "");
     if (!chatId) throw new Error("chatId is required");

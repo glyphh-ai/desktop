@@ -11,7 +11,6 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { gateSurface } from "./plan-gate.js";
 
 interface OrgSecurityStatus {
   configured: boolean;
@@ -156,11 +155,6 @@ export async function loadOAuth(): Promise<void> {
   try {
     current = await t.status();
     paint();
-    // THE licensing read (help/plan-gate.ts → SDK client.plans). SSO is one
-    // IdP connection per org and costs us real money, so it is an
-    // Enterprise seam — shown and labelled, never hidden.
-    void gateSurface(document.querySelector<HTMLElement>('.settings-panel[data-sub="oauth"]'),
-      "sso", "Single sign-on");
   } catch (e) {
     current = null;
     setError(`Couldn't load SSO settings — ${(e as Error).message}`);

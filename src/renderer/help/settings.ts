@@ -3,12 +3,12 @@
  */
 
 import { confirmAction } from "./shared.js";
-import { loadAgentDefaults, loadEmbeddingsSettings } from "./settings-loops.js";
-import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
+import { loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
 import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
 import { accountApi } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initMembers, loadMembers } from "./settings-members.js";
+import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
 
 // The account panels are big enough to own their own modules; Settings just
 // initialises them and re-exports their loaders for navigation.ts.
@@ -16,7 +16,7 @@ export { loadBilling, loadProfile, loadMembers, loadWorkspacesPanel };
 
 // ── Settings ─────────────────────────────────────────────
 
-// General has no footer Save — every control in it
+// General has no footer Save — every control in it (compaction guidance,
 // toggles) owns its own save.
 
 const toggleAutoUpdate = document.getElementById("toggle-auto-update") as HTMLInputElement;
@@ -68,12 +68,40 @@ function initDesktopPanel(): void {
 
 function initSettings() {
   initDesktopPanel();
-  initWorkspaces();
   // Billing / Organization / Account-profile own their wiring; they're
   // idempotent, so init here and let the sub-nav trigger their loads.
   initBilling();
   initProfile();
   initMembers();
+  initWorkspaces();
+  // Compaction guidance saves ITSELF — debounced while typing, immediately on
+  // blur — with the standard "Saved" flash. No Save button (General's rule:
+  // every control owns its own save).
+  {
+    const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+    const status = document.getElementById("glyphh-agent-compact-status");
+    let timer = 0;
+    const save = (): void => {
+      if (!wcp) return;
+      const value = wcp.value.trim();
+      // The loader stamps the stored value into data-saved — an untouched (or
+      // reverted) field neither writes nor flashes.
+      if (value === (wcp.dataset.saved ?? "")) return;
+      wcp.dataset.saved = value;
+      void Promise.resolve(window.glyphh.setPreference?.("glyphhCompactionPrompt", value)).then(() => {
+        if (status) {
+          status.textContent = "Saved";
+          status.className = "set-save-state success";
+          setTimeout(() => { status.textContent = ""; }, 1600);
+        }
+      });
+    };
+    wcp?.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(save, 700);
+    });
+    wcp?.addEventListener("blur", () => { window.clearTimeout(timer); save(); });
+  }
 
   // Theme picker
   const themePicker = document.getElementById("theme-picker");
@@ -118,12 +146,6 @@ function initSettings() {
   }
 
 
-  // Agent defaults — the loop + model a new session opens with, both drawn
-  // from the org → role policy (help/settings-loops.ts).
-  void loadAgentDefaults();
-  // Embeddings upgrade — ONNX default, Together AI BYOK (desktop-only).
-  void loadEmbeddingsSettings();
-
   // Default workspace — what a fresh boot opens when there's nothing to
   // restore (code-workbench restoreWallOnce reads the same pref). Options are
   // the user's layouts; the three shipped defaults (Vibe/Dev/Design) are
@@ -154,35 +176,6 @@ function initSettings() {
       defWs.value = opts.some((n) => n.toLowerCase() === current.toLowerCase()) ? opts.find((n) => n.toLowerCase() === current.toLowerCase())! : "";
       defWs.addEventListener("change", () => {
         void window.glyphh.setPreference?.("defaultWorkspace", defWs.value);
-      });
-    })();
-  }
-
-  // Default agent — who answers "+ New" on Loops/Skills (pref defaultAgent).
-  const defAg = document.getElementById("settings-default-agent") as HTMLSelectElement | null;
-  if (defAg) {
-    void (async () => {
-      const yo = window.glyphh as unknown as {
-        cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
-        getPreference?: (k: string, d: unknown) => Promise<unknown>;
-        setPreference?: (k: string, v: unknown) => void;
-      };
-      const current = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
-      const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
-      defAg.innerHTML = "";
-      const none = document.createElement("option");
-      none.value = "";
-      none.textContent = agents.length ? "None" : "None — create an agent first";
-      defAg.appendChild(none);
-      for (const a of agents) {
-        const o = document.createElement("option");
-        o.value = a.id;
-        o.textContent = a.name;
-        defAg.appendChild(o);
-      }
-      defAg.value = agents.some((a) => a.id === current) ? current : "";
-      defAg.addEventListener("change", () => {
-        void yo.setPreference?.("defaultAgent", defAg.value);
       });
     })();
   }
@@ -270,7 +263,7 @@ function initSettings() {
   if (localMcpSection && localMcpToggle && !mcpOnWeb) {
     localMcpSection.classList.remove("hidden");
     void (async () => {
-      const enabled = (await window.glyphh.getPreference("localMcpEnabled", true)) !== false;
+      const enabled = (await window.glyphh.getPreference("localMcpEnabled", false)) as boolean;
       localMcpToggle.checked = enabled;
       setLocalMcpBodyVisible(enabled);
       await refreshLocalMcp();
@@ -565,7 +558,119 @@ function paintPlanChip(tier?: string | null): void {
 }
 
 
+let uaWired = false;
+
+/** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
+ *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
+export async function loadUsageAppView(): Promise<void> {
+  const el = (id: string) => document.getElementById(id);
+  if (!el("usage-app-view")) return;
+  closeBuyForm();
+  if (!uaWired) {
+    uaWired = true;
+    el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
+    // Buy usage credits → the shared Need-more-usage form (settings-billing
+    // owns it; Billing opens the same one breadcrumbed ← Billing).
+    el("ua-buy")?.addEventListener("click", () => openBuyForm("usage"));
+    // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
+    const showLimitForm = (on: boolean) => {
+      el("ua-main")?.classList.toggle("hidden", on);
+      el("ua-limit-form")?.classList.toggle("hidden", !on);
+    };
+    el("ua-adjust-limit")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+        (el("ua-limit-input") as HTMLInputElement).value = cap > 0 ? String(cap) : "";
+        showLimitForm(true);
+        (el("ua-limit-input") as HTMLInputElement | null)?.focus();
+      })();
+    });
+    el("ua-limit-back")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-cancel")?.addEventListener("click", () => showLimitForm(false));
+    el("ua-limit-save")?.addEventListener("click", () => {
+      void (async () => {
+        const cap = Math.max(0, Number((el("ua-limit-input") as HTMLInputElement).value) || 0);
+        await window.glyphh.setPreference?.("billingMonthlyCapUsd", cap);
+        const capEl = el("ua-cap");
+        if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
+        showLimitForm(false);
+      })();
+    });
+    const toggle = el("ua-autotopup") as HTMLInputElement | null;
+    toggle?.addEventListener("change", () => {
+      void (async () => {
+        const api = accountApi();
+        try {
+          const cfg = await api.autotopup();
+          await api.setAutotopup({ ...cfg, enabled: toggle.checked });
+        } catch { toggle.checked = !toggle.checked; }
+        const st = el("ua-reload-state");
+        if (st) st.textContent = toggle.checked ? "On" : "Off";
+      })();
+    });
+  }
+  // The ONE account transport (SDK on web, IPC on desktop) — the page is
+  // identical on both surfaces by construction.
+  const api = accountApi();
+  // MEMBERS see their own usage and nothing org-financial (his scoping order,
+  // 2026-08-24): no org balance, no buying, no auto top-up. The server 403s
+  // the billing reads/writes for them regardless — this hides the controls.
+  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
+    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
+    document.querySelector(".ua-credits-toggle")?.classList.toggle("hidden", !admin);
+    el("ua-balance-row")?.classList.toggle("hidden", !admin);
+  }).catch(() => { /* signed out — the page renders read-only anyway */ });
+  try {
+    // dashboardData is the LEDGER truth on both surfaces (desktop home-ipc /
+    // the web contract): month-to-date spend from usage.summary, the plan's
+    // name + allowance off the catalog, the org balance. The old derivation
+    // (allowance − remaining grant credits) INVENTED spend after any
+    // mid-cycle plan change — a fresh Basic upgrade read as "1,800 spent".
+    const [data, topup] = await Promise.all([
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; credits?: number; allowance?: number; spendCredits?: number } | undefined>,
+      api.autotopup().catch(() => null),
+    ]);
+    const planEl = el("ua-plan");
+    if (planEl && data?.plan) {
+      planEl.textContent = data.plan.includes(" ") ? data.plan
+        : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
+    }
+    const allowance = Math.max(0, data?.allowance ?? 0);      // whole credits
+    const used = Math.max(0, Math.round(data?.spendCredits ?? 0));
+    const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
+    const fill = el("ua-month-fill");
+    if (fill) fill.style.width = `${pct}%`;
+    const pctEl = el("ua-month-pct");
+    if (pctEl) pctEl.textContent = allowance > 0 ? `${pct}% used` : "—";
+    const reset = new Date();
+    reset.setMonth(reset.getMonth() + 1, 1);
+    const resetEl = el("ua-month-reset");
+    if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+    const spentEl = el("ua-spent");
+    if (spentEl) spentEl.textContent = `${used.toLocaleString()} credits`;
+    const spentReset = el("ua-spent-reset");
+    if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
+    const balEl = el("ua-balance");
+    if (balEl) balEl.textContent = Math.max(0, data?.credits ?? 0).toLocaleString();
+    const t = el("ua-autotopup") as HTMLInputElement | null;
+    if (t && topup) t.checked = !!topup.enabled;
+    const reload = el("ua-reload-state");
+    if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
+    const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
+    const capEl = el("ua-cap");
+    if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
+    const upd = el("ua-updated");
+    if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  } catch { /* offline — the view keeps its dashes */ }
+}
+
 async function loadSettings() {
+  // Settings › Usage owns the usage chart + metric cards now.
+  paintDashGreeting();
+  void loadUsageAppView();
+  void loadUsageChart();
+  void loadUsageMetrics();
+  void loadUsageMembers();
   // Account's profile form loads with Settings rather than waiting on a
   // sub-nav click; the org record lives on Organization › General now and
   // loads there.
@@ -573,6 +678,15 @@ async function loadSettings() {
   // Members hides its own nav item unless the caller is an org admin, so this
   // has to run on Settings open, not only when the tab is clicked.
   void loadMembers();
+  // Workspaces hides its own nav item unless the caller is an org admin.
+  void loadWorkspacesPanel();
+  // Glyphh: standing compaction guidance + training capture
+  const wcp = document.getElementById("glyphh-agent-compact-prompt") as HTMLTextAreaElement | null;
+  if (wcp) {
+    wcp.value = String((await window.glyphh.getPreference?.("glyphhCompactionPrompt", "")) || "");
+    // Baseline for the auto-save (initSettings): unchanged content never writes.
+    wcp.dataset.saved = wcp.value.trim();
+  }
 
   // The Account header's ORG + PLAN chips. Name, email, role and the avatar
   // come from the server profile via loadProfile() — one painter each, so the
@@ -665,117 +779,3 @@ async function loadSettings() {
 export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };
-
-/** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
- *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
-let uaWired = false;
-
-export async function loadUsageAppView(): Promise<void> {
-  // The spend limit is the ORG ADMIN's control (his ruling, 2026-09-12) —
-  // members see the cap but cannot adjust it.
-  void window.glyphh.getAccountInfo?.().then((info) => {
-    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
-    el("ua-adjust-limit")?.classList.toggle("hidden", !admin);
-  });
-  const el = (id: string) => document.getElementById(id);
-  if (!el("usage-app-view")) return;
-  closeBuyForm();
-  if (!uaWired) {
-    uaWired = true;
-    el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
-    // Buy usage credits → the shared Need-more-usage form (settings-billing
-    // owns it; Billing opens the same one breadcrumbed ← Billing).
-    el("ua-buy")?.addEventListener("click", () => openBuyForm("usage"));
-    // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
-    const showLimitForm = (on: boolean) => {
-      el("ua-main")?.classList.toggle("hidden", on);
-      el("ua-limit-form")?.classList.toggle("hidden", !on);
-    };
-    el("ua-adjust-limit")?.addEventListener("click", () => {
-      // Belt and braces beside the hide below — a member must never reach
-      // the form even if the button is resurrected by other DOM work.
-      void (async () => {
-        const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
-        (el("ua-limit-input") as HTMLInputElement).value = cap > 0 ? String(cap) : "";
-        showLimitForm(true);
-        (el("ua-limit-input") as HTMLInputElement | null)?.focus();
-      })();
-    });
-    el("ua-limit-back")?.addEventListener("click", () => showLimitForm(false));
-    el("ua-limit-cancel")?.addEventListener("click", () => showLimitForm(false));
-    el("ua-limit-save")?.addEventListener("click", () => {
-      void (async () => {
-        const cap = Math.max(0, Number((el("ua-limit-input") as HTMLInputElement).value) || 0);
-        await window.glyphh.setPreference?.("billingMonthlyCapUsd", cap);
-        const capEl = el("ua-cap");
-        if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
-        showLimitForm(false);
-      })();
-    });
-    const toggle = el("ua-autotopup") as HTMLInputElement | null;
-    toggle?.addEventListener("change", () => {
-      void (async () => {
-        const api = accountApi();
-        try {
-          const cfg = await api.autotopup();
-          await api.setAutotopup({ ...cfg, enabled: toggle.checked });
-        } catch { toggle.checked = !toggle.checked; }
-        const st = el("ua-reload-state");
-        if (st) st.textContent = toggle.checked ? "On" : "Off";
-      })();
-    });
-  }
-  // The ONE account transport (SDK on web, IPC on desktop) — the page is
-  // identical on both surfaces by construction.
-  const api = accountApi();
-  // MEMBERS see their own usage and nothing org-financial (his scoping order,
-  // 2026-08-24): no org balance, no buying, no auto top-up. The server 403s
-  // the billing reads/writes for them regardless — this hides the controls.
-  void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
-    const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
-    document.querySelector(".ua-credits-toggle")?.classList.toggle("hidden", !admin);
-    el("ua-balance-row")?.classList.toggle("hidden", !admin);
-  }).catch(() => { /* signed out — the page renders read-only anyway */ });
-  try {
-    // dashboardData is the LEDGER truth on both surfaces (desktop home-ipc /
-    // the web contract): month-to-date spend from usage.summary, the plan's
-    // name + allowance off the catalog, the org balance. The old derivation
-    // (allowance − remaining grant credits) INVENTED spend after any
-    // mid-cycle plan change — a fresh Basic upgrade read as "1,800 spent".
-    const [data, topup] = await Promise.all([
-      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; credits?: number; allowance?: number; spendCredits?: number } | undefined>,
-      api.autotopup().catch(() => null),
-    ]);
-    const planEl = el("ua-plan");
-    if (planEl && data?.plan) {
-      planEl.textContent = data.plan.includes(" ") ? data.plan
-        : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
-    }
-    const allowance = Math.max(0, data?.allowance ?? 0);      // whole credits
-    const used = Math.max(0, Math.round(data?.spendCredits ?? 0));
-    const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
-    const fill = el("ua-month-fill");
-    if (fill) fill.style.width = `${pct}%`;
-    const pctEl = el("ua-month-pct");
-    if (pctEl) pctEl.textContent = allowance > 0 ? `${pct}% used` : "—";
-    const reset = new Date();
-    reset.setMonth(reset.getMonth() + 1, 1);
-    const resetEl = el("ua-month-reset");
-    if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-    const spentEl = el("ua-spent");
-    if (spentEl) spentEl.textContent = `${used.toLocaleString()} credits`;
-    const spentReset = el("ua-spent-reset");
-    if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
-    const balEl = el("ua-balance");
-    if (balEl) balEl.textContent = Math.max(0, data?.credits ?? 0).toLocaleString();
-    const t = el("ua-autotopup") as HTMLInputElement | null;
-    if (t && topup) t.checked = !!topup.enabled;
-    const reload = el("ua-reload-state");
-    if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
-    const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
-    const capEl = el("ua-cap");
-    if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";
-    const upd = el("ua-updated");
-    if (upd) upd.textContent = `Last updated: ${new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  } catch { /* offline — the view keeps its dashes */ }
-}

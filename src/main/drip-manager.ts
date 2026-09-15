@@ -5,12 +5,11 @@
  * electron-free module src/shared/drip-effects.ts (the web runner renders the
  * same docs). This file owns what only the desktop has: transparent overlay
  * BrowserWindows (full-screen over every app, or windowed over the yo window)
- * and the LOCAL custom-preset store (THE PURGE, 2026-09-10: presets live in
- * the drips table of ~/.glyphh user-state.sqlite — the server lane is gone).
+ * and the server-authoritative custom-preset cache.
  */
 
 import { BrowserWindow, screen } from "electron";
-import { getLocalDb } from "./local-db";
+import { getClient } from "./glyphh-client";
 import {
   BUILTIN_EFFECTS,
   ONE_SHOT_EFFECTS,
@@ -31,12 +30,15 @@ export interface CustomDrip {
   recipe: string;
 }
 
+interface ServerDrip { id: string; name: string; recipe: string; }
+
 // ── DripManager ─────────────────────────────────────────────
 //
-// Custom drip presets are LOCAL: rows in the drips table of the user-state
-// SQLite. The in-memory `customs` cache keeps the synchronous `.drip`
-// command path working; better-sqlite3 writes are sync, so the command path
-// and the Drips tab IPC share one code path.
+// Custom drip presets are server-authoritative (yo-server's saved_drips, the
+// same table the platform Drips page writes to). The in-memory `customs` cache
+// keeps the synchronous `.drip` command path working; `ids` maps name→server
+// UUID for patch/delete. The command path saves optimistically (updates the
+// cache + writes in the background); the Drips tab IPC awaits the server.
 
 /** How long a Settings "Preview" may hold the screen before it tears itself down. */
 const PREVIEW_MAX_MS = 12_000;
@@ -49,28 +51,37 @@ export function getDripManagerInstance(): DripManager | null { return current; }
 
 export class DripManager {
   private customs: Record<string, string> = {};   // name → recipe (cache)
+  private ids: Record<string, string> = {};       // name → server UUID
   private persistent = new Map<string, BrowserWindow>();
   private mainWindow: BrowserWindow | null = null;
 
   constructor() {
-    this.refreshFromDb();
+    // Pull presets in the background; the cache serves until the fetch lands.
+    void this.refreshFromServer();
   }
 
   setMainWindow(win: BrowserWindow): void { this.mainWindow = win; }
 
-  /** Reload the cache from SQLite (non-fatal before initLocalDb). */
-  refreshFromDb(): void {
+  /** Refresh the cache from the server (non-fatal offline / pre-auth). */
+  async refreshFromServer(): Promise<void> {
     try {
-      const rows = getLocalDb().prepare("SELECT name, recipe FROM drips").all() as Array<{ name: string; recipe: string }>;
+      const items = await getClient().drips.list();
       const customs: Record<string, string> = {};
-      for (const r of rows) customs[r.name] = r.recipe;
+      const ids: Record<string, string> = {};
+      for (const item of items) {
+        const recipe = (item.data as { recipe?: string } | null)?.recipe;
+        if (typeof recipe !== "string") continue;
+        customs[item.name] = recipe;
+        ids[item.name] = item.id;
+      }
       this.customs = customs;
+      this.ids = ids;
     } catch { /* keep existing cache */ }
   }
 
-  /** Refresh then list — the drips-list IPC path. */
+  /** Refresh then list — used by the drips-list IPC so the tab shows server truth. */
   async refreshAndList(): Promise<CustomDrip[]> {
-    this.refreshFromDb();
+    await this.refreshFromServer();
     return this.listCustoms();
   }
 
@@ -78,34 +89,48 @@ export class DripManager {
     return Object.entries(this.customs).map(([name, recipe]) => ({ name, recipe }));
   }
 
-  /** Save a preset — cache + SQLite in one sync step. */
+  private async persistSave(name: string, recipe: string): Promise<void> {
+    const id = this.ids[name];
+    const saved = await getClient().drips.save({ name, data: { recipe }, ...(id ? { id } : {}) });
+    this.ids[name] = saved.id;
+    const savedRecipe = (saved.data as { recipe?: string } | null)?.recipe;
+    if (typeof savedRecipe === "string") this.customs[name] = savedRecipe;
+  }
+
+  /** Optimistic save for the `.drip save` command (execute()) — updates the
+   *  cache now, writes to the server in the background. */
   saveCustom(name: string, recipe: string): string {
     this.customs[name] = recipe;
-    try {
-      getLocalDb().prepare(
-        `INSERT INTO drips (name, recipe, updated_at) VALUES (?, ?, datetime('now'))
-         ON CONFLICT(name) DO UPDATE SET recipe = excluded.recipe, updated_at = excluded.updated_at`,
-      ).run(name, recipe);
-    } catch (err) {
-      return `failed to save drip "${name}": ${err instanceof Error ? err.message : String(err)}`;
-    }
+    void this.persistSave(name, recipe).catch(() => {});
     return `saved drip "${name}" → ${recipe}`;
   }
 
-  /** The Drips tab IPC rides the same sync save. */
+  /** Awaitable save for the Drips tab IPC — server-confirmed before returning. */
   async saveCustomAsync(name: string, recipe: string): Promise<string> {
-    return this.saveCustom(name, recipe);
+    this.customs[name] = recipe;
+    try { await this.persistSave(name, recipe); return `saved drip "${name}"`; }
+    catch (err) { return `failed to save drip "${name}": ${err instanceof Error ? err.message : String(err)}`; }
   }
 
+  private async persistDelete(name: string): Promise<void> {
+    const id = this.ids[name];
+    delete this.customs[name];
+    delete this.ids[name];
+    if (id) await getClient().drips.delete(id);
+  }
+
+  /** Optimistic delete for the command path. */
   deleteCustom(name: string): string {
     if (!(name in this.customs)) return `no custom drip "${name}"`;
-    delete this.customs[name];
-    try { getLocalDb().prepare("DELETE FROM drips WHERE name = ?").run(name); } catch { /* cache already updated */ }
+    void this.persistDelete(name).catch(() => {});
     return `deleted drip "${name}"`;
   }
 
+  /** Awaitable delete for the Drips tab IPC. */
   async deleteCustomAsync(name: string): Promise<string> {
-    return this.deleteCustom(name);
+    if (!(name in this.customs)) return `no custom drip "${name}"`;
+    try { await this.persistDelete(name); return `deleted drip "${name}"`; }
+    catch (err) { return `failed to delete drip "${name}": ${err instanceof Error ? err.message : String(err)}`; }
   }
 
   isEffect(name: string): boolean {

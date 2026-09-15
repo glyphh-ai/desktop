@@ -188,9 +188,6 @@ export interface AccountBillingPlan {
   monthlyCredits: number;
   maxSeats: number;
   sso: boolean;
-  /** Role governance — which tier carries it (help/plan-gate.ts names the
-   *  real plan in an upsell from this rather than hardcoding a tier). */
-  governance?: boolean;
   /** A PROVISIONED per-org plan: a real invoiced deal, not the generic tier. */
   bespoke?: boolean;
 }
@@ -326,8 +323,6 @@ interface LoopRoleView {
   description: string;
   modality?: string;
   modelId: string | null;
-  /** The slot's model OVERRIDE (rides the agent's CLI as its -m). */
-  model?: string | null;
   source: "selection" | "loop" | "platform" | "fallback" | "none";
   choices: Array<{
     id: string;
@@ -382,13 +377,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   // Everything is `{ ok, data }` — the renderer paints the server's refusal
   // rather than assuming the caller is allowed.
   workspacesList: () => ipcRenderer.invoke("workspaces-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  gatewayMetrics: (opts?: { days?: number; workspaceId?: string }) => ipcRenderer.invoke("gateway-metrics", opts) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  workspaceProviderKeys: (id: string) => ipcRenderer.invoke("workspace-provider-keys", id) as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  workspaceProviderKeySet: (id: string, slug: string, key: string) => ipcRenderer.invoke("workspace-provider-key-set", id, slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  workspaceProviderKeyClear: (id: string, slug: string) => ipcRenderer.invoke("workspace-provider-key-clear", id, slug) as Promise<{ ok: boolean; error?: string }>,
-  gatewayKeysList: () => ipcRenderer.invoke("gateway-keys-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
-  gatewayKeysCreate: (input: { name: string; workspaceId: string; days?: number }) => ipcRenderer.invoke("gateway-keys-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  gatewayKeysRevoke: (id: string) => ipcRenderer.invoke("gateway-keys-revoke", id) as Promise<{ ok: boolean; error?: string }>,
   workspacesCreate: (input: unknown) => ipcRenderer.invoke("workspaces-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesUpdate: (id: string, input: unknown) => ipcRenderer.invoke("workspaces-update", id, input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   workspacesDelete: (id: string) => ipcRenderer.invoke("workspaces-delete", id) as Promise<{ ok: boolean; error?: string }>,
@@ -408,6 +396,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   orgCustomProvidersDelete: (slug: string) => ipcRenderer.invoke("org-custom-providers-delete", slug) as Promise<{ ok: boolean; error?: string }>,
   orgProvidersList: () => ipcRenderer.invoke("org-providers-list") as Promise<{ ok: boolean; data?: unknown[]; error?: string }>,
   orgProviderEnable: (slug: string, key?: string) => ipcRenderer.invoke("org-provider-enable", slug, key) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
+  orgSecurity: () => ipcRenderer.invoke("org-security") as Promise<unknown>,
+  orgSecurityPortal: (intent: string) => ipcRenderer.invoke("org-security-portal", intent) as Promise<{ url: string }>,
+  orgSecurityRequireSso: (requireSso: boolean) => ipcRenderer.invoke("org-security-require-sso", requireSso) as Promise<{ requireSso: boolean }>,
   orgProviderDisable: (slug: string) => ipcRenderer.invoke("org-provider-disable", slug) as Promise<{ ok: boolean; error?: string }>,
   orgProviderClearKey: (slug: string) => ipcRenderer.invoke("org-provider-clear-key", slug) as Promise<{ ok: boolean; error?: string }>,
   windowMaximize: () => ipcRenderer.send("window-maximize"),
@@ -435,32 +426,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   layoutsDelete: (name: string) => ipcRenderer.invoke("layouts-delete", name) as Promise<boolean>,
   pickDirectory: () => ipcRenderer.invoke("pick-directory") as Promise<string | null>,
   pickExecutable: () => ipcRenderer.invoke("pick-executable") as Promise<string | null>,
-
-  // Workspace state — the drag/panel arrangement, sharded to
-  // ~/.glyphh/workspaces/<id>/state.json (THE PURGE 2026-09-10)
-  wsStateLoad: () => ipcRenderer.invoke("wsstate-load") as Promise<Record<string, { v: string; at: number }>>,
-  wsStateSave: (snapshot: Record<string, { v: string; at: number }>) => ipcRenderer.invoke("wsstate-save", snapshot) as Promise<boolean>,
-
-  // CLI agents — named pre-configs for terminal-driven CLIs (Claude first)
-  cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
-  // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
-  // BYOK — key write-only, calls direct from this machine, never proxied.
-  embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; keySet: boolean; keyHint: string; models: string[] }>,
-  embeddingsConfigSet: (input: { model?: string; key?: string; clearKey?: boolean }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; keySet?: boolean; keyHint?: string; error?: string }>,
-  cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
-  cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
-  /** Recent CLI sessions (Claude's store) — the rail Recents + agent-card history. */
-  cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
-  cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,
-
-  // Loops + skills (local library) — hand-create + schedules
-  loopsCreate: (input: { name?: string }) => ipcRenderer.invoke("loops-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  skillsCreate: (input: { name?: string }) => ipcRenderer.invoke("skills-create", input) as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  loopSchedulesList: (loopSlug: string) => ipcRenderer.invoke("loop-schedules-list", loopSlug) as Promise<{ ok: boolean; data?: Array<{ id: string; agentId: string; name: string; cron: string; enabled: boolean }>; error?: string }>,
-  loopScheduleSave: (input: { loopSlug: string; agentId: string; cron: string; name?: string; id?: string }) => ipcRenderer.invoke("loop-schedule-save", input) as Promise<{ ok: boolean; data?: { id: string }; error?: string }>,
-  loopScheduleDelete: (id: string) => ipcRenderer.invoke("loop-schedule-delete", id) as Promise<{ ok: boolean; error?: string }>,
 
   // Drips CRUD
   dripsList: () => ipcRenderer.invoke("drips-list") as Promise<Array<{ name: string; recipe: string }>>,
@@ -674,10 +639,6 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("connection-tools-set", id, hiddenTools) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
   connectionDisconnect: (id: string) =>
     ipcRenderer.invoke("connection-disconnect", id) as Promise<{ ok: boolean; error?: string }>,
-  connectionSetEnabled: (id: string, enabled: boolean, isOrg?: boolean) =>
-    ipcRenderer.invoke("connection-set-enabled", id, enabled, isOrg) as Promise<{ ok: boolean; error?: string }>,
-  connectionSetScope: (id: string, scope: "org" | "personal") =>
-    ipcRenderer.invoke("connection-set-scope", id, scope) as Promise<{ ok: boolean; error?: string }>,
   // Per-app config vars (encrypted secrets). List never includes values —
   // a value is visible only in the form where it's typed, at creation.
   appSecretsList: (id: string) =>
@@ -843,8 +804,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingAutotopupGet: () => ipcRenderer.invoke("billing-autotopup-get") as Promise<AccountAutotopup>,
   billingAutotopupSet: (input: AccountAutotopup) =>
     ipcRenderer.invoke("billing-autotopup-set", input) as Promise<{ ok: boolean; config?: AccountAutotopup; error?: string }>,
-  billingSubscribe: (tier: string, embedded?: boolean) =>
-    ipcRenderer.invoke("billing-subscribe", tier, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
+  billingSubscribe: (tier: string) =>
+    ipcRenderer.invoke("billing-subscribe", tier) as Promise<{ ok: boolean; url?: string; error?: string }>,
   billingChangePlan: (tier: string) =>
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
   billingTopup: (credits: number, embedded?: boolean) =>
@@ -1063,33 +1024,16 @@ contextBridge.exposeInMainWorld("glyphh", {
   librarySkillCreate: (input: unknown) => ipcRenderer.invoke("library-skill-create", input) as Promise<LibEnvelope>,
   librarySkillUpdate: (ref: string, patch: unknown) => ipcRenderer.invoke("library-skill-update", ref, patch) as Promise<LibEnvelope>,
   librarySkillDelete: (ref: string) => ipcRenderer.invoke("library-skill-delete", ref) as Promise<LibEnvelope>,
-  tasksAgentsList: () => ipcRenderer.invoke("tasks-agents-list") as Promise<LibEnvelope>,
-  // AGENTS (local-agents.ts) — the standing workforce. Distinct from the
-  // tasks* lane above, which groups schedules by the LOOP that runs them.
-  /** THE licensing read (SDK client.plans) — one place, every surface. */
-  /** LOOPS — the effective set and the org's support list. */
-  loopsAvailable: () => ipcRenderer.invoke("loops-available") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgLoopsList: () => ipcRenderer.invoke("org-loops-list") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
-  orgLoopSet: (cli: string, enabled: boolean) => ipcRenderer.invoke("org-loop-set", cli, enabled) as Promise<{ ok: boolean; error?: string }>,
-  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
-  libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
-  libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
-  libraryAgentTaskRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-run-now", ref, taskId) as Promise<LibEnvelope>,
-  libraryAgentTaskRuns: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-runs", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentGet: (ref: string) => ipcRenderer.invoke("library-agent-get", ref) as Promise<LibEnvelope>,
   libraryAgentCreate: (input: unknown) => ipcRenderer.invoke("library-agent-create", input) as Promise<LibEnvelope>,
   libraryAgentUpdate: (ref: string, patch: unknown) => ipcRenderer.invoke("library-agent-update", ref, patch) as Promise<LibEnvelope>,
   libraryAgentDelete: (ref: string) => ipcRenderer.invoke("library-agent-delete", ref) as Promise<LibEnvelope>,
-  tasksForAgent: (ref: string) => ipcRenderer.invoke("tasks-for-agent", ref) as Promise<LibEnvelope>,
+  libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskAdd: (ref: string, input: unknown) => ipcRenderer.invoke("library-agent-task-add", ref, input) as Promise<LibEnvelope>,
-  tasksSetEnabled: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("tasks-set-enabled", ref, taskId, patch) as Promise<LibEnvelope>,
-  tasksRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-now", ref, taskId) as Promise<LibEnvelope>,
-  tasksRunList: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-list", ref, taskId) as Promise<LibEnvelope>,
-  // The AI Hub (the Marketplace rail item → the org's hub on the console, in a work panel).
-  hubUrl: () => ipcRenderer.invoke("hub-url") as Promise<LibEnvelope>,
-  hubPublish: (kind: string, ref: string, notes?: string) => ipcRenderer.invoke("hub-publish", kind, ref, notes) as Promise<LibEnvelope>,
-  hubSync: () => ipcRenderer.invoke("hub-sync") as Promise<LibEnvelope>,
+  libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,
+  libraryAgentTaskRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-run-now", ref, taskId) as Promise<LibEnvelope>,
+  libraryAgentTaskRuns: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-runs", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.
@@ -1102,14 +1046,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopApplyConfig: (loop: string | null, modelSelections?: Record<string, string>) =>
     ipcRenderer.invoke("loop-apply-config", { loop, modelSelections }) as Promise<{ ok: boolean; loop: string }>,
   /** Edit a loop's OWN default model for a role (writes manifest.roles[].default). */
-  loopSetRoleDefault: (loopId: string, role: string, modelId: string | null, model?: string | null) =>
-    ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId, ...(model !== undefined ? { model } : {}) }) as Promise<{ ok: boolean; error?: string }>,
+  loopSetRoleDefault: (loopId: string, role: string, modelId: string | null) =>
+    ipcRenderer.invoke("loop-set-role-default", { loopId, role, modelId }) as Promise<{ ok: boolean; error?: string }>,
   glyphhContextUsage: (chatId: string) =>
     ipcRenderer.invoke("glyphh-agent-context-usage", { chatId }) as Promise<{ tokens: number; budget: number; ratio: number; foldAt: number; lanes: Array<{ id: string; kind: "local" | "frontier"; tokens: number; budget: number; ratio: number; foldAt: number | null }> }>,
   glyphhStop: (chatId?: string) => ipcRenderer.invoke("glyphh-agent-stop", { chatId }) as Promise<boolean>,
-  glyphhBindCliSession: (chatId: string, cliSessionId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-bind-session", { chatId, cliSessionId, cli }) as Promise<boolean>,
-  glyphhCliSessionOf: (chatId: string, cli?: string) => ipcRenderer.invoke("glyphh-agent-session-of", { chatId, cli }) as Promise<string | null>,
-  glyphhCliTranscript: (sessionId: string) => ipcRenderer.invoke("glyphh-agent-transcript", { sessionId }) as Promise<{ ok: boolean; title?: string; cwd?: string; turns?: Array<{ role: "user" | "assistant"; text: string }>; error?: string }>,
   /** Change a DESKTOP-LOCAL run's permission mode mid-turn — main pushes it to the
    *  session's live pod so the gate re-evaluates. No live run → { updated: false }. */
   glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") =>
@@ -1419,8 +1360,8 @@ contextBridge.exposeInMainWorld("wb", {
   gitDiff: (root: string) => ipcRenderer.invoke("files:git-diff", root),
   // The R2 lane (glyphh-versioned apps): head→local unified diff + drift + history.
   r2Diff: () => ipcRenderer.invoke("files:r2-diff"),
-  termSpawn: (termId: string, cwd: string, cols: number, rows: number, light?: boolean) =>
-    ipcRenderer.send("wb-term:spawn", termId, cwd, cols, rows, light),
+  termSpawn: (termId: string, cwd: string, cols: number, rows: number) =>
+    ipcRenderer.send("wb-term:spawn", termId, cwd, cols, rows),
   termWrite: (termId: string, data: string) => ipcRenderer.send("wb-term:write", termId, data),
   termResize: (termId: string, cols: number, rows: number) =>
     ipcRenderer.send("wb-term:resize", termId, cols, rows),

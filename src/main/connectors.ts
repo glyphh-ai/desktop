@@ -16,6 +16,7 @@ import { BrowserWindow, shell } from "electron";
 import { EventEmitter } from "events";
 import { getAccountInfo, getHeartbeatInfo } from "./auth";
 import { getClient } from "./glyphh-client";
+import type { McpManager } from "./mcp-manager";
 import { refreshConnectorCatalog, type ConnectorTool } from "./connector-tools-client";
 
 // ── Types ──────────────────────────────────────────────────
@@ -39,9 +40,13 @@ export interface ConnectedAccount {
 // ── ConnectorManager ──────────────────────────────────────
 
 export class ConnectorManager extends EventEmitter {
-
+  private mcpManager: McpManager | null = null;
   private cachedAccounts: ConnectedAccount[] = [];
   private cachedApps: ConnectorApp[] = [];
+
+  setMcpManager(mgr: McpManager): void {
+    this.mcpManager = mgr;
+  }
 
   // ── Available apps (browse catalog) ───────────────────
 
@@ -243,12 +248,19 @@ export class ConnectorManager extends EventEmitter {
    * /api/connectors/tools — yo-server owns the Pipedream auth and exposes the
    * same surface to both this client and the relay's external callers.
    *
-   * The refreshed catalog feeds the LOCAL MCP SERVER's connector lane now —
-   * the client-side McpManager died with the built-in agent.
+   * Side effects:
+   *   - Clears any legacy ephemeral Pipedream servers in mcpManager (a one-
+   *     time cleanup for users upgrading from the old code path).
+   *   - Loads the connector catalog into mcpManager so getAllTools / callTool
+   *     keep working transparently for skills, the agent, and the relay's
+   *     local_mcp_* handlers.
    */
   async refreshMcp(): Promise<{ ok: boolean; error?: string; toolCount: number }> {
+    if (!this.mcpManager) return { ok: false, error: "MCP manager not available", toolCount: 0 };
+
     try {
       const tools = await refreshConnectorCatalog();
+      this.mcpManager.setConnectorCatalog(tools);
       return { ok: true, toolCount: tools.length };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -259,7 +271,9 @@ export class ConnectorManager extends EventEmitter {
 
   /** Flat connector tool catalog (refreshed) for the Apps → connection tab. */
   async listTools(): Promise<ConnectorTool[]> {
-    return refreshConnectorCatalog();
+    const tools = await refreshConnectorCatalog();
+    this.mcpManager?.setConnectorCatalog(tools);
+    return tools;
   }
 
   /** Initialize — load accounts and set up MCP if any exist. */

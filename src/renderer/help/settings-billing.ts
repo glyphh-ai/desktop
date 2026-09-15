@@ -762,47 +762,7 @@ export async function openBuyCreditsModal(): Promise<void> {
   overlay.querySelector("#bc-manage")!.addEventListener("click", () => { close(); openUrlInWorkbench("Billing", ""); });
 }
 
-/** Mount the plan checkout INSIDE our own modal — the exact top-up flow (his
- *  ask, 2026-09-13: one Stripe surface). Resolves true when embedded handled
- *  it; false → the caller falls back to the hosted page. */
-async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
-  const key = await publishableKey();
-  if (!key) return false;
-  if (!(await loadStripeJs())) return false;
-  const res = await accountApi().subscribeEmbedded(p.tier);
-  if (!res.ok || !res.data) return false;   // old server → hosted fallback
-  const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay buy-credits-overlay";
-  overlay.innerHTML = `
-    <div class="confirm-box buy-credits-box">
-      <div class="confirm-head"><h3>Subscribe — ${escapeHtml(p.displayName || p.tier)}</h3></div>
-      <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
-      <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
-    </div>`;
-  const closeIt = (): void => overlay.remove();
-  overlay.querySelector("#bc-x")!.addEventListener("click", closeIt);
-  overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeIt(); });
-  document.body.appendChild(overlay);
-  const stage = overlay.querySelector<HTMLElement>(".bc-checkout-stage")!;
-  const Stripe = await loadStripeJs();
-  const checkout: StripeEmbedded | null = await Stripe!(key).initEmbeddedCheckout({
-    clientSecret: res.data,
-    onComplete: () => {
-      // Paid. The plan lands on the subscription webhook — swap to a
-      // confirming state; the tier watch repaints the page when it arrives.
-      checkout?.destroy();
-      stage.innerHTML = `<div class="bc-confirming"><span class="spinner"></span> Payment received — activating your plan…</div>`;
-      repollAfterStripe();
-      window.setTimeout(() => { if (overlay.isConnected) closeIt(); }, 4000);
-    },
-  }).catch(() => null);
-  if (!checkout) { closeIt(); return false; }
-  checkout.mount(stage);
-  return true;
-}
-
-/** No subscription yet → EMBEDDED first (in-app modal, the top-up flow); the
- *  hosted Stripe Checkout stays as the fallback. */
+/** No subscription yet → a hosted Stripe Checkout, exactly the top-up shape. */
 async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void> {
   if (busy) return;
   busy = `plan-${p.tier}`;
@@ -810,7 +770,6 @@ async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void
   btn.disabled = true;
   btn.textContent = "Redirecting…";
   try {
-    if (await embeddedSubscribeOverlay(p).catch(() => false)) { planFail(""); return; }
     const res = await accountApi().subscribe(p.tier);
     if (!res.ok) { planFail(`Couldn't start checkout — ${res.error}`); return; }
     if (!openHostedPage("Subscribe", res.data, openUrlInWorkbench)) {

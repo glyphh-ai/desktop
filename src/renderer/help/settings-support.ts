@@ -187,25 +187,6 @@ export async function loadSupportPanel(): Promise<void> {
   initSupportPanel();
   setError("");
   show("list");
-  // TICKETS ARE PRO+ (his rule, 2026-09-13): below Pro the surface locks in
-  // place — visible, inert — and the gate note carries the community Discord
-  // (the same invite the homepage + dashboard link).
-  void (async () => {
-    const host = document.querySelector<HTMLElement>('.settings-panel[data-sub="support"]');
-    if (!host) return;
-    const { gateSurface } = await import("./plan-gate.js");
-    const allowed = await gateSurface(host, "governance", "Support tickets");
-    if (allowed) return;
-    const note = host.querySelector<HTMLElement>(":scope > .plan-locked-note span");
-    if (note) {
-      const invite = (window.glyphh as unknown as { discordInvite?: string }).discordInvite || "https://discord.gg/P3yynv4v9";
-      const a = document.createElement("a");
-      a.href = "#";
-      a.textContent = "Join our Discord for help.";
-      a.addEventListener("click", (e) => { e.preventDefault(); window.open(invite, "_blank", "noopener"); });
-      note.append(" ", a);
-    }
-  })();
   const t = transport();
   if (!t) { tickets = []; renderTickets(); setError(NO_TRANSPORT); return; }
   await refresh();

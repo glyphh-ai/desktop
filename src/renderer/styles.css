@@ -5252,13 +5252,13 @@ ol.docs-list li::before {
 }
 
 /* ── Loop detail: editable default-model pickers ── */
-.task-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-.task-model-row { display: flex; align-items: center; gap: 10px; }
-.task-model-label {
+.loop-model-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.loop-model-row { display: flex; align-items: center; gap: 10px; }
+.loop-model-label {
   flex: 0 0 120px; font-size: 12px; color: var(--text-2);
   text-align: right; text-transform: capitalize;
 }
-.task-model-select { max-width: 300px; }
+.loop-model-select { max-width: 300px; }
 .settings-hint.danger { color: var(--danger, #f87171); }
 
 /* ── Layout editor: the loop + its per-slot model pickers ── */
@@ -11597,6 +11597,34 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-diff-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-diff-summary .add { color: var(--ws-diff-add); margin-left: 6px; }
 .ws-diff-summary .del { color: var(--ws-diff-del); margin-left: 4px; }
+/* Lane chips (git | glyphh R2) — shown only when BOTH lanes exist. */
+.ws-diff-lanes { display: flex; gap: 2px; }
+.ws-diff-lane {
+  background: transparent; border: 1px solid var(--ws-line); color: var(--ws-text-muted);
+  font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+}
+.ws-diff-lane.active { color: var(--ws-text); border-color: var(--accent); }
+/* The R2 bottom half: drift flag + the snapshot history (his spec, 2026-09-01). */
+.ws-diff-r2 {
+  flex-shrink: 0; max-height: 45%; overflow-y: auto;
+  border-top: 1px solid var(--ws-line); background: var(--ws-bg-rail);
+}
+.ws-diff-r2-head {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  font-size: 11px; color: var(--ws-text-muted);
+  position: sticky; top: 0; background: var(--ws-bg-rail);
+}
+.ws-diff-r2-title { margin-left: auto; text-transform: uppercase; letter-spacing: .04em; color: var(--ws-text-faint); }
+.ws-diff-r2-flag { font-weight: 600; }
+.ws-diff-r2-flag.drifted { color: var(--warning, #e5a50a); }
+.ws-diff-r2-flag.insync { color: var(--ws-diff-add); }
+.ws-diff-r2-row {
+  display: flex; align-items: center; gap: 10px; padding: 4px 12px;
+  font-size: 11.5px; color: var(--ws-text-muted); border-top: 1px solid var(--ws-line);
+}
+.ws-diff-r2-row code { font-family: var(--font-mono); color: var(--ws-text-faint); }
+.ws-diff-r2-who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-diff-r2-headmark { color: var(--ws-diff-add); font-size: 10px; text-transform: uppercase; }
 .ws-diff-refresh {
   background: transparent; border: none; padding: 0;
   width: 24px; height: 24px; border-radius: 4px;
@@ -15055,13 +15083,11 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 /* ── Library editors — the app-standard form on the left, the live React-Flow
    view on the right. Form fields are the same settings-label/settings-input
    system the Apps page uses; only the split shell is new. ── */
-/* SPLIT editors — a form beside a live pane needs the full width; the 620px
-   column comes from .app-builder-controls, not from this cap. */
-#skill-editor.crud-inline-form, #task-editor.crud-inline-form, #agent-editor.crud-inline-form,
+#skill-editor.crud-inline-form, #loop-editor.crud-inline-form, #agent-editor.crud-inline-form,
 #agent-form.crud-inline-form, #ws-edit-view.crud-inline-form { max-width: none; }
 /* The same horizontal rule the Apps detail draws under its header (its tab
    bar's border-bottom) — ties the two-column editors to one look. */
-#skill-editor .crud-inline-header, #task-editor .crud-inline-header, #agent-editor .crud-inline-header {
+#skill-editor .crud-inline-header, #loop-editor .crud-inline-header, #agent-editor .crud-inline-header {
   border-bottom: 1px solid var(--border);
   padding-bottom: 10px;
 }
@@ -15190,7 +15216,7 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    every cell ellipsizes, and the secondary columns drop out as it tightens.
    All three share the same 5-column shape: Name · Description · <facet> ·
    <state> · ⋯ */
-#skills-list, #tasks-list, #agents-list { container-type: inline-size; }
+#skills-list, #loops-list, #agents-list { container-type: inline-size; }
 .lib-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; }
 .lib-table th, .lib-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lib-table th:nth-child(1), .lib-table td:nth-child(1) { width: 26%; }
@@ -15264,9 +15290,8 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
 .lib-table .ws-conn-icon-cell .ws-conn-icon { width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
 .lib-table .ws-conn-icon-cell .ws-conn-icon img { width: 20px; height: 20px; border-radius: 5px; }
 /* Role editor models table: the toggle column hugs the right edge. */
-.lib-table .ws-model-toggle-cell { width: 90px; text-align: left; text-overflow: clip; }
-.ws-model-allow, .ws-model-exempt { padding: 0; border: none; background: none; display: inline-flex; }
-
+.lib-table .ws-model-toggle-cell { width: 56px; text-align: right; text-overflow: clip; }
+.ws-model-allow { padding: 0; border: none; background: none; display: inline-flex; }
 .ak-token-modal { width: min(480px, 92vw); }
 .ak-token-modal .settings-inline { margin-top: 12px; }
 .ak-token-modal .settings-input { font-family: var(--mono, monospace); font-size: 12px; }
@@ -15515,10 +15540,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   font-size: 12px; color: var(--text);
 }
 .ws-tab-ctx-item:hover { background: var(--hover); }
-.ws-tab-ctx-item.checkable { position: relative; padding-left: 26px; }
-.ws-tab-ctx-item.checkable.checked::before {
-  content: "\2713"; position: absolute; left: 9px; color: var(--accent);
-}
 .ws-tab-ctx-item.danger { color: var(--danger, #e5484d); }
 .ws-tab-ctx-item.danger:hover { background: color-mix(in srgb, var(--danger, #e5484d) 14%, transparent); }
 
@@ -16035,13 +16056,6 @@ html:not(.glyphh-web) #panel-wc { height: 40px; padding-left: 16px; }
   display: flex; flex-direction: column;
   flex: 1 1 auto; min-height: 132px; overflow: hidden;
 }
-/* RECENTS hugs its content (his report, 2026-09-14: a flexing body around a
-   capped list left a dead gap and the rail "didn't extend down") — content
-   flows Recents → vsplit → Apps → Workspaces, the user row's margin-top:auto
-   soaks the leftover. The LIST scrolls itself past a generous cap; a dragged
-   height (the vsplit) overrides inline. */
-#rail-recents-body { flex: 0 0 auto; min-height: 0; }
-#recent-sessions-list { flex: 0 1 auto; max-height: 44vh; }
 
 /* Rail section titles are CONTENT, not links — standard text colors in every
    theme rather than the ancestor accent (which read purple). */
@@ -16273,9 +16287,7 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
   background: var(--surface-3);
 }
 
-/* Favicons sit INSET in the plate — full-bleed read a tad oversized next
-   to the 28px panel marks (his eye, 2026-09-10). */
-.app-rail-tile .tile-icon img { width: 22px; height: 22px; object-fit: contain; border-radius: 5px; }
+.app-rail-tile .tile-icon img { width: 100%; height: 100%; object-fit: cover; }
 /* Panel tiles (Slides/Docs/Design/Band/…) carry their OWN filled marks — no
    frame, just the mark, bigger. The gray box stays only for app favicons,
    which are arbitrary images that need one. */
@@ -17637,11 +17649,7 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .code-root[data-anchor="center"] > .code-workbench { flex: 1 1 auto; min-width: 0; }
 .code-root[data-anchor="center"] #code-wb-edge { display: none; }
 .code-root[data-anchor="center"] > .code-agent {
-  /* THE PURGE (2026-09-10): the echo agent is dead — the floating bottom
-     composer never renders. The agent shows ONLY when a surface hosts it
-     (the Glyphh agent card, a rail seat, a layout's agent cell); the DOM
-     stays parked here so every id + listener survives. */
-  display: none;
+  display: flex;
   flex-direction: column;
   position: absolute;
   /* Draggable geometry (his rule, 2026-08-20): X offset + width ride vars —
@@ -19696,10 +19704,6 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
   border-bottom: 1px solid var(--border);
 }
 .settings-panel[data-sub="general"] .set-pref-row:has(#general-ui-sound) { border-bottom: none; }
-/* Roles › General: the Hard-limit toggle is the tab's last row, and the form
-   footer (.crud-edit-foot) draws its own border-top — without this the two
-   hairlines stack into a double line. */
-.ws-tab[data-wstab="general"] .set-pref-row:has(#ws-budget-hard) { border-bottom: none; }
 /* Full-width form rows (the compaction guidance textarea) — match the row
    grammar's page width instead of the 420px form cap. */
 .settings-form.set-pref-full { max-width: none; }
@@ -20242,29 +20246,8 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style
    IDENTICAL to its wall seat (his rule: no spread, no zoom change) — plus a
    real backdrop so it reads as a bar over the panels. */
 #echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2000; }
-/* The peek SCRIM (his order, 2026-09-14): a theme gradient behind the
-   dropped dock — the page's own surface color, darkest at the very top,
-   gone within the dock's band — so the bar reads as descending from the
-   chrome instead of floating over the panels. */
-body.echo-dock-tucked #echo-dock-layer::before {
-  /* BELOW the drag strip — the traffic lights stay visible no matter what
-     (his order, 2026-09-14). */
-  content: ""; position: fixed; top: var(--wb-top-inset, 0px); left: 0; right: 0;
-  height: 72px;
-  background: linear-gradient(to bottom,
-    var(--bg) 0%,
-    color-mix(in srgb, var(--bg) 72%, transparent) 55%,
-    transparent 100%);
-  opacity: 0; transition: opacity 0.22s ease; pointer-events: none;
-}
-body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
-/* The wall's "tad more drop" margin is wall-only — zero on the parked bar. */
-#echo-dock-layer .echo-dock { margin-top: 0; }
 #echo-dock-layer .echo-topbar {
-  /* Hug the chrome (his report, 2026-09-14: "drops down way too far") —
-     just under the drag strip, wall margins zeroed on the parked bar. */
-  position: fixed; top: calc(var(--wb-top-inset, 0px) + 2px); left: 50%;
-  margin: 0;
+  position: fixed; top: calc(var(--wb-top-inset, 0px) + 8px); left: 50%;
   transform: translate(-50%, 0);
   transition: transform 0.22s ease;
   pointer-events: auto;
@@ -20277,10 +20260,13 @@ body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
 }
 .echo-topbar-home { display: none; }
-/* The hint sliver at the top center is OFF (his order, 2026-09-15: "when the
-   dock is hidden remove this line"). The hover strip below still reveals the
-   dock; hidden, not deleted. */
-body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
+/* The hint — the same "something is hidden here" sliver the composer tuck
+   uses, at the top center. Gone while the dock is peeked out. */
+body.echo-dock-tucked:not(.echo-dock-peek)::after {
+  content: ""; position: fixed; top: calc(var(--wb-top-inset, 0px) + 6px); left: 50%; transform: translateX(-50%);
+  width: 110px; height: 4px; border-radius: 999px;
+  background: var(--text-3); opacity: 0.45; z-index: 130; pointer-events: none;
+}
 /* The invisible top strip that catches the peek hover — webviews swallow
    host mouse events, so the strip sits ABOVE the panel layers. Present only
    while the dock is tucked, so it never steals clicks otherwise. */
@@ -20300,196 +20286,3 @@ body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
 /* Desktop: the window drag strip owns the top of the page — the tucked-dock
    chrome (sliver, hot zone, peeked bar) starts below it. */
 body.wb-has-dragstrip { --wb-top-inset: 38px; }
-
-
-/* (The standalone Loops PAGE is gone — loops are settings; its card,
-   editor and key-row styles went with it. See .loop-acc above.) */
-
-/* Agent terminal header (his spec, 2026-09-11): the tab row becomes the
-   session-name row with the shared control cluster — identical to the chat
-   head. Plain terminals keep their tabs; this styles only the agent face. */
-.ws-agent-termhead { display: flex; align-items: center; gap: 4px; padding: 3px 8px; }
-.ws-agent-term-title {
-  font-size: 12px; font-weight: 600; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%;
-}
-/* The agent terminal head's recents IS the chat head's dropdown —
-   .wb-session-menu, opened through __glyphhSessionsMenu. No styles of its
-   own on purpose: one surface, two places it can be opened from. */
-
-/* Agent card dev-tools kebab — sits with the head's icon buttons. */
-.echo-card-devtools svg { width: 15px; height: 15px; }
-
-/* Org Models — the vendor row's key state (✓ set · ✗ removes + disables) */
-.mdl-key-check { display: inline-flex; width: 18px; height: 18px; color: #2ecc71; flex: none; }
-.mdl-key-check svg { width: 100%; height: 100%; }
-.mdl-key-remove { color: #f43f5e; }
-
-/* Provider filter drop (org Models + Roles): search on top, capped list.
-   OWN panel chrome — appended to <body>, it inherits nothing (his report:
-   it rendered as glass over the page). */
-/* Roles list: the budget traffic light (his spec, 2026-09-11). */
-.ws-budget-dot {
-  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-  margin-right: 2px; vertical-align: middle;
-}
-.ws-budget-dot.green { background: #33d17a; }
-.ws-budget-dot.yellow { background: #e5a50a; }
-.ws-budget-dot.red { background: #e01b24; }
-
-/* ── Models: the + New Provider install modal (his order, 2026-09-11) ─────── */
-.mdl-install-modal { width: 540px; max-width: 92vw; }
-.mdl-install-list, .mdl-install-models {
-  max-height: 200px; overflow-y: auto; margin: 6px 0 12px;
-  border: 1px solid var(--border); border-radius: 8px;
-}
-.mdl-install-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; padding: 7px 10px; cursor: pointer;
-}
-.mdl-install-row:hover { background: rgba(255, 255, 255, 0.04); }
-.mdl-install-row.selected { background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.mdl-install-model {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; padding: 6px 10px;
-}
-
-.mdl-provider-drop {
-  position: fixed; width: 260px; padding: 6px;
-  background: var(--surface-2, #1c1c1f);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-}
-.mdl-provider-drop-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; }
-.mdl-provider-drop .code-drop-item.active { color: var(--accent); }
-
-/* Header ⓘ (Roles → Models "Auto exempt") + its explanation bubble */
-.ws-info-btn {
-  appearance: none; background: none; border: none; padding: 0 2px; cursor: pointer;
-  color: var(--text-3); font-size: 13px; line-height: 1; vertical-align: middle;
-}
-.ws-info-btn:hover { color: var(--text); }
-.ws-info-pop { width: 290px; padding: 12px 14px; font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
-
-/* ── Plan gating (help/plan-gate.ts) ──────────────────────────────────────
-   A locked surface stays VISIBLE and inert (his call: visible + disabled +
-   upsell, never hidden — an admin has to be able to see what they'd get).
-   The dim is on the CONTROLS, not the copy, so the explanation stays
-   readable while the things you can't use recede. */
-.plan-locked .settings-input,
-.plan-locked .action-btn,
-.plan-locked input,
-.plan-locked select,
-.plan-locked textarea,
-.plan-locked button { opacity: 0.45; cursor: not-allowed; }
-.plan-locked-note {
-  display: flex; align-items: center; gap: 8px;
-  margin: 0 0 14px; padding: 10px 12px;
-  border: 1px solid var(--border-2); border-left: 3px solid var(--accent);
-  border-radius: 8px; background: var(--surface-2);
-  color: var(--text-2); font-size: 13px; line-height: 1.45;
-}
-/* The note itself is never dimmed — it is the one thing that must read. */
-.plan-locked > .plan-locked-note { opacity: 1; }
-/* The one door out of a gate — the Billing link, on every gated page. */
-.plan-locked-link { color: var(--accent); text-decoration: none; white-space: nowrap; flex-shrink: 0; }
-.plan-locked-link:hover { text-decoration: underline; }
-
-/* ── Loops as SETTINGS (help/settings-loops.ts) ───────────────────────────
-   The fixed set, one expandable row each — the model catalog's grammar:
-   name + optional sub-label left, the enable toggle pinned right, the
-   configuration underneath. No New, no Delete: loops are settings. */
-.loop-acc { border: 1px solid var(--border-2); border-radius: 10px; margin-bottom: 8px; background: var(--surface); }
-.loop-acc-head {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px 14px; cursor: pointer; user-select: none;
-}
-.loop-acc-head:hover { background: var(--hover); border-radius: 10px; }
-.loop-acc.open > .loop-acc-head { border-bottom: 1px solid var(--border-2); border-radius: 10px 10px 0 0; }
-.loop-acc-chev { width: 14px; height: 14px; color: var(--text-3); transition: transform 0.15s; flex: none; }
-.loop-acc.open .loop-acc-chev { transform: rotate(90deg); }
-.loop-acc-name { font-size: 14px; font-weight: 600; color: var(--text); }
-.loop-acc-sub { font-size: 12px; color: var(--text-3); }
-.loop-acc-spacer { flex: 1; }
-/* The toggle is its own control — clicking it must not expand the row. */
-.loop-acc-toggle { margin: 0; flex: none; }
-/* The row kebab sits to the RIGHT of the toggle, in a slot that is ALWAYS
-   reserved — a row without a menu (org connections) must not let its toggle
-   drift right past the others. */
-.loop-acc-kebab-slot { flex: none; width: 24px; margin-left: 8px; display: inline-flex; justify-content: flex-end; align-items: center; }
-/* The glyph takes the muted text colour like every other row menu — inside an
-   accordion head it was inheriting the head's text colour (his report,
-   2026-09-12: "the three dots are white"). */
-.loop-acc-kebab-slot .lib-row-kebab { color: var(--text-3); font-size: 16px; line-height: 1; }
-.loop-acc-kebab-slot .lib-row-kebab:hover { color: var(--text); background: var(--hover); }
-.loop-acc-body { padding: 6px 14px 16px; display: flex; flex-direction: column; }
-.loop-acc-body > .settings-input { flex: 0 0 auto; }
-
-/* Role → Members: the +Add picker is a searchable table, so it needs room
-   the field-based form modal doesn't reserve. */
-.ws-add-member-box { min-width: min(560px, 92vw); }
-.ws-add-member-list { max-height: 46vh; overflow-y: auto; margin-top: 10px; }
-.ws-add-member-list tr { cursor: pointer; }
-
-/* ── Org › Library (help/org-library.ts) ─────────────────────────────────
-   The single curated table: type pills, a truncating description cell, and
-   the truncating description cell. */
-.orglib-pill {
-  display: inline-block; padding: 2px 8px; border-radius: 999px;
-  font-size: 11px; font-weight: 500; border: 1px solid var(--border);
-  color: var(--text-2); background: var(--surface-2);
-}
-.orglib-pill-task  { border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--accent); }
-.orglib-pill-agent { border-color: color-mix(in srgb, #38bdf8 40%, transparent); color: #38bdf8; }
-.orglib-pill-skill { border-color: color-mix(in srgb, #f59e0b 40%, transparent); color: #f59e0b; }
-.orglib-desc { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Settings → Connections: the tools SECTION collapses like the row above it. */
-.conncfg-tools-head { display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; padding: 10px 0; }
-.conncfg-tools-chev { width: 13px; height: 13px; color: var(--text-3); transition: transform 0.15s; flex: none; }
-.conncfg-tools.open .conncfg-tools-chev { transform: rotate(90deg); }
-.conncfg-tools .conncfg-tools-body { display: none; }
-.conncfg-tools.open .conncfg-tools-body { display: block; }
-
-/* Settings → Connections: the value column is a SHARE of the row, not a
-   fixed pixel width — it tracks the panel instead of leaving a ragged gap at
-   any other size (his correction, 2026-09-12: "fix the percentage"). */
-.settings-panel[data-sub="connections-cfg"] .set-pref-row > .set-pref-text { flex: 1 1 auto; min-width: 0; }
-.settings-panel[data-sub="connections-cfg"] .set-pref-value { flex: 0 0 55%; width: 55%; }
-.settings-panel[data-sub="connections-cfg"] .set-pref-value > * { width: 100%; }
-.settings-panel[data-sub="connections-cfg"] .set-pref-value > .settings-toggle { width: auto; margin-left: auto; }
-
-/* Settings → Connections (help/settings-connections.ts): the far-left icon
-   in the accordion head and the app rows of the New-connection modal. */
-.conncfg-icon { width: 20px; height: 20px; border-radius: 5px; margin-right: 10px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.conncfg-icon img { width: 100%; height: 100%; object-fit: contain; border-radius: 5px; }
-.conncfg-icon-initial { font-size: 11px; font-weight: 600; color: var(--text-2); }
-/* The adopted section is a PARTS BIN, not a page: only its catalog modal and
-   its tools pane are wanted. The toolbar, the card list and the page-level
-   detail editor (breadcrumb + head + Cancel/Save) all stay hidden — the tools
-   pane has already relocated into the open accordion row by the time the
-   detail un-hides itself (his report, 2026-09-12: the editor rendered under
-   the list). */
-.conncfg-legacy #connections-toolbar,
-.conncfg-legacy #connections-list { display: none !important; }
-/* The page EDITOR is hidden wherever it sits inside this page — bin, row, or
-   anywhere a previous build left it. Scoping the hide to the bin let a node
-   that had been relocated render its breadcrumb, Remove/Cancel/Save and its
-   own field layout inside the accordion (his report, 2026-09-12). */
-.settings-panel[data-sub="connections-cfg"] #conn-detail { display: none !important; }
-/* …EXCEPT the Custom MCP form, which IS that same node. Hiding it outright
-   made "+ Custom MCP" a no-op (his report, 2026-09-12): the button fired, the
-   form opened, and it opened inside something invisible. The host flips this
-   class for the duration of that flow. */
-
-/* While the Custom MCP form is open it OWNS the page: the header, the search
-   toolbar and the accordion step aside, exactly as the Connections page hides
-   its list behind its editor. */
-.settings-panel[data-sub="connections-cfg"].editing > h2,
-.settings-panel[data-sub="connections-cfg"].editing > .section-desc,
-.settings-panel[data-sub="connections-cfg"].editing > .crud-toolbar,
-.settings-panel[data-sub="connections-cfg"].editing > #conncfg-accordion { display: none !important; }
-/* Inside an OPEN ROW the detail is the row's form — visible there, hidden in
-   the parts-bin host it came from. */
-

@@ -112,12 +112,17 @@ const CONNECTOR_DOMAINS: Record<string, string> = {
   microsoft_outlook: "outlook.com", microsoft_teams: "teams.microsoft.com",
 };
 
-/** A domain's favicon — STRAIGHT from the public favicon service (THE PURGE,
- *  2026-09-10: the server-side icon resolver died with the R2 cache; every
- *  app icon was falling to its monogram). 64px square PNG; the monogram
- *  remains the designed failure state. */
+/** The resolver URL for a domain — THROUGH THE SDK on web (the SDK is the
+ *  only client of the server); the desktop renderer holds no SDK handle, so
+ *  it uses the SDK-configured origin the preload exposes (serverUrl). */
 function resolverUrlFor(host: string): string {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+  const w = window as unknown as {
+    glyphhSdk?: { icons?: { urlFor: (d: string) => string } };
+    glyphh?: { serverUrl?: string };
+  };
+  if (w.glyphhSdk?.icons?.urlFor) return w.glyphhSdk.icons.urlFor(host);
+  const base = (w.glyphh?.serverUrl || "https://api.glyphh.ai").replace(/\/$/, "");
+  return `${base}/api/icons?domain=${encodeURIComponent(host)}&v=2`;
 }
 
 /** Deterministic monogram hue — the SAME app always wears the same color, and
@@ -178,11 +183,8 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   if (!host && app.connection?.pipedreamSlug) host = CONNECTOR_DOMAINS[app.connection.pipedreamSlug] || "";
   const plate = brandColor(host) ? `background:${brandColor(host)};color:#fff;` : monogramStyle(app.slug || name || "?");
   const mono = `<span class="${initialClass} icon-monogram" style="${plate}">${initial}</span>`;
-  // No crossorigin: the favicon service doesn't promise ACAO, and a CORS-mode
-  // <img> hard-fails without it. Plain embedding renders everywhere; canvas
-  // consumers (the wall) fetch their own data URLs via web-icon-fetch.
   return iconUrl
-    ? `<img src="${iconUrl}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />${mono.replace('style="', 'style="display:none;')}`
+    ? `<img src="${iconUrl}" crossorigin="anonymous" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />${mono.replace('style="', 'style="display:none;')}`
     : mono;
 }
 

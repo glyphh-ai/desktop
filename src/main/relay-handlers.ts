@@ -14,15 +14,16 @@
  * thrown errors into `{ok:false,error}` frames automatically.
  */
 
+import type { McpManager } from "./mcp-manager.js";
 import { registerRelayHandler } from "./relay-client.js";
 import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
-import { fetchOrgApps } from "./org-apps.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
 import os from "os";
 
 interface Deps {
+  getMcpManager: () => McpManager | null;
 }
 
 function appParam(params: unknown): string {
@@ -31,6 +32,7 @@ function appParam(params: unknown): string {
 }
 
 export function installRelayHandlers(deps: Deps): void {
+  const { getMcpManager } = deps;
 
   // Smoke-test handler — the loopback local-MCP relay_ping tool routes here.
   // (Formerly registered by relay-client's now-deleted initRelayClient.)
@@ -42,17 +44,6 @@ export function installRelayHandlers(deps: Deps): void {
   // ── panels — workbench app panels beside the agent (OS windows retired) ──
 
   registerRelayHandler("panels.list", () => listOpenAppWindows());
-
-  // The user's APP LIBRARY — what panels.open can open, not just what IS
-  // open. Without this an agent asked about "gmail" can't discover the saved
-  // Gmail app and falls back to driving the raw browser (his report,
-  // 2026-09-10). Rows trim to what an agent needs to pick one.
-  registerRelayHandler("panels.available", async () => {
-    const rows = await fetchOrgApps().catch(() => []);
-    return rows
-      .filter((a) => !a.system && (a.url || a.execPath || a.appArchetype === "glyphh-app"))
-      .map((a) => ({ app: a.slug, name: a.name, ...(a.url ? { url: a.url } : {}), kind: a.appArchetype || (a.url ? "web" : "native") }));
-  });
 
   registerRelayHandler("panels.open", async (params) => {
     const r = await openAppByRef(appParam(params));

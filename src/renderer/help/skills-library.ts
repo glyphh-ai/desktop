@@ -13,6 +13,7 @@
 import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction } from "./shared.js";
 import { unwrap, type Skill, type SkillSummary } from "./library-types.js";
 import { skillGraph, renderFlow } from "./lib-flow.js";
+import { seedComposer } from "./code.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { wireSplitDivider, kebabCell, ROW_MENU_ICONS, wireIdentityEdit } from "./lib-editor.js";
 
@@ -59,7 +60,7 @@ function renderList(): void {
   current = null;
 
   if (mine.length === 0) {
-    listEl.innerHTML = `<div class="crud-empty">No skills yet — <b>+ New</b> starts one; write its instructions.</div>`;
+    listEl.innerHTML = `<div class="crud-empty">No skills yet — click "+ New with AI" and describe what you need.</div>`;
     return;
   }
   if (filtered.length === 0) {
@@ -128,6 +129,8 @@ function readRow(label: string, value: string): string {
   return `<div class="lib-read-row"><span class="lib-read-label">${escapeHtml(label)}</span><span class="lib-read-value">${escapeHtml(value)}</span></div>`;
 }
 
+import { wireLibraryActions } from "./library-share.js";
+
 async function openDetail(ref: string): Promise<void> {
   formError.classList.add("hidden");
   const env = await window.glyphh.librarySkillGet(ref);
@@ -146,28 +149,21 @@ async function openDetail(ref: string): Promise<void> {
       ${readRow("Updated", current.updatedAt ? new Date(current.updatedAt).toLocaleString() : "—")}
     </div>
     ${m.whenToUse ? `<div class="lib-read-when"><span class="lib-read-label">When Glyphh reaches for it</span><p>${escapeHtml(m.whenToUse)}</p></div>` : ""}
-    <hr class="lib-divider" /><span class="lib-read-label">Instructions</span>
-    <p class="settings-hint" style="margin:4px 0 6px;">What the skill teaches an agent — markdown; agents read it through the glyphh MCP tools.</p>
-    <textarea id="skill-prompt" class="settings-input" rows="10" spellcheck="false" style="font-family:ui-monospace,monospace;width:100%;"></textarea>
+    <hr class="lib-divider" />
+    <div class="lib-md-render">${formatMarkdown(unwrapSoftBreaks(current.prompt || "*No instructions.*"))}</div>
     ${current.code ? `<hr class="lib-divider" /><span class="lib-read-label">Program</span><pre class="lib-read-code">${escapeHtml(current.code)}</pre>` : ""}
     <div class="settings-actions lib-detail-actions">
       <button id="skill-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
-      <button id="skill-publish-btn" class="action-btn">Publish to AI Hub</button>
-    </div>`;
-  const sp = detailEl.querySelector<HTMLTextAreaElement>("#skill-prompt");
-  if (sp) {
-    sp.value = current.prompt || "";
-    sp.addEventListener("change", () => {
-      void window.glyphh.librarySkillUpdate(current!.slug, { prompt: sp.value }).then((r) => {
-        if (r.ok && current) current.prompt = sp.value;
-      });
-    });
-  }
+      ${current.builtIn ? "" : current.scope === "personal"
+        ? `<button id="skill-share-btn" class="action-btn">Share with org</button>`
+        : `<span class="lib-badge on" style="align-self:center;">Org</span>
+           <button id="skill-publish-btn" class="action-btn">Publish to marketplace</button>`}
+    </div>
+    <div id="skill-share-note" class="settings-hint hidden" style="margin-top:6px;"></div>`;
 
   detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
-  const publishBtn = detailEl.querySelector<HTMLButtonElement>("#skill-publish-btn");
-  publishBtn?.addEventListener("click", () => void publishCurrent(publishBtn));
+  wireLibraryActions(detailEl, "skill", () => current);
   wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
     const res = await window.glyphh.librarySkillUpdate(current!.slug, patch);
     if (!res.ok) return res.error || "Couldn't save.";
@@ -187,32 +183,14 @@ export function initSkillsLibraryEvents(): void {
   wireSplitDivider($a("skill-split-divider"), detailEl);
   searchInput.addEventListener("input", renderList);
   $a("skill-back-link").addEventListener("click", () => renderList());
-  $a("skills-refresh-btn").addEventListener("click", () => void loadSkillsLibrary());
 
-  // "+ New" opens the DEFAULT AGENT with the authoring task (his order,
-  // 2026-09-10) — no default set, the modal points at Settings → General.
-  $a("skill-new-btn").addEventListener("click", () => {
-    void openDefaultAgent("Create a new Glyphh skill for me. A skill is a JSON file at ~/.glyphh/skills/<slug>.json with keys: id and slug (the same kebab slug), scope set to personal, name, description, hasCode false, builtIn false, schedule null, updatedAt (ISO now), manifest (version 1), prompt — the skill's markdown instructions — and an empty code string. Ask me what the skill should teach, then write the file.");
+  // Authoring is the AGENT'S job — both paths seed the composer.
+  $a("skill-new-btn").addEventListener("click", () => seedComposer("/create-skill "));
+  $a("skill-ai-btn").addEventListener("click", () => {
+    if (!current) return;
+    seedComposer(`/create-skill Update the existing skill "${current.slug}" (${current.name}): `);
   });
-  $a("skill-ai-btn")?.classList.add("hidden");
 
-}
-
-/** The skill → the org's AI Hub (an admin's own goes live; a member's waits for review). */
-async function publishCurrent(btn: HTMLButtonElement): Promise<void> {
-  if (!current) return;
-  const sure = await confirmAction({
-    title: `Publish "${current.name}" to the AI Hub?`,
-    body: "Its instructions and program go to your organization's hub. An org admin's publish goes live at once; anyone else's waits on the review desk. Members install it from the Marketplace.",
-    confirmLabel: "Publish",
-  });
-  if (!sure) return;
-  btn.disabled = true;
-  const env = await window.glyphh.hubPublish("skill", current.slug);
-  btn.disabled = false;
-  if (!env.ok) { fail(env.error || "publish failed"); return; }
-  const r = env.data as { version: number; status: string };
-  btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
 }
 
 async function deleteCurrent(): Promise<void> {
@@ -222,26 +200,4 @@ async function deleteCurrent(): Promise<void> {
   const env = await window.glyphh.librarySkillDelete(current.slug);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadSkillsLibrary();
-}
-
-/** "+ New" hands authoring to the DEFAULT AGENT (Settings → General). No
- *  default set → the standard modal points there. */
-async function openDefaultAgent(task: string): Promise<void> {
-  const yo = window.glyphh as unknown as {
-    getPreference?: (k: string, d: unknown) => Promise<unknown>;
-    cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string }> }>;
-  };
-  const def = String((await yo.getPreference?.("defaultAgent", "")) ?? "");
-  const agents = (await yo.cliAgentsList?.().catch(() => null))?.agents ?? [];
-  const agent = agents.find((a) => a.id === def);
-  if (!agent) {
-    const go = await confirmAction({
-      title: "Set a default agent first",
-      body: "\u201c+ New\u201d hands authoring to your default agent. Pick one in Settings \u2192 General.",
-      confirmLabel: "Open Settings",
-    });
-    if (go) (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("general");
-    return;
-  }
-  (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string) => void }).__wbOpenAgentCli?.(agent.id, task);
 }

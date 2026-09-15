@@ -7,16 +7,13 @@
           <p class="section-desc">Reusable know-how your agent triggers on demand — what each skill does and when it fires, authored with AI.</p>
           <div id="skills-toolbar" class="crud-toolbar">
             <input id="skill-search" type="text" class="crud-search" placeholder="Search skills..." spellcheck="false" autocomplete="off" />
-            <button id="skill-new-btn" class="action-btn primary hidden">+ New with AI</button>
-            <button id="skills-refresh-btn" class="action-btn" title="Refresh" aria-label="Refresh" style="padding:6px 9px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
+            <button id="skill-new-btn" class="action-btn primary">+ New with AI</button>
           </div>
           <div id="skills-list" class="crud-cards"></div>
           <div id="skill-editor" class="crud-inline-form hidden">
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="skill-back-link">&larr; Skills</a>
-              <a id="skill-ai-btn" class="lib-ai-link hidden" title="Have the Glyphh agent change this skill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <a id="skill-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this skill"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
               <div class="crud-spacer"></div>
             </div>
             <div id="skill-form-error" class="crud-form-error hidden"></div>

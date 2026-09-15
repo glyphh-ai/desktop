@@ -2,32 +2,40 @@
  * Help overlay — open/close, section switching, nav wiring.
  */
 
-import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
-import { loadOAuth, initOAuth } from "./settings-oauth.js";
-import { loadModelsAdmin } from "./models-admin.js";
-import { loadGatewayMetrics } from "./gateway-metrics.js";
-import { loadGatewayKeys } from "./gateway-keys.js";
+import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
-import { loadDashboard, initDashboardEvents, loadUsageChart, loadUsageMetrics, loadUsageMembers, paintDashGreeting } from "./dashboard.js";
+import { loadDashboard, initDashboardEvents, paintDashGreeting, loadUsageChart, loadUsageMetrics, loadUsageMembers } from "./dashboard.js";
 import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
-import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadAgents, initAgentsEvents } from "./agents.js";
-import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
-import { loadOrgLibrary } from "./org-library.js";
-import { loadSettingsConnections } from "./settings-connections.js";
-import { loadConnections, initConnections } from "./connections.js";
-import { loadTasksPage, initTasksPage } from "./tasks-page.js";
-import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
-import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
+import { loadMarketplaceSection, initMarketplace } from "./marketplace.js";
+import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadWorkspacesPanel, loadUsageAppView, loadMcp } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
-import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
+import { initMcpPanel, loadMcpPanel } from "./settings-mcp.js";
+import { loadDrips, initDripsEvents } from "./drips.js";
+import { loadRuntime } from "./settings-runtime.js";
+import { loadMarketplaceBlocks } from "./settings-workspaces.js";
+import { loadDomainsPanel, loadMetricsPanel } from "./settings-domains.js";
+import { loadMarketingPanel } from "./settings-marketing.js";
+import { loadClientsPanel } from "./settings-clients.js";
+import { loadGuardrails, initGuardrails } from "./settings-guardrails.js";
+import { loadLoops, initLoopsEvents } from "./loops.js";
+import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
+import { loadAgents, initAgentsEvents } from "./agents.js";
+import { initSkills } from "./skills.js";
+import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
+import { wireDipWatcher } from "./dip-watch.js";
+import { loadConnections, initConnections } from "./connections.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
+import { loadModelsAdmin } from "./models-admin.js";
 import { loadFiles, initFiles } from "./files.js";
+import { loadApiKeys, initApiKeys } from "./settings-apikeys.js";
+import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadDownload } from "./settings-download.js";
+import { loadWebhooks, initWebhooksPanel } from "./settings-webhooks.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
-import { loadAdminPlans, loadAdminOrgs, loadAdminModels, loadAdminUsage } from "./settings-admin.js";
+import { loadAdminModels, loadAdminPlans, loadAdminUsage, loadAdminOrgs } from "./settings-admin.js";
+import { loadVoiceSettings } from "./settings-voice.js";
 
 const overlay = getHelpOverlay();
 const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
@@ -36,12 +44,14 @@ const sections = document.querySelectorAll<HTMLDivElement>(".help-section");
 
 // THE user-menu rows — one list, every anchor (his question, 2026-08-27:
 // two hand-built menus had drifted; About made one and missed the other).
-// Identity + About only (his order, 2026-09-10): Settings is redundant from
-// inside the settings dialog, and Docs/Support live on the settings nav now.
-// Rendered by buildUserMenuInto for BOTH the rail's Account chip and the
-// settings shell's bottom-left chip.
+// Order: identity first, help next, About (version + updates) last before
+// the sign-out. Rendered by buildUserMenuInto for BOTH the rail's Account
+// chip and the settings shell's bottom-left chip.
 const USER_MENU_ROWS: ReadonlyArray<{ label: string; sub: string; icon: string }> = [
   { label: "Account", sub: "account", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>` },
+  { label: "Settings", sub: "settings", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>` },
+  { label: "Docs", sub: "docs", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>` },
+  { label: "Support", sub: "support", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="12" cy="12" r="4"/><path d="M5.3 5.3 9.2 9.2M14.8 14.8l3.9 3.9M18.7 5.3l-3.9 3.9M9.2 14.8l-3.9 3.9"/></svg>` },
   { label: "About", sub: "about", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><line x1="12" y1="11" x2="12" y2="16.5"/><line x1="12" y1="7.6" x2="12.01" y2="7.6"/></svg>` },
 ];
 /** Render the shared rows + Log out into `menu`. `go` routes a sub. */
@@ -109,6 +119,12 @@ export function resetEditors() {
     document.getElementById("layouts-list")?.classList.remove("hidden");
     document.getElementById("layouts-toolbar")?.classList.remove("hidden");
   }
+  const re = document.getElementById("rip-editor");
+  if (re && !re.classList.contains("hidden")) {
+    re.classList.add("hidden");
+    document.getElementById("rips-list")?.classList.remove("hidden");
+    document.getElementById("rips-toolbar")?.classList.remove("hidden");
+  }
   const de = document.getElementById("drip-editor");
   if (de && !de.classList.contains("hidden")) {
     de.classList.add("hidden");
@@ -143,15 +159,16 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
+  else if (sec === "loops") void loadLoops();
   else if (sec === "drips") loadDrips();
-  else if (sec === "agents") void loadAgents();
   else if (sec === "skills") void loadSkillsLibrary();
-  else if (sec === "connections") void loadConnections();
-  else if (sec === "tasks") loadTasksPage();
+  else if (sec === "agents") void loadAgents();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
+  else if (sec === "marketplace") loadMarketplaceSection();
   else if (sec === "code") loadCode();
+  else if (sec === "connections") void loadConnections();
   else if (sec === "settings") loadSettings();
   else if (sec === "docs") loadDocs();
   else if (sec === "support") loadSupport();
@@ -201,7 +218,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "agents", "skills", "connections", "tasks"].includes(section)) {
+  if (["apps", "marketplace", "connections", "layouts", "agents", "loops", "skills", "drips"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -328,10 +345,7 @@ export function openSettingsModal(sub?: string): void {
   // settings surface — the two are separate on purpose; never route the app's
   // gear to /platform.
   // Already open — just switch the sub-panel.
-  // Desktop lands on General now — Account left the nav rail for the user
-  // menu (his order, 2026-09-10), so it can't be the modal's landing row.
-  // Platform LANDS on the Dashboard (his order, 2026-09-11) — not General.
-  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "general";
+  const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "account";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
 
   const layout = document.querySelector<HTMLElement>(
@@ -416,10 +430,11 @@ export function openSettingsModal(sub?: string): void {
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
     if (settingsGroup && nav) {
       let anchor: Element = settingsGroup;
-      for (const sub of ["general", "appearance", "account"]) {
+      for (const sub of ["general", "appearance", "account", "voice"]) {
         const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
         if (item) { anchor.after(item); anchor = item; }
       }
+      const mcpHead = nav.querySelector("#nav-group-mcp");
       let orgGroup = nav.querySelector("#app-nav-group-org");
       if (!orgGroup) {
         orgGroup = document.createElement("div");
@@ -436,7 +451,12 @@ export function openSettingsModal(sub?: string): void {
       // MCP is its OWN group at the end (his spec, 2026-08-25): the cloud/
       // local General panel plus the API keys that authorize it.
       const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
-      if (mcpItem) { anchor.after(mcpItem); anchor = mcpItem; }
+      const akItem = nav.querySelector('.settings-nav-item[data-sub="apikeys"]');
+      if (mcpHead && mcpItem) {
+        anchor.after(mcpHead);
+        mcpHead.after(mcpItem);
+        if (akItem) mcpItem.after(akItem);
+      }
       wireAppUserChip(nav as HTMLElement);
     }
   }
@@ -601,10 +621,12 @@ function wireAppUserChip(nav: HTMLElement): void {
     menu.setAttribute("role", "menu");
     buildUserMenuInto(menu, (sub) => {
       // Route through the (possibly hidden) nav rows so panel switching stays
-      // the one existing path — same trick the platform chip uses. Account's
-      // row is hidden (the menu owns it), but a hidden row still takes the
-      // programmatic click.
-      nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`)?.click();
+      // the one existing path — same trick the platform chip uses. "Settings"
+      // (already inside the modal) lands on the first nav row.
+      const target = sub === "settings"
+        ? nav.querySelector<HTMLElement>(".settings-nav-item")
+        : nav.querySelector<HTMLElement>(`.settings-nav-item[data-sub="${sub}"]`);
+      target?.click();
     }, () => menu.classList.add("hidden"));
     chip.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -647,26 +669,22 @@ function gateAdminSubs(): void {
     // every org surface admits admins; only the money door stays org_admin's.
     const orgAdmin = !!info?.role && ["org_admin", "super_admin"].includes(info.role);
     const admin = orgAdmin || info?.role === "admin";
-    document.getElementById("nav-org-general")?.classList.toggle("hidden", !admin);
-    // The LIBRARY is the admin's curation surface (his ruling, 2026-09-12) —
-    // members meet the library through Marketplace/installs, never this door.
-    document.getElementById("nav-org-library")?.classList.toggle("hidden", !admin);
-    // SECURITY and GATEWAY are admin groups too (his ruling, 2026-09-12) —
-    // the whole cluster (headers + items) rides one class, like nav-super.
-    // The server enforces the role on every route regardless.
-    document.querySelectorAll<HTMLElement>(".settings-nav:not(.docs-nav) > .nav-admin")
-      .forEach((el) => el.classList.toggle("hidden", !admin));
-    // MEMBERS' Build → Loops is the SAME page as App → Settings → Loops (his
-    // ruling, 2026-09-12) — their loops, their configs, no org toggles. The
-    // button retargets; admins keep the org support list.
-    const buildLoops = document.querySelector<HTMLElement>('.settings-nav-item[data-sub="org-loops"], .settings-nav-item[data-sub="loops"].platform-only');
-    if (buildLoops && !admin) buildLoops.dataset.sub = "loops";
+    for (const id of ["general-runtime-group", "general-guardrails-group", "nav-org-general"]) {
+      document.getElementById(id)?.classList.toggle("hidden", !admin);
+    }
     // Members on the PLATFORM see nothing org-financial and no catalog:
     // Billing is org_admin's alone; Models/Marketplace open to admins too.
     // The server 403s the reads regardless — this hides the doors. Desktop
     // keeps Billing personal-visible as before.
     if (document.body.classList.contains("platform-shell")) {
       document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
+      // Clients moves money (creating + funding workspaces) — org_admin's alone.
+      document.getElementById("nav-clients")?.classList.toggle("hidden", !orgAdmin);
+      // The Hosting + Marketing groups are admin territory wholesale.
+      for (const id of ["nav-models", "nav-org-marketplace", "nav-group-hosting", "nav-domains", "nav-metrics",
+                        "nav-group-marketing", "nav-mkt-links"]) {
+        document.getElementById(id)?.classList.toggle("hidden", !admin);
+      }
     }
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
@@ -814,36 +832,32 @@ const settingsSubAlias = (sub: string): string => {
   if (target === "drips" && document.documentElement.classList.contains("glyphh-web")) {
     return document.body.classList.contains("platform-shell") ? "dash" : "general";
   }
-  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "org-general";
+  if ((target === "voice" || target === "appearance" || target === "general") && document.body.classList.contains("platform-shell")) return "dash";
   return target;
 };
 
 /** Settings sub-panels that fetch on show. Shared by the sub-nav click handler
  *  and gotoSection's deep-link path so both populate identically. */
 function loadSettingsSub(sub: string): void {
-  // THE PURGE: the settings shell is the minimal platform — account, org,
-  // members, billing (the license), apps, download, support, docs,
-  // and the super-admin Plans/Orgs console.
+  // General carries the Sessions (runtime region) + Guardrails groups (both
+  // PLATFORM-ONLY surfaces now) — they fetch on show.
   if (sub === "dash") { paintDashGreeting(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
-  else if (sub === "mcp") loadMcp();
+  else if (sub === "usage") void loadUsageAppView();
+  else if (sub === "mcp") { loadMcp(); initMcpPanel(); void loadMcpPanel(); }
   else if (sub === "support") void loadSupportPanel();
   else if (sub === "about") loadAbout();
   else if (sub === "billing") void loadBilling();
-  else if (sub === "workspaces") void loadWorkspacesPanel();
-  else if (sub === "models") loadModelsAdmin();
-  else if (sub === "loops") void loadSettingsLoops();
-  else if (sub === "org-loops") void loadOrgLoops();
-  else if (sub === "org-library") loadOrgLibrary();
-  else if (sub === "connections-cfg") void loadSettingsConnections();
-  else if (sub === "gateway") void loadGatewayMetrics();
-  else if (sub === "gateway-keys") void loadGatewayKeys();
-  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
-  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
-  else if (sub === "usage") { void loadUsageAppView(); void loadUsageChart(); void loadUsageMetrics(); void loadUsageMembers(); }
   // Organization › General — the org record page (admin-gated nav).
-  else if (sub === "org-general") void loadOrgPanel();
+  else if (sub === "org-general") { void loadOrgPanel(); void loadRuntime(); void loadGuardrails(); }
   else if (sub === "account") void loadProfile();
   else if (sub === "members") void loadMembers();
+  else if (sub === "workspaces") void loadWorkspacesPanel();
+  else if (sub === "domains") void loadDomainsPanel();
+  else if (sub === "metrics") void loadMetricsPanel();
+  else if (sub === "mkt-links") void loadMarketingPanel();
+  else if (sub === "clients") void loadClientsPanel();
+  else if (sub === "org-marketplace") loadMarketplaceBlocks();
+  else if (sub === "models") loadModelsAdmin();
   // The Platform group — the super-admin console (settings-admin.ts). Each
   // loader re-checks the role and paints an honest gate; the server enforces.
   else if (sub === "padmin-models") loadAdminModels();
@@ -851,13 +865,14 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
+  else if (sub === "apikeys") void loadApiKeys();
+  else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
+  else if (sub === "webhooks") { initWebhooksPanel(); void loadWebhooks(); }
+  else if (sub === "voice") void loadVoiceSettings();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
-  // The BUILD group's restored pages — Tasks (the former loop library),
-  // Agents, Skills — adopt their sections exactly as apps/connections do.
-  else if (sub === "tasks") { mountSettingsSection("tasks"); loadTasksPage(); }
+  else if (sub === "connections") { mountSettingsSection("connections"); void loadConnections(); }
   else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
-  else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -912,14 +927,10 @@ function parkSettingsDocs(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   apps: { host: "settings-apps-host" },
+  connections: { host: "settings-connections-host" },
+  agents: { host: "settings-agents-host" },
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
-  connections: { host: "settings-connections-host" },
-  // The BUILD group (his order, 2026-09-12): the restored library pages ride
-  // the same whole-node adoption into the platform nav.
-  agents: { host: "settings-agents-host" },
-  skills: { host: "settings-skills-host" },
-  tasks: { host: "settings-tasks-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
@@ -1014,45 +1025,30 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts" };
-  // Marketplace = the org's AI HUB on the console (his order, 2026-09-15),
-  // opened signed-in as a work panel. Installs made there are pulled into
-  // the local library first, so the pages see them the moment it opens.
-  const openMarketplace = async (btn: HTMLButtonElement): Promise<void> => {
-    btn.disabled = true;
-    try {
-      const sync = await window.glyphh.hubSync();
-      if (!sync.ok) console.warn("[hub] sync failed:", sync.error);
-      const res = await window.glyphh.hubUrl();
-      if (!res.ok) {
-        await confirmAction({ title: "Couldn't open the AI Hub", body: res.error || "The hub didn't answer.", confirmLabel: "OK" });
-        return;
-      }
-      const { url } = res.data as { url: string };
-      openAppInWorkbench({ slug: "ai-hub", name: "AI Hub", url, workbench: true });
-    } finally {
-      btn.disabled = false;
-    }
-  };
+  // "artifacts" is the files section's rail name.
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", marketplace: "marketplace", connections: "connections", layouts: "layouts", artifacts: "files" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
-      if (sub === "marketplace") { void openMarketplace(btn); return; }
       const wb = RAIL_WB_SECTIONS[sub];
       if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
       else openSettingsModal(sub);
     });
   });
   // The More fly-out — second-tier rail destinations, every one a WORKBENCH
-  // surface: Loops/Skills open as section cards, Browser as the preview
-  // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
+  // surface: Loops/Skills/Agents open as section cards, Browser as the
+  // preview tool, Scheduled Tasks as the hidden tasks view.
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
-    { label: "Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("tasks") },
+    { label: "Loops", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("loops") },
     { label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
       open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("skills") },
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
+    { label: "Scheduled Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
+      open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("tasks") },
+    { label: "Agents", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M12 7V4"/><circle cx="12" cy="3" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M9 16h6"/></svg>`,
+      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("agents") },
   ];
   const moreToggle = document.getElementById("rail-more-toggle");
   let moreMenu: HTMLDivElement | null = null;
@@ -1098,7 +1094,7 @@ export function initHelp() {
   let userMenu: HTMLDivElement | null = null;
   let userMenuAnchor: HTMLElement | null = null;
   const closeUserMenu = () => { userMenu?.remove(); userMenu = null; userMenuAnchor = null; };
-  /** The account dropdown — Account / About / Log out. ANCHOR-aware:
+  /** The account dropdown — Docs / Settings / Account / Logout. ANCHOR-aware:
    *  opens upward from a bottom-of-screen anchor (the retired rail button)
    *  and downward from a top one. (No visible opener today — the retired
    *  rail button keeps the binding; Settings/Account run through the dock's
@@ -1115,7 +1111,11 @@ export function initHelp() {
       b.addEventListener("click", () => { closeUserMenu(); cb(); });
       m.appendChild(b);
     };
-    buildUserMenuInto(m, (sub) => { gotoSection("settings", sub); }, closeUserMenu);
+    buildUserMenuInto(m, (sub) => {
+      if (sub === "docs") gotoSection("docs");
+      else if (sub === "settings") gotoSection("settings");   // the modal's landing
+      else gotoSection("settings", sub);
+    }, closeUserMenu);
     document.body.appendChild(m);
     const r = anchor.getBoundingClientRect();
     const openUp = r.top > window.innerHeight / 2;
@@ -1137,7 +1137,7 @@ export function initHelp() {
   // The wall's dock gear lands here (the workbench bundle can't import this
   // module): open the SETTINGS MODAL — gotoSection("settings") is the modal
   // path. Account/Logout live inside it.
-  (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings = (sub?: string) => gotoSection("settings", sub);
+  (window as unknown as { __glyphhOpenSettings?: () => void }).__glyphhOpenSettings = () => gotoSection("settings");
   // Fill the user name from account info (email fallback) — and REFILL on
   // every account update, so logging out and back in as a different user
   // repaints it instead of showing the previous identity all run.
@@ -1186,17 +1186,25 @@ export function initHelp() {
   boot("org", initOrgPanel);
   boot("settings", initSettings);
   boot("apps", initApps);
+  boot("marketplace", initMarketplace);
+  boot("connections", initConnections);
   boot("layouts", initLayoutsEvents);
   boot("files", initFiles);
   // A4 settings panels — wire their controls once at boot (idempotent).
+  boot("apikeys", initApiKeys);
+  boot("oauth", initOAuth);
   boot("support", initSupportPanel);
+  boot("guardrails", initGuardrails);
   boot("drips", initDripsEvents);
+  boot("loops", initLoopsEvents);
+  boot("skills-library", initSkillsLibraryEvents);
   boot("agents", initAgentsEvents);
-  boot("skills", initSkillsLibraryEvents);
-  boot("connections", initConnections);
-  boot("tasks", initTasksPage);
+  boot("skills", initSkills);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
+  // Typing the exact `.dip` sequence ANYWHERE (agent input, any field, or no
+  // field at all) opens the drip picker — see help/dip-watch.ts.
+  wireDipWatcher();
   // The shell steers sections too (the first-run walkthrough lands on Home).
   window.glyphh.onGotoSection?.((section) => {
     // "settings:account" → section + sub-panel (the nav apps use this).

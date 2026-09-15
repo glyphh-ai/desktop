@@ -1,16 +1,23 @@
 /**
- * org-apps — the desktop's read of the app library, LOCAL now
- * (THE PURGE, 2026-09-10: rows live in ~/.glyphh/apps/<id>/app.json via
- * apps-store; the server app surface is gone).
+ * org-apps — the desktop's read of the org's apps, from the one apps API.
  *
- * The desktop's renderer contract (SavedPanelApp) predates the store, so the
+ * The server has a single apps surface: `/api/apps/*` (`client.apps.mine()`
+ * returns the entry + launcher config + variants + required connections).
+ * `/api/panel-apps` is a legacy name kept only as a GET projection of hosting
+ * deployments for the dashboard count — it carries no name/slug/launcher, so
+ * nothing that needs a real app record may read it.
+ *
+ * The desktop's renderer contract (SavedPanelApp) predates the SDK, so the
  * translation happens HERE, once: the Apps page, command palette, app
- * resolver, app host, and LLM tool list all read through `fetchOrgApps()`
- * and see identical data.
+ * resolver, app host, LLM tool list, and Ada indexer all read through
+ * `fetchOrgApps()` and see identical data.
+ *
+ * `mcp` and `commands` come back empty — custom MCP is its own connection
+ * surface now, and per-app command mappings await the app-state work.
  */
 
-import * as appsStore from "./apps-store.js";
-import type { LocalAppRow } from "./apps-store.js";
+import type { OrgApp } from "@glyphh/sdk";
+import { getClient } from "./glyphh-client.js";
 import { appCache } from "./glyphh-client.js";
 
 /** The renderer's Apps record (mirrors preload's SavedPanelApp). */
@@ -43,7 +50,7 @@ export interface OrgAppRow {
   /** The FULL marketplace listing (copy, media, rating, listed state). Carried
    *  through so the app-detail Marketplace tab reads back what a save stored —
    *  without it the read-back blanks every field but the title. */
-  listing: null;
+  listing: OrgApp["listing"] | null;
   connectionIds: string[];
   mcp: null;
   commands: Record<string, never>;
@@ -94,8 +101,13 @@ const GLYPHH_SELF_ROW: OrgAppRow = {
  *  the rail's apps grid (url || !isBrowser) leaves them out. */
 const NAV_SECTIONS: Array<{ slug: string; name: string; nav: string }> = [
   { slug: "home", name: "Home", nav: "dashboard" },
+  { slug: "connections", name: "Connections", nav: "connections" },
   { slug: "apps", name: "Apps", nav: "apps" },
   { slug: "layouts", name: "Layouts", nav: "layouts" },
+  { slug: "skills", name: "Skills", nav: "skills" },
+  { slug: "loops", name: "Loops", nav: "loops" },
+  { slug: "agents", name: "Agents", nav: "agents" },
+  { slug: "models", name: "Models", nav: "models" },
   { slug: "settings", name: "Settings", nav: "settings" },
 ];
 const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
@@ -111,7 +123,7 @@ const NAV_ROWS: OrgAppRow[] = NAV_SECTIONS.map((n) => ({
 /** Native and glyphh apps launch from a local path; every other kind opens a
  *  URL. A glyphh row keeps the desktop's long-standing "glyphh-app" archetype
  *  tag (isGlyphhAppRow and friends match on it). */
-function toRow(app: LocalAppRow): OrgAppRow {
+function toRow(app: OrgApp): OrgAppRow {
   return {
     id: app.id,
     orgId: "",
@@ -131,8 +143,8 @@ function toRow(app: LocalAppRow): OrgAppRow {
     secretNames: app.secretNames ?? [],
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
-    iconUrl: null,
-    listing: null,
+    iconUrl: app.listing?.iconUrl ?? null,
+    listing: app.listing ?? null,
     mcp: null,
     commands: {},
     createdAt: app.createdAt,
@@ -144,9 +156,43 @@ function toRow(app: LocalAppRow): OrgAppRow {
  *  render and the click that follows share one request. */
 export function fetchOrgApps(): Promise<OrgAppRow[]> {
   return appCache.cached(CACHE_KEY, async () => {
-    const rows = (await appsStore.mine()).map(toRow);
-    // A user row that took the "glyphh" slug IS the built-in: keep its real
-    // id (layouts/recents reference it), normalize its archetype, pin first.
+    // The org's own rows + the HOUSE DEFAULTS (the glyphh launcher set):
+    // per-user copies are retired, so .dip/open_app/palette/layout-cell
+    // resolution by slug or id must see the canonical glyphh rows. A user
+    // row WINS its slug; defaults ride with their REAL global ids (layout
+    // cells reference those).
+    const [mine, houseDefaults] = await Promise.all([
+      getClient().apps.mine(),
+      getClient().apps.defaults().catch(() => []),
+    ]);
+    const mineRows = mine.map(toRow);
+    // THE GLYPHH ORG CASE (his rule, 2026-08-19): in the org that OWNS the
+    // house defaults, those canonical rows come back from mine() as ordinary
+    // owned rows — mark them system so the Apps page (user-built/installed
+    // only) hides them there too; the command center still shows system rows.
+    const defSlugs = new Set(houseDefaults.map((d) => d.slug.toLowerCase()));
+    for (const r of mineRows) if (defSlugs.has(r.slug.toLowerCase())) r.system = true;
+    const taken = new Set(mineRows.map((r) => r.slug.toLowerCase()));
+    const defaultRows: OrgAppRow[] = houseDefaults
+      .filter((d) => !!d.url && !taken.has(d.slug.toLowerCase()))
+      .map((d): OrgAppRow => ({
+        id: d.id, orgId: "", createdBy: "",
+        name: d.name, slug: d.slug,
+        system: true,                 // house-owned: not deletable as a user row
+        url: d.url, isBrowser: true, execPath: null,
+        appArchetype: "web", launchConfig: null,
+        access: "members", owned: false,
+        latestVersion: null, version: "", secretNames: [], requiredConnections: [], connectionIds: [], iconUrl: null,
+        listing: null,
+        mcp: null, commands: {},
+        createdAt: "", updatedAt: "",
+      }));
+    const rows = [...mineRows, ...defaultRows];
+    // If the org already has a row with the "glyphh" slug (server-seeded, or
+    // user-created), THAT row is the built-in: keep its real id — layouts and
+    // recents reference it — normalize its archetype, and pin it first.
+    // Dropping it in favor of a synthetic row orphans those references (cells
+    // render raw UUIDs and the picker loses the app).
     const selfIdx = rows.findIndex((r) => r.slug === "glyphh");
     if (selfIdx >= 0) {
       const self = { ...rows[selfIdx], system: true, appArchetype: "glyphh-self" };

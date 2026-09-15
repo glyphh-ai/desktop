@@ -8,7 +8,6 @@
 
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { confirmAction } from "./shared.js";
-import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 import { showAppOverlay, hideAppOverlay } from "../app-overlay.js";
 
 type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
@@ -20,7 +19,6 @@ let connections: Conn[] = [];
 // server dials the endpoint and holds the (write-only) auth headers.
 let customServers: McpConn[] = [];
 let customAllowed = false;   // org × role policy (server-enforced; this only shows/hides UI)
-let isAdminUser = false;     // decides which AXIS the platform page shows (org vs personal)
 let connSearch = "";
 let currentConnId: string | null = null;
 let currentCustomSlug: string | null = null;
@@ -33,53 +31,6 @@ function esc(s: string): string {
 }
 function connIconApp(c: { accountId: string; appSlug: string }) {
   return { connection: { accountId: c.accountId, pipedreamSlug: c.appSlug } };
-}
-
-/** The card's corner controls (his rule, 2026-09-13): the standard BARE
- *  toggle + the three-dot kebab, far right. Delete rides the kebab and opens
- *  the app-standard confirm dialog. Clicks never open the card underneath. */
-function attachCardControls(card: HTMLElement, opts: {
-  enabled: boolean; canToggle: boolean;
-  onToggle: (on: boolean) => Promise<void>;
-  deleteWhat: string; onDelete: () => Promise<void>;
-}): void {
-  const corner = document.createElement("div");
-  corner.className = "app-card-controls";
-  corner.style.cssText = "position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:4px;z-index:2;";
-  if (opts.canToggle) {
-    const sw = document.createElement("label");
-    sw.className = "settings-toggle ws-model-allow";
-    sw.innerHTML = `<input type="checkbox" ${opts.enabled ? "checked" : ""} /><span class="toggle-switch"></span>`;
-    sw.addEventListener("click", (e) => e.stopPropagation());
-    sw.querySelector("input")!.addEventListener("change", (e) => {
-      void opts.onToggle((e.target as HTMLInputElement).checked);
-    });
-    corner.appendChild(sw);
-  }
-  const kebab = document.createElement("button");
-  kebab.type = "button";
-  kebab.className = "lib-row-kebab";
-  kebab.title = "More";
-  kebab.textContent = "⋮";
-  kebab.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openRowMenu(kebab, [{
-      icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true,
-      onClick: () => {
-        void (async () => {
-          const sure = await confirmAction({
-            title: `Delete ${opts.deleteWhat}?`,
-            body: "This disconnects the account and removes it for everyone it serves.",
-            confirmLabel: "Delete",
-          });
-          if (sure) await opts.onDelete();
-        })();
-      },
-    }]);
-  });
-  corner.appendChild(kebab);
-  card.style.position = "relative";
-  card.appendChild(corner);
 }
 
 // DOM (resolved in initConnections)
@@ -107,12 +58,6 @@ let adoptedHomes: Array<{ n: HTMLElement; parent: HTMLElement | null; next: Node
  *  there, which clipped the list to a sliver. Null = not adopted. */
 let adoptedToolsHost: HTMLElement | null = null;
 let toolsPaneHome: { parent: HTMLElement; next: Node | null } | null = null;
-
-/** Re-point where the tools pane lands — the Settings accordion hosts it in
- *  the EXPANDED row, so the host changes per open. */
-export function setConnectionsToolsHost(host: HTMLElement | null): void {
-  adoptedToolsHost = host;
-}
 
 /** Move the tools pane to the adopted host (open) or back home (close). */
 function placeToolsPane(open: boolean): void {
@@ -158,12 +103,6 @@ export function releaseConnections(): void {
 
 export async function loadConnections(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
-  // Which AXIS the platform page shows depends on the role (his ruling,
-  // 2026-09-12) — resolved WITH the data reads, before the first paint: a
-  // fire-and-forget here would race renderConnectionsList and flash the
-  // wrong axis.
-  const account = await window.glyphh.getAccountInfo?.().catch(() => null);
-  isAdminUser = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
   // The org × role policy can change with any heartbeat, so re-check it on
   // every load — it hides the "+ Custom MCP" button AND the custom cards.
   const [res, custom, gate] = await Promise.all([
@@ -178,29 +117,13 @@ export async function loadConnections(): Promise<void> {
   renderConnectionsList();
   // Real Pipedream catalog icons, then re-render.
   void primeConnectedIcons(connections.map(connIconApp), renderConnectionsList);
-  // Anyone else painting the same data (Settings → Connections) refreshes
-  // here — ONE load path, so a connect/install/delete lands everywhere.
-  for (const cb of changeHooks) { try { cb(); } catch { /* a broken listener is not this page's problem */ } }
 }
-
-/** Subscribe to "the connection set changed" — fired after every load. */
-const changeHooks = new Set<() => void>();
-export function onConnectionsChanged(cb: () => void): void { changeHooks.add(cb); }
 
 function renderConnectionsList(): void {
   const q = connSearch.trim().toLowerCase();
-  // PLATFORM, split by role (his ruling, 2026-09-12): the ADMIN manages the
-  // org-level connections; a MEMBER sees just THEIR connections — the org's
-  // shared ones never render as theirs to manage. Desktop keeps both axes.
-  const onPlatform = document.body.classList.contains("platform-shell");
-  const isOrg = (c: unknown): boolean =>
-    (c as { org?: boolean }).org === true || (c as { kind?: string }).kind === "org";
-  const orgOnly = onPlatform
-    ? (isAdminUser ? connections.filter(isOrg) : connections.filter((c) => !isOrg(c)))
-    : connections;
   const scoped = requiredFilter
-    ? orgOnly.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))
-    : orgOnly;
+    ? connections.filter((c) => requiredFilter!.includes(c.appSlug.toLowerCase()))
+    : connections;
   const items = q
     ? scoped.filter((c) => (c.label || c.appName).toLowerCase().includes(q) || c.appSlug.toLowerCase().includes(q))
     : scoped;
@@ -264,21 +187,6 @@ function renderConnectionsList(): void {
       <div class="app-card-name">${esc(c.label || c.appName)}</div>
       <div class="app-card-id">${subtitle}</div>`;
     card.addEventListener("click", () => void openConnDetail(c.id));
-    attachCardControls(card, {
-      enabled: (c as { enabled?: boolean }).enabled !== false,
-      // The org admin governs BOTH scopes (his rule); a member only their own.
-      canToggle: isAdminUser || !c.org,
-      onToggle: async (on) => {
-        const r = await window.glyphh.connectionSetEnabled?.(c.id, on, !!c.org || isAdminUser);
-        if (!r?.ok) { void loadConnections(); return; }
-        void loadConnections();
-      },
-      deleteWhat: c.label || c.appName,
-      onDelete: async () => {
-        const r = await window.glyphh.connectionDisconnect(c.id);
-        if (r?.ok) void loadConnections();
-      },
-    });
     grid.appendChild(card);
   }
   for (const c of customItems) {
@@ -294,20 +202,6 @@ function renderConnectionsList(): void {
       <div class="app-card-name">${esc(c.name)}</div>
       <div class="app-card-id">${c.kind === "org" ? "Org connection" : "Custom MCP"}</div>`;
     card.addEventListener("click", () => openCustomDetail(c.slug));
-    attachCardControls(card, {
-      enabled: c.enabled,
-      canToggle: isAdminUser || c.kind !== "org",
-      onToggle: async (on) => {
-        const r = await window.glyphh.mcpConnectionsUpdate(c.slug, { enabled: on });
-        if (!r?.ok) { void loadConnections(); return; }
-        void loadConnections();
-      },
-      deleteWhat: c.name,
-      onDelete: async () => {
-        const r = await window.glyphh.mcpConnectionsDelete(c.slug);
-        if (r?.ok) void loadConnections();
-      },
-    });
     grid.appendChild(card);
   }
   for (const slug of missingRequired) {
@@ -340,7 +234,7 @@ function renderConnectionsList(): void {
   listEl.appendChild(grid);
 }
 
-export async function openConnDetail(id: string): Promise<void> {
+async function openConnDetail(id: string): Promise<void> {
   const c = connections.find((x) => x.id === id);
   if (!c) return;
   currentConnId = id;
@@ -370,29 +264,6 @@ export async function openConnDetail(id: string): Promise<void> {
     <div class="edit-head-name">${esc(c.label || c.appName)}<span class="edit-head-slug">${isOrg ? "Org connection · " : ""}${esc(c.appSlug)}</span></div>`;
   nameInput.value = c.label || c.appName;   // default to the Pipedream app name
   nameInput.placeholder = c.appName;
-
-  // Scope (his rule, 2026-09-13): the form asks org vs personal, under the
-  // Name — admins only; the server refuses a member regardless.
-  const scopeRow = document.getElementById("conn-scope-row");
-  const scopeToggle = document.getElementById("conn-scope-toggle") as HTMLInputElement | null;
-  if (scopeRow && scopeToggle) {
-    scopeRow.classList.toggle("hidden", !isAdminUser);
-    scopeToggle.checked = isOrg;
-    scopeToggle.onchange = () => {
-      void (async () => {
-        const to = scopeToggle.checked ? "org" : "personal";
-        const r = await window.glyphh.connectionSetScope?.(c.id, to);
-        if (!r?.ok) {
-          scopeToggle.checked = isOrg;
-          detailErr.textContent = r?.error || "Couldn't change the connection's scope.";
-          detailErr.classList.remove("hidden");
-          return;
-        }
-        await loadConnections();
-        void openConnDetail(c.id);
-      })();
-    };
-  }
 
   document.getElementById("conn-tools-select-all-wrap")?.classList.add("hidden");
   toolsEl.innerHTML = `<div class="crud-empty">Loading tools…</div>`;
@@ -493,7 +364,7 @@ async function saveHiddenTools(): Promise<void> {
   }
 }
 
-export function closeConnDetail(): void {
+function closeConnDetail(): void {
   placeToolsPane(false);
   detailEl.classList.add("hidden");
   currentConnId = null;
@@ -518,7 +389,6 @@ export function closeConnDetail(): void {
  *  (prefilled from a saved connection). The left column's edit-head is the
  *  page header in both modes. */
 function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
-  document.getElementById("conn-scope-row")?.classList.add("hidden");
   customMode = mode;
   currentCustomSlug = mode === "edit" && c ? c.slug : null;
   currentConnId = null;
@@ -592,8 +462,7 @@ function openCustomForm(mode: "new" | "edit", c?: McpConn): void {
   void loadCustomStatus(conn);
 }
 
-export function openCustomDetail(slug: string): void {
-  document.getElementById("conn-scope-row")?.classList.add("hidden");
+function openCustomDetail(slug: string): void {
   const c = customServers.find((x) => x.slug === slug);
   if (c) openCustomForm("edit", c);
 }
@@ -867,9 +736,8 @@ export function initConnections(): void {
   });
 
   searchEl.addEventListener("input", () => { connSearch = searchEl.value; renderConnectionsList(); });
-  document.getElementById("conn-add-btn")?.addEventListener("click", openCatalog);
+  document.getElementById("conn-add-btn")!.addEventListener("click", openCatalog);
   document.getElementById("conn-add-custom-btn")!.addEventListener("click", () => openCustomForm("new"));
-  document.getElementById("connections-refresh-btn")?.addEventListener("click", () => { void loadConnections(); });
   document.getElementById("conn-advanced-toggle")?.addEventListener("click", () => {
     const adv = document.getElementById("conn-advanced")!;
     const btn = document.getElementById("conn-advanced-toggle")!;

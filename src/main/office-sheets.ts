@@ -1,13 +1,12 @@
 /**
  * office-sheets.ts — Glyphh Office · SHEETS, the desktop transport + the
- * agent's workbook helpers. Workbooks live in the LOCAL library
- * (~/.glyphh/office/sheets via office-store, THE PURGE 2026-09-10); every
- * write RECALCULATES through the shared engine first, so stored formula
- * cells always carry fresh materialized values.
+ * agent's workbook helpers. Workbooks live in the ORG library via the SDK;
+ * every write RECALCULATES through the shared engine first, so stored
+ * formula cells always carry fresh materialized values.
  */
 
 import { ipcMain } from "electron";
-import * as store from "./office-store";
+import { getClient } from "./glyphh-client";
 import { recalcWorkbook, type Workbook } from "../shared/sheets-engine";
 
 export function gsheetFileName(name: unknown): string {
@@ -19,7 +18,7 @@ export function gsheetFileName(name: unknown): string {
 
 export async function saveWorkbook(name: unknown, title: string, workbook: Workbook, folderId?: string | null): Promise<{ file: string; title: string; sheets: number; totalRows: number }> {
   const wb = recalcWorkbook(workbook);
-  const meta = await store.writeSheet(gsheetFileName(name), title, wb as never, folderId);
+  const meta = await getClient().officeSheets.put(gsheetFileName(name), title, wb, folderId);
   return { file: meta.file, title: meta.title, sheets: meta.sheets, totalRows: meta.totalRows };
 }
 
@@ -28,7 +27,7 @@ const errText = (err: unknown): string => (err instanceof Error ? err.message : 
 export function registerOfficeSheetsIpc(): void {
   ipcMain.handle("gsheet-list", async () => {
     try {
-      const sheets = (await store.listSheets()).map((m) => ({
+      const sheets = (await getClient().officeSheets.list()).map((m) => ({
         file: m.file, title: m.title, sheets: m.sheets, totalRows: m.totalRows,
         size: m.sizeBytes, folderId: m.folderId, mtime: Date.parse(m.updatedAt) || 0,
       }));
@@ -39,7 +38,7 @@ export function registerOfficeSheetsIpc(): void {
   });
   ipcMain.handle("gsheet-read", async (_e, name: unknown) => {
     try {
-      const s = await store.readSheet(gsheetFileName(name));
+      const s = await getClient().officeSheets.get(gsheetFileName(name));
       return { ok: true, title: s.title, workbook: s.workbook };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -55,7 +54,7 @@ export function registerOfficeSheetsIpc(): void {
   });
   ipcMain.handle("gsheet-delete", async (_e, name: unknown) => {
     try {
-      await store.deleteSheet(gsheetFileName(name));
+      await getClient().officeSheets.delete(gsheetFileName(name));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };

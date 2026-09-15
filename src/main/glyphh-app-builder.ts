@@ -20,13 +20,13 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { validateAppBundle, lintRemoteAssets, type AppBundle } from "@glyphh/sdk";
 import { collectBuiltProject, manifestPathIn, type InstallFile } from "./glyphh-app-spec";
 import { installGlyphhAppBundle, registerAppInPlace } from "./glyphh-app-host";
-import * as appsStore from "./apps-store";
+import { getClient } from "./glyphh-client";
 
 // The ten built-in work panels (Office / Design / Memory / Media) are
 // Apps-page fixtures, not org apps — an install or deploy under their slugs is
 // refused at the manifest, where the slug first exists (glyphh-agent-tools.ts
 // and apps-ipc.ts refuse the slug-carrying seams the same way).
-const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive"]);
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
 
 /** Throw the refusal when a workdir manifest names a built-in work panel. */
 function refuseBuiltinWorkpanel(slug: string): void {
@@ -171,12 +171,6 @@ function packProjectSource(dir: string): Buffer {
 }
 
 export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?: boolean } = {}): Promise<{ slug: string; version: string; status: string; url?: string; error?: string }> {
-  // THE PURGE (2026-09-10): the build IS the deliverable, and it lives HERE.
-  // No control plane, no upload, no hosting — validate the working folder's
-  // built project, register it to run in place (the same rails update_app
-  // rides), and advance the LOCAL row's version so the Releases surface has
-  // an honest story. Sharing an app's source is git's job now.
-  void opts;
   const wd = getExplicitWorkingDirectory();
   if (!wd) throw new Error("no working folder is set");
   const dir = resolveAppDir(wd);
@@ -188,13 +182,14 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   const manifest = JSON.parse(built.manifestJson) as { slug: string; name: string; version?: string };
   const slug = manifest.slug;
   refuseBuiltinWorkpanel(slug);
-  // The Releases tab builds FOR a specific app — refuse if the working folder
-  // holds a different project, so a stray cwd can't cut under the wrong slug.
+  // The Releases tab builds FOR a specific app — refuse before any upload if
+  // the working folder holds a different project, so a stray cwd can't cut a
+  // release (or deploy) under the wrong slug.
   if (expectSlug && slug !== expectSlug) {
     throw new Error(`the working folder builds '${slug}', not '${expectSlug}' — open that app's project folder and try again`);
   }
 
-  // Same remote-asset guard the local install runs.
+  // Same remote-asset guard the local install runs — hosted apps get the same CSP.
   const textAssets: Record<string, string> = {};
   for (const f of built.files) {
     if (!/\.(html?|css|m?js|jsx|ts|tsx)$/i.test(f.archivePath)) continue;
@@ -204,29 +199,180 @@ export async function deployAppFromWorkdir(expectSlug?: string, opts: { deploy?:
   const remote = lintRemoteAssets(textAssets);
   if (remote.length) throw new Error(`build ships remote assets (bundle them instead): ${remote.join("; ")}`);
 
-  const r = await registerAppInPlace(dir, built.manifestJson);
-  if (!r.ok) return { slug, version: "", status: "failed", error: r.error };
+  // Zip the built STATIC files (index.html at root + assets) — this is the
+  // hosted source the server serves directly, not a .glyphh panel bundle.
+  const zip = new AdmZip();
+  for (const f of built.files) {
+    if (f.archivePath === "manifest.json" || /\.glyphh-worker\b/.test(f.archivePath)) continue;
+    try { zip.addLocalFile(f.absPath, path.dirname(f.archivePath) || undefined, path.basename(f.archivePath)); }
+    catch { /* skip unreadable */ }
+  }
+  const archive = zip.toBuffer();
 
-  // Version: bump the local row's patch (a manifest version seeds the first).
-  const row = (await appsStore.mine()).find((a) => a.slug === slug);
-  const base = row?.version || manifest.version || "0.1.0";
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(base);
-  const version = m ? `${m[1]}.${m[2]}.${Number(m[3]) + 1}` : "0.1.1";
-  await appsStore.markBuilt(slug, version);
-  return { slug, version, status: "ready" };
+  const client = getClient();
+  // THE APP ID IS THE IDENTITY (his rule, 2026-08-19): create the entry and
+  // address the whole release/deploy chain by the returned GLOBALLY UNIQUE id
+  // — the server may mint the slug away from the manifest's (collisions across
+  // orgs), and slug-addressing after that targets someone else's app or 404s.
+  let appRef = "";
+  let liveSlug = slug;
+  try {
+    const entry = await client.apps.createEntry({ kind: "glyphh", slug, name: manifest.name });
+    appRef = entry.id;
+    liveSlug = entry.slug || slug;
+  } catch {
+    // Already registered — find OUR app (never a foreign one) and use its id.
+    const mine = await client.apps.mine().catch(() => [] as Array<{ id?: string; slug: string }>);
+    const own = mine.find((a) => a.slug === slug);
+    if (own?.id) appRef = own.id;
+  }
+  const ref = appRef || slug;   // old servers: slug keeps working
+
+  // The SERVER owns the version: it releases at the app's steered "next
+  // version" (free-patch-bumped) and advances it. Basing on the local
+  // manifest's version silently ignored the author's Set on the Releases tab.
+  const release = await client.apps.createRelease(ref, {});
+  const version = release.version;
+  const outcome = await client.apps.uploadSource(ref, release.id, new Uint8Array(archive));
+  if (outcome.status !== "ready") {
+    return { slug: liveSlug, version, status: outcome.status, error: outcome.error ?? undefined };
+  }
+  // THE SOURCE OF RECORD rides every desktop build (his bug, 2026-08-25:
+  // a button-built app had no snapshot, so the web's build-from-source had
+  // nothing to pull — "built locally, it should just work"). Fast-forward
+  // from the current head; best-effort, the release itself already stands.
+  let sourceWarning: string | undefined;
+  try {
+    const head = await client.apps.sourceHead(ref).catch(() => null);
+    await client.apps.pushSource(ref, new Uint8Array(packProjectSource(dir)), {
+      baseHash: head?.head?.hash ?? null,
+      note: `build v${version}`,
+    });
+  } catch (e) {
+    // LOUD, not silent (his bug, 2026-08-25: a 404 here cost three round
+    // trips) — the release stands, but the user must know web rebuilds
+    // did not turn on. A CAS conflict (someone else pushed first) points
+    // straight at the merge move (co-working, 2026-09-01).
+    const msg = (e as Error).message;
+    sourceWarning = /conflict|stale|409|moved/i.test(msg)
+      ? `source head MOVED under this build (${msg}) — a collaborator pushed first. Run pull_app({ slug: "${liveSlug}", merge: true }), reconcile the upstream tree into the project, then rebuild.`
+      : `source snapshot push failed (${msg}) — web builds stay unavailable for this app`;
+  }
+
+  // "No hosting": the build is the deliverable — cut, uploaded, ready, never
+  // published to an address.
+  if (opts.deploy === false) return { slug: liveSlug, version, status: "ready", ...(sourceWarning ? { error: sourceWarning } : {}) };
+  // Deploy EXACTLY the release we just built + uploaded — pinned by id, so a
+  // stale "newest ready" (e.g. an old release whose source has since been
+  // lost from storage) can never be what actually ships.
+  const dep = await client.hosting.deploy({ appSlug: ref, releaseId: release.id });
+  return { slug: liveSlug, version, status: "ready", url: dep.url ?? undefined, ...(sourceWarning ? { error: sourceWarning } : {}) };
 }
 
-export async function pullAppSource(slug: string, _opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
+/**
+ * Co-working pull (docs/app-ownership.md): fetch the app's SOURCE-OF-RECORD
+ * snapshot from the control plane into the working folder, so a collaborator
+ * (or the owner on another machine) picks up the latest tree and enters the
+ * normal edit → build → update_app loop. Read access is the server's call —
+ * owner, any collaborator, or an org admin of the publisher org.
+ */
+export async function pullAppSource(slug: string, opts: { hash?: string; merge?: boolean } = {}): Promise<{ slug: string; hash: string; dir: string; files: number; merged?: boolean }> {
   refuseBuiltinWorkpanel(slug);
-  // THE PURGE: the source-of-record service is retired — app source shares
-  // through git now (clone/pull the project repo into the working folder).
-  throw new Error("app source sync is retired — share this app's project through git (clone or pull its repo into the working folder)");
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) throw new Error("no working folder is set — set one first, the source extracts there");
+
+  const client = getClient();
+  // An explicit hash restores THAT snapshot (the History tab's Restore);
+  // otherwise the chain head.
+  let hash = opts.hash ?? null;
+  if (!hash) {
+    const head = await client.apps.sourceHead(slug);
+    if (!head.head) {
+      throw new Error(`'${slug}' has no source snapshot yet — a desktop build (its owner's deploy) creates the first one`);
+    }
+    hash = head.head.hash;
+  }
+  const bytes = await client.apps.pullSource(slug, hash);
+  const zip = new AdmZip(Buffer.from(bytes));
+
+  // MERGE mode (co-working, his order 2026-09-01): never overwrite local work.
+  // The snapshot extracts BESIDE the project (.glyphh/upstream-<hash>) and the
+  // AGENT reconciles the two trees — an LLM three-way beats conflict markers
+  // for the people building these apps.
+  if (opts.merge) {
+    const projectDir = (() => { try { return resolveAppDir(wd); } catch { return wd; } })();
+    const dest = path.join(projectDir, ".glyphh", `upstream-${hash.slice(0, 12)}`);
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.mkdirSync(dest, { recursive: true });
+    const entries = zip.getEntries().filter((e) => !e.isDirectory);
+    zip.extractAllTo(dest, true);
+    return { slug, hash, dir: dest, files: entries.length, merged: true };
+  }
+
+  // Destination: the working folder itself when it IS this app's project;
+  // otherwise <workdir>/<slug>. A non-empty destination must already be this
+  // app (its manifest names the slug) — never overwrite a stranger's tree.
+  let dest = path.join(wd, slug);
+  const wdManifest = manifestPathIn(wd);
+  if (wdManifest) {
+    try {
+      const m = JSON.parse(fs.readFileSync(wdManifest, "utf8")) as { slug?: string };
+      if (m.slug === slug) dest = wd;
+      else throw new Error(`the working folder holds '${m.slug ?? "another app"}', not '${slug}' — open a different folder`);
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("working folder holds")) throw e;
+      // unreadable manifest — fall through to the <workdir>/<slug> subfolder
+    }
+  }
+  if (dest !== wd && fs.existsSync(dest)) {
+    const destManifest = manifestPathIn(dest);
+    const nonEmpty = fs.readdirSync(dest).length > 0;
+    if (nonEmpty && !destManifest) {
+      throw new Error(`'${dest}' already exists and is not a Glyphh app project — move it aside or pull into an empty folder`);
+    }
+    if (destManifest) {
+      try {
+        const m = JSON.parse(fs.readFileSync(destManifest, "utf8")) as { slug?: string };
+        if (m.slug && m.slug !== slug) {
+          throw new Error(`'${dest}' holds '${m.slug}', not '${slug}' — move it aside first`);
+        }
+      } catch (e) {
+        if (e instanceof Error && (e.message.includes("move it aside") || e.message.includes("not a Glyphh app"))) throw e;
+        // unreadable manifest — same-named folder, treat as this app's stale copy
+      }
+    }
+  }
+  fs.mkdirSync(dest, { recursive: true });
+  const entries = zip.getEntries().filter((e) => !e.isDirectory);
+  zip.extractAllTo(dest, true);
+  return { slug, hash, dir: dest, files: entries.length };
 }
 
-export async function commitAppSource(_message: string): Promise<{ slug: string; hash: string; noop: boolean }> {
-  // THE PURGE: retired with the source-of-record service — use git.
-  throw new Error("app source snapshots are retired — commit this project with git instead");
+/**
+ * COMMIT the working folder's source as a snapshot with a message — the light
+ * git's `git commit` (his order, 2026-09-01). Pure versioning: no build, no
+ * install, no deploy. Fast-forwards from the current head; a moved head
+ * surfaces as the merge instruction, same as a build's push.
+ */
+export async function commitAppSource(message: string): Promise<{ slug: string; hash: string; noop: boolean }> {
+  const wd = getExplicitWorkingDirectory();
+  if (!wd) throw new Error("no working folder is set");
+  const dir = appDirInWorkdir(wd);
+  const slug = slugOfDir(dir);
+  if (!slug) throw new Error("the working folder holds no app project (glyphh.app.json / manifest.json)");
+  refuseBuiltinWorkpanel(slug);
+  const client = getClient();
+  const head = await client.apps.sourceHead(slug).catch(() => null);
+  const out = await client.apps.pushSource(slug, new Uint8Array(packProjectSource(dir)), {
+    baseHash: head?.head?.hash ?? null,
+    note: message.slice(0, 500),
+  });
+  return { slug, hash: out.hash, noop: !!out.noop };
 }
+
+// ── R2 versioning surface (his order, 2026-09-01): the diff panel + History
+// tab read these. An app is "R2-versioned" when its project folder carries a
+// manifest AND the control plane holds a source snapshot chain for its slug.
 
 export interface R2SourceStatus {
   slug: string | null;
@@ -260,17 +406,46 @@ function localTreeHash(dir: string): { archive: Buffer; hash: string } {
 }
 
 export async function r2SourceStatus(dir: string): Promise<R2SourceStatus> {
-  // THE PURGE: no remote source-of-record — the lane reports the local hash
-  // and no head, so every consumer (fs.r2Diff, the History tab) sees a
-  // clean "nothing remote" state instead of an error.
   const slug = slugOfDir(dir);
   if (!slug) return { slug: null, localHash: null, head: null, drifted: false, history: [] };
   const { hash: localHash } = localTreeHash(dir);
-  return { slug, localHash, head: null, drifted: false, history: [] };
+  const client = getClient();
+  const head = await client.apps.sourceHead(slug).then((r) => r.head).catch(() => null);
+  const history = head ? await client.apps.sourceHistory(slug).catch(() => []) : [];
+  return { slug, localHash, head, drifted: !!head && head.hash !== localHash, history };
 }
 
+/** Unified diff of the R2 HEAD → the local tree, via `git diff --no-index`
+ *  over two temp extractions of the SAME packProjectSource filter (no repo
+ *  needed; node_modules/dist never pollute either side). */
 export async function r2DiffWorkdir(dir: string): Promise<{ status: R2SourceStatus; text: string; error?: string }> {
-  // THE PURGE: no remote head to diff against — the lane answers empty.
   const status = await r2SourceStatus(dir);
-  return { status, text: "" };
+  if (!status.slug || !status.head) return { status, text: "" };
+  if (!status.drifted) return { status, text: "" };
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "glyphh-r2diff-"));
+  try {
+    const headDir = path.join(tmp, "head");
+    const localDir = path.join(tmp, "local");
+    const headBytes = await getClient().apps.pullSource(status.slug, status.head.hash);
+    new AdmZip(Buffer.from(headBytes)).extractAllTo(headDir, true);
+    new AdmZip(localTreeHash(dir).archive).extractAllTo(localDir, true);
+    const { execFile } = await import("node:child_process");
+    const text = await new Promise<string>((resolve, reject) => {
+      execFile("git", ["diff", "--no-index", "--unified=3", "--no-color", "head", "local"],
+        { cwd: tmp, maxBuffer: 10 * 1024 * 1024 },
+        (err, stdout) => {
+          // --no-index exits 1 when the trees differ — that IS the diff.
+          if (err && (err as { code?: number }).code !== 1 && !stdout) reject(err);
+          else resolve(stdout);
+        });
+    });
+    // head/local prefixes → plain a/ b/ paths, so the renderer's parser reads
+    // it exactly like a git diff.
+    return { status, text: text.replaceAll("a/head/", "a/").replaceAll("b/local/", "b/").replaceAll(" head/", " ").replaceAll(" local/", " ") };
+  } catch (e) {
+    return { status, text: "", error: (e as Error).message };
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* temp reaper's problem */ }
+  }
 }

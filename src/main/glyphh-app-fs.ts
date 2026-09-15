@@ -19,12 +19,12 @@ import { BrowserWindow, dialog, WebContents } from "electron";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { userScopedPath, glyphhPath, GLYPHH_DIR } from "./app-paths.js";
+import { glyphhPath, GLYPHH_DIR } from "./app-paths.js";
 
 export type FsMode = "read" | "readwrite";
 export interface FsRoot { path: string; mode: FsMode }
 
-const grantsFile = () => userScopedPath("app-fs-grants.json");
+const grantsFile = () => glyphhPath("app-fs-grants.json");
 const MAX_READ_BYTES = 25 * 1024 * 1024;
 const MAX_WRITE_BYTES = 25 * 1024 * 1024;
 

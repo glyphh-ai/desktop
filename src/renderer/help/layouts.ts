@@ -7,7 +7,6 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
-import { planGates } from "./plan-gate.js";
 
 /** Rewrite a workspace's launcher/dock tile key across the persisted order
  *  prefs (the command center owns these: ccIconOrder = page order,
@@ -54,6 +53,15 @@ export async function openLayoutInWorkbench(name: string): Promise<void> {
   // Opening a layout LEAVES settings — drop the modal (no-op when absent) so
   // the workbench isn't hidden behind it.
   closeSettingsModal();
+  // A layout also sets the loop + its slot models — apply before the panels
+  // tile so the composer is already in the layout's program state.
+  if (layout.loop) {
+    try {
+      await window.glyphh.loopApplyConfig(layout.loop, layout.modelSelections ?? {});
+      // Tell the composer to re-sync its loop + model chips to the new state.
+      document.dispatchEvent(new CustomEvent("glyphh:loop-applied"));
+    } catch { /* offline — the panels still open; the loop just stays as-is */ }
+  }
   showWorkspaceSurface();   // neutral flip — the layout's cells define the view
   // Open BY NAME so the workbench's recall path runs: the layout's definition
   // plus the geometry the user last dragged it into (its named memory). The
@@ -116,21 +124,7 @@ async function ensureAppNames(): Promise<void> {
 function resolveApp(panelId: string): LayoutApp | undefined {
   return appById[panelId] || appById[panelId.replace(/-\d+$/, "")];
 }
-/** CLI agents cache — cells store `agent:<id>`; names/icons resolve here.
- *  Loaded with the page and refreshed when the Agents section announces. */
-let cliAgentRows: Array<{ id: string; name: string; icon: string }> = [];
-const CLI_AGENT_CELL_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6"/><rect x="4" y="6" width="16" height="12.5" rx="3.5"/><circle cx="9" cy="11.4" r="1.2"/><circle cx="15" cy="11.4" r="1.2"/><path d="M8.6 15.8h6.8"/></svg>`;
-function refreshCliAgents(): void {
-  void (window as unknown as { glyphh?: { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string }> }> } })
-    .glyphh?.cliAgentsList?.().then((r) => { if (r?.ok) cliAgentRows = r.agents; }).catch(() => {});
-}
-window.addEventListener("glyphh:cli-agents-changed", refreshCliAgents);
-
 function panelLabel(panelId: string): string {
-  if (panelId.startsWith("agent:")) {
-    const id = panelId.slice(6);
-    return cliAgentRows.find((a) => a.id === id)?.name || id;
-  }
   return resolveApp(panelId)?.name || panelId;
 }
 /** Built-in workbench tool panels selectable in a layout cell. id = `tool:<ViewKind>`:
@@ -154,13 +148,22 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   // Rail — the app's left rail as a panel: menu, Recents, Apps, Workspaces,
   // account footer. Its sections are per-cell toggles in the setup pane.
   { id: "tool:rail", label: "Rail", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
+  // Releases — release management for built apps (deploy, promote, notes).
+  { id: "tool:releases", label: "Releases", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   // Echo — the command center as a 3D wall (moved here from the agent's
   // ⋮ menu: it opens like an app, via layouts or the picker).
   { id: "tool:echo",     label: "Echo", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="9" rx="1.5"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H17"/><path d="M2 12V3.5A1.5 1.5 0 0 1 3.5 2H14"/></svg>` },
+  // gPoint — Glyphh power points: the deck library / reader panel.
+  { id: "tool:gpoint",   label: "Slides", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
+  { id: "tool:gdoc",     label: "Docs", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
+  { id: "tool:gsheet",   label: "Sheets", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
+  { id: "tool:gdrive",   label: "Drive", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
   { id: "tool:gdesign",  label: "Design", icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4"/></svg>` },
+  { id: "tool:gmemory",  label: "Memory", icon: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e"/></svg>` },
   { id: "tool:gimage",   label: "Image", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309"/></svg>` },
   { id: "tool:gvideo",   label: "Video", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff"/></svg>` },
   { id: "tool:gsound",   label: "Sounds", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
+  { id: "tool:gband",    label: "Band", icon: `<svg viewBox="0 0 24 24" fill="none"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>` },
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
 
@@ -179,10 +182,6 @@ function panelIconHtml(panelId: string): string {
   if (isToolPanel(panelId)) {
     const label = toolPanelLabel(panelId);
     return `<span class="layout-app-icon layout-tool-icon" title="${label}">${toolPanelIcon(panelId)}</span>`;
-  }
-  if (panelId.startsWith("agent:")) {
-    const label = panelLabel(panelId);
-    return `<span class="layout-app-icon layout-tool-icon" title="${label}">${CLI_AGENT_CELL_GLYPH}</span>`;
   }
   const app = resolveApp(panelId);
   const name = app?.name || panelId;
@@ -233,6 +232,8 @@ const folderModeRow = document.getElementById("layout-folder-mode-row");
 const folderModeSelect = document.getElementById("layout-folder-mode") as HTMLSelectElement | null;
 
 // ── Loop + models this layout activates on open ──────────────────────────
+const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
+const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 // The agent anchor is a GLOBAL device setting owned by the agent (the anchor
 // picker in the agent header → the `glyphhAnchorMode` preference), NOT a layout
 // property. A layout opens into whatever workspace the anchor leaves available and
@@ -248,81 +249,10 @@ layoutFolderPickBtn?.addEventListener("click", () => {
 layoutFolderClearBtn?.addEventListener("click", () => {
   if (layoutFolderInput) layoutFolderInput.value = "";
 });
-// ── Loop + model + session (restored from bc47a1d3^ — his order,
-// 2026-09-14: "the Loop -> Model picker to set the loop on the workspaces…
-// should come from the git history"). Shown ONLY when the grid carries the
-// Glyphh agent panel (tool:coding). The loop roster is the composer's own
-// (the CLI loops); the model list follows the LANE rule — a keyless loop
-// rides the gateway and offers the whole enabled set, a BYOK loop stays on
-// its home provider. The open path already stamps loop + models + session
-// onto the session the workspace creates (code-workbench's SESSION
-// contract), history riding along on "last".
-const layoutAgentRows = document.getElementById("layout-agent-rows");
-const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
-const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 const layoutLoopModels = document.getElementById("layout-loop-models");
-/** The layout's loop ("" = leave the active loop as-is) + its model picks. */
+/** The layout's loop ("" = leave the active loop as-is) + its per-role picks. */
 let builderLoop = "";
 let builderModelSelections: Record<string, string> = {};
-let builderLoopRows: Array<{ id: string; name: string; cli: string; ownKey: boolean }> = [];
-const BUILDER_LOOP_PROVIDER: Record<string, string> = {
-  claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor",
-};
-
-/** The Loop/Session rows exist only for a workspace hosting the agent. */
-function updateAgentRows(): void {
-  const hasAgent = builderCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
-  layoutAgentRows?.classList.toggle("hidden", !hasAgent);
-}
-
-/** Fill the loop dropdown — "Leave as-is" plus every loop the caller has.
- *  REFETCHED EVERY TIME THE EDITOR OPENS (his report, 2026-08-29: a new
- *  loop never appeared here without restarting). */
-async function ensureLoopOptions(): Promise<void> {
-  if (!layoutLoopSelect) return;
-  try {
-    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null }> }> }).cliAgentsList?.();
-    builderLoopRows = (r?.ok ? r.agents : []).map((a) => ({ id: a.id, name: a.name, cli: a.cli ?? "claude", ownKey: !!a.apiKey }));
-    layoutLoopSelect.innerHTML = [`<option value="">Leave as-is</option>`]
-      .concat(builderLoopRows.map((l) => `<option value="${escLayout(l.id)}">${escLayout(l.name)}</option>`))
-      .join("");
-  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
-}
-
-/** The picked loop's MODEL dropdown — "" = Auto (the loop's own default). */
-async function renderLoopModels(): Promise<void> {
-  if (!layoutLoopModels) return;
-  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
-  layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
-  try {
-    const [catalog, gates] = await Promise.all([
-      window.glyphh.workspacesModelCatalog?.(),
-      planGates().catch(() => null),
-    ]);
-    const models = (catalog?.ok ? catalog.data ?? [] : []) as Array<{ id: string; name: string; providerSlug?: string }>;
-    const row = builderLoopRows.find((l) => l.id === builderLoop);
-    const prov = BUILDER_LOOP_PROVIDER[row?.cli ?? ""];
-    const gatewayLane = !!gates?.gatewayAllowed && !row?.ownKey;
-    const pool = !prov || gatewayLane ? models : models.filter((m) => m.providerSlug === prov);
-    const list = pool.length ? pool : models;
-    const picked = builderModelSelections["default"] ?? "";
-    layoutLoopModels.innerHTML = `<label class="layout-loop-model">
-      <span class="layout-loop-model-label">Model</span>
-      <select class="settings-input" data-role="default">${
-        [`<option value="">Auto — loop default</option>`]
-          .concat(list.map((m) => `<option value="${escLayout(m.id)}"${m.id === picked ? " selected" : ""}>${escLayout(m.name || m.id)}</option>`))
-          .join("")
-      }</select>
-    </label>`;
-    layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
-      sel.addEventListener("change", () => {
-        const role = sel.dataset.role!;
-        if (sel.value) builderModelSelections[role] = sel.value;
-        else delete builderModelSelections[role];
-      });
-    });
-  } catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; }
-}
 
 /** Recompute whether this layout is folder-bound. No-op now the control is
  *  gone; kept so callers don't need to know it was cut. */
@@ -340,6 +270,55 @@ async function refreshFolderModeRow(): Promise<void> {
   } catch {
     folderModeRow.classList.add("hidden");
   }
+}
+
+/** Fill the loop dropdown once — "Leave as-is" plus every loop the caller has. */
+async function ensureLoopOptions(): Promise<void> {
+  // REFETCHED EVERY TIME THE EDITOR OPENS (his report, 2026-08-29: a new loop
+  // never appeared here without restarting). The old dataset.filled guard was
+  // a SESSION-lifetime cache — right for one paint, wrong for a list the user
+  // edits on another page and comes straight back to.
+  if (!layoutLoopSelect) return;
+  try {
+    const res = await window.glyphh.loopsList();
+    const opts = [`<option value="">Leave as-is</option>`];
+    // Memory loops power the memory rotor — not bindable to a layout panel.
+    for (const l of res.loops.filter((x) => (x as { type?: string }).type !== "memory")) {
+      opts.push(`<option value="${l.id}">${escLayout(l.name)}</option>`);
+    }
+    layoutLoopSelect.innerHTML = opts.join("");
+    layoutLoopSelect.dataset.filled = "1";
+  } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
+}
+
+/** One model dropdown per slot the chosen loop declares. "" = Auto (the loop's
+ *  own default). Absent loop → nothing to configure. */
+async function renderLoopModels(): Promise<void> {
+  if (!layoutLoopModels) return;
+  if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
+  layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
+  let roles: Awaited<ReturnType<typeof window.glyphh.loopRoles>>["roles"] = [];
+  // force: drop main's 60s roles cache, so a provider/model added on the
+  // platform shows in the slots without an app restart (his report).
+  try { roles = (await window.glyphh.loopRoles(builderLoop, true)).roles; }
+  catch { layoutLoopModels.innerHTML = `<div class="settings-hint">Couldn't load this loop's models.</div>`; return; }
+  if (!roles.length) { layoutLoopModels.innerHTML = ""; return; }
+  layoutLoopModels.innerHTML = roles.map((r) => {
+    const picked = builderModelSelections[r.name] ?? "";
+    const opts = [`<option value="">Auto — loop default</option>`]
+      .concat(r.choices.map((c) => `<option value="${c.id}"${c.id === picked ? " selected" : ""}>${escLayout(c.name)}</option>`));
+    return `<label class="layout-loop-model">
+      <span class="layout-loop-model-label">${escLayout(r.label || r.name)}</span>
+      <select class="settings-input" data-role="${escLayout(r.name)}">${opts.join("")}</select>
+    </label>`;
+  }).join("");
+  layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      const role = sel.dataset.role!;
+      if (sel.value) builderModelSelections[role] = sel.value;
+      else delete builderModelSelections[role];
+    });
+  });
 }
 
 /** Minimal HTML escape for option labels. */
@@ -612,50 +591,6 @@ function renderCellConfigs(): void {
   list.innerHTML = "";
   let fields = 0;
   builderCells.forEach((c, i) => {
-    // AGENT cells: model + SESSION override the agent's own config at open
-    // (the workspace's working folder rules the agent's folder by itself).
-    // Each slotted agent gets its own session choice — a page can carry
-    // several agents handled differently.
-    if (c.panelId?.startsWith("agent:")) {
-      fields++;
-      const row = document.createElement("div");
-      row.className = "layout-cell-config-row";
-      const label = document.createElement("span");
-      label.className = "layout-cell-config-label";
-      label.textContent = `${panelLabel(c.panelId)} (agent) · cell ${c.col + 1},${c.row + 1}`;
-      const model = document.createElement("input");
-      model.className = "settings-input";
-      model.placeholder = "model override — empty keeps the agent's";
-      model.spellcheck = false;
-      model.value = String((c.config as Record<string, unknown> | undefined)?.model ?? "");
-      model.addEventListener("input", () => {
-        const cell = builderCells[i];
-        if (!cell) return;
-        const v = model.value.trim();
-        const cfg = (cell.config || {}) as Record<string, unknown>;
-        if (v) { cfg.model = v; cell.config = cfg as typeof cell.config; }
-        else { delete cfg.model; if (!Object.keys(cfg).length) delete cell.config; }
-      });
-      const sess = document.createElement("select");
-      sess.className = "settings-input";
-      sess.innerHTML = `
-        <option value="">Agent default</option>
-        <option value="keep">Keep the current session</option>
-        <option value="new">Start a new session</option>
-        <option value="last">Resume the last session</option>`;
-      sess.value = String((c.config as Record<string, unknown> | undefined)?.session ?? "");
-      sess.addEventListener("change", () => {
-        const cell = builderCells[i];
-        if (!cell) return;
-        const v = sess.value;
-        const cfg = (cell.config || {}) as Record<string, unknown>;
-        if (v) { cfg.session = v; cell.config = cfg as typeof cell.config; }
-        else { delete cfg.session; if (!Object.keys(cfg).length) delete cell.config; }
-      });
-      row.append(label, model, sess);
-      list.appendChild(row);
-      return;
-    }
     const toggleSpec = CELL_TOGGLE_SPECS[c.panelId];
     if (toggleSpec) {
       fields++;
@@ -709,7 +644,6 @@ function renderCellConfigs(): void {
 function renderGridPreview() {
   void refreshFolderModeRow();
   renderCellConfigs();
-  updateAgentRows();
   gridPreview.style.gridTemplateColumns = `repeat(${builderCols}, 1fr)`;
   gridPreview.style.gridTemplateRows = `repeat(${builderRows}, 1fr)`;
 
@@ -722,7 +656,7 @@ function renderGridPreview() {
       let label = cell.panelId ? panelLabel(cell.panelId) : "\u2014";
       if (cell.panelId && isToolPanel(cell.panelId)) label = toolPanelLabel(cell.panelId);
       else if (cell.panelId?.startsWith("agent:")) label = cell.panelId.slice(6);
-      else if (cell.panelId === "agents-tabbed") label = "Loops (tabbed)";
+      else if (cell.panelId === "agents-tabbed") label = "Agents (tabbed)";
       const pin = cell.sticky
         ? `<span class="grid-cell-sticky" title="Sticky \u2014 apps open here"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.7-6.8a2 2 0 0 0-1-1.3L15 8V4h-6v4l-1.3.9a2 2 0 0 0-1 1.3z"/></svg></span>`
         : "";
@@ -932,8 +866,6 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     `<div class="cell-panel-option empty" data-id="">Empty</div>`,
     `<div class="cell-panel-group-label">Workbench tools</div>`,
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
-    cliAgentRows.length ? `<div class="cell-panel-group-label">Loops</div>` : "",
-    ...cliAgentRows.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.icon ? `${a.icon} ` : ""}${a.name}</div>`),
     options.length ? `<div class="cell-panel-group-label">Apps</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
@@ -996,7 +928,6 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
 }
 
 async function loadLayouts() {
-  refreshCliAgents();
   // OPENING THE PAGE ALWAYS LANDS ON THE LIST (his report, 2026-08-28:
   // edit a workspace, close the page from the editor, and the section came
   // back blank with no way into a workspace). The section markup is a
@@ -1112,14 +1043,14 @@ async function editLayout(name: string) {
   gridColsSelect.value = String(builderCols);
   gridRowsSelect.value = String(builderRows);
   if (folderModeSelect) folderModeSelect.value = (layout as any)?.folderMode === "multi" ? "multi" : "single";
-  if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
-  // Loop + model + session this layout activates on open.
-  builderLoop = (layout as { loop?: string })?.loop ?? "";
-  builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
   if (layoutSessionSelect) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
     layoutSessionSelect.value = sm === "new" || sm === "last" ? sm : "keep";
   }
+  if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
+  // Loop + models this layout activates on open.
+  builderLoop = (layout as { loop?: string })?.loop ?? "";
+  builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
   await ensureLoopOptions();
   if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
   void renderLoopModels();
@@ -1146,10 +1077,10 @@ async function newLayout() {
   gridColsSelect.value = "2";
   gridRowsSelect.value = "1";
   if (folderModeSelect) folderModeSelect.value = "single";
+  if (layoutSessionSelect) layoutSessionSelect.value = "keep";
   if (layoutFolderInput) layoutFolderInput.value = "";
   builderLoop = "";
   builderModelSelections = {};
-  if (layoutSessionSelect) layoutSessionSelect.value = "keep";
   void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
   layoutNameInput.value = "";
   layoutDeleteBtn.style.display = "none";
@@ -1218,6 +1149,9 @@ async function saveLayout() {
     layoutFormError.classList.remove("hidden");
     return;
   }
+  // Only keep model picks for slots the chosen loop still declares — a stale
+  // pick from a loop the user switched away from must not ride along.
+  const selections = builderLoop ? builderModelSelections : {};
   // An EDITED layout invalidates its remembered GEOMETRY — the workbench's
   // named-layout snapshot AND the Echo cell snapshot both recall the OLD
   // arrangement when the panel set is unchanged, which is exactly the common
@@ -1243,12 +1177,6 @@ async function saveLayout() {
     // Rewrite the key in the persisted order prefs so placement survives.
     await remapLayoutTileKey(`layout:${oldName}`, `layout:${editedName}`);
   }
-  // The Loop/Session rows only bind when the grid hosts the agent panel —
-  // and only model picks for the chosen loop ride along (a stale pick from
-  // a loop the user switched away from must not).
-  const hasAgentSeat = assignedCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
-  const savedLoop = hasAgentSeat ? builderLoop : "";
-  const selections = savedLoop ? builderModelSelections : {};
   await window.glyphh.layoutsSaveGrid({
     name,
     cols: builderCols,
@@ -1257,9 +1185,9 @@ async function saveLayout() {
     rowHeights: Array(builderRows).fill(1 / builderRows),
     cells: assignedCells,
     folderMode,
-    ...(savedLoop ? { loop: savedLoop } : {}),
+    ...(builderLoop ? { loop: builderLoop } : {}),
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
-    sessionMode: (hasAgentSeat && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
+    sessionMode: (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last"
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
     folder: layoutFolderInput?.value.trim() || null,
   });
@@ -1308,7 +1236,6 @@ export function initLayoutsEvents() {
     void editLayout(name);
   };
   document.getElementById("layout-new-btn")!.addEventListener("click", newLayout);
-  document.getElementById("layouts-refresh-btn")?.addEventListener("click", () => { void loadLayouts(); });
   document.getElementById("layout-save-btn")!.addEventListener("click", saveLayout);
   document.getElementById("layout-cancel-btn")!.addEventListener("click", cancelLayout);
   document.getElementById("layout-back-link")!.addEventListener("click", cancelLayout);
@@ -1320,8 +1247,8 @@ export function initLayoutsEvents() {
   });
   layoutSearchInput.addEventListener("input", () => { layoutsPage = 0; renderLayoutsList(); });
 
-  // Loop picker: switching loops clears the old loop's model picks (they
-  // don't apply to the new program) and re-renders the model dropdown.
+  // Loop picker: switching loops clears the old loop's model picks (its slots
+  // don't apply to the new program) and re-renders the per-slot dropdowns.
   layoutLoopSelect?.addEventListener("change", () => {
     builderLoop = layoutLoopSelect.value;
     builderModelSelections = {};

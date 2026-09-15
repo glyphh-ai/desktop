@@ -54,16 +54,6 @@ for (const file of files) {
     if (channelFiles.has(ch)) dupes.push({ ch, files: [channelFiles.get(ch), file] });
     else channelFiles.set(ch, file);
   }
-  // agent-stubs registers its ENVELOPE/EMPTY_LIST arrays via loops — those
-  // channels never appear as handle("…") literals, which is exactly how the
-  // loop-set-role-default double-registration killed boot (2026-09-10).
-  for (const arr of src.matchAll(/const (?:ENVELOPE|EMPTY_LIST)[^=]*=\s*\[([^\]]+)\]/g)) {
-    for (const cm of arr[1].matchAll(/"([^"]+)"/g)) {
-      const ch = cm[1];
-      if (channelFiles.has(ch)) dupes.push({ ch, files: [channelFiles.get(ch), file] });
-      else channelFiles.set(ch, file);
-    }
-  }
 }
 if (dupes.length) {
   console.error("\n✗ IPC channel registered more than once:\n");

@@ -22,8 +22,6 @@ export interface RoleView {
   label: string;
   description: string;
   modelId: string | null;
-  /** The slot's model OVERRIDE (rides the agent's CLI as its -m). */
-  model?: string | null;
   source: "selection" | "loop" | "platform" | "fallback" | "none";
   choices: Array<{
     id: string;

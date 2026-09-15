@@ -7,7 +7,6 @@
  */
 
 import "dotenv/config";
-import { ConnectorManager } from "./connectors";
 
 // Fix process.cwd() in packaged Electron apps — .asar is a file, not a directory,
 // which causes ENOTDIR when child_process.spawn inherits cwd.
@@ -37,7 +36,7 @@ app.commandLine.appendSwitch("use-mock-keychain");
 import path from "path";
 import fs from "fs";
 import { pathToFileURL } from "url";
-import { userScopedPath, glyphhPath } from "./app-paths.js";
+import { glyphhPath } from "./app-paths.js";
 import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
@@ -62,11 +61,16 @@ function isNewerVersion(latest: string, current: string): boolean {
   return false;
 }
 import { setMainWindowRef } from "./main-window-ref";
+import { isBackgroundEnabled, isQuitting, markQuitting, shouldHideOnClose, syncBackgroundMode, setReopenHandler } from "./background-mode";
 import { initRailCollapse } from "./screen-layout";
+import { McpManager } from "./mcp-manager";
+import { startMcpOAuthRefresh, stopMcpOAuthRefresh } from "./mcp-oauth-refresh";
 import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
 import { stopAllAppWorkers } from "./glyphh-app-worker";
 import { stopAllSchedules } from "./glyphh-app-services";
 import { installRelayHandlers } from "./relay-handlers";
+import { installAttachHandlers } from "./attach-handlers";
+import { installAttachRunHandlers } from "./attach-run";
 import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
@@ -75,52 +79,52 @@ import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
+import { DripManager, setDripManagerInstance } from "./drip-manager";
+import { ConnectorManager } from "./connectors";
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
-import { registerAgentStubs } from "./agent-stubs";
-import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
-import { registerAgentDockIpc } from "./agent-dock";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
 import { registerGPointIpc } from "./gpoints";
 import { registerPopoutIpc } from "./popout";
+import { registerAgentDockIpc, disposeAgentDock } from "./agent-dock";
 import { registerOfficeExportIpc } from "./office-export";
 import { registerOfficeDocsIpc } from "./office-docs";
 import { registerOfficeSheetsIpc } from "./office-sheets";
 import { registerDesignIpc } from "./design";
+import { registerMemoryPanelIpc } from "./memory-panel";
 import { registerMediaPanelIpc } from "./media-panel";
 import { registerMusicPanelIpc } from "./music-panel";
+import { registerRunStreamIpc } from "./run-stream-ipc";
+import { registerApiKeysIpc } from "./apikeys-ipc";
 import { registerSupportIpc } from "./support-ipc";
+import { registerModelsIpc } from "./models-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
 import { getClient } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
-import { registerWorkspaceStateIpc } from "./workspace-state";
-import { migrateGlyphhHome } from "./glyphh-home-migrate";
-import { registerCliAgentsIpc } from "./cli-agents";
-import { registerEmbeddingsIpc } from "./embeddings-config";
-import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
-import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
-import { registerHubIpc } from "./hub-ipc";
-import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
+import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
+import { registerLibraryIpc } from "./library-ipc";
 import { registerGitIpc } from "./git-ipc";
+import { startAgentScheduler, stopAgentScheduler } from "./agent-scheduler";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
 import { registerHomeIpc } from "./home-ipc";
 import { initLocalDb, closeLocalDb } from "./local-db";
-import { DripManager, setDripManagerInstance } from "./drip-manager";
 import { setUserScopeReloader, onUserChange } from "./user-scope";
 import { migrateFromFiles } from "./stores/migrate-from-files";
 
 
 let mainWindow: BrowserWindow | null = null;
-let connectorManager: ConnectorManager | null = null;
 let homeView: HomeView;
 let layoutManager: LayoutManager;
 let commandParser: CommandParser;
+
+let mcpManager: McpManager | null = null;
 let dripManager: DripManager | null = null;
+let connectorManager: ConnectorManager | null = null;
 
 
-
+// Drip effects — extracted to drip-manager.ts
 
 async function createWindow() {
   const saved = getPreference<{ x?: number; y?: number; width: number; height: number; maximized?: boolean }>("windowBounds", { width: 1200, height: 800 });
@@ -139,17 +143,6 @@ async function createWindow() {
       webviewTag: true,
     },
   });
-
-  // DEV VISIBILITY: forward the shell renderer's console errors/warnings to
-  // the terminal — a renderer that dies during boot otherwise reads as "the
-  // splash never dismisses" with zero evidence (2026-09-10).
-  if (!app.isPackaged) {
-    dripManager?.setMainWindow(mainWindow);
-    mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
-      if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`);
-    });
-  }
-
 
   if (saved.maximized) mainWindow.maximize();
   // Share the main-window handle with modules that can't import main.ts
@@ -206,7 +199,13 @@ async function createWindow() {
 
   mainWindow.setMaxListeners(30);
 
-  // THE PURGE: background/resident mode is gone — closing the window quits.
+  // Background mode: closing the window HIDES it (the process stays resident so
+  // scheduled loops/skills + the attach socket keep running) instead of
+  // quitting. A real Quit (tray/⌘Q sets isQuitting) closes for real.
+  mainWindow.on("close", (e) => {
+    if (shouldHideOnClose()) { e.preventDefault(); mainWindow?.hide(); }
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
     // Not background mode (or a real Quit): closing the main window quits the
@@ -215,8 +214,10 @@ async function createWindow() {
     // reaching will-quit — leaving a zombie process with no window and no tray.
     // So tear everything down here directly (idempotent) and arm the hard-exit
     // backstop BEFORE asking to quit, so nothing can strand the process.
-    cleanupAll();
-    app.quit();
+    if (!isBackgroundEnabled() || isQuitting()) {
+      cleanupAll();
+      app.quit();
+    }
   });
 
   // Refresh auth/tier when window regains focus (e.g. returning from billing portal)
@@ -229,10 +230,6 @@ async function boot() {
   // The RUNTIME name — the menu bar, Quit item, and About panel read this,
   // overriding package.json productName. It said "Yo" long after the rebrand.
   app.setName("Glyphh");
-
-  // Rotate ~/.glyphh to the current vocabulary (loops→tasks, agents→loops)
-  // BEFORE anything opens a directory under it. Idempotent.
-  migrateGlyphhHome();
 
   // The app data seam's desktop credential: glyphh-app webviews get the
   // signed-in bearer on their /hosted/<slug>/api/* calls (scoped by wcId).
@@ -298,7 +295,7 @@ async function boot() {
   });
 
   // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
-  const skillsDir = userScopedPath("skills");
+  const skillsDir = glyphhPath("skills");
   electronSession.defaultSession.webRequest.onBeforeRequest(
     { urls: ["file://*chart.umd.min.js"] },
     (details: { url: string }, callback: (response: { redirectURL?: string }) => void) => {
@@ -309,6 +306,10 @@ async function boot() {
       }
     },
   );
+
+  // MCP Manager — the client-side catalog view; all MCP execution is
+  // server-side (connector tools + custom MCP connections).
+  mcpManager = new McpManager();
 
   // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
   // LLMs. The cloud relay that let external callers reach in was removed; this
@@ -329,11 +330,25 @@ async function boot() {
   // (closures over the `let` bindings — all assigned long before any switch).
   onUserChange(() => {
     layoutManager?.resetForUserChange();
+    connectorManager?.clearUserState();
+    mcpManager?.setConnectorCatalog([]);
     // The server prefs map is per-USER (wall state, icon order, dock order,
     // workbench UI state). Left warm, the next user's loadPreferences()
     // no-ops on its `loaded` flag and every pref-driven surface renders the
     // previous user's map — the stale wall he reported.
     clearPreferences();
+  });
+
+  // Pipedream Connectors — managed OAuth connections (Advanced tier)
+  connectorManager = new ConnectorManager();
+  connectorManager.setMcpManager(mcpManager);
+  connectorManager.on("changed", () => {
+    mainWindow?.webContents.send("connectors-changed");
+  });
+  // Connect-flow progress (OAuth window closed → verifying → done) — drives
+  // the renderer's app-level loading overlay.
+  connectorManager.on("connect-progress", (p) => {
+    mainWindow?.webContents.send("connectors-connect-progress", p);
   });
 
   // Session cache — in-memory yo/sup content store
@@ -368,7 +383,15 @@ async function boot() {
 
   // Relay panel + RPA handlers. The WebSocket itself was started earlier;
   // handlers are looked up at request time, so registering them here is fine.
-  installRelayHandlers({});
+  installRelayHandlers({
+    getMcpManager: () => mcpManager,
+  });
+  // loops.run / skills.run / agents.run / scrape.page — the attach socket's
+  // extra capabilities, on the same registry.
+  installAttachHandlers();
+  // agent.run / agent.answer / agent.stop — run a turn ON THIS MACHINE for a
+  // signed-in web/mobile client, streaming frames back up the attach socket.
+  installAttachRunHandlers();
   // panel.open/input/close/stats/webrtc — stream a real on-machine page to a
   // web client over the attach relay (panel-host.ts). Same registry, same
   // socket. On web + desktop-attached, an app panel renders here and streams.
@@ -386,16 +409,15 @@ async function boot() {
   installRpaHandlers();
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
+  // Every relay handler is registered now — re-advertise the FULL method
+  // table on the attach socket. Auth can win the race and open the socket
+  // before this block runs; its first hello then lists a partial table and
+  // the server's capability-aware dispatch refuses the rest (web panel
+  // input silently dead). A repeated hello just updates presence.
+  void import("./attach-client.js").then((m) => m.refreshHello()).catch(() => {});
 
   layoutManager = new LayoutManager();
   commandParser = new CommandParser();
-  // Drips are BACK (his order, 2026-09-10) — presets in local SQLite, the
-  // overlays untouched. The manager parents windowed effects to mainWindow
-  // (wired in createWindow).
-  dripManager = new DripManager();
-  setDripManagerInstance(dripManager);
-  if (mainWindow) dripManager.setMainWindow(mainWindow);
-  commandParser.setDripManager(dripManager);
 
 
   // OS windows, the command palette, and the keytap overlay are retired —
@@ -421,13 +443,14 @@ async function boot() {
   // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
   if (!ipcMain.listenerCount("wb-term:spawn")) {
     registerWorkbenchTerminalIpc();
-    registerGitIpc();
-    // Dead ends for every retired agent-era channel (see agent-stubs.ts).
-    registerAgentStubs();
-    // The Glyphh Agent panel's engine — a bridge over the claude CLI
-    // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
+    // The agent's whole IPC surface — sessions, context, runs, permissions.
+    // Without this the composer has no handlers to call and simply spins.
     registerGlyphhIpc();
-    registerAgentDockIpc();
+    // The library pages: loops, skills, agents.
+    registerLibraryIpc();
+    registerGitIpc();
+    // Live agents' scheduled tasks fire while the app runs.
+    startAgentScheduler();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -444,11 +467,13 @@ async function boot() {
     });
   }
 
-
-  // ⌘⇧. anywhere on the system: kill every playing drip effect. A full-screen
-  // overlay with no timeout reads exactly like a dead app — this is the out.
+  // ⌘⇧. anywhere on the system: kill every playing effect. A full-screen drip
+  // overlay is always-on-top and click-through, so a stuck one looks like a dead
+  // machine — the recovery hatch must NOT live behind the UI it is covering.
   globalShortcut.register("CommandOrControl+Shift+.", () => {
-    try { dripManager?.stopAll(); } catch (e) {
+    try {
+      dripManager?.stopAll();
+    } catch (e) {
       console.error("[drips] stop shortcut failed:", (e as Error).message);
     }
   });
@@ -471,6 +496,20 @@ async function boot() {
 
   // Create window
   await createWindow();
+
+  // The Echo agent attached to the frontmost desktop app (⌘⇧G toggles) —
+  // restored 2026-08-28 from the pre-pivot tree (agent-dock, Aug 21).
+  registerAgentDockIpc();
+  // Background mode: rebuild the window when the tray asks, and reflect the
+  // current setting (tray + launch-at-login) now.
+  setReopenHandler(() => { void createWindow(); });
+  syncBackgroundMode();
+
+  // Drip effects
+  dripManager = new DripManager();
+  setDripManagerInstance(dripManager);
+  if (mainWindow) dripManager.setMainWindow(mainWindow);
+  commandParser.setDripManager(dripManager);
 
   // Account gate — the heartbeat reports the account status. When it reports
   // the account disabled (an admin action) we lock the user out of the
@@ -556,6 +595,7 @@ async function boot() {
   // Keep OAuth-authed remote MCP connections alive: refresh their tokens ahead
   // of expiry and re-stamp the server-side connection header (the server dials
   // the endpoint, so we can't react to its 401s). Self-guards when signed out.
+  startMcpOAuthRefresh();
 
   // Working directory — the single project folder the app is focused on.
   if (!ipcMain.listenerCount("working-dir:get")) {
@@ -603,6 +643,7 @@ async function boot() {
   // Start cloud sync if authenticated and tier allows it
 
   // Initialize Pipedream connectors — always attempt so MCP tools are available.
+  connectorManager?.init().catch((err) => console.error("[connectors]", err));
 
   // ── Auto-updater ───────────────────────────────────────────
   // Updates download in the background but are NEVER installed on their own.
@@ -647,8 +688,11 @@ async function boot() {
     if (mainWindow) homeView.hide(mainWindow);
     setTimeout(() => {
       upLog("INFO", "install: begin teardown");
-      // Tear down BEFORE the installer runs: children (ptys) and handles die
-      // here, so when NSIS checks for a running copy the answer is already no.
+      // Tear down BEFORE the installer runs: children (ptys, the agent
+      // subprocess) and background handles die here, so when NSIS checks for
+      // a running copy the answer is already no. markQuitting also disarms
+      // the hide-on-close/tray keep-alives for the quit that follows.
+      markQuitting();
       // quitAndInstall closes every window — our window-all-closed handler
       // then fires a PLAIN app.quit(), and with autoInstallOnAppQuit=false a
       // plain quit that wins the race exits WITHOUT installing: app closed,
@@ -950,6 +994,7 @@ async function boot() {
   // cypherBus directly and was never routed through this machinery.
 
   // ── Extracted IPC modules ──────────────────────────────
+  registerModelsIpc();
   registerWorkspacesIpc();
   registerSettingsIpc({
     getPreference, setPreference, broadcastTheme,
@@ -990,38 +1035,24 @@ async function boot() {
 
   // Glyphh Office · Docs — the Docs panel's org library transport.
   registerOfficeDocsIpc();
-  registerWorkspaceStateIpc();
-  registerCliAgentsIpc();
-  registerEmbeddingsIpc();
-  registerLocalLibraryIpc();
-  registerLocalAgentsIpc();
-  registerHubIpc();
-  registerMcpConnectionsIpc();
-  // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
-  connectorManager = new ConnectorManager();
-  connectorManager.on("changed", () => {
-    mainWindow?.webContents.send("connectors-changed");
-  });
-  connectorManager.on("connect-progress", (p) => {
-    mainWindow?.webContents.send("connectors-connect-progress", p);
-  });
-  connectorManager.init().catch((err) => console.error("[connectors]", err instanceof Error ? err.message : err));
-  startLoopScheduler();
-  // Agents own schedules too: a parked agent must not fire. Runs AFTER the
-  // generic arming, which only knows each row own enabled flag.
-  reconcileAgentSchedules();
 
   // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
   registerOfficeSheetsIpc();
   registerDesignIpc();
+  registerMemoryPanelIpc();
   registerMediaPanelIpc();
   registerMusicPanelIpc();
 
-  // Support (threaded ticketing) — the settings panel's transport.
+  // Run-stream observer bridge — the renderer watches runs executing on OTHER
+  // surfaces (web/cloud) through the main-process SDK client.
+  registerRunStreamIpc();
+
+  // API Keys + Support (threaded ticketing) — A4 settings panels' transport.
+  registerApiKeysIpc();
   registerSupportIpc();
 
   registerAppsIpc({
-    layoutManager,
+    layoutManager, dripManager,
     canSaveLayout,
     getMainWindow: () => mainWindow,
   });
@@ -1031,7 +1062,7 @@ async function boot() {
 
   // Settings / home panel IPC — dashboard, MCP servers (relay), connectors, prompts.
   registerHomeIpc({
-    connectorManager,
+    mcpManager, connectorManager, canUseCustomMcp,
   });
 
   ipcMain.on("open-external", (_e, url: string) => {
@@ -1176,10 +1207,7 @@ const startWithLock = (attempt: number): void => {
     return;
   }
   if (attempt < 3) setTimeout(() => startWithLock(attempt + 1), 1200);
-  else {
-    console.error("[main] another Glyphh instance holds the single-instance lock — quit it (or the installed Glyphh Desktop.app) and relaunch.");
-    app.exit(0);
-  }
+  else app.exit(0);
 };
 startWithLock(0);
 
@@ -1246,6 +1274,7 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
 
 app.on("window-all-closed", () => {
   // Stay resident in background mode (tray keeps the process + scheduler alive).
+  if (isBackgroundEnabled() && !isQuitting()) return;
   cleanupAll();
   app.quit();
 });
@@ -1256,6 +1285,10 @@ app.on("activate", () => {
   }
 });
 
+// An explicit Quit (⌘Q, menu, tray) must tear down even in background mode —
+// mark it so the window's close guard stops hiding.
+app.on("before-quit", () => { markQuitting(); });
+
 // A missing helper binary (spawn ENOENT surfaces as an ASYNC uncaught
 // exception) must degrade the feature, never crash the app into the OS error
 // dialog. Anything landing here is a bug to fix — but the user keeps working.
@@ -1264,7 +1297,6 @@ process.on("uncaughtException", (err) => {
 });
 
 app.on("will-quit", () => {
-  shutdownGlyphh();
   cleanupAll();
 });
 
@@ -1273,6 +1305,7 @@ function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;
   try { closeAllPanels(); } catch { /* noop */ }
+  try { disposeAgentDock(); } catch { /* noop */ }
   try { killAllRelayPtys(); } catch { /* noop */ }
   // Arm the hard-exit FIRST: if any teardown step below throws, the process must
   // still die rather than zombie. .unref() so it never keeps the loop alive on
@@ -1292,13 +1325,15 @@ function cleanupAll(backstopMs = 4000) {
   // Node event loop alive and window-all-closed from firing.
   const steps: Array<[string, () => void]> = [
     ["globalShortcut", () => globalShortcut.unregisterAll()],
+    ["mcpOAuthRefresh", () => stopMcpOAuthRefresh()],
     ["authTimers", () => cleanupAuthTimers()],
+    ["glyphh", () => shutdownGlyphh()],
+    ["agentScheduler", () => stopAgentScheduler()],
+    ["connectors", () => connectorManager?.cleanup()],
+    ["drips", () => dripManager?.cleanup()],
     ["localMcpServer", () => stopLocalMcpServer()],
     ["appWorkers", () => stopAllAppWorkers()],
     ["schedules", () => stopAllSchedules()],
-    ["drips", () => dripManager?.cleanup()],
-    ["loopScheduler", () => stopLoopScheduler()],
-    ["mcpConnections", () => closeMcpConnections()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],
   ];

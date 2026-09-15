@@ -1,8 +1,9 @@
 /**
- * CommandParser — parses and executes sup/dip commands.
+ * CommandParser — parses and executes sup/dip/drip/peace commands.
  *
  *   sup             → capture (retired with legacy panels — friendly no-op)
  *   dip <ref>       → open an app/layout as a workbench panel
+ *   drip <effect>   → visual effect
  *   peace [count]   → particle peace-sign gesture
  *
  * The legacy BrowserView panel registry is gone: every `dip` routes through
@@ -21,17 +22,24 @@ import {
   listOpenAppWindows,
 } from "./app-resolver";
 import { fetchServerLayouts } from "./layout-manager";
+import { showThinking, hideThinking } from "./thinking-overlay";
 
 export class CommandParser {
   private static readonly COMMAND_KEYWORDS = new Set(["sup", "dip", "drip", "peace", "waz"]);
 
+  private onDrip: ((effect: string) => void) | null = null;
   private dripManager: import("./drip-manager").DripManager | null = null;
+
+  constructor() {}
+
+  /** Register callback for drip effects */
+  setDripHandler(fn: (effect: string) => void) {
+    this.onDrip = fn;
+  }
 
   setDripManager(mgr: import("./drip-manager").DripManager) {
     this.dripManager = mgr;
   }
-
-  constructor() {}
 
   /** Split input at dot-prefixed command keyword boundaries for chaining.
    *  Only dot-prefixed keywords trigger a split — bare keywords appearing in
@@ -80,9 +88,9 @@ export class CommandParser {
     const trimmed = input.trim();
     if (!trimmed) return "";
 
-    const clean = (s: string) => s.replace(/\.(sup|dip|waz)\b/gi, "$1");
+    const clean = (s: string) => s.replace(/\.(sup|dip|drip|peace|waz)\b/gi, "$1");
 
-    // Split on dot-prefixed keywords for chaining (.dip)
+    // Split on dot-prefixed keywords for chaining (.dip, .drip)
     const segments = this.splitChain(trimmed);
 
     // Single command — fast path
@@ -179,12 +187,14 @@ export class CommandParser {
 
     // Saved layout — EXACTLY the palette button's mechanism (layouts-open →
     // openLayoutByName): same resolver, same thinking overlay, nothing else.
+    showThinking();
     try {
       const opened = await openLayoutByName(sub);
       return `Workspace: ${opened.layout}`;
     } catch {
       // Not a saved layout — fall through to app resolution.
     } finally {
+      hideThinking();
     }
 
     // ONE path — the modern resolver (app library, nav sections, workbench
@@ -198,13 +208,17 @@ export class CommandParser {
   // ── drip: CSS visual effects ────────────────────────────────
 
   private handleDrip(args: string[]): string {
-    return this.dripManager ? this.dripManager.execute(args) : "";
+    if (this.dripManager) return this.dripManager.execute(args);
+    this.onDrip?.(args[0] || "fireworks");
+    return "";
   }
 
   // ── peace: particle peace-sign gesture ──────────────────────
 
   private handlePeace(args: string[]): string {
-    return this.dripManager ? this.dripManager.execute(["peace", ...args]) : "";
+    if (this.dripManager) return this.dripManager.execute(["peace", ...args]);
+    this.onDrip?.("peace");
+    return "";
   }
 
 }

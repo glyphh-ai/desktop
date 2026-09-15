@@ -79,8 +79,6 @@ interface AdminPlan {
   org_name: string | null;
   /** Gateway requests/minute for orgs on this plan; null = unlimited. */
   rate_limit_rpm?: number | null;
-  gateway_trial_days?: number | null;
-  governance?: boolean;
   allowed_models?: string[] | null;
 }
 interface AdminPlanPatch {
@@ -90,8 +88,6 @@ interface AdminPlanPatch {
   max_seats?: number;
   active?: boolean;
   rate_limit_rpm?: number | null;
-  gateway_trial_days?: number | null;
-  governance?: boolean;
   allowed_models?: string[] | null;
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
@@ -318,12 +314,9 @@ let editingProviderSlug: string | null = null;
 
 async function loadProviders(): Promise<void> {
   try {
-    // ADMIN lane first (ALL providers, inactive candidates included — the
-    // org catalog lane hides them); then the org lane; desktop: models IPC.
-    const sdk = (window as unknown as { glyphhSdk?: { admin?: { providers?: () => Promise<{ providers: CatalogProvider[] }> }; catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
-    if (sdk?.admin?.providers) {
-      providers = (await sdk.admin.providers()).providers;
-    } else if (sdk?.catalog?.providers) {
+    // Web first: the raw SDK client; desktop: the models IPC.
+    const sdk = (window as unknown as { glyphhSdk?: { catalog?: { providers?: () => Promise<CatalogProvider[]> } } }).glyphhSdk;
+    if (sdk?.catalog?.providers) {
       providers = await sdk.catalog.providers();
     } else {
       const r = await (window.glyphh as unknown as {
@@ -974,9 +967,7 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   set("pa-plan-credits", String(microToCredits(p.included_credits)));
   set("pa-plan-seats", String(p.max_seats || 1));
   set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
-  set("pa-plan-trial", p.gateway_trial_days ? String(p.gateway_trial_days) : "");
-  const gov = $<HTMLInputElement>("pa-plan-governance");
-  if (gov) gov.checked = !!p.governance;
+  set("pa-plan-models", (p.allowed_models ?? []).join("\n"));
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = p.active;
   const priceInput = $<HTMLInputElement>("pa-price-new");
@@ -996,9 +987,7 @@ function openPlanCreate(): void {
   const title = $("pa-plan-title");
   if (title) title.textContent = "New plan";
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
-  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm", "pa-plan-models", "pa-plan-trial"]) set(id, "");
-  const gov = $<HTMLInputElement>("pa-plan-governance");
-  if (gov) gov.checked = false;
+  for (const id of ["pa-plan-tier", "pa-plan-name", "pa-plan-rpm", "pa-plan-models"]) set(id, "");
   set("pa-plan-price", "0");
   set("pa-plan-credits", "0");
   set("pa-plan-seats", "1");
@@ -1023,12 +1012,11 @@ async function savePlan(): Promise<void> {
     rate_limit_rpm: inputVal("pa-plan-rpm") && Number(inputVal("pa-plan-rpm")) > 0
       ? Math.round(Number(inputVal("pa-plan-rpm")))
       : null,
-    // Empty = full gateway (null); N = the trial window in days.
-    gateway_trial_days: inputVal("pa-plan-trial") && Number(inputVal("pa-plan-trial")) > 0
-      ? Math.round(Number(inputVal("pa-plan-trial")))
-      : null,
-    governance: !!$<HTMLInputElement>("pa-plan-governance")?.checked,
     // One catalog id per line; empty clears the list (every model allowed).
+    allowed_models: (() => {
+      const ids = inputVal("pa-plan-models").split("\n").map((l) => l.trim()).filter(Boolean);
+      return ids.length ? ids : null;
+    })(),
   };
   const btn = $<HTMLButtonElement>("pa-plan-save");
   if (btn) btn.disabled = true;
@@ -1320,19 +1308,20 @@ async function refreshAdminUsage(): Promise<void> {
   const orgId = $<HTMLSelectElement>("pa-usage-org")?.value || undefined;
   const query = { from: isoDay(from), to: isoDay(to), tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(orgId ? { orgId } : {}) };
   // The rollups are independent — one failing must not blank the rest.
-  const [daysRes, usersRes, revenueRes] = await Promise.allSettled([
+  const [daysRes, usersRes, runtimesRes, revenueRes] = await Promise.allSettled([
     read((a) => a.usageDaily?.(query), (g) => g.adminUsageDaily?.(query)),
     read((a) => a.usageByUser?.(win, orgId ? { orgId } : {}), (g) => g.adminUsageByUser?.(win, orgId)),
+    read((a) => a.usageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminUsageByRuntime?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
     read((a) => a.revenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) }), (g) => g.adminRevenue?.({ from: query.from, to: query.to, ...(orgId ? { orgId } : {}) })),
   ]);
   const problems: string[] = [];
   const days: AdminUsageDay[] = daysRes.status === "fulfilled" ? (daysRes.value?.days || []) : (problems.push("daily series"), []);
   const users: AdminUsageByUser[] = usersRes.status === "fulfilled" ? (usersRes.value?.users || []) : (problems.push("top spenders"), []);
-  const runtimes: AdminUsageByRuntime[] = [];   // runtime axis retired with the cloud runtime
+  const runtimes: AdminUsageByRuntime[] = runtimesRes.status === "fulfilled" ? (runtimesRes.value?.runtimes || []) : (problems.push("runtime breakdown"), []);
   setErr("pa-usage-error", problems.length ? `Couldn't load the ${problems.join(", ")} — ${errText(
     (daysRes.status === "rejected" && daysRes.reason) ||
     (usersRes.status === "rejected" && usersRes.reason) ||
-    (revenueRes.status === "rejected" && revenueRes.reason))}` : "");
+    (runtimesRes.status === "rejected" && runtimesRes.reason))}` : "");
 
   const credits = days.reduce((s, d) => s + microToCredits(d.credits), 0);
   const requests = days.reduce((s, d) => s + (d.requests || 0), 0);
@@ -1464,21 +1453,44 @@ function paintOrgs(): void {
     wrap.innerHTML = `<div class="crud-empty">${inputVal("pa-orgs-search") ? "No organizations match your search." : "No organizations yet."}</div>`;
     return;
   }
+  // Parent filter (his order, 2026-09-02): one agency's client fleet —
+  // server-filtered; the dropdown accumulates parents it has seen.
+  const parentSel = document.getElementById("pa-orgs-parent") as HTMLSelectElement | null;
+  if (parentSel) {
+    const keep = parentSel.value;
+    for (const o of orgs) {
+      if (o.managed_by_org_id && !parentSel.querySelector(`option[value="${o.managed_by_org_id}"]`)) {
+        const opt = document.createElement("option");
+        opt.value = o.managed_by_org_id;
+        opt.textContent = o.managed_by_name || o.managed_by_org_id;
+        parentSel.appendChild(opt);
+      }
+    }
+    parentSel.value = keep;
+    parentSel.classList.toggle("hidden", parentSel.options.length <= 1);
+  }
   const items = orgs;
   const state = { page: orgsPage, totalPages: Math.max(1, Math.ceil(orgsTotal / ORGS_PAGE_SIZE)), total: orgsTotal, pageSize: ORGS_PAGE_SIZE };
-  const { table, tbody } = mkTable(["Organization", "Tier", "Billing", "Members"], true);
+  const { table, tbody } = mkTable(["Organization", "Tier", "Parent", "Billing", "Members", "Credits"], true);
   for (const o of items) {
     const tr = document.createElement("tr");
+    // Credits: ledger truth (purchased/spent) + the monthly gate for managed
+    // orgs — a 5,000/mo client no longer reads as its bare signup grant.
+    const gate = (o.managed_monthly_cap_micro ?? 0) > 0
+      ? ` <span class="lib-table-dim">+${fmtInt(microToCredits(o.managed_monthly_cap_micro!))}/mo</span>` : "";
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
+      <td class="lib-table-dim pa-org-parent"></td>
       <td></td>
-      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>`;
+      <td class="lib-table-dim">${fmtInt(o.member_count)}</td>
+      <td class="lib-table-dim" title="purchased / spent (+ monthly gate from parent)">${fmtInt(microToCredits(o.credits_purchased ?? 0))} / ${fmtInt(microToCredits(o.credits_spent ?? 0))}${gate}</td>`;
+    (tr.querySelector(".pa-org-parent") as HTMLElement).textContent = o.managed_by_name || "—";
     const name = tr.querySelector(".lib-table-name");
     if (name) name.textContent = o.name;
     const tier = tr.querySelector(".lib-table-desc");
     if (tier) tier.textContent = o.tier;
-    const billing = tr.querySelector("td:nth-child(3)");
+    const billing = tr.querySelector("td:nth-child(4)");
     if (billing) {
       billing.innerHTML = o.billing_status === "active"
         ? `<span class="lib-badge">active</span>` : `<span class="lib-table-dim"></span>`;
@@ -1854,10 +1866,11 @@ async function grantFromDetail(): Promise<void> {
 const ORGS_PAGE_SIZE = 15;
 async function refreshOrgs(): Promise<void> {
   try {
-    // SERVER-side pagination — the page in view is exactly one server page;
-    // the bar walks the real total.
+    // SERVER-side pagination + parent filter (his orders, 2026-09-02) — the
+    // page in view is exactly one server page; the bar walks the real total.
     const query = {
       q: inputVal("pa-orgs-search") || undefined,
+      parent: (document.getElementById("pa-orgs-parent") as HTMLSelectElement | null)?.value || undefined,
       page: orgsPage + 1, limit: ORGS_PAGE_SIZE,
     };
     const r = await read((a) => a.orgs?.(query), (g) => g.adminOrgs?.(query));
@@ -1879,6 +1892,7 @@ export function loadAdminOrgs(): void {
       window.clearTimeout(orgsSearchTimer);
       orgsSearchTimer = window.setTimeout(() => { orgsPage = 0; void refreshOrgs(); }, 250);
     });
+    $("pa-orgs-parent")?.addEventListener("change", () => { orgsPage = 0; void refreshOrgs(); });
     $("pa-org-grant-back")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); void refreshOrgs(); });
     $("pa-grant-cancel")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); });
     $("pa-org-detail-back")?.addEventListener("click", () => { detailOrg = null; showOrgView("list"); void refreshOrgs(); });

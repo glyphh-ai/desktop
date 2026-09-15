@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { marked } from "marked";
 import { readGPoint, stripHiddenSlides } from "./gpoints";
 import { gdocFileName } from "./office-docs";
-import { readDoc } from "./office-store";
+import { getClient } from "./glyphh-client";
 
 /** Load HTML into a window via a TEMP FILE, not a data: URL. A base64 data URL
  *  has a hard length ceiling in Chromium, so a big/image-heavy deck (media
@@ -126,7 +126,7 @@ async function savePdf(pdf: Buffer, suggestedName: string): Promise<{ ok: boolea
  * tool saves them as a Drive file artifact).
  */
 export async function exportDocPdf(name: string): Promise<{ title: string; pdf: Buffer }> {
-  const doc = await readDoc(gdocFileName(name));
+  const doc = await getClient().officeDocs.get(gdocFileName(name));
   const html = await marked.parse(doc.markdown ?? "");
   const title = doc.title || name.replace(/\.md$/i, "");
   return { title, pdf: await printHtml(docPrintDoc(title, String(html))) };

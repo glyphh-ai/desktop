@@ -21,11 +21,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
-import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
-import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
-import { listCliAgents } from "./cli-agents.js";
-import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
-import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
 
 const DEFAULT_PORT = 7860;
 const TOKEN_TTL_DAYS = 90;
@@ -111,154 +106,6 @@ function buildMcpServer(): McpServer {
     }
   };
 
-  // ── Tasks + skills — Glyphh's OWN primitives, author-grade (the write
-  //    path agents lacked: a pipeline built here lands in Glyphh's registry,
-  //    schedulable and visible in the UI, not beside it) ─────────────────
-  const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
-  mcp.tool(
-    "agents_list",
-    "The user's CLI-agent roster — the ONLY valid values for a task slot's agent binding and for task_run's agent override. Returns [{ id, name, cli, model, cwd }].",
-    {},
-    async () => text(listCliAgents().map((a) => ({ id: a.id, name: a.name, cli: a.cli, model: a.model ?? null, cwd: a.cwd ?? null }))),
-  );
-  mcp.tool(
-    "tasks_list",
-    "List the user's Glyphh TASKS. A task is a PROGRAM — a spec an agent authors and can rewrite; only the slots\u2192agents are fixed. Returns [{ slug, name, description, program, slots: [{ name, label?, agent }] }].",
-    {},
-    async () => text(listTaskSpecs()),
-  );
-  mcp.tool(
-    "task_get",
-    "Read one Glyphh task in full — its program (the spec) and its slots.",
-    { slug: z.string().describe("Task slug from tasks_list") },
-    async ({ slug }) => {
-      try { return text(getTaskSpec(slug)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "task_save",
-    "Create or update a Glyphh task. The program is the SPEC the slotted agent runs — write it freely (steps inside it can carry prompts or reference Glyphh skills via skill_get); the agent building the task owns its shape. slots are the FIXED cast: create ONE SLOT PER STAGE of the pipeline (e.g. plan/review/build), each bound to a real agent id from agents_list (null leaves it for the user to pick in the Tasks UI) — never collapse a multi-model pipeline into a single slot. Saved tasks appear in the Tasks UI, where the user schedules them on a cron or runs them one-off.",
-    {
-      slug: z.string().optional().describe("Existing task slug to update; omit to create"),
-      name: z.string().describe("Task name"),
-      description: z.string().optional(),
-      program: z.string().optional().describe("The spec the slotted agent runs"),
-      slots: z.array(z.object({
-        name: z.string().optional(),
-        label: z.string().optional(),
-        description: z.string().optional().describe("What this slot is for"),
-        agent: z.string().nullable().optional().describe("CLI-agent id bound to this slot (null = first agent)"),
-        model: z.string().optional().describe("Model override for this slot (omit = the agent's own model)"),
-      })).optional().describe("The fixed slots\u2192agents; omit to keep existing (default: one Main slot)"),
-    },
-    async (input) => {
-      try { return text(saveTaskSpec(input)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "task_run",
-    "Run a Glyphh task NOW — its program through the slotted agent's headless CLI. Returns { status, output }.",
-    {
-      slug: z.string().describe("Task slug from tasks_list"),
-      agent: z.string().optional().describe("CLI-agent id override for this run"),
-    },
-    async ({ slug, agent }) => {
-      try { return text(await runTaskNow(slug, agent)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "task_runs",
-    "A Glyphh task's recent scheduled runs (newest first): { id, startedAt, durationMs, status, error, output }.",
-    { slug: z.string().describe("Task slug") },
-    async ({ slug }) => text(listTaskRunsFor(slug)),
-  );
-  mcp.tool(
-    "skills_list",
-    "List the user's Glyphh SKILLS — cross-agent instruction sets any CLI can read. Returns summaries; read one with skill_get.",
-    {},
-    async () => text(listSkillRows().map(({ prompt: _p, code: _c, manifest: _m, ...sum }) => sum)),
-  );
-  mcp.tool(
-    "skill_get",
-    "Read a Glyphh skill in full — its markdown instructions (prompt) are the payload.",
-    { slug: z.string().describe("Skill slug from skills_list") },
-    async ({ slug }) => {
-      try { return text(getSkillRow(slug)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "skill_save",
-    "Create or update a Glyphh skill (name, description, prompt = its markdown instructions). Saved skills appear in the Skills UI and are readable by EVERY CLI agent through skill_get.",
-    {
-      slug: z.string().optional().describe("Existing slug to update; omit to create"),
-      name: z.string().describe("Skill name"),
-      description: z.string().optional(),
-      prompt: z.string().optional().describe("The skill's markdown instructions"),
-    },
-    async (input) => {
-      try { return text(saveSkillRow(input)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-
-  // ── Custom MCP connections — the user's own servers, aggregated ─────
-  // ── Connected APPS (Pipedream Connect, server-executed) ──────────────
-  // The org/personal connector reach (Gmail, Slack, 3,500 more) — governed
-  // and METERED server-side; this lane just carries the call. Distinct from
-  // connections_* below, which are the user's own LOCAL custom MCP servers.
-  mcp.tool(
-    "connector_tools",
-    "The user's CONNECTED APPS (Gmail, Slack, Google Drive — 3,500+ via the org's connections) and each app's callable tools with input schemas. Governed server-side: this lists exactly what YOU may call. Invoke with connector_call.",
-    {},
-    async () => {
-      const tools = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog();
-      return text(tools.map((t) => ({ app: t.slug, tool: t.name, description: t.description, inputSchema: t.inputSchema })));
-    },
-  );
-  mcp.tool(
-    "connector_call",
-    "Call one connected app's tool (from connector_tools). Executes on the Glyphh server under the org's governance — the account binding, allow-lists, and metering all apply there.",
-    {
-      app: z.string().describe("The connection slug (connector_tools 'app')"),
-      tool: z.string().describe("The tool key to invoke"),
-      props: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments per its inputSchema"),
-    },
-    async ({ app, tool, props }) => {
-      try { return text(await callConnectorTool(app, tool, props ?? {})); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "connections_list_tools",
-    "List the tools published by the user's CUSTOM MCP CONNECTIONS (their own servers, dialed locally). Returns [{ connection, name, description, inputSchema }]. Call one with connections_call_tool.",
-    {},
-    async () => {
-      const tools = await listConnectionTools();
-      return { content: [{ type: "text" as const, text: JSON.stringify(tools) }] };
-    },
-  );
-  mcp.tool(
-    "connections_call_tool",
-    "Call a tool on one of the user's custom MCP connections (discover with connections_list_tools).",
-    {
-      connection: z.string().describe("Connection slug"),
-      tool: z.string().describe("Tool name on that connection"),
-      args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments"),
-    },
-    async ({ connection, tool, args }) => {
-      try {
-        const r = await callConnectionTool(connection, tool, (args as Record<string, unknown>) || {});
-        return { content: [{ type: "text" as const, text: typeof r === "string" ? r : JSON.stringify(r) }] };
-      } catch (err) {
-        return { content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
-      }
-    },
-  );
-
   mcp.tool(
     "relay_ping",
     "Smoke-test the local server: pings Glyphh and returns whatever it echoes. Use this to confirm the connection is alive before relying on panel tools.",
@@ -269,7 +116,7 @@ function buildMcpServer(): McpServer {
   // ── Panel management ─────────────────────────────────
   mcp.tool(
     "panels_list",
-    "List the user's OPEN app panels (see panels_available for everything that CAN be opened). Returns app (slug — the key every other panel tool takes), name, current url, page title, and which window is focused.",
+    "List the user's open app windows. Returns app (slug — the key every other panel tool takes), name, current url, page title, and which window is focused.",
     {},
     async () => via("panels.list", {}),
   );
@@ -286,15 +133,9 @@ function buildMcpServer(): McpServer {
     async ({ app }) => via("panels.close", { app }),
   );
   mcp.tool(
-    "panels_available",
-    "List the user's SAVED APP LIBRARY — everything panels_open can open (slug, name, url, kind). When the user asks about a site or service (mail, calendar, a dashboard…), check here FIRST and open their saved app for it instead of driving the raw browser.",
-    {},
-    async () => via("panels.available", {}),
-  );
-  mcp.tool(
     "panels_open",
-    "Open an app as a panel. `app` is a slug from panels_available (the user's saved app library — PREFER these over the raw browser when one matches the task), or 'browser' / 'terminal'. Re-opening an already-open app focuses it. Installed Glyphh apps MUST open this way (by slug) — a file:// URL in the browser panel gets no glyphh bridge and the app won't work.",
-    { app: z.string().describe("App to open: a saved-app slug from panels_available, or 'browser' / 'terminal'") },
+    "Open an app in its own native window on the user's machine. `app` is 'browser', 'terminal', or a slug from the user's saved app library (the same apps the platform's Apps page manages). Re-opening an already-open app focuses its window.",
+    { app: z.string().describe("App to open: 'browser', 'terminal', or a saved-app slug") },
     async ({ app }) => via("panels.open", { app }),
   );
   mcp.tool(
@@ -326,52 +167,28 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "app_install",
-    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place. To show the app afterwards, call panels_open with its slug — NEVER open its index.html via a file:// URL in the browser panel: the glyphh bridge (glyphh.call, db.exec, its tools) only exists when the app opens through its slug.",
+    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place.",
     { bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string") },
     async ({ bundleBase64 }) => via("apps.install", { bundleBase64 }),
   );
 
-  // ── The SEMANTIC STACK — every app's own vector store + knowledge graph
-  //    (glyphh-agent-semantic.ts; restored 2026-09-14). The workpanel-app
-  //    contract's data plane: loops discover, build, and query an app's
-  //    stores through these six; scheduled tasks refresh them.
-  const semantic = (name: string, shape: Record<string, z.ZodTypeAny>): void => {
-    const def = SEMANTIC_TOOLS.find((t) => t.name === name)!;
-    mcp.tool(name, def.doc, shape, async (a: Record<string, unknown>) => {
-      try { return text(await def.run(a)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    });
-  };
-  const appArg = z.string().describe("Target app slug — the stores travel with the app");
-  const collArg = z.string().describe("Vector collection name ([a-zA-Z0-9_-])");
-  semantic("semantic_collections", { app: appArg });
-  semantic("index_files", {
-    app: appArg, collection: collArg,
-    paths: z.array(z.string()).describe("Working-folder file paths (max 50, 1MB each)"),
-    chunkChars: z.number().optional().describe("Chunk size in chars (200–4000, default 1500)"),
-  });
-  semantic("index_text", {
-    app: appArg, collection: collArg,
-    id: z.string().describe("Stable source id for these chunks"),
-    text: z.string().describe("Raw text to chunk + embed"),
-    chunkChars: z.number().optional(),
-  });
-  semantic("index_connection", {
-    app: appArg, collection: collArg,
-    slug: z.string().describe("Connection slug (from the user's connections)"),
-    tool: z.string().describe("The connector tool to run"),
-    props: z.record(z.string(), z.unknown()).optional().describe("Arguments for the connector tool"),
-  });
-  semantic("vector_search", {
-    app: appArg, collection: collArg,
-    query: z.string().describe("Semantic query text"),
-    k: z.number().optional().describe("Top-k (1–50, default 8)"),
-    filter: z.record(z.string(), z.unknown()).optional().describe("Exact-match metadata filter"),
-  });
-  semantic("graph_query", {
-    app: appArg,
-    cypher: z.string().describe("Cypher statement(s) — CREATE NODE TABLE first; Kuzu is schema-full"),
-  });
+  // ── Local MCP servers via the client ─────────────────
+  mcp.tool(
+    "local_mcp_list_tools",
+    "List tools from MCP servers the user is running locally (custom dev MCPs, local-file tools, etc.).",
+    {},
+    async () => via("mcp.list_tools", {}),
+  );
+  mcp.tool(
+    "local_mcp_call_tool",
+    "Invoke a tool on a user's local MCP server. Pass serverId + name from local_mcp_list_tools.",
+    {
+      serverId: z.string().describe("MCP server id"),
+      name: z.string().describe("Tool name"),
+      args: z.record(z.string(), z.unknown()).optional().describe("Tool arguments"),
+    },
+    async ({ serverId, name, args }) => via("mcp.call_tool", { serverId, name, args: args || {} }),
+  );
 
   // ── RPA — drive an open app panel ────────────────────
   mcp.tool(
@@ -552,7 +369,7 @@ export function localMcpStatus(): { running: boolean; port: number } {
  * boot and whenever the user toggles the setting.
  */
 export async function syncLocalMcpServer(): Promise<{ ok: boolean; error?: string }> {
-  const enabled = getPreference<boolean>("localMcpEnabled", true) !== false;
+  const enabled = getPreference<boolean>("localMcpEnabled", false) === true;
   if (enabled && !server) return startLocalMcpServer();
   if (!enabled && server) { stopLocalMcpServer(); return { ok: true }; }
   return { ok: true };

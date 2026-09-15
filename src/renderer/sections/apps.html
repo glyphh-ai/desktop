@@ -127,10 +127,12 @@
                    pipeline — always on, nothing to deploy or configure. Its
                    tabs are exactly About / Connections / Support; every
                    builder tab below stays the owner's. -->
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-about">About</button>
               <button class="app-detail-tab" data-tab="dashboard">General</button>
               <button class="app-detail-tab" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
               <button class="app-detail-tab tab-glyphh-only hidden" data-tab="webhooks">Integration</button>
+              <button class="app-detail-tab tab-glyphh-only hidden" data-tab="schedule">Schedule</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="guardrails">Guardrails</button>
               <!-- Hosted (built) apps: dev-host deploy + Supabase graduation. -->
@@ -139,7 +141,12 @@
               <!-- Built-app tabs. Releases + Connections show for the builder AND
                    anyone who installed the app; Marketplace + Public hosting are
                    the builder's alone (tab-owner-only). -->
+              <button class="app-detail-tab tab-built-only hidden" data-tab="releases">Releases</button>
               <button class="app-detail-tab tab-owner-only hidden" data-tab="history">History</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="traffic">Traffic</button>
+              <button class="app-detail-tab tab-built-only hidden" data-tab="connections">Connections</button>
+              <button class="app-detail-tab tab-mkt-installed hidden" data-tab="mkt-support">Support</button>
+              <button class="app-detail-tab tab-owner-only hidden" data-tab="marketplace">Marketplace</button>
               
             </div>
 
@@ -216,6 +223,14 @@
                   <!-- Required connections — declared by an installed Glyphh
                        app's manifest. Shows per-connector connected status and
                        warns loudly when any are missing. -->
+                  <div id="app-req-conns" class="hidden">
+                    <label class="settings-label">Required connections</label>
+                    <div id="app-req-conns-list"></div>
+                    <div id="app-req-conns-warn" class="app-req-conns-warn hidden">
+                      This app will <strong>not work</strong> until the accounts above are connected.
+                      <a id="app-req-conns-goto" href="#">Open Connections</a>
+                    </div>
+                  </div>
                   <!-- Co-working: collaborator seats on a user-owned app.
                        Same-org members only; roles gate powers (read = see +
                        pull source, edit = build, admin = publish, never
@@ -292,6 +307,18 @@
                     <div id="app-data-webhooks" class="mbr-list"></div>
                   </div>
                 </div>
+                <div class="app-tab-left" data-tab="schedule">
+                  <div style="padding:0 16px 0 0;">
+                    <div id="app-sched-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Schedule</h3>
+                    <p class="proxy-field-hint" style="margin:0 0 10px;">Everything this app does on a timer. <b>Agent runs</b> you create here execute a prompt (each is a conversation whose history is its run log); the app's own <b>cron handlers</b> run its code — deterministic, no model, no credits — and are edited in its source.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                      <input id="app-sched-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
+                      <button id="app-sched-new" class="action-btn primary" type="button">+ New</button>
+                    </div>
+                    <div id="app-sched-list" class="mbr-list"></div>
+                  </div>
+                </div>
 
                 <div class="app-tab-left" data-tab="mcp">
                   <label class="settings-label">Public endpoint</label>
@@ -346,6 +373,86 @@
 
                 <!-- Releases left: the selected release's notes + promotion. The
                      HISTORY is on the right, where a list belongs. -->
+                <div class="app-tab-left" data-tab="releases">
+                  <!-- Installed apps: current version + an update banner when a newer
+                       live release exists, plus the auto-update toggle. -->
+                  <div id="release-installed-view" class="hidden">
+                    <label class="settings-label">Installed version</label>
+                    <div id="release-installed-version" class="release-selected">—</div>
+                    <div id="release-update-banner" class="release-update-banner hidden">
+                      <span id="release-update-text">A new version is available.</span>
+                      <button id="release-update-btn" class="action-btn primary" type="button">Update now</button>
+                    </div>
+                    <label class="settings-toggle" style="margin-top:16px;">
+                      <input type="checkbox" id="release-autoupdate" checked />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Auto-update</span>
+                        <span class="toggle-desc">Load the newest published version each time you open this app. Turn off to pin the version you have.</span>
+                      </div>
+                    </label>
+                    <p class="proxy-field-hint" style="margin-top:12px;">The release notes for each version are on the right.</p>
+                  </div>
+
+                  <!-- ONE FORM (his order, 2026-08-25): Version, Release notes
+                       (for the NEXT build), Hosting (with "No hosting"), then
+                       Undeploy + Save & Deploy. Notes per shipped version live
+                       on the history rows, inline. -->
+                  <div id="release-owner-view">
+                    <label class="settings-label">Version <span id="release-version-status" class="set-save-state"></span></label>
+                    <input id="release-next-version" type="text" class="settings-input" placeholder="1.0.0" spellcheck="false" autocomplete="off" style="max-width:160px;" />
+                    <p class="proxy-field-hint" style="margin:2px 0 14px;">The next build releases as this version; later builds bump the patch.</p>
+
+                    <label class="settings-label">Release notes</label>
+                    <textarea id="release-notes" class="settings-input" rows="6" spellcheck="true"
+                              placeholder="- Fixed the crash on launch&#10;- Added CSV export" style="resize:vertical;font-size:12.5px;"></textarea>
+                    <p class="proxy-field-hint" style="margin:2px 0 14px;">Markdown — ships with the next build; edit any version's notes inline in the history.</p>
+
+                    <label class="settings-label">Hosting</label>
+                    <select id="deploy-access" class="settings-input" style="max-width:320px;">
+                      <option value="none">No hosting</option>
+                      <option value="members">Signed-in members of your organization</option>
+                      <option value="public">Anyone with the link</option>
+                    </select>
+                    <p class="proxy-field-hint" id="deploy-access-hint" style="margin-top:4px;">Access is checked at the edge, before anything reaches the app.</p>
+
+                    <!-- Deploy actions sit WITH the release fields they act on
+                         (his order, 2026-09-01) — the custom-domain section is
+                         its own concern below. The live URL now lives under the
+                         app name in the page head, not here. -->
+                    <div id="release-error" class="crud-form-error hidden" style="margin-top:10px;"></div>
+                    <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                      <span id="release-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                      <button id="release-undeploy" class="action-btn" type="button" disabled>Undeploy</button>
+                      <button id="release-save-deploy" class="action-btn primary" type="button">Save &amp; Deploy</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin-top:14px;">
+                      A build lands on <strong>dev</strong>. Promoting marks it <strong>live</strong> — the version installers get.
+                      Rolling back is promoting an older release again; nothing is rebuilt.
+                    </p>
+
+                    <!-- Custom domain (docs/custom-domains.md P2). Default
+                         target is THIS APP's hosting; dedicated servers, when
+                         deployed, list as explicit targets. The apex-edge mints
+                         the cert; we hand back the DNS records to publish. -->
+                    <div class="app-detail-section-sep"></div>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                      <label class="settings-label" style="margin:0;">Custom domain</label>
+                      <div style="flex:1;"></div>
+                      <button id="domain-refresh-btn" class="action-btn primary" type="button">Refresh</button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:2px 0 14px;">Serve this app on your own hostname (e.g. www.customerABC.com). We handle the HTTPS certificate; you publish the DNS records we give you.</p>
+                    <div id="domain-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                    <label class="settings-label">Target</label>
+                    <select id="domain-deployment" class="settings-input"><option value="">This app's hosting (no dedicated server)</option></select>
+                    <label class="settings-label" style="margin-top:10px;">Hostname</label>
+                    <input id="domain-hostname" type="text" class="settings-input" placeholder="e.g. www.customerabc.com" />
+                    <div class="settings-actions" style="margin-top:12px;">
+                      <button id="domain-add-btn" class="action-btn primary" type="button">Add domain</button>
+                    </div>
+                    <div id="domain-list" style="margin-top:14px;"></div>
+                  </div>
+                </div>
 
                 <!-- Version history (co-working, 2026-09-01): the source
                      snapshot chain — every desktop build is an entry. Code
@@ -363,3 +470,359 @@
 
                 <!-- Edge traffic (his order, 2026-09-02): what hit the apex
                      edge for this app's custom hostnames. Developers only. -->
+                <div class="app-tab-left" data-tab="traffic">
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <label class="settings-label" style="margin:0;">Traffic</label>
+                    <div style="flex:1;"></div>
+                    <select id="apptraffic-days" class="dash-usage-select" title="Date range">
+                      <option value="7">7 days</option>
+                      <option value="30" selected>30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                  </div>
+                  <p class="proxy-field-hint" style="margin:2px 0 10px;">Requests to this app's custom domains at the Glyphh edge. Traffic to <code>&lt;slug&gt;.glyphh.app</code> doesn't pass the apex edge and isn't counted here.</p>
+                  <div id="apptraffic-error" class="crud-form-error hidden" style="margin-bottom:8px;"></div>
+                  <p class="settings-hint" id="apptraffic-totals" style="margin:0 0 10px;"></p>
+                  <div class="dash-chart-wrap" style="height:160px;">
+                    <canvas id="apptraffic-chart"></canvas>
+                    <div class="dash-chart-empty hidden" id="apptraffic-empty">No edge traffic in this window.</div>
+                  </div>
+                  <!-- Telemetry (his order, 2026-09-02): engagement cards +
+                       top pages + referrers, painted by paintTelemetry. -->
+                  <div id="apptraffic-cards" class="dash-grid" style="margin-top:12px;"></div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+                    <div style="flex:1;min-width:240px;"><label class="settings-label">Top pages</label><div id="apptraffic-pages" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:240px;"><label class="settings-label">Referrers</label><div id="apptraffic-refs" class="mbr-list"></div></div>
+                    <div style="flex:1;min-width:240px;"><label class="settings-label">Error paths</label><div id="apptraffic-errpaths" class="mbr-list"></div></div>
+                  </div>
+                  <div id="apptraffic-hosts" class="mbr-list" style="margin-top:12px;"></div>
+                </div>
+
+                <!-- About left (marketplace-installed): the store's listing
+                     summary. The app is developer-hosted on Glyphh's pipeline
+                     (M7) — no deploy, no on/off; a suspended/hosting-lapsed
+                     app says so here instead of offering the open action. -->
+                <div class="app-tab-left" data-tab="mkt-about">
+                  <div id="mkt-inst-unavailable" class="app-req-conns-warn hidden">
+                    <strong>Temporarily unavailable</strong> — the developer's hosting is paused.
+                    Your data is retained; the app comes back when the developer renews.
+                  </div>
+                  <div id="mkt-inst-about"><div class="inline-empty">Loading…</div></div>
+                </div>
+
+                <!-- Support left (marketplace-installed): the developer's card
+                     and support channel — support is the developer's
+                     obligation, never Glyphh's — plus release notes and the
+                     report-app door into the platform triage queue. -->
+                <div class="app-tab-left" data-tab="mkt-support">
+                  <div id="mkt-inst-support"><div class="inline-empty">Loading…</div></div>
+                </div>
+
+                <!-- Connections: hosts the Connections PAGE's own nodes (adopted
+                     by loadAppConnectionsTab), filtered to this app's required
+                     slugs — same list, same detail form, one component. -->
+                <div class="app-tab-left" data-tab="connections">
+                  <p class="settings-hint" style="margin:2px 0 10px;">This app calls these connected accounts. It won't work until each is connected and its tools are allowed.</p>
+                  <div id="app-conns-host"></div>
+                </div>
+
+                <!-- Public hosting folded into Releases (his order, 2026-08-25).
+                     The PARKED advanced machinery stays wired underneath, hidden. -->
+                <div class="hidden">
+                  <!-- PARKED (his order, 2026-08-25): dedicated servers, custom
+                       domains and the standalone-repo export are OFF this surface —
+                       glyphh apps are work-panel apps; a customer domain arrives via
+                       the WorkOS path at the ORG layer, not per-app. The machinery
+                       (app-servers Phases B–D, export.ts) stays wired underneath;
+                       this container is hidden, not removed. -->
+                  <div id="app-hosting-advanced" class="hidden">
+                  <div class="app-detail-section-sep"></div>
+
+                  <!-- Dedicated server: the app on its OWN machine + database, sized
+                       for real traffic and reachable on a custom domain. -->
+                  <label class="settings-label">Dedicated server</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Run this app on its own machine with its own database — sized for real traffic, and reachable on a custom domain. Billed at the size's monthly rate while it runs.</p>
+                  <div id="server-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <label class="settings-label">Size</label>
+                  <select id="server-size" class="settings-input"><option value="">Loading sizes…</option></select>
+                  <p class="proxy-field-hint" id="server-size-hint"></p>
+                  <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                    <span id="server-note" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="server-deploy-btn" class="action-btn primary" type="button">Deploy server</button>
+                  </div>
+                  <div id="server-list" style="margin-top:14px;"></div>
+
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <label class="settings-label">Own your code</label>
+                  <p class="proxy-field-hint" style="margin:2px 0 14px;">Export this app as a standalone repo backed by your own Supabase — the app's source plus a runtime shim (<code>db</code>/<code>vector</code>/<code>llm</code>), Postgres migrations, and a README. Deploy it anywhere; it no longer needs Glyphh.</p>
+                  <div id="graduate-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+                  <div class="settings-actions" style="margin-top:6px;">
+                    <button id="graduate-btn" class="action-btn primary" type="button">Export standalone repo</button>
+                  </div>
+                  <p class="proxy-field-hint" style="margin-top:14px;font-size:11px;">Requires a built release. <a id="graduate-api-soon" href="#" style="pointer-events:none;opacity:.6;">Direct Supabase connection — coming soon.</a></p>
+                  </div>
+                </div>
+
+                <!-- Marketplace left: the listing an installer sees. Drafted by the
+                     agent, approved here — the List button is deliberately human. -->
+                <div class="app-tab-left" data-tab="marketplace">
+                  <div id="listing-error" class="crud-form-error hidden" style="margin-bottom:10px;"></div>
+
+                  <label class="settings-label">Title</label>
+                  <input id="listing-title" class="settings-input" placeholder="CRM" spellcheck="true" />
+
+                  <label class="settings-label">Tagline <span style="color:var(--text-2);font-weight:400;">— one line on the card</span></label>
+                  <input id="listing-tagline" class="settings-input" maxlength="140" placeholder="Your pipeline, in chat" spellcheck="true" />
+
+                  <label class="settings-label">Category</label>
+                  <select id="listing-category" class="settings-input">
+                    <option value="">Choose one…</option>
+                    <option value="productivity">Productivity</option>
+                    <option value="communication">Communication</option>
+                    <option value="developer">Developer tools</option>
+                    <option value="ai">AI &amp; automation</option>
+                    <option value="marketing">Marketing &amp; sales</option>
+                    <option value="finance">Finance</option>
+                    <option value="design">Design</option>
+                    <option value="data">Data &amp; analytics</option>
+                  </select>
+
+                  <label class="settings-label">Description <span style="color:var(--text-2);font-weight:400;">— markdown</span></label>
+                  <textarea id="listing-body" class="settings-input" rows="8" spellcheck="true"
+                            placeholder="## What it does&#10;&#10;- Reads your pipeline&#10;- Drafts the follow-up" style="resize:vertical;font-size:12.5px;"></textarea>
+
+                  <label class="settings-label">Demo video <span style="color:var(--text-2);font-weight:400;">— YouTube or Vimeo link</span></label>
+                  <input id="listing-video" class="settings-input" placeholder="https://youtube.com/watch?v=…" spellcheck="false" />
+
+                  <p class="proxy-field-hint" style="margin-top:10px;">Website and support email come from your developer profile (Settings → Developer) — one place for every app you publish.</p>
+
+                  <div class="settings-actions" style="margin-top:16px;display:flex;gap:8px;align-items:center;">
+                    <span id="listing-status" style="flex:1;font-size:12px;color:var(--text-3);"></span>
+                    <button id="listing-save" class="action-btn primary" type="button">Save listing</button>
+                  </div>
+
+                  <div class="app-detail-section-sep"></div>
+
+                  <label class="settings-label">On the marketplace</label>
+                  <div id="listing-listed-state" class="deploy-status">Not listed</div>
+                  <p class="proxy-field-hint">Listing makes the app installable by other organizations, and open to reviews. Needs a tagline, a category, and an icon.</p>
+                  <!-- M7 developer-program gate: pre-gate (known not-enrolled)
+                       AND the server's actual refusal both render here, with
+                       the jump to Settings → Developer. -->
+                  <div id="listing-program-gate" class="hidden" style="margin:10px 0 0;padding:10px 12px;border:1px solid var(--border-2);border-radius:8px;">
+                    <p id="listing-program-gate-msg" class="settings-hint" style="margin:0 0 10px;"></p>
+                    <button id="listing-program-gate-btn" class="action-btn primary" type="button">Set up the developer program</button>
+                  </div>
+                  <div class="settings-actions" style="margin-top:12px;display:flex;gap:8px;">
+                    <button id="listing-list-btn" class="action-btn primary" type="button">List on marketplace</button>
+                    <button id="listing-unlist-btn" class="action-btn danger hidden" type="button">Unlist</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="app-builder-divider" id="app-builder-divider"></div>
+
+              <!-- Right panel: swaps per tab -->
+              <div class="app-builder-preview">
+                <!-- Dashboard right: the live app preview (was its own "Panel"
+                     tab) now sits beside the General form. -->
+                <div class="app-tab-right" data-tab="dashboard">
+                  <div class="preview-toolbar">
+                    <div style="flex:1;"></div>
+                    <button id="app-preview-refresh" class="preview-action preview-action-visible">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                      Refresh
+                    </button>
+                  </div>
+                  <webview id="app-preview" partition="persist:yo" allowpopups></webview>
+                </div>
+
+                <!-- Config Vars right: how apps consume these -->
+                <div class="app-tab-right" data-tab="config">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">How apps use config vars</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Config vars are per-app secrets: the key is visible below, the value is
+                      <strong>encrypted on this machine</strong> before it's stored and can never be
+                      viewed again — not here, not by the server. Delete and re-add a var to rotate it.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      <strong>Credential vars are host-only.</strong> Any var whose name ends in
+                      <code>_API_KEY</code> / <code>_KEY</code> / <code>_SECRET</code> / <code>_TOKEN</code> /
+                      <code>_PASSWORD</code> is encrypted at rest <em>and</em> can never be read by app code —
+                      <code>secrets.get</code> refuses it. Only the trusted Glyphh runtime decrypts and uses it,
+                      returning results, never the value. That's what makes it safe to lend a model over MCP.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      <code>agent.run</code> and <code>llm.complete</code> pick keys up automatically: a var named
+                      <code>ANTHROPIC_API_KEY</code> / <code>OPENAI_API_KEY</code> / <code>GOOGLE_API_KEY</code>
+                      powers that provider with no code at all. Non-credential config vars (a base URL, a
+                      setting) are still readable via <code>secrets.get</code>. Keys belong to the app — Glyphh
+                      has no key store and makes no model calls of its own.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- MCP right: explainer for the exposed endpoint. -->
+                <!-- Marketplace right: the images. Recommended sizes are stated up
+                     front — the server caps bytes, and a rejection after a 5MB upload
+                     is a worse way to learn the limit. -->
+                <div class="app-tab-right" data-tab="marketplace">
+                  <div style="padding:12px 16px;">
+                    <!-- Publish path: the ONE thing a developer has to do that
+                         isn't on this tab — submit a release for review. The
+                         List button (left) is gated on an approved release, so
+                         say so here and link straight to where they submit. -->
+                    <div class="listing-review-callout" style="border:1px solid var(--border-2);border-radius:10px;padding:12px 14px;margin-bottom:16px;background:var(--surface-2, var(--surface));">
+                      <h3 class="settings-subheading" style="margin:0 0 6px;">Submit for review to publish</h3>
+                      <p class="settings-hint" style="margin:0 0 10px;">Listing on the marketplace needs an <strong>approved release</strong>. Submit your latest release for review in the developer console — once it's approved, come back and press <em>List on marketplace</em>.</p>
+                      <button id="listing-submit-review" class="action-btn primary" type="button">Submit for review →</button>
+                    </div>
+
+                    <h3 class="settings-subheading" style="margin:0 0 10px;">Images</h3>
+
+                    <label class="settings-label">Icon <span style="color:var(--text-2);font-weight:400;">— 512×512 square, max 512KB</span></label>
+                    <div class="listing-icon-row">
+                      <div id="listing-icon-preview" class="listing-icon-preview">No icon</div>
+                      <div style="display:flex;flex-direction:column;gap:6px;">
+                        <button id="listing-icon-pick" class="action-btn" type="button">Choose image…</button>
+                        <button id="listing-icon-clear" class="action-btn hidden" type="button">Remove</button>
+                      </div>
+                    </div>
+
+                    <label class="settings-label" style="margin-top:18px;">Screenshots <span style="color:var(--text-2);font-weight:400;">— 1280×800 or wider, max 4MB each</span></label>
+                    <div id="listing-shots" class="listing-shots"></div>
+                    <div id="listing-shots-empty" class="help-item-empty">No screenshots yet.</div>
+                    <button id="listing-shot-add" class="action-btn" type="button" style="margin-top:8px;">Add screenshot…</button>
+
+                    <p class="proxy-field-hint" style="margin-top:14px;">
+                      PNG, JPEG, GIF, or WebP. The file's real type is checked from its bytes, so
+                      a renamed file is refused. Your agent can upload these for you — ask it to
+                      draft the listing, then review it here before you press List.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- About right (marketplace-installed): the developer's
+                     pricing story — what installing costs, what the developer
+                     may charge in-app, version, and the rating link back to
+                     the marketplace listing. -->
+                <div class="app-tab-right" data-tab="mkt-about">
+                  <div style="padding:12px 16px;max-width:560px;" id="mkt-inst-pricing"></div>
+                </div>
+
+                <!-- Support right (marketplace-installed): who answers for
+                     this app — the ground rules, stated plainly. -->
+                <div class="app-tab-right" data-tab="mkt-support">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Who supports this app</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Marketplace apps are built and operated by their <strong>developers</strong>, running on
+                      Glyphh's hosting. Questions, bugs, and billing for anything bought inside the app go to
+                      the developer through the support channel on the left — support is their obligation.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Something that looks malicious — data exfiltration, impersonation, abuse — is a different
+                      matter: <strong>report the app</strong> and it lands directly in Glyphh's platform triage
+                      queue. Every report is taken seriously.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Connections right: the explainer, REPLACED by the open
+                     connection's tool list (his order, 2026-08-25) — the tools
+                     pane is moved here while a connection is open, and the
+                     explainer returns when it closes. -->
+                <div class="app-tab-right" data-tab="connections">
+                  <div id="app-conns-tools-host" class="hidden" style="padding:12px 16px;height:100%;overflow-y:auto;"></div>
+                  <div id="app-conns-explainer" style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">What this app needs</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      A Glyphh app is deterministic because it calls your <strong>connected accounts</strong> —
+                      Gmail, Slack, a CRM — through Glyphh's governed connectors, never with its own keys.
+                      Each connection it requires is listed on the left with whether you have it connected.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Expand a connection to see the tools the app depends on. A connection can be
+                      connected but still have tools your org or workspace hasn't allowed — those show as
+                      <strong>blocked</strong>, and the app can't call them until they're permitted on the
+                      Connections page.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Releases right: the history. Version, channel, date, notes. -->
+                <div class="app-tab-right" data-tab="webhooks">
+                  <div style="padding:12px 16px;">
+                    <div style="display:flex;align-items:center;gap:6px;margin:0 0 4px;">
+                      <h3 class="settings-subheading" style="margin:0;">Pipelines</h3>
+                      <button id="app-data-pipeline-url-copy" class="ws-icon-btn" type="button" title="Copy the door URL" style="width:22px;height:22px;">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      </button>
+                    </div>
+                    <p class="proxy-field-hint" style="margin:0 0 10px;">Tokens for external systems: <code>GET</code> the door for the model, <code>POST { table, rows }</code> in, <code>GET /&lt;table&gt;</code> out.</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                      <input id="app-data-pipelines-search" type="text" class="settings-input" placeholder="Search…" style="flex:1;height:30px;" spellcheck="false" autocomplete="off" />
+                      <button id="app-data-new-pipeline" class="action-btn primary" type="button">+ New Token</button>
+                    </div>
+                    <div id="app-data-pipelines" class="mbr-list"></div>
+                  </div>
+                </div>
+
+                <div class="app-tab-right" data-tab="releases">
+                  <div style="padding:12px 16px;">
+                    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                      <h3 class="settings-subheading" style="margin:0;">Version history</h3>
+                      <span id="release-count" class="release-count"></span>
+                      <span style="flex:1;"></span>
+                      <button id="release-refresh" class="ws-icon-btn" type="button" title="Refresh"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                    </div>
+                    <div id="release-list" class="release-list"></div>
+                    <div id="release-empty" class="help-item-empty hidden">
+                      No releases yet. Building this app from its folder cuts the first one.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="app-tab-right" data-tab="mcp">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Exposing tools over MCP</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      Any agent — your own Claude, or someone else's — can add this app's
+                      <code>/mcp</code> URL as a connector and call the tools you approve. Everything
+                      runs on <strong>your machine</strong>, sandboxed by the Glyphh runtime; the app must
+                      be running (and your Glyphh client online) for calls to succeed.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Approval is an allowlist: a tool is unreachable until you switch it on, and any
+                      newly-appeared tool stays off until you approve it. Every call spends credits and
+                      is capped by the <strong>Guardrails</strong> limits.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Guardrails right: explainer. -->
+                <div class="app-tab-right" data-tab="guardrails">
+                  <div style="padding:12px 16px;max-width:560px;">
+                    <h3 class="settings-subheading" style="margin:0 0 8px;">Hard limits</h3>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0 0 10px;">
+                      These caps are enforced at the gateway <em>before</em> a call reaches your machine, so a
+                      runaway or abusive caller can't drain your credits or hammer your model. They apply to
+                      every app that exposes an MCP endpoint.
+                    </p>
+                    <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin:0;">
+                      Per-call caps bound a single request; the window caps (tokens / calls) reset every
+                      <em>window</em> seconds; concurrency bounds simultaneous in-flight calls. Leave a field
+                      blank to impose no limit there.
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+          </div><!-- /apps-library-page -->
+
+        </div>

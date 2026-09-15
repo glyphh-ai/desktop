@@ -5,9 +5,11 @@
  * fixed 1920×1080 #stage that scales itself, <section class="slide"> pages with
  * #s1…#sN ids, .frag/data-step build steps, built-in keyboard/click nav).
  *
- * Decks live in the LOCAL library — ~/.glyphh/office/slides via office-store
- * (THE PURGE, 2026-09-10). A boot-time migration moves any decks a pre-Office
- * build left in ~/.glyphh/gpoints, then retires the folder.
+ * Decks live in the ORG'S LIBRARY — R2 behind yo-server, reached through the
+ * SDK (`client.officeSlides`) — so every surface (desktop, web, pods) reads the
+ * same shelf. Nothing is stored locally (zero-local-storage): the one nod to
+ * history is a boot-time migration that uploads any decks a pre-Office build
+ * left in ~/.glyphh/gpoints, then retires the folder.
  *
  * There is NO edit surface anywhere — the agent authors decks (create_gpoint /
  * delete_gpoint tools); the Slides panel lists, opens, presents and deletes.
@@ -17,8 +19,7 @@ import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ipcMain } from "electron";
-import * as store from "./office-store";
-import { userScopedPath } from "./app-paths.js";
+import { getClient } from "./glyphh-client";
 
 export interface GPointMeta {
   /** Bare filename in the org library, e.g. "q3-review.html". */
@@ -135,15 +136,15 @@ const metaOf = (m: WireMeta): GPointMeta => ({
   size: m.sizeBytes,
 });
 
-// ── One-time folder migration ────────────────────────────────────────────────
-// Pre-Office builds kept decks in ~/.glyphh/gpoints; the local library lives
-// in ~/.glyphh/office/slides now (THE PURGE). First library read moves
-// whatever is there through the store (which stamps title/slide counts), then
-// renames the folder so it never runs again.
+// ── One-time local→org migration ─────────────────────────────────────────────
+// Pre-Office builds kept decks in ~/.glyphh/gpoints (a zero-local-storage
+// violation this module replaces). First library read uploads whatever is
+// there, then renames the folder so it never runs again. Upserts are
+// idempotent, so a half-finished pass just resumes on the next read.
 let migrationDone = false;
 async function migrateLocalDecks(): Promise<void> {
   if (migrationDone) return;
-  const dir = userScopedPath("gpoints");
+  const dir = join(homedir(), ".glyphh", "gpoints");
   let names: string[];
   try {
     names = (await fsp.readdir(dir)).filter((n) => /\.html$/i.test(n));
@@ -151,19 +152,31 @@ async function migrateLocalDecks(): Promise<void> {
     migrationDone = true;   // no folder — nothing to migrate, ever
     return;
   }
-  let moved = 0;
+  // Per-file: an INVALID file (server E_VALIDATION — not a deck) is skipped
+  // permanently; an auth/network failure defers the WHOLE pass for a retry on
+  // the next read. One bad file must never wedge the import of the good ones.
+  const isTransient = (err: unknown): boolean => {
+    const msg = err instanceof Error ? err.message : String(err);
+    return /unauthenticated|signed out|token|fetch|network|econn|enotfound|timeout|50\d/i.test(msg);
+  };
+  const client = getClient();
+  let uploaded = 0;
   for (const n of names) {
     try {
       const html = await fsp.readFile(join(dir, n), "utf8");
-      await store.writeSlide(gpointFileName(n), html);
-      moved++;
+      await client.officeSlides.put(gpointFileName(n), html);
+      uploaded++;
     } catch (err) {
-      console.warn(`[gpoints] skipping "${n}":`, err instanceof Error ? err.message : err);
+      if (isTransient(err)) {
+        console.warn("[gpoints] local-deck migration deferred:", err instanceof Error ? err.message : err);
+        return;   // folder stays; the next read resumes (upserts are idempotent)
+      }
+      console.warn(`[gpoints] skipping "${n}" — not a valid deck:`, err instanceof Error ? err.message : err);
     }
   }
   await fsp.rename(dir, `${dir}.migrated`).catch(() => { /* best effort — re-runs are harmless */ });
   migrationDone = true;
-  if (moved) console.log(`[gpoints] moved ${moved} deck(s) into ~/.glyphh/office/slides`);
+  if (uploaded) console.log(`[gpoints] migrated ${uploaded} local deck(s) to the org library`);
 }
 
 // ── The STRUCTURE LOCK ───────────────────────────────────────────────────────
@@ -356,7 +369,7 @@ export function setDeckTitle(html: string, title: string): string {
 
 export async function listGPoints(): Promise<GPointMeta[]> {
   await migrateLocalDecks();
-  return (await store.listSlides()).map(metaOf);
+  return (await getClient().officeSlides.list()).map(metaOf);
 }
 
 /** Heal shell defects in a stored deck at render/save time. Older decks baked a
@@ -386,24 +399,24 @@ export async function readGPoint(name: unknown): Promise<string> {
   const file = gpointFileName(name);
   const hit = deckCache.get(file);
   if (hit && Date.now() - hit.at < DECK_CACHE_TTL_MS) return hit.html;
-  return normalizeDeckHtml((await store.readSlide(file)).html);
+  return normalizeDeckHtml((await getClient().officeSlides.get(file)).html);
 }
 
 export async function writeGPoint(name: unknown, html: string): Promise<{ file: string; path: string; slides: number }> {
   // Every save passes the STRUCTURE LOCK — agent or import, no exceptions — and
   // heals any legacy shell defect so re-saved decks are permanently fixed.
   const stored = normalizeDeckHtml(lockDeckSections(html));
-  const meta = await store.writeSlide(gpointFileName(name), stored);
+  const meta = await getClient().officeSlides.put(gpointFileName(name), stored);
   // Cache the EXACT bytes the store now holds (post lock+normalize), so the next
   // readGPoint in this pass rebases on them, not on an eventually-consistent GET.
   deckCache.set(meta.file, { html: normalizeDeckHtml(stored), at: Date.now() });
-  return { file: meta.file, path: `~/.glyphh/office/slides/${meta.file}`, slides: meta.slides };
+  return { file: meta.file, path: `the org's Slides library (${meta.file})`, slides: meta.slides };
 }
 
 export async function deleteGPoint(name: unknown): Promise<void> {
   const file = gpointFileName(name);
   deckCache.delete(file);
-  await store.deleteSlide(file);
+  await getClient().officeSlides.delete(file);
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));

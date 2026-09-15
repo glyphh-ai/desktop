@@ -1,0 +1,115 @@
+        <div class="help-section" data-section="marketplace">
+          <!-- Marketplace — its own left-rail section (M2). One section, five
+               sub-views, each a sibling container the shell (help/marketplace.ts)
+               swaps: the storefront, the listing detail, a developer's public
+               profile, the signed-in developer console, and the platform-admin
+               review desk. The storefront markup keeps its original ids so the
+               existing mkt-* styles bind unchanged. -->
+          <div id="apps-marketplace-page" class="apps-page">
+            <!-- Storefront (grid of listings) — hidden while a sub-page is open -->
+            <div id="mkt-store">
+            <div class="mkt-banner">
+              <div class="mkt-banner-inner">
+                <h2 class="mkt-banner-title">App marketplace</h2>
+                <p class="mkt-banner-sub">Install apps that give your AI new powers — published by developers or built inside your organization.</p>
+                <div class="mkt-search-wrap">
+                  <svg class="mkt-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input id="mkt-search" class="mkt-search" type="text" placeholder="Search apps, developers, categories…" spellcheck="false" autocomplete="off" />
+                  <button id="mkt-refresh" class="mkt-refresh" title="Refresh marketplace" aria-label="Refresh marketplace">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- The DELIVERABLE, same idea as the web hero: not a screenshot of
+                   Glyphh, but a plausible app someone built with it, floating on the
+                   brand ramp. Receipts: forward a receipt, it files itself. -->
+              <div class="mkt-hero-art" aria-hidden="true">
+                <div class="mha-app">
+                  <div class="mha-bar">
+                    <span class="mha-dot"></span><span class="mha-dot"></span><span class="mha-dot"></span>
+                    <span class="mha-name">Receipts</span>
+                    <span class="mha-chip">live</span>
+                  </div>
+                  <div class="mha-body">
+                    <div class="mha-kpi">
+                      <span class="mha-kpi-label">This month</span>
+                      <span class="mha-kpi-value">$4,208<span class="mha-kpi-cents">.55</span></span>
+                    </div>
+                    <div class="mha-chart">
+                      <i style="height:38%"></i><i style="height:62%"></i><i style="height:44%"></i>
+                      <i style="height:81%"></i><i style="height:57%"></i><i class="on" style="height:96%"></i>
+                      <i style="height:48%"></i>
+                    </div>
+                    <div class="mha-rows">
+                      <div class="mha-row"><span class="mha-av">FL</span><span class="mha-vendor">Flight — SFO</span><span class="mha-tag">Travel</span><span class="mha-amt">$612.40</span></div>
+                      <div class="mha-row"><span class="mha-av">FS</span><span class="mha-vendor">Figma seats</span><span class="mha-tag">Software</span><span class="mha-amt">$180.00</span></div>
+                      <div class="mha-row"><span class="mha-av">CB</span><span class="mha-vendor">Coffee — offsite</span><span class="mha-tag">Meals</span><span class="mha-amt">$38.15</span></div>
+                    </div>
+                  </div>
+                  <div class="mha-foot">
+                    <span class="mha-foot-dot"></span>Built in Glyphh
+                    <span class="mha-foot-sep">·</span>214 installs
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mkt-scopebar">
+              <div class="mkt-scope-tabs">
+                <button class="mkt-scope active" data-scope="public">Public</button>
+                <button class="mkt-scope" data-scope="private">Your organization</button>
+              </div>
+              <select id="mkt-sort" class="mkt-sort settings-input">
+                <option value="popular">Most popular</option>
+                <option value="rating">Top rated</option>
+                <option value="newest">Newest</option>
+              </select>
+              <span style="flex:1;"></span>
+              <!-- The publish side of the storefront: your profile, listings,
+                   pricing, releases. The Review desk is super-admin only
+                   (unhidden by the shell after the role check). -->
+              <button id="mkt-console-btn" class="action-btn" type="button">Developer console</button>
+              <button id="mkt-admin-btn" class="action-btn hidden" type="button">Review desk</button>
+            </div>
+
+            <div id="mkt-categories" class="mkt-categories"></div>
+
+            <!-- Popular strip -->
+            <div id="mkt-popular" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Popular apps</h4></div>
+              <div id="mkt-popular-list" class="mkt-row"></div>
+            </div>
+
+            <!-- Main grid -->
+            <div class="mkt-strip">
+              <div class="mkt-strip-head"><h4 id="mkt-all-title">All apps</h4><span id="mkt-count" class="mkt-count"></span></div>
+              <div id="mkt-list" class="mkt-grid"></div>
+              <div id="mkt-pager" class="cc-pager"></div>
+            </div>
+
+            <!-- Skills & Loops (his order, 2026-09-02): library items, always
+                 FREE — install copies into your library. marketplace.ts fills. -->
+            <div id="mkt-library" class="mkt-strip hidden">
+              <div class="mkt-strip-head"><h4>Skills &amp; Loops</h4><span class="mkt-count">always free</span></div>
+              <div id="mkt-library-list" class="mbr-list"></div>
+            </div>
+            </div><!-- /mkt-store -->
+
+            <!-- App detail page (Shopify-style listing) — filled by renderMktDetail() -->
+            <div id="mkt-detail" class="mkt-detail hidden"></div>
+
+            <!-- Developer profile — a developer's public page (avatar, bio, stars,
+                 their apps, their reviews). Filled by marketplace-dev.ts. -->
+            <div id="mkt-dev" class="mkt-detail hidden"></div>
+
+            <!-- Developer console — the signed-in org/user's publish surface:
+                 profile, listings, pricing, releases. Filled by marketplace-dev.ts. -->
+            <div id="mkt-console" class="mkt-detail hidden"></div>
+
+            <!-- Review desk (super-admin): release queue, malicious-app reports,
+                 flagged app + developer reviews. Filled by marketplace-admin.ts. -->
+            <div id="mkt-admin" class="mkt-detail hidden"></div>
+          </div>
+
+        </div>

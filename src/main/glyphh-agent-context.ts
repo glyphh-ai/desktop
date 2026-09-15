@@ -26,6 +26,7 @@ import { userScopedPath } from "./app-paths";
 import { getPreference } from "./stores/preferences-db";
 import { glyphhMode } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
+import { noteSessionsSnapshot } from "./cloud-fs-router";
 
 export interface StoredMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" }
 export interface StoredChat {
@@ -413,12 +414,14 @@ export function registerGlyphhContextIpc(): void {
   // Seed the cloud-fs locus from the persisted store — a boot that restores
   // a cloud session must route panels to the pod before any save happens.
   setTimeout(() => {
+    try { const f = loadSessions(); noteSessionsSnapshot(f.chats, f.currentId); } catch { /* fresh install */ }
   }, 0);
   ipcMain.handle("glyphh-agent-sessions-load", () => loadSessions());
   ipcMain.handle("glyphh-agent-sessions-save", (e, p: { chats: StoredChat[]; currentId: string }) => {
     saveSessions(Array.isArray(p?.chats) ? p.chats : [], String(p?.currentId || ""));
     // Cloud-fs locus: every session switch / birth / source bind flows
     // through this save — the same seam the web's wb-pod selector hooks.
+    noteSessionsSnapshot(Array.isArray(p?.chats) ? p.chats : [], String(p?.currentId || ""));
     // Other windows (main app vs ghost overlay) hold their own in-memory copy
     // of this store — tell them it moved so a ghost-created session shows up
     // in the main rail immediately, not on next launch.

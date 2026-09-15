@@ -10,7 +10,7 @@
  * guests rely on (persist:yo user agent, permission allowlist, downloads).
  */
 
-import { app, BrowserView, BrowserWindow, Menu, WebContents, session, webContents } from "electron";
+import { BrowserView, BrowserWindow, Menu, WebContents, session, webContents } from "electron";
 import * as path from "path";
 import * as os from "os";
 import { wireForceWebGuest, handleForceWebPopup } from "./force-web";
@@ -187,14 +187,6 @@ export class HomeView {
     });
     this.view = view;
     const wc = view.webContents;
-
-    // DEV VISIBILITY: the home view IS the app UI — a boot-time death here
-    // otherwise reads as a frozen splash with zero terminal evidence.
-    if (!app.isPackaged) {
-      wc.on("console-message", (_e, level, message, line, sourceId) => {
-        if (level >= 2) console.error(`[home] ${message} (${sourceId}:${line})`);
-      });
-    }
 
     // THE HOME VIEW IS THE APP UI — it must never navigate away from
     // home.html. A plain <a href> in agent chat output used to do exactly

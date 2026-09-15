@@ -29,16 +29,7 @@ import { tmpdir } from "node:os";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
-// Office / Design / Media / Band stepped OFF the surface (the-purge, 2026-09-10);
-// their tools stay in this file, hidden from the model and refused if called.
-const OFF_SURFACE_RE = /(slides|_docs?\b|doc_|sheets|chart|cell_style|named_range|data_validation|design|drive_|media|generate_(image|video|music|sound)|^speak$|artist|song|band|fill_column|conditional_format|instrument)/;
-const offSurface = (what: string) => (): never => { throw new Error(`${what} is off the surface right now`); };
-const openGPointPanel = offSurface("Slides") as (file?: unknown, title?: unknown) => never;
-const openGDocPanel = offSurface("Docs") as (file?: unknown, title?: unknown) => never;
-const openGSheetPanel = offSurface("Sheets") as (file?: unknown, title?: unknown) => never;
-const openDesignPanel = offSurface("Design") as (file?: unknown, title?: unknown) => never;
-const openMediaPanel = offSurface("Media") as (kind?: unknown, id?: unknown, extra?: unknown) => never;
+import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openMediaPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell, type ChartSpec, type CondFormat, type NamedRange, type DataValidation, type CellStyle } from "../shared/sheets-engine";
 import { randomUUID } from "node:crypto";
@@ -84,7 +75,7 @@ import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed }
 import { updateAppFromWorkdir, pullAppSource, commitAppSource } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
-import { runSchedule, listTaskSpecs, getTaskSpec, saveTaskSpec, getSkillRow } from "./local-library";
+import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
 import { panelRead, panelScreenshot, rpaTargetSlugs } from "./rpa";
 import { captureAttachedWindow } from "./agent-dock";
 
@@ -422,7 +413,7 @@ const TOOLS: ToolDef[] = [
   ...SEMANTIC_TOOLS.map((t): ToolDef => ({
     name: t.name,
     doc: t.doc,
-    action: (t as { action?: ToolDef["action"] }).action ?? (() => ({ kind: "read" as const, title: t.name })),
+    action: t.action,
     run: (args) => t.run(args),
   })),
   {
@@ -2328,15 +2319,15 @@ const TOOLS: ToolDef[] = [
     doc: "loops_list() — every loop (built-ins + the org's own): slug, name, description",
     action: () => ({ kind: "read", title: "List loops" }),
     run: async () => {
-      const loops = listTaskSpecs();
-      return cap(JSON.stringify(loops.map((l) => ({ slug: l.slug, name: l.name, description: l.description })), null, 2));
+      const { loops } = await getClient().loops.list();
+      return cap(JSON.stringify(loops.map((l) => ({ slug: l.slug, name: l.name, description: l.description, builtIn: l.builtIn })), null, 2));
     },
   },
   {
     name: "loops_get",
     doc: 'loops_get(slug) — one loop\'s full manifest + program source. loops_get("default") is the documented example to base new loops on',
     action: (a) => ({ kind: "read", title: `Read loop ${String(a.slug ?? "")}` }),
-    run: async (a) => cap(JSON.stringify(getTaskSpec(String(a.slug ?? "default")), null, 2)),
+    run: async (a) => cap(JSON.stringify(await getClient().loops.get(String(a.slug ?? "default")), null, 2)),
   },
   {
     name: "loops_save",
@@ -2353,8 +2344,10 @@ const TOOLS: ToolDef[] = [
         ...(a.manifest !== undefined ? { manifest: a.manifest as Record<string, unknown> } : {}),
         ...(a.code !== undefined ? { code: String(a.code) } : {}),
       };
-      void client;
-      const saved = saveTaskSpec({ slug: input.slug, name: input.name, ...(input.description !== undefined ? { description: input.description } : {}), ...(input.code !== undefined ? { program: input.code } : {}) });
+      const existing = await client.loops.get(slug).catch(() => null);
+      const saved = existing && !existing.builtIn
+        ? await client.loops.update(slug, input)
+        : await client.loops.create(input);
       return cap(`saved ✓ loop "${saved.slug}" (${saved.name})`);
     },
   },
@@ -2416,10 +2409,9 @@ const TOOLS: ToolDef[] = [
       let loopId: string | null = null;
       const loopSlug = a.loopSlug !== undefined ? String(a.loopSlug) : "";
       if (loopSlug && loopSlug !== "default") {
-        let loop: ReturnType<typeof getTaskSpec> | null = null;
-        try { loop = getTaskSpec(loopSlug); } catch { loop = null; }
+        const loop = await client.loops.get(loopSlug).catch(() => null);
         if (!loop) return `ERROR: no loop "${loopSlug}" — loops_list() shows what exists`;
-        loopId = loop.slug;
+        loopId = loop.builtIn ? null : loop.id;
       }
       const input = {
         slug,
@@ -2535,8 +2527,8 @@ const TOOLS: ToolDef[] = [
         ? tasks.find((t) => t.id === a.task || t.name.toLowerCase() === want)
         : (tasks.length === 1 ? tasks[0] : undefined);
       if (!task) return `ERROR: ${want ? `no task "${String(a.task)}"` : "several tasks"} on "${agent.slug}" — tasks: ${tasks.map((t) => t.name).join(", ")}`;
-      await runSchedule(task.id);
-      return cap(`ran ✓ "${task.name}" on ${agent.name ?? agent.slug}`);
+      const out = await runTaskNow(agent.id, task.id);
+      return out.ok ? cap(`ran ✓ "${task.name}" (${task.kind}:${task.target})`) : `ERROR: ${out.error ?? "run failed"}`;
     },
   },
   {
@@ -2547,7 +2539,7 @@ const TOOLS: ToolDef[] = [
       const slug = String(a.slug ?? "").trim();
       if (!slug) return "ERROR: slug is required — skills_list() shows what exists";
       try {
-        return cap(getSkillRow(slug).prompt || `skill "${slug}" has no instructions yet`);
+        return cap(await runSkillBySlug(slug, (a.args ?? {}) as Record<string, unknown>));
       } catch (err) {
         return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
       }
@@ -2694,7 +2686,7 @@ const COWORK_EXCLUDED = new Set([
 
 export function glyphhToolDefs(mode: AgentMode = "cowork"): Array<{ name: string; doc: string }> {
   const excluded = mode === "code" ? CODE_EXCLUDED : COWORK_EXCLUDED;
-  return TOOLS.filter((t) => !excluded.has(t.name) && !OFF_SURFACE_RE.test(t.name)).map((t) => ({ name: t.name, doc: t.doc }));
+  return TOOLS.filter((t) => !excluded.has(t.name)).map((t) => ({ name: t.name, doc: t.doc }));
 }
 
 export interface ToolOutcome { result: string; denied: boolean; title: string }

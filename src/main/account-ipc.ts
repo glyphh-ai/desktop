@@ -39,9 +39,6 @@ function fail(err: unknown): { ok: false; error: string } {
 
 export function registerAccountIpc(): void {
   // ── Billing (reads) ─────────────────────────────────────────────────────
-  // THE licensing read — the SDK's one place (client.plans). Every gated
-  // surface on desktop AND the platform answers here, nowhere else.
-  ipcMain.handle("plan-gates", () => getClient().plans.gates());
   ipcMain.handle("billing-plans", () => getClient().billing.plans());
   ipcMain.handle("billing-status", () => getClient().billing.status());
   ipcMain.handle("billing-credits", () => getClient().billing.credits());
@@ -67,14 +64,8 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, config: await getClient().billing.setAutotopup(input) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("billing-subscribe", async (_e, tier: string, embedded?: boolean) => {
-    try {
-      if (embedded) {
-        const change = await getClient().billing.subscribeEmbedded(String(tier || ""));
-        return { ok: true as const, clientSecret: change.clientSecret ?? "" };
-      }
-      return { ok: true as const, url: (await getClient().billing.subscribe(String(tier || ""))).url };
-    }
+  ipcMain.handle("billing-subscribe", async (_e, tier: string) => {
+    try { return { ok: true as const, url: (await getClient().billing.subscribe(String(tier || ""))).url }; }
     catch (err) { return fail(err); }
   });
   ipcMain.handle("billing-change-plan", async (_e, tier: string) => {
@@ -116,6 +107,11 @@ export function registerAccountIpc(): void {
     catch (err) { return fail(err); }
   });
   // Organization SSO (WorkOS) — status, admin-portal link, require-SSO toggle.
+  ipcMain.handle("org-security", () => getClient().org.security());
+  ipcMain.handle("org-security-portal", (_e, intent: string) =>
+    getClient().org.securityPortal((intent as "sso" | "dsync" | "domain_verification") || "sso"));
+  ipcMain.handle("org-security-require-sso", (_e, requireSso: boolean) =>
+    getClient().org.setRequireSso(!!requireSso));
   // ── App ingest webhooks (the Webhooks settings page) ────────────────────
   ipcMain.handle("apps-ingest-installed", async () => {
     try { return { ok: true as const, apps: await getClient().apps.installed() }; }

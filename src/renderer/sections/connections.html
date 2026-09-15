@@ -1,14 +1,12 @@
         <div class="help-section" data-section="connections">
           <h2>Connections</h2>
-          <p class="section-desc">Custom MCP servers your agents may act through — each one governs exactly which tools are exposed, served to every CLI through the local Glyphh MCP server.</p>
+          <p class="section-desc">Accounts your AI may act through — each one governs exactly which tools are exposed.</p>
 
           <div id="connections-toolbar" class="crud-toolbar">
             <input id="conn-search" type="text" class="crud-search" placeholder="Search connections..." spellcheck="false" autocomplete="off" />
+            <!-- Shown only when the org policy (allow_custom_mcp) permits it -->
+            <button id="conn-add-custom-btn" class="action-btn hidden">+ Custom MCP</button>
             <button id="conn-add-btn" class="action-btn primary">+ New</button>
-            <button id="conn-add-custom-btn" class="action-btn primary hidden">+ Custom MCP</button>
-            <button id="connections-refresh-btn" class="action-btn" title="Refresh" aria-label="Refresh" style="padding:6px 9px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
           </div>
 
           <div id="connections-list" class="crud-cards"></div>
@@ -27,12 +25,6 @@
                 <div id="conn-detail-head" class="edit-head"></div>
                 <label class="settings-label">Name</label>
                 <input id="conn-name" type="text" class="settings-input" placeholder="e.g. Gmail — work" spellcheck="false" autocomplete="off" />
-                <!-- Scope (his rule, 2026-09-13): org-wide or the owner's own.
-                     Title left, standard bare toggle right; admins only. -->
-                <div id="conn-scope-row" class="hidden" style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;">
-                  <label class="settings-label" style="margin:0;">Org connection</label>
-                  <label class="settings-toggle ws-model-allow"><input id="conn-scope-toggle" type="checkbox" /><span class="toggle-switch"></span></label>
-                </div>
                 <!-- Custom MCP: connect a remote server by URL. Auth is handled
                      automatically on first connect (OAuth). The OAuth client +
                      headers under Advanced are only for servers that need them

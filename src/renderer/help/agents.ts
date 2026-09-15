@@ -1,23 +1,15 @@
 /**
  * Agents section — the workforce roster, with BOTH authoring doors open.
  *
- * Restored 2026-09-11 from the pre-purge page (4cae30db^) and ported to
- * LOCAL storage (main/local-agents.ts). What changed and why:
+ * The Glyphh AGENT authors agents (loop choice, selections, guardrails, task
+ * bindings) through /create-agent — and a human can now do the same by hand:
+ * "+ New" opens the manual form, and every agent (AI-made or not) is editable
+ * through that same form. The form edits exactly what the API persists:
+ * name/slug/description/scope, loopId, selections (roles/skills/apps),
+ * guardrails, and the task bindings (name, kind, target, args, cron, enabled).
  *
- *   - `scope: personal | org` is gone. Org sharing was enforced by a server
- *     that no longer sits behind this; a selector that silently did nothing
- *     would be a lie.
- *   - The Loop dropdown lists CLI LOOPS (the Loops page's pre-configs) —
- *     that is what "loop" means now. The old per-role model SLOTS collapse
- *     to one optional model override, since a loop carries its own model.
- *   - Agents gained a PROMPT: the standing instruction each run opens with
- *     (his ask: "agents which have prompts, tasks, etc").
- *   - A task's kind is task | skill. The pre-purge "loop" kind IS the "task"
- *     kind — that store was renamed, not removed.
- *
- * Everything else is the original: the roster table, the READ + OPERATIONAL
- * detail (live/pause, task enable/disable, reschedule, run-now, run feeds,
- * delete), and the manual form behind "+ New" / Edit.
+ * The DETAIL view stays READ + OPERATIONAL: live/pause, task enable/disable,
+ * reschedule, run-now, run feeds, delete. Its Edit button opens the form.
  */
 
 import { $a, escapeHtml, paginate, renderPaginationBar, confirmAction, slugify } from "./shared.js";
@@ -26,22 +18,12 @@ import { kebabCell, ROW_MENU_ICONS, wireSplitDivider } from "./lib-editor.js";
 import { formatMarkdown } from "../format-markdown.js";
 import {
   unwrap,
-  type Agent, type AgentSummary, type AgentTask, type AgentTaskRun,
-  type GuardrailsPolicy,
+  type Agent, type AgentSummary, type AgentSelections, type AgentTask, type AgentTaskRun,
+  type GuardrailsPolicy, type Loop, type LoopManifest, type LoopSummary,
 } from "./library-types.js";
 
-/** A CLI loop, as the Loops page stores it. */
-interface LoopOption { id: string; name: string; cli?: string; model?: string }
-/** A pickable target for a task: a task spec or a skill. */
-interface TargetOption { slug: string; name: string }
-/** A governed model, as the catalog hands it over. */
-interface CatalogModel { id: string; name: string; providerSlug?: string; pickerVisible?: boolean }
-
 let all: AgentSummary[] = [];
-let loops: LoopOption[] = [];
-let taskSpecs: TargetOption[] = [];
-let skills: TargetOption[] = [];
-let models: CatalogModel[] = [];
+let loops: LoopSummary[] = [];
 let page = 0;
 let current: Agent | null = null;
 
@@ -60,11 +42,9 @@ const formErr = $a("agent-form-err");
 const fName = $a<HTMLInputElement>("agent-f-name");
 const fSlug = $a<HTMLInputElement>("agent-f-slug");
 const fDesc = $a<HTMLTextAreaElement>("agent-f-desc");
-const fPrompt = $a<HTMLTextAreaElement>("agent-f-prompt");
-const fSource = $a<HTMLSelectElement>("agent-f-source");
+const fScope = $a<HTMLSelectElement>("agent-f-scope");
 const fLoop = $a<HTMLSelectElement>("agent-f-loop");
-const fProvider = $a<HTMLSelectElement>("agent-f-provider");
-const fModel = $a<HTMLSelectElement>("agent-f-model");
+const fModels = $a("agent-f-models");
 const fSkills = $a("agent-f-skills");
 const fApps = $a<HTMLInputElement>("agent-f-apps");
 const fTasks = $a("agent-f-tasks");
@@ -79,72 +59,34 @@ function failForm(msg: string): void {
   formErr.classList.remove("hidden");
 }
 
-const api = () => window.glyphh as unknown as {
-  libraryAgentsList: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentGet: (ref: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentCreate: (input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentUpdate: (ref: string, patch: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentDelete: (ref: string) => Promise<{ ok: boolean; error?: string }>;
-  libraryAgentTasks: (ref: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentTaskAdd: (ref: string, input: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentTaskDelete: (ref: string, taskId: string) => Promise<{ ok: boolean; error?: string }>;
-  libraryAgentTaskRuns: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentTaskRunning: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  libraryAgentTaskRunNow: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-  cliAgentsList?: () => Promise<{ ok: boolean; agents: LoopOption[] }>;
-  loopsList?: () => Promise<{ ok: boolean; loops?: Array<{ slug: string; name: string }> }>;
-  librarySkillsList?: () => Promise<{ ok: boolean; data?: unknown }>;
-  workspacesModelCatalog?: () => Promise<{ ok: boolean; models?: CatalogModel[] }>;
-};
-
 // ── Cards ───────────────────────────────────────────────────────────────────
 
-/** Stable hue from an id — the same trick the old agent identicons used. */
+/** Stable hue from a model id — same trick the old agent identicons used. */
 function hueFor(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return h;
 }
 
-/** The agent's cast as a small round badge: the loop's initial on a stable
- *  per-loop color, plus the model override when it carries one. */
-function castBadges(agent: AgentSummary): string {
-  const ids = [agent.provider || agent.loopId, agent.model].filter((x): x is string => !!x);
-  if (!ids.length) return "";
-  const dots = ids.map((id) => {
+/** The agent's model cast as small round badges: the model's initial on a
+ *  stable per-model color. */
+function modelBadges(agent: AgentSummary): string {
+  const models = Object.values(agent.selections?.roles ?? {});
+  if (!models.length) return "";
+  const dots = models.slice(0, 4).map((id) => {
     const bare = id.includes("::") ? id.slice(id.indexOf("::") + 2) : id;
     const letter = (bare[0] || "?").toUpperCase();
     return `<span class="agent-model-dot" style="--dot:hsl(${hueFor(id)} 60% 45%)" title="${escapeHtml(id)}">${escapeHtml(letter)}</span>`;
   }).join("");
-  return `<span class="agent-model-cast">${dots}</span>`;
-}
-
-/** Everything the form and detail pick FROM — loops, task specs, skills and
- *  the governed model catalog. Loaded once per page visit. */
-async function loadOptions(): Promise<void> {
-  const a = api();
-  const [loopsRes, specsRes, skillsRes, modelsRes] = await Promise.all([
-    a.cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
-    a.loopsList?.().catch(() => null) ?? Promise.resolve(null),
-    a.librarySkillsList?.().catch(() => null) ?? Promise.resolve(null),
-    a.workspacesModelCatalog?.().catch(() => null) ?? Promise.resolve(null),
-  ]);
-  loops = loopsRes?.ok ? loopsRes.agents : [];
-  // loopsList is the TASK SPEC store (renamed; see local-library.ts).
-  // Independent of the loops call — gating them together meant one failure
-  // silently emptied the other list.
-  taskSpecs = (specsRes?.ok ? specsRes.loops ?? [] : []).map((t) => ({ slug: t.slug, name: t.name }));
-  const sk = skillsRes?.ok ? (skillsRes.data as Array<{ slug: string; name: string }> | undefined) ?? [] : [];
-  skills = sk.map((s) => ({ slug: s.slug, name: s.name }));
-  models = (modelsRes?.ok ? modelsRes.models ?? [] : []).filter((m) => m.pickerVisible !== false);
+  const extra = models.length > 4 ? `<span class="agent-model-more">+${models.length - 4}</span>` : "";
+  return `<span class="agent-model-cast">${dots}${extra}</span>`;
 }
 
 export async function loadAgents(): Promise<void> {
   listEl.innerHTML = `<div class="crud-empty">Loading…</div>`;
+  manifestCache.clear();
   try {
-    await loadOptions();
-    all = unwrap<AgentSummary[]>(await api().libraryAgentsList());
+    all = unwrap<AgentSummary[]>(await window.glyphh.libraryAgentsList());
   } catch (err) {
     listEl.innerHTML = `<div class="crud-empty">Couldn't load agents — ${escapeHtml(err instanceof Error ? err.message : String(err))}</div>`;
     return;
@@ -162,12 +104,11 @@ function renderList(): void {
   editor.classList.add("hidden");
   form?.classList.add("hidden");
   toolbar.classList.remove("hidden");
-  listEl.classList.remove("hidden");
   listEl.innerHTML = "";
   current = null;
 
   if (all.length === 0) {
-    listEl.innerHTML = `<div class="crud-empty">No agents yet — <b>+ New</b> builds one.</div>`;
+    listEl.innerHTML = `<div class="crud-empty">No agents yet — "+ New with AI" describes the standing work to the agent, "+ New" builds one by hand.</div>`;
     return;
   }
   if (filtered.length === 0) {
@@ -179,15 +120,15 @@ function renderList(): void {
   page = state.page;
   const table = document.createElement("table");
   table.className = "lib-table";
-  table.innerHTML = `<thead><tr><th>Name</th><th>Description</th><th>Runs on</th><th>Status</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  table.innerHTML = `<thead><tr><th>Name</th><th>Description</th><th>Models</th><th>Status</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
   const tbody = document.createElement("tbody");
   for (const agent of items) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
-      <td>${castBadges(agent)}</td>
-      <td>${agent.live ? `<span class="lib-badge lib-badge-live">Live</span>` : "Paused"}</td>
+      <td>${modelBadges(agent)}</td>
+      <td>${agent.live ? `<span class="lib-badge lib-badge-live">Live</span>` : "Paused"}${agent.scope === "org" ? ` <span class="lib-badge">Org</span>` : ""}</td>
       `;
     tr.querySelector(".lib-table-name")!.textContent = agent.name;
     tr.querySelector(".lib-table-desc")!.textContent = agent.description || agent.slug;
@@ -200,7 +141,7 @@ function renderList(): void {
         void (async () => {
           const sure = await confirmAction({ title: `Delete "${agent.name}"?`, body: "Its scheduled tasks stop firing with it.", confirmLabel: "Delete", danger: true });
           if (!sure) return;
-          const env = await api().libraryAgentDelete(agent.id);
+          const env = await window.glyphh.libraryAgentDelete(agent.id);
           if (env.ok) await loadAgents();
         })();
       } },
@@ -210,6 +151,26 @@ function renderList(): void {
   table.appendChild(tbody);
   listEl.appendChild(table);
   if (state.totalPages > 1) listEl.appendChild(renderPaginationBar(state, (p) => { page = p; renderList(); }));
+}
+
+// ── Loop manifests (cache) ──────────────────────────────────────────────────
+
+/** Per-page-load cache of loop manifests, keyed by the ref used to fetch. The
+ *  manifest is the loop's CONTRACT: its type (memory loops power the rotor,
+ *  not agents), its declared model slots, and its declared skills. */
+const manifestCache = new Map<string, LoopManifest>();
+
+async function loopManifest(ref: string): Promise<LoopManifest> {
+  const hit = manifestCache.get(ref);
+  if (hit) return hit;
+  try {
+    const env = await window.glyphh.libraryLoopGet(ref);
+    const m = env.ok ? ((env.data as Loop).manifest ?? {}) : {};
+    manifestCache.set(ref, m);
+    return m;
+  } catch {
+    return {};
+  }
 }
 
 // ── Detail (read) ───────────────────────────────────────────────────────────
@@ -346,7 +307,7 @@ function scheduleEditor(task: AgentTask, row: HTMLElement, repaint: () => void):
       void (async () => {
         const cron = ctl.read();
         if (!cron || cron.trim().split(/\s+/).length !== 5) { status.textContent = ""; return; }
-        const r = await api().libraryAgentTaskUpdate(current!.id, task.id, { cron });
+        const r = await window.glyphh.libraryAgentTaskUpdate(current!.id, task.id, { cron });
         status.textContent = r.ok ? "saved ✓" : (r.error || "save failed");
         if (r.ok) task.cron = cron;
       })();
@@ -360,21 +321,20 @@ const RUN_CARET = `<svg class="lib-run-caret" width="11" height="11" viewBox="0 
 /** One run as a collapsible row: date/time on the left, Success/Failed on the
  *  far right; the header click reveals what the run produced. */
 function runRow(run: AgentTaskRun): HTMLElement {
-  const bad = run.status !== "ok";
   const row = document.createElement("div");
-  row.className = "lib-run-row" + (bad ? " error" : "");
+  row.className = "lib-run-row" + (run.status === "error" ? " error" : "");
   const when = new Date(run.startedAt).toLocaleString();
   const dur = run.durationMs != null ? ` · ${(run.durationMs / 1000).toFixed(1)}s` : "";
   row.innerHTML = `
     <button type="button" class="lib-run-rowhead">
       ${RUN_CARET}
       <span class="lib-run-when">${escapeHtml(when)}${dur}</span>
-      <span class="lib-run-badge ${bad ? "err" : "ok"}">${bad ? "Failed" : "Success"}</span>
+      <span class="lib-run-badge ${run.status === "error" ? "err" : "ok"}">${run.status === "error" ? "Failed" : "Success"}</span>
     </button>
     <div class="lib-run-detail hidden"><div class="lib-run-body"></div></div>`;
   const body = row.querySelector<HTMLElement>(".lib-run-body")!;
-  if (bad && run.error) {
-    body.textContent = run.error;
+  if (run.status === "error") {
+    body.textContent = run.error || "failed";
   } else {
     // A run's output IS a chat turn — render it like one.
     body.classList.add("md");
@@ -388,13 +348,13 @@ function runRow(run: AgentTaskRun): HTMLElement {
 }
 
 /** An in-flight run: same row shape, no detail — just the live spinner. */
-function runningRow(): HTMLElement {
+function runningRow(since: number): HTMLElement {
   const row = document.createElement("div");
   row.className = "lib-run-row running";
   row.innerHTML = `
     <div class="lib-run-rowhead">
       <span class="lib-run-spin"></span>
-      <span class="lib-run-when">now</span>
+      <span class="lib-run-when">${escapeHtml(new Date(since).toLocaleString())}</span>
       <span class="lib-run-badge running">Running…</span>
     </div>`;
   return row;
@@ -408,23 +368,23 @@ async function runFeed(task: AgentTask, host: FeedHost, opts: { quiet?: boolean 
   if (host.__feedTimer) { clearTimeout(host.__feedTimer); host.__feedTimer = undefined; }
   if (!opts.quiet) host.innerHTML = `<div class="crud-empty">Loading runs…</div>`;
   const [env, runningEnv] = await Promise.all([
-    api().libraryAgentTaskRuns(current!.id, task.id),
-    api().libraryAgentTaskRunning(current!.id, task.id),
+    window.glyphh.libraryAgentTaskRuns(current!.id, task.id),
+    window.glyphh.libraryAgentTaskRunning(current!.id, task.id),
   ]);
   if (!host.isConnected) return;
   if (!env.ok) { host.innerHTML = `<div class="crud-empty">Couldn't load runs.</div>`; return; }
-  const runs = (env.data as AgentTaskRun[]) ?? [];
-  const running = runningEnv.ok ? runningEnv.data === true : false;
+  const runs = env.data as AgentTaskRun[];
+  const since = runningEnv.ok ? (runningEnv.data as { since: number | null }).since : null;
   host.innerHTML = "";
-  if (running) host.appendChild(runningRow());
-  if (!runs.length && !running) {
+  if (since != null) host.appendChild(runningRow(since));
+  if (!runs.length && since == null) {
     host.innerHTML = `<div class="crud-empty">No runs yet — the next firing lands here.</div>`;
   } else {
     for (const run of runs) host.appendChild(runRow(run));
   }
   // Live while running (2s), a slow keep-fresh tick otherwise (15s) — so
   // scheduled firings appear without leaving and coming back.
-  host.__feedTimer = setTimeout(() => { void runFeed(task, host, { quiet: true }); }, running ? 2000 : 15_000);
+  host.__feedTimer = setTimeout(() => { void runFeed(task, host, { quiet: true }); }, since != null ? 2000 : 15_000);
 }
 
 function taskRow(task: AgentTask): HTMLElement {
@@ -451,13 +411,13 @@ function taskRow(task: AgentTask): HTMLElement {
       <span class="lib-task-status"${task.lastError ? ' style="color:var(--danger)"' : ""}></span>
       <button type="button" class="lib-task-run" title="Run this task now">▶ run</button>`;
     row.querySelector(".lib-task-name")!.textContent = task.name;
-    row.querySelector(".lib-task-binding")!.textContent = `runs ${task.kind} ${task.target}`;
+    row.querySelector(".lib-task-binding")!.textContent = `runs ${task.target}`;
     row.querySelector(".lib-task-sched")!.textContent = humanCron(task.cron);
     row.querySelector(".lib-task-status")!.textContent = status;
 
     row.querySelector<HTMLInputElement>(".lib-task-enabled input")!.addEventListener("change", async (e) => {
       const enabled = (e.target as HTMLInputElement).checked;
-      const r = await api().libraryAgentTaskUpdate(current!.id, task.id, { enabled });
+      const r = await window.glyphh.libraryAgentTaskUpdate(current!.id, task.id, { enabled });
       if (!r.ok) { fail(r.error || "couldn't toggle the task"); (e.target as HTMLInputElement).checked = !enabled; }
       else task.enabled = enabled;
     });
@@ -465,7 +425,7 @@ function taskRow(task: AgentTask): HTMLElement {
     row.querySelector(".lib-task-sched")!.addEventListener("click", () => {
       scheduleEditor(task, row, () => {
         void (async () => {
-          const env = await api().libraryAgentTasks(current!.id);
+          const env = await window.glyphh.libraryAgentTasks(current!.id);
           const fresh = env.ok ? (env.data as AgentTask[]).find((x) => x.id === task.id) : null;
           if (fresh) Object.assign(task, fresh);
           paintRow();
@@ -478,16 +438,18 @@ function taskRow(task: AgentTask): HTMLElement {
     runBtn.addEventListener("click", async () => {
       runBtn.disabled = true;
       runBtn.textContent = "running…";
-      const pending = api().libraryAgentTaskRunNow(current!.id, task.id);
+      const pending = window.glyphh.libraryAgentTaskRunNow(current!.id, task.id);
       // Repaint right away so the feed's "Running…" row shows while it goes.
       void runFeed(task, feed, { quiet: true });
       const r = await pending;
       runBtn.disabled = false;
       runBtn.textContent = "▶ run";
-      if (!r.ok) fail(r.error || "run failed");
+      // Two layers: the IPC envelope, then the run's own outcome.
+      const outcome = r.ok ? (r.data as { ok: boolean; error?: string }) : { ok: false, error: r.error };
+      if (!outcome.ok) fail(outcome.error || "run failed");
       // Refresh both the feed and the row's last-run glance.
       await runFeed(task, feed);
-      const env = await api().libraryAgentTasks(current!.id);
+      const env = await window.glyphh.libraryAgentTasks(current!.id);
       const fresh = env.ok ? (env.data as AgentTask[]).find((x) => x.id === task.id) : null;
       if (fresh) { Object.assign(task, fresh); paintRow(); }
     });
@@ -496,62 +458,53 @@ function taskRow(task: AgentTask): HTMLElement {
   return wrap;
 }
 
-/** Open one agent's detail from OUTSIDE the section — caller flips to the
- *  Agents section first. */
+/** Open one agent's detail from OUTSIDE the section (the dashboard's
+ *  scheduled-tasks rows) — caller flips to the Agents section first. */
 export function openAgentDetail(id: string): void {
   void openDetail(id);
 }
 
-const loopName = (id: string | null): string =>
-  (id ? loops.find((l) => l.id === id)?.name ?? id : "—");
-
-const modelName = (id: string): string =>
-  (id ? models.find((m) => m.id === id)?.name ?? id : "");
-
 async function openDetail(id: string): Promise<void> {
   formError.classList.add("hidden");
-  if (!loops.length) await loadOptions();
-  const env = await api().libraryAgentGet(id);
+  const env = await window.glyphh.libraryAgentGet(id);
   if (!env.ok) { fail(env.error || "couldn't load the agent"); return; }
   current = env.data as Agent;
 
+  const r = await window.glyphh.loopsList?.();
+  // Memory loops power the memory rotor, not agents — never pickable here.
+  loops = ((r?.loops ?? []) as unknown as LoopSummary[])
+    .filter((l) => (l as { type?: string }).type !== "memory");
+
   liveToggle.checked = current.live;
 
-  const gr = current.guardrails;
-  const grRows = gr
-    ? Object.entries(gr).filter(([, v]) => v != null)
-        .map(([k, v]) => readRow(GR_LABELS[k as keyof GuardrailsPolicy] ?? k, String(v))).join("")
-    : "";
+  const bound = current.loopId ? loops.find((l) => l.id === current!.loopId) : null;
+  const loopName = current.loopId ? (bound?.name ?? "Custom loop") : "Default";
+  const loopRef = current.loopId ? (bound?.slug ?? current.loopId) : "default";
 
   detailEl.innerHTML = `
     <h3 class="lib-read-title">${escapeHtml(current.name)}</h3>
     <p class="lib-read-desc">${escapeHtml(current.description || "")}</p>
     <div class="lib-read-meta">
-      ${current.provider
-        ? readRow("Provider", current.provider)
-        : readRow("Loop", loopName(current.loopId))}
-      ${readRow("Model", current.model ? modelName(current.model) : "the loop's own")}
-      ${current.skills?.length ? readRow("Skills", current.skills.join(", ")) : ""}
-      ${current.apps?.length ? readRow("Apps", current.apps.join(", ")) : ""}
+      ${readRow("Loop", loopName)}
+      ${current.selections?.skills?.length ? readRow("Skills", current.selections.skills.join(", ")) : ""}
+      ${current.selections?.apps?.length ? readRow("Apps", current.selections.apps.join(", ")) : ""}
+      ${readRow("Scope", current.scope === "org" ? "Shared with the org" : "Personal")}
     </div>
-    ${current.prompt ? `<span class="lib-read-label" style="display:block;margin-top:16px;">Prompt</span><pre class="lib-read-pre"></pre>` : ""}
-    ${grRows ? `<span class="lib-read-label" style="display:block;margin-top:16px;">Guardrails</span><div class="lib-read-meta" style="margin-top:6px;">${grRows}</div>` : ""}
+    <div id="agent-model-rows" style="margin-top:16px;"></div>
     <div class="settings-actions" style="margin-top:24px;">
       <button id="agent-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
-      <button id="agent-publish-btn" class="action-btn">Publish to AI Hub</button>
     </div>`;
-  const pre = detailEl.querySelector<HTMLElement>(".lib-read-pre");
-  if (pre) pre.textContent = current.prompt;
 
   detailEl.querySelector("#agent-delete-btn")?.addEventListener("click", () => void deleteCurrent());
-  const publishBtn = detailEl.querySelector<HTMLButtonElement>("#agent-publish-btn");
-  publishBtn?.addEventListener("click", () => void publishCurrent(publishBtn));
+
+  const modelHost = detailEl.querySelector<HTMLElement>("#agent-model-rows");
+  if (modelHost) await renderModelRows(modelHost, loopRef, current.selections?.roles ?? {}, false);
 
   // The RIGHT pane: the schedule and its run feeds — what this agent DOES.
   sideEl.innerHTML = `<span class="lib-read-label">Schedule</span><div id="agent-task-rows"></div>`;
   const rowsEl = sideEl.querySelector<HTMLElement>("#agent-task-rows")!;
-  const tasksEnv = await api().libraryAgentTasks(current.id);
+  const tasksEnv = await window.glyphh.libraryAgentTasks(current.id);
   const tasks = tasksEnv.ok ? (tasksEnv.data as AgentTask[]) : [];
   if (!tasks.length) {
     rowsEl.innerHTML = `<div class="crud-empty">No scheduled tasks — Edit this agent to add one, or ask the agent.</div>`;
@@ -565,9 +518,88 @@ async function openDetail(id: string): Promise<void> {
   editor.classList.remove("hidden");
 }
 
+/**
+ * The model slots for a loop, painted into `host`.
+ *
+ * Editable: one dropdown per role the loop DECLARES — "Auto" inherits the
+ * loop's resolution, a pick pins a model for this agent. The Default loop
+ * declares none, so its implicit slot shows read-only (the server only
+ * accepts overrides on declared roles). Read-only: the same rows as
+ * lib-read rows, for the detail view.
+ */
+async function renderModelRows(
+  host: HTMLElement, loopRef: string, pinned: Record<string, string>, editable: boolean,
+): Promise<void> {
+  host.innerHTML = "";
+  const res = await window.glyphh.loopRoles(loopRef);
+  if (!res.ok || !res.roles.length) return;
+
+  const manifest = await loopManifest(loopRef);
+  const declared = new Set((manifest.roles ?? []).map((role) => role.name));
+  const loopName = loops.find((l) => (l.slug ?? l.id) === loopRef || l.id === loopRef)?.name ?? "the loop";
+
+  // Display NAMES, never raw catalog ids — "Auto — Fable 5", not
+  // "Auto — anthropic::claude-fable-5".
+  const nameOf = (roleChoices: typeof res.roles[number]["choices"], id: string | null): string => {
+    if (!id) return "resolved at run time";
+    return roleChoices.find((c) => c.id === id)?.name || id;
+  };
+
+  if (!editable) {
+    const rows = res.roles.map((role) => {
+      const label = declared.has(role.name) ? (role.label || role.name) : "Model";
+      const value = pinned[role.name]
+        ? nameOf(role.choices, pinned[role.name]!)
+        : `Auto — ${nameOf(role.choices, role.modelId)}`;
+      return readRow(label, value);
+    }).join("");
+    host.innerHTML = `<span class="lib-read-label">Models</span><div class="lib-read-meta" style="margin-top:6px;">${rows}</div>`;
+    return;
+  }
+
+  for (const role of res.roles) {
+    const row = document.createElement("div");
+    if (!declared.has(role.name)) {
+      // Implicit slot: show the resolution, no override to offer.
+      row.innerHTML = `
+        <label class="settings-label">Model</label>
+        <div class="lib-read-value">${escapeHtml(nameOf(role.choices, role.modelId))}</div>
+        <p class="field-hint">Resolved by ${escapeHtml(loopName)}.</p>`;
+      host.appendChild(row);
+      continue;
+    }
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    label.textContent = role.label;
+    const select = document.createElement("select");
+    select.className = "settings-input";
+    select.dataset.role = role.name;
+    const auto = document.createElement("option");
+    auto.value = "";
+    auto.textContent = `Auto — ${nameOf(role.choices, role.modelId)}`;
+    select.appendChild(auto);
+    for (const choice of role.choices) {
+      const opt = document.createElement("option");
+      opt.value = choice.id;
+      opt.textContent = choice.name || choice.id;
+      select.appendChild(opt);
+    }
+    const pin = pinned[role.name];
+    if (pin) select.value = pin;
+    row.append(label, select);
+    if (role.description) {
+      const hint = document.createElement("p");
+      hint.className = "field-hint";
+      hint.textContent = role.description;
+      row.appendChild(hint);
+    }
+    host.appendChild(row);
+  }
+}
+
 // ── The manual create/edit form ─────────────────────────────────────────────
 
-/** null = create mode. Set to the created agent as soon as the write lands, so
+/** null = create mode. Set to the created agent as soon as the POST lands, so
  *  a retry after a failed task write PATCHes instead of duplicating. */
 let formAgent: Agent | null = null;
 
@@ -576,16 +608,14 @@ interface TaskDraft {
   id: string | null;
   el: HTMLElement;
   cron: CronControl;
-  read(): { name: string; kind: AgentTask["kind"]; target: string; enabled: boolean };
+  read(): { name: string; kind: AgentTask["kind"]; target: string; argsText: string; enabled: boolean };
 }
 
 let formTasks: TaskDraft[] = [];
 let removedTaskIds: string[] = [];
 
 /** One editable task binding: name + kind + target + enabled on the first
- *  row, and the schedule grammar underneath. The TARGET is a dropdown of
- *  what actually exists — the pre-purge free-text slug field let you point a
- *  task at nothing and only find out when it fired. */
+ *  row, optional JSON args, and the schedule grammar underneath. */
 function addTaskDraft(task: AgentTask | null): void {
   if (!fTasks) return;
   const el = document.createElement("div");
@@ -594,52 +624,26 @@ function addTaskDraft(task: AgentTask | null): void {
     <div class="lib-task-form">
       <input type="text" class="settings-input tf-name" placeholder="Task name" spellcheck="false" autocomplete="off" />
       <select class="settings-input tf-kind" title="What the task fires">
-        <option value="task">Task</option>
         <option value="skill">Skill</option>
+        <option value="loop">Loop</option>
+        <option value="app_command">App command</option>
       </select>
-      <select class="settings-input tf-target" title="Which one"></select>
+      <input type="text" class="settings-input tf-target" placeholder="target slug" spellcheck="false" autocomplete="off" />
       <label class="lib-skill-row tf-enabled-wrap" title="Armed while the agent is live"><input type="checkbox" class="tf-enabled" checked /> Enabled</label>
       <button type="button" class="action-btn danger tf-remove">Remove</button>
-    </div>`;
+    </div>
+    <textarea class="settings-input tf-args" rows="2" spellcheck="false" placeholder='{ "key": "value" } — optional JSON arguments (app commands: { "tool": "…", "args": { … } })'></textarea>`;
 
   const q = <T extends HTMLElement>(sel: string): T => el.querySelector(sel) as T;
-  const kindSel = q<HTMLSelectElement>(".tf-kind");
-  const targetSel = q<HTMLSelectElement>(".tf-target");
-  const paintTargets = (want?: string): void => {
-    const pool = kindSel.value === "skill" ? skills : taskSpecs;
-    targetSel.innerHTML = "";
-    if (!pool.length) {
-      const opt = document.createElement("option");
-      opt.value = "";
-      opt.textContent = kindSel.value === "skill" ? "(no skills yet)" : "(no tasks yet)";
-      targetSel.appendChild(opt);
-      return;
-    }
-    for (const t of pool) {
-      const opt = document.createElement("option");
-      opt.value = t.slug;
-      opt.textContent = t.name || t.slug;
-      targetSel.appendChild(opt);
-    }
-    // A target that no longer exists still shows, so an edit doesn't
-    // silently repoint the task at whatever happens to be first.
-    if (want && !pool.some((t) => t.slug === want)) {
-      const opt = document.createElement("option");
-      opt.value = want;
-      opt.textContent = `${want} (missing)`;
-      targetSel.appendChild(opt);
-    }
-    if (want) targetSel.value = want;
-  };
-
   if (task) {
     q<HTMLInputElement>(".tf-name").value = task.name;
-    kindSel.value = task.kind;
+    q<HTMLSelectElement>(".tf-kind").value = task.kind;
+    q<HTMLInputElement>(".tf-target").value = task.target;
     q<HTMLInputElement>(".tf-enabled").checked = task.enabled;
+    if (task.args && Object.keys(task.args).length) {
+      q<HTMLTextAreaElement>(".tf-args").value = JSON.stringify(task.args, null, 2);
+    }
   }
-  paintTargets(task?.target);
-  kindSel.addEventListener("change", () => paintTargets());
-
   const cron = cronControl(task?.cron ?? "0 8 * * *");
   el.appendChild(cron.el);
 
@@ -649,8 +653,9 @@ function addTaskDraft(task: AgentTask | null): void {
     cron,
     read: () => ({
       name: q<HTMLInputElement>(".tf-name").value.trim(),
-      kind: kindSel.value as AgentTask["kind"],
-      target: targetSel.value.trim(),
+      kind: q<HTMLSelectElement>(".tf-kind").value as AgentTask["kind"],
+      target: q<HTMLInputElement>(".tf-target").value.trim(),
+      argsText: q<HTMLTextAreaElement>(".tf-args").value,
       enabled: q<HTMLInputElement>(".tf-enabled").checked,
     }),
   };
@@ -672,15 +677,6 @@ const GR_FIELDS: Array<[keyof GuardrailsPolicy, string]> = [
   ["maxConcurrent", "agent-f-gr-conc"],
 ];
 
-const GR_LABELS: Record<string, string> = {
-  maxInputTokens: "Max input tokens",
-  maxOutputTokens: "Max output tokens",
-  windowSeconds: "Window (seconds)",
-  windowTokens: "Tokens per window",
-  windowCalls: "Calls per window",
-  maxConcurrent: "Max concurrent",
-};
-
 function setGuardrailInputs(gr: GuardrailsPolicy | null): void {
   for (const [key, id] of GR_FIELDS) {
     const el = $a<HTMLInputElement>(id);
@@ -688,7 +684,7 @@ function setGuardrailInputs(gr: GuardrailsPolicy | null): void {
   }
 }
 
-/** The agent's OWN policy — every value an upper bound; blank = no cap. */
+/** The agent's OWN policy — every value an upper bound; null = inherit. */
 function readGuardrails(): GuardrailsPolicy | null {
   const out: GuardrailsPolicy = {};
   for (const [key, id] of GR_FIELDS) {
@@ -700,37 +696,49 @@ function readGuardrails(): GuardrailsPolicy | null {
   return Object.keys(out).length ? out : null;
 }
 
-/** Skills as checkboxes over the LOCAL skills library — a free-text slug
- *  list let you name a skill that doesn't exist. */
-function renderSkillsControl(selected: string[]): void {
+/** The skills control, shaped by the loop's contract: a custom loop's
+ *  DECLARED skills as checkboxes (the server rejects anything else), the
+ *  Default loop (no contract) as a free slug list. */
+function renderSkillsControl(manifest: LoopManifest | null, selected: string[]): void {
   if (!fSkills) return;
   fSkills.innerHTML = "";
-  const label = document.createElement("label");
-  label.className = "settings-label";
-  label.innerHTML = `Skills <span class="field-hint-inline">&mdash; which skills this agent may load</span>`;
-  fSkills.appendChild(label);
-  if (!skills.length) {
-    const none = document.createElement("p");
-    none.className = "field-hint";
-    none.textContent = "No skills yet — the Skills page makes them.";
-    fSkills.appendChild(none);
+  if (manifest) {
+    const offered = manifest.skills ?? [];
+    if (!offered.length) return; // the loop declares none — nothing to select
+    const label = document.createElement("label");
+    label.className = "settings-label";
+    label.innerHTML = `Skills <span class="field-hint-inline">— which of the loop's skills this agent may call</span>`;
+    fSkills.appendChild(label);
+    for (const slug of offered) {
+      const row = document.createElement("label");
+      row.className = "lib-skill-row";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.className = "af-skill";
+      cb.value = slug;
+      cb.checked = selected.includes(slug);
+      row.appendChild(cb);
+      row.appendChild(document.createTextNode(` ${slug}`));
+      fSkills.appendChild(row);
+    }
     return;
   }
-  for (const s of skills) {
-    const row = document.createElement("label");
-    row.className = "lib-skill-row";
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.className = "af-skill";
-    cb.value = s.slug;
-    cb.checked = selected.includes(s.slug);
-    row.appendChild(cb);
-    row.appendChild(document.createTextNode(` ${s.name || s.slug}`));
-    fSkills.appendChild(row);
-  }
+  const label = document.createElement("label");
+  label.className = "settings-label";
+  label.innerHTML = `Skills <span class="field-hint-inline">— skill slugs, comma-separated (optional)</span>`;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.id = "agent-f-skills-input";
+  input.className = "settings-input";
+  input.spellcheck = false;
+  input.placeholder = "daily-report, send-email";
+  input.value = selected.join(", ");
+  fSkills.append(label, input);
 }
 
 function readSkills(): string[] {
+  const free = document.getElementById("agent-f-skills-input") as HTMLInputElement | null;
+  if (free) return free.value.split(",").map((s) => s.trim()).filter(Boolean);
   const out: string[] = [];
   fSkills?.querySelectorAll<HTMLInputElement>("input.af-skill").forEach((cb) => {
     if (cb.checked) out.push(cb.value);
@@ -738,88 +746,17 @@ function readSkills(): string[] {
   return out;
 }
 
-/** Vendor → the catalog's provider slug, so a loop's models narrow to what
- *  its CLI can actually address. An unrecognized CLI (custom, or one proxied
- *  through the router) gets the full list rather than an empty one. */
-const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
-
-/** The org's PROVIDERS, derived from the effective set rather than fetched.
- *  Every slug present in `models.available()` is by definition one the org
- *  enabled and supports — and, on a governance plan, one this member's role
- *  allows. Reading them off the catalog keeps the two in step by
- *  construction; a separate provider list could disagree with the models. */
-function providerSlugs(): string[] {
-  return [...new Set(models.map((m) => m.providerSlug).filter((s): s is string => !!s))].sort();
+/** Repaint the loop-dependent parts of the form (model slots + skills). */
+async function paintFormLoop(selections: AgentSelections): Promise<void> {
+  if (!fLoop || !fModels) return;
+  const loopId = fLoop.value; // "" = the built-in Default
+  const ref = loopId ? (loops.find((l) => l.id === loopId)?.slug ?? loopId) : "default";
+  await renderModelRows(fModels, ref, selections.roles ?? {}, true);
+  renderSkillsControl(loopId ? await loopManifest(ref) : null, selections.skills ?? []);
 }
 
-function paintFormProvider(selected: string): void {
-  if (!fProvider) return;
-  const slugs = providerSlugs();
-  fProvider.innerHTML = "";
-  if (!slugs.length) {
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "(no providers enabled for this org)";
-    fProvider.appendChild(none);
-    return;
-  }
-  for (const s of slugs) {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = s;
-    fProvider.appendChild(opt);
-  }
-  fProvider.value = selected && slugs.includes(selected) ? selected : slugs[0]!;
-}
-
-/** Show the Loop row or the Provider row — an agent is one or the other. */
-function syncSourceRow(): void {
-  const provider = fSource?.value === "provider";
-  $a("agent-f-loop-row")?.classList.toggle("hidden", provider);
-  $a("agent-f-provider-row")?.classList.toggle("hidden", !provider);
-}
-
-/** Repaint the Model dropdown for whichever SOURCE is selected: a loop
- *  narrows by its CLI's vendor, a provider by itself. */
-function paintFormModel(selected: string): void {
-  if (!fModel) return;
-  const byProvider = fSource?.value === "provider";
-  const want = byProvider
-    ? (fProvider?.value || undefined)
-    : (() => { const l = loops.find((x) => x.id === fLoop.value); return l?.cli ? LOOP_PROVIDER[l.cli] : undefined; })();
-  const pool = want ? models.filter((m) => m.providerSlug === want) : models;
-  // A loop whose vendor isn't in the catalog still offers everything; a
-  // PROVIDER that offers nothing stays empty — that is a real answer.
-  const list = pool.length ? pool : (byProvider ? [] : models);
-  fModel.innerHTML = "";
-  if (!byProvider) {
-    const loop = loops.find((l) => l.id === fLoop.value);
-    const auto = document.createElement("option");
-    auto.value = "";
-    auto.textContent = loop?.model ? `The loop's own — ${loop.model}` : "The loop's own";
-    fModel.appendChild(auto);
-  } else if (!list.length) {
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "(no models for this provider)";
-    fModel.appendChild(none);
-  }
-  for (const m of list) {
-    const opt = document.createElement("option");
-    opt.value = m.id;
-    opt.textContent = m.name || m.id;
-    fModel.appendChild(opt);
-  }
-  if (selected && !list.some((m) => m.id === selected)) {
-    const opt = document.createElement("option");
-    opt.value = selected;
-    opt.textContent = `${selected} (not available)`;
-    fModel.appendChild(opt);
-  }
-  fModel.value = selected || "";
-}
-
-/** Open the manual form — blank for create, pre-filled for edit. */
+/** Open the manual form — blank for create, pre-filled for edit. AI-created
+ *  agents are editable like any other. */
 async function openForm(agent: Agent | null): Promise<void> {
   if (!form) return;
   formAgent = agent;
@@ -827,46 +764,47 @@ async function openForm(agent: Agent | null): Promise<void> {
   removedTaskIds = [];
   formErr.classList.add("hidden");
   if (fTasks) fTasks.innerHTML = "";
-  if (!loops.length) await loadOptions();
+
+  // Loops: the Default plus every custom loop the caller can see. Memory
+  // loops power the memory rotor, not agents — filtered out. Built-ins other
+  // than Default are absent because the API only binds custom loops (uuid).
+  const r = await window.glyphh.loopsList?.();
+  loops = ((r?.loops ?? []) as unknown as LoopSummary[])
+    .filter((l) => (l as { type?: string }).type !== "memory");
+  const custom = loops.filter((l) => !l.builtIn);
+  await Promise.all(custom.map((l) => loopManifest(l.slug ?? l.id)));
 
   fLoop.innerHTML = "";
-  if (!loops.length) {
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "(no loops configured)";
-    fLoop.appendChild(none);
-  }
-  for (const l of loops) {
+  const defOpt = document.createElement("option");
+  defOpt.value = "";
+  defOpt.textContent = "Default";
+  fLoop.appendChild(defOpt);
+  for (const l of custom) {
+    if (manifestCache.get(l.slug ?? l.id)?.type === "memory") continue;
     const opt = document.createElement("option");
     opt.value = l.id;
     opt.textContent = l.name;
     fLoop.appendChild(opt);
   }
-  // An agent bound to a loop that has since been deleted still shows its
-  // binding rather than silently snapping to the first one.
-  if (agent?.loopId && !loops.some((l) => l.id === agent.loopId)) {
+  // An agent bound to a loop the filter dropped still needs its binding shown.
+  if (agent?.loopId && !Array.from(fLoop.options).some((o) => o.value === agent.loopId)) {
     const opt = document.createElement("option");
     opt.value = agent.loopId;
-    opt.textContent = `${agent.loopId} (missing)`;
+    opt.textContent = loops.find((l) => l.id === agent.loopId)?.name ?? "(current loop)";
     fLoop.appendChild(opt);
   }
 
   fName.value = agent?.name ?? "";
   fSlug.value = agent?.slug ?? "";
   fDesc.value = agent?.description ?? "";
-  fPrompt.value = agent?.prompt ?? "";
-  fLoop.value = agent?.loopId ?? loops[0]?.id ?? "";
-  // An agent is a LOOP or a PROVIDER — whichever it carries decides the shape.
-  if (fSource) fSource.value = agent?.provider ? "provider" : "loop";
-  paintFormProvider(agent?.provider ?? "");
-  syncSourceRow();
-  fApps.value = (agent?.apps ?? []).join(", ");
-  paintFormModel(agent?.model ?? "");
-  renderSkillsControl(agent?.skills ?? []);
+  fScope.value = agent?.scope ?? "personal";
+  fLoop.value = agent?.loopId ?? "";
+  fApps.value = (agent?.selections?.apps ?? []).join(", ");
   setGuardrailInputs(agent?.guardrails ?? null);
+  await paintFormLoop(agent?.selections ?? {});
 
   if (agent) {
-    const env = await api().libraryAgentTasks(agent.id);
+    const env = await window.glyphh.libraryAgentTasks(agent.id);
     for (const t of (env.ok ? (env.data as AgentTask[]) : [])) addTaskDraft(t);
   }
   $a("agent-f-delete")?.classList.toggle("hidden", !agent);
@@ -880,7 +818,7 @@ async function openForm(agent: Agent | null): Promise<void> {
 
 /** Row-menu Edit: fetch the full agent (the list holds summaries), then open. */
 async function openFormFor(id: string): Promise<void> {
-  const env = await api().libraryAgentGet(id);
+  const env = await window.glyphh.libraryAgentGet(id);
   if (!env.ok) { fail(env.error || "couldn't load the agent"); return; }
   await openForm(env.data as Agent);
 }
@@ -894,30 +832,47 @@ async function saveForm(): Promise<void> {
   if (!slug && !formAgent) slug = slugify(name);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) { failForm("The slug needs lowercase letters, digits and dashes."); return; }
 
-  // Validate every task BEFORE any write — a bad cron in row 3 must not
-  // leave rows 1–2 half-saved.
-  const parsedTasks: Array<{ draft: TaskDraft; input: { name: string; kind: AgentTask["kind"]; target: string; cron: string; enabled: boolean } }> = [];
+  // Validate every task BEFORE any write — a bad cron or bad JSON in row 3
+  // must not leave rows 1–2 half-saved.
+  const parsedTasks: Array<{ draft: TaskDraft; input: { name: string; kind: AgentTask["kind"]; target: string; args: Record<string, unknown>; cron: string; enabled: boolean } }> = [];
   for (const draft of formTasks) {
     const t = draft.read();
     const cron = draft.cron.read();
     if (!t.name) { failForm("Every task needs a name."); return; }
-    if (!t.target) { failForm(`Task "${t.name}" needs something to run.`); return; }
+    if (!t.target) { failForm(`Task "${t.name}" needs a target slug.`); return; }
     if (cron.trim().split(/\s+/).length !== 5) { failForm(`Task "${t.name}" needs a five-field cron (e.g. "0 8 * * *").`); return; }
-    parsedTasks.push({ draft, input: { name: t.name, kind: t.kind, target: t.target, cron, enabled: t.enabled } });
+    let args: Record<string, unknown> = {};
+    if (t.argsText.trim()) {
+      try {
+        const p = JSON.parse(t.argsText) as unknown;
+        if (!p || typeof p !== "object" || Array.isArray(p)) throw new Error("not an object");
+        args = p as Record<string, unknown>;
+      } catch {
+        failForm(`Task "${t.name}" has invalid JSON arguments — an object like { "key": "value" }.`);
+        return;
+      }
+    }
+    parsedTasks.push({ draft, input: { name: t.name, kind: t.kind, target: t.target, args, cron, enabled: t.enabled } });
   }
+
+  const selections: AgentSelections = {};
+  const roles: Record<string, string> = {};
+  fModels?.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((s) => {
+    if (s.value) roles[s.dataset.role!] = s.value;
+  });
+  if (Object.keys(roles).length) selections.roles = roles;
+  const skills = readSkills();
+  if (skills.length) selections.skills = skills;
+  const apps = fApps.value.split(",").map((s) => s.trim()).filter(Boolean);
+  if (apps.length) selections.apps = apps;
 
   const payload = {
     slug,
+    scope: fScope.value as Agent["scope"],
     name,
     description: fDesc.value.trim(),
-    prompt: fPrompt.value,
-    // Exactly one source is carried; the other is cleared, so a switched
-    // agent never keeps a stale binding the form no longer shows.
-    loopId: fSource?.value === "provider" ? null : (fLoop.value || null),
-    provider: fSource?.value === "provider" ? (fProvider?.value || "") : "",
-    model: fModel.value || "",
-    skills: readSkills(),
-    apps: fApps.value.split(",").map((s) => s.trim()).filter(Boolean),
+    loopId: fLoop.value || null,
+    selections,
     guardrails: readGuardrails(),
   };
 
@@ -926,27 +881,27 @@ async function saveForm(): Promise<void> {
   try {
     let agentId: string;
     if (formAgent) {
-      const env = await api().libraryAgentUpdate(formAgent.id, payload);
+      const env = await window.glyphh.libraryAgentUpdate(formAgent.id, payload);
       if (!env.ok) { failForm(env.error || "save failed"); return; }
       agentId = (env.data as Agent).id;
     } else {
-      const env = await api().libraryAgentCreate(payload);
+      const env = await window.glyphh.libraryAgentCreate(payload);
       if (!env.ok) { failForm(env.error || "create failed"); return; }
       formAgent = env.data as Agent; // a retry after a task failure PATCHes
       agentId = formAgent.id;
     }
 
     // Task diffs: removals, then updates, then adds — each through its own
-    // lane (tasks are not part of the agent record).
+    // endpoint (tasks are not part of the agent PATCH body).
     for (const id of removedTaskIds) {
-      const env = await api().libraryAgentTaskDelete(agentId, id);
+      const env = await window.glyphh.libraryAgentTaskDelete(agentId, id);
       if (!env.ok) { failForm(env.error || "couldn't remove a task"); return; }
     }
     removedTaskIds = [];
     for (const { draft, input } of parsedTasks) {
       const env = draft.id
-        ? await api().libraryAgentTaskUpdate(agentId, draft.id, input)
-        : await api().libraryAgentTaskAdd(agentId, input);
+        ? await window.glyphh.libraryAgentTaskUpdate(agentId, draft.id, input)
+        : await window.glyphh.libraryAgentTaskAdd(agentId, input);
       if (!env.ok) { failForm(env.error || `couldn't save task "${input.name}"`); return; }
       if (!draft.id) draft.id = (env.data as AgentTask).id; // idempotent retry
     }
@@ -963,7 +918,7 @@ async function deleteFromForm(): Promise<void> {
   if (!formAgent) return;
   const sure = await confirmAction({ title: `Delete "${formAgent.name}"?`, body: "Its scheduled tasks stop firing with it.", confirmLabel: "Delete", danger: true });
   if (!sure) return;
-  const env = await api().libraryAgentDelete(formAgent.id);
+  const env = await window.glyphh.libraryAgentDelete(formAgent.id);
   if (!env.ok) { failForm(env.error || "delete failed"); return; }
   await loadAgents();
 }
@@ -986,7 +941,7 @@ export function initAgentsEvents(): void {
   // Live/pause is operational, not authoring — it stays a hand switch.
   liveToggle.addEventListener("change", async () => {
     if (!current) return;
-    const env = await api().libraryAgentUpdate(current.id, { ...current, live: liveToggle.checked });
+    const env = await window.glyphh.libraryAgentUpdate(current.id, { live: liveToggle.checked });
     if (!env.ok) { fail(env.error || "couldn't change live state"); liveToggle.checked = !liveToggle.checked; return; }
     current = env.data as Agent;
   });
@@ -997,38 +952,23 @@ export function initAgentsEvents(): void {
   $a("agent-f-save")?.addEventListener("click", () => void saveForm());
   $a("agent-f-delete")?.addEventListener("click", () => void deleteFromForm());
   $a("agent-f-task-add")?.addEventListener("click", () => addTaskDraft(null));
-  // The loop decides which models are addressable.
-  fLoop?.addEventListener("change", () => paintFormModel(fModel?.value ?? ""));
-  fProvider?.addEventListener("change", () => paintFormModel(""));
-  fSource?.addEventListener("change", () => { syncSourceRow(); paintFormModel(""); });
+  fLoop?.addEventListener("change", () => {
+    // Flipping BACK to the agent's own loop restores its selections; any
+    // other loop starts clean (its contract differs).
+    const keep = formAgent && (formAgent.loopId ?? "") === fLoop.value ? (formAgent.selections ?? {}) : {};
+    void paintFormLoop(keep);
+  });
   // Create mode: a blank slug fills itself from the name.
   fName?.addEventListener("blur", () => {
     if (!formAgent && !fSlug.value.trim() && fName.value.trim()) fSlug.value = slugify(fName.value);
   });
 }
 
-/** The agent → the org's AI Hub (an admin's own goes live; a member's waits for review). */
-async function publishCurrent(btn: HTMLButtonElement): Promise<void> {
-  if (!current) return;
-  const sure = await confirmAction({
-    title: `Publish "${current.name}" to the AI Hub?`,
-    body: "Its standing prompt, loop, skills and guardrails go to your organization's hub — its scheduled tasks stay here. An org admin's publish goes live at once; anyone else's waits on the review desk.",
-    confirmLabel: "Publish",
-  });
-  if (!sure) return;
-  btn.disabled = true;
-  const env = await window.glyphh.hubPublish("agent", current.slug);
-  btn.disabled = false;
-  if (!env.ok) { fail(env.error || "publish failed"); return; }
-  const r = env.data as { version: number; status: string };
-  btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
-}
-
 async function deleteCurrent(): Promise<void> {
   if (!current) return;
   const sure = await confirmAction({ title: `Delete "${current.name}"?`, body: "Its scheduled tasks stop firing with it.", confirmLabel: "Delete", danger: true });
   if (!sure) return;
-  const env = await api().libraryAgentDelete(current.id);
+  const env = await window.glyphh.libraryAgentDelete(current.id);
   if (!env.ok) { fail(env.error || "delete failed"); return; }
   await loadAgents();
 }

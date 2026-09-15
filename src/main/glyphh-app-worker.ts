@@ -94,11 +94,7 @@ function startWorker(spec: AppWorkerSpec): WorkerHandle {
       preload: path.join(__dirname, "glyphh-app-worker-preload.js"),
     },
   });
-  // Captured NOW — win.webContents throws "Object has been destroyed" once
-  // the window closes, and dropIfCurrent runs exactly then (the reinstall
-  // crash, his log 2026-09-10).
-  const wcId = win.webContents.id;
-  grantAppCaps(wcId, spec.slug, spec.name, spec.capabilities, spec.connectors);
+  grantAppCaps(win.webContents.id, spec.slug, spec.name, spec.capabilities, spec.connectors);
 
   const ready = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -106,7 +102,7 @@ function startWorker(spec: AppWorkerSpec): WorkerHandle {
       reject(new Error(`worker for "${spec.slug}" did not become ready in ${READY_TIMEOUT_MS / 1000}s`));
     }, READY_TIMEOUT_MS);
     const onReady = (event: Electron.IpcMainEvent) => {
-      if (event.sender.id !== wcId) return;
+      if (event.sender.id !== win.webContents.id) return;
       cleanup();
       resolve();
     };
@@ -123,9 +119,9 @@ function startWorker(spec: AppWorkerSpec): WorkerHandle {
 
   const dropIfCurrent = () => {
     if (workers.get(spec.slug)?.win === win) workers.delete(spec.slug);
-    revokeAppCaps(wcId);
+    revokeAppCaps(win.webContents.id);
     for (const [id, p] of pending) {
-      if (p.wcId === wcId) {
+      if (p.wcId === win.webContents.id) {
         pending.delete(id);
         clearTimeout(p.timer);
         p.reject(new Error(`worker for "${spec.slug}" went away`));

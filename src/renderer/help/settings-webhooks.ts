@@ -19,70 +19,7 @@
 
 import { escapeHtml, confirmAction, paginate, renderPaginationBar } from "./shared.js";
 import { kebabCell, ROW_MENU_ICONS } from "./lib-editor.js";
-
-/** After a create/regenerate: back on the list, the ONE-TIME token in a modal
- *  with the warning and a copy button (his spec, 2026-08-25). */
-async function copyText(val: string, input?: HTMLInputElement | null): Promise<boolean> {
-  try { await navigator.clipboard.writeText(val); return true; } catch { /* fall through */ }
-  const ipc = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
-  if (ipc) { void ipc(val); return true; }
-  if (input) { input.focus(); input.select(); return document.execCommand("copy"); }
-  return false;
-}
-
-function showTokenModal(label: string, token: string): void {
-  document.querySelectorAll(".yo-modal.ak-token-overlay").forEach((n) => n.remove());
-  const overlay = document.createElement("div");
-  overlay.className = "yo-modal ak-token-overlay";
-  const backdrop = document.createElement("div");
-  backdrop.className = "yo-modal-backdrop";
-  const panel = document.createElement("div");
-  panel.className = "yo-modal-panel ak-token-modal";
-  const head = document.createElement("div");
-  head.className = "yo-modal-title";
-  head.textContent = `API key created — ${label}`;
-  const warn = document.createElement("div");
-  warn.className = "settings-warn";
-  warn.textContent = "Copy your key now — it won't be shown again.";
-  const row = document.createElement("div");
-  row.className = "settings-inline";
-  const input = document.createElement("input");
-  input.className = "settings-input";
-  input.readOnly = true;
-  input.value = token;
-  input.spellcheck = false;
-  input.addEventListener("focus", () => input.select());
-  const copy = document.createElement("button");
-  copy.className = "action-btn primary";
-  copy.type = "button";
-  copy.textContent = "Copy";
-  copy.addEventListener("click", () => {
-    void copyText(token, input).then((ok) => {
-      copy.textContent = ok ? "Copied" : "Select + ⌘C";
-      setTimeout(() => { copy.textContent = "Copy"; }, 1800);
-    });
-  });
-  row.append(input, copy);
-  const actions = document.createElement("div");
-  actions.className = "settings-actions";
-  actions.style.marginTop = "16px";
-  const spacer = document.createElement("div");
-  spacer.style.flex = "1";
-  const done = document.createElement("button");
-  done.className = "action-btn";
-  done.type = "button";
-  done.textContent = "Done";
-  actions.append(spacer, done);
-  panel.append(head, warn, row, actions);
-  const close = (): void => { overlay.remove(); document.removeEventListener("keydown", onKey); };
-  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
-  document.addEventListener("keydown", onKey);
-  backdrop.addEventListener("click", close);
-  done.addEventListener("click", close);
-  overlay.append(backdrop, panel);
-  document.body.appendChild(overlay);
-  input.focus();
-}
+import { showTokenModal } from "./settings-apikeys.js";
 
 interface IngestTokenRow { id: string; label: string; prefix: string; tokenHint: string; createdAt: string; lastUsedAt: string | null; expiresAt?: string | null; createdByEmail?: string | null }
 interface WebhookRow { id: string; url: string; description: string; active: boolean; createdAt: string; createdByEmail: string | null; lastFiredAt: string | null; lastStatus: number | null }
