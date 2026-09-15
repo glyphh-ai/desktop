@@ -20277,13 +20277,10 @@ body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
 }
 .echo-topbar-home { display: none; }
-/* The hint — the same "something is hidden here" sliver the composer tuck
-   uses, at the top center. Gone while the dock is peeked out. */
-body.echo-dock-tucked:not(.echo-dock-peek)::after {
-  content: ""; position: fixed; top: calc(var(--wb-top-inset, 0px) + 6px); left: 50%; transform: translateX(-50%);
-  width: 110px; height: 4px; border-radius: 999px;
-  background: var(--text-3); opacity: 0.45; z-index: 130; pointer-events: none;
-}
+/* The hint sliver at the top center is OFF (his order, 2026-09-15: "when the
+   dock is hidden remove this line"). The hover strip below still reveals the
+   dock; hidden, not deleted. */
+body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
 /* The invisible top strip that catches the peek hover — webviews swallow
    host mouse events, so the strip sits ABOVE the panel layers. Present only
    while the dock is tucked, so it never steals clicks otherwise. */

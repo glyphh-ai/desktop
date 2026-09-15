@@ -10,6 +10,7 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
+import { hubUrl } from "./hub-ipc";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
@@ -115,9 +116,13 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
     catch { return []; }
   });
 
-  // The HOUSE DEFAULTS died with the server library — the builtin workpanels
-  // are the launcher set now (code-workbench owns those tiles).
-  ipcMain.handle("apps-defaults", async () => []);
+  // The HOUSE DEFAULTS: the Marketplace tile on the Echo wall (his order,
+  // 2026-09-15) — the org's public AI Hub page, carrying the member's own
+  // gateway key. A URL failure drops the tile rather than a dead one.
+  ipcMain.handle("apps-defaults", async () => {
+    try { return [{ id: "marketplace", slug: "marketplace", name: "Marketplace", url: await hubUrl() }]; }
+    catch (err) { console.warn("[apps-defaults] marketplace tile skipped:", err instanceof Error ? err.message : String(err)); return []; }
+  });
 
 }
 

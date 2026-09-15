@@ -72,12 +72,15 @@ function importOne(kind: Kind, it: HubItem, p: Record<string, unknown>): void {
   });
 }
 
+/** The PUBLIC hub page (/ui/model_hub — no login, no console shell), carrying
+ *  the member's own gateway key so installs and the review desk work. */
+export async function hubUrl(): Promise<string> {
+  const { token } = await getClient().gateway.token();
+  return `${PLATFORM_URL}/ui/model_hub/?key=${encodeURIComponent(token)}`;
+}
+
 export function registerHubIpc(): void {
-  ipcMain.handle("hub-url", () => env(async () => {
-    const { token } = await getClient().http.post<{ token: string }>("/api/gateway/ui-session");
-    const next = encodeURIComponent("/ui/model-hub-table?embed=1");
-    return { url: `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${next}` };
-  }));
+  ipcMain.handle("hub-url", () => env(async () => ({ url: await hubUrl() })));
 
   ipcMain.handle("hub-publish", (_e, kind: Kind, ref: string, notes?: string) => env(async () => {
     if (!KINDS.includes(kind)) throw new Error(`cannot publish a ${String(kind)}`);
