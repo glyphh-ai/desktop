@@ -100,6 +100,7 @@ import { registerCliAgentsIpc } from "./cli-agents";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
+import { registerHubIpc } from "./hub-ipc";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
 import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
@@ -992,6 +993,7 @@ async function boot() {
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
   registerLocalAgentsIpc();
+  registerHubIpc();
   registerMcpConnectionsIpc();
   // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
   connectorManager = new ConnectorManager();

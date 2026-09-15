@@ -45,7 +45,7 @@ export interface LoopRow {
   name: string; description: string; builtIn: boolean; updatedAt: string;
   manifest: LoopManifest; code: string;
 }
-interface SkillManifest { version?: number; whenToUse?: string; allowedTools?: string[]; requires?: string[]; schedule?: string | null; model?: string | null }
+export interface SkillManifest { version?: number; whenToUse?: string; allowedTools?: string[]; requires?: string[]; schedule?: string | null; model?: string | null }
 export interface SkillRow {
   id: string; slug: string; scope: "personal"; name: string; description: string;
   hasCode: boolean; builtIn: false; schedule: string | null; updatedAt: string;
@@ -95,6 +95,18 @@ function saveLoop(row: LoopRow): LoopRow {
 }
 export function listSkillRows(): SkillRow[] { return listRows<SkillRow>(SKILLS_DIR()); }
 export function getSkillRow(ref: string): SkillRow { return getSkill(ref); }
+export function getTaskRow(ref: string): LoopRow { return getLoop(ref); }
+/** A hub install lands whole — manifest, prompt AND program (saveSkillRow is the page's identity/prompt editor). */
+export function putSkillRow(input: { slug: string; name: string; description: string; manifest: SkillManifest; prompt: string; code: string }): SkillRow {
+  const existing = readRow<SkillRow>(SKILLS_DIR(), input.slug);
+  const row: SkillRow = {
+    id: input.slug, slug: input.slug, scope: "personal", name: input.name, description: input.description,
+    hasCode: !!input.code, builtIn: false, schedule: input.manifest.schedule ?? existing?.schedule ?? null,
+    updatedAt: new Date().toISOString(), manifest: input.manifest, prompt: input.prompt, code: input.code,
+  };
+  writeRow(SKILLS_DIR(), input.slug, row);
+  return row;
+}
 export function saveSkillRow(input: { slug?: string; name: string; description?: string; prompt?: string }): SkillRow {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a skill needs a name");

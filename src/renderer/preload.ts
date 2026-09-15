@@ -1086,6 +1086,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   tasksSetEnabled: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("tasks-set-enabled", ref, taskId, patch) as Promise<LibEnvelope>,
   tasksRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-now", ref, taskId) as Promise<LibEnvelope>,
   tasksRunList: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-list", ref, taskId) as Promise<LibEnvelope>,
+  // The AI Hub (the Marketplace rail item → the org's hub on the console, in a work panel).
+  hubUrl: () => ipcRenderer.invoke("hub-url") as Promise<LibEnvelope>,
+  hubPublish: (kind: string, ref: string, notes?: string) => ipcRenderer.invoke("hub-publish", kind, ref, notes) as Promise<LibEnvelope>,
+  hubSync: () => ipcRenderer.invoke("hub-sync") as Promise<LibEnvelope>,
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.

@@ -153,6 +153,7 @@ async function openDetail(ref: string): Promise<void> {
     <div class="settings-actions lib-detail-actions">
       <button id="skill-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
+      <button id="skill-publish-btn" class="action-btn">Publish to AI Hub</button>
     </div>`;
   const sp = detailEl.querySelector<HTMLTextAreaElement>("#skill-prompt");
   if (sp) {
@@ -165,6 +166,8 @@ async function openDetail(ref: string): Promise<void> {
   }
 
   detailEl.querySelector("#skill-delete-btn")!.addEventListener("click", () => void deleteCurrent());
+  const publishBtn = detailEl.querySelector<HTMLButtonElement>("#skill-publish-btn");
+  publishBtn?.addEventListener("click", () => void publishCurrent(publishBtn));
   wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
     const res = await window.glyphh.librarySkillUpdate(current!.slug, patch);
     if (!res.ok) return res.error || "Couldn't save.";
@@ -193,6 +196,23 @@ export function initSkillsLibraryEvents(): void {
   });
   $a("skill-ai-btn")?.classList.add("hidden");
 
+}
+
+/** The skill → the org's AI Hub (an admin's own goes live; a member's waits for review). */
+async function publishCurrent(btn: HTMLButtonElement): Promise<void> {
+  if (!current) return;
+  const sure = await confirmAction({
+    title: `Publish "${current.name}" to the AI Hub?`,
+    body: "Its instructions and program go to your organization's hub. An org admin's publish goes live at once; anyone else's waits on the review desk. Members install it from the Marketplace.",
+    confirmLabel: "Publish",
+  });
+  if (!sure) return;
+  btn.disabled = true;
+  const env = await window.glyphh.hubPublish("skill", current.slug);
+  btn.disabled = false;
+  if (!env.ok) { fail(env.error || "publish failed"); return; }
+  const r = env.data as { version: number; status: string };
+  btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
 }
 
 async function deleteCurrent(): Promise<void> {

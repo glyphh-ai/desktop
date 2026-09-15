@@ -539,11 +539,14 @@ async function openDetail(id: string): Promise<void> {
     <div class="settings-actions" style="margin-top:24px;">
       <button id="agent-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
+      <button id="agent-publish-btn" class="action-btn">Publish to AI Hub</button>
     </div>`;
   const pre = detailEl.querySelector<HTMLElement>(".lib-read-pre");
   if (pre) pre.textContent = current.prompt;
 
   detailEl.querySelector("#agent-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  const publishBtn = detailEl.querySelector<HTMLButtonElement>("#agent-publish-btn");
+  publishBtn?.addEventListener("click", () => void publishCurrent(publishBtn));
 
   // The RIGHT pane: the schedule and its run feeds — what this agent DOES.
   sideEl.innerHTML = `<span class="lib-read-label">Schedule</span><div id="agent-task-rows"></div>`;
@@ -1002,6 +1005,23 @@ export function initAgentsEvents(): void {
   fName?.addEventListener("blur", () => {
     if (!formAgent && !fSlug.value.trim() && fName.value.trim()) fSlug.value = slugify(fName.value);
   });
+}
+
+/** The agent → the org's AI Hub (an admin's own goes live; a member's waits for review). */
+async function publishCurrent(btn: HTMLButtonElement): Promise<void> {
+  if (!current) return;
+  const sure = await confirmAction({
+    title: `Publish "${current.name}" to the AI Hub?`,
+    body: "Its standing prompt, loop, skills and guardrails go to your organization's hub — its scheduled tasks stay here. An org admin's publish goes live at once; anyone else's waits on the review desk.",
+    confirmLabel: "Publish",
+  });
+  if (!sure) return;
+  btn.disabled = true;
+  const env = await window.glyphh.hubPublish("agent", current.slug);
+  btn.disabled = false;
+  if (!env.ok) { fail(env.error || "publish failed"); return; }
+  const r = env.data as { version: number; status: string };
+  btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
 }
 
 async function deleteCurrent(): Promise<void> {

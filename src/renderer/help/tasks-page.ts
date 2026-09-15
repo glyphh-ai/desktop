@@ -159,6 +159,7 @@ async function openDetail(ref: string): Promise<void> {
     ${current.builtIn ? "" : `<div class="settings-actions lib-detail-actions">
       <button id="task-delete-btn" class="action-btn danger">Delete</button>
       <div style="flex:1;"></div>
+      <button id="task-publish-btn" class="action-btn">Publish to AI Hub</button>
     </div>`}`;
   const prog = detailEl.querySelector<HTMLTextAreaElement>("#task-program");
   if (prog) {
@@ -172,6 +173,8 @@ async function openDetail(ref: string): Promise<void> {
   void renderScheduleBlock(resolvedRoles);
 
   detailEl.querySelector("#task-delete-btn")?.addEventListener("click", () => void deleteCurrent());
+  const publishBtn = detailEl.querySelector<HTMLButtonElement>("#task-publish-btn");
+  publishBtn?.addEventListener("click", () => void publishCurrent(publishBtn));
   if (!current.builtIn) {
     wireIdentityEdit(detailEl, { name: current.name, description: current.description || "" }, async (patch) => {
       const res = await window.glyphh.libraryLoopUpdate(current!.slug, patch);
@@ -322,6 +325,23 @@ async function renderScheduleBlock(roles: Awaited<ReturnType<typeof window.glyph
     if (!id) return;
     void api.loopScheduleDelete?.(id).then(() => void renderScheduleBlock(roles));
   }));
+}
+
+/** The task → the org's AI Hub (an admin's own goes live; a member's waits for review). */
+async function publishCurrent(btn: HTMLButtonElement): Promise<void> {
+  if (!current || current.builtIn) return;
+  const sure = await confirmAction({
+    title: `Publish "${current.name}" to the AI Hub?`,
+    body: "Its slots and program go to your organization's hub. An org admin's publish goes live at once; anyone else's waits on the review desk. Members install it from the Marketplace.",
+    confirmLabel: "Publish",
+  });
+  if (!sure) return;
+  btn.disabled = true;
+  const env = await window.glyphh.hubPublish("task", current.slug);
+  btn.disabled = false;
+  if (!env.ok) { fail(env.error || "publish failed"); return; }
+  const r = env.data as { version: number; status: string };
+  btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
 }
 
 async function deleteCurrent(): Promise<void> {

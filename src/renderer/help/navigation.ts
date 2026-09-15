@@ -2,7 +2,7 @@
  * Help overlay — open/close, section switching, nav wiring.
  */
 
-import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal } from "./shared.js";
+import { closeHelp, getHelpOverlay, getHelpTransitioning, setHelpTransitioning, guardWebviewsForModal, confirmAction } from "./shared.js";
 import { loadOAuth, initOAuth } from "./settings-oauth.js";
 import { loadModelsAdmin } from "./models-admin.js";
 import { loadGatewayMetrics } from "./gateway-metrics.js";
@@ -22,7 +22,7 @@ import { loadTasksPage, initTasksPage } from "./tasks-page.js";
 import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
-import { loadCode, initCode, wireGlobalDotCommands } from "./code.js";
+import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadDocs, loadSupport, loadAbout } from "./docs.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
@@ -1015,9 +1015,29 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts" };
+  // Marketplace = the org's AI HUB on the console (his order, 2026-09-15),
+  // opened signed-in as a work panel. Installs made there are pulled into
+  // the local library first, so the pages see them the moment it opens.
+  const openMarketplace = async (btn: HTMLButtonElement): Promise<void> => {
+    btn.disabled = true;
+    try {
+      const sync = await window.glyphh.hubSync();
+      if (!sync.ok) console.warn("[hub] sync failed:", sync.error);
+      const res = await window.glyphh.hubUrl();
+      if (!res.ok) {
+        await confirmAction({ title: "Couldn't open the AI Hub", body: res.error || "The hub didn't answer.", confirmLabel: "OK" });
+        return;
+      }
+      const { url } = res.data as { url: string };
+      openAppInWorkbench({ slug: "ai-hub", name: "AI Hub", url, workbench: true });
+    } finally {
+      btn.disabled = false;
+    }
+  };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
+      if (sub === "marketplace") { void openMarketplace(btn); return; }
       const wb = RAIL_WB_SECTIONS[sub];
       if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
       else openSettingsModal(sub);
