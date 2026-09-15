@@ -75,7 +75,7 @@ function importOne(kind: Kind, it: HubItem, p: Record<string, unknown>): void {
 export function registerHubIpc(): void {
   ipcMain.handle("hub-url", () => env(async () => {
     const { token } = await getClient().http.post<{ token: string }>("/api/gateway/ui-session");
-    const next = encodeURIComponent("/ui/model-hub-table");
+    const next = encodeURIComponent("/ui/model-hub-table?embed=1");
     return { url: `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${next}` };
   }));
 
