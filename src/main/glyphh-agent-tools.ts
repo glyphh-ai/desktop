@@ -392,7 +392,7 @@ async function executeConnectorWire(
 // hatch, and the workdir install path (glyphh-app-builder.ts guards that one
 // at the manifest, where the slug first exists). apps-ipc.ts carries the same
 // set for the renderer's CRUD.
-const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound"]);
 const WORKPANEL_REFUSAL = "ERROR: work panels are built in — they cannot be altered or removed";
 
 /** True when a tool call would mutate an app ENTRY under a built-in work-panel
@@ -1922,12 +1922,6 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: "open_band",
-    doc: "open_band() — open the Glyphh Band app (Songs · Artists · Music Video)",
-    action: () => ({ kind: "command", title: "Open Band" }),
-    run: async () => { openMediaPanel("gband"); return "opened Band"; },
-  },
-  {
     name: "open_song",
     doc: "open_song(id) — open the Sounds panel straight into that song's editor page",
     action: () => ({ kind: "command", title: "Open song editor" }),
@@ -2128,7 +2122,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "save_workspace",
-    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan, tool:gpoint (Slides), tool:gdoc (Docs), tool:gsheet (Sheets), tool:gdrive (Drive), tool:gdesign (Design), tool:gmemory (Memory), tool:gimage (Image), tool:gvideo (Video), tool:gsound (Sounds), tool:gband (Band). Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
+    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan, tool:gpoint (Slides), tool:gdoc (Docs), tool:gsheet (Sheets), tool:gdrive (Drive), tool:gdesign (Design), tool:gmemory (Memory), tool:gimage (Image), tool:gvideo (Video), tool:gsound (Sounds). Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
     action: (a) => ({ kind: "edit", title: `Save workspace "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const name = String(a.name ?? "").trim();

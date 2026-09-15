@@ -155,7 +155,7 @@ function registerPanelAppsIpc(getMainWindow: () => BrowserWindow | null): void {
   // Apps-page fixtures, not org apps — no create/update/delete may ever land
   // on their slugs, whoever asks (the agent's tool seam refuses them too,
   // glyphh-agent-tools.ts).
-  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound"]);
   const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
   ipcMain.handle("panel-apps-create", async (_e, input: Record<string, unknown>) => {

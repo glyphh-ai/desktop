@@ -3323,19 +3323,13 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "gsound",
       };
-      const gbandTile: EchoTile = {
-        name: VIEW_META.gband.title,
-        slug: "gband",
-        glyphSvg: VIEW_META.gband.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gband",
-      };
+      // gband (Band) RETIRED 2026-09-15 — off the wall; the view stays parked.
       // The DEV workbench tools (his rule, 2026-08-21, REVERSING 08-20): Files/
       // Terminal/Editor/Diff/Plan/Releases are OFF the wall — they live in the
       // agent composer's ⋯ developer-tools menu (help/code.ts), a development
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
-      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile, gbandTile]
+      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile]
         .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
       const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
