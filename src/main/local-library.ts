@@ -34,6 +34,7 @@ import { ipcMain } from "electron";
 import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
+import { GLYPHH_LOOP, resolveRoles, setSelection } from "./loop-selections.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
 const SKILLS_DIR = (): string => userScopedPath("skills");
@@ -396,8 +397,18 @@ export function registerLocalLibraryIpc(): void {
   // read modelId/choices unchanged.
   // Preload sends { loop } / { loopId, role, modelId } object payloads (the
   // main-era wire shape) — accept those AND bare positionals.
-  ipcMain.handle("loop-roles", (_e, arg: string | { loop?: string }) => {
+  ipcMain.handle("loop-roles", async (_e, arg: string | { loop?: string }) => {
     const loop = typeof arg === "string" ? arg : String(arg?.loop ?? "");
+    // THE agent's loop (one loop, 2026-09-15): its one slot is the model pick
+    // over the gateway catalog — loop-selections.ts, not a task spec.
+    if (loop === GLYPHH_LOOP || loop === "default" || loop === "") {
+      try {
+        const roles = await resolveRoles(GLYPHH_LOOP);
+        return { ok: true, loop: GLYPHH_LOOP, roles: roles.map((r) => ({ name: r.name, label: r.label, description: "", modelId: r.modelId, model: r.modelId, choices: r.choices })) };
+      } catch (err) {
+        return { ok: false, loop: GLYPHH_LOOP, roles: [], error: err instanceof Error ? err.message : String(err) };
+      }
+    }
     try {
       const row = getLoop(String(loop));
       // A slot picks an AGENT, not a CLI — the agent brings its own loop.
@@ -416,6 +427,11 @@ export function registerLocalLibraryIpc(): void {
   ipcMain.handle("loop-set-role-default", (_e, arg: string | { loopId?: string; role?: string; modelId?: string | null; model?: string | null }, rolePos?: string, agentPos?: string | null) => env(() => {
     const loopId = typeof arg === "string" ? arg : String(arg?.loopId ?? "");
     const role = typeof arg === "string" ? String(rolePos ?? "") : String(arg?.role ?? "");
+    if (loopId === GLYPHH_LOOP || loopId === "default" || loopId === "") {
+      const modelId = typeof arg === "string" ? (agentPos ?? null) : (arg?.modelId ?? null);
+      setSelection(GLYPHH_LOOP, role || "default", modelId);
+      return { ok: true };
+    }
     const agentId = typeof arg === "string" ? agentPos ?? null : arg?.modelId ?? null;
     const row = getLoop(loopId);
     const r = (row.manifest.roles ?? []).find((x) => x.name === role);

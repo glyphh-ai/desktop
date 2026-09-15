@@ -78,7 +78,8 @@ import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolv
 import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
-import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { registerGlyphhIpc, shutdownGlyphh } from "./glyphh-agent";
+import { registerAgentDockIpc } from "./agent-dock";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -425,7 +426,8 @@ async function boot() {
     registerAgentStubs();
     // The Glyphh Agent panel's engine — a bridge over the claude CLI
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
-    registerGlyphhCliBridge();
+    registerGlyphhIpc();
+    registerAgentDockIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1262,7 +1264,7 @@ process.on("uncaughtException", (err) => {
 });
 
 app.on("will-quit", () => {
-  shutdownGlyphhCliBridge();
+  shutdownGlyphh();
   cleanupAll();
 });
 
