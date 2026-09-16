@@ -11,6 +11,7 @@
 
 import { escapeHtml, confirmAction } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
+import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 type Source = "glyphh" | "app" | "claude" | "codex" | "gemini";
@@ -616,7 +617,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
-  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string } = {};
+  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string; tools?: string } = {};
   try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
   const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
   const fromFolder = s.files.filter((f) => /^screenshots\/.*\.(png|jpe?g|gif|webp|svg)$/i.test(f.path)).map((f) => ({ path: f.path, caption: "" }));
@@ -638,7 +639,24 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const first = urls.findIndex(Boolean);
     if (first >= 0) { show(first); host.appendChild(g); }
   }
-  await Promise.all([paintBundleSkills(s, read), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
+  await Promise.all([paintBundleSkills(s, read), paintBundleTools(s, read, manifest.tools || "tools/manifest.json"), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
+}
+
+/** The app's tools (tools/manifest.json) with the same permission grammar as a connection's. */
+async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<string>, rel: string): Promise<void> {
+  const host = el("skill-tools-list"); const count = el("skill-tool-count");
+  if (!host) return;
+  let tools: Array<{ name: string; description?: string }> = [];
+  try { tools = ((JSON.parse(await read(rel) || "{}") as { tools?: typeof tools }).tools ?? []).filter((t) => t && t.name); } catch { tools = []; }
+  if (count) count.textContent = `· ${tools.length}`;
+  if (!tools.length) { host.innerHTML = `<div class="crud-empty">This app exposes no tools.</div>`; return; }
+  const slug = s.id.replace(/^[a-z]+:/, "");
+  const hiddenPref = `appHiddenTools:${slug}`;
+  const hidden = new Set<string>(((await window.glyphh.getPreference?.(hiddenPref, []).catch(() => [])) as string[]) ?? []);
+  await renderToolGroups(host, {
+    key: `app:${slug}`, appName: slug, tools: tools.map((t) => ({ ...t, hidden: hidden.has(t.name) })),
+    persistHidden: async (list) => { await window.glyphh.setPreference?.(hiddenPref, list); },
+  });
 }
 
 /** The bundle's skills: its own SKILL.md plus any under skills/<name>/. */
@@ -778,12 +796,13 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-type DetailTab = "overview" | "contents" | "skills" | "connections";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections";
 function selectDetailTab(t: DetailTab): void {
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
   el("skill-skills")?.classList.toggle("hidden", t !== "skills");
+  el("skill-tools")?.classList.toggle("hidden", t !== "tools");
   el("skill-connections")?.classList.toggle("hidden", t !== "connections");
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
   if (t === "contents") editor?.layout();

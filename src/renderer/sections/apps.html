@@ -138,7 +138,7 @@
                    tabs are exactly About / Connections / Support; every
                    builder tab below stays the owner's. -->
               <button class="app-detail-tab" data-tab="dashboard">General</button>
-              <button class="app-detail-tab" data-tab="config">Config Vars</button>
+              <button class="app-detail-tab hidden" data-tab="config">Config Vars</button>
               <!-- Shown only for installed Glyphh apps, which declare tools. -->
               <button class="app-detail-tab tab-glyphh-only hidden" data-tab="webhooks">Integration</button>
               <button class="app-detail-tab tab-mcp-only hidden" data-tab="mcp">MCP</button>
@@ -249,8 +249,8 @@
                   </div>
                   <div class="settings-actions" style="margin-top:28px;display:flex;gap:8px;align-items:center;">
                     <button id="app-detail-delete" class="action-btn danger">Delete</button>
-                    <button id="app-detail-export" class="action-btn" title="Export this app as a .glyphh bundle">Export</button>
-                    <button id="app-detail-clone" class="action-btn" title="Duplicate this app as a new private app — version history seeded from the latest snapshot; addresses, domains and releases are not copied">Duplicate</button>
+                    <button id="app-detail-export" class="action-btn hidden" title="Export this app as a .glyphh bundle">Export</button>
+                    <button id="app-detail-clone" class="action-btn hidden" title="Duplicate this app as a new private app — version history seeded from the latest snapshot; addresses, domains and releases are not copied">Duplicate</button>
                     <div style="flex:1;"></div>
                     <button id="app-dash-cancel" class="action-btn">Cancel</button>
                     <button id="app-dash-save" class="action-btn primary">Save</button>

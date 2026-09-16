@@ -757,17 +757,35 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
   }
   if (!tools.length) { groupsHost.innerHTML = `<div class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</div>`; return; }
 
-  const appName = e.conn?.appSlug || e.mcp?.slug || e.name;
-  const readOnly = e.kind === "org";
+  await renderToolGroups(groupsHost, {
+    key: e.key, appName: e.conn?.appSlug || e.mcp?.slug || e.name, tools, readOnly: e.kind === "org",
+    persistHidden: async (list) => { if (e.mcp) await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list }); else await window.glyphh.connectionToolsSet(e.conn!.id, list); },
+  });
+}
+
+/** ONE tool-permissions grammar for everything that publishes tools (his
+ *  order, 2026-09-16): connections, custom MCP servers, and installed apps.
+ *  Read-only vs write/delete groups, Always allow / Needs approval / Never per
+ *  tool or per group. Modes persist as a preference under `key`; "Never" is
+ *  the hidden list the caller stores wherever its tools live. */
+export interface ToolPermissionsOpts {
+  key: string;
+  appName: string;
+  tools: Array<{ name: string; description?: string; hidden?: boolean }>;
+  readOnly?: boolean;
+  persistHidden: (hidden: string[]) => Promise<unknown>;
+}
+
+export async function renderToolGroups(groupsHost: HTMLElement, o: ToolPermissionsOpts): Promise<void> {
+  const { tools, appName } = o;
+  const readOnly = !!o.readOnly;
   const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
-  const prefs = await readModes(e.key);
+  const prefs = await readModes(o.key);
   const modeOf = (t: { name: string }): ToolMode => hidden.has(t.name) ? "never" : (prefs[t.name] ?? (isReadTool(t.name, appName) ? "allow" : "ask"));
   const persist = async (): Promise<void> => {
     try {
-      const list = Array.from(hidden);
-      if (e.mcp) await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list });
-      else await window.glyphh.connectionToolsSet(e.conn!.id, list);
-      window.glyphh.setPreference?.(`connToolModes:${e.key}`, prefs);
+      await o.persistHidden(Array.from(hidden));
+      window.glyphh.setPreference?.(`connToolModes:${o.key}`, prefs);
     } catch (err) { fail(err instanceof Error ? err.message : String(err)); }
   };
   const setMode = (t: { name: string }, m: ToolMode): void => {

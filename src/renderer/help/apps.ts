@@ -989,14 +989,9 @@ async function openPanelAppDetail(app: PanelApp) {
   // app that declares OPENAI_API_KEY is exactly where the installer must set
   // it; values are per-org). No declaration → hidden, then un-hidden only if
   // vars already exist (the async check below).
-  const declaresSecrets = (app.secretNames?.length ?? 0) > 0;
-  const configTab = document.querySelector(".app-detail-tab[data-tab='config']");
-  configTab?.classList.toggle("hidden", !declaresSecrets);
-  if (!declaresSecrets && app.appArchetype === "glyphh-app") {
-    void window.glyphh.appSecretsList?.(app.id).then((r) => {
-      if (currentAppId === app.id && r?.ok && (r.secrets?.length ?? 0) > 0) configTab?.classList.remove("hidden");
-    });
-  }
+  // A tab is a tab (his order, 2026-09-16): one basic form for every kind. An
+  // installed app's tools, connections and contents live on Settings → Build → Apps.
+  document.querySelectorAll<HTMLElement>(".app-detail-tab:not([data-tab='dashboard'])").forEach((el) => el.classList.add("hidden"));
   document.querySelectorAll<HTMLElement>(".tab-built-only").forEach((el) => {
     // The consumer view keeps Connections (the grants the app needs) and
     // drops Releases (the publisher's history, not the installer's).
@@ -1038,8 +1033,7 @@ async function openPanelAppDetail(app: PanelApp) {
   // glyphh app only rides those rails technically (entry html as execPath).
   // Its real "path" is the source of record — never show the native fields.
   const isGlyphhKind = app.appArchetype === "glyphh-app";
-  document.querySelectorAll<HTMLElement>(".tab-glyphh-only").forEach((el) =>
-    el.classList.toggle("hidden", !(isGlyphhKind && app.owned !== false)));
+  document.querySelectorAll<HTMLElement>(".tab-glyphh-only").forEach((el) => el.classList.add("hidden"));
   toggleTypeFields("app-detail", isGlyphhKind ? "browser" : detailType);
   if (isGlyphhKind) document.getElementById("app-detail-browser-fields")?.classList.add("hidden");
   toggleArchetypeFields("app-detail", detailArchetype);
@@ -1047,8 +1041,7 @@ async function openPanelAppDetail(app: PanelApp) {
   // MCP + Guardrails tabs — installed apps that declare tools. The consumer
   // view doesn't carry them (its tabs are exactly About/Connections/Support);
   // the app's tools still reach the org's agents through the install.
-  if (mktInstalled) document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
-  else syncMcpTabs(app);
+  document.querySelectorAll<HTMLElement>(".tab-mcp-only").forEach((el) => el.classList.add("hidden"));
 
   // Co-working seats (General tab) — async; hides itself when not applicable.
   void loadCollabSection();
