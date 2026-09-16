@@ -20837,3 +20837,7 @@ body.space-primary-collapsed #help-overlay > * { visibility: hidden; }
 body.space-primary-collapsed #help-overlay { background: var(--surface-2); }
 #space-primary-grip { display: none; }
 body[style*="--space-count: 2"] #space-primary-grip, body[style*="--space-count: 3"] #space-primary-grip, body[style*="--space-count: 4"] #space-primary-grip { display: block; }
+/* Space edges: the split's left edge is flush (its shell zeroes --band-ml); the primary keeps 7px on its right so the pair reads as one gap. */
+.space-split { border-left: none; }
+.space-grip { margin: 0; flex-basis: 0; width: 0; }
+.space-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; }

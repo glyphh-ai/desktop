@@ -3872,8 +3872,13 @@ async function init(): Promise<void> {
       }
       // Degenerate windows (tiny stage, mid-boot measures) — keep a usable box.
       if (bottom - top < 160) { top = margin; bottom = Math.max(top + 160, h - margin); }
-      const side = 7;
-      return { left: side, top, width: Math.max(200, w - side * 2), height: Math.max(160, bottom - top) };
+      // The band's side margins: 7px, except the edge a SPACE shares with the
+      // one beside it, where the gap must read as ONE inter-panel gap (his
+      // report, 2026-09-16) — a space shell sets --band-ml / --band-mr to 0.
+      const cs = getComputedStyle(document.body);
+      const sideOf = (name: string): number => { const v = parseFloat(cs.getPropertyValue(name)); return Number.isFinite(v) ? v : 7; };
+      const ml = sideOf("--band-ml"), mr = sideOf("--band-mr");
+      return { left: ml, top, width: Math.max(200, w - ml - mr), height: Math.max(160, bottom - top) };
     }
     const flowRects = (cards: TileEntry[]): Map<TileEntry, { left: number; top: number; width: number; height: number }> => {
       // CENTER-SCREEN BUILD PATTERN inside the band: the first app opens as a

@@ -343,7 +343,7 @@ void (async () => {
       const style = document.createElement("style");
       style.textContent = `
         [data-home-scope="space"] #app-rail, [data-home-scope="space"] #rail-collapsed-strip, [data-home-scope="space"] #app-rail-resize, [data-home-scope="space"] #space-splits, [data-home-scope="space"] #panel-wc, [data-home-scope="space"] #shell-drag-strip { display: none !important; }
-        [data-home-scope="space"] body { --rail-w: 0px !important; --space-count: 1 !important; }`;
+        [data-home-scope="space"] body { --rail-w: 0px !important; --space-count: 1 !important; --band-ml: 0px; }`;
       document.head.appendChild(style);
       document.title = `Space ${params.get("space")} — Glyphh`;
       // Falls through to the normal boot: this space is a full Glyphh of its own.
