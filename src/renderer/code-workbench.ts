@@ -4964,6 +4964,7 @@ async function init(): Promise<void> {
         const codingCfg = (codingCell?.config || {}) as CellConfig;
         const codingLoop = codingCell ? surfaceOf(codingCell).loop : "";
         const codingFolder = codingCfg.folder || "";
+        let seatedAgent = false;
         for (const cell of cells) {
           const { id, loop: cellLoop } = surfaceOf(cell);
           if (!id) continue;
@@ -5040,7 +5041,11 @@ async function init(): Promise<void> {
             // lets go.
             // The agent seat is BACK (his order, 2026-09-11) — and it is the
             // SAME surface the glyphh tile opens (his report: two versions).
-            if (v === "coding") {
+            if (v === "coding" && seatedAgent) {
+              // A SECOND agent cell in one workspace: its own panel, not a second seat for the singleton.
+              entry = adHoc(agentInstanceTile(cellLoop || undefined));
+            } else if (v === "coding") {
+              seatedAgent = true;
               const want = cellLoop || cliAgentRows[0]?.id || "";
               if (want && cliAgentRows.some((x) => x.id === want)) entry = openAgentChatCard(want) ?? openAgentPanel();
               else {
@@ -5850,6 +5855,15 @@ async function init(): Promise<void> {
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
     };
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
+    /** ANOTHER Glyphh agent panel (his order, 2026-09-16): the shell itself, in a
+     *  webview locked to the agent (home.html?solo=tool:coding), so each panel
+     *  has its own state; the sessions store merges their saves. */
+    let agentInstances = 0;
+    const agentInstanceTile = (loop?: string): EchoTile => {
+      const url = new URL(`home.html?solo=tool:coding${loop ? `&loop=${encodeURIComponent(loop)}` : ""}&instance=${++agentInstances}`, window.location.href).href;
+      return { name: "Glyphh", slug: `agent-panel:${agentInstances}`, kind: "app", url, workbench: true };
+    };
+    (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
     /** Open a CLI agent: dependencies first (the local MCP server), then the
      *  pre-config types into a fresh terminal card named for the agent. */
     type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };

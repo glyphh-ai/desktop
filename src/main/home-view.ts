@@ -232,8 +232,13 @@ export class HomeView {
     // Workbench <webview> guests: the glyphh-app bridge preload must be set at
     // will-attach time (later is ignored). Inert for ordinary web apps —
     // glyphh-app:call rejects any webContents without a capability grant.
-    (wc as any).on("will-attach-webview", (_event: unknown, webPreferences: Electron.WebPreferences) => {
-      webPreferences.preload = path.join(__dirname, "glyphh-app-preload.js");
+    (wc as any).on("will-attach-webview", (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
+      // A second Glyphh agent PANEL is the shell itself in a webview (his order,
+      // 2026-09-16: no cap on open agents): it needs the shell preload, not the app bridge.
+      const src = String(params?.src || "");
+      webPreferences.preload = src.includes("home.html?solo=tool:coding")
+        ? path.join(__dirname, "..", "renderer", "preload.js")
+        : path.join(__dirname, "glyphh-app-preload.js");
     });
 
     (wc as any).on("did-attach-webview", (_event: unknown, guest: WebContents) => {

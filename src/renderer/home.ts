@@ -298,9 +298,22 @@ void (async () => {
         [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
         [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
         [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
-        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }`;
+        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
+        [data-home-scope="solo-tool"] body, [data-home-scope="solo-tool"] { --rail-w: 0px !important; }
+        [data-home-scope="solo-tool"] #echo-dock-layer, [data-home-scope="solo-tool"] .echo-dock-hotstrip, [data-home-scope="solo-tool"] #rail-collapsed-strip, [data-home-scope="solo-tool"] #app-rail-resize { display: none !important; }`;
       document.head.appendChild(style);
       gotoSection("code");
+      // An agent panel opened for a LOOP (a workspace cell, "New agent panel"): stamp it once the agent is up.
+      const wantLoop = params.get("loop");
+      if (wantLoop) {
+        let loopTries = 0;
+        const stamp = (): void => {
+          const w = window as unknown as { __glyphhSetLoop?: (id: string) => void };
+          if (w.__glyphhSetLoop) w.__glyphhSetLoop(wantLoop);
+          else if (loopTries++ < 60) window.setTimeout(stamp, 100);
+        };
+        stamp();
+      }
       const SOLO_LABELS: Record<string, string> = {
         preview: "Browser", coding: "Glyphh", diff: "Diff", monaco: "Editor",
         files: "Files", plan: "Plan", terminal: "Terminal",

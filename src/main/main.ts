@@ -1101,8 +1101,11 @@ async function boot() {
   // webContents without a capability grant (granted per-app via preview-open).
   (mainWindow?.webContents as any)?.on(
     "will-attach-webview",
-    (_event: unknown, webPreferences: Electron.WebPreferences) => {
-      webPreferences.preload = path.join(__dirname, "glyphh-app-preload.js");
+    (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
+      const src = String(params?.src || "");
+      webPreferences.preload = src.includes("home.html?solo=tool:coding")
+        ? path.join(__dirname, "..", "renderer", "preload.js")
+        : path.join(__dirname, "glyphh-app-preload.js");
     },
   );
 

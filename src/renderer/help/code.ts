@@ -1759,6 +1759,7 @@ function openHeadKebab(anchor: HTMLElement): void {
   m.append(
     mk(IC_RENAME, "Rename", false, renameCurrentInline),
     mk(IC_PIN, c.pinned ? "Unpin" : "Pin", false, toggleCurrentPin),
+    mk(IC_RENAME, "New agent panel", false, () => { (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance?.(activeLoop() || undefined); }),
     mk(IC_TRASH, "Delete", true, () => { void deleteChat(c); }),
   );
   const r = anchor.getBoundingClientRect();
