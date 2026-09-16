@@ -4847,7 +4847,7 @@ async function init(): Promise<void> {
       }
       return entry;
     };
-    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentChatCard(id); };
+    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
 
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
@@ -5518,11 +5518,7 @@ async function init(): Promise<void> {
       // terminal is fine, but revert when possible) — chat only when the
       // last-used view was chat; terminal otherwise.
       const first = cliAgentRows[0];
-      if (first) {
-        if (resolveAgentView() === "glyphh") openAgentChatCard(first.id);
-        else openAgentCliCard(cliAgentTileOf(first));
-        return;
-      }
+      if (first) { openAgentForLoop(first.id); return; }
       void openAgentPanel();
     };
     // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
@@ -5768,7 +5764,7 @@ async function init(): Promise<void> {
       // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
       // loop tile opens the SAME agent chat panel every other door opens,
       // with this loop set. The terminal is the >_ hop, never a door.
-      if (t.cliAgent) { openAgentChatCard(t.cliAgent.id); return; }
+      if (t.cliAgent) { openAgentForLoop(t.cliAgent.id); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -5873,6 +5869,19 @@ async function init(): Promise<void> {
       return { name: "Glyphh", slug: `agent-panel:${agentInstances}`, kind: "app", url, workbench: true };
     };
     (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
+    /** THE agent door (his order, 2026-09-16): every loop, from every tile,
+     *  opens in the view Settings resolve (chat or CLI) — and when the chat
+     *  singleton already holds another loop, this one gets its own panel.
+     *  No cap on open agents. */
+    function openAgentForLoop(id: string): void {
+      const row = cliAgentRows.find((x) => x.id === id);
+      if (!row) return;
+      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row)); return; }
+      const seated = openList.find((x) => x.card && x.tile.kind === "agent");
+      const bound = seated?.card?.dataset.boundAgent;
+      if (seated && bound && bound !== id) { openAppCard(agentInstanceTile(id)); return; }
+      openAgentChatCard(id);
+    }
     /** Open a CLI agent: dependencies first (the local MCP server), then the
      *  pre-config types into a fresh terminal card named for the agent. */
     type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };
