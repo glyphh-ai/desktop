@@ -4020,7 +4020,7 @@ async function init(): Promise<void> {
         // SHIFT (his order, 2026-09-16): open that thing AGAIN — another agent
         // panel, another tab form, another card of the tool.
         if (ev.shiftKey) {
-          if (key === "glyphh") { const first = cliAgentRows[0]; if (first) openAgentForLoop(first.id, { again: true }); return; }
+          if (key === "glyphh") { const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0]; if (first) openAgentForLoop(first.id, { again: true }); return; }
           if (key === "newtab") { openNewTabForm(); return; }
           const again = entriesByKey().get(key);
           if (again?.tile.cliAgent) { openAgentForLoop(again.tile.cliAgent.id, { again: true }); return; }
@@ -5511,7 +5511,8 @@ async function init(): Promise<void> {
       // The tile honors the REMEMBERED view (his rule, 2026-09-11: start in
       // terminal is fine, but revert when possible) — chat only when the
       // last-used view was chat; terminal otherwise.
-      const first = cliAgentRows[0];
+      // THE DEFAULT LOOP (Settings → General → Agent loop) first, then its view (his order, 2026-09-16).
+      const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
       if (first) { openAgentForLoop(first.id); return; }
       void openAgentPanel();
     };
