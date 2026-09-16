@@ -462,14 +462,26 @@ function renderCategoryPage(host: HTMLElement): void {
 
 // ── tools: names people can read, split by what they do ─────────────────────
 const READ_VERBS = /^(get|list|search|find|read|fetch|retrieve|query|describe|count|check|lookup|view|show|download|export|preview|watch|summarize|detect)\b/i;
-/** "gmail-send-email" → "Send email"; the raw name rides the tooltip. */
+/** The tool's own name, as words: the gateway prefixes tool names with the
+ *  server's technical name and Pipedream with the app slug, so everything up
+ *  to the last run of the app's tokens is dropped. "pd_o52…_gmail-gmail-send-email"
+ *  → "Send email". The raw name rides the tooltip. */
 function humanize(name: string, app?: string): string {
-  let n = name;
-  const prefix = (app || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-  const flat = n.toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (prefix && flat.startsWith(prefix)) n = n.replace(new RegExp(`^${app!.replace(/[^a-z0-9]/gi, "[^a-z0-9]?")}[-_ ]?`, "i"), "");
-  n = n.replace(/[-_.]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim().toLowerCase();
-  return n ? n.charAt(0).toUpperCase() + n.slice(1) : name;
+  const tokens = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const appTokens = (app || "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  let rest = tokens;
+  if (appTokens.length) {
+    let cut = -1;
+    for (let i = 0; i + appTokens.length < tokens.length; i++) {
+      if (appTokens.every((t, j) => tokens[i + j] === t)) cut = i + appTokens.length;
+    }
+    if (cut > 0) rest = tokens.slice(cut);
+  } else if (tokens[0] === "pd") {
+    rest = tokens.slice(tokens.findIndex((t) => t.length >= 30) + 1);
+  }
+  const words = rest.length ? rest : tokens;
+  const out = words.join(" ");
+  return out ? out.charAt(0).toUpperCase() + out.slice(1) : name;
 }
 const isReadTool = (name: string, app?: string): boolean => READ_VERBS.test(humanize(name, app));
 type ToolMode = "allow" | "ask" | "never";
@@ -621,8 +633,8 @@ async function paintTools(e: Entry, chips: HTMLElement, perms: HTMLElement): Pro
   }
   if (!tools.length) { chips.innerHTML = `<span class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</span>`; return; }
   chips.textContent = "";
-  const appName = e.conn?.appName || e.name;
-  for (const t of tools) { const c = document.createElement("span"); c.className = "conn2-tool-chip" + (t.hidden ? " off" : ""); c.textContent = humanize(t.name, appName); c.title = t.name; chips.appendChild(c); }
+  const appName = e.conn?.appSlug || e.mcp?.slug || e.name;
+  for (const t of tools) { const c = document.createElement("span"); c.className = "conn2-tool-chip" + (t.hidden ? " off" : ""); c.textContent = humanize(t.name, appName); c.title = t.description ? `${t.name}\n${t.description}` : t.name; chips.appendChild(c); }
 
   const readOnly = e.kind === "org";
   const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
@@ -735,7 +747,7 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
   }
   if (!tools.length) { groupsHost.innerHTML = `<div class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</div>`; return; }
 
-  const appName = e.conn?.appName || e.name;
+  const appName = e.conn?.appSlug || e.mcp?.slug || e.name;
   const readOnly = e.kind === "org";
   const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
   const prefs = await readModes(e.key);
@@ -783,11 +795,19 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
     for (const t of g.items) {
       const row = document.createElement("div");
       row.className = "conn2-prow";
-      row.innerHTML = `<div class="conn2-perm-main"><div class="conn2-perm-name"></div><div class="conn2-perm-desc"></div></div><div class="conn2-seg">${(["allow", "ask", "never"] as ToolMode[]).map((m) => `<button type="button" data-mode="${m}" title="${MODE_LABEL[m]}">${MODE_ICON[m]}</button>`).join("")}</div>`;
+      row.innerHTML = `<div class="conn2-perm-main"><span class="conn2-perm-name"></span>${t.description ? `<button type="button" class="conn2-info" title="What this tool does"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button><div class="conn2-pop hidden"></div>` : ""}</div><div class="conn2-seg">${(["allow", "ask", "never"] as ToolMode[]).map((m) => `<button type="button" data-mode="${m}" title="${MODE_LABEL[m]}">${MODE_ICON[m]}</button>`).join("")}</div>`;
       (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = humanize(t.name, appName);
       (row.querySelector(".conn2-perm-name") as HTMLElement).title = t.name;
-      (row.querySelector(".conn2-perm-desc") as HTMLElement).textContent = t.description || "";
-      row.querySelector(".conn2-perm-main")!.addEventListener("click", () => row.classList.toggle("expanded"));
+      const pop = row.querySelector<HTMLElement>(".conn2-pop");
+      if (pop) {
+        pop.textContent = t.description || "";
+        row.querySelector(".conn2-info")!.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const open = !pop.classList.contains("hidden");
+          document.querySelectorAll<HTMLElement>(".conn2-pop").forEach((x) => x.classList.add("hidden"));
+          pop.classList.toggle("hidden", open);
+        });
+      }
       row.querySelectorAll<HTMLButtonElement>(".conn2-seg button").forEach((b) => {
         b.disabled = readOnly;
         b.addEventListener("click", () => { setMode(t, b.dataset.mode as ToolMode); paintGroup(); void persist(); });
