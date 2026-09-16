@@ -20813,3 +20813,8 @@ body.rail-collapsed #app-rail-resize { display: none; }
    offset goes when the sidebar is back (his report, 2026-09-16). */
 body.rail-collapsed:not(.rail-peek) .echo-card.expanded > .echo-card-head,
 body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-header { padding-left: 124px; }
+
+/* Library pages' loading state. */
+.lib-loading { display: flex; align-items: center; gap: 10px; padding: 28px 8px; color: var(--text-3); font-size: 13px; }
+.lib-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: lib-spin 0.8s linear infinite; flex: none; }
+@keyframes lib-spin { to { transform: rotate(360deg); } }

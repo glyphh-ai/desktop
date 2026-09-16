@@ -10,6 +10,11 @@ export function $a<T extends HTMLElement = HTMLElement>(id: string): T {
   return document.getElementById(id) as T;
 }
 
+/** The library pages' loading state (his order, 2026-09-16): a spinner and a line saying what is happening. */
+export function loadingHtml(label: string): string {
+  return `<div class="lib-loading"><span class="lib-spinner"></span><span>${escapeHtml(label)}</span></div>`;
+}
+
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

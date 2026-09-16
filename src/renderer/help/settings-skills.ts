@@ -9,7 +9,7 @@
  * and Contents (the folder's files with a Monaco viewer — preview or code).
  */
 
-import { escapeHtml, confirmAction } from "./shared.js";
+import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
@@ -97,6 +97,7 @@ async function loadSkillsSettings(): Promise<void> {
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");
   el("skills-error")?.classList.add("hidden");
+  if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
   const r = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
   if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
@@ -105,6 +106,7 @@ async function loadSkillsSettings(): Promise<void> {
 }
 
 async function loadDiscover(): Promise<void> {
+  if (!discoverRows.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml("Loading the hub…"); }
   const [r, c] = await Promise.all([api().skillsDiscover(cfg.kind) as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
   if (!r.ok) { fail(r.error || "The hub didn't answer."); discoverRows = []; return; }
   discoverRows = r.data ?? [];

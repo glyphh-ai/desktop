@@ -17,7 +17,7 @@
  * "connect your own account" on a per-member org connection.
  */
 
-import { escapeHtml, confirmAction } from "./shared.js";
+import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
 
@@ -87,6 +87,7 @@ export async function loadSettingsConnections(): Promise<void> {
   el("conn2-detail-view")?.classList.add("hidden");
   el("conn2-list-view")?.classList.remove("hidden");
   fail("");
+  if (!entries.length) body.innerHTML = loadingHtml("Loading your connections…");
   const [res, custom, gate] = await Promise.all([
     window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] })),
     window.glyphh.mcpConnectionsList().catch(() => ({ ok: false, connections: [] as McpConn[] })),
@@ -135,6 +136,7 @@ export async function loadSettingsConnections(): Promise<void> {
 async function loadCatalog(q: string): Promise<void> {
   catalogQuery = q;
   catalogNext = "";
+  if (!catalog.length) { const b = el("conn2-body"); if (b) b.innerHTML = loadingHtml("Loading the directory…"); }
   try {
     const r = await window.glyphh.connectorsGetApps(q);
     catalog = r.apps ?? [];
@@ -154,6 +156,7 @@ async function loadCategories(): Promise<void> {
 async function loadCategoryPage(reset: boolean): Promise<void> {
   if (!catView || catLoading) return;
   if (!reset && !catNext) return;
+  if (reset) { const b = el("conn2-body"); if (b) b.innerHTML = loadingHtml("Loading this category…"); }
   catLoading = true;
   try {
     const r = await window.glyphh.connectorsGetApps(catQuery.trim(), reset ? undefined : catNext, catView);
