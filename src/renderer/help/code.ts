@@ -5442,6 +5442,24 @@ export function initCode(): void {
       dockLayer: rectOf("#echo-dock-layer"), topbar: rectOf(".echo-topbar"), echoBody: rectOf(".ws-echo-body"), hotstrip: rectOf(".echo-dock-hotstrip"),
     }));
   }, 2500);
+  // DOCK PROOF (his report, 2026-09-16: "the dock is not respected"): what the
+  // dock is doing once panels are up — parked or on the stage, tucked or not,
+  // visible or not, and the body classes that decide it. Twice, so a panel
+  // opened after boot is caught too.
+  for (const at of [4000, 12000]) {
+    window.setTimeout(() => {
+      const bar = document.querySelector<HTMLElement>(".echo-topbar");
+      const r = bar?.getBoundingClientRect();
+      const cs = bar ? getComputedStyle(bar) : null;
+      console.warn("[dock] state", JSON.stringify({
+        parked: !!bar?.closest("#echo-dock-layer"), rect: r ? `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}` : "absent",
+        visibility: cs?.visibility, display: cs?.display, opacity: cs?.opacity, transform: cs?.transform,
+        body: Array.from(document.body.classList).filter((c) => c.startsWith("echo") || c.startsWith("wb") || c.startsWith("rail")).join(" "),
+        topInset: getComputedStyle(document.body).getPropertyValue("--wb-top-inset").trim() || "unset",
+        cards: document.querySelectorAll(".echo-card").length, agentHolder: rectOf(".ws-agent-holder"),
+      }));
+    }, at);
+  }
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
   // The content shell sits to the right of the sidebar; inline and !important because the template's own inset rule is !important too.
   { const shellEl = document.getElementById("help-overlay"); if (shellEl) { shellEl.style.setProperty("right", "0px", "important"); shellEl.style.removeProperty("width"); } }
