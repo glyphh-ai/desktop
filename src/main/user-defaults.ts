@@ -154,7 +154,8 @@ export function provisionUserDefaults(): void {
     fs.mkdirSync(WORKSPACES_DIR(), { recursive: true });
     repairSeededIds();
     retireSeed(vibe());
-    const made = [dev()].filter(ensure).length;
+    retireSeed(dev());
+    const made = ([] as GridLayout[]).filter(ensure).length;
     if (made) console.info("[user-defaults] provisioned", made, "workspace(s)");
   } catch (err) {
     // A failure here must never block sign-in — the user simply lands with no

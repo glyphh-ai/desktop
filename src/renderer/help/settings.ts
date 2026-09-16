@@ -136,7 +136,7 @@ function initSettings() {
       try { names = ((await window.glyphh.layoutsList?.()) ?? []).map((l) => String((l as { name?: string }).name || "")).filter(Boolean); } catch { /* offline */ }
       const seen = new Set<string>();
       const opts: string[] = [];
-      for (const n of ["Dev", "Design", ...names]) {
+      for (const n of ["Design", ...names]) {
         const k = n.toLowerCase();
         if (!seen.has(k)) { seen.add(k); opts.push(n); }
       }

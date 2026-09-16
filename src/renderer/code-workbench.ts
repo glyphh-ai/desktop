@@ -311,7 +311,7 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
   // Tabs, Workspaces and Drips live in Settings → Customize (his order, 2026-09-16); no dock tiles.
-  ].filter((d) => d.key !== "apps" && d.key !== "layouts" && d.key !== "drips" && d.key !== "settings" && d.key !== "logout");
+  ].filter((d) => ["glyphh", "newtab", "cc", "closeall"].includes(d.key));
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -3028,25 +3028,10 @@ async function init(): Promise<void> {
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
-      // The dock pref decides membership (nav slots + traded icons)…
-      if (Array.isArray(dockPref)) dockKeys = dockPref.map(legacyKey);
-      // …and NEW nav slots shipped after the pref was saved still join it
-      // (unless the user traded them onto the pages): glyphh leads, the rest
-      // append.
-      {
-        const savedPage = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
-        for (const d of DOCK_ITEMS) {
-          if (dockKeys.includes(d.key) || savedPage.includes(`dock:${d.key}`)) continue;
-          if (d.key === "glyphh") dockKeys.unshift(d.key);
-          else dockKeys.push(d.key);
-        }
-        // THE FIXED TAIL (his orders, 2026-08-26/28): Settings, then CC,
-        // then Sign out, then Close all — in that order, whatever a saved
-        // pref says. These are system controls, not app icons; stale orders
-        // kept re-seating them (cc landed RIGHT of the power button).
-        const TAIL = ["settings", "logout", "cc", "closeall"];
-        dockKeys = [...dockKeys.filter((k) => !TAIL.includes(k)), ...TAIL];
-      }
+      // THE DOCK IS FIXED (his order, 2026-09-16): Glyphh, New tab, one slot per
+      // agent loop, Command center, Close all. No traded icons, no saved order.
+      void dockPref; void legacyKey;
+      dockKeys = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "cc", "closeall"];
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
       const byK = new Map<string, EchoTile>();
@@ -4032,6 +4017,15 @@ async function init(): Promise<void> {
         if (!b || !dockEl.contains(b)) return;
         ev.stopPropagation();
         const key = b.dataset.dock || "";
+        // SHIFT (his order, 2026-09-16): open that thing AGAIN — another agent
+        // panel, another tab form, another card of the tool.
+        if (ev.shiftKey) {
+          if (key === "glyphh") { const first = cliAgentRows[0]; if (first) openAgentForLoop(first.id, { again: true }); return; }
+          if (key === "newtab") { openNewTabForm(); return; }
+          const again = entriesByKey().get(key);
+          if (again?.tile.cliAgent) { openAgentForLoop(again.tile.cliAgent.id, { again: true }); return; }
+          if (again) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
+        }
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
           if (key === "glyphh") {
@@ -5873,12 +5867,13 @@ async function init(): Promise<void> {
      *  opens in the view Settings resolve (chat or CLI) — and when the chat
      *  singleton already holds another loop, this one gets its own panel.
      *  No cap on open agents. */
-    function openAgentForLoop(id: string): void {
+    function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
       const row = cliAgentRows.find((x) => x.id === id);
       if (!row) return;
-      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row)); return; }
+      if (resolveAgentView() === "cli") { openAgentCliCard(cliAgentTileOf(row), undefined, opts.again ? { fresh: true } : undefined); return; }
       const seated = openList.find((x) => x.card && x.tile.kind === "agent");
       const bound = seated?.card?.dataset.boundAgent;
+      if (opts.again && seated) { openAppCard(agentInstanceTile(id)); return; }
       if (seated && bound && bound !== id) { openAppCard(agentInstanceTile(id)); return; }
       openAgentChatCard(id);
     }
