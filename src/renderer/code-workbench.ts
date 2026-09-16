@@ -985,22 +985,16 @@ async function init(): Promise<void> {
           slots.push({ id: nextSlotId++, view: "app", slug: v.slug, name: v.name || v.slug, url: v.url || "", glyphh: v.glyphh, sticky: v.sticky, urlBarHidden: urlBarHiddenDefault() });
         } else if (typeof v === "object" && v !== null && v.view === "section" && v.section) {
           slots.push({ id: nextSlotId++, view: "section", section: v.section });
-        } else if (typeof v === "object" && v !== null && v.view === "rail") {
-          // Restore the Rail's collapsed edge-strip. Pin the matching hide flag
-          // too so the expand affordance renders even on the plain per-folder
-          // path (a workspace's applyCellConfigs re-applies the definition's
-          // flags over these afterward).
-          const s = makeSlot("rail") as RailPanelSlot;
-          if (v.collapsed === "left") { s.collapsed = "left"; s.hideLeft = true; }
-          else if (v.collapsed === "right") { s.collapsed = "right"; s.hideRight = true; }
-          slots.push(s);
+        } else if ((typeof v === "object" && v !== null && v.view === "rail") || v === "rail") {
+          // The rail is the fixed sidebar (his order, 2026-09-16): a saved Rail panel is dropped.
+          continue;
         } else if (v === "coding" || v === "thread") {
           // NEVER restore an agent slot — the agent opens on demand; a stale one
           // saved by the old force-place would otherwise re-open every load.
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco") {
           slots.push(makeSlot(v));
         }
       }

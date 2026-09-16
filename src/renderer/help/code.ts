@@ -4330,11 +4330,9 @@ function syncRailLayout(): void {
   // targeted a ghost, leaving the CSS cap absolute; his report 2026-09-14).
   // The CSS owns the default shape (content-hugging, 44vh cap, own scroll);
   // only a DRAGGED height writes inline.
+  // The sidebar scrolls as one column now (his order, 2026-09-16): no per-section height.
   const hist = el("recent-sessions-list");
-  if (hist && !hist.classList.contains("hidden")) {
-    if (recentsUserH > 0) { hist.style.flex = `0 0 ${recentsUserH}px`; hist.style.maxHeight = "none"; }
-    else { hist.style.flex = ""; hist.style.maxHeight = ""; }
-  }
+  if (hist) { hist.style.flex = ""; hist.style.maxHeight = ""; }
 }
 
 // ── Recents vertical resize (restored from 5b3cc551 — his report,
@@ -5345,7 +5343,42 @@ export function initCode(): void {
     const b = el("rail-collapse-btn"); if (b) b.title = on ? "Expand the sidebar" : "Collapse the sidebar";
     if (persist) void window.glyphh.setPreference?.("railCollapsed", on);
   };
-  el("rail-collapse-btn")?.addEventListener("click", () => setRailCollapsed(!document.body.classList.contains("rail-collapsed"), true));
+  // Delegated: the strip is an OS drag region, so the click is caught at the document and logged.
+  document.addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement | null)?.closest?.("#rail-collapse-btn");
+    if (!t) return;
+    e.preventDefault(); e.stopPropagation();
+    const on = !document.body.classList.contains("rail-collapsed");
+    console.warn("[rail] collapse", on);
+    setRailCollapsed(on, true);
+  }, true);
+  // Drag the sidebar's right edge to resize it (persisted); collapse restores the last width.
+  const railEl = el("app-rail");
+  if (railEl && !el("app-rail-resize")) {
+    const grip = document.createElement("div");
+    grip.id = "app-rail-resize";
+    railEl.appendChild(grip);
+    const applyWidth = (w: number): void => { document.body.style.setProperty("--rail-w-open", `${w}px`); };
+    void window.glyphh.getPreference?.("railWidth", 264).then((v) => { const w = Number(v); if (w >= 180 && w <= 520) applyWidth(w); }).catch(() => {});
+    grip.addEventListener("mousedown", (e) => {
+      if (document.body.classList.contains("rail-collapsed")) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = railEl.getBoundingClientRect().width;
+      let w = startW;
+      document.body.classList.add("rail-resizing");
+      const move = (ev: MouseEvent): void => { w = Math.max(180, Math.min(520, Math.round(startW + (ev.clientX - startX)))); applyWidth(w); };
+      const up = (): void => {
+        document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up);
+        document.body.classList.remove("rail-resizing");
+        void window.glyphh.setPreference?.("railWidth", w);
+      };
+      document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+    });
+  }
+  // The shell starts to the RIGHT of the fixed sidebar and at the very top, inline so no later stylesheet rule can undo it.
+  const shell = document.getElementById("help-overlay");
+  if (shell) { shell.style.left = "var(--rail-w)"; shell.style.top = "0px"; }
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
   el("rail-echo-btn")?.addEventListener("click", () => {
     const w = window as unknown as { __wbEchoShadowPin?: () => void };

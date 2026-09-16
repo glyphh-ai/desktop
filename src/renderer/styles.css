@@ -20752,8 +20752,14 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 /* ── THE FIXED SIDEBAR (his order, 2026-09-16): the rail is the one fixed
    panel, full height at the left, carrying the only header on the page. The
    content side starts at the very top; work panels bring their own heads. ── */
-body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w: 264px; }
+body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w-open: 264px; --rail-w: var(--rail-w-open); }
 body.rail-collapsed { --rail-w: 96px; }
+body.rail-resizing, body.rail-resizing * { cursor: col-resize !important; user-select: none; }
+body.rail-resizing #app-rail, body.rail-resizing #help-overlay { transition: none !important; }
+#app-rail-resize { position: absolute; top: var(--rail-top-h); right: -3px; bottom: 0; width: 6px; cursor: col-resize; z-index: 2; }
+#app-rail-resize:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+body.rail-collapsed #app-rail-resize { display: none; }
+#app-rail-top { pointer-events: auto; }
 #app-rail {
   position: fixed; top: 0; left: 0; bottom: 0; width: var(--rail-w); min-width: 0;
   display: flex !important; z-index: 385; padding-top: var(--rail-top-h);
@@ -20773,3 +20779,11 @@ body.rail-collapsed #rail-echo-btn { display: none; }
 #shell-drag-strip .shell-drag-area { -webkit-app-region: no-drag; }
 #help-overlay { top: 0; left: var(--rail-w); }
 .ws-rail-placeholder-note { padding: 18px; font-size: 13px; color: var(--text-3); }
+
+/* The sidebar scrolls as ONE column (his order, 2026-09-16): Recents has no
+   scroll of its own and runs to the bottom; the account row stays pinned. */
+#app-rail .code-history { flex: 1 1 auto; min-height: 0; max-height: none !important; overflow: visible; }
+#app-rail #rail-recents-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+#app-rail .app-rail-scroll { overflow-y: auto; }
+#echo-dock-layer { left: var(--rail-w); }
+#drag-overlay, #grid-handles { left: var(--rail-w); }
