@@ -8,14 +8,17 @@
  *   own key   → the vendor's own endpoint, the user's key      (BYOK, ungoverned)
  *   gateway   → the org's gateway, the member's minted key     (governed: the
  *               list is the org's team allow-list, key-scoped by LiteLLM)
- *   login     → the CLI's own login; no endpoint we can ask   (empty list —
- *               the CLI decides its model)
+ *   login     → the CLI's own login; no endpoint to ask, so the list is the
+ *               CLI's own: its configured model + the names its flag accepts
  *
  * The three vendors answer the same question in three dialects; each is
  * normalised to { id, name, providerSlug } where id is the RAW model name the
  * CLI's --model / -m flag takes.
  */
 
+import fs from "fs";
+import path from "path";
+import { homedir } from "os";
 import { ipcMain } from "electron";
 import { agentRowFor, loopKeyValue, CLI_PROFILES } from "./cli-agents";
 import { gatewayCreds } from "./gateway-token";
@@ -84,6 +87,31 @@ async function listAt(cli: string, base: string, token: string, viaGateway: bool
   return cli === "gemini" ? rows.filter((r) => r.providerSlug === "google") : rows;
 }
 
+/** The CLI's OWN model list (the login lane, his ruling, 2026-09-16: a free
+ *  org rides each member's CLI login and credits). No endpoint to ask, so the
+ *  list is what the CLI's config names first, then the aliases its --model
+ *  flag accepts. */
+function loginModels(cli: string): LoopModel[] {
+  const read = (p: string): string => { try { return fs.readFileSync(p, "utf-8"); } catch { return ""; } };
+  const names: string[] = [];
+  if (cli === "claude") {
+    try { const m = (JSON.parse(read(path.join(homedir(), ".claude", "settings.json"))) as { model?: string }).model; if (m) names.push(m); } catch { /* no settings */ }
+    names.push("opus", "sonnet", "haiku", "opusplan");
+  } else if (cli === "codex") {
+    const toml = read(path.join(homedir(), ".codex", "config.toml"));
+    for (const m of toml.matchAll(/^\s*model\s*=\s*"([^"]+)"/gm)) names.push(m[1]);
+  } else if (cli === "gemini") {
+    try {
+      const j = JSON.parse(read(path.join(homedir(), ".gemini", "settings.json"))) as { model?: string; general?: { model?: string } };
+      const m = j.model || j.general?.model; if (m) names.push(m);
+    } catch { /* no settings */ }
+    names.push("gemini-2.5-pro", "gemini-2.5-flash");
+  }
+  const seen = new Set<string>();
+  const slug = cli === "claude" ? "anthropic" : cli === "codex" ? "openai" : "google";
+  return names.filter((n) => n && !seen.has(n) && seen.add(n)).map((id) => ({ id, name: id, providerSlug: providerOf(id) === "other" ? slug : providerOf(id) }));
+}
+
 export async function listLoopModels(loopId: string, force = false): Promise<LoopModelsResult> {
   const hit = cache.get(loopId);
   if (!force && hit && Date.now() - hit.at < TTL_MS) return hit.value;
@@ -91,17 +119,17 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
   if (!row) return { ok: false, source: "none", baseUrl: null, models: [], error: "loop not found" };
   const profile = CLI_PROFILES[row.cli];
   // A CLI with no base-URL seam (Copilot, Cursor) runs on its own login.
-  if (!profile?.baseUrlEnv.length) return { ok: true, source: "login", baseUrl: null, models: [] };
+  if (!profile?.baseUrlEnv.length) return { ok: true, source: "login", baseUrl: null, models: loginModels(row.cli) };
   let value: LoopModelsResult;
   try {
     if (row.apiKey) {
       const key = loopKeyValue(row.id, row.apiKey.name);
       const base = VENDOR_BASE[row.cli];
-      if (!key || !base) value = { ok: true, source: "login", baseUrl: null, models: [] };
+      if (!key || !base) value = { ok: true, source: "login", baseUrl: null, models: loginModels(row.cli) };
       else value = { ok: true, source: "byok", baseUrl: base, models: await listAt(row.cli, base, key, false) };
     } else {
       const creds = await gatewayCreds();
-      if (!creds) value = { ok: true, source: "login", baseUrl: null, models: [] };
+      if (!creds) value = { ok: true, source: "login", baseUrl: null, models: loginModels(row.cli) };
       else value = { ok: true, source: "gateway", baseUrl: creds.baseUrl, models: await listAt(row.cli, creds.baseUrl, creds.token, true) };
     }
   } catch (err) {
