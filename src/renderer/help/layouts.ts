@@ -969,7 +969,7 @@ async function showCellPicker(cellIndex: number, anchor: HTMLElement) {
     ...TOOL_PANELS.map((t) => `<div class="cell-panel-option tool" data-id="${t.id}">${t.label}</div>`),
     cliAgentRows.length ? `<div class="cell-panel-group-label">Loops</div>` : "",
     ...cliAgentRows.map((a) => `<div class="cell-panel-option tool" data-id="agent:${a.id}">${a.icon ? `${a.icon} ` : ""}${a.name}</div>`),
-    options.length ? `<div class="cell-panel-group-label">Apps</div>` : "",
+    options.length ? `<div class="cell-panel-group-label">Tabs</div>` : "",
     ...options.map((o) => `<div class="cell-panel-option" data-id="${o.id}">${o.label}</div>`),
     `</div>`,
     stickyBtn,

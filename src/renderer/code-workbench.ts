@@ -282,7 +282,7 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
-  { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
+  { key: "apps",        title: "Tabs",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   // (Connections moved into Settings — his ruling, 2026-09-12; no dock tile.)
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
@@ -443,7 +443,7 @@ const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"
 
 /** Panel titles for hosted sections (slot headers + layout minis). */
 const SECTION_TITLES: Record<string, string> = {
-  dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
+  dashboard: "Home", connections: "Connections", apps: "Tabs", marketplace: "Marketplace",
   layouts: "Workspaces",
   skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",

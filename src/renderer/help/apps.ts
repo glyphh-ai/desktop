@@ -725,7 +725,7 @@ async function loadConfigVarsTab() {
     listEl.appendChild(row);
   }
   if (!secrets.length && !missing.length) {
-    listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this app use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
+    listEl.innerHTML = `<div class="inline-empty">No config vars yet. Keys like OPENAI_API_KEY let this tab use services on your behalf — the value is encrypted and can never be viewed again.</div>`;
     return;
   }
   for (const s of secrets) {
@@ -923,7 +923,7 @@ async function loadPanelTab() {
     // (the old non-null assertion threw "Cannot set properties of null" and
     // took down Open App on web).
     const noUrlHost = document.getElementById("app-commands-list");
-    if (noUrlHost) noUrlHost.innerHTML = `<div class="inline-empty">No URL configured for this app. Add one above to enable panel features.</div>`;
+    if (noUrlHost) noUrlHost.innerHTML = `<div class="inline-empty">No URL configured for this tab. Add one above to open it in the work panel.</div>`;
     return;
   }
 
@@ -1074,7 +1074,7 @@ async function openPanelAppDetail(app: PanelApp) {
   // The open action resets per app — a prior suspended marketplace app must
   // not leave the button dead for the next one opened.
   const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
-  if (openBtn) { openBtn.disabled = false; openBtn.textContent = "Open app"; openBtn.title = "Open this app as a panel"; }
+  if (openBtn) { openBtn.disabled = false; openBtn.textContent = "Open tab"; openBtn.title = "Open this tab in the work panel"; }
   if (!mktInstalled) void gateAppDelete(app.slug);
 
   // All tabs always visible
@@ -1423,7 +1423,7 @@ function initApps() {
     const confirmed = await confirmAction({
       title: `Delete “${appDetailName.value}”?`,
       body: "The app leaves your library — connected accounts stay intact.",
-      confirmLabel: "Delete app",
+      confirmLabel: "Delete tab",
       danger: true,
     });
     if (!confirmed) return;
@@ -1432,7 +1432,7 @@ function initApps() {
       // Almost always the live-deployment guard. Tell the user instead of silently
       // closing as if it worked, and re-sync the gate.
       await confirmAction({
-        title: "Couldn't delete this app",
+        title: "Couldn't delete this tab",
         body: res.error || "Take the app down first (Hosting tab → Take down), then delete.",
         confirmLabel: "OK",
       });
