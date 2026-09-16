@@ -444,6 +444,16 @@ export function openSettingsModal(sub?: string): void {
           if (item) { anchor.after(item); anchor = item; }
         }
       }
+      // CUSTOMIZE follows Build (his order, 2026-09-16): Workspaces, Drips.
+      const customizeGroup = nav.querySelector("#nav-group-customize");
+      if (customizeGroup) {
+        anchor.after(customizeGroup);
+        anchor = customizeGroup;
+        for (const sub of ["layouts", "drips"]) {
+          const item = pick(sub);
+          if (item) { anchor.after(item); anchor = item; }
+        }
+      }
       wireAppUserChip(nav as HTMLElement);
     }
   }
@@ -863,6 +873,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
+  else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
@@ -916,6 +927,7 @@ function parkSettingsDocs(): void {
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   layouts: { host: "settings-layouts-host" },
+  drips: { host: "settings-drips-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
 };
