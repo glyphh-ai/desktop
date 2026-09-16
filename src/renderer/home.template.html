@@ -31,7 +31,9 @@
     /* Force overlay to fill the page and override any .hidden from help.ts */
     /* Below the app header — inset-top tracks #shell-drag-strip via --titlebar-h
        (38px on desktop, 0 on web so the app is flush under the browser chrome). */
-    #help-overlay { position: absolute !important; inset: var(--titlebar-h, 38px) 0 0 !important; display: block !important; background: var(--bg); }
+    /* The content shell: to the RIGHT of the fixed sidebar and at the very top
+       (his order, 2026-09-16); the sidebar carries the only header. */
+    #help-overlay { position: absolute !important; inset: 0 0 0 var(--rail-w, 264px) !important; display: block !important; background: var(--bg); }
     #help-layout { position: absolute; inset: 0; display: flex; }
     /* The nav lives in the app's left rail now — keep it in the DOM (its
        buttons still drive section switching) but hide the sidebar. */
