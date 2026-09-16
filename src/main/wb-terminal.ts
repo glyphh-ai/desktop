@@ -22,7 +22,7 @@ import { ipcMain, type WebContents } from "electron";
 import os from "os";
 import fs from "fs";
 import { execFile } from "child_process";
-import { setWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
+import { followWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
 
 interface Running { proc: pty.IPty; wc: WebContents }
 
@@ -103,7 +103,7 @@ function pollActiveCwd(): void {
     const prev = shellCwd.get(k);
     shellCwd.set(k, dir);
     if (prev === undefined || dir === prev) return;
-    try { if (dir !== getWorkingDirectory()) setWorkingDirectory(dir); }
+    try { if (dir !== getWorkingDirectory()) followWorkingDirectory(dir); }
     catch (err) { console.warn("[wb-term] cwd follow failed:", err instanceof Error ? err.message : err); }
   });
 }

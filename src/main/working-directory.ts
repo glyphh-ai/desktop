@@ -15,6 +15,7 @@ import { createHash } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
+import { realpathSync } from "fs";
 import { watch, statSync, type FSWatcher } from "fs";
 import path from "path";
 import os from "os";
@@ -83,9 +84,18 @@ export function getWorkingDirRecents(): string[] {
   return getPreference<string[]>("workingDirRecents", []) || [];
 }
 
+/** One spelling per folder: absolute, no trailing slash, symlinks resolved. */
+function normalizeDir(dir: string): string {
+  let out = path.resolve(dir.trim());
+  try { out = realpathSync(out); } catch { /* not there yet */ }
+  return out.length > 1 ? out.replace(/[\\/]+$/, "") : out;
+}
+const sameDir = (a: string, b: string): boolean => (process.platform === "darwin" || process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b);
+
 function pushRecentFolder(dir: string): void {
-  const recents = getWorkingDirRecents().filter((d) => d !== dir);
-  recents.unshift(dir);
+  const norm = normalizeDir(dir);
+  const recents = getWorkingDirRecents().map(normalizeDir).filter((d, i, all) => !sameDir(d, norm) && all.findIndex((x) => sameDir(x, d)) === i);
+  recents.unshift(norm);
   setPreference("workingDirRecents", recents.slice(0, FOLDERS_CAP));
 }
 
@@ -240,7 +250,7 @@ function startWorkdirWatcher(dir: string): void {
 
 /** Set the working directory and notify the renderer + every panel. */
 export function setWorkingDirectory(dir: string | null): void {
-  const value = dir || null;
+  const value = dir ? normalizeDir(dir) : null;
   setPreference("workingDirectory", value);
   if (value) pushRecentFolder(value);
   getMainWindow()?.webContents.send("working-dir-changed", value);
@@ -248,6 +258,18 @@ export function setWorkingDirectory(dir: string | null): void {
   onWorkingDirChange(getWorkingDirectory());
   emitWorkdirEvent({ type: "cwd-changed", cwd: getWorkingDirectory() });
   startWorkdirWatcher(getWorkingDirectory());
+}
+
+/** A shell cd'd somewhere: the panels and watcher follow for this session, but
+ *  the user's CHOSEN folder and the recents stay as picked (his order,
+ *  2026-09-16: a resumed session in some app folder must not become the default). */
+export function followWorkingDirectory(dir: string): void {
+  const value = normalizeDir(dir);
+  getMainWindow()?.webContents.send("working-dir-changed", value);
+  broadcastToPanels("working-dir-changed", value);
+  onWorkingDirChange(value);
+  emitWorkdirEvent({ type: "cwd-changed", cwd: value });
+  startWorkdirWatcher(value);
 }
 
 // ── Shared filesystem/git implementations ────────────────────────────────
