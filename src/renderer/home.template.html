@@ -76,6 +76,8 @@
            Home|Code switcher, sessions, section nav, and the user area.
            Hidden when the panel is locked to a single section (?section=). -->
       <aside id="app-rail">
+        <!-- Everything above the account row scrolls; the row stays pinned (his report, 2026-09-16). -->
+        <div id="app-rail-scroll" class="app-rail-scroll">
         <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
              platform — filled by initOrgSwitcher(); hidden for single-org users. -->
         <div id="org-switch-rail" class="org-switch hidden"></div>
@@ -155,10 +157,14 @@
           </div>
           <div id="recent-layouts-list" class="app-rail-grid"></div>
         </div>
+        </div>
         <div class="app-rail-user">
           <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             <span id="app-rail-user-name">Account</span>
+          </button>
+          <button id="app-rail-settings-btn" class="app-rail-settings-btn" type="button" title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           </button>
         </div>
       </aside>

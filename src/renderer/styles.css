@@ -16139,11 +16139,31 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 }
 .org-switch .org-switch-select:hover { border-color: var(--text-3); }
 
+/* The rail's scroll body: sections stack inside it and it scrolls as one,
+   so the account row below never leaves the viewport however long Recents,
+   Apps and Workspaces get. */
+.app-rail-scroll {
+  display: flex; flex-direction: column;
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+}
 .app-rail-user {
-  margin-top: auto;
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 4px;
   padding: 8px;
   border-top: 1px solid var(--border);
 }
+.app-rail-user .app-rail-user-btn { flex: 1 1 auto; min-width: 0; }
+.app-rail-settings-btn {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border: none; border-radius: 8px; background: none;
+  color: var(--text-3); cursor: pointer;
+}
+.app-rail-settings-btn svg { width: 16px; height: 16px; }
+.app-rail-settings-btn:hover { background: var(--hover); color: var(--text); }
+#app-rail.rail-icons .app-rail-user { flex-direction: column; }
 
 /* "Relaunch to update" — an accent CTA that sits just above the account button,
    shown only when an update has downloaded (home.ts toggles .hidden). */

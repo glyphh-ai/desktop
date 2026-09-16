@@ -1131,6 +1131,13 @@ export function initHelp() {
     e.stopPropagation();
     openUserMenu(userBtn);
   });
+  // The gear beside the account row opens Settings directly (his order,
+  // 2026-09-16) — the same modal the dock's gear opens.
+  document.getElementById("app-rail-settings-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeUserMenu();
+    gotoSection("settings");
+  });
   document.addEventListener("mousedown", (e) => {
     if (userMenu && !userMenu.contains(e.target as Node) && !userMenuAnchor?.contains(e.target as Node)) closeUserMenu();
   });
