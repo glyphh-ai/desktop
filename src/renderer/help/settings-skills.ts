@@ -401,9 +401,11 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
     r.innerHTML = `<div class="skill-tile-icon">${glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-row-main"><div class="disc-row-title"><span class="disc-row-name"></span></div><div class="disc-row-sub"></div></div><div class="disc-row-installs"></div>`;
     (r.querySelector(".disc-row-name") as HTMLElement).textContent = d.name;
     const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
+    // The category being browsed leads the chips; the rest fold into +N.
+    const lead = v.kind === "category" && d.categories.includes(v.id) ? v.id : d.categories[0];
     const chips: string[] = [];
     if (isNew(d)) chips.push("New");
-    if (d.categories[0]) chips.push(catLabel(d.categories[0]));
+    if (lead) chips.push(catLabel(lead));
     if (d.categories.length > 1) chips.push(`+${d.categories.length - 1}`);
     for (const c of chips) { const s = document.createElement("span"); s.className = "disc-chip" + (c === "New" ? " new" : ""); s.textContent = c; titleEl.appendChild(s); }
     (r.querySelector(".disc-row-sub") as HTMLElement).textContent = `by ${d.author || "your org"} · ${d.description || "No description"}`;
