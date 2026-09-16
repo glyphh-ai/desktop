@@ -543,6 +543,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   const resumePart = ov?.resume
     ? row.cli === "claude" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue")
       : row.cli === "codex" ? (typeof ov.resume === "string" ? ` resume '${ov.resume.replace(/'/g, "")}'` : " resume --last")
+      : row.cli === "gemini" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --resume latest")
       : ""
     : "";
   // An INITIAL PROMPT seeds the interactive session (claude/codex take it
@@ -658,7 +659,62 @@ export function listCliAgents(): CliAgentListed[] {
 // The head of each file carries the real cwd and the first user message;
 // mtime orders the merged list. (Gemini joins when its store is wired.)
 
-export interface CliSessionRow { id: string; cli: "claude" | "codex"; title: string; cwd: string; mtime: number }
+export interface CliSessionRow { id: string; cli: "claude" | "codex" | "gemini"; title: string; cwd: string; mtime: number }
+
+/** Gemini CLI keeps a chat per session under ~/.gemini/tmp/<project>/chats/,
+ *  with the project's folder named in .project_root beside it. */
+function geminiSessionFiles(): Array<{ file: string; mtime: number; cli: "gemini"; cwd: string }> {
+  const root = path.join(homedir(), ".gemini", "tmp");
+  let projects: string[] = [];
+  try { projects = fs.readdirSync(root); } catch { return []; }
+  const files: Array<{ file: string; mtime: number; cli: "gemini"; cwd: string }> = [];
+  for (const proj of projects) {
+    const dir = path.join(root, proj, "chats");
+    let cwd = "";
+    try { cwd = fs.readFileSync(path.join(root, proj, ".project_root"), "utf-8").trim(); } catch { cwd = ""; }
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const n of names) {
+      if (!n.endsWith(".jsonl")) continue;
+      try { const st = fs.statSync(path.join(dir, n)); if (st.size > 0) files.push({ file: path.join(dir, n), mtime: st.mtimeMs, cli: "gemini", cwd }); } catch { /* raced */ }
+    }
+  }
+  return files;
+}
+
+/** Gemini chat head: the first line carries sessionId; the title is the first
+ *  user message that isn't the CLI's own <session_context> preamble. */
+function readGeminiSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
+  let head = "";
+  try {
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(131_072);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    head = buf.toString("utf-8", 0, n);
+  } catch { return null; }
+  let id = "";
+  let title = "";
+  type Msg = { type?: string; content?: Array<{ text?: string }> | string };
+  const consider = (m: Msg): void => {
+    if (title || m.type !== "user") return;
+    const text = Array.isArray(m.content) ? m.content.map((c) => c.text || "").join("") : String(m.content || "");
+    const t = text.trim();
+    if (t && !t.startsWith("<session_context>")) title = t;
+  };
+  for (const line of head.split("\n")) {
+    if (!line.trim()) continue;
+    let j: { sessionId?: string; $set?: { messages?: Msg[] }; $push?: { messages?: Msg | Msg[] }; messages?: Msg[] };
+    try { j = JSON.parse(line) as typeof j; } catch { continue; }
+    if (typeof j.sessionId === "string") id = j.sessionId;
+    for (const m of j.$set?.messages ?? j.messages ?? []) consider(m);
+    const pushed = j.$push?.messages;
+    if (pushed) for (const m of Array.isArray(pushed) ? pushed : [pushed]) consider(m);
+    if (id && title) break;
+  }
+  if (!id || !title) return null;
+  return { id, cli: "gemini", title: title.replace(/\s+/g, " ").slice(0, 80), cwd, mtime };
+}
 
 function claudeSessionFiles(): Array<{ file: string; mtime: number; cli: "claude" }> {
   const root = path.join(homedir(), ".claude", "projects");
@@ -699,11 +755,11 @@ function codexSessionFiles(): Array<{ file: string; mtime: number; cli: "codex" 
 }
 
 export function listCliSessions(limit = 40): CliSessionRow[] {
-  const files = [...claudeSessionFiles(), ...codexSessionFiles()];
+  const files: Array<{ file: string; mtime: number; cli: "claude" | "codex" | "gemini"; cwd?: string }> = [...claudeSessionFiles(), ...codexSessionFiles(), ...geminiSessionFiles()];
   files.sort((a, b) => b.mtime - a.mtime);
   const out: CliSessionRow[] = [];
   for (const f of files.slice(0, limit * 3)) {
-    const row = f.cli === "codex" ? readCodexSessionHead(f.file, f.mtime) : readClaudeSessionHead(f.file, f.mtime);
+    const row = f.cli === "codex" ? readCodexSessionHead(f.file, f.mtime) : f.cli === "gemini" ? readGeminiSessionHead(f.file, f.mtime, f.cwd || "") : readClaudeSessionHead(f.file, f.mtime);
     if (row) out.push(row);
     if (out.length >= limit) break;
   }
@@ -799,6 +855,9 @@ export function registerCliAgentsIpc(): void {
       // codex — rollout filenames END with the session id.
       const hit = codexSessionFiles().find((f) => f.file.endsWith(`-${String(id)}.jsonl`));
       if (hit) { fs.rmSync(hit.file); return { ok: true }; }
+      // gemini — the chat file's tail is the session id's first block; the head line carries the full id.
+      const g = geminiSessionFiles().find((f) => { try { return fs.readFileSync(f.file, "utf-8").slice(0, 400).includes(`"sessionId":"${String(id)}"`); } catch { return false; } });
+      if (g) { fs.rmSync(g.file); return { ok: true }; }
       throw new Error("session not found");
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
