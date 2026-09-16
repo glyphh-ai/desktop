@@ -119,8 +119,8 @@ export async function openStarterLayout(key: keyof typeof TEMPLATES): Promise<vo
 
 // ── The DEFAULT workspace (Settings → General) ──────────────────────────────
 // The dropdown's canonical choices; user-made layouts join them by name.
-export const DEFAULT_WORKSPACE_KEYS = ["vibe", "dev", "design"] as const;
-export const DEFAULT_WORKSPACE_NAME = "Vibe";
+export const DEFAULT_WORKSPACE_KEYS = ["dev", "design"] as const;
+export const DEFAULT_WORKSPACE_NAME = "Dev";
 
 /** The template behind a default-workspace NAME (case-insensitive), if any. */
 export function defaultWorkspaceTemplate(name: string): Template | null {

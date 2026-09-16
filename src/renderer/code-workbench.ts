@@ -3156,7 +3156,8 @@ async function init(): Promise<void> {
         // its template first, then opens through the one true layout-open.
         void (async () => {
           const name = String((await yoApi?.getPreference?.("defaultWorkspace", "")) ?? "").trim();
-          if (!name) return;
+          // No default workspace: the app opens with the Glyphh agent loaded (his order, 2026-09-16).
+          if (!name) { activateGlyphh(); return; }
           // A BOOT open lands on the fresh + New Session landing — same
           // contract as booting without a layout ("don't auto-select a
           // session on load"). The previous conversation stays one click
@@ -3359,19 +3360,9 @@ async function init(): Promise<void> {
       // Desktop's window drag strip owns the top ~38px and eats mouse events;
       // the hover zone (and the peeked dock) start below it. Web has no strip.
       if (!IS_WEB_TARGET) document.body.classList.add("wb-has-dragstrip");
-      strip.addEventListener("mouseenter", () => {
-        if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
-      });
-      const bar = body.querySelector<HTMLElement>(".echo-topbar");
-      bar?.addEventListener("mouseleave", () => {
-        if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.remove("echo-dock-peek");
-      });
-      // Host surfaces still help where events DO reach the document.
-      document.addEventListener("mousemove", (ev) => {
-        if (!document.body.classList.contains("echo-dock-tucked")) return;
-        if (ev.clientY <= 14) document.body.classList.add("echo-dock-peek");
-        else if (ev.clientY > 200) document.body.classList.remove("echo-dock-peek");
-      }, { passive: true });
+      // A hidden dock stays hidden (his order, 2026-09-16): no hover peek. The
+      // wall opens from the sidebar's Echo icon. The strip stays for its class hooks.
+      void strip;
     }
     const readAutoHide = (): void => {
       void Promise.all([

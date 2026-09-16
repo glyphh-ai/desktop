@@ -131,12 +131,12 @@ function initSettings() {
   const defWs = document.getElementById("settings-default-workspace") as HTMLSelectElement | null;
   if (defWs) {
     void (async () => {
-      const current = String((await window.glyphh.getPreference?.("defaultWorkspace", "Vibe")) ?? "Vibe");
+      const current = String((await window.glyphh.getPreference?.("defaultWorkspace", "")) ?? "");
       let names: string[] = [];
       try { names = ((await window.glyphh.layoutsList?.()) ?? []).map((l) => String((l as { name?: string }).name || "")).filter(Boolean); } catch { /* offline */ }
       const seen = new Set<string>();
       const opts: string[] = [];
-      for (const n of ["Vibe", "Dev", "Design", ...names]) {
+      for (const n of ["Dev", "Design", ...names]) {
         const k = n.toLowerCase();
         if (!seen.has(k)) { seen.add(k); opts.push(n); }
       }

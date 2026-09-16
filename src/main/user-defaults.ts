@@ -102,6 +102,18 @@ function repairSeededIds(): void {
   }
 }
 
+/** A retired seed (Vibe, 2026-09-16) goes only while it is still the untouched
+ *  seed; a user who edited it keeps their workspace. */
+function retireSeed(grid: GridLayout): void {
+  const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
+  const file = path.join(dir, "workspace.json");
+  try {
+    const cur = JSON.parse(fs.readFileSync(file, "utf-8")) as GridLayout;
+    const same = (a: GridLayout, b: GridLayout): boolean => JSON.stringify(a.cells.map((c) => c.panelId)) === JSON.stringify(b.cells.map((c) => c.panelId));
+    if (same(cur, grid)) fs.rmSync(dir, { recursive: true, force: true });
+  } catch { /* absent, or not ours to judge */ }
+}
+
 /** Write one workspace if the user doesn't already have that id. */
 function ensure(grid: GridLayout): boolean {
   const dir = path.join(WORKSPACES_DIR(), workspaceId(grid.name));
@@ -122,7 +134,8 @@ export function provisionUserDefaults(): void {
   try {
     fs.mkdirSync(WORKSPACES_DIR(), { recursive: true });
     repairSeededIds();
-    const made = [vibe(), dev()].filter(ensure).length;
+    retireSeed(vibe());
+    const made = [dev()].filter(ensure).length;
     if (made) console.info("[user-defaults] provisioned", made, "workspace(s)");
   } catch (err) {
     // A failure here must never block sign-in — the user simply lands with no
