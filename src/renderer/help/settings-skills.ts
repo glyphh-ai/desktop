@@ -303,6 +303,7 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
+  collapsedDirs = new Set();
   paintVersions([]);
   void loadVersions();
   selectDetailTab("overview");
@@ -363,35 +364,64 @@ function selectDetailTab(t: "overview" | "contents"): void {
   if (t === "contents") editor?.layout();
 }
 
+/** Folders the user closed in this skill's tree (paths like "assets/fonts"). */
+let collapsedDirs = new Set<string>();
+
+type TreeNode = { name: string; path: string; dirs: Map<string, TreeNode>; files: SkillFile[] };
+function buildTree(files: SkillFile[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", dirs: new Map(), files: [] };
+  for (const f of files) {
+    const parts = f.path.split("/");
+    let node = root;
+    for (const part of parts.slice(0, -1)) {
+      if (!node.dirs.has(part)) node.dirs.set(part, { name: part, path: node.path ? `${node.path}/${part}` : part, dirs: new Map(), files: [] });
+      node = node.dirs.get(part)!;
+    }
+    node.files.push(f);
+  }
+  return root;
+}
+
+const CHEVRON = `<svg class="skill-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+const FOLDER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>`;
+
 function renderTree(): void {
   const host = el("skill-tree");
   if (!host || !current) return;
   host.textContent = "";
-  // Folders first, then files — one indented list, folders as headings.
-  const dirs = new Map<string, SkillFile[]>();
-  for (const f of filesNow()) {
-    const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
-    if (!dirs.has(dir)) dirs.set(dir, []);
-    dirs.get(dir)!.push(f);
-  }
-  const keys = [...dirs.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
-  for (const dir of keys) {
-    if (dir) {
-      const h = document.createElement("div");
-      h.className = "skill-tree-dir";
-      h.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg><span></span>`;
-      (h.querySelector("span") as HTMLElement).textContent = dir;
-      host.appendChild(h);
-    }
-    for (const f of dirs.get(dir)!) {
+  const paint = (node: TreeNode, depth: number): void => {
+    // SKILL.md first at the root, then folders, then the rest of the files.
+    const files = [...node.files].sort((a, b) => (a.path === "SKILL.md" ? -1 : b.path === "SKILL.md" ? 1 : a.path.localeCompare(b.path)));
+    const lead = depth === 0 ? files.filter((f) => f.path === "SKILL.md") : [];
+    const rest = depth === 0 ? files.filter((f) => f.path !== "SKILL.md") : files;
+    const file = (f: SkillFile): void => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "skill-tree-file" + (dir ? " nested" : "") + (f.path === currentFile ? " active" : "");
-      b.textContent = f.path.slice(dir ? dir.length + 1 : 0);
+      b.className = "skill-tree-file" + (f.path === currentFile ? " active" : "");
+      b.style.paddingLeft = `${10 + depth * 18}px`;
+      b.textContent = f.path.slice(f.path.lastIndexOf("/") + 1);
       b.addEventListener("click", () => void openFile(f.path));
       host.appendChild(b);
+    };
+    lead.forEach(file);
+    for (const dir of [...node.dirs.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      const open = !collapsedDirs.has(dir.path);
+      const h = document.createElement("button");
+      h.type = "button";
+      h.className = "skill-tree-dir" + (open ? " open" : "");
+      h.style.paddingLeft = `${8 + depth * 18}px`;
+      h.innerHTML = `${FOLDER}<span></span>${CHEVRON}`;
+      (h.querySelector("span") as HTMLElement).textContent = dir.name;
+      h.addEventListener("click", () => {
+        if (collapsedDirs.has(dir.path)) collapsedDirs.delete(dir.path); else collapsedDirs.add(dir.path);
+        renderTree();
+      });
+      host.appendChild(h);
+      if (open) paint(dir, depth + 1);
     }
-  }
+    rest.forEach(file);
+  };
+  paint(buildTree(filesNow()), 0);
 }
 
 function langFor(name: string): string {
