@@ -411,8 +411,10 @@ export function openSettingsModal(sub?: string): void {
     const settingsGroup = groups.find((g) => g.textContent?.trim() === "Settings");
     if (settingsGroup && nav) {
       let anchor: Element = settingsGroup;
+      const pick = (sub: string): Element | null =>
+        nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       for (const sub of ["general", "appearance", "account"]) {
-        const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+        const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
       let orgGroup = nav.querySelector("#app-nav-group-org");
@@ -425,12 +427,12 @@ export function openSettingsModal(sub?: string): void {
       anchor.after(orgGroup);
       anchor = orgGroup;
       for (const sub of ["usage", "billing"]) {
-        const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+        const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
       // MCP is its OWN group at the end (his spec, 2026-08-25): the cloud/
       // local General panel plus the API keys that authorize it.
-      const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
+      const mcpItem = pick("mcp");
       if (mcpItem) { anchor.after(mcpItem); anchor = mcpItem; }
       // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
       const buildGroup = nav.querySelector("#nav-group-build");
@@ -438,7 +440,7 @@ export function openSettingsModal(sub?: string): void {
         anchor.after(buildGroup);
         anchor = buildGroup;
         for (const sub of ["skills", "connections-cfg", "plugins"]) {
-          const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+          const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
       }
