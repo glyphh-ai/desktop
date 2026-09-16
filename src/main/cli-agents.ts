@@ -696,7 +696,7 @@ function readCopilotSessionHead(file: string, mtime: number, cwd: string): CliSe
     let j: { type?: string; data?: { sessionId?: string; content?: string; context?: { cwd?: string } } };
     try { j = JSON.parse(line) as typeof j; } catch { continue; }
     if (j.type === "session.start") { id = j.data?.sessionId || id; cwd = cwd || j.data?.context?.cwd || ""; }
-    if (j.type === "user.message" && !title && typeof j.data?.content === "string") title = j.data.content.trim();
+    if (j.type === "user.message" && !title && typeof j.data?.content === "string" && !NOISE_TITLE.test(j.data.content.trim())) title = j.data.content.trim();
     if (id && title) break;
   }
   if (!id) id = path.basename(path.dirname(file));
@@ -707,7 +707,7 @@ function readCopilotSessionHead(file: string, mtime: number, cwd: string): CliSe
 /** Cursor CLI: ~/.cursor/chats/<workspace>/<chatId>/ holds meta.json (cwd,
  *  timestamps) and store.db, whose meta row names the chat. sqlite3 ships with
  *  macOS; without it the chat still lists, untitled by its folder. */
-function cursorSessionFiles(): Array<{ file: string; mtime: number; cli: "cursor"; cwd: string }> {
+export function cursorSessionFiles(): Array<{ file: string; mtime: number; cli: "cursor"; cwd: string }> {
   const root = path.join(homedir(), ".cursor", "chats");
   let spaces: string[] = [];
   try { spaces = fs.readdirSync(root); } catch { return []; }
@@ -726,7 +726,7 @@ function cursorSessionFiles(): Array<{ file: string; mtime: number; cli: "cursor
   return files;
 }
 
-function readCursorSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
+export function readCursorSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
   const id = path.basename(path.dirname(file));
   let title = "";
   try {
@@ -739,7 +739,7 @@ function readCursorSessionHead(file: string, mtime: number, cwd: string): CliSes
 
 /** Gemini CLI keeps a chat per session under ~/.gemini/tmp/<project>/chats/,
  *  with the project's folder named in .project_root beside it. */
-function geminiSessionFiles(): Array<{ file: string; mtime: number; cli: "gemini"; cwd: string }> {
+export function geminiSessionFiles(): Array<{ file: string; mtime: number; cli: "gemini"; cwd: string }> {
   const root = path.join(homedir(), ".gemini", "tmp");
   let projects: string[] = [];
   try { projects = fs.readdirSync(root); } catch { return []; }
@@ -760,6 +760,9 @@ function geminiSessionFiles(): Array<{ file: string; mtime: number; cli: "gemini
 
 /** Gemini chat head: the first line carries sessionId; the title is the first
  *  user message that isn't the CLI's own <session_context> preamble. */
+/** Lines a CLI prints on its own that can land in a transcript as if typed. */
+export const NOISE_TITLE = /^(For more information and help, consult|Electron Security Warning)/i;
+
 function readGeminiSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
   let head = "";
   try {
@@ -776,7 +779,7 @@ function readGeminiSessionHead(file: string, mtime: number, cwd: string): CliSes
     if (title || m.type !== "user") return;
     const text = Array.isArray(m.content) ? m.content.map((c) => c.text || "").join("") : String(m.content || "");
     const t = text.trim();
-    if (t && !t.startsWith("<session_context>")) title = t;
+    if (t && !t.startsWith("<session_context>") && !NOISE_TITLE.test(t)) title = t;
   };
   for (const line of head.split("\n")) {
     if (!line.trim()) continue;

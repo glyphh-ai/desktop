@@ -22,7 +22,7 @@ import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, composeHeadless, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -530,6 +530,8 @@ export function registerGlyphhCliBridge(): void {
       };
       const codexFile = walk(codexRoot, 0);
       if (codexFile) return codexTranscript(codexFile);
+      const other = otherCliTranscript(String(p.sessionId));
+      if (other) return other;
     }
     if (!file) return { ok: false, error: "session not found" };
     const turns: Array<{ role: "user" | "assistant"; text: string }> = [];
@@ -590,6 +592,63 @@ function codexTranscript(file: string): { ok: true; title: string; cwd: string; 
     }
   } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   const title = turns.find((t) => t.role === "user")?.text.replace(/\s+/g, " ").slice(0, 80) ?? "Session";
+  return { ok: true, title, cwd, turns: turns.slice(-200) };
+}
+
+type Transcript = { ok: true; title: string; cwd: string; turns: Array<{ role: "user" | "assistant"; text: string }> };
+
+/** Gemini, Copilot and Cursor sessions as chat turns (his order, 2026-09-16:
+ *  every recent the rail lists must open). Cursor keeps its turns in a
+ *  database, so it opens with its title and folder and no history painted. */
+function otherCliTranscript(sessionId: string): Transcript | null {
+  const g = geminiSessionFiles().find((f) => { try { return readFileSync(f.file, "utf-8").slice(0, 400).includes(`"sessionId":"${sessionId}"`); } catch { return false; } });
+  if (g) return geminiTranscript(g.file, g.cwd);
+  const cp = path.join(homedir(), ".copilot", "session-state", sessionId, "events.jsonl");
+  if (/^[0-9a-f-]{36}$/i.test(sessionId) && existsSync(cp)) return copilotTranscript(cp);
+  const cu = cursorSessionFiles().find((f) => path.basename(path.dirname(f.file)) === sessionId);
+  if (cu) { const head = readCursorSessionHead(cu.file, cu.mtime, cu.cwd); return { ok: true, title: head?.title || "Cursor session", cwd: cu.cwd, turns: [] }; }
+  return null;
+}
+
+function geminiTranscript(file: string, cwd: string): Transcript {
+  const turns: Transcript["turns"] = [];
+  type Msg = { type?: string; content?: Array<{ text?: string }> | string };
+  const consider = (m: Msg): void => {
+    const role = m.type === "user" ? "user" : m.type === "gemini" ? "assistant" : null;
+    if (!role) return;
+    const text = (Array.isArray(m.content) ? m.content.map((c) => c.text || "").join("") : String(m.content || "")).trim();
+    if (!text || (role === "user" && (text.startsWith("<session_context>") || NOISE_TITLE.test(text)))) return;
+    turns.push({ role, text });
+  };
+  try {
+    for (const line of readFileSync(file, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      let j: { $set?: { messages?: Msg[] }; $push?: { messages?: Msg | Msg[] }; messages?: Msg[] };
+      try { j = JSON.parse(line) as typeof j; } catch { continue; }
+      for (const m of j.$set?.messages ?? j.messages ?? []) consider(m);
+      const pushed = j.$push?.messages;
+      if (pushed) for (const m of Array.isArray(pushed) ? pushed : [pushed]) consider(m);
+    }
+  } catch { /* partial file */ }
+  const title = turns.find((t) => t.role === "user")?.text.replace(/\s+/g, " ").slice(0, 80) ?? "Gemini session";
+  return { ok: true, title, cwd, turns: turns.slice(-200) };
+}
+
+function copilotTranscript(file: string): Transcript {
+  const turns: Transcript["turns"] = [];
+  let cwd = "";
+  try {
+    for (const line of readFileSync(file, "utf-8").split("\n")) {
+      if (!line.trim()) continue;
+      let j: { type?: string; data?: { content?: string; context?: { cwd?: string }; response?: { content?: string; role?: string } } };
+      try { j = JSON.parse(line) as typeof j; } catch { continue; }
+      if (j.type === "session.start") cwd = j.data?.context?.cwd || cwd;
+      if (j.type === "user.message" && typeof j.data?.content === "string") { const t = j.data.content.trim(); if (t && !NOISE_TITLE.test(t)) turns.push({ role: "user", text: t }); }
+      if (j.type === "model.response" && typeof j.data?.response?.content === "string") { const t = j.data.response.content.trim(); if (t && !t.startsWith("<session-title>")) turns.push({ role: "assistant", text: t }); }
+      if (j.type === "chat" && typeof j.data?.content === "string") { const t = j.data.content.trim(); if (t) turns.push({ role: "assistant", text: t }); }
+    }
+  } catch { /* partial file */ }
+  const title = turns.find((t) => t.role === "user")?.text.replace(/\s+/g, " ").slice(0, 80) ?? "Copilot session";
   return { ok: true, title, cwd, turns: turns.slice(-200) };
 }
 
