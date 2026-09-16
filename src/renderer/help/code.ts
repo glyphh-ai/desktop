@@ -261,29 +261,18 @@ function setLoop(id: string): void {
 // renders a dropdown. Resolution and rendering live in model-picker.ts; this file
 // only owns the chip and when to refresh.
 
-// ── Model selector — the SERVER'S available catalog (his spec, 2026-09-11,
-// layered 2026-09-14): the server list is already catalog ∩ the org's
-// provider/model filter ∩ role (governance plans). Per loop:
-//   own key   → the loop's HOME provider slice (Claude = anthropic, …)
-//   gateway   → THE LAST MILE: the whole gateway-enabled set, cross-vendor
-//               included (claude → gemini rides the router's translation).
-interface AvailModel { id: string; name: string; providerSlug: string; pickerVisible?: boolean }
+// ── Model selector — WHATEVER THE ENDPOINT SAYS (his ruling, 2026-09-15):
+// the list is asked of the base URL the turn will hit, with the key in hand.
+//   own key   → the vendor's endpoint, the user's key (ungoverned by design)
+//   gateway   → the org's gateway, the member's key — the org's team allow-list
+//   login     → the CLI's own login: nothing to ask; the CLI decides
+// No seeded catalog, no plan gate here: the server decided when it minted the key.
+interface AvailModel { id: string; name: string; providerSlug: string }
 let availModels: AvailModel[] = [];
-// The gateway plan gate — refreshed with the model list; false until known.
-let gatewayLaneOn = false;
-const LOOP_PROVIDER: Record<string, string> = {
-  claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor",
-};
+let modelSource: "gateway" | "byok" | "login" | "none" = "none";
 
 function modelsForLoop(): AvailModel[] {
-  const l = loops.find((x) => x.id === activeLoop());
-  const prov = LOOP_PROVIDER[l?.description ?? ""];
-  const vis = availModels.filter((m) => m.pickerVisible !== false);
-  // A loop with NO personal key rides the gateway (BYOK wins; org key is
-  // the default lane) — its picker is every model the gateway can serve.
-  if (!prov || (gatewayLaneOn && !l?.ownKey)) return vis;
-  const scoped = vis.filter((m) => m.providerSlug === prov);
-  return scoped.length ? scoped : vis;
+  return availModels;
 }
 
 function selectedModel(): AvailModel | null {
@@ -300,14 +289,14 @@ function paintModelChip(): void {
   mc.className = "code-chip";
 }
 
-async function refreshModelList(_force?: boolean): Promise<void> {
+async function refreshModelList(force?: boolean): Promise<void> {
+  const loop = activeLoop();
   try {
-    const [r, gates] = await Promise.all([
-      window.glyphh.workspacesModelCatalog?.(),
-      planGates().catch(() => null),
-    ]);
-    if (r?.ok && Array.isArray(r.data)) availModels = r.data as AvailModel[];
-    if (gates) gatewayLaneOn = gates.gatewayAllowed;
+    const r = await window.glyphh.loopModels?.(loop, force);
+    // A stale answer for another loop must never paint: the loop can change
+    // while the request is in flight.
+    if (loop !== activeLoop()) return;
+    if (r?.ok) { availModels = r.models; modelSource = r.source; }
   } catch { /* offline — the last list stands */ }
   paintModelChip();
 }
@@ -350,7 +339,9 @@ function renderModelMenu(): void {
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "drop-empty";
-      empty.textContent = q ? `No models matching "${q}"` : "No models reachable — the org enables them under Models.";
+      empty.textContent = q ? `No models matching "${q}"`
+        : modelSource === "login" ? "This loop runs on the CLI's own login — it picks its model."
+        : "No models reachable — check the loop's key or the org's gateway.";
       list.appendChild(empty);
       return;
     }

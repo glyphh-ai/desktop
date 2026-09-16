@@ -1068,6 +1068,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   // tasks* lane above, which groups schedules by the LOOP that runs them.
   /** THE licensing read (SDK client.plans) — one place, every surface. */
   /** LOOPS — the effective set and the org's support list. */
+  /** The models THIS loop can run — asked of the endpoint the turn will hit
+   *  (gateway or the loop's own vendor key). Empty on a CLI-login loop. */
+  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>,
   loopsAvailable: () => ipcRenderer.invoke("loops-available") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopsList: () => ipcRenderer.invoke("org-loops-list") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopSet: (cli: string, enabled: boolean) => ipcRenderer.invoke("org-loop-set", cli, enabled) as Promise<{ ok: boolean; error?: string }>,

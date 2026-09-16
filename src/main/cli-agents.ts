@@ -103,6 +103,17 @@ function writeEnvValue(id: string, name: string, value: string): void {
 const slug = (name: string): string =>
   name.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
 
+/** A loop's row — saved, or the virtual default for a bare CLI id. The
+ *  model-list seam (loop-models.ts) reads it to know which endpoint to ask. */
+export function agentRowFor(id: string): CliAgentRow | null {
+  return readAgent(id) ?? defaultRowFor(id);
+}
+
+/** The loop's OWN vendor key value (its env file), "" when none. Never logged. */
+export function loopKeyValue(id: string, name: string): string {
+  return readEnvValue(id, name);
+}
+
 function readAgent(id: string): CliAgentRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(agentFile(id), "utf-8")) as CliAgentRow;

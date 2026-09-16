@@ -416,6 +416,7 @@ declare global {
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
       loopsAvailable: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
+      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>;
       orgLoopsList: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgLoopSet: (cli: string, enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
       planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;
