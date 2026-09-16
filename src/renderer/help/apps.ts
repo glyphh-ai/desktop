@@ -941,7 +941,7 @@ async function loadPanelTab() {
       // LOCAL BUILD ONLY (his law, 2026-09-01): the preview never loads the
       // published site — what you see is what's on disk, not what shipped.
       // No local build → say so honestly instead of silently showing prod.
-      if (res?.ok && res.fileUrl) { appPreview.src = res.fileUrl; }
+      if (res?.ok && res.fileUrl) { if (appPreview) appPreview.src = res.fileUrl; }
       else {
         const errHost = document.getElementById("app-commands-list");
         if (errHost) errHost.innerHTML = `<div class="inline-empty">${res?.error || "No local build to preview yet — build the app (update_app) and it appears here."}</div>`;
@@ -950,8 +950,7 @@ async function loadPanelTab() {
     } else {
       // Web app: drop any glyphh grant left on the reused preview webContents.
       void window.glyphh.glyphhAppPreviewClear(getPreviewWebContentsId());
-      appPreview.partition = "persist:yo";
-      appPreview.src = app.url!;
+      if (appPreview) { appPreview.partition = "persist:yo"; appPreview.src = app.url!; }
     }
     panelLoaded = true;
   }
@@ -1091,7 +1090,8 @@ function getPreviewWebContentsId(): number | undefined {
 function closeAppDetail() {
   // Drop any glyphh capability grant on the reused preview webContents.
   void window.glyphh.glyphhAppPreviewClear?.(getPreviewWebContentsId());
-  appPreview.src = "about:blank";
+  // The preview pane left the Tabs detail with the basic form (2026-09-16); the webview is optional now.
+  if (appPreview) appPreview.src = "about:blank";
   // WEB preview cleanup — the iframe/fallback card are created per-app.
   document.getElementById("app-preview-frame")?.remove();
   document.getElementById("app-preview-fallback")?.remove();
