@@ -22,7 +22,8 @@ type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
 const SOURCE_ORDER: Source[] = ["glyphh", "app", "claude", "codex", "gemini"];
-const ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
+const SKILL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
+const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
 
 /** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
  *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
@@ -33,6 +34,10 @@ export interface PageCfg {
   panel: string;
   noun: string;
   nouns: string;
+  /** The page's mark: on every row, the detail header, and the tab. */
+  icon: string;
+  /** The back button's label on the detail page. */
+  back: string;
   newPrompt: string;
 }
 
@@ -108,7 +113,7 @@ type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: (
 function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
-  r.innerHTML = `<div class="skill-tile-icon">${ICON}</div>
+  r.innerHTML = `<div class="skill-tile-icon">${cfg.icon}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"></div>
       <div class="skill-row-sub"><span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
@@ -926,6 +931,8 @@ function sortMenu(): MenuItem[] {
 function wire(): void {
   if (wired) return;
   wired = true;
+  document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = cfg.icon; });
+  const back = el("skill-back"); if (back) { const label = back.lastChild; if (label && label.nodeType === Node.TEXT_NODE) label.textContent = cfg.back; }
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.addEventListener("click", async () => {
     tab = b.dataset.tab as "mine" | "discover";
@@ -998,11 +1005,11 @@ async function importFromFile(): Promise<void> {
 }
 
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills",
+  kind: "skill", id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
   newPrompt: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
 });
 const APPS_PAGE = createLibraryPage({
-  kind: "app", id: (x) => x.replace(/^skills-/, "apps-").replace(/^skill-/, "app-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps",
+  kind: "app", id: (x) => x.replace(/^skills-/, "apps-").replace(/^skill-/, "app-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
   newPrompt: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
 });
 export const loadSkillsSettings = SKILLS_PAGE.load;
