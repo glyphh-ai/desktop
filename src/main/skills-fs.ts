@@ -431,6 +431,7 @@ function tabBundles(): void {
 }
 
 export function registerSkillsIpc(): void {
+  tabBundles();
   const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : "skill");
   ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
   ipcMain.handle("skill-import", async (e, kind?: string) => {

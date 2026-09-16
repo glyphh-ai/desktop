@@ -38,7 +38,7 @@ export interface HouseDefault { id: string; slug: string; name: string; url: str
  *   Apps page, not the consumption surfaces (his rule, 2026-08-25).
  */
 export const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
-  a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && !!a.url;
+  a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && (!!a.url || a.appArchetype === "glyphh-app");
 
 const keyOf = (a: { slug?: string | null; id: string }): string => (a.slug || a.id).toLowerCase();
 

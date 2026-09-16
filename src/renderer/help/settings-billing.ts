@@ -505,9 +505,7 @@ async function embeddedTopupOverlay(credits: number): Promise<boolean> {
   // PRE-CHECK before any DOM shows: an overlay that appears and instantly
   // vanishes into the hosted fallback reads as a glitch ("an odd popup shows
   // then jumps"). No key or no Stripe.js → never build the overlay at all.
-  const key = await publishableKey();
-  if (!key) return false;
-  if (!(await loadStripeJs())) return false;
+  if (!(await embeddedReady())) return false;
   const overlay = document.createElement("div");
   overlay.className = "confirm-overlay buy-credits-overlay";
   overlay.innerHTML = `
@@ -528,7 +526,7 @@ async function embeddedTopupOverlay(credits: number): Promise<boolean> {
       : `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
     void refreshCredits();
     window.setTimeout(() => { if (overlay.isConnected) closeIt(); }, 1600);
-  }).catch(() => false);
+  }).catch((e: unknown) => { embeddedFailure = e instanceof Error ? e.message : String(e); return false; });
   if (!mounted) closeIt();
   return mounted;
 }
@@ -542,28 +540,9 @@ export async function buyTopup(credits: number, btn?: HTMLButtonElement): Promis
   // from spans, so rewriting their text would eat the markup.
   if (btn) btn.disabled = true;
   try {
-    // Embedded first — the purchase completes in an in-app overlay.
+    // The purchase completes in an in-app overlay; nothing leaves the app.
     if (await embeddedTopupOverlay(credits)) { repollAfterStripe(); return; }
-    // The server prices whole credits with the same volume-discount tiers this page displays.
-    const res = await accountApi().topup(Math.round(credits));
-    if (!res.ok) { toast(`Could not start the top-up — ${res.error}`); return; }
-    const hostedInFront = (name: string, url: string): void => {
-      // The settings modal guards webviews (wb-modal-open hides them), so a
-      // workbench panel opened now is INVISIBLE until settings closes. The
-      // system browser is always in front; the workbench path stays for
-      // callers outside the modal.
-      if (document.getElementById("settings-modal")) {
-        (window.glyphh as unknown as { openExternal?: (u: string) => void }).openExternal?.(url);
-      } else {
-        openUrlInWorkbench(name, url);
-      }
-    };
-    if (!openHostedPage("Add credits", res.data, hostedInFront)) {
-      toast("The checkout link came back malformed — try the Stripe portal below.");
-      return;
-    }
-    toast("Finish the purchase in your browser — your credits appear here once Stripe confirms.");
-    repollAfterStripe();
+    toast(`Could not start the top-up — ${embeddedFailure || "checkout didn't open"}`);
   } catch (err) {
     toast(`Could not start the top-up — ${err instanceof Error ? err.message : String(err)}`);
   } finally {
@@ -576,7 +555,7 @@ export async function buyTopup(credits: number, btn?: HTMLButtonElement): Promis
 // Stripe's payment UI mounted INSIDE our own modal (ui_mode:"embedded") — the
 // user pays without ever leaving the app, and completion fires an in-page
 // callback instead of a redirect nobody handles. Requires the server's public
-// key (GET /api/billing/config); anything missing → the hosted page, as before.
+// key (GET /api/billing/config); anything missing is a visible failure, never a hosted page.
 
 type StripeEmbedded = { mount(el: HTMLElement): void; destroy(): void };
 type StripeCtor = (key: string) => { initEmbeddedCheckout(opts: { clientSecret: string; onComplete?: () => void }): Promise<StripeEmbedded> };
@@ -601,8 +580,19 @@ function loadStripeJs(): Promise<StripeCtor | null> {
  *  session; a key change is a deploy, not a runtime event. */
 let pubKeyCache: Promise<string | null> | null = null;
 function publishableKey(): Promise<string | null> {
-  if (!pubKeyCache) pubKeyCache = accountApi().billingConfig().catch(() => null);
+  if (!pubKeyCache) {
+    pubKeyCache = accountApi().billingConfig().catch(() => null).then((k) => { if (!k) pubKeyCache = null; return k; });
+  }
   return pubKeyCache;
+}
+
+/** Why the in-app checkout could not start; every purchase stays in the app (his order, 2026-09-16). */
+let embeddedFailure = "";
+async function embeddedReady(): Promise<boolean> {
+  embeddedFailure = "";
+  if (!(await publishableKey())) { embeddedFailure = "the server has no Stripe publishable key"; return false; }
+  if (!(await loadStripeJs())) { embeddedFailure = "Stripe.js didn't load (offline?)"; return false; }
+  return true;
 }
 
 /**
@@ -617,11 +607,10 @@ async function tryEmbeddedTopup(
   onSettled: (grantSeen: boolean) => void,
 ): Promise<boolean> {
   const key = await publishableKey();
-  if (!key) return false;
   const Stripe = await loadStripeJs();
-  if (!Stripe) return false;
+  if (!key || !Stripe) return false;
   const res = await accountApi().topupEmbedded(Math.round(credits));
-  if (!res.ok) return false;   // old server without embedded support → hosted
+  if (!res.ok) { embeddedFailure = res.error || "the server refused the checkout"; return false; }
 
   const api = accountApi();
   const before = await api.credits().then((c) => c.balance).catch(() => -1);
@@ -707,6 +696,7 @@ export async function openBuyCreditsModal(): Promise<void> {
         const body = overlay.querySelector<HTMLElement>(".confirm-body")!;
         const stage = document.createElement("div");
         stage.className = "bc-checkout-stage";
+        if (!(await embeddedReady())) { setErr(`Could not start checkout — ${embeddedFailure}`); return; }
         const mounted = await tryEmbeddedTopup(credits, stage, (grantSeen) => {
           if (!overlay.isConnected) return;
           if (grantSeen) {
@@ -732,11 +722,7 @@ export async function openBuyCreditsModal(): Promise<void> {
           body.appendChild(back);
           return;
         }
-        // No key / no Stripe.js / old server → the hosted page, as before.
-        const res = await api.topup(Math.round(credits));
-        if (!res.ok) { setErr(res.error || "Could not start checkout."); return; }
-        if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) { setErr("The checkout link came back malformed."); return; }
-        close();   // Stripe opens; credits land via webhook and refresh on Billing.
+        setErr(`Could not start checkout — ${embeddedFailure || "checkout didn't open"}`);
       } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
       finally { busy = ""; card.disabled = false; }
     });
@@ -765,11 +751,10 @@ export async function openBuyCreditsModal(): Promise<void> {
  *  ask, 2026-09-13: one Stripe surface). Resolves true when embedded handled
  *  it; false → the caller falls back to the hosted page. */
 async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
-  const key = await publishableKey();
-  if (!key) return false;
-  if (!(await loadStripeJs())) return false;
+  if (!(await embeddedReady())) return false;
+  const key = (await publishableKey())!;
   const res = await accountApi().subscribeEmbedded(p.tier);
-  if (!res.ok || !res.data) return false;   // old server → hosted fallback
+  if (!res.ok || !res.data) { embeddedFailure = (res.ok ? "" : res.error) || "the server sent no client secret"; return false; }
   const overlay = document.createElement("div");
   overlay.className = "confirm-overlay buy-credits-overlay";
   overlay.innerHTML = `
@@ -809,16 +794,8 @@ async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void
   btn.disabled = true;
   btn.textContent = "Redirecting…";
   try {
-    if (await embeddedSubscribeOverlay(p).catch(() => false)) { planFail(""); return; }
-    const res = await accountApi().subscribe(p.tier);
-    if (!res.ok) { planFail(`Couldn't start checkout — ${res.error}`); return; }
-    if (!openHostedPage("Subscribe", res.data, openUrlInWorkbench)) {
-      planFail("The checkout link came back malformed — try again, or use the Stripe portal.");
-      return;
-    }
-    planFail("");
-    toast("Finish checkout in the hosted page — your plan updates here once Stripe confirms.");
-    repollAfterStripe();
+    if (await embeddedSubscribeOverlay(p).catch((e: unknown) => { embeddedFailure = e instanceof Error ? e.message : String(e); return false; })) { planFail(""); return; }
+    planFail(`Couldn't start checkout — ${embeddedFailure || "checkout didn't open"}`);
   } catch (err) {
     planFail(`Couldn't start checkout — ${err instanceof Error ? err.message : String(err)}`);
   } finally {
@@ -888,12 +865,11 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
     const res = await accountApi().changePlan(p.tier);
     if (!res.ok) { planFail(`Couldn't change the plan — ${res.error}`); return; }
     if (res.data?.url) {
-      // effect "checkout" — Stripe still needs a hosted page (e.g. no card yet).
-      if (!openHostedPage("Change plan", res.data.url, openUrlInWorkbench)) {
-        planFail("The Stripe link came back malformed — try again.");
+      // effect "checkout": no live subscription after all, so Stripe needs a checkout; in-app like every other one.
+      if (!(await embeddedSubscribeOverlay(p).catch((e: unknown) => { embeddedFailure = e instanceof Error ? e.message : String(e); return false; }))) {
+        planFail(`Couldn't start checkout — ${embeddedFailure || "checkout didn't open"}`);
         return;
       }
-      toast("Finish in the hosted page — your plan updates here once Stripe confirms.");
     } else {
       // Applied immediately server-side; the webhook still settles the details.
       toast(`Plan updated to ${p.displayName}.`);

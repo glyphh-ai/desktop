@@ -4859,6 +4859,11 @@ function paintAppsGrid(host: RailGridHost): void {
         (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent?.();
         return;
       }
+      // An installed Glyphh app is a tab beside the agent, the same door the Apps page's Open uses.
+      if (a.appArchetype === "glyphh-app") {
+        (window as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean }) => void }).__wbOpenApp?.({ slug: (a.slug || a.id).toLowerCase(), name: a.name, url: "", glyphh: true });
+        return;
+      }
       // Same open the Apps page's "Open app" uses (per-config launch).
       void window.glyphh.appLaunch?.({
         slug: a.slug || a.id, name: a.name, url: a.url,
@@ -4869,7 +4874,7 @@ function paintAppsGrid(host: RailGridHost): void {
     list.appendChild(tile);
   }
   if (ap.totalPages > 1) list.appendChild(railPager(ap.page, ap.totalPages, (pg) => { host.page = pg; paintAppsGrid(host); }));
-  if (!apps.length) railEmpty(list, q, "App", "apps");
+  if (!apps.length) railEmpty(list, q, "Tab", "apps");
 }
 
 function renderRailLayouts(): void {
@@ -5003,6 +5008,8 @@ function initRailApps(): void {
   // are pure quick-launch grids.
   // Live updates: Apps/Layouts CRUD announces itself (same renderer).
   document.addEventListener("glyphh:apps-changed", () => { void loadRecentApps(); });
+  // A bundle registered its tab in main (install, import, boot): the rail repaints.
+  window.glyphh.onPanelAppsChanged?.(() => { void loadRecentApps(); });
 
   // Apps search — its own page; Enter runs the text as a command (palette parity).
   if (leftApps) wireRailSearch(leftApps.search, () => { leftApps.page = 0; paintAppsGrid(leftApps); });
