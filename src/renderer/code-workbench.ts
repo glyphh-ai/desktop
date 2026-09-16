@@ -3385,7 +3385,9 @@ async function init(): Promise<void> {
         yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
       ]).then(([d, z, pp]) => {
-        document.body.classList.toggle("echo-dock-autohide", d !== false);
+        // The dock always shows (his order, 2026-09-16): no auto-hide, no control.
+        void d;
+        document.body.classList.remove("echo-dock-autohide");
         document.body.classList.remove("echo-dock-peek");
         const zn = Number(z);
         // CLAMPED at 1.5 (his rule, 2026-08-20): past that the arc outgrows
@@ -6181,15 +6183,10 @@ async function init(): Promise<void> {
   // Re-parenting the rail into the rails DOM instead would put a singleton
   // node inside a subtree `renderRails` rebuilds — one re-render and the menu,
   // Recents and the trays would be gone with no way back.
-  function renderRailIntoSlot(body: HTMLElement, slot: RailPanelSlot): void {
-    // The flags ride the placeholder so the sync loop (which only ever sees
-    // the DOM) can apply them without reaching back into slot state.
-    body.innerHTML = `<div class="ws-rail-placeholder" data-rail-slot="${slot.id}"`
-      + ` data-rail-menu="${slot.menu === false ? "0" : "1"}"`
-      + ` data-rail-recents="${slot.recents === false ? "0" : "1"}"`
-      + ` data-rail-layouts="${slot.layouts === false ? "0" : "1"}"`
-      + ` data-rail-collapsed="${slot.collapsed ? "1" : "0"}"></div>`;
-    scheduleRailSync();
+  function renderRailIntoSlot(body: HTMLElement, _slot: RailPanelSlot): void {
+    // The rail is the fixed sidebar now (his order, 2026-09-16); a saved Rail
+    // panel renders an honest note instead of hosting it.
+    body.innerHTML = `<div class="ws-rail-placeholder-note">The sidebar is fixed at the left of the window now. Close this panel.</div>`;
   }
 
   // ── The rail overlay — the ONE #app-rail, hosted by whichever Rail panel

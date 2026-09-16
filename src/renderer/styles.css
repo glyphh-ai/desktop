@@ -15906,7 +15906,6 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
    Workspaces/Tasks/Agents, settings, and the account dropdown). The rail's
    DOM stays — recents/search/user wiring still renders into it — but nothing
    shows it and there is no collapse toggle anymore. */
-#app-rail,
 #code-rail-splitter { display: none !important; }
 
 #app-rail.collapsed { width: 0 !important; min-width: 0 !important; border-right: none; }
@@ -20749,3 +20748,28 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .rail-filter-btn.active { color: var(--accent); border-color: var(--accent); }
 .code-menu-item .loop-mark { vertical-align: middle; }
 .code-menu-item .menu-check { margin-left: auto; }
+
+/* ── THE FIXED SIDEBAR (his order, 2026-09-16): the rail is the one fixed
+   panel, full height at the left, carrying the only header on the page. The
+   content side starts at the very top; work panels bring their own heads. ── */
+body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w: 264px; }
+body.rail-collapsed { --rail-w: 96px; }
+#app-rail {
+  position: fixed; top: 0; left: 0; bottom: 0; width: var(--rail-w); min-width: 0;
+  display: flex !important; z-index: 385; padding-top: var(--rail-top-h);
+  transition: width 0.16s ease;
+}
+#app-rail-top {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--rail-top-h);
+  display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: 0 6px 0 84px;
+  border-bottom: 1px solid var(--border); -webkit-app-region: drag;
+}
+.app-rail-top-btn { -webkit-app-region: no-drag; width: 26px; height: 26px; border-radius: 6px; border: none; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.app-rail-top-btn:hover { color: var(--text); background: var(--hover); }
+body.rail-collapsed #app-rail > :not(#app-rail-top) { display: none !important; }
+body.rail-collapsed #app-rail-top { padding-left: 74px; }
+body.rail-collapsed #rail-echo-btn { display: none; }
+#shell-drag-strip { right: auto; width: var(--rail-w); height: var(--rail-top-h); background: none; border-bottom: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+#shell-drag-strip .shell-drag-area { -webkit-app-region: no-drag; }
+#help-overlay { top: 0; left: var(--rail-w); }
+.ws-rail-placeholder-note { padding: 18px; font-size: 13px; color: var(--text-3); }

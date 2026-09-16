@@ -5339,6 +5339,18 @@ export function initCode(): void {
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
   el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(e.currentTarget as HTMLElement); });
+  // The sidebar's own header: collapse (persisted) and the Echo launcher.
+  const setRailCollapsed = (on: boolean, persist: boolean): void => {
+    document.body.classList.toggle("rail-collapsed", on);
+    const b = el("rail-collapse-btn"); if (b) b.title = on ? "Expand the sidebar" : "Collapse the sidebar";
+    if (persist) void window.glyphh.setPreference?.("railCollapsed", on);
+  };
+  el("rail-collapse-btn")?.addEventListener("click", () => setRailCollapsed(!document.body.classList.contains("rail-collapsed"), true));
+  void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
+  el("rail-echo-btn")?.addEventListener("click", () => {
+    const w = window as unknown as { __wbEchoShadowPin?: () => void };
+    if (w.__wbEchoShadowPin) w.__wbEchoShadowPin(); else openCommandCenter();
+  });
   void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => { if (Array.isArray(v)) { loopFilter = v.map(String); el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0); renderRailSessions(); renderHistory(); } }).catch(() => {});
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
