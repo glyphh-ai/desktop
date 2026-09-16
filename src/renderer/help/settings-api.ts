@@ -137,6 +137,7 @@ interface SdkAccountHandle {
     autotopup?: () => Promise<Autotopup>;
     setAutotopup?: (input: Autotopup) => Promise<Autotopup>;
     subscribe?: (tier: string) => Promise<{ url: string }>;
+    subscribeEmbedded?: (tier: string) => Promise<{ clientSecret?: string }>;
     changePlan?: (tier: string) => Promise<PlanChange>;
     topup?: (input: { credits: number; embedded?: boolean }) => Promise<{ url?: string; clientSecret?: string }>;
     config?: () => Promise<{ publishableKey: string | null }>;
@@ -184,7 +185,7 @@ interface DesktopAccountIpc {
   billingInvoices?: () => Promise<Invoice[]>;
   billingAutotopupGet?: () => Promise<Autotopup>;
   billingAutotopupSet?: (input: Autotopup) => Promise<{ ok: boolean; config?: Autotopup; error?: string }>;
-  billingSubscribe?: (tier: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
+  billingSubscribe?: (tier: string, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
   billingChangePlan?: (tier: string) => Promise<{ ok: boolean; change?: PlanChange; error?: string }>;
   billingTopup?: (credits: number, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
   billingConfig?: () => Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>;
@@ -217,6 +218,8 @@ export interface AccountApi {
   autotopup(): Promise<Autotopup>;
   setAutotopup(input: Autotopup): Promise<WriteResult<Autotopup>>;
   subscribe(tier: string): Promise<WriteResult<string>>;
+  /** Embedded Checkout for a plan: a client secret to mount in-app. */
+  subscribeEmbedded(tier: string): Promise<WriteResult<string>>;
   changePlan(tier: string): Promise<WriteResult<PlanChange>>;
   topup(microCredits: number): Promise<WriteResult<string>>;
   /** Embedded Checkout: a client secret to mount in-app. */
@@ -306,6 +309,10 @@ export function accountApi(): AccountApi {
         const r = await web(b.subscribe && (() => b.subscribe!(tier)));
         return r.ok ? { ok: true, data: r.data.url } : r;
       },
+      subscribeEmbedded: async (tier) => {
+        const r = await web(b.subscribeEmbedded && (() => b.subscribeEmbedded!(tier)));
+        return r.ok && r.data.clientSecret ? { ok: true, data: r.data.clientSecret } : r.ok ? { ok: false, error: "no client secret" } : r;
+      },
       changePlan: (tier) => web(b.changePlan && (() => b.changePlan!(tier))),
       topup: async (micro) => {
         const r = await web(b.topup && (() => b.topup!({ credits: micro })));
@@ -356,6 +363,7 @@ export function accountApi(): AccountApi {
     autotopup: () => need(g?.billingAutotopupGet, g),
     setAutotopup: (input) => ipc(g?.billingAutotopupSet && (() => g.billingAutotopupSet!(input)), "config"),
     subscribe: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier)), "url"),
+    subscribeEmbedded: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier, true)), "clientSecret"),
     changePlan: (tier) => ipc(g?.billingChangePlan && (() => g.billingChangePlan!(tier)), "change"),
     topup: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro)), "url"),
     topupEmbedded: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro, true)), "clientSecret"),

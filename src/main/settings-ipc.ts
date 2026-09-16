@@ -1,11 +1,9 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
-import { disposeAgentDock } from "./agent-dock";
 import { isRailCollapsed, toggleRailCollapsed, setRailCollapsed } from "./screen-layout";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { generateGlyphhSkill } from "./glyphh-skill-export";
-import { isBackgroundEnabled, setBackgroundEnabled } from "./background-mode";
 import { type DevicePrompt, startDeviceLogin, cancelDeviceLogin } from "./auth";
 import { getClient } from "./glyphh-client";
 import type { SessionCache } from "./session-cache";
@@ -63,11 +61,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
 
   // Background mode: keep Glyphh resident (tray + scheduler + attach) when the
   // window closes, so scheduled loops/skills fire with the app "closed".
-  ipcMain.handle("get-background-mode", () => isBackgroundEnabled());
-  ipcMain.handle("set-background-mode", (_e, enabled: boolean) => {
-    setBackgroundEnabled(!!enabled);
-    return isBackgroundEnabled();
-  });
 
   ipcMain.handle("exec-command", async (_e, cmd: string) => {
     return deps.execCommand(cmd);
@@ -178,7 +171,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     // user never resets"). Reloading only the main window left it live and
     // signed-in over whatever app it rode. Sign-out tears it down with
     // everything else; ⌘⇧G after the next login starts it fresh.
-    try { disposeAgentDock(); } catch { /* already down */ }
     // The identity chips reset immediately — without this the rail kept the
     // previous user's name while signed out (and, before the home-view send
     // existed, for the whole next login too).

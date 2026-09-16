@@ -1,16 +1,17 @@
 /**
  * office-docs.ts — Glyphh Office · DOCS, the desktop transport.
  *
- * Markdown documents in the ORG library (R2 behind yo-server via
- * client.officeDocs) with the review-and-approve suggestion flow and the
- * code-defined template catalog. Same doctrine as Slides: nothing local,
- * the panel reads/writes through these handlers, the agent through tools.
+ * Markdown documents in the LOCAL library (~/.glyphh/office via office-store,
+ * THE PURGE 2026-09-10) with the review-and-approve suggestion flow and the
+ * vendored template catalog. The panel reads/writes through these handlers,
+ * the agent through tools — the store is the one seam.
  */
 
 import { ipcMain } from "electron";
-import { getClient } from "./glyphh-client";
+import * as store from "./office-store";
+import { DOC_TEMPLATES } from "./office-doc-templates";
 
-/** Doc refs are bare names — same containment rule as the server (.md). */
+/** Doc refs are bare names — same containment rule as ever (.md). */
 export function gdocFileName(name: unknown): string {
   const base = String(name ?? "").trim().split(/[\\/]/).pop() ?? "";
   const stem = base.replace(/\.(md|markdown)$/i, "").replace(/[^\w\s.-]/g, "").trim().replace(/\s+/g, "-").toLowerCase();
@@ -23,7 +24,7 @@ const errText = (err: unknown): string => (err instanceof Error ? err.message : 
 export function registerOfficeDocsIpc(): void {
   ipcMain.handle("gdoc-list", async () => {
     try {
-      const docs = (await getClient().officeDocs.list()).map((d) => ({
+      const docs = (await store.listDocs()).map((d) => ({
         file: d.file, title: d.title, size: d.sizeBytes, folderId: d.folderId,
         mtime: Date.parse(d.updatedAt) || 0,
       }));
@@ -34,7 +35,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdoc-read", async (_e, name: unknown) => {
     try {
-      const doc = await getClient().officeDocs.get(gdocFileName(name));
+      const doc = await store.readDoc(gdocFileName(name));
       return { ok: true, markdown: doc.markdown, title: doc.title };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -42,7 +43,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdoc-write", async (_e, name: unknown, markdown: unknown, folderId?: unknown) => {
     try {
-      const meta = await getClient().officeDocs.put(gdocFileName(name), String(markdown ?? ""), folderId === undefined ? undefined : (folderId as string | null));
+      const meta = await store.writeDoc(gdocFileName(name), String(markdown ?? ""), folderId === undefined ? undefined : (folderId as string | null));
       return { ok: true, file: meta.file, title: meta.title };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -50,7 +51,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdoc-delete", async (_e, name: unknown) => {
     try {
-      await getClient().officeDocs.delete(gdocFileName(name));
+      await store.deleteDoc(gdocFileName(name));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -59,15 +60,15 @@ export function registerOfficeDocsIpc(): void {
   ipcMain.handle("gdoc-suggest", async (_e, name: unknown, input: unknown) => {
     try {
       const i = input as { section?: string; beforeMd?: string; afterMd: string; note?: string; authorKind?: "agent" | "user" };
-      const row = await getClient().officeDocs.suggest(gdocFileName(name), i);
+      const row = await store.createDocSuggestion(gdocFileName(name), i);
       return { ok: true, suggestion: row };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      return { ok: false, error: errText(err) };
     }
   });
   ipcMain.handle("gdoc-suggestions", async (_e, name: unknown, status: unknown) => {
     try {
-      const rows = await getClient().officeDocs.suggestions(gdocFileName(name), status ? String(status) : undefined);
+      const rows = await store.listDocSuggestions(gdocFileName(name), status ? String(status) : undefined);
       return { ok: true, suggestions: rows };
     } catch (err) {
       return { ok: false, error: errText(err), suggestions: [] };
@@ -75,7 +76,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdoc-resolve", async (_e, id: unknown, approve: unknown) => {
     try {
-      const row = await getClient().officeDocs.resolveSuggestion(String(id ?? ""), !!approve);
+      const row = await store.resolveDocSuggestion(String(id ?? ""), !!approve);
       return { ok: true, suggestion: row };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -83,7 +84,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdrive-list", async (_e, q: unknown) => {
     try {
-      const listing = await getClient().officeDrive.list(q ? String(q) : undefined);
+      const listing = await store.listDrive(q ? String(q) : undefined);
       return { ok: true, ...listing };
     } catch (err) {
       return { ok: false, error: errText(err), folders: [], files: [] };
@@ -91,7 +92,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdrive-mkdir", async (_e, name: unknown, parentId: unknown) => {
     try {
-      return { ok: true, folder: await getClient().officeDrive.createFolder(String(name ?? ""), parentId ? String(parentId) : null) };
+      return { ok: true, folder: await store.createFolder(String(name ?? ""), parentId ? String(parentId) : null) };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
@@ -102,7 +103,7 @@ export function registerOfficeDocsIpc(): void {
       const KINDS = ["slides", "docs", "sheets", "design", "media", "music", "file"] as const;
       const k = String(kind ?? "") as (typeof KINDS)[number];
       if (!KINDS.includes(k)) throw new Error(`unknown drive kind "${String(kind)}"`);
-      await getClient().officeDrive.move(k, String(file ?? ""), folderId ? String(folderId) : null);
+      await store.moveToFolder(k, String(file ?? ""), folderId ? String(folderId) : null);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -110,14 +111,14 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdrive-folder-rename", async (_e, id: unknown, name: unknown) => {
     try {
-      return { ok: true, folder: await getClient().officeDrive.updateFolder(String(id ?? ""), { name: String(name ?? "") }) };
+      return { ok: true, folder: await store.updateFolder(String(id ?? ""), { name: String(name ?? "") }) };
     } catch (err) {
       return { ok: false, error: errText(err) };
     }
   });
   ipcMain.handle("gdrive-folder-delete", async (_e, id: unknown) => {
     try {
-      await getClient().officeDrive.deleteFolder(String(id ?? ""));
+      await store.deleteFolder(String(id ?? ""));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errText(err) };
@@ -125,7 +126,7 @@ export function registerOfficeDocsIpc(): void {
   });
   ipcMain.handle("gdoc-templates", async () => {
     try {
-      return { ok: true, templates: await getClient().officeDocs.templates() };
+      return { ok: true, templates: DOC_TEMPLATES };
     } catch (err) {
       return { ok: false, error: errText(err), templates: [] };
     }

@@ -67,7 +67,6 @@ const STEPS: TourStep[] = [
       </div>`,
     anchors: [
       { selector: '.echo-dock-btn[data-dock="marketplace"]', label: "Marketplace" },
-      { selector: '.echo-app-btn[data-key="tool:gdesign"]', label: "An installed app" },
     ],
   },
   {

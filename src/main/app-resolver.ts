@@ -14,7 +14,6 @@ import { spawn } from "child_process";
 import { ipcMain, webContents } from "electron";
 import { fetchOrgApps } from "./org-apps.js";
 import { fetchServerLayouts } from "./layout-manager.js";
-import { applyLoopConfig } from "./loop-selections.js";
 import { getPreference } from "./stores/preferences-db.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { normKey, isSubsequence, findInstalledApp, launchInstalledApp } from "./installed-apps.js";
@@ -63,11 +62,6 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
-  | { action: "gpoint"; file?: string; title?: string }
-  | { action: "gdoc"; file?: string; title?: string }
-  | { action: "gsheet"; file?: string; title?: string }
-  | { action: "gdesign"; file?: string; title?: string }
-  | { action: "gmedia"; view: "gimage" | "gvideo" | "gsound" | "gband"; assetId?: string; songId?: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -126,9 +120,7 @@ function focusGlyphhWindow(): void {
 /** Built-in apps that aren't in the server library. */
 const TOOL_BUILTINS: Record<string, string> = {
   plan: "plan", files: "files", editor: "monaco", monaco: "monaco",
-  diff: "diff", echo: "echo", gpoint: "gpoint", gpoints: "gpoint",
-  slides: "gpoint", docs: "gdoc", gdoc: "gdoc", drive: "gdrive", gdrive: "gdrive",
-  sheets: "gsheet", gsheet: "gsheet",
+  diff: "diff", echo: "echo",
 };
 function builtinRef(key: string): WbAppRef | "terminal" | { tool: string } | null {
   if (key === "browser") return { slug: "browser", name: "Browser", url: resolveBrowserHomeUrl() };
@@ -232,35 +224,6 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   return { slug: app.slug, name: app.name };
 }
 
-
-/** Open the gPoint panel — with a deck file, straight into its reader
- *  (the agent's open_gpoint; the plain panel rides open_app("gpoint")). */
-export function openGPointPanel(file?: string, title?: string): void {
-  sendWbCmd(file ? { action: "gpoint", file, title } : { action: "tool", tool: "gpoint" });
-}
-
-/** Open the Docs panel — with a file, straight into that document. */
-export function openGDocPanel(file?: string, title?: string): void {
-  sendWbCmd(file ? { action: "gdoc", file, title } : { action: "tool", tool: "gdoc" });
-}
-
-/** Open the Sheets panel — with a file, straight into that workbook. */
-export function openGSheetPanel(file?: string, title?: string): void {
-  sendWbCmd(file ? { action: "gsheet", file, title } : { action: "tool", tool: "gsheet" });
-}
-
-/** Open the Design panel — with a file, straight into that system's studio. */
-export function openDesignPanel(file?: string, title?: string): void {
-  sendWbCmd(file ? { action: "gdesign", file, title } : { action: "tool", tool: "gdesign" });
-}
-
-/** Open a media panel (Image / Video / Sounds) — optionally straight at an
- *  asset, or (Sounds) straight into a SONG's editor page. */
-export function openMediaPanel(view: "gimage" | "gvideo" | "gsound" | "gband", assetId?: string, songId?: string): void {
-  if (songId) { sendWbCmd({ action: "gmedia", view: "gband", songId }); return; }
-  sendWbCmd(assetId ? { action: "gmedia", view, assetId } : { action: "tool", tool: view });
-}
-
 /** Open the tabbed Browser panel at a specific URL (the agent's preview
  *  surface for built/deployed apps — url bar, tabs, DevTools, unlike the raw
  *  app panel). Same slot semantics as open_app("browser"). */
@@ -355,7 +318,7 @@ export async function openLayoutByName(name: string): Promise<{ layout: string; 
   sendWbCmd({ action: "open-many", apps: refs, layoutName: layout.name });
   // A layout binds arrangement AND program+models: opening it also switches the
   // active loop and its slot models, so the composer lands in the layout's state.
-  applyLoopConfig(layout.loop, layout.modelSelections);
+  // THE PURGE: layouts lost their loop + model slots — nothing to apply.
   return { layout: layout.name, apps: opened };
 }
 

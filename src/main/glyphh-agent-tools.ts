@@ -29,7 +29,16 @@ import { tmpdir } from "node:os";
 import type { WebContents } from "electron";
 import { gateGlyphhAction, askUserQuestions, requestInlineConnect, type GlyphhActionKind } from "./glyphh-agent-permissions";
 import { getExplicitWorkingDirectory } from "./working-directory";
-import { openAppByRef, openBrowserAt, openGPointPanel, openGDocPanel, openGSheetPanel, openDesignPanel, openMediaPanel, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+import { openAppByRef, openBrowserAt, openLayoutByName, listOpenAppWindows } from "./app-resolver";
+// Office / Design / Media / Band stepped OFF the surface (the-purge, 2026-09-10);
+// their tools stay in this file, hidden from the model and refused if called.
+const OFF_SURFACE_RE = /(slides|_docs?\b|doc_|sheets|chart|cell_style|named_range|data_validation|design|drive_|media|generate_(image|video|music|sound)|^speak$|artist|song|band|fill_column|conditional_format|instrument)/;
+const offSurface = (what: string) => (): never => { throw new Error(`${what} is off the surface right now`); };
+const openGPointPanel = offSurface("Slides") as (file?: unknown, title?: unknown) => never;
+const openGDocPanel = offSurface("Docs") as (file?: unknown, title?: unknown) => never;
+const openGSheetPanel = offSurface("Sheets") as (file?: unknown, title?: unknown) => never;
+const openDesignPanel = offSurface("Design") as (file?: unknown, title?: unknown) => never;
+const openMediaPanel = offSurface("Media") as (kind?: unknown, id?: unknown, extra?: unknown) => never;
 import { gsheetFileName, saveWorkbook } from "./office-sheets";
 import { recalcWorkbook, colLetter, parseA1, type Workbook, type Worksheet, type SheetColumn, type SheetCell, type ChartSpec, type CondFormat, type NamedRange, type DataValidation, type CellStyle } from "../shared/sheets-engine";
 import { randomUUID } from "node:crypto";
@@ -75,7 +84,7 @@ import { indexToolVectors, rankConnectorTools, enrichToolVectors, noteToolUsed }
 import { updateAppFromWorkdir, pullAppSource, commitAppSource } from "./glyphh-app-builder";
 import { APP_GITIGNORE } from "./glyphh-app-spec";
 import { listInstalledAppTools, callAppTool } from "./glyphh-app-host";
-import { runTaskNow, runSkillBySlug } from "./agent-scheduler";
+import { runSchedule, listTaskSpecs, getTaskSpec, saveTaskSpec, getSkillRow } from "./local-library";
 import { panelRead, panelScreenshot, rpaTargetSlugs } from "./rpa";
 import { captureAttachedWindow } from "./agent-dock";
 
@@ -392,7 +401,7 @@ async function executeConnectorWire(
 // hatch, and the workdir install path (glyphh-app-builder.ts guards that one
 // at the manifest, where the slug first exists). apps-ipc.ts carries the same
 // set for the renderer's CRUD.
-const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound"]);
+const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
 const WORKPANEL_REFUSAL = "ERROR: work panels are built in — they cannot be altered or removed";
 
 /** True when a tool call would mutate an app ENTRY under a built-in work-panel
@@ -413,7 +422,7 @@ const TOOLS: ToolDef[] = [
   ...SEMANTIC_TOOLS.map((t): ToolDef => ({
     name: t.name,
     doc: t.doc,
-    action: t.action,
+    action: (t as { action?: ToolDef["action"] }).action ?? (() => ({ kind: "read" as const, title: t.name })),
     run: (args) => t.run(args),
   })),
   {
@@ -1922,6 +1931,12 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "open_band",
+    doc: "open_band() — open the Glyphh Band app (Songs · Artists · Music Video)",
+    action: () => ({ kind: "command", title: "Open Band" }),
+    run: async () => { openMediaPanel("gband"); return "opened Band"; },
+  },
+  {
     name: "open_song",
     doc: "open_song(id) — open the Sounds panel straight into that song's editor page",
     action: () => ({ kind: "command", title: "Open song editor" }),
@@ -2122,7 +2137,7 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "save_workspace",
-    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan, tool:gpoint (Slides), tool:gdoc (Docs), tool:gsheet (Sheets), tool:gdrive (Drive), tool:gdesign (Design), tool:gmemory (Memory), tool:gimage (Image), tool:gvideo (Video), tool:gsound (Sounds). Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
+    doc: 'save_workspace(name, cols, rows, cells, loop?, modelSelections?, sessionMode?, folder?) — create or update a saved workspace. cells: [{panelId, col, row, colSpan?, rowSpan?, sticky?, config?}]. panelId = an app slug from the library, or a tool: id — tool:coding (the agent), tool:preview (Browser), tool:terminal, tool:files, tool:monaco (Editor), tool:diff, tool:plan, tool:gpoint (Slides), tool:gdoc (Docs), tool:gsheet (Sheets), tool:gdrive (Drive), tool:gdesign (Design), tool:gmemory (Memory), tool:gimage (Image), tool:gvideo (Video), tool:gsound (Sounds), tool:gband (Band). Per-cell config: Browser cells take {url}; Terminal cells take {cmd} (runs after the working folder is set). At most ONE cell sticky:true (where .dip/app opens land). sessionMode: "keep"|"new"|"last". folder: absolute path the workspace switches the agent to on open.',
     action: (a) => ({ kind: "edit", title: `Save workspace "${String(a.name ?? "")}"` }),
     run: async (a) => {
       const name = String(a.name ?? "").trim();
@@ -2313,15 +2328,15 @@ const TOOLS: ToolDef[] = [
     doc: "loops_list() — every loop (built-ins + the org's own): slug, name, description",
     action: () => ({ kind: "read", title: "List loops" }),
     run: async () => {
-      const { loops } = await getClient().loops.list();
-      return cap(JSON.stringify(loops.map((l) => ({ slug: l.slug, name: l.name, description: l.description, builtIn: l.builtIn })), null, 2));
+      const loops = listTaskSpecs();
+      return cap(JSON.stringify(loops.map((l) => ({ slug: l.slug, name: l.name, description: l.description })), null, 2));
     },
   },
   {
     name: "loops_get",
     doc: 'loops_get(slug) — one loop\'s full manifest + program source. loops_get("default") is the documented example to base new loops on',
     action: (a) => ({ kind: "read", title: `Read loop ${String(a.slug ?? "")}` }),
-    run: async (a) => cap(JSON.stringify(await getClient().loops.get(String(a.slug ?? "default")), null, 2)),
+    run: async (a) => cap(JSON.stringify(getTaskSpec(String(a.slug ?? "default")), null, 2)),
   },
   {
     name: "loops_save",
@@ -2338,10 +2353,8 @@ const TOOLS: ToolDef[] = [
         ...(a.manifest !== undefined ? { manifest: a.manifest as Record<string, unknown> } : {}),
         ...(a.code !== undefined ? { code: String(a.code) } : {}),
       };
-      const existing = await client.loops.get(slug).catch(() => null);
-      const saved = existing && !existing.builtIn
-        ? await client.loops.update(slug, input)
-        : await client.loops.create(input);
+      void client;
+      const saved = saveTaskSpec({ slug: input.slug, name: input.name, ...(input.description !== undefined ? { description: input.description } : {}), ...(input.code !== undefined ? { program: input.code } : {}) });
       return cap(`saved ✓ loop "${saved.slug}" (${saved.name})`);
     },
   },
@@ -2403,9 +2416,10 @@ const TOOLS: ToolDef[] = [
       let loopId: string | null = null;
       const loopSlug = a.loopSlug !== undefined ? String(a.loopSlug) : "";
       if (loopSlug && loopSlug !== "default") {
-        const loop = await client.loops.get(loopSlug).catch(() => null);
+        let loop: ReturnType<typeof getTaskSpec> | null = null;
+        try { loop = getTaskSpec(loopSlug); } catch { loop = null; }
         if (!loop) return `ERROR: no loop "${loopSlug}" — loops_list() shows what exists`;
-        loopId = loop.builtIn ? null : loop.id;
+        loopId = loop.slug;
       }
       const input = {
         slug,
@@ -2521,8 +2535,8 @@ const TOOLS: ToolDef[] = [
         ? tasks.find((t) => t.id === a.task || t.name.toLowerCase() === want)
         : (tasks.length === 1 ? tasks[0] : undefined);
       if (!task) return `ERROR: ${want ? `no task "${String(a.task)}"` : "several tasks"} on "${agent.slug}" — tasks: ${tasks.map((t) => t.name).join(", ")}`;
-      const out = await runTaskNow(agent.id, task.id);
-      return out.ok ? cap(`ran ✓ "${task.name}" (${task.kind}:${task.target})`) : `ERROR: ${out.error ?? "run failed"}`;
+      await runSchedule(task.id);
+      return cap(`ran ✓ "${task.name}" on ${agent.name ?? agent.slug}`);
     },
   },
   {
@@ -2533,7 +2547,7 @@ const TOOLS: ToolDef[] = [
       const slug = String(a.slug ?? "").trim();
       if (!slug) return "ERROR: slug is required — skills_list() shows what exists";
       try {
-        return cap(await runSkillBySlug(slug, (a.args ?? {}) as Record<string, unknown>));
+        return cap(getSkillRow(slug).prompt || `skill "${slug}" has no instructions yet`);
       } catch (err) {
         return `ERROR: ${err instanceof Error ? err.message : String(err)}`;
       }
@@ -2680,7 +2694,7 @@ const COWORK_EXCLUDED = new Set([
 
 export function glyphhToolDefs(mode: AgentMode = "cowork"): Array<{ name: string; doc: string }> {
   const excluded = mode === "code" ? CODE_EXCLUDED : COWORK_EXCLUDED;
-  return TOOLS.filter((t) => !excluded.has(t.name)).map((t) => ({ name: t.name, doc: t.doc }));
+  return TOOLS.filter((t) => !excluded.has(t.name) && !OFF_SURFACE_RE.test(t.name)).map((t) => ({ name: t.name, doc: t.doc }));
 }
 
 export interface ToolOutcome { result: string; denied: boolean; title: string }

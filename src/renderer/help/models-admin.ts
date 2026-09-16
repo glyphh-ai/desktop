@@ -9,7 +9,7 @@
  * untouched. Every write rides the SDK surface; the server enforces org_admin.
  */
 
-import { renderPaginationBar } from "./shared.js";
+import { renderPaginationBar, confirmAction } from "./shared.js";
 import { yoConfirm, hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 import { openRowMenu, ROW_MENU_ICONS } from "./lib-editor.js";
 
@@ -57,7 +57,7 @@ interface CustomModelRow {
   active: boolean;
 }
 
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 15;   // 15 everywhere — the one pagination size (his rule)
 
 let models: OrgModelRow[] = [];
 let providers: ProviderRow[] = [];
@@ -66,6 +66,9 @@ let custom: CustomModelRow[] = [];
 let initialized = false;
 let page = 0;
 const expanded = new Set<string>();
+/** Rows the user CLOSED while a search had auto-opened them — a search
+ *  suggests, it never pins (his report, 2026-09-11). Cleared per query. */
+const searchClosed = new Set<string>();
 
 const el = (id: string) => document.getElementById(id);
 
@@ -238,8 +241,8 @@ export function icoBtn(svg: string, title: string): HTMLButtonElement {
 
 // ── provider forms (modals) ──────────────────────────────────────────────────
 
-async function newProviderModal(): Promise<void> {
-  const v = await formModal("New provider", [
+async function newCustomProviderModal(): Promise<void> {
+  const v = await formModal("New custom provider", [
     { id: "name", label: "Name", placeholder: "Together AI" },
     { id: "slug", label: "Slug", placeholder: "together" },
     { id: "url", label: "Base URL", hint: "— OpenAI-compatible, speaks /chat/completions", placeholder: "https://api.together.xyz/v1" },
@@ -253,6 +256,192 @@ async function newProviderModal(): Promise<void> {
   showError("");
   expanded.add(`custom:${slug}`);
   void refresh();
+}
+
+/**
+ * + New Provider (his order, 2026-09-11): ONE modal installs a vendor — a
+ * searchable list of every catalog provider not yet installed, the API key
+ * next to it, and that vendor's models as Supported toggles so the org picks
+ * its set in the same breath. The page list then shows installed providers
+ * only; the org returns here (or to the row's toggles) to adjust later.
+ * Custom (own base URL) providers keep their form via the link at the foot.
+ */
+async function installProviderModal(): Promise<void> {
+  document.querySelectorAll(".yo-modal.mdl-form-overlay").forEach((n) => n.remove());
+  const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+  let panelsWereHidden = false;
+  if (!isWeb) void hidePanelsForModal().then((h) => { panelsWereHidden = h; });
+
+  const overlay = document.createElement("div");
+  overlay.className = "yo-modal mdl-form-overlay";
+  const backdrop = document.createElement("div");
+  backdrop.className = "yo-modal-backdrop";
+  const panel = document.createElement("div");
+  panel.className = "yo-modal-panel mdl-form-modal mdl-install-modal";
+
+  const head = document.createElement("div");
+  head.className = "yo-modal-title";
+  head.textContent = "New provider";
+  panel.appendChild(head);
+
+  const searchLab = document.createElement("label");
+  searchLab.className = "settings-label";
+  searchLab.textContent = "Provider";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "settings-input";
+  search.placeholder = "Search providers…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  const list = document.createElement("div");
+  list.className = "mdl-install-list";
+  panel.append(searchLab, search, list);
+
+  // The key + models sections appear once a vendor is chosen.
+  const keyLab = document.createElement("label");
+  keyLab.className = "settings-label hidden";
+  keyLab.innerHTML = `API key <span class="settings-hint">— pays the vendor directly; write-only</span>`;
+  const key = document.createElement("input");
+  key.type = "password";
+  key.className = "settings-input hidden";
+  key.placeholder = "sk-…";
+  key.autocomplete = "new-password";
+  key.spellcheck = false;
+  const modelsLab = document.createElement("label");
+  modelsLab.className = "settings-label hidden";
+  modelsLab.innerHTML = `Models <span class="settings-hint">— toggle on the models to install; you can change these any time</span>`;
+  const modelList = document.createElement("div");
+  modelList.className = "mdl-install-models hidden";
+  panel.append(keyLab, key, modelsLab, modelList);
+
+  const err = document.createElement("div");
+  err.className = "crud-form-error hidden";
+  panel.appendChild(err);
+
+  const actions = document.createElement("div");
+  actions.className = "settings-actions";
+  actions.style.marginTop = "16px";
+  const customLink = document.createElement("a");
+  customLink.href = "#";
+  customLink.className = "settings-hint";
+  customLink.textContent = "Custom provider (own base URL)…";
+  const spacer = document.createElement("div");
+  spacer.style.flex = "1";
+  const cancel = document.createElement("button");
+  cancel.className = "action-btn";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  const install = document.createElement("button");
+  install.className = "action-btn primary";
+  install.type = "button";
+  install.textContent = "Install";
+  install.disabled = true;
+  actions.append(customLink, spacer, cancel, install);
+  panel.appendChild(actions);
+
+  let selected: ProviderRow | null = null;
+  const picks = new Set<string>();
+
+  const paintModels = (): void => {
+    modelList.textContent = "";
+    if (!selected) return;
+    const rows = models.filter((m) => m.kind === "proxied" && m.providerSlug === selected!.slug);
+    if (!rows.length) {
+      modelList.innerHTML = `<div class="crud-empty">No catalog models under this provider yet.</div>`;
+      return;
+    }
+    for (const m of rows) {
+      const line = document.createElement("div");
+      line.className = "mdl-install-model";
+      const n = document.createElement("div");
+      n.className = "mdl-td-name";
+      n.textContent = m.name;
+      const lab = document.createElement("label");
+      lab.className = "settings-toggle mdl-toggle";
+      lab.title = "Install — roles can pick this model";
+      lab.innerHTML = `<input type="checkbox" ${picks.has(m.id) ? "checked" : ""} /><span class="toggle-switch"></span>`;
+      (lab.querySelector("input") as HTMLInputElement).addEventListener("change", (ev) => {
+        if ((ev.target as HTMLInputElement).checked) picks.add(m.id); else picks.delete(m.id);
+      });
+      line.append(n, lab);
+      modelList.appendChild(line);
+    }
+  };
+
+  const paintList = (): void => {
+    const q = search.value.trim().toLowerCase();
+    list.textContent = "";
+    const candidates = providers
+      .filter((p) => !p.enabledForOrg)
+      .filter((p) => !q || p.name.toLowerCase().includes(q) || p.slug.includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if (!candidates.length) {
+      list.innerHTML = `<div class="crud-empty">${q ? "No providers match." : "Every provider is already installed."}</div>`;
+      return;
+    }
+    for (const p of candidates) {
+      const row = document.createElement("div");
+      row.className = "mdl-install-row" + (selected?.slug === p.slug ? " selected" : "");
+      const n = document.createElement("div");
+      n.className = "mdl-td-name";
+      n.textContent = p.name;
+      const sub = document.createElement("div");
+      sub.className = "mdl-td-sub mono";
+      sub.textContent = `${models.filter((m) => m.kind === "proxied" && m.providerSlug === p.slug).length} models`;
+      row.append(n, sub);
+      row.addEventListener("click", () => {
+        selected = p;
+        picks.clear();
+        install.disabled = false;
+        for (const elx of [keyLab, key, modelsLab, modelList]) elx.classList.remove("hidden");
+        paintList();
+        paintModels();
+        key.focus();
+      });
+      list.appendChild(row);
+    }
+  };
+  search.addEventListener("input", paintList);
+  paintList();
+
+  const close = (): void => {
+    overlay.remove();
+    if (!isWeb) restorePanelsForModal(panelsWereHidden);
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") close(); };
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", close);
+  cancel.addEventListener("click", close);
+  customLink.addEventListener("click", (ev) => { ev.preventDefault(); close(); void newCustomProviderModal(); });
+
+  install.addEventListener("click", () => {
+    if (!selected) return;
+    install.disabled = true;
+    void (async () => {
+      const slug = selected!.slug;
+      const r = await window.glyphh.orgProviderEnable(slug, key.value.trim() || undefined);
+      if (!r?.ok) {
+        err.textContent = r?.error || "Install failed";
+        err.classList.remove("hidden");
+        install.disabled = false;
+        return;
+      }
+      // Per-model installs — NEVER the bulk lane, which resets every other
+      // provider's supported set to exactly the ids it is handed.
+      const results = await Promise.all([...picks].map((id) => window.glyphh.orgModelsSetSupported(id, true)));
+      const bad = results.find((x) => !x?.ok);
+      if (bad) showError(bad.error || "Some models didn't install");
+      else showError("");
+      expanded.add(`gw:${slug}`);
+      close();
+      void refresh();
+    })();
+  });
+
+  overlay.append(backdrop, panel);
+  document.body.appendChild(overlay);
+  search.focus();
 }
 
 async function editCustomProviderModal(p: CustomProviderRow): Promise<void> {
@@ -389,9 +578,79 @@ interface ListEntry {
   autoOpen?: boolean;
 }
 
+/** The provider dropdown's narrowing — "" = all. */
+let providerFilter = "";
+
+/** A searchable provider dropdown (search on top) — shared by the org
+ *  Models page and the Roles model picker (his order, 2026-09-11). */
+export function openProviderDropdown(
+  anchor: HTMLElement,
+  options: Array<{ slug: string; name: string }>,
+  current: string,
+  onPick: (slug: string, name: string) => void,
+): void {
+  document.querySelector(".mdl-provider-drop")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "code-drop mdl-provider-drop";
+  const search = document.createElement("input");
+  search.type = "text";
+  search.className = "loop-drop-search";
+  search.placeholder = "Search providers…";
+  search.spellcheck = false;
+  search.autocomplete = "off";
+  const listHost = document.createElement("div");
+  listHost.className = "mdl-provider-drop-list";
+  menu.append(search, listHost);
+  const names = [{ slug: "", name: "All providers" }].concat(options);
+  const paint = (): void => {
+    const q = search.value.trim().toLowerCase();
+    listHost.textContent = "";
+    for (const n of names.filter((x) => !q || x.name.toLowerCase().includes(q) || x.slug.includes(q))) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "code-drop-item" + (n.slug === current ? " active" : "");
+      row.textContent = n.name;
+      row.addEventListener("click", () => { menu.remove(); onPick(n.slug, n.name); });
+      listHost.appendChild(row);
+    }
+  };
+  search.addEventListener("input", paint);
+  paint();
+  const r = anchor.getBoundingClientRect();
+  menu.style.position = "fixed";
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 280))}px`;
+  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.zIndex = "10000";
+  document.body.appendChild(menu);
+  const dismiss = (e: MouseEvent): void => {
+    if (!menu.contains(e.target as Node) && e.target !== anchor) { menu.remove(); document.removeEventListener("mousedown", dismiss, true); }
+  };
+  document.addEventListener("mousedown", dismiss, true);
+  search.focus();
+}
+
+function openProviderFilter(anchor: HTMLElement): void {
+  const options = providers.map((p) => ({ slug: p.slug, name: p.name }))
+    .concat(customProviders.map((p) => ({ slug: p.slug, name: p.name })));
+  openProviderDropdown(anchor, options, providerFilter, (slug, name) => {
+    providerFilter = slug;
+    // The funnel icon IS the "All providers" state (his order, 2026-09-11) —
+    // the label only appears when a provider is actually narrowing the list.
+    const label = el("models-provider-filter-label");
+    if (label) {
+      label.textContent = slug ? name : "";
+      label.classList.toggle("hidden", !slug);
+    }
+    page = 0;
+    renderList();
+  });
+}
+
 function listEntries(): ListEntry[] {
   const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim().toLowerCase();
-  const gw: ListEntry[] = providers.map((p) => ({
+  // Installed vendors only (his order, 2026-09-11) — the whole catalog lives
+  // in the + New Provider modal; the page is what the org actually runs.
+  const gw: ListEntry[] = providers.filter((p) => p.enabledForOrg).map((p) => ({
     key: `gw:${p.slug}`,
     name: p.name,
     type: "Glyphh",
@@ -407,11 +666,14 @@ function listEntries(): ListEntry[] {
       + (p.has_key && p.key_hint ? ` · Key: ${p.key_hint}` : ""),
     customProv: p,
   }));
+  const scoped = providerFilter
+    ? gw.concat(own).filter((e) => (e.gateway?.slug ?? e.customProv?.slug) === providerFilter)
+    : gw.concat(own);
   const matchModels = (e: ListEntry): boolean => {
     if (e.gateway) return models.some((m) => m.kind === "proxied" && m.providerSlug === e.gateway!.slug && m.name.toLowerCase().includes(q));
     return custom.some((m) => m.provider_slug === e.customProv!.slug && m.name.toLowerCase().includes(q));
   };
-  return [...gw, ...own]
+  return scoped
     .map((e) => ({ ...e, autoOpen: !!q && matchModels(e) }))
     .filter((e) => !q || e.name.toLowerCase().includes(q) || e.type.toLowerCase().includes(q) || e.autoOpen)
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -452,12 +714,18 @@ function renderList(): void {
 
   wrap.textContent = "";
   if (!slice.length) {
-    wrap.innerHTML = `<div class="crud-empty">No providers match your search.</div>`;
+    // An untouched search box means the ORG has nothing configured — say that,
+    // not "no match" (his report, 2026-09-12: a fresh org read as a broken
+    // search). Only a real query earns the no-match line.
+    const q = ((el("models-search") as HTMLInputElement | null)?.value || "").trim();
+    wrap.innerHTML = q
+      ? `<div class="crud-empty">No providers match your search.</div>`
+      : `<div class="crud-empty">No models configured yet — add a provider with + New provider to get started.</div>`;
   }
   for (const e of slice) {
     const row = document.createElement("div");
     row.className = "mdl-prov-row";
-    const isOpen = expanded.has(e.key) || !!e.autoOpen;
+    const isOpen = expanded.has(e.key) || (!!e.autoOpen && !searchClosed.has(e.key));
 
     const head = document.createElement("div");
     head.className = "mdl-prov-head" + (isOpen ? " open" : "");
@@ -502,23 +770,57 @@ function renderList(): void {
       });
       head.appendChild(lab);
     }
-    // ⋮ to the RIGHT of the toggle: Edit always; Delete only for CUSTOM
-    // providers (gateway providers are the platform's, not the org's).
-    const kebab = icoBtn(`<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`, "More");
-    kebab.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      openRowMenu(kebab, [
-        { icon: ROW_MENU_ICONS.edit, label: "Edit", onClick: () => {
-          if (e.gateway) void editGatewayProviderModal(e.gateway);
-          else void editCustomProviderModal(e.customProv!);
-        } },
-        ...(e.customProv ? [{ icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => { void deleteProviderConfirm(e.customProv!); } }] : []),
-      ]);
-    });
-    head.appendChild(kebab);
+    // KEY STATE (his order, 2026-09-11): a set key shows the green check; the
+    // red ✗ beside it confirms, then turns the provider OFF for the whole org
+    // (disable clears the key server-side — the message states exactly that).
+    if (e.gateway?.hasByokKey) {
+      const check = document.createElement("span");
+      check.className = "mdl-key-check";
+      check.title = "API key is set";
+      check.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+      const removeKey = icoBtn(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>`, "Remove the API key");
+      removeKey.classList.add("mdl-key-remove");
+      removeKey.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void (async () => {
+          const sure = await confirmAction({
+            title: `Remove the ${e.gateway!.name} API key?`,
+            body: "Removing the key turns off this provider for all users in your organization.",
+            confirmLabel: "Remove key",
+            danger: true,
+          });
+          if (!sure) return;
+          const r = await window.glyphh.orgProviderDisable(e.gateway!.slug);
+          if (!r?.ok) { showError(r?.error || "Couldn't remove the key"); return; }
+          e.gateway!.hasByokKey = false;
+          e.gateway!.enabledForOrg = false;
+          showError("");
+          renderList();
+        })();
+      });
+      head.appendChild(check);
+      head.appendChild(removeKey);
+    }
+    // Edit — the Catalog page's pencil, replacing the old ⋮ menu. With a key
+    // SET the row shows ✓/✗ instead (his order, 2026-09-11): remove the key
+    // first, then edit.
+    if (!e.gateway?.hasByokKey) {
+      const editBtn = icoBtn(MDL_SVG.edit, "Edit");
+      editBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        if (e.gateway) void editGatewayProviderModal(e.gateway);
+        else void editCustomProviderModal(e.customProv!);
+      });
+      head.appendChild(editBtn);
+    }
+    if (e.customProv) {
+      const delBtn = icoBtn(MDL_SVG.trash, "Delete provider");
+      delBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void deleteProviderConfirm(e.customProv!); });
+      head.appendChild(delBtn);
+    }
     head.addEventListener("click", () => {
-      if (expanded.has(e.key)) expanded.delete(e.key);
-      else expanded.add(e.key);
+      if (isOpen) { expanded.delete(e.key); if (e.autoOpen) searchClosed.add(e.key); }
+      else { expanded.add(e.key); searchClosed.delete(e.key); }
       renderList();
     });
     row.appendChild(head);
@@ -612,10 +914,15 @@ async function refresh(): Promise<void> {
 }
 
 export function loadModelsAdmin(): void {
+  // NO plan gate (his ruling, 2026-09-14, reversing 09-13): the org's model
+  // support list is org → user configuration on EVERY plan — the free-plan
+  // org admin is the primary here and toggles models for themselves. The
+  // governance gates stay on the ROLE layer (telling members apart).
   if (!initialized) {
     initialized = true;
-    el("models-search")?.addEventListener("input", () => { page = 0; renderList(); });
-    el("provider-new-btn")?.addEventListener("click", () => void newProviderModal());
+    el("models-search")?.addEventListener("input", () => { page = 0; searchClosed.clear(); renderList(); });
+    el("models-provider-filter")?.addEventListener("click", (ev) => { ev.stopPropagation(); openProviderFilter(ev.currentTarget as HTMLElement); });
+    el("provider-new-btn")?.addEventListener("click", () => void installProviderModal());
   }
   void refresh();
 }

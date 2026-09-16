@@ -21,6 +21,7 @@ import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type Error
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
+import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 
@@ -44,14 +45,6 @@ import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
-import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
-import { initGDocs, type GDocPanel } from "./wb-gdoc.js";
-import { initGDrive, type GDrivePanel } from "./wb-drive.js";
-import { initGSheets, type GSheetPanel } from "./wb-sheets.js";
-import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
-import { initMemory, type MemoryPanel, type MemorySlotState } from "./wb-memory.js";
-import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
-import { initBand, type BandPanel, type BandSlotState } from "./wb-music.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -97,7 +90,7 @@ interface WbApi {
     } | null;
     text: string; error?: string;
   }>;
-  termSpawn: (termId: string, cwd: string, cols: number, rows: number) => void;
+  termSpawn: (termId: string, cwd: string, cols: number, rows: number, light?: boolean) => void;
   termWrite: (termId: string, data: string) => void;
   termResize: (termId: string, cols: number, rows: number) => void;
   termKill: (termId: string) => void;
@@ -108,7 +101,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "releases" | "tasks" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -122,6 +115,9 @@ interface FilesSlot { id: number; view: "files"; root?: TreeNode | null; sticky?
 interface WbTerminal {
   /** Stable id used as the IPC channel suffix (`wb-term:data:<id>`). */
   ptyId: string;
+  /** True once wb-term:spawn actually went out — ptyId alone is just the
+   *  renderer-minted key, which is why late writes must check THIS. */
+  spawned?: boolean;
   /** A layout-slotted first command — written to the pty once, right after
    *  spawn (the working folder is already the spawn cwd). */
   initCmd?: string;
@@ -142,6 +138,10 @@ interface TermSlot {
   terminals: WbTerminal[];
   activeIdx: number;
   sticky?: boolean;
+  /** Set ONLY by openAgentCliCard: this terminal is an AGENT view, and its
+   *  tab row becomes the agent header (session name + the shared control
+   *  cluster). Plain terminals never carry it — their tabs are untouched. */
+  agent?: { id: string; name: string };
 }
 /** Files are CLOSED by default — `expanded` tracks the ones the user opened. */
 interface DiffSlot { id: number; view: "diff"; expanded?: Set<string>; sticky?: boolean }
@@ -165,7 +165,6 @@ interface RailPanelSlot {
 /** Releases — the release-management view for BUILT (glyphh-hosted) apps:
  *  pick an app, see its release history, cut a build, promote to live.
  *  `slug` remembers the picked app across renders/layout saves. */
-interface ReleasesSlot { id: number; view: "releases"; slug?: string; sticky?: boolean }
 /** Tasks — the user's SCHEDULED work in one place: every agent task, when it
  *  fires next, how the last run went, and (per task) the full run history.
  *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
@@ -196,58 +195,8 @@ interface PreviewSlot {
   tabs?: PreviewTab[]; activeTab?: number;
 }
 
-/** gPoint — Glyphh power points. The deck library (~/.glyphh/gpoints) as
- *  cards; opening one flips the SAME slot into a reader (slide rail + stage).
- *  `file` is runtime-only — a restored layout always lands on the library.
- *  There are NO edit affordances anywhere: the agent builds decks. */
-interface GPointSlot {
-  id: number; view: "gpoint";
-  /** The open deck's filename inside the gpoints folder (unset = library). */
-  file?: string;
-  /** The open deck's title — the reader bar and slot header show it. */
-  title?: string;
-  /** Current slide — survives re-renders and seeds presenter mode. */
-  slideIdx?: number;
-  /** Reader slide-rail width (px) — the drag handle's setting. */
-  railWidth?: number;
-  sticky?: boolean;
-}
-/** Docs — Glyphh Office documents (markdown → paper). Library ↔ document;
- *  `file` is runtime-only, a restored layout lands on the library. */
-interface GDocSlot {
-  id: number; view: "gdoc";
-  file?: string;
-  title?: string;
-  sticky?: boolean;
-}
-/** Sheets — Glyphh Office workbooks (grid + shared formula engine). */
-interface GSheetSlot {
-  id: number; view: "gsheet";
-  file?: string;
-  title?: string;
-  tab?: number;
-  rowPage?: number;
-  page?: number;
-  sticky?: boolean;
-}
 
-/** Design — Glyphh Design systems (library ↔ studio; wb-design.ts). */
-interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
 
-/** Memory — the stator visualized (wb-memory.ts). */
-interface GMemorySlot extends MemorySlotState { view: "gmemory"; sticky?: boolean }
-
-/** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
-interface GMediaSlot extends MediaSlotState { sticky?: boolean }
-
-/** Band — Songs / Artists / Music Video (wb-music.ts initBand). */
-interface GBandSlot extends BandSlotState { view: "gband"; sticky?: boolean }
-/** Drive — folders + pointers over every Office file. */
-interface GDriveSlot {
-  id: number; view: "gdrive";
-  folderId?: string | null;
-  sticky?: boolean;
-}
 interface PlanSlot {
   id: number; view: "plan";
   sticky?: boolean;
@@ -274,7 +223,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | ReleasesSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDocSlot | GDriveSlot | GSheetSlot | GDesignSlot | GMemorySlot | GMediaSlot | GBandSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -315,21 +264,10 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   // (persisted layouts reference it).
   coding:   { title: "Glyphh", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><polyline points="9 9 7 11 9 13"/><polyline points="15 9 17 11 15 13"/></svg>` },
   plan:     { title: "Plan",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>` },
-  releases: { title: "Releases", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>` },
   rail:     { title: "Rail",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="5.6" y1="7.5" x2="6.4" y2="7.5"/><line x1="5.6" y1="12" x2="6.4" y2="12"/><line x1="5.6" y1="16.5" x2="6.4" y2="16.5"/></svg>` },
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
-  gsheet:   { title: "Sheets",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="3" style="fill:#10b981;stroke:none"/><rect x="6" y="5.6" width="12" height="2.4" rx="1.2" style="fill:#ffffff;stroke:none"/><rect x="6" y="10" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/><rect x="12.6" y="10" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#ffffff;stroke:none"/><rect x="12.6" y="14.8" width="5.4" height="3.6" rx="1" style="fill:#a7f3d0;stroke:none"/></svg>` },
-  gdesign:  { title: "Design",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg>` },
-  gmemory:  { title: "Memory",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a5 5 0 0 0-5 5c-2 .5-3.5 2.2-3.5 4.4 0 1.7.9 3.1 2.2 3.9-.1.4-.2.8-.2 1.2a4 4 0 0 0 4 4c.9 0 1.8-.3 2.5-.9.7.6 1.6.9 2.5.9a4 4 0 0 0 4-4c0-.4-.1-.8-.2-1.2 1.3-.8 2.2-2.2 2.2-3.9 0-2.2-1.5-3.9-3.5-4.4a5 5 0 0 0-5-5z" style="fill:#5eead4;stroke:none"/><circle cx="9" cy="10" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="15" cy="9" r="1.4" style="fill:#0f766e;stroke:none"/><circle cx="12" cy="14.5" r="1.4" style="fill:#0f766e;stroke:none"/><path d="M9.9 10.9 11.3 13.4M14.2 10.2 12.7 13.3M10.4 10.2 13.7 9.4" style="stroke:#0f766e;stroke-width:1.1"/></svg>` },
-  gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
-  gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
-  gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
-  gband:    { title: "Band",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="5.2" cy="6.2" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><ellipse cx="18.8" cy="5.4" rx="3.4" ry="1.2" style="fill:#3f6212;stroke:none"/><path d="M5.2 7.4v4M18.8 6.6v4.8" style="stroke:#3f6212;stroke-width:1.4"/><circle cx="12" cy="14.2" r="6.6" style="fill:#a3e635;stroke:none"/><circle cx="12" cy="14.2" r="2.3" style="fill:#ffffff;stroke:none"/><path d="M7.2 20.9 16.8 8.6M16.8 20.9 7.2 8.6" style="stroke:#3f6212;stroke-width:1.3"/></svg>` },
-  gdrive:   { title: "Drive",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
-  gdoc:     { title: "Docs",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5A2.5 2.5 0 0 1 7.5 2h7L20 7.5v12A2.5 2.5 0 0 1 17.5 22h-10A2.5 2.5 0 0 1 5 19.5z" style="fill:#3b82f6;stroke:none"/><path d="M14.5 2 20 7.5h-4A1.5 1.5 0 0 1 14.5 6z" style="fill:#1d4ed8;stroke:none"/><rect x="8" y="10.6" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="14" width="8" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/><rect x="8" y="17.4" width="5.2" height="1.7" rx="0.85" style="fill:#ffffff;stroke:none"/></svg>` },
-  gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
 };
 
 // ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
@@ -346,12 +284,13 @@ const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as {
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
-  { key: "marketplace", title: "Marketplace",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.2 4.6 3.5h14.8L21 8.2z" style="fill:#f97316;stroke:none"/><path d="M3 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M6.6 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M10.2 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M13.8 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#fdba74;stroke:none"/><path d="M17.4 8.2h3.6v1.1a1.8 1.8 0 1 1-3.6 0z" style="fill:#ffffff;stroke:none"/><path d="M4.2 11.2h15.6v7.8a1.5 1.5 0 0 1-1.5 1.5H5.7a1.5 1.5 0 0 1-1.5-1.5z" style="fill:#fb923c;stroke:none"/><rect x="13.4" y="14" width="3.6" height="6.5" rx="0.7" style="fill:#7c2d12;stroke:none"/><rect x="6.6" y="14" width="4" height="3.4" rx="0.7" style="fill:#ffedd5;stroke:none"/></svg>` },
-  { key: "connections", title: "Connections",     icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7" style="fill:none;stroke:#0e7490;stroke-width:2.6"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7" style="fill:none;stroke:#06b6d4;stroke-width:2.6"/></svg>` },
-  { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
-  { key: "tasks",       title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
+  // (Loops left the wall — they are SETTINGS now, not a card you open.)
+  // Agents keeps the robot mark it always wore — the key freed up when the
+  // CLI pre-configs became Loops.
   { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
-  { key: "loops",       title: "Loops",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/><path d="M7 21.9l-4-4 4-4" style="fill:none;stroke:#0891b2;stroke-width:2.4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2" style="fill:none;stroke:#22d3ee;stroke-width:2.4"/></svg>` },
+  { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
+  // (Connections moved into Settings — his ruling, 2026-09-12; no dock tile.)
+  { key: "tasks",       title: "Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
   { key: "skills",      title: "Skills",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z" style="fill:#f59e0b;stroke:#d97706;stroke-width:1.2;stroke-linejoin:round"/><circle cx="12" cy="10.5" r="2" style="fill:#fef3c7;stroke:none"/></svg>` },
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
@@ -369,7 +308,28 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
 // within a single app launch (but re-arms on a fresh launch).
 const WALL_STATE_PREF = "echoWallState";
 let wallRestored = false;
-type WallCard = { kind: "app" | "tool" | "section"; slug?: string; url?: string; name?: string; section?: string; toolView?: string };
+
+/** Tile keys renamed under him — persisted surfaces (echoDockOrder,
+ *  ccIconOrder, echoFolders, echoWallState sections, a layout's section
+ *  cells) hold keys written BEFORE a rename and would drop the tile.
+ *
+ *  ONLY put a key here when the old name is DEAD. `agents: "loops"` lived
+ *  here for one build and was wrong: "agents" was reused by the restored
+ *  Agents page, so the alias sent every Agents open to Loops (his report:
+ *  "Agents is still showing all the same things that Loops is showing").
+ *  A key that means two different things at two different times cannot be
+ *  resolved at read time — the surviving surface keeps the key, and the new
+ *  one (Loops) gets backfilled into the dock like any other new tile. */
+const KEY_ALIASES: Record<string, string> = {};
+const legacyKey = (k: unknown): string => {
+  const s = String(k);
+  if (s.startsWith("section:")) {
+    const sec = s.slice(8);
+    return KEY_ALIASES[sec] ? `section:${KEY_ALIASES[sec]}` : s;
+  }
+  return KEY_ALIASES[s] ?? s;
+};
+type WallCard = { kind: "app" | "tool" | "section" | "agent"; slug?: string; url?: string; name?: string; section?: string; toolView?: string; agent?: string };
 type WallState = { layout: string | null; cards: WallCard[] };
 
 // ── Browser panel: start page + error pages ─────────────────────────────
@@ -462,7 +422,7 @@ const PROBE_SRC = `(() => { const e = document.getElementById("main-frame-error"
 const SECTION_TITLES: Record<string, string> = {
   dashboard: "Home", connections: "Connections", apps: "Apps", marketplace: "Marketplace",
   layouts: "Workspaces",
-  skills: "Skills", loops: "Loops", agents: "Agents", models: "Models", drips: "Drips",
+  skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",
 };
 
@@ -1002,7 +962,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "releases" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound" || v === "gband") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "rail") {
           slots.push(makeSlot(v));
         }
       }
@@ -1168,7 +1128,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1239,7 +1199,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1354,17 +1314,8 @@ async function init(): Promise<void> {
     if (view === "coding") return { id, view };
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
-    if (view === "releases") return { id, view };
     if (view === "rail") return { id, view };
     if (view === "tasks") return { id, view };
-    if (view === "gpoint") return { id, view };
-    if (view === "gdoc") return { id, view };
-    if (view === "gdrive") return { id, view };
-    if (view === "gsheet") return { id, view };
-    if (view === "gdesign") return { id, view };
-    if (view === "gmemory") return { id, view };
-    if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
-    if (view === "gband") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1615,7 +1566,9 @@ async function init(): Promise<void> {
 
   /** Adopt a section's DOM into the slot and run its loader. */
   function renderSectionIntoSlot(body: HTMLElement, slot: SectionSlot): void {
-    const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${slot.section}"]`);
+    // legacyKey: a workspace saved before a section rename still names the
+    // old page; without this the cell reads "This page is unavailable."
+    const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${legacyKey(slot.section)}"]`);
     if (!sec) { body.innerHTML = `<div class="ws-empty">This page is unavailable.</div>`; return; }
     body.classList.add("ws-section-body");
     sec.classList.add("active", "wb-hosted");
@@ -1817,7 +1770,6 @@ async function init(): Promise<void> {
     const meta = VIEW_META[slot.view] || { title: slot.view, icon: "" };
     const title = slot.view === "app" ? slot.name
       : slot.view === "section" ? (SECTION_TITLES[slot.section] || slot.section)
-      : slot.view === "gpoint" && slot.file ? (slot.title || meta.title)
       : meta.title;
     const icon = slot.view === "coding" ? "" : meta.icon;
     const wrap = document.createElement("div");
@@ -1832,8 +1784,7 @@ async function init(): Promise<void> {
     // Pop-out: web panels (http apps, the Browser) and Slides can leave the
     // app for a standalone OS window. Glyphh apps stay — their file:// entry
     // needs the in-app webview capabilities.
-    const canPopout = slot.view === "gpoint"
-      || slot.view === "preview"
+    const canPopout = slot.view === "preview"
       || (slot.view === "app" && !slot.glyphh && /^https?:\/\//i.test(slot.url));
     const popoutBtn = canPopout
       ? `<button class="ws-icon-btn slot-popout" title="Pop out — its own window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
@@ -1872,13 +1823,9 @@ async function init(): Promise<void> {
       ev.stopPropagation();
       const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
       if (!yo?.panelPopout) return;
-      if (slot.view === "gpoint") {
-        void yo.panelPopout({ kind: "slides", file: slot.file, title: slot.title || "Slides" });
-      } else {
-        const url = slot.view === "app" ? slot.url : (slot as PreviewSlot).url || "";
-        if (!/^https?:\/\//i.test(url)) return;
-        void yo.panelPopout({ kind: "url", url, title });
-      }
+      const url = slot.view === "app" ? slot.url : (slot as PreviewSlot).url || "";
+      if (!/^https?:\/\//i.test(url)) return;
+      void yo.panelPopout({ kind: "url", url, title });
       closeSlot(slot.id);
     });
     wrap.querySelectorAll<HTMLElement>(".slot-rail-hide").forEach((btn) => {
@@ -1969,39 +1916,8 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
-    else if (slot.view === "gpoint") {
-      // Sync, inline-styled first paint — immune to CSS/theme/module state.
-      // The real render replaces it; if that dies, this text stays visible.
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
-      void renderGPointIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gdoc") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
-      void renderGDocIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gdrive") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
-      void renderGDriveIntoSlot(body, slot, wrap);
-    }
-    else if (slot.view === "gsheet") {
-      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
-      void renderGSheetIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gdesign") {
-      body.classList.add("ws-gdesign-body");
-      void renderDesignIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gmemory") {
-      body.classList.add("ws-gmemory-body");
-      void renderMemoryIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
-      body.classList.add("ws-gmedia-body");
-      void renderMediaIntoSlot(body, slot, wrap);
-    } else if (slot.view === "gband") {
-      body.classList.add("ws-gband-body");
-      void renderBandIntoSlot(body, slot, wrap);
-    }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
@@ -2022,197 +1938,6 @@ async function init(): Promise<void> {
     return wrap;
   }
 
-  // ── gPoint — Glyphh power points (implementation: wb-gpoint.ts) ─────────
-  // The workbench lends the panel its confirm modal, a repaint and a live
-  // slot lookup; everything deck-shaped lives in the module. A lazy singleton
-  // behind a HOISTED renderer — the same shape as every other panel's render
-  // function, so the dispatch works no matter when the first render fires
-  // (a const assigned mid-init is in the TDZ for any render before it).
-  let gpointPanel: GPointPanel | null = null;
-  function gpointPanelInstance(): GPointPanel {
-    if (!gpointPanel) {
-      gpointPanel = initGPoint({
-        confirm: (o) => appConfirm(o),
-        slotById: (id) => {
-          // Rails first, then ECHO — the command center hosts tool slots on
-          // tile entries, not rails, so the reader's slide reports found no
-          // slot there: clicking a slide navigated the stage but slideIdx
-          // never synced, and Present started from the stale slide (his
-          // report, 2026-09-08).
-          const s = rails.flatMap((r) => r.slots).find((sl) => sl.id === id && sl.view === "gpoint")
-            ?? echoCtl?.toolSlotById(id);
-          return s?.view === "gpoint" ? (s as GPointSlot) : undefined;
-        },
-        icon: VIEW_META.gpoint.icon,
-      });
-    }
-    return gpointPanel;
-  }
-  function renderGPointIntoSlot(body: HTMLElement, slot: GPointSlot, wrap: HTMLElement): Promise<void> {
-    return gpointPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  // ── Docs — Glyphh Office documents (implementation: wb-gdoc.ts) ──────────
-  let gdocPanel: GDocPanel | null = null;
-  function gdocPanelInstance(): GDocPanel {
-    if (!gdocPanel) {
-      gdocPanel = initGDocs({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gdoc.icon,
-      });
-    }
-    return gdocPanel;
-  }
-  function renderGDocIntoSlot(body: HTMLElement, slot: GDocSlot, wrap: HTMLElement): Promise<void> {
-    return gdocPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  // ── Drive — folders + pointers over every Office file (wb-drive.ts) ──────
-  let gdrivePanel: GDrivePanel | null = null;
-  function gdrivePanelInstance(): GDrivePanel {
-    if (!gdrivePanel) {
-      gdrivePanel = initGDrive({
-        confirm: (o) => appConfirm(o),
-        icons: {
-          slides: VIEW_META.gpoint.icon,
-          docs: VIEW_META.gdoc.icon,
-          sheets: VIEW_META.gsheet.icon,
-          folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>`,
-        },
-        openFile: (kind, file, title) => {
-          if (kind === "slides") (window as unknown as { __wbOpenGPoint?: (f?: string, t?: string) => void }).__wbOpenGPoint?.(file, title);
-          else if (kind === "sheets") (window as unknown as { __wbOpenGSheet?: (f?: string, t?: string) => void }).__wbOpenGSheet?.(file, title);
-          else (window as unknown as { __wbOpenGDoc?: (f?: string, t?: string) => void }).__wbOpenGDoc?.(file, title);
-        },
-      });
-    }
-    return gdrivePanel;
-  }
-  function renderGDriveIntoSlot(body: HTMLElement, slot: GDriveSlot, wrap: HTMLElement): Promise<void> {
-    return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  // The Apps page's Drive work-panel card lands here — reuse the open Drive
-  // panel or place one (Drive has no file payload; the panel lists everything).
-  (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => {
-    openToolWithPayload("gdrive", () => {});
-  };
-
-  // ── Sheets — workbooks (wb-sheets.ts) ─────────────────────────────────────
-  let gsheetPanel: GSheetPanel | null = null;
-  function gsheetPanelInstance(): GSheetPanel {
-    if (!gsheetPanel) {
-      gsheetPanel = initGSheets({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gsheet.icon,
-      });
-    }
-    return gsheetPanel;
-  }
-  function renderGSheetIntoSlot(body: HTMLElement, slot: GSheetSlot, wrap: HTMLElement): Promise<void> {
-    return gsheetPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  (window as unknown as { __wbOpenGSheet?: (file?: string, title?: string) => void }).__wbOpenGSheet = (file, title) => {
-    openToolWithPayload("gsheet", (t) => {
-      const sl = t as GSheetSlot;
-      if (!file) return;
-      gsheetPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
-    });
-  };
-
-  // ── Design — org design systems (wb-design.ts) ───────────────────────────
-  let gdesignPanel: DesignPanel | null = null;
-  function gdesignPanelInstance(): DesignPanel {
-    if (!gdesignPanel) {
-      gdesignPanel = initDesign({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gdesign.icon,
-      });
-    }
-    return gdesignPanel;
-  }
-  function renderDesignIntoSlot(body: HTMLElement, slot: GDesignSlot, wrap: HTMLElement): Promise<void> {
-    return gdesignPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign = (file, title) => {
-    openToolWithPayload("gdesign", (t) => {
-      const sl = t as GDesignSlot;
-      if (!file) return;
-      gdesignPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
-    });
-  };
-
-  // ── Memory — the stator visualized (wb-memory.ts) ─────────────────────────
-  let gmemoryPanel: MemoryPanel | null = null;
-  function gmemoryPanelInstance(): MemoryPanel {
-    if (!gmemoryPanel) {
-      gmemoryPanel = initMemory({
-        confirm: (o) => appConfirm(o),
-        icon: VIEW_META.gmemory.icon,
-      });
-    }
-    return gmemoryPanel;
-  }
-  function renderMemoryIntoSlot(body: HTMLElement, slot: GMemorySlot, wrap: HTMLElement): Promise<void> {
-    return gmemoryPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  (window as unknown as { __wbOpenMemory?: () => void }).__wbOpenMemory = () => {
-    openToolWithPayload("gmemory", () => { gmemoryPanelInstance().invalidate(); });
-  };
-
-  // ── Media — Image / Video / Sounds (wb-media.ts) ──────────────────────────
-  let gmediaPanel: MediaPanel | null = null;
-  function gmediaPanelInstance(): MediaPanel {
-    if (!gmediaPanel) {
-      gmediaPanel = initMedia({
-        confirm: (o) => appConfirm(o),
-        icons: {
-          gimage: VIEW_META.gimage.icon,
-          gvideo: VIEW_META.gvideo.icon,
-          gsound: VIEW_META.gsound.icon,
-        },
-      });
-    }
-    return gmediaPanel;
-  }
-  function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
-    return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-  // ── Band — Songs / Artists / Music Video (wb-music.ts) ────────────────────
-  let gbandPanel: BandPanel | null = null;
-  function gbandPanelInstance(): BandPanel {
-    if (!gbandPanel) gbandPanel = initBand({ confirm: (o) => appConfirm(o) });
-    return gbandPanel;
-  }
-  function renderBandIntoSlot(body: HTMLElement, slot: GBandSlot, wrap: HTMLElement): Promise<void> {
-    return gbandPanelInstance().renderIntoSlot(body, slot, wrap);
-  }
-
-  (window as unknown as { __wbOpenMedia?: (view: MediaView | "gband", assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
-    // A song deep-link (or an explicit gband open) lands in the BAND app.
-    if (view === "gband" || songId) {
-      openToolWithPayload("gband", (t) => {
-        const b = t as GBandSlot;
-        if (songId) {
-          b.tab = 0;
-          b.music = { songId };
-        }
-      });
-      return;
-    }
-    openToolWithPayload(view, (t) => {
-      const m = t as GMediaSlot;
-      if (assetId) {
-        gmediaPanelInstance().invalidate();
-        m.assetId = assetId;
-      }
-    });
-  };
-
   // Drive's text/code files open IN THE EDITOR as content tabs (drive://
   // paths — viewable, copyable; a disk save is refused by the write bridge).
   (window as unknown as { __wbOpenMonacoText?: (name: string, content: string) => void }).__wbOpenMonacoText = (name, content) => {
@@ -2223,28 +1948,6 @@ async function init(): Promise<void> {
       if (existing >= 0) { sl.tabs[existing].content = content; sl.activeIdx = existing; return; }
       sl.tabs.push({ name, path, content, dirty: false });
       sl.activeIdx = sl.tabs.length - 1;
-    });
-  };
-
-  (window as unknown as { __wbOpenGDoc?: (file?: string, title?: string) => void }).__wbOpenGDoc = (file, title) => {
-    openToolWithPayload("gdoc", (t) => {
-      const sl = t as GDocSlot;
-      if (!file) return;
-      gdocPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
-    });
-  };
-
-  // The agent's open_gpoint (and any main-side opener) lands here: reuse the
-  // open gPoint panel or place one, optionally straight onto a deck.
-  (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint = (file, title) => {
-    openToolWithPayload("gpoint", (t) => {
-      const sl = t as GPointSlot;
-      if (!file) return;
-      gpointPanelInstance().invalidate(file);
-      sl.file = file;
-      sl.title = title ?? file;
     });
   };
 
@@ -2298,15 +2001,14 @@ async function init(): Promise<void> {
     // review activity) and Settings (unread support replies). nav-badges.ts
     // computes + broadcasts; this paints dock slots and page tiles.
     window.addEventListener("glyphh:nav-badges", (ev) => {
-      const d = (ev as CustomEvent<{ marketplace: number; settings: number }>).detail;
+      const d = (ev as CustomEvent<{ settings: number }>).detail;
       if (!d) return;
-      for (const [key, n] of [["marketplace", d.marketplace], ["settings", d.settings]] as const) {
-        document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="${key}"], .echo-app-btn[data-nav="${key}"]`)
-          .forEach((el2) => {
-            if (n > 0) el2.dataset.badge = String(Math.min(99, n));
-            else delete el2.dataset.badge;
-          });
-      }
+      const n = d.settings;
+      document.querySelectorAll<HTMLElement>(`.echo-dock-btn[data-dock="settings"], .echo-app-btn[data-nav="settings"]`)
+        .forEach((el2) => {
+          if (n > 0) el2.dataset.badge = String(Math.min(99, n));
+          else delete el2.dataset.badge;
+        });
     });
     // TINY HOVER TICK (his ask, 2026-08-19): sweeping the cursor over apps on
     // the command center clicks softly. Delegated on the whole wall body so
@@ -2389,7 +2091,7 @@ async function init(): Promise<void> {
     // redrawn whenever the theme changes. ──
     const TILE_PX_W = 104, TILE_PX_H = 94, TILE_SCALE = 4;
     interface EchoCell { iconUrl?: string; glyphSvg?: string; initial: string; img: HTMLImageElement | null }
-    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
+    interface EchoTile { name: string; slug?: string; orderKey?: string; appId?: string; houseDefault?: boolean; layoutName?: string; url?: string; routeHint?: string; glyphh?: boolean; workbench?: boolean; sticky?: boolean; iconUrl?: string; issues?: number; glyphSvg?: string; cells?: EchoCell[]; layoutRow?: LayoutRow; cliAgent?: { id: string; command: string }; kind: "app" | "layout" | "tool" | "agent" | "folder"; folderId?: string; toolView?: Exclude<ViewKind, "app">; navKey?: string; navApp?: { slug: string; name: string; url?: string | null; archetype: string; execPath?: string | null } }
     interface TileEntry { tile: EchoTile; iconEl?: HTMLElement; img: HTMLImageElement | null; card?: HTMLElement; open?: boolean; toolSlot?: Slot; memKey?: string; keepTermsAlive?: boolean;
       /** A reopened workspace's remembered document — applied onto the slot at mint, before the first render (never after: two renders raced). */
       pendingSlotState?: Record<string, unknown>;
@@ -2405,6 +2107,27 @@ async function init(): Promise<void> {
       layoutId?: string }
     const entries: TileEntry[] = [];
     let echoRows: Array<{ slug?: string; id: string; name: string; url?: string | null; appArchetype?: string | null; execPath?: string | null; iconUrl?: string | null }> = [];
+    // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
+    // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
+    // the wall like workspaces do, and agent:<id> layout cells resolve here.
+    interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
+    let cliAgentRows: CliAgentRowLite[] = [];
+    const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
+    const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
+      name: a.name,
+      slug: `agent:${a.id}`,
+      orderKey: `agent:${a.id}`,
+      // Branded CLIs wear their public marks; custom ones the robot.
+      ...(a.cli === "claude" ? { iconUrl: "https://claude.ai/favicon.ico" }
+        : a.cli === "codex" ? { iconUrl: "https://openai.com/favicon.ico" }
+        : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
+        : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
+        : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
+        : { glyphSvg: CLI_AGENT_GLYPH }),
+      kind: "tool",
+      toolView: "terminal",
+      cliAgent: { id: a.id, command: a.command },
+    });
     // ── Flat icons: dock-sized squares + labels, plain DOM. Glyph SVGs keep
     // currentColor, so THEMES restyle them via CSS — no rasterizing. ──
     const escAttr = (v: string): string => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -2800,7 +2523,7 @@ async function init(): Promise<void> {
     // ── Per-tile context menu (his rule, 2026-08-19): apps get Edit; work-
     // spaces get Edit + Delete; the close items appear ONLY when that tile's
     // panel is actually open — a closed tile never offers "Close panel". ──
-    const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean }>): void => {
+    const showTileMenu = (ev: MouseEvent, items: Array<{ label: string; onPick: () => void; danger?: boolean; checked?: boolean }>): void => {
       if (!items.length) return;
       document.querySelector(".ws-tab-ctx-menu")?.remove();
       const menu = document.createElement("div");
@@ -2815,7 +2538,8 @@ async function init(): Promise<void> {
       for (const it of items) {
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = "ws-tab-ctx-item" + (it.danger ? " danger" : "");
+        btn.className = "ws-tab-ctx-item" + (it.danger ? " danger" : "")
+          + (it.checked !== undefined ? " checkable" : "") + (it.checked ? " checked" : "");
         btn.textContent = it.label;
         btn.addEventListener("click", () => { dismiss(); it.onPick(); });
         menu.appendChild(btn);
@@ -3177,12 +2901,6 @@ async function init(): Promise<void> {
         orderKey: `app:${slug}`,
       };
     };
-    /** APPS ONLY — the wall's app filter (no self row, no nav page tiles). A
-     *  glyphh app appears ONLY once deployed (his rule, 2026-08-25): its url
-     *  is the brand origin, minted by deploy — an app still in development
-     *  belongs on the Apps page, not the consumption wall. */
-    const wallAppRow = (a: { url?: string | null; appArchetype?: string | null }): boolean =>
-      a.appArchetype !== "glyphh-self" && a.appArchetype !== "glyphh-nav" && !!a.url;
     const buildWall = (bands: EchoTile[][]): void => {
       wallBands = [bands.flat().map((t) => makeTileEntry(t))];
       renderPages();
@@ -3199,6 +2917,8 @@ async function init(): Promise<void> {
       layoutsList?: () => Promise<LayoutRow[]>;
       getPreference?: (k: string, d: unknown) => Promise<unknown>;
       setPreference?: (k: string, v: unknown) => Promise<unknown>;
+      cliAgentsList?: () => Promise<{ ok: boolean; agents: CliAgentRowLite[]; error?: string }>;
+      cliAgentOpen?: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean; prompt?: string; light?: boolean }) => Promise<{ ok: boolean; command?: string; name?: string; error?: string }>;
     };
     const yoApi = (window as unknown as { glyphh?: Yo }).glyphh;
     void Promise.all([
@@ -3212,7 +2932,8 @@ async function init(): Promise<void> {
       yoApi?.appsDefaults?.().catch(() => []) ?? [],
       yoApi?.getPreference?.("ccHiddenDefaults", []) ?? [],
       yoApi?.getPreference?.("echoFolders", []) ?? [],
-    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref]) => {
+      yoApi?.cliAgentsList?.().catch(() => null) ?? null,
+    ]).then(async ([rows, layouts, orderPref, savedWall, dockPref, houseDefaults, hiddenPref, folderPref, cliAgentsRes]) => {
       await wbInitSettled;   // never race init's own wiring (TDZ — see above)
       if (!body.isConnected) return;
       // APPS ONLY — no glyphh-nav page tiles: the left rail owns navigation.
@@ -3227,22 +2948,20 @@ async function init(): Promise<void> {
       // APP-WEB (his rule, 2026-08-25): every app is back on the web wall —
       // glyphh apps open in-app; anything else opens ITS URL in a new browser
       // tab (activateTile). URL-less native rows still can't open anywhere.
-      const userRows = (rows || []).filter(wallAppRow);
-      const userSlugs = new Set(userRows.map((a) => (a.slug || a.id).toLowerCase()));
-      const hiddenDefaults = new Set((Array.isArray(hiddenPref) ? hiddenPref : []).map((x) => String(x).toLowerCase()));
-      const defaultRows: PanelRowLite[] = ((houseDefaults as Array<{ id: string; slug: string; name: string; url: string | null }>) || [])
-        .filter((d) => !!d.url && !userSlugs.has(d.slug.toLowerCase()) && !hiddenDefaults.has(d.slug.toLowerCase()))
-        .map((d) => ({ id: "", slug: d.slug, name: d.name, url: d.url }));
-      const appsAll = [...userRows, ...defaultRows];
+      // ONE list, shared with the left rail (help/app-list.ts).
+      const appsAll = visibleAppRows(
+        rows as PanelRowLite[] | null,
+        houseDefaults as HouseDefault[] | null,
+        hiddenPref as unknown[] | null,
+      ) as PanelRowLite[];
       echoRows = (rows || []);
-      appsAll.sort((x, y) => (y.appArchetype === "glyphh-app" ? 1 : 0) - (x.appArchetype === "glyphh-app" ? 1 : 0));
       interface Entry { key: string; name: string; app?: PanelRowLite; layout?: LayoutRow }
       const all: Entry[] = [
         ...appsAll.map((a): Entry => ({ key: `app:${(a.slug || a.id).toLowerCase()}`, name: a.name, app: a })),
         ...(layouts || []).map((l): Entry => ({ key: `layout:${(l.name || "").toLowerCase()}`, name: l.name, layout: l })),
       ];
       const byKey = new Map(all.map((e) => [e.key, e]));
-      const orderKeys = Array.isArray(orderPref) ? orderPref.map(String) : [];
+      const orderKeys = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
       const inOrder = orderKeys.map((k) => byKey.get(k)).filter((e): e is Entry => !!e);
       const seen = new Set(inOrder.map((e) => e.key));
       const ordered = [...inOrder, ...all.filter((e) => !seen.has(e.key))];
@@ -3256,89 +2975,27 @@ async function init(): Promise<void> {
         kind: "tool",
         toolView: "preview",
       };
-      // Slides — Glyphh Office's first app rides the wall beside the Browser.
-      const slidesTile: EchoTile = {
-        name: VIEW_META.gpoint.title,
-        slug: "gpoint",
-        glyphSvg: VIEW_META.gpoint.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gpoint",
-      };
       const keyed = (e: Entry): EchoTile => ({ ...toTile(e), orderKey: e.key });
       // (The mascot HOME tile is gone from the pages — the DOCK leads with
       // the glyphh mark now; two marks was one too many.)
-      const docsTile: EchoTile = {
-        name: VIEW_META.gdoc.title,
-        slug: "gdoc",
-        glyphSvg: VIEW_META.gdoc.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gdoc",
-      };
-      const driveTile: EchoTile = {
-        name: VIEW_META.gdrive.title,
-        slug: "gdrive",
-        glyphSvg: VIEW_META.gdrive.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gdrive",
-      };
-      const sheetsTile: EchoTile = {
-        name: VIEW_META.gsheet.title,
-        slug: "gsheet",
-        glyphSvg: VIEW_META.gsheet.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gsheet",
-      };
-      const designTile: EchoTile = {
-        name: VIEW_META.gdesign.title,
-        slug: "gdesign",
-        glyphSvg: VIEW_META.gdesign.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gdesign",
-      };
-      const memoryTile: EchoTile = {
-        name: VIEW_META.gmemory.title,
-        slug: "gmemory",
-        glyphSvg: VIEW_META.gmemory.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gmemory",
-      };
-      const gimageTile: EchoTile = {
-        name: VIEW_META.gimage.title,
-        slug: "gimage",
-        glyphSvg: VIEW_META.gimage.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gimage",
-      };
-      const gvideoTile: EchoTile = {
-        name: VIEW_META.gvideo.title,
-        slug: "gvideo",
-        glyphSvg: VIEW_META.gvideo.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gvideo",
-      };
-      const gsoundTile: EchoTile = {
-        name: VIEW_META.gsound.title,
-        slug: "gsound",
-        glyphSvg: VIEW_META.gsound.icon.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined,
-        kind: "tool",
-        toolView: "gsound",
-      };
-      // gband (Band) RETIRED 2026-09-15 — off the wall; the view stays parked.
       // The DEV workbench tools (his rule, 2026-08-21, REVERSING 08-20): Files/
       // Terminal/Editor/Diff/Plan/Releases are OFF the wall — they live in the
       // agent composer's ⋯ developer-tools menu (help/code.ts), a development
       // surface, not the launcher. Browser stays a DOCK slot.
       void browserTile;   // Browser is a DOCK nav slot — never doubled on the pages (2026-08-20)
-      const toolTiles = [slidesTile, docsTile, sheetsTile, driveTile, designTile, memoryTile, gimageTile, gvideoTile, gsoundTile]
-        .map((t) => ({ ...t, orderKey: `tool:${t.toolView}` }));
-      const canonical = [...toolTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
+      const toolTiles: EchoTile[] = [];
+      // AGENT tiles ride the wall like workspaces do — one per saved CLI config.
+      cliAgentRows = ((cliAgentsRes as { ok?: boolean; agents?: CliAgentRowLite[] } | null)?.ok
+        ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
+      const agentTiles = cliAgentRows.map(cliAgentTileOf);
+      const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
       // The dock pref decides membership (nav slots + traded icons)…
-      if (Array.isArray(dockPref)) dockKeys = dockPref.map(String);
+      if (Array.isArray(dockPref)) dockKeys = dockPref.map(legacyKey);
       // …and NEW nav slots shipped after the pref was saved still join it
       // (unless the user traded them onto the pages): glyphh leads, the rest
       // append.
       {
-        const savedPage = Array.isArray(orderPref) ? orderPref.map(String) : [];
+        const savedPage = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
         for (const d of DOCK_ITEMS) {
           if (dockKeys.includes(d.key) || savedPage.includes(`dock:${d.key}`)) continue;
           if (d.key === "glyphh") dockKeys.unshift(d.key);
@@ -3360,11 +3017,11 @@ async function init(): Promise<void> {
       // the orderable pool, and keep filed members off the pages.
       folders = (Array.isArray(folderPref) ? folderPref : [])
         .filter((f): f is WallFolder => !!f && typeof f === "object" && typeof (f as WallFolder).id === "string")
-        .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(String) : [] }));
+        .map((f) => ({ id: String(f.id), name: String(f.name || "Folder"), keys: Array.isArray(f.keys) ? f.keys.map(legacyKey) : [] }));
       wallCatalog = new Map(byK);
       const filed = folderedKeys();
       for (const f of folders) byK.set(`folder:${f.id}`, folderTileOf(f));
-      const savedPageOrder = Array.isArray(orderPref) ? orderPref.map(String) : [];
+      const savedPageOrder = Array.isArray(orderPref) ? orderPref.map(legacyKey) : [];
       const pageTiles: EchoTile[] = [];
       const seenK = new Set<string>();
       for (const k of savedPageOrder) {
@@ -3378,6 +3035,28 @@ async function init(): Promise<void> {
       const rest = [...byK.values()].filter((t) => t.orderKey && !seenK.has(t.orderKey) && !filed.has(t.orderKey))
         .concat(canonical.filter((t) => !t.orderKey));
       buildWall([[...pageTiles, ...rest]]);
+      // The Agents section announces saves/deletes — reconcile the wall's
+      // agent tiles in place (no rebuild: geometry and open cards survive).
+      window.addEventListener("glyphh:cli-agents-changed", () => {
+        void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+          if (!r?.ok) return;
+          cliAgentRows = r.agents;
+          const have = new Map(entries.filter((e) => e.tile.cliAgent).map((e) => [e.tile.cliAgent!.id, e]));
+          for (const a of r.agents) {
+            const e = have.get(a.id);
+            if (e) {
+              e.tile.name = a.name;
+              e.tile.cliAgent = { id: a.id, command: a.command };
+              have.delete(a.id);
+            } else {
+              const t = makeTileEntry(cliAgentTileOf(a));
+              (wallBands[0] ?? (wallBands[0] = [])).push(t);
+            }
+          }
+          for (const [, e] of have) dropTileEntry(e);
+          renderPages();
+        }).catch(() => {});
+      });
       // echoCtl + entries + layouts are all ready now — reopen last session's wall.
       restoreWallOnce(layouts || [], savedWall as WallState | null);
       // First run: the guided tour points at the live dock + tiles, once per
@@ -3398,6 +3077,9 @@ async function init(): Promise<void> {
         const t = e.tile;
         if (t.kind === "agent" || t.slug === "glyphh-home") continue;
         if (t.slug && t.slug.startsWith("page:")) cards.push({ kind: "section", section: t.slug.slice(5) });
+        // A CLI agent card is NOT a bare terminal — losing the id here is why
+        // a reopened app "reverted to claude" (his report, 2026-09-10).
+        else if (t.slug && t.slug.startsWith("agent:")) cards.push({ kind: "agent", agent: t.slug.slice(6), name: t.name });
         else if (t.kind === "tool" && t.toolView) cards.push({ kind: "tool", toolView: t.toolView });
         else if (t.kind === "app" && t.slug) cards.push({ kind: "app", slug: t.slug, url: t.url, name: t.name });
       }
@@ -3430,7 +3112,8 @@ async function init(): Promise<void> {
         }
         if (saved?.cards?.length) {
           for (const c of saved.cards) {
-            if (c.kind === "section" && c.section) echoCtl.openSection(c.section);
+            if (c.kind === "section" && c.section) echoCtl.openSection(legacyKey(c.section));
+            else if (c.kind === "agent" && c.agent) (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(c.agent);
             else if (c.kind === "tool" && c.toolView) echoCtl.openTool(c.toolView as Parameters<EchoCtlType["openTool"]>[0]);
             else if (c.kind === "app" && c.slug) echoCtl.openApp({ slug: c.slug, name: c.name || c.slug, url: c.url || "" });
           }
@@ -3864,10 +3547,15 @@ async function init(): Promise<void> {
           prior = new Map((old?.cells ?? []).filter((c) => c.state).map((c) => [c.key, c.state!]));
         } catch { prior = null; }
       }
+      // Loose panels opened beside the layout APPEND columns to the live
+      // grid; persisting the widened arrays poisoned the memory (a 3-wide
+      // save for a 2-col layout failed the reopen length check wholesale →
+      // 50/50, his report 2026-09-10). Only the layout's own columns save.
+      const nDefCols = echoGrid.defCols ?? echoGrid.colWidths.length;
       const data = {
         sig: echoLayoutSig,
-        colWidths: echoGrid.colWidths,
-        rowFracs: echoGrid.rowFracs,
+        colWidths: echoGrid.colWidths.slice(0, nDefCols),
+        rowFracs: echoGrid.rowFracs.slice(0, nDefCols).map((r) => r.slice()),
         cells: echoGrid.cells.filter((c) => c.entry.memKey).map((c) => {
           const state = keepState ? (captureCellState(c.entry) ?? prior?.get(c.entry.memKey!)) : undefined;
           return {
@@ -3922,12 +3610,7 @@ async function init(): Promise<void> {
     // The composer band's command-center button (help/code.ts) is the eye: it
     // pin-toggles the shadow so the wall shows over the open cards.
     (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin = () => {
-      // ATTACHED MODE: the CC lifts over the foreign app even with nothing
-      // open — the app IS the covering surface, so an empty frame is the
-      // normal resting state, not a reason to refuse (his report,
-      // 2026-08-28: the CC icon did nothing).
-      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
-      if (!openList.length && !agentDock) return;
+      if (!openList.length) return;
       setShadow(!shadowPinned, !shadowPinned);
     };
     // ESC closes the lifted command center when apps/a layout are open behind
@@ -4257,11 +3940,7 @@ async function init(): Promise<void> {
       // dock off the top — fixed and above EVERY layer (the agent panel was
       // burying it) — leaving the hint sliver; hovering the top edge peeks
       // the dock back over the panels. Pinned (auto-hide off) it stays put.
-      // ATTACHED MODE (his spec, 2026-08-28): the dock is ALWAYS tucked over
-      // a foreign app, whatever the auto-hide setting says — the attached
-      // app reads as an open window, and open windows don't wear the dock.
-      const agentDock = document.documentElement.getAttribute("data-home-scope") === "agent-dock";
-      const dockTucked = agentDock || (hidden && autoHideOn);
+      const dockTucked = hidden && autoHideOn;
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
       if (!dockTucked) document.body.classList.remove("echo-dock-peek");
@@ -4280,21 +3959,15 @@ async function init(): Promise<void> {
       // covered proceeds as ever, cards take the FULL band, and the lock's
       // CSS pin (body.echo-agent-locked, !important) simply overrides the
       // tuck transform so the agent floats OVER the cards instead of hiding.
-      // ?solo=agent: the foreign app beneath the window IS the covering
-      // surface — covered is permanent there (agentDock hoisted above), and
-      // the lock pin overrides the tuck exactly as it does over cards.
-      const covered = agentDock || (hidden && !layoutUp);
+      const covered = hidden && !layoutUp;
       const wasCovered = document.body.classList.contains("echo-wall-covered");
       document.body.classList.toggle("echo-wall-covered", covered);
       // A separate signal for "the WALL is not on screen" regardless of WHY —
       // covered excludes live layouts on purpose (other consumers key off
       // that), but chrome that belongs to the command center alone (the
       // Dashboard | Desktop surface tabs) must hide for layouts too.
-      // agentDock forces this one too (his report, 2026-08-28: the pill
-      // stopped hiding over external windows) — the covered/hidden split
-      // postdates the Aug 21 dock code, and the TUCK's CSS keys off
-      // echo-wall-hidden, not -covered.
-      document.body.classList.toggle("echo-wall-hidden", agentDock || hidden);
+      // The TUCK's CSS keys off echo-wall-hidden, not -covered.
+      document.body.classList.toggle("echo-wall-hidden", hidden);
       // Opening a panel FROM the composer (the ⋮ menu, the source-row icons)
       // leaves focus inside the agent — :focus-within then pins it up until a
       // hover cycle releases it ("doesn't hide right away"). The moment the
@@ -4342,21 +4015,23 @@ async function init(): Promise<void> {
           }
           // CC and Close all are permanent slots that go INERT with nothing
           // open (his order, 2026-08-28) — dim in the row, but never acting.
-          // ATTACHED MODE exempts the CC: over a foreign app it is the way
-          // to the wall, live from the first summon.
           if ((key === "cc" || key === "closeall")
-            && !document.body.classList.contains("echo-has-panels")
-            && !(key === "cc" && document.documentElement.getAttribute("data-home-scope") === "agent-dock")) return;
+            && !document.body.classList.contains("echo-has-panels")) return;
           if (key === "cc") { (window as unknown as { __wbEchoShadowPin?: () => void }).__wbEchoShadowPin?.(); return; }
           if (key === "closeall") {
-            if (openList.some((x) => x.layoutId != null)) closeLayoutGroup();
-            else resetEcho();   // loose panels: close everything, back to the CC
+            // CLOSE ALL means ALL — the layout group AND any loose panels
+            // opened beside it (his report, 2026-09-10: the layout closed,
+            // the strays stayed). resetEcho saves layout memory + parks
+            // terminals, then clears the whole stage.
+            resetEcho();
             return;
           }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
+
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "tasks" || key === "preview") w.__wbOpenTool?.(key);
+          else if (key === "tasks") w.__wbOpenSection?.("tasks");
+          else if (key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
           return;
         }
@@ -4685,7 +4360,7 @@ async function init(): Promise<void> {
      *  setting it on the entry afterwards was too late (the shell had
      *  already spawned) and the parked pty was orphaned. */
     let pendingParkedTerms: TermSlot | null = null;
-    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean }): void => {
+    const closeCard = (e: TileEntry, opts?: { parkTerms?: boolean; keepSession?: boolean; keepSeat?: boolean }): void => {
       const card = e.card;
       if (!card) return;
       // The AGENT card IS the session. Closing it must un-current that session
@@ -4714,10 +4389,14 @@ async function init(): Promise<void> {
       const idx = openList.indexOf(e);
       if (idx >= 0) openList.splice(idx, 1);
       scheduleWallSave();   // the open set changed — persist it
-      if (echoGrid) {
+      if (echoGrid && !opts?.keepSeat) {
         // The freed space COLLAPSES: column-mates re-inflate over it, and an
         // emptied column is removed — the layout adjusts to fill, never
-        // reserving dead space (his order, 2026-08-30).
+        // reserving dead space (his order, 2026-08-30). keepSeat SKIPS all
+        // of this: the caller is SWAPPING the seat's occupant (the chat↔code
+        // hop) and re-seats the new card itself — collapsing here is what
+        // reset the user's dragged widths on every view switch (his repro,
+        // 2026-09-14).
         const freed = echoGrid.cells.find((c) => c.entry === e);
         echoGrid.cells = echoGrid.cells.filter((c) => c.entry !== e);
         if (freed) compactGrid(freed.col);
@@ -4733,8 +4412,14 @@ async function init(): Promise<void> {
       e.toolSlot = undefined;
       // Captured NOW — by the time the deferred teardown runs, the incoming
       // layout may already own echoLayoutName.
-      const parkKey = opts?.parkTerms && echoLayoutName && e.memKey && e.keepTermsAlive !== false
-        ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null;
+      // AGENT cards park by agent — ONE session per agent id, surviving an
+      // explicit close when keep-alive says so (his order, 2026-09-10); a
+      // standalone reopen or a workspace cell both re-adopt it.
+      const agentParkKey = (e.tile.slug || "").startsWith("agent:") && e.keepTermsAlive !== false
+        ? `agent::${e.tile.slug}` : null;
+      const parkKey = agentParkKey
+        ?? (opts?.parkTerms && echoLayoutName && e.memKey && e.keepTermsAlive !== false
+          ? `${echoLayoutName.toLowerCase()}::${e.memKey}` : null);
       window.setTimeout(() => {
         // sections are SINGLETONS — park the page back to its pen before
         // the card's DOM goes away (same contract as parkSections). The
@@ -4822,11 +4507,33 @@ async function init(): Promise<void> {
         layoutCards();
       });
       card.querySelector(".echo-card-close")!.addEventListener("click", () => closeCard(e));
+      // AGENT cards (his order, 2026-09-10): the dev tools that rode the
+      // glyphh agent's ⋯ menu follow each CLI agent — a ⋮ right of Expand.
+      if ((e.tile.slug || "").startsWith("agent:")) {
+        // The agent card's HEAD stays bare (his spec, 2026-09-11): the
+        // toggle/recents/+/⋮ cluster lives on the agent HEADER ROW (the old
+        // tab row). The dev-tools menu is served to that row from here,
+        // where showTileMenu is in scope.
+        (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu = (ev: MouseEvent) => {
+          const AGENT_DEV_TOOLS: Array<{ view: string; label: string }> = [
+            { view: "files", label: "Files" },
+            { view: "terminal", label: "Terminal" },
+            { view: "monaco", label: "Editor" },
+            { view: "preview", label: "Browser" },
+            { view: "diff", label: "Diff" },
+            { view: "plan", label: "Plan" },
+            { view: "rail", label: "Rail" },
+          ];
+          showTileMenu(ev, AGENT_DEV_TOOLS.map((t) => ({
+            label: t.label,
+            onPick: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(t.view),
+          })));
+        };
+      }
       // Pop-out — same rule as the rail-slot header: web panels (http apps,
       // the Browser) and Slides can leave the app for a standalone OS window.
       // Glyphh apps stay (their file:// entry needs in-app webview caps).
-      const canPop = e.tile.toolView === "gpoint"
-        || e.tile.toolView === "preview"
+      const canPop = e.tile.toolView === "preview"
         || (e.tile.kind === "app" && !e.tile.glyphh && /^https?:\/\//i.test(e.tile.url || ""));
       if (canPop) {
         const popBtn = document.createElement("button");
@@ -4838,16 +4545,11 @@ async function init(): Promise<void> {
           ev.stopPropagation();
           const yo = (window as unknown as { glyphh?: { panelPopout?: (r: { kind: "url" | "slides"; url?: string; file?: string; title?: string }) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
           if (!yo?.panelPopout) return;
-          if (e.tile.toolView === "gpoint") {
-            const s = e.toolSlot as GPointSlot | undefined;
-            void yo.panelPopout({ kind: "slides", file: s?.file, title: s?.title || "Slides" });
-          } else {
-            const url = e.tile.toolView === "preview"
-              ? ((e.toolSlot as PreviewSlot | undefined)?.url || "")
-              : (e.tile.url || "");
-            if (!/^https?:\/\//i.test(url)) return;
-            void yo.panelPopout({ kind: "url", url, title: e.tile.name });
-          }
+          const url = e.tile.toolView === "preview"
+            ? ((e.toolSlot as PreviewSlot | undefined)?.url || "")
+            : (e.tile.url || "");
+          if (!/^https?:\/\//i.test(url)) return;
+          void yo.panelPopout({ kind: "url", url, title: e.tile.name });
           closeCard(e);
         });
       }
@@ -4962,7 +4664,17 @@ async function init(): Promise<void> {
       syncWallVisibility();
       scheduleWallSave();   // the open set changed — persist it
       // (Layout opens assign cells explicitly — never claim during one.)
-      if (echoGrid && !openingLayout) {
+      // A declared SEAT HANDOFF wins: the new card takes the donor's cell in
+      // place — one reflow, no new column (the chat↔code hop).
+      const donorCell = echoGrid && seatHandoff ? echoGrid.cells.find((c) => c.entry === seatHandoff!.donor) : null;
+      if (donorCell && seatHandoff) {
+        donorCell.entry = e;
+        e.memKey = seatHandoff.donor.memKey;
+        e.layoutId = seatHandoff.donor.layoutId;
+        const h = seatHandoff;
+        seatHandoff = null;
+        closeCard(h.donor, { ...h.closeOpts, keepSeat: true });
+      } else if (echoGrid && !openingLayout) {
         // FULL grid (his order, 2026-08-30 — the wipe rule is retired): the
         // new card joins the layout beside the definition, following the
         // SAME fill flow as the loose-card pattern (flowColumns): a fresh
@@ -5025,6 +4737,87 @@ async function init(): Promise<void> {
      *  — or an app open that clears it (a PINNED cell captures those clicks,
      *  so pinned layouts hold on) — parks the agent home and the composer
      *  returns. */
+    /** The agent's CHAT VIEW — openAgentPanel, PERIOD (his report,
+     *  2026-09-11: every extra state write forked the head). The only
+     *  addition is the >_ hop, LEFT of expand, which reopens the loop's
+     *  terminal card; the CLI's own continue-last carries the session. */
+    const openAgentChatCard = (agentId: string): TileEntry | null => {
+      const row = cliAgentRows.find((x) => x.id === agentId);
+      if (!row) return null;
+      const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
+      // SEAT HANDOFF (his repro, 2026-09-14): the chat takes the terminal's
+      // grid seat in place — declared before the open so openShell consumes
+      // it atomically. No seat (loose card / no layout) → plain close.
+      if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
+      const entry = openAgentPanel();
+      if (term && seatHandoff) {
+        seatHandoff = null;
+        closeCard(term, { parkTerms: true });
+      }
+      const holder = openList.find((x) => x.card && x.tile.kind === "agent");
+      const card = holder?.card ?? null;
+      if (card) card.dataset.boundAgent = agentId;
+      (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(agentId);
+      uiStateSet("agentLastView", "chat");
+      // The >_ toggle rides the panel's OWN header cluster, first in the
+      // row — identical anatomy to the terminal header. Injected once into
+      // the singleton; the bound agent is read live at click.
+      const headActions = document.querySelector<HTMLElement>(".session-head-actions");
+      if (headActions && !document.getElementById("code-term-toggle")) {
+        const termBtn = document.createElement("button");
+        termBtn.id = "code-term-toggle";
+        termBtn.className = "code-icon-btn";
+        termBtn.title = "Terminal view";
+        termBtn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+        termBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          void (async () => {
+            // The ACTIVE LOOP wins (his report, 2026-09-14: the switcher
+            // always opened claude) — the session's current loop IS the CLI
+            // to hop into; the bound agent and the roster's first row are
+            // fallbacks for a session with no loop of its own.
+            const live = (window as unknown as { __glyphhActiveLoop?: () => string }).__glyphhActiveLoop?.() || "";
+            const boundId = (live && live !== "default" && cliAgentRows.some((x) => x.id === live) ? live : "")
+              || openList.find((x) => x.card && x.tile.kind === "agent")?.card?.dataset.boundAgent
+              || cliAgentRows[0]?.id;
+            if (!boundId) return;   // nowhere to go — the chat STAYS (never close-into-nothing)
+            // The chat's live CLI session follows into the terminal — the
+            // bridge's live map first, else the chat's PERSISTED binding,
+            // BOTH resolved for the TARGET CLI only (his report, 2026-09-14:
+            // a claude sid fed a codex resume → "No saved session found").
+            // No binding for that CLI → the terminal opens FRESH, honestly.
+            const targetCli = cliAgentRows.find((r) => r.id === boundId)?.cli ?? "claude";
+            const chatId = (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId?.() ?? null;
+            const sid = (chatId ? await (window as unknown as { glyphh?: { glyphhCliSessionOf?: (id: string, cli?: string) => Promise<string | null> } }).glyphh?.glyphhCliSessionOf?.(chatId, targetCli) : null)
+              ?? (window as unknown as { __glyphhCurrentCliSessionId?: (cli?: string) => string | null }).__glyphhCurrentCliSessionId?.(targetCli);
+            // OPEN FIRST, close after (his report, 2026-09-11: close-first
+            // left nothing when the async open missed — 'the arrow closes
+            // the agent'). SEAT HANDOFF (2026-09-14): the terminal takes the
+            // chat's grid cell atomically at open — one reflow, geometry
+            // kept; the rAF loop only backstops the no-seat case.
+            const hopChat = openList.find((x) => x.card && x.tile.kind === "agent");
+            if (hopChat) seatHandoff = { donor: hopChat, closeOpts: { keepSession: true } };
+            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
+            const closeChatWhenTermUp = (tries = 0): void => {
+              const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
+              if (term) {
+                seatHandoff = null;   // consumed by the open, or moot now
+                const chatCard = openList.find((x) => x.card && x.tile.kind === "agent");
+                if (chatCard) closeCard(chatCard, { keepSession: true });
+                return;
+              }
+              if (tries < 80) requestAnimationFrame(() => closeChatWhenTermUp(tries + 1));
+              else seatHandoff = null;   // the open never landed — never leak the seat to a later open
+            };
+            closeChatWhenTermUp();
+          })();
+        });
+        headActions.insertBefore(termBtn, headActions.firstChild);
+      }
+      return entry;
+    };
+    (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentChatCard(id); };
+
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
       if (existing?.card) { ensureAgentSession(); flash(existing.card); return existing; }
@@ -5135,17 +4928,90 @@ async function init(): Promise<void> {
           // the card at creation (a web card mounts on its saved page)
           const pendingKey = `${id}#${(seenKeys.get(id) ?? 0) + 1}`;
           const saved = mem?.cells?.find((c) => c.key === pendingKey);
-          // state only comes back under the "last" contract
-          const st = (layout.sessionMode ?? "keep") === "last" ? saved?.state : undefined;
+          // Workspaces REMEMBER their panels — the old gate rode the
+          // workspace-level session mode, which moved onto agent cells.
+          const st = saved?.state;
           let entry: TileEntry | null = null;
-          if (id.startsWith("tool:")) {
+          if (id.startsWith("agent:")) {
+            // A CLI agent cell: a terminal that plays the agent's pre-config,
+            // with the WORKSPACE's overrides (model / folder) beating it.
+            const aid = id.slice(6);
+            const arow = cliAgentRows.find((x) => x.id === aid);
+            const cellCfg = (cell.config || {}) as { model?: string; session?: "keep" | "new" | "last"; keepAlive?: boolean };
+            const mode = cellCfg.session ?? arow?.session ?? (cellCfg.keepAlive === false ? "new" : "keep");
+            // NO cliAgent on the cell tile — activateTile would bounce it
+            // back to openAgentCliCard instead of minting the terminal.
+            entry = adHoc({ name: arow?.name || aid, slug: id, kind: "tool", toolView: "terminal", sticky: cell.sticky });
+            // The cell's SESSION choice overrides the agent's (each slotted
+            // agent on a page can behave differently); legacy keepAlive:false
+            // still reads as "new".
+            entry.keepTermsAlive = mode !== "new";
+            const parkedA = mode !== "new" ? parkedTerms.get(`agent::${id}`) : undefined;
+            if (mode === "new") {
+              const stale = parkedTerms.get(`agent::${id}`);
+              if (stale) { parkedTerms.delete(`agent::${id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
+            }
+            if (parkedA) { parkedTerms.delete(`agent::${id}`); pendingParkedTerms = parkedA; }
+            activateTile(entry);
+            pendingParkedTerms = null;
+            if (!parkedA && arow) {
+              // The WORKSPACE's working folder rules the agent's own (no
+              // per-cell folder field — his rule, 2026-09-10).
+              const overrides = {
+                light: document.documentElement.getAttribute("data-theme") === "light",
+                ...(cellCfg.model ? { model: cellCfg.model } : {}),
+                ...(layout.folder ? { cwd: layout.folder } : {}),
+                ...(mode === "last" ? { resume: true } : {}),
+              };
+              if (Object.keys(overrides).length) {
+                // Overridden opens compose in MAIN — the command lands as
+                // initCmd if the shell hasn't spawned, else types straight
+                // into the live pty (same 600ms grace the boot typing uses).
+                const target = entry;
+                const fallbackCmd = arow.command;
+                void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
+                  // NEVER a silent bare shell: a failed open (MCP port
+                  // squabble, missing agent file) still starts the agent
+                  // with its default command — resume/model just don't ride.
+                  if (r && !r.ok && r.error) console.warn("[agents] workspace open:", r.error);
+                  const cmd = (r?.ok && r.command) || fallbackCmd;
+                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined)?.terminals?.[0];
+                  if (!t) return;
+                  if (t.spawned) { setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 600); }
+                  else t.initCmd = cmd;
+                }).catch(() => {
+                  const t = (target.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; spawned?: boolean; ptyId?: string }> } | undefined)?.terminals?.[0];
+                  if (t && !t.spawned) t.initCmd = fallbackCmd;
+                });
+              } else {
+                const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
+                if (ts?.terminals?.[0]) ts.terminals[0].initCmd = arow.command;
+                // dependencies (the local MCP server) come up in the background
+                if (arow.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
+              }
+            }
+          } else if (id.startsWith("tool:")) {
             const raw = id.slice(5);
             const v = raw === "editor" ? "monaco" : raw === "browser" ? "preview" : raw;
             // The agent cell mounts the agent as a PANEL — the layout owns
             // it, and the center composer steps off screen until the layout
             // lets go.
-            if (v === "coding") entry = openAgentPanel();
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "releases" || v === "rail" || v === "gpoint" || v === "gdoc" || v === "gdrive" || v === "gsheet" || v === "gdesign" || v === "gmemory" || v === "gimage" || v === "gvideo" || v === "gsound" || v === "gband") {
+            // The agent seat is BACK (his order, 2026-09-11) — and it is the
+            // SAME surface the glyphh tile opens (his report: two versions).
+            if (v === "coding") {
+              if (cliAgentRows[0]) entry = openAgentChatCard(cliAgentRows[0].id) ?? openAgentPanel();
+              else {
+                // BOOT RACE (his report, 2026-09-14): a workspace restoring at
+                // boot ran this before the agent roster landed — the seat came
+                // up bare, with no bound agent and no >_ toggle. Seat first,
+                // then bind the chat chrome the moment the roster arrives.
+                entry = openAgentPanel();
+                void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+                  if (r?.ok && r.agents[0]) { cliAgentRows = r.agents; openAgentChatCard(r.agents[0].id); }
+                }).catch(() => {});
+              }
+            }
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "rail") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -5249,10 +5115,10 @@ async function init(): Promise<void> {
             // back", 2026-09-09) — name the cell and why it died so the next
             // report pins the path in one console line. (The agent cell is
             // legitimately skipped when the dock owns the agent.)
-            console.warn("[echo] layout cell produced no card:", {
-              layout: layout.name, panelId: cell.panelId,
-              entryMade: !!entry, cardMade: !!entry?.card,
-            });
+            // Inlined into the string: the main-process console-message
+            // forwarder only gets the pre-stringified message, so an object
+            // argument reaches the terminal log as "[object Object]".
+            console.warn(`[echo] layout cell produced no card: layout=${layout.name} panelId=${cell.panelId} entry=${!!entry} card=${!!entry?.card}`);
           }
         }
         if (gridCells.length) {
@@ -5264,15 +5130,19 @@ async function init(): Promise<void> {
             : layout.rowHeights?.length === nRows ? layout.rowHeights.slice()
             : Array.from({ length: nRows }, () => 1));
           const memFracs = mem?.rowFracs;
-          const fracsOk = Array.isArray(memFracs) && memFracs.length === nCols
-            && memFracs.every((r) => Array.isArray(r) && r.length === nRows);
+          // Widened memories from before the defCols-slice fix still hold the
+          // layout's columns FIRST (loose columns append) — take the prefix
+          // rather than rejecting the user's drag wholesale; row fractions
+          // recover per column the same way.
           echoGrid = {
             defCols: nCols,
-            colWidths: mem?.colWidths?.length === nCols ? mem.colWidths.slice()
+            colWidths: (mem?.colWidths?.length ?? 0) >= nCols ? mem!.colWidths!.slice(0, nCols)
               : layout.colWidths?.length === nCols ? layout.colWidths.slice()
               : Array.from({ length: nCols }, () => 1),
-            rowFracs: fracsOk ? memFracs!.map((r) => r.slice())
-              : Array.from({ length: nCols }, () => baseRow.slice()),
+            rowFracs: Array.from({ length: nCols }, (_, i) => {
+              const r = Array.isArray(memFracs) ? memFracs[i] : undefined;
+              return Array.isArray(r) && r.length === nRows ? r.slice() : baseRow.slice();
+            }),
             cells: gridCells,
           };
           layoutCards();
@@ -5544,6 +5414,12 @@ async function init(): Promise<void> {
           Object.assign(slot as unknown as Record<string, unknown>, e.pendingSlotState);
           e.pendingSlotState = undefined;
         }
+        // AGENT terminals stamp from the ENTRY SLUG — every door (layout
+        // cells, restores, fresh opens) carries it, so the agent header can
+        // never miss (his report, 2026-09-11: a layout cell rendered tabs).
+        if (slot.view === "terminal" && (t.slug || "").startsWith("agent:")) {
+          (slot as TermSlot).agent = { id: (t.slug || "").slice(6), name: t.name };
+        }
         e.toolSlot = slot;
         if (slot.view === "files") void renderFilesIntoSlot(body, slot);
         else if (slot.view === "terminal") renderTerminalIntoSlot(body, slot);
@@ -5551,37 +5427,8 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-        else if (slot.view === "releases") void renderReleasesIntoSlot(body, slot);
     else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
-        else if (slot.view === "gpoint") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
-          void renderGPointIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdoc") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Docs — loading your documents…</div>`;
-          void renderGDocIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gdrive") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
-          void renderGDriveIntoSlot(body, slot, card);
-        }
-        else if (slot.view === "gsheet") {
-          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Sheets — loading your workbooks…</div>`;
-          void renderGSheetIntoSlot(body, slot, card);
-        } else if (slot.view === "gdesign") {
-          body.classList.add("ws-gdesign-body");
-          void renderDesignIntoSlot(body, slot, card);
-        } else if (slot.view === "gmemory") {
-          body.classList.add("ws-gmemory-body");
-          void renderMemoryIntoSlot(body, slot, card);
-        } else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
-          body.classList.add("ws-gmedia-body");
-          void renderMediaIntoSlot(body, slot, card);
-        } else if (slot.view === "gband") {
-          body.classList.add("ws-gband-body");
-          void renderBandIntoSlot(body, slot, card);
-        }
     };
 
     let openingLayout = false;
@@ -5603,14 +5450,25 @@ async function init(): Promise<void> {
      *  doubles an agent a live layout already shows (that click just focuses
      *  the composer). New sessions live on ＋ alone now. */
     const activateGlyphh = (_self?: TileEntry): void => {
-      const inLayout = openList.some((x) => x.layoutId != null);
-      const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
-      if (inLayout && agentShowing) {
-        (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus();
+      // OPENS AN AGENT, always (his rule, 2026-09-11: "the glyphh icon on the
+      // echo page and the one in apps on the rail should both open a new
+      // agent. The rail is correct"). This used to bail to focusing the
+      // composer when a layout already showed one — which is why the wall
+      // mark appeared to do nothing while the rail's worked: the rail runs
+      // openCommandCenter() first, so the guard never fired for it.
+      // The tile honors the REMEMBERED view (his rule, 2026-09-11: start in
+      // terminal is fine, but revert when possible) — chat only when the
+      // last-used view was chat; terminal otherwise.
+      const first = cliAgentRows[0];
+      if (first) {
+        if (uiStateGet("agentLastView") === "chat") openAgentChatCard(first.id);
+        else openAgentCliCard(cliAgentTileOf(first));
         return;
       }
       void openAgentPanel();
     };
+    // The rail's glyphh tile rides the SAME open the dock/wall mark uses.
+    (window as unknown as { __wbOpenGlyphhAgent?: () => void }).__wbOpenGlyphhAgent = () => activateGlyphh();
     /** The FOLDER MODAL: the folder's icons, 12 to a page. Click opens the
      *  member like its wall self; drag a member onto the BACKDROP to move it
      *  back out; the title renames in place; an empty folder offers Delete
@@ -5839,7 +5697,8 @@ async function init(): Promise<void> {
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "tasks" || t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
+        else if (t.navKey === "tasks") w.__wbOpenSection?.("tasks");
+        else if (t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;
       }
@@ -5848,6 +5707,10 @@ async function init(): Promise<void> {
       // path), not through ctl.openApp, which is why routing it only there
       // left the tile inert.
       if (t.slug === "glyphh-home" || t.kind === "agent") { activateGlyphh(e); return; }
+      // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
+      // loop tile opens the SAME agent chat panel every other door opens,
+      // with this loop set. The terminal is the >_ hop, never a door.
+      if (t.cliAgent) { openAgentChatCard(t.cliAgent.id); return; }
       if (t.layoutRow) { openLayoutInEcho(t.layoutRow); return; }
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
@@ -5892,7 +5755,10 @@ async function init(): Promise<void> {
     };
     /** A PAGE (Home, Apps, Settings, …) as an Echo card: adopt the section
      *  singleton, run its loader, park it back on close. One card per page. */
-    const openSectionCard = (section: string, title?: string): void => {
+    const openSectionCard = (rawSection: string, title?: string): void => {
+      // Every door into a page lands here — normalize renamed keys ONCE, at
+      // the chokepoint, so no caller has to remember the old spelling.
+      const section = legacyKey(rawSection);
       const sec = document.querySelector<HTMLElement>(`.help-section[data-section="${section}"]`);
       if (!sec) return;
       if (section === "dashboard") {
@@ -5927,11 +5793,91 @@ async function init(): Promise<void> {
     // ── The agent drives Echo too: while Echo is mounted, EVERY panel tool
     // (open / list / close / focus / clear / terminal / browser / files)
     // lands in Echo's slots — pervasive, not just clicks. ──
+    /** SEAT HANDOFF — the chat↔code hop's in-place swap (his repro,
+     *  2026-09-14: post-hoc swapping double-seated the new card and the
+     *  agent "jumped all over"). Declared BEFORE the replacement opens;
+     *  openShell consumes it atomically: the new entry takes the donor's
+     *  grid cell (geometry, memory key, layout binding intact — never a new
+     *  column), and the donor closes with its seat kept. */
+    let seatHandoff: { donor: TileEntry; closeOpts: { parkTerms?: boolean; keepSession?: boolean } } | null = null;
+
     const findTile = (slug: string): TileEntry | undefined => {
       const key = slug.trim().toLowerCase();
       return openList.find((x) => (x.tile.slug || "") === key) ?? entries.find((x) => (x.tile.slug || "") === key);
     };
     const adHoc = (tile: EchoTile): TileEntry => ({ tile, img: null });
+    /** Open a CLI agent: dependencies first (the local MCP server), then the
+     *  pre-config types into a fresh terminal card named for the agent. */
+    type AgentOpenOpts = { resumeId?: string; fresh?: boolean; cwd?: string };
+    const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
+      const a = t.cliAgent;
+      if (!a) return;
+      const appLight = document.documentElement.getAttribute("data-theme") === "light";
+      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+        .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
+          if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
+          const row = cliAgentRows.find((x) => x.id === a.id);
+          // fresh (+ button) and resume-a-specific-session both need their
+          // OWN pty — a parked buffer is a different conversation.
+          const mode = opts?.fresh || opts?.resumeId ? "new" : row?.session ?? "keep";
+          // NO cliAgent on the minted tile — activateTile routes cliAgent
+          // tiles back HERE (that was an infinite loop, his report).
+          const entry = adHoc({ name: t.name, slug: `agent:${a.id}`, kind: "tool", toolView: "terminal" });
+          entry.keepTermsAlive = mode !== "new";
+          // keep/last re-attach a parked session (same pty, same buffer);
+          // "new" always starts fresh — a stale parked session is killed.
+          const parked = mode !== "new" ? parkedTerms.get(`agent::agent:${a.id}`) : undefined;
+          if (mode === "new") {
+            const stale = parkedTerms.get(`agent::agent:${a.id}`);
+            if (stale) { parkedTerms.delete(`agent::agent:${a.id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
+          }
+          if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
+          setPendingAgentTermMeta({ id: a.id, name: t.name });
+          uiStateSet("agentLastView", "terminal");
+          activateTile(entry);
+          pendingParkedTerms = null;
+          if (parked && prompt) {
+            // The session is already live — the task types in as a message.
+            const tt = (entry.toolSlot as unknown as { terminals?: Array<{ ptyId?: string }> } | undefined)?.terminals?.[0];
+            if (tt?.ptyId) setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${prompt}\r`); }, 400);
+          }
+          if (!parked) {
+            // "last" with nothing parked: the CLI resumes ITS last
+            // conversation (claude --continue / codex resume --last).
+            const wantResume = mode === "last";
+            const finish = (cmd: string): void => {
+              const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> } | undefined;
+              const tt = ts?.terminals?.[0];
+              if (!tt) return;
+              if (tt.spawned) { setTimeout(() => { void window.wb.termWrite(tt.ptyId!, `${cmd}\r`); }, 600); }
+              else tt.initCmd = cmd;
+            };
+            if (wantResume || prompt || opts?.resumeId || opts?.cwd) {
+              void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; prompt?: string; light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string }> } })
+                .glyphh?.cliAgentOpen?.(a.id, {
+                  light: appLight,
+                  ...(opts?.resumeId ? { resume: opts.resumeId } : wantResume ? { resume: true } : {}),
+                  ...(opts?.cwd ? { cwd: opts.cwd } : {}),
+                  ...(prompt ? { prompt } : {}),
+                })
+                .then((rr) => finish((rr?.ok && rr.command) || a.command));
+            } else {
+              finish((r?.ok && r.command) || a.command);
+            }
+          }
+        });
+    };
+    (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: AgentOpenOpts) => void }).__wbOpenAgentCli = (id: string, prompt?: string, opts?: AgentOpenOpts) => {
+      const row = cliAgentRows.find((x) => x.id === id);
+      if (row) { openAgentCliCard(cliAgentTileOf(row), prompt, opts); return; }
+      // Section saved an agent this session hasn't cached yet — fetch, then open.
+      void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
+        if (!r?.ok) return;
+        cliAgentRows = r.agents;
+        const fresh = cliAgentRows.find((x) => x.id === id);
+        if (fresh) openAgentCliCard(cliAgentTileOf(fresh), prompt, opts);
+      }).catch(() => {});
+    };
     /** "Here it is" — surface a card the user just aimed at. Landing in an
      *  EXISTING card (a pinned slot, an already-open app) has to leave
      *  shadow mode just like opening a new one does, or the app they picked
@@ -5942,7 +5888,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -7506,258 +7452,6 @@ async function init(): Promise<void> {
     await mountActive();
   }
 
-  // ── Releases view — release management for BUILT (glyphh-hosted) apps ──
-  // Pick an app, see its release history, cut a build from the working
-  // folder, promote dev → live, edit notes. Same IPC the Settings → Apps →
-  // Releases tab uses; while a build is in flight the panel polls until it
-  // settles (the settings tab is manual-refresh only).
-  interface WbReleaseRow {
-    id: string;
-    version: string;
-    status: "pending" | "uploading" | "building" | "ready" | "failed";
-    error: string | null;
-    notes: string | null;
-    channel: "dev" | "live";
-    promotedAt: string | null;
-    createdAt: string;
-    updatedAt: string;
-  }
-  // Structural mirror of the preload surface (remote-run.ts's discipline —
-  // this bundle can't import preload types).
-  interface WbReleasesIpc {
-    panelAppsList?: () => Promise<Array<{ id: string; slug: string; name: string; system: boolean; appArchetype?: string | null; access?: string }>>;
-    panelAppsUpdate?: (id: string, patch: { access?: string }) => Promise<{ ok?: boolean } | unknown>;
-    appReleases?: (slug: string) => Promise<{ ok: boolean; releases: WbReleaseRow[]; error?: string }>;
-    appReleaseNotes?: (slug: string, releaseId: string, notes: string | null) => Promise<{ ok: boolean; error?: string }>;
-    appReleasePromote?: (slug: string, releaseId: string) => Promise<{ ok: boolean; error?: string }>;
-    appBuildDeploy?: (slug: string) => Promise<{ ok: boolean; result?: { slug: string; version: string; url?: string }; error?: string }>;
-    hostingStatus?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string } | null; error?: string }>;
-    hostingDeploy?: (slug: string) => Promise<{ ok: boolean; deployment?: { id: string; url: string | null; status: string }; error?: string }>;
-    appExport?: (appId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
-  }
-  const relIpc = (): WbReleasesIpc => (window as unknown as { glyphh?: WbReleasesIpc }).glyphh ?? {};
-  const REL_POLL_MS = 5000;
-  const REL_BUILDING = new Set(["pending", "uploading", "building"]);
-  const relEsc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  function relDate(iso: string | null): string {
-    if (!iso) return "";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "";
-    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  }
-
-  async function renderReleasesIntoSlot(body: HTMLElement, slot: ReleasesSlot): Promise<void> {
-    body.classList.add("ws-rel-body");
-    body.innerHTML = `
-      <div class="ws-rel-toolbar">
-        <select class="ws-rel-app" title="Which app to manage"></select>
-        <span class="ws-rel-note"></span>
-        <button type="button" class="action-btn primary ws-rel-deploy" title="Package the working folder, cut a release, and deploy it">Build &amp; deploy</button>
-        <button type="button" class="ws-icon-btn ws-rel-refresh" title="Refresh">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-        </button>
-      </div>
-      <div class="ws-rel-hosting hidden">
-        <span class="ws-rel-host-status"></span>
-        <select class="ws-rel-access" title="Who can reach the deployed app">
-          <option value="members">Org members</option>
-          <option value="public">Public</option>
-        </select>
-        <button type="button" class="action-btn ws-rel-host-deploy" title="Serve this app's latest build at its Glyphh address">Deploy</button>
-        <button type="button" class="action-btn ws-rel-export" title="Export a standalone repo — the app no longer needs Glyphh">Export repo</button>
-      </div>
-      <div class="ws-rel-list"><div class="ws-rel-empty">Loading…</div></div>`;
-    const sel = body.querySelector(".ws-rel-app") as HTMLSelectElement;
-    const note = body.querySelector(".ws-rel-note") as HTMLElement;
-    const deployBtn = body.querySelector(".ws-rel-deploy") as HTMLButtonElement;
-    const hosting = body.querySelector(".ws-rel-hosting") as HTMLElement;
-    const hostStatus = body.querySelector(".ws-rel-host-status") as HTMLElement;
-    const accessSel = body.querySelector(".ws-rel-access") as HTMLSelectElement;
-    const hostDeploy = body.querySelector(".ws-rel-host-deploy") as HTMLButtonElement;
-    const exportBtn = body.querySelector(".ws-rel-export") as HTMLButtonElement;
-    const list = body.querySelector(".ws-rel-list") as HTMLElement;
-    let pollTimer = 0;
-
-    // BUILT apps only (the Settings tabs' own gate: appArchetype "glyphh-app").
-    // "Current folder" leads: Build & deploy reads the workdir's
-    // glyphh.app.json and deploys THAT app — no pick needed.
-    interface RelApp { id: string; slug: string; name: string; access?: string }
-    let apps: RelApp[] = [];
-    try {
-      const all = (await relIpc().panelAppsList?.()) || [];
-      apps = all.filter((a) => !a.system && a.appArchetype === "glyphh-app")
-        .map((a) => ({ id: a.id, slug: a.slug, name: a.name, access: a.access }));
-    } catch { /* offline — current-folder deploy still works */ }
-    sel.innerHTML = [`<option value="">Current folder</option>`,
-      ...apps.map((a) => `<option value="${relEsc(a.slug)}">${relEsc(a.name)}</option>`)].join("");
-    if (slot.slug && apps.some((a) => a.slug === slot.slug)) sel.value = slot.slug;
-    slot.slug = sel.value;
-
-    const pickedApp = (): RelApp | null => apps.find((a) => a.slug === sel.value) ?? null;
-    const setNote = (text: string, err = false): void => {
-      note.textContent = text;
-      note.classList.toggle("err", err);
-    };
-
-    async function refreshHosting(): Promise<void> {
-      const app = pickedApp();
-      hosting.classList.toggle("hidden", !app);
-      if (!app) return;
-      accessSel.value = app.access === "public" ? "public" : "members";
-      hostStatus.textContent = "checking…";
-      try {
-        const r = await relIpc().hostingStatus?.(app.slug);
-        if (!r?.ok) { hostStatus.textContent = r?.error || "Couldn't load deploy status"; return; }
-        if (!r.deployment) { hostStatus.textContent = "Not deployed"; return; }
-        const st = r.deployment.status || "";
-        hostStatus.innerHTML = r.deployment.url
-          ? `${relEsc(st)} · <a href="${relEsc(r.deployment.url)}" target="_blank" rel="noreferrer">${relEsc(r.deployment.url.replace(/^https?:\/\//, ""))}</a>`
-          : relEsc(st);
-      } catch { hostStatus.textContent = "Couldn't load deploy status"; }
-    }
-
-    async function refresh(): Promise<void> {
-      if (pollTimer) { clearTimeout(pollTimer); pollTimer = 0; }
-      const slug = sel.value;
-      void refreshHosting();
-      if (!slug) {
-        list.innerHTML = `<div class="ws-rel-empty">Current folder — Build &amp; deploy reads the working folder's <code>glyphh.app.json</code> and deploys that app. Pick an app above to see its release history and hosting.</div>`;
-        return;
-      }
-      let releases: WbReleaseRow[] = [];
-      try {
-        const r = await relIpc().appReleases?.(slug);
-        if (!r?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(r?.error || "Couldn't load releases")}</div>`; return; }
-        releases = r.releases || [];
-      } catch (err) {
-        list.innerHTML = `<div class="ws-rel-empty">${relEsc(err instanceof Error ? err.message : "Couldn't load releases")}</div>`;
-        return;
-      }
-      if (!body.isConnected || sel.value !== slug) return; // stale — panel closed or app switched
-      if (!releases.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No releases yet — Build &amp; deploy cuts the first one from your working folder.</div>`;
-        return;
-      }
-      list.textContent = "";
-      for (const r of releases) {
-        const row = document.createElement("div");
-        row.className = "ws-rel-row" + (r.status === "failed" ? " failed" : "");
-        const badge = r.channel === "live"
-          ? `<span class="ws-rel-badge live">live</span>`
-          : `<span class="ws-rel-badge">dev</span>`;
-        const state = r.status !== "ready" ? `<span class="ws-rel-state ${r.status}">${r.status}</span>` : "";
-        row.innerHTML = `
-          <div class="ws-rel-row-head">
-            <span class="ws-rel-version">${relEsc(r.version)}</span>${badge}${state}
-            <span class="ws-rel-date">${relEsc(relDate(r.promotedAt || r.createdAt))}</span>
-            <span class="ws-rel-actions">
-              ${r.channel === "dev" && r.status === "ready" ? `<button type="button" class="action-btn ws-rel-promote" title="Publish this release to everyone">Promote to live</button>` : ""}
-              <button type="button" class="action-btn ws-rel-notes-btn" title="Release notes">Notes</button>
-            </span>
-          </div>
-          ${r.notes ? `<div class="ws-rel-notes-preview">${relEsc(r.notes.split("\n").slice(0, 2).join(" · ").slice(0, 140))}</div>` : ""}
-          ${r.status === "failed" && r.error ? `<div class="ws-rel-error">${relEsc(r.error.slice(0, 300))}</div>` : ""}`;
-        row.querySelector(".ws-rel-promote")?.addEventListener("click", async (e) => {
-          const btn = e.currentTarget as HTMLButtonElement;
-          btn.disabled = true;
-          btn.textContent = "Promoting…";
-          const res = await relIpc().appReleasePromote?.(slug, r.id).catch(() => ({ ok: false, error: "promote failed" }));
-          if (!res?.ok) setNote(res?.error || "Promote failed", true);
-          else setNote(`v${r.version} is live`);
-          void refresh();
-        });
-        // Notes: an inline editor under the row — save writes through, blank clears.
-        row.querySelector(".ws-rel-notes-btn")?.addEventListener("click", () => {
-          const openEd = row.querySelector(".ws-rel-notes-edit");
-          if (openEd) { openEd.remove(); return; }
-          const ed = document.createElement("div");
-          ed.className = "ws-rel-notes-edit";
-          ed.innerHTML = `<textarea rows="3" placeholder="What changed in ${relEsc(r.version)}…">${relEsc(r.notes || "")}</textarea><button type="button" class="action-btn">Save</button>`;
-          ed.querySelector("button")!.addEventListener("click", async () => {
-            const text = (ed.querySelector("textarea") as HTMLTextAreaElement).value.trim();
-            const res = await relIpc().appReleaseNotes?.(slug, r.id, text || null).catch(() => ({ ok: false, error: "save failed" }));
-            if (!res?.ok) { setNote(res?.error || "Couldn't save the notes", true); return; }
-            setNote("Notes saved");
-            void refresh();
-          });
-          row.appendChild(ed);
-        });
-        list.appendChild(row);
-      }
-      // A build in flight → poll until it settles; nothing owed → sleep.
-      if (releases.some((r) => REL_BUILDING.has(r.status))) {
-        pollTimer = window.setTimeout(() => { if (body.isConnected) void refresh(); }, REL_POLL_MS);
-      }
-    }
-
-    sel.addEventListener("change", () => {
-      slot.slug = sel.value;
-      setNote("");
-      saveLayout();
-      void refresh();
-    });
-    body.querySelector(".ws-rel-refresh")?.addEventListener("click", () => { setNote(""); void refresh(); });
-    deployBtn.addEventListener("click", async () => {
-      deployBtn.disabled = true;
-      setNote("Building from your working folder…");
-      try {
-        // Empty slug = deploy WHATEVER the working folder builds (its
-        // manifest names the app); a picked app is a guard — the build
-        // refuses if the folder holds a different project.
-        const res = await relIpc().appBuildDeploy?.(sel.value);
-        if (res?.ok) {
-          setNote(`Built v${res.result?.version || "?"}${res.result?.url ? ` — live at ${res.result.url}` : ""}`);
-          // A current-folder build names its app — land the picker on it so
-          // the history below shows what was just cut.
-          const builtSlug = res.result?.slug;
-          if (!sel.value && builtSlug && apps.some((a) => a.slug === builtSlug)) {
-            sel.value = builtSlug;
-            slot.slug = builtSlug;
-          }
-        } else setNote(res?.error || "Build failed", true);
-      } catch (err) {
-        setNote(err instanceof Error ? err.message : "Build failed", true);
-      } finally {
-        deployBtn.disabled = false;
-        void refresh();
-      }
-    });
-    accessSel.addEventListener("change", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      try {
-        await relIpc().panelAppsUpdate?.(app.id, { access: accessSel.value });
-        app.access = accessSel.value;
-        setNote(accessSel.value === "public" ? "Anyone with the link can reach it" : "Only signed-in org members can reach it");
-      } catch { setNote("Couldn't change access", true); }
-    });
-    hostDeploy.addEventListener("click", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      hostDeploy.disabled = true;
-      setNote("Deploying…");
-      try {
-        const r = await relIpc().hostingDeploy?.(app.slug);
-        if (r?.ok) setNote(r.deployment?.url ? `Deploying — ${r.deployment.url}` : "Deploying");
-        else setNote(r?.error || "Deploy failed", true);
-      } catch (err) { setNote(err instanceof Error ? err.message : "Deploy failed", true); }
-      finally { hostDeploy.disabled = false; void refreshHosting(); }
-    });
-    exportBtn.addEventListener("click", async () => {
-      const app = pickedApp();
-      if (!app) return;
-      exportBtn.disabled = true;
-      setNote("Exporting…");
-      try {
-        const r = await relIpc().appExport?.(app.id);
-        if (r?.ok) setNote(r.path ? `Exported to ${r.path}` : "Exported");
-        else setNote(r?.error || "Export failed", true);
-      } catch (err) { setNote(err instanceof Error ? err.message : "Export failed", true); }
-      finally { exportBtn.disabled = false; }
-    });
-    void refresh();
-  }
-
   // ── Tasks view — every scheduled task, next fire, last outcome, run feed ──
   //
   // Data rides the EXISTING agent-task surface (library-agent-* IPC / the web
@@ -7772,11 +7466,11 @@ async function init(): Promise<void> {
   }
   interface WbTaskRun { id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }
   interface WbTasksIpc {
-    libraryAgentsList?: () => Promise<{ ok: boolean; data?: WbAgentRow[]; error?: string }>;
-    libraryAgentTasks?: (ref: string) => Promise<{ ok: boolean; data?: WbTaskRow[]; error?: string }>;
-    libraryAgentTaskRuns?: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: WbTaskRun[]; error?: string }>;
-    libraryAgentTaskRunNow?: (ref: string, taskId: string) => Promise<{ ok: boolean; error?: string }>;
-    libraryAgentTaskUpdate?: (ref: string, taskId: string, patch: { enabled?: boolean }) => Promise<{ ok: boolean; error?: string }>;
+    tasksAgentsList?: () => Promise<{ ok: boolean; data?: WbAgentRow[]; error?: string }>;
+    tasksForAgent?: (ref: string) => Promise<{ ok: boolean; data?: WbTaskRow[]; error?: string }>;
+    tasksRunList?: (ref: string, taskId: string) => Promise<{ ok: boolean; data?: WbTaskRun[]; error?: string }>;
+    tasksRunNow?: (ref: string, taskId: string) => Promise<{ ok: boolean; error?: string }>;
+    tasksSetEnabled?: (ref: string, taskId: string, patch: { enabled?: boolean }) => Promise<{ ok: boolean; error?: string }>;
   }
   const tasksIpc = (): WbTasksIpc => (window as unknown as { glyphh: WbTasksIpc }).glyphh;
 
@@ -7843,6 +7537,9 @@ async function init(): Promise<void> {
     return ms >= 0 ? `in ${label}` : `${label} ago`;
   }
 
+  // Shared by the Tasks view's renderers (survived the Releases cut).
+  const relEsc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
   /** Escape, then turn bare URLs into links — a run whose output names a built
    *  app / uploaded artifact becomes clickable without trusting any HTML. */
   function linkifyOutput(text: string): string {
@@ -7884,22 +7581,20 @@ async function init(): Promise<void> {
         </div>
         <div class="ws-tasks-cols">
           <div class="ws-tasks-col">
-            <div class="ws-tasks-coltitle">Create with the agent</div>
-            <div class="ws-tasks-prompts dash-starters"></div>
+            <div class="ws-tasks-coltitle">All tasks</div>
+            <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
           </div>
           <div class="ws-tasks-col">
             <div class="ws-tasks-coltitle">Recent runs</div>
             <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
           </div>
         </div>
-        <div class="ws-tasks-coltitle ws-tasks-alltitle">All tasks</div>
-        <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
         </div>
       </div>`;
     const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
     const list = body.querySelector(".ws-tasks-list") as HTMLElement;
     const recentsHost = body.querySelector(".ws-tasks-recent-list") as HTMLElement;
-    const canRunNow = !!tasksIpc().libraryAgentTaskRunNow
+    const canRunNow = !!tasksIpc().tasksRunNow
       && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
 
     interface Row { agent: WbAgentRow; task: WbTaskRow; next: Date | null }
@@ -7909,13 +7604,13 @@ async function init(): Promise<void> {
     let agents: WbAgentRow[] = [];
 
     async function load(): Promise<void> {
-      const a = await tasksIpc().libraryAgentsList?.().catch(() => null);
+      const a = await tasksIpc().tasksAgentsList?.().catch(() => null);
       if (!a?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(a?.error || "Couldn't load agents — sign in and try again.")}</div>`; return; }
       agents = a.data ?? [];
       const now = new Date();
       const all: Row[] = [];
       await Promise.all(agents.map(async (agent) => {
-        const t = await tasksIpc().libraryAgentTasks?.(agent.id).catch(() => null);
+        const t = await tasksIpc().tasksForAgent?.(agent.id).catch(() => null);
         for (const task of t?.ok ? t.data ?? [] : []) {
           all.push({ agent, task, next: task.enabled ? cronNext(task.cron, now) : null });
         }
@@ -7927,7 +7622,7 @@ async function init(): Promise<void> {
       const ran = all.filter((r) => r.task.lastRunAt).slice(0, 12);
       const merged: RecentRun[] = [];
       await Promise.all(ran.map(async (r) => {
-        const res = await tasksIpc().libraryAgentTaskRuns?.(r.agent.id, r.task.id).catch(() => null);
+        const res = await tasksIpc().tasksRunList?.(r.agent.id, r.task.id).catch(() => null);
         for (const run of res?.ok ? res.data ?? [] : []) {
           merged.push({ ...run, taskName: r.task.name, agentName: r.agent.name });
         }
@@ -8004,15 +7699,19 @@ async function init(): Promise<void> {
       }
     }
 
+    let taskPage = 0;
     function paintList(): void {
       if (!body.isConnected) return;
       if (!rows.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — create one on the left, or just ask the agent.</div>`;
+        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — open a task and add a schedule.</div>`;
         return;
       }
       list.textContent = "";
       const now = Date.now();
-      for (const r of rows) {
+      const PER = 10;
+      const totalPages = Math.max(1, Math.ceil(rows.length / PER));
+      taskPage = Math.max(0, Math.min(taskPage, totalPages - 1));
+      for (const r of rows.slice(taskPage * PER, (taskPage + 1) * PER)) {
         const card = document.createElement("div");
         card.className = "ws-task-card" + (r.task.enabled ? "" : " off");
         const status = r.task.lastStatus
@@ -8033,8 +7732,36 @@ async function init(): Promise<void> {
             <span class="ws-task-cron" title="${relEsc(r.task.cron)}">${relEsc(cronHuman(r.task.cron))}</span>
           </div>
           ${r.task.lastError ? `<div class="ws-task-lasterr">${relEsc(r.task.lastError)}</div>` : ""}`;
-        card.addEventListener("click", () => { slot.taskId = r.task.id; void paintDetail(r); });
+        // A task card opens the TASK for editing (his order, 2026-09-10);
+        // run history stays one click away in Recent runs.
+        card.addEventListener("click", () => {
+          const open = (window as unknown as { __glyphhOpenTask?: (slug: string) => void }).__glyphhOpenTask;
+          if (open) open(r.task.target);
+          else { slot.taskId = r.task.id; void paintDetail(r); }
+        });
         list.appendChild(card);
+      }
+      if (totalPages > 1) {
+        const bar = document.createElement("div");
+        bar.className = "pagination-bar";
+        const nav = document.createElement("div");
+        nav.className = "pagination-nav";
+        const mk = (label: string, to: number, disabled: boolean): HTMLButtonElement => {
+          const b = document.createElement("button");
+          b.className = "pagination-btn";
+          b.textContent = label;
+          b.disabled = disabled;
+          b.addEventListener("click", () => { taskPage = to; paintList(); });
+          return b;
+        };
+        nav.appendChild(mk("\u2039", taskPage - 1, taskPage === 0));
+        const info = document.createElement("span");
+        info.className = "pagination-info";
+        info.textContent = `${taskPage + 1}/${totalPages}`;
+        nav.appendChild(info);
+        nav.appendChild(mk("\u203a", taskPage + 1, taskPage >= totalPages - 1));
+        bar.appendChild(nav);
+        list.appendChild(bar);
       }
     }
 
@@ -8068,14 +7795,14 @@ async function init(): Promise<void> {
         const btn = ev.currentTarget as HTMLButtonElement;
         btn.disabled = true; btn.textContent = "Running…";
         try {
-          const res = await tasksIpc().libraryAgentTaskRunNow?.(r.agent.id, r.task.id);
+          const res = await tasksIpc().tasksRunNow?.(r.agent.id, r.task.id);
           if (!res?.ok) btn.textContent = res?.error ? "Failed" : "Run now";
         } catch { /* reported below on refresh */ }
         setTimeout(() => { if (body.isConnected && slot.taskId === r.task.id) void paintDetail(r); }, 4000);
         btn.disabled = false; btn.textContent = "Run now";
       });
       const runsHost = detail.querySelector(".ws-task-runs") as HTMLElement;
-      const runs = await tasksIpc().libraryAgentTaskRuns?.(r.agent.id, r.task.id).catch(() => null);
+      const runs = await tasksIpc().tasksRunList?.(r.agent.id, r.task.id).catch(() => null);
       if (!body.isConnected || slot.taskId !== r.task.id) return;
       if (!runs?.ok) { runsHost.innerHTML = `<div class="ws-rel-empty">${relEsc(runs?.error || "Couldn't load run history")}</div>`; return; }
       if (!runs.data?.length) { runsHost.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
@@ -8099,26 +7826,6 @@ async function init(): Promise<void> {
     // ── Prompt cards — creating a scheduled task is a CONVERSATION, not a
     // form: each card seeds the composer with a prompt the agent knows how to
     // fulfil (build the skill + schedule it), then the user makes it theirs.
-    const TASK_PROMPTS: Array<{ title: string; prompt: string }> = [
-      { title: "Morning inbox brief", prompt: "Create a skill that checks my email every weekday at 8:00, summarizes what needs a reply, and schedule it as a daily task." },
-      { title: "Daily digest", prompt: "Build a skill that runs every day at 9:00 and writes me a short digest of yesterday: what my agents did, anything that failed, anything waiting on me. Schedule it." },
-      { title: "Watch a page", prompt: "Create a skill that checks a web page for changes every hour and messages me only when something meaningful changed. Ask me for the page, then schedule it." },
-      { title: "Weekly report", prompt: "Create a skill that runs Mondays at 9:00 and drafts my weekly report from last week's sessions and tasks. Schedule it weekly." },
-      { title: "Something else", prompt: "Help me create a scheduled task: ask me what should happen and when, then build the skill and schedule it." },
-    ];
-    const promptsHost = body.querySelector(".ws-tasks-prompts") as HTMLElement;
-    for (const tp of TASK_PROMPTS) {
-      // The + New Session landing's starter cards ARE the look — same classes,
-      // so the theme styles this page for free.
-      const cardEl = document.createElement("button");
-      cardEl.type = "button";
-      cardEl.className = "dash-starter";
-      cardEl.innerHTML = `<span class="dash-starter-top"><span class="dash-starter-title">${relEsc(tp.title)}</span></span><span class="dash-starter-blurb">${relEsc(tp.prompt)}</span>`;
-      cardEl.addEventListener("click", () => {
-        (window as unknown as { __glyphhSeedSession?: (text: string) => void }).__glyphhSeedSession?.(tp.prompt);
-      });
-      promptsHost.appendChild(cardEl);
-    }
 
     body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintOverview(); }); });
     await load();
@@ -8133,10 +7840,6 @@ async function init(): Promise<void> {
     body.innerHTML = `
       <div class="ws-diff-toolbar">
         <span class="ws-diff-summary">loading…</span>
-        <span class="ws-diff-lanes hidden">
-          <button class="ws-diff-lane" data-lane="git" type="button">Git</button>
-          <button class="ws-diff-lane" data-lane="r2" type="button">Glyphh</button>
-        </span>
         <button class="ws-icon-btn ws-diff-expand" title="Expand all">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9"/>
@@ -8154,20 +7857,9 @@ async function init(): Promise<void> {
         </button>
       </div>
       <div class="ws-diff-files"></div>
-      <div class="ws-diff-r2 hidden">
-        <div class="ws-diff-r2-head">
-          <span class="ws-diff-r2-flag"></span>
-          <span class="ws-diff-r2-title">Version history</span>
-        </div>
-        <div class="ws-diff-r2-list"></div>
-      </div>
     `;
     const summary = body.querySelector(".ws-diff-summary") as HTMLElement;
     const filesEl = body.querySelector(".ws-diff-files") as HTMLElement;
-    const lanesEl = body.querySelector(".ws-diff-lanes") as HTMLElement;
-    const r2El = body.querySelector(".ws-diff-r2") as HTMLElement;
-    const r2Flag = body.querySelector(".ws-diff-r2-flag") as HTMLElement;
-    const r2List = body.querySelector(".ws-diff-r2-list") as HTMLElement;
     const refreshBtn = body.querySelector(".ws-diff-refresh") as HTMLButtonElement;
     const expandBtn = body.querySelector(".ws-diff-expand") as HTMLButtonElement;
     const collapseBtn = body.querySelector(".ws-diff-collapse") as HTMLButtonElement;
@@ -8188,54 +7880,16 @@ async function init(): Promise<void> {
     // flash per agent write. Overlapping refreshes resolve to the newest.
     let painted = false;
     let refreshSeq = 0;
-    // Which lane paints the file list (his order, 2026-09-01): git when the
-    // folder is a repo, the R2 lane when the app is glyphh-versioned — chips
-    // switch when BOTH exist. The bottom history panel rides whenever the
-    // folder is an R2-versioned app, whichever lane is active.
-    let lane: "git" | "r2" = "git";
+    // Git is the ONLY lane (his order, 2026-09-10) — the Glyphh/R2 version
+    // lane left with the local-build pivot.
     let lastGit: { text: string; error?: string } = { text: "" };
-    let lastR2: { status: { slug: string | null; localHash: string | null; drifted: boolean; head: { hash: string; createdAt: string; createdByEmail: string | null } | null; history: Array<{ hash: string; createdAt: string; createdByEmail: string | null; note?: string | null; isHead: boolean }> } | null; text: string; error?: string } = { status: null, text: "" };
-
-    function paintR2Panel(): void {
-      const st = lastR2.status;
-      const versioned = !!(st && st.slug && st.head);
-      r2El.classList.toggle("hidden", !versioned);
-      if (!versioned || !st || !st.head) return;
-      // THE DRIFT FLAG: local tree hash vs the chain head.
-      r2Flag.className = "ws-diff-r2-flag " + (st.drifted ? "drifted" : "insync");
-      r2Flag.textContent = st.drifted
-        ? `Drifted from latest (${st.head.hash.slice(0, 8)} by ${st.head.createdByEmail || "unknown"})`
-        : "In sync with latest";
-      r2List.innerHTML = "";
-      for (const s of st.history) {
-        const row = document.createElement("div");
-        row.className = "ws-diff-r2-row";
-        row.innerHTML = `<code></code><span class="ws-diff-r2-who"></span><span class="ws-diff-r2-when"></span>${s.isHead ? `<span class="ws-diff-r2-headmark">latest</span>` : ""}`;
-        (row.querySelector("code") as HTMLElement).textContent = s.hash.slice(0, 10);
-        (row.querySelector(".ws-diff-r2-who") as HTMLElement).textContent =
-          s.note ? `${s.note} — ${s.createdByEmail || "unknown"}` : (s.createdByEmail || "unknown");
-        (row.querySelector(".ws-diff-r2-when") as HTMLElement).textContent = new Date(s.createdAt).toLocaleString();
-        r2List.appendChild(row);
-      }
-    }
-
-    function paintLaneChips(): void {
-      const gitOk = !lastGit.error;
-      const r2Ok = !!(lastR2.status && lastR2.status.slug && lastR2.status.head);
-      lanesEl.classList.toggle("hidden", !(gitOk && r2Ok));
-      if (!gitOk && r2Ok) lane = "r2";
-      if (gitOk && !r2Ok) lane = "git";
-      lanesEl.querySelectorAll<HTMLButtonElement>(".ws-diff-lane").forEach((b) =>
-        b.classList.toggle("active", b.dataset.lane === lane));
-    }
 
     function paintActiveLane(): void {
       const keepScroll = filesEl.scrollTop;
-      const res = lane === "git" ? lastGit : { text: lastR2.text, error: lastR2.error };
-      if (lane === "git" && res.error) {
-        // Not a repo but R2-versioned → the R2 lane already took over above;
-        // this branch is the genuinely-unversioned folder. That is a NORMAL
-        // state for a fresh project, not an error (his report, 2026-09-02).
+      const res = lastGit;
+      if (res.error) {
+        // An unversioned folder is a NORMAL state for a fresh project, not
+        // an error (his report, 2026-09-02).
         const fresh = /not a git repo|no folder/i.test(res.error);
         summary.textContent = fresh ? "not initialized" : "error";
         filesEl.innerHTML = `<div class="ws-diff-empty">${fresh
@@ -8243,15 +7897,10 @@ async function init(): Promise<void> {
           : res.error}</div>`;
         return;
       }
-      if (lane === "r2" && res.error) {
-        summary.textContent = "error";
-        filesEl.innerHTML = `<div class="ws-diff-empty">${res.error}</div>`;
-        return;
-      }
       const files = parseUnifiedDiff(res.text);
       if (files.length === 0) {
         summary.textContent = "no changes";
-        filesEl.innerHTML = `<div class="ws-diff-empty">${lane === "r2" ? "In sync with the latest Glyphh version." : "Working tree is clean."}</div>`;
+        filesEl.innerHTML = `<div class="ws-diff-empty">Working tree is clean.</div>`;
         return;
       }
       const totalAdd = files.reduce((s, f) => s + f.additions, 0);
@@ -8299,25 +7948,12 @@ async function init(): Promise<void> {
     async function refresh(): Promise<void> {
       const seq = ++refreshSeq;
       if (!painted) summary.textContent = "loading…";
-      const [git, r2] = await Promise.all([
-        cwd ? window.wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }),
-        cwd && window.wb.r2Diff ? window.wb.r2Diff(cwd).catch(() => ({ status: null, text: "" })) : Promise.resolve({ status: null, text: "" }),
-      ]);
+      const git = await (cwd ? window.wb.gitDiff(cwd) : Promise.resolve({ text: "", error: "no folder" }));
       if (seq !== refreshSeq || !body.isConnected) return; // superseded / slot gone
       painted = true;
       lastGit = git;
-      lastR2 = r2 as typeof lastR2;
-      paintLaneChips();
-      paintR2Panel();
       paintActiveLane();
     }
-    lanesEl.querySelectorAll<HTMLButtonElement>(".ws-diff-lane").forEach((b) => {
-      b.addEventListener("click", () => {
-        lane = (b.dataset.lane as "git" | "r2") || "git";
-        paintLaneChips();
-        paintActiveLane();
-      });
-    });
     refreshBtn.addEventListener("click", refresh);
     // The workdir watcher's fs/git-changed fan-in refreshes THIS render's
     // closure (quiet + scroll-preserving) instead of poking the button.
@@ -8941,15 +8577,56 @@ async function init(): Promise<void> {
     const bg = styles.getPropertyValue("--ws-bg-card").trim() || "#1e1e1e";
     const fg = styles.getPropertyValue("--ws-text").trim() || "#d4d4d4";
     const accent = styles.getPropertyValue("--ws-accent").trim() || "#a855f7";
+    // THE ANSI 16 follow the theme too — CLIs (claude/codex/gemini, git,
+    // ls) draw with these, so retheming the palette IS retheming the CLI.
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const ansi = light
+      ? {
+          black: "#3b3b43", red: "#c93c4b", green: "#1d8a4e", yellow: "#b07d12",
+          blue: "#2f6fdb", magenta: "#8c3bf2", cyan: "#0e7490", white: "#8b8b93",
+          brightBlack: "#6e6e78", brightRed: "#e05563", brightGreen: "#2aa564",
+          brightYellow: "#c9941a", brightBlue: "#4c86ec", brightMagenta: "#a35ef7",
+          brightCyan: "#0891b2", brightWhite: "#1b1b1f",
+        }
+      : {
+          black: "#3a3a42", red: "#f2555f", green: "#4ade80", yellow: "#facc15",
+          blue: "#60a5fa", magenta: "#c084fc", cyan: "#22d3ee", white: "#c8c8d0",
+          brightBlack: "#7a7a85", brightRed: "#ff7b84", brightGreen: "#86efac",
+          brightYellow: "#fde047", brightBlue: "#93c5fd", brightMagenta: "#d8b4fe",
+          brightCyan: "#67e8f9", brightWhite: "#f4f4f6",
+        };
     return {
       background: bg,
       foreground: fg,
       cursor: accent,
       cursorAccent: bg,
       selectionBackground: accent + "33",
+      ...ansi,
     };
   }
+  // Live terminals re-theme when the app does — one observer, every pty
+  // untouched (only xterm's paint changes).
+  const liveTerms = new Set<Terminal>();
+  new MutationObserver(() => {
+    const theme = terminalTheme();
+    for (const t of [...liveTerms]) {
+      try { t.options.theme = theme; } catch { liveTerms.delete(t); }
+    }
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  // The agent stamp rides a pending var because the slot is minted inside
+  // activateTile — and PLACEMENT MAY RENDER ASYNC, so the stamp carries a
+  // short deadline instead of being nulled right after activate (nulling it
+  // synchronously raced the render and the tab row won — his screenshot).
+  let pendingAgentTermMeta: { id: string; name: string; at: number } | null = null;
+  function setPendingAgentTermMeta(m: { id: string; name: string } | null): void {
+    pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
+  }
+
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
+    if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
+      slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
+      pendingAgentTermMeta = null;
+    }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
     // pod has no pty surface. Say so honestly instead of opening a local shell
     // that silently works on the WRONG filesystem.
@@ -8970,6 +8647,7 @@ async function init(): Promise<void> {
     mountTerminal(hostEl, slot);
   }
   function paintTermTabs(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot): void {
+    if (slot.agent) { paintAgentTermHead(tabsEl, hostEl, slot, slot.agent); return; }
     tabsEl.innerHTML = "";
     slot.terminals.forEach((t, i) => {
       const tab = document.createElement("div");
@@ -9005,6 +8683,142 @@ async function init(): Promise<void> {
     });
     tabsEl.appendChild(add);
   }
+  /** The AGENT terminal's header row (his spec, 2026-09-11): where a plain
+   *  terminal shows "1. zsh" tabs, the agent shows the SESSION NAME and the
+   *  same control cluster the chat head carries — identical rows, two views. */
+  /** Sessions the panel may adopt for a loop: ONLY those in the loop's own
+   *  lane — its cwd, else the workbench folder. ~/.claude holds EVERY claude
+   *  session on the machine (dev terminals included); adopting the global
+   *  newest cross-bred conversations (his report, 2026-09-11: 'out of
+   *  synch' — the panel resumed an unrelated dev session). */
+  /** A loop's LANE — its cli and its folder. Both are the filters the shared
+   *  sessions menu already takes; resolving them here is the whole job. */
+  async function loopLane(agentId: string): Promise<{ cli?: string; cwd?: string }> {
+    const g = window as unknown as { glyphh?: {
+      cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; cli?: string; cwd?: string | null }> }>;
+    }; wb?: { getCwd?: () => Promise<string> } };
+    const [agents, wbCwd] = await Promise.all([
+      g.glyphh?.cliAgentsList?.() ?? Promise.resolve(null),
+      g.wb?.getCwd?.().catch(() => "") ?? Promise.resolve(""),
+    ]);
+    const row = agents?.ok ? agents.agents.find((a) => a.id === agentId) : null;
+    const cwd = row?.cwd || wbCwd || "";
+    return { ...(row?.cli ? { cli: row.cli } : {}), ...(cwd ? { cwd } : {}) };
+  }
+
+  async function scopedCliSessions(agentId: string): Promise<Array<{ id: string; title: string; cwd: string }>> {
+    const g = window as unknown as { glyphh?: {
+      cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }>;
+    } };
+    const [sess, lane] = await Promise.all([
+      g.glyphh?.cliSessionsList?.() ?? Promise.resolve(null),
+      loopLane(agentId),
+    ]);
+    if (!sess?.ok || !lane.cwd) return [];
+    return sess.sessions.filter((x) => x.cwd === lane.cwd);
+  }
+
+  /** Swap the session running in THIS card: ask main to compose the loop's
+   *  resume command, then respawn the slot's active terminal with it as the
+   *  init command — the same replace-and-remount the tab strip does, so the
+   *  card, its geometry and its place in the layout all stay put. */
+  async function resumeHere(
+    hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string,
+  ): Promise<void> {
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+      .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
+    const cmd = r?.ok ? r.command : undefined;
+    if (!cmd) { console.warn("[loops] resume:", r?.error ?? "no command composed"); return; }
+    const old = slot.terminals[slot.activeIdx];
+    if (old) { try { killTerminal(old); } catch { /* already gone */ } }
+    slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };
+    paintTermTabs(tabsEl, hostEl, slot);
+    mountTerminal(hostEl, slot);
+  }
+
+  function paintAgentTermHead(tabsEl: HTMLElement, hostEl: HTMLElement, slot: TermSlot, agent: { id: string; name: string }): void {
+    tabsEl.innerHTML = "";
+    tabsEl.classList.add("ws-agent-termhead");
+    // The SAME conversation follows into chat — newest session IN THIS
+    // LOOP'S LANE only; nothing in the lane opens a fresh chat.
+    const toChat = (): void => {
+      void scopedCliSessions(agent.id).then((rows) => {
+        (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+        const newest = rows[0];
+        if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli: cliAgentRows.find((r) => r.id === agent.id)?.cli });
+      });
+    };
+    // ← + session name, top left — the SAME back-to-chat the chat header
+    // carries, mirrored in CLI mode (his report, 2026-09-14: it was missing).
+    const back = document.createElement("button");
+    back.className = "code-icon-btn";
+    back.title = "Back to chat";
+    back.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+    back.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
+    const title = document.createElement("span");
+    title.className = "ws-agent-term-title";
+    title.textContent = agent.name;
+    title.style.cursor = "pointer";
+    title.title = "Back to chat";
+    title.addEventListener("click", (ev) => { ev.stopPropagation(); toChat(); });
+    // The CLI's newest session in this agent's lane names the row.
+    void (window as unknown as { glyphh?: { cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }> } })
+      .glyphh?.cliSessionsList?.().then((r) => {
+        const first = r?.ok ? r.sessions[0] : undefined;
+        if (first?.title) title.textContent = first.title;
+      });
+    const spacer = document.createElement("span");
+    spacer.style.flex = "1";
+    const btn = (label: string, svg: string, onClick: (ev: MouseEvent) => void): HTMLButtonElement => {
+      const b = document.createElement("button");
+      b.className = "code-icon-btn";
+      b.title = label;
+      b.innerHTML = svg;
+      b.addEventListener("click", (ev) => { ev.stopPropagation(); onClick(ev as MouseEvent); });
+      return b;
+    };
+    const chat = btn("Chat view", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+      toChat);
+    const drips = btn("Drips", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>`,
+      () => (window as unknown as { __glyphhOpenDrips?: () => void }).__glyphhOpenDrips?.());
+    const recents = btn("Recents", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+      (ev) => {
+        // THE recents menu — help/code.ts's openSessionsDropdown, exposed as
+        // __glyphhSessionsMenu. Search, Pinned + by-directory sections, pin
+        // and delete icons: the chat head's exact dropdown, not a lookalike.
+        // It filters by cli + cwd itself, so the lane is all we supply.
+        const anchor = ev.currentTarget as HTMLElement;
+        void loopLane(agent.id).then((lane) => {
+          (window as unknown as { __glyphhSessionsMenu?: (
+            a: HTMLElement, o: { cli?: string; cwd?: string; onPick: (s: { id: string; cli?: string }) => void },
+          ) => void }).__glyphhSessionsMenu?.(anchor, {
+            ...lane,
+            // IN THIS WINDOW (his rule, 2026-09-11) when the pick is this
+            // lane's own CLI; the list is COMBINED now (his order,
+            // 2026-09-14), so another CLI's session routes to ITS agent —
+            // a codex id must never compose into a claude resume.
+            onPick: (sess) => {
+              const sameCli = !sess.cli || sess.cli === (cliAgentRows.find((r) => r.id === agent.id)?.cli ?? "claude");
+              if (sameCli) { void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id); return; }
+              // Another CLI's session — the ONE chat surface adopts it,
+              // bound to run on ITS agent (never a cross-CLI resume).
+              const target = cliAgentRows.find((r) => r.cli === sess.cli);
+              if (!target) return;
+              (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(target.id);
+              (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
+                .__glyphhAdoptCliSession?.({ agentName: target.name, sessionId: sess.id, agentId: target.id, cli: target.cli });
+            },
+          });
+        });
+      });
+    const fresh = btn("New session", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+      () => (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void }).__wbOpenAgentCli?.(agent.id, undefined, { fresh: true }));
+    const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
+      (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
+    tabsEl.append(back, title, spacer, chat, drips, recents, fresh, dev);
+  }
+
   function mountTerminal(hostEl: HTMLElement, slot: TermSlot): void {
     hostEl.innerHTML = "";
     const wbt = slot.terminals[slot.activeIdx];
@@ -9024,6 +8838,7 @@ async function init(): Promise<void> {
         // the DOM renderer leaves those to a font chain that lacks them.
         customGlyphs: true,
       });
+      liveTerms.add(term);
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostEl);
@@ -9062,7 +8877,11 @@ async function init(): Promise<void> {
           // DESKTOP over the pty relay instead (remote-terminal.ts).
           void spawnRemoteTerm(wbt, hostEl, cols, rows);
         } else {
-          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows);
+          // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
+          // light/dark variant to match the app.
+          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows,
+            document.documentElement.getAttribute("data-theme") === "light");
+          wbt.spawned = true;
           if (wbt.initCmd) {
             // The layout's slotted first command — once, after the shell boots.
             const cmd = wbt.initCmd;
@@ -9623,7 +9442,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "releases", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9888,8 +9707,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "releases", "tasks", "rail", "gpoint", "gdoc", "gdrive", "gsheet", "gdesign", "gmemory", "gimage", "gvideo", "gsound", "gband"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "releases" | "rail" | "gpoint" | "gdoc" | "gdrive" | "gsheet" | "gdesign" | "gmemory" | "gimage" | "gvideo" | "gsound" | "gband"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

@@ -60,43 +60,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── Vendor the LOCAL HARNESS POD ────────────────────────────────
-      # "Turns run on the harness pod now" (the cutover note that used to sit
-      # here) is only true if the packaged app HAS a pod. A dock-launched app
-      # gets the GUI PATH (/usr/bin:/bin:...), so `rrotor` on PATH can never
-      # resolve — local-folder sessions died with a 15s health timeout.
-      # Same self-heal as the SDK above: check out rrotor@main, build it, and
-      # place dist + pruned prod node_modules at vendor/rrotor, which
-      # electron-builder ships as resources/rrotor (extraResources). The app
-      # runs it Electron-as-node. better-sqlite3 is DELETED: it is the one
-      # native module, it loads lazily (only the sqlite stator backend touches
-      # it), and the local pod runs the memory backend — a native binary here
-      # would need per-arch Electron-ABI rebuilds inside extraResources, which
-      # nothing performs.
-      - uses: actions/checkout@v4
-        with:
-          repository: glyphh-ai/rrotor
-          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .rrotor-src
-
-      - name: Vendor the rrotor harness pod (vendor/rrotor)
-        shell: bash
-        run: |
-          cd .rrotor-src
-          npm ci
-          npm run build
-          npm prune --omit=dev
-          rm -rf node_modules/better-sqlite3
-          cd ..
-          rm -rf vendor/rrotor
-          mkdir -p vendor/rrotor
-          cp .rrotor-src/package.json vendor/rrotor/package.json
-          cp -R .rrotor-src/dist vendor/rrotor/dist
-          cp -R .rrotor-src/node_modules vendor/rrotor/node_modules
-          rm -rf .rrotor-src
-          # The guard the old vendor step should have had: fail HERE, loudly,
-          # not as a swallowed ENOENT on a user's machine.
-          test -f vendor/rrotor/dist/cli.js || { echo "vendored rrotor is missing dist/cli.js" >&2; exit 1; }
+      # THE PURGE: the rrotor harness pod is dead — nothing to vendor.
 
       - name: Build
         run: npm run build
@@ -111,20 +75,6 @@ jobs:
           mkdir -p node_modules/@glyphh/sdk
           cp ../sdk/package.json node_modules/@glyphh/sdk/package.json
           cp -R ../sdk/dist node_modules/@glyphh/sdk/dist
-
-      # The agent-dock helper (⌘⇧G attach mode) exists in the repo only as
-      # main.swift — dev builds compile it on first run, but a PACKAGED app has
-      # no swiftc and native/ never ships in the asar, so ⌘⇧G silently did
-      # nothing in installed builds. Prebuild it universal here; electron-builder
-      # ships it via extraResources and the deep-sign walk signs it.
-      - name: Build agent-dock helper (universal)
-        run: |
-          cd native/agent-dock-helper
-          swiftc -O -target arm64-apple-macos12 -o helper-arm64 main.swift
-          swiftc -O -target x86_64-apple-macos12 -o helper-x64 main.swift
-          lipo -create -output agent-dock-helper helper-arm64 helper-x64
-          rm helper-arm64 helper-x64
-          file agent-dock-helper
 
       - name: Package macOS (signed + notarized)
         run: npx electron-builder --mac --publish never
@@ -185,33 +135,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── Vendor the LOCAL HARNESS POD ── same as the mac job: without this
-      # a packaged build has no pod (GUI PATH cannot resolve `rrotor`), and
-      # local-folder sessions fail with a 15s health timeout. better-sqlite3
-      # is deleted — the one native module, lazily loaded, unused by the local
-      # pod's memory backend.
-      - uses: actions/checkout@v4
-        with:
-          repository: glyphh-ai/rrotor
-          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .rrotor-src
-
-      - name: Vendor the rrotor harness pod (vendor/rrotor)
-        shell: bash
-        run: |
-          cd .rrotor-src
-          npm ci
-          npm run build
-          npm prune --omit=dev
-          rm -rf node_modules/better-sqlite3
-          cd ..
-          rm -rf vendor/rrotor
-          mkdir -p vendor/rrotor
-          cp .rrotor-src/package.json vendor/rrotor/package.json
-          cp -R .rrotor-src/dist vendor/rrotor/dist
-          cp -R .rrotor-src/node_modules vendor/rrotor/node_modules
-          rm -rf .rrotor-src
-          test -f vendor/rrotor/dist/cli.js || { echo "vendored rrotor is missing dist/cli.js" >&2; exit 1; }
+      # THE PURGE: the rrotor harness pod is dead — nothing to vendor.
 
       - name: Build
         run: npm run build
@@ -314,30 +238,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # ── Vendor the LOCAL HARNESS POD ── without it a packaged build has no
-      # pod at all (a desktop launch's PATH cannot resolve `rrotor`).
-      - uses: actions/checkout@v4
-        with:
-          repository: glyphh-ai/rrotor
-          token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
-          path: .rrotor-src
-
-      - name: Vendor the rrotor harness pod (vendor/rrotor)
-        shell: bash
-        run: |
-          cd .rrotor-src
-          npm ci
-          npm run build
-          npm prune --omit=dev
-          rm -rf node_modules/better-sqlite3
-          cd ..
-          rm -rf vendor/rrotor
-          mkdir -p vendor/rrotor
-          cp .rrotor-src/package.json vendor/rrotor/package.json
-          cp -R .rrotor-src/dist vendor/rrotor/dist
-          cp -R .rrotor-src/node_modules vendor/rrotor/node_modules
-          rm -rf .rrotor-src
-          test -f vendor/rrotor/dist/cli.js || { echo "vendored rrotor is missing dist/cli.js" >&2; exit 1; }
+      # THE PURGE: the rrotor harness pod is dead — nothing to vendor.
 
       - name: Build
         run: npm run build

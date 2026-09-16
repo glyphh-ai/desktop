@@ -49,9 +49,12 @@ function fmtInt(n: number): string {
   return Math.max(0, Math.round(n)).toLocaleString();
 }
 
-/** Credits on the chart axis/tooltip — whole numbers, thousands separated. */
+/** Credits — whole numbers get thousands separators; a FRACTION shows one
+ *  decimal (sub-credit spend is real: micro-credit metering means "0.2
+ *  credits" is the honest number, never a floored 0 beside a floored 49). */
 function fmtCredits(n: number): string {
-  return fmtInt(n);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? fmtInt(n) : (Math.round(n * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 /** "Jul 5" from a "YYYY-MM-DD" bucket (parsed as local, not UTC). */
@@ -210,8 +213,14 @@ export async function loadUsageChart(): Promise<void> {
   const shown = only ? series.points.filter((p) => p.key === only) : series.points;
   const credits = shown.reduce((s, p) => s + p.credits, 0);
   const calls = shown.reduce((s, p) => s + p.requests, 0);
-  $a("dash-usage-total").textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
-  $a("dash-usage-range").textContent = `last ${win} days`;
+  // GUARDED (his report, 2026-09-11): these loaders now run on surfaces
+  // where the chart DOM may not exist (web platform) — absent DOM = no-op,
+  // never a boot-killing rejection.
+  const totalEl = document.getElementById("dash-usage-total");
+  const rangeEl = document.getElementById("dash-usage-range");
+  if (totalEl) totalEl.textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
+  if (rangeEl) rangeEl.textContent = `last ${win} days`;
+  if (!totalEl) return;
   renderChart(series, only);
 }
 
@@ -611,6 +620,13 @@ export async function loadDashboard(): Promise<void> {
 export async function loadUsageMembers(): Promise<void> {
   const sel = document.getElementById("dash-usage-member") as HTMLSelectElement | null;
   if (!sel) return;
+  // Members see ONLY themselves (his ruling, 2026-09-12) — the roster filter
+  // is the admin's. Explicit role check: the members read succeeding is not
+  // proof of adminship, and the dropdown was leaking the roster to everyone.
+  // The server pins non-admin usage reads to self regardless.
+  const account = await window.glyphh.getAccountInfo?.().catch(() => null);
+  const admin = !!account?.role && ["org_admin", "admin", "super_admin"].includes(account.role);
+  if (!admin) { sel.classList.add("hidden"); return; }
   try {
     const members = await accountApi().members();
     if (!members?.length) { sel.classList.add("hidden"); return; }
@@ -658,13 +674,13 @@ export async function loadUsageMetrics(): Promise<void> {
       }
     } else {
       $a("dash-credits-label").textContent = "Organization credits";
-      $a("dash-credits-value").textContent = fmtInt(data.credits);
+      $a("dash-credits-value").textContent = fmtCredits(data.credits);
       $a("dash-credits-sub").textContent = data.allowance > 0
         ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
         : (planName ? `${planName} plan` : "available");
     }
 
-    $a("dash-spend-value").textContent = fmtInt(data.spendCredits);
+    $a("dash-spend-value").textContent = fmtCredits(data.spendCredits);
     $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
@@ -916,7 +932,10 @@ export function initDashboardEvents(): void {
     window.open(typeof raw === "string" && raw ? raw : "https://discord.gg/P3yynv4v9", "_blank", "noopener");
   });
   document.getElementById("dash-get-key")?.addEventListener("click", () => {
-    gotoSection("settings", "apikeys");
+    // "apikeys" died with the old keys page — the gateway keys page is where
+    // keys are minted now (his report, 2026-09-12: the button opened a blank
+    // panel because no sub by that name exists).
+    gotoSection("settings", "gateway-keys");
   });
   paintDashGreeting();
   // the refresh button rides the chart card in Settings › Usage

@@ -1,15 +1,18 @@
-        <!-- Agents — the workforce roster. The AGENT authors agents (via
-             /create-agent or "+ New with AI") and a human can now do the same
-             BY HAND: "+ New" opens the manual form, and every agent — AI-made
-             or not — is editable through the same form (kebab → Edit, or the
-             detail header's Edit). The detail view stays READ + OPERATIONAL:
-             live/pause, task enable/disable, reschedule, run-now, delete. -->
+        <!-- Agents — the workforce roster (restored 2026-09-11 from
+             4cae30db^, ported to local storage). An agent is a STANDING
+             WORKER: a name, a prompt, the LOOP it runs on, and the scheduled
+             tasks it fires. Where a session is you driving a loop, an agent
+             is the same machinery running without you.
+
+             The detail view is READ + OPERATIONAL: live/pause, task
+             enable/disable, reschedule, run-now, run feeds, delete. Its Edit
+             button opens the same form "+ New" does. -->
         <div class="help-section" data-section="agents">
           <h2>Agents</h2>
-          <p class="section-desc">Your standing workforce — the loop and models each agent runs, and its schedule with real last-run status.</p>
+          <p class="section-desc">Your standing workforce — the loop and prompt each agent runs, and its schedule with real last-run status.</p>
           <div id="agents-toolbar" class="crud-toolbar">
             <input id="agent-search" type="text" class="crud-search" placeholder="Search agents..." spellcheck="false" autocomplete="off" />
-            <button id="agent-new-btn" class="action-btn primary">+ New with AI</button>
+            <button id="agent-new-btn" class="action-btn primary hidden">+ New with AI</button>
             <button id="agent-manual-new-btn" class="action-btn" title="Create an agent by hand">+ New</button>
           </div>
           <div id="agents-list" class="crud-cards"></div>
@@ -18,7 +21,7 @@
           <div id="agent-editor" class="crud-inline-form hidden">
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="agent-back-link">&larr; Agents</a>
-              <a id="agent-ai-btn" class="lib-ai-link" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
+              <a id="agent-ai-btn" class="lib-ai-link hidden" title="Have the Glyphh agent change this agent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h0"/><path d="M17.8 6.2L19 5"/><path d="M12.2 6.2L11 5"/><path d="m3 21 9-9"/><path d="M12.2 11.8L11 13"/></svg> Edit with AI</a>
               <div class="crud-spacer"></div>
               <button id="agent-edit-btn" class="action-btn" type="button" title="Edit this agent by hand">Edit</button>
               <label class="lib-switch" title="Keep this agent's tasks armed">
@@ -37,7 +40,7 @@
 
           <!-- Manual create/edit form — the APP FORM STANDARD (app-add-form's
                shape): breadcrumb back, stacked label-above-input fields for
-               every field the API can persist, Cancel + Save at the bottom. -->
+               every field the store can persist, Cancel + Save at the bottom. -->
           <div id="agent-form" class="crud-inline-form hidden">
             <div class="crud-inline-header">
               <a class="crud-breadcrumb-back" id="agent-form-back">&larr; Agents</a>
@@ -45,42 +48,57 @@
             </div>
             <div id="agent-form-err" class="crud-form-error hidden"></div>
 
+            <!-- The app's standard two-column form shell (app-builder-split):
+                 the 620px field column left on the page gutter, guidance in
+                 the pane on the right. Same shape the Loops and Apps editors
+                 use — a stacked full-width form was crowding both edges. -->
+            <div class="app-builder-split">
+            <div class="app-builder-controls">
+
             <label class="settings-label">Name</label>
             <input id="agent-f-name" type="text" class="settings-input" placeholder="e.g. Morning briefing" spellcheck="false" autocomplete="off" />
 
-            <label class="settings-label">Slug <span class="field-hint-inline">— lowercase letters, digits and dashes</span></label>
+            <label class="settings-label">Slug <span class="field-hint-inline">&mdash; lowercase letters, digits and dashes</span></label>
             <input id="agent-f-slug" type="text" class="settings-input" placeholder="morning-briefing" spellcheck="false" autocomplete="off" pattern="[a-z0-9-]+" />
 
             <label class="settings-label">Description</label>
-            <textarea id="agent-f-desc" class="settings-input" rows="4" placeholder="What this agent is for" spellcheck="true" style="resize:vertical;"></textarea>
+            <textarea id="agent-f-desc" class="settings-input" rows="3" placeholder="What this agent is for" spellcheck="true" style="resize:vertical;"></textarea>
 
-            <label class="settings-label">Scope</label>
-            <select id="agent-f-scope" class="settings-input">
-              <option value="personal">Personal</option>
-              <option value="org">Shared with the org</option>
+            <label class="settings-label">Prompt <span class="field-hint-inline">&mdash; the standing instruction every run opens with</span></label>
+            <textarea id="agent-f-prompt" class="settings-input" rows="6" placeholder="You are the morning briefing agent. Keep it to five bullets…" spellcheck="true" style="resize:vertical;"></textarea>
+
+            <label class="settings-label">Runs on</label>
+            <select id="agent-f-source" class="settings-input">
+              <option value="loop">A coding loop &mdash; a CLI with tools and a folder</option>
+              <option value="provider">A provider and model &mdash; no CLI</option>
             </select>
-            <p class="field-hint">Sharing org-wide needs an org admin — the server refuses it otherwise.</p>
+            <p class="field-hint">A loop brings its own command, tools and working folder. A provider is the model on its own &mdash; the right shape for work that is just thinking and writing.</p>
 
-            <label class="settings-label">Loop</label>
-            <select id="agent-f-loop" class="settings-input"></select>
-            <p class="field-hint">What this agent runs — its manifest decides the model slots and skills below.</p>
+            <div id="agent-f-loop-row">
+              <label class="settings-label">Loop</label>
+              <select id="agent-f-loop" class="settings-input"></select>
+            </div>
 
-            <!-- One dropdown per model slot the chosen loop declares. -->
-            <div id="agent-f-models"></div>
+            <div id="agent-f-provider-row" class="hidden">
+              <label class="settings-label">Provider</label>
+              <select id="agent-f-provider" class="settings-input"></select>
+            </div>
 
-            <!-- Skills: the loop's declared skills as checkboxes, or a free
-                 slug list when the loop declares none. -->
+            <label class="settings-label">Model <span class="field-hint-inline">&mdash; filtered by whichever is chosen above</span></label>
+            <select id="agent-f-model" class="settings-input"></select>
+
+            <!-- Skills the agent may load — the local skills library. -->
             <div id="agent-f-skills"></div>
 
-            <label class="settings-label">Apps <span class="field-hint-inline">— app slugs this agent may drive, comma-separated (optional)</span></label>
+            <label class="settings-label">Apps <span class="field-hint-inline">&mdash; app slugs this agent may drive, comma-separated (optional)</span></label>
             <input id="agent-f-apps" type="text" class="settings-input" placeholder="crm, receipts" spellcheck="false" autocomplete="off" />
 
             <label class="settings-label">Scheduled tasks</label>
-            <p class="field-hint" style="margin-top:-6px;">A task is a binding: an existing skill, loop or app command, plus arguments and a schedule.</p>
+            <p class="field-hint" style="margin-top:-6px;">A task is a binding: an existing task or skill, plus a schedule.</p>
             <div id="agent-f-tasks"></div>
             <button id="agent-f-task-add" class="action-btn" type="button" style="align-self:flex-start;">+ Add task</button>
 
-            <label class="settings-label">Guardrails <span class="field-hint-inline">— blank = inherit the org policy; the org level stays a ceiling</span></label>
+            <label class="settings-label">Guardrails <span class="field-hint-inline">&mdash; blank = no cap</span></label>
             <div class="lib-guard-grid">
               <div><label class="settings-label agent-f-gr-label">Max input tokens</label><input id="agent-f-gr-maxin" type="number" min="0" class="settings-input" placeholder="per call" /></div>
               <div><label class="settings-label agent-f-gr-label">Max output tokens</label><input id="agent-f-gr-maxout" type="number" min="0" class="settings-input" placeholder="per call" /></div>
@@ -95,6 +113,33 @@
               <div style="flex:1;"></div>
               <button id="agent-f-cancel" class="action-btn">Cancel</button>
               <button id="agent-f-save" class="action-btn primary">Save</button>
+            </div>
+            </div>
+
+            <div class="app-builder-preview">
+              <div class="layout-setup-pane">
+                <label class="settings-label" style="margin-top:0;">What an agent is</label>
+                <p class="settings-hint">A session is you driving a loop. An <b>agent</b> is that same machinery running without you &mdash; on a schedule, with a standing brief, reporting what it did.</p>
+
+                <label class="settings-label">Prompt</label>
+                <p class="settings-hint">The brief every run opens with, before the task's own program. Write it like you'd brief a person on their first day: what the job is, what "done" looks like, what to leave alone.</p>
+
+                <label class="settings-label">Loop and model</label>
+                <p class="settings-hint">The <b>loop</b> is the CLI that does the work &mdash; it brings its own command, folder and tools. The <b>model</b> is optional: leave it on the loop's own unless this agent needs something different. The list narrows to what the chosen loop can actually address.</p>
+
+                <label class="settings-label">Skills and apps</label>
+                <p class="settings-hint">What it may reach for. Skills are instruction packs from the Skills page; apps are the slugs it's allowed to drive. Both are permissions, not instructions &mdash; naming one here doesn't make the agent use it.</p>
+
+                <label class="settings-label">Scheduled tasks</label>
+                <p class="settings-hint">Each task binds something that already exists &mdash; a task or a skill &mdash; to a schedule. They fire on the agent's loop with its prompt in front. Tasks only run while the agent is <b>Live</b>; pausing it parks every one without losing the schedule.</p>
+
+                <label class="settings-label">Guardrails</label>
+                <p class="settings-hint">Ceilings for unattended work, so a loop that misbehaves at 3am can't run all night. Blank means no cap.</p>
+
+                <label class="settings-label">After saving</label>
+                <p class="settings-hint">The detail view is where you operate it: pause it, toggle a task, change a schedule, run one now, and read the output of every firing.</p>
+              </div>
+            </div>
             </div>
           </div>
         </div>

@@ -45,3 +45,23 @@ export async function dispatchRelayMethod(method: string, params: unknown): Prom
   if (!out.ok) throw new Error(out.error);
   return out.result;
 }
+
+// ── Local push bus ───────────────────────────────────────────────────────────
+// THE PURGE: nothing streams off-machine. pty/fs/panel output that used to ride
+// the attach socket lands HERE; the workbench (or the CLI workpanel host)
+// subscribes to render it.
+type PushListener = (channel: string, data: unknown) => void;
+const pushListeners = new Set<PushListener>();
+
+/** Subscribe to pushed frames (pty output, fs watch events, panel frames). */
+export function onLocalPush(fn: PushListener): () => void {
+  pushListeners.add(fn);
+  return () => pushListeners.delete(fn);
+}
+
+/** Push a frame to every local subscriber. Replaces the dead pushToAttach. */
+export function pushLocal(channel: string, data: unknown): void {
+  for (const fn of pushListeners) {
+    try { fn(channel, data); } catch { /* a listener's failure is its own */ }
+  }
+}

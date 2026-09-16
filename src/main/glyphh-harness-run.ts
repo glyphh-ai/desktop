@@ -34,6 +34,7 @@ import { join } from "node:path";
 import { ensureLocalHarnessPod } from "@glyphh/sdk/runtime";
 import type { HarnessWireFrame } from "@glyphh/sdk";
 import { getClient, SERVER_URL } from "./glyphh-client";
+import { mcpCreds } from "./gateway-token";
 import { loadSessions, saveSessions } from "./glyphh-agent-context";
 import { runModel, currentLoop, resolveRoles } from "./loop-selections";
 import { glyphhMode, registerRemotePause } from "./glyphh-agent-permissions";
@@ -43,8 +44,6 @@ import { turnNeedsTools } from "./turn-router";
 import { attachmentImageRefs, type AttachRef } from "./glyphh-agent-attachments";
 import { composeTurn, brandError, type ChatMessage } from "./glyphh-agent-prompt";
 import { lendToolSurface, BRIDGE_TOOL_PREFIX, type LentSurface } from "./harness-mcp-bridge";
-import { pushToAttach, isAttached } from "./attach-client";
-import { toWireFrame } from "./attach-run-frames";
 
 /** Strip the Agent SDK's MCP prefix so tool names read the way the in-process
  *  path emits them (`open_app`, not `mcp__desktop__open_app`). */
@@ -310,12 +309,7 @@ export async function harnessRun(
     // Tee to the broker for cross-surface observation. `threadId` on every frame lets
     // the server record this thread's active run once (broker setActiveRun), so a web
     // client can discover + attach to it.
-    if (publishFrames && isAttached()) {
-      try {
-        const wf = toWireFrame(channel, { ...data }, pubSeq++, runId);
-        if (wf) pushToAttach(`run:${runId}`, { ...wf, ...(chatId ? { threadId: chatId } : {}) });
-      } catch { /* never let publishing perturb the run */ }
-    }
+    // THE PURGE: run frames publish nowhere — the broker is dead.
   };
 
   let lent: LentSurface | null = null;
@@ -325,7 +319,6 @@ export async function harnessRun(
   /** Tool starts — the run's work magnitude for the training capture. */
   let turnsUsed = 0;
 
-  let runSessionMinted = false;
   try {
     // 1. The credential — RUN-SCOPED (his bug, 2026-08-25: a ~20-minute build
     //    outlived the caller's 15-minute access token, and the gateway started
@@ -334,12 +327,13 @@ export async function harnessRun(
     //    device (`run:<id>`) that the finally block RELEASES — so the 12h TTL
     //    is a ceiling, never the lifetime. Falls back to the caller's token on
     //    an old server, which is exactly today's behaviour.
-    let runtimeToken = await getClient().sessions.createRunSession(runId)
-      .then((r) => r.accessToken)
-      .catch(() => "");
-    if (runtimeToken) runSessionMinted = true;
-    else runtimeToken = (await getClient().token()) ?? "";
-    if (!runtimeToken) throw new Error("sign in to run a turn — the local harness needs your access token to reach the gateway");
+    // The gateway lane (2026-09-15): the pod's model calls ride the LiteLLM
+    // gateway on the member's own org-scoped key — metered, governed, never
+    // a personal login.
+    const creds = await mcpCreds();
+    const runtimeToken = creds?.token ?? "";
+    const gatewayBase = creds?.baseUrl?.replace(/\/+$/, "") ?? "";
+    if (!runtimeToken || !gatewayBase) throw new Error("sign in to run a turn — the local harness needs your gateway key to reach the models");
 
     // 2. The turn, assembled exactly as the in-process path assembles it —
     //    the path manifest in the text, the images as real vision blocks.
@@ -431,7 +425,7 @@ export async function harnessRun(
     // per loop for the session's cadence by the SDK's own HTTP layer; a miss
     // degrades to a bindings-only turn, never a blocked one.
     const localLoopProgram = !cloud
-      ? await getClient().loops.get(loopOverride ?? currentLoop()).then((l) => l.code || undefined).catch(() => undefined)
+      ? undefined
       : undefined;
     const pod = getClient().harness({
       url: target.url,
@@ -471,7 +465,7 @@ export async function harnessRun(
       // tool surface (scaffold_app/create_app_entry/build_app/deploy_app),
       // which it lends itself so a run can actually PUBLISH what it built.
       // Without it a cloud agent writes an app and has nowhere to put it.
-      gatewayUrl: `${SERVER_URL}/api/gateway`,
+      gatewayUrl: gatewayBase,
       // The CREDENTIAL differs, and only the credential. A cloud pod already
       // holds its session's own `gy_rk_` (it arrives as this request's bearer
       // and the pod falls back to it), so handing it this machine's token
@@ -587,11 +581,6 @@ export async function harnessRun(
     liveRuns.delete(runId);
     for (const cancel of cancelPauses) cancel();
     lent?.release();
-    // The run's own session dies WITH the run — a credential that outlives its
-    // reason to exist is the only real cost of minting one.
-    if (runSessionMinted) {
-      void getClient().sessions.releaseRunSession(runId).catch(() => { /* expires on its own */ });
-    }
   }
 
   // The flywheel: transcript + outcome are next-era training data.

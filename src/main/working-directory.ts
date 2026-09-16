@@ -19,7 +19,6 @@ import { watch, statSync, type FSWatcher } from "fs";
 import path from "path";
 import os from "os";
 import { getPreference, setPreference } from "./stores/preferences-db";
-import * as cloudFs from "./cloud-fs-router";
 
 const execFileP = promisify(execFile);
 
@@ -437,14 +436,8 @@ export function registerWorkingDirectoryIpc(deps: {
   broadcastToPanels = deps.broadcastToPanels;
   if (deps.onWorkingDirChange) onWorkingDirChange = deps.onWorkingDirChange;
   // CLOUD SESSIONS (2026-08-19): when the composer's active session runs on a
-  // pod, the files:* surface below routes to the pod workspace instead of
-  // local disk. The router shares this module's broadcast plumbing so pod
-  // change events ride the exact same channels the panels already watch.
-  cloudFs.initCloudFsRouter({
-    getMainWindow: deps.getMainWindow,
-    broadcastToPanels: deps.broadcastToPanels,
-    getLocalCwd: () => getWorkingDirectory(),
-  });
+  // THE PURGE: the cloud-fs router died with cloud sessions — every files:*
+  // surface below is LOCAL DISK, unconditionally.
   // Defer watcher start to a setTimeout so any sync work in this fn doesn't
   // get blocked behind fs.watch setup on a potentially-large dir. The
   // watcher is best-effort — if it fails the rest of the app still works.
@@ -454,7 +447,7 @@ export function registerWorkingDirectoryIpc(deps: {
   if (deps.openRecent) openRecentEntry = deps.openRecent;
 
   ipcMain.handle("working-dir:get", () =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudRootOr(getWorkingDirectory()) : getWorkingDirectory());
+    getWorkingDirectory());
   ipcMain.handle("working-dir:recents", () => getWorkingDirRecents());
 
   // ── Recents (rich) ──
@@ -475,11 +468,11 @@ export function registerWorkingDirectoryIpc(deps: {
   // Lightweight git probe used by folder-bound app chrome (Agent app etc.)
   // to surface the current branch when the working folder is a git repo.
   // The caller's existing cloud workspaces — the source chip's space browser.
-  ipcMain.handle("cloud-spaces-list", () => cloudFs.cloudListSpaces());
-  ipcMain.handle("cloud-fs-browse", (_e, scope: string, dir?: string) => cloudFs.cloudBrowse(String(scope || ""), dir));
+  ipcMain.handle("cloud-spaces-list", () => []);   // THE PURGE: cloud spaces are gone
+  ipcMain.handle("cloud-fs-browse", () => ({ ok: false, error: "cloud sessions are gone" }));
 
   ipcMain.handle("files:git-info", (_e, root: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudGitInfo() : gitInfoForDir(root));
+    gitInfoForDir(root));
 
   // List local branches in a repo, with the current one. Used by the
   // Agent app's branch picker dropdown.
@@ -488,7 +481,7 @@ export function registerWorkingDirectoryIpc(deps: {
   // Explicit-only read: null until the user has ever picked a folder —
   // the Code composer gates on this (never on the ~/ fallback).
   ipcMain.handle("working-dir:get-explicit", () =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudRootOr("") : getExplicitWorkingDirectory());
+    getExplicitWorkingDirectory());
 
   // Set the current dir to an already-known path (e.g. picked from recents).
   ipcMain.handle("working-dir:set", (_e, dir: string) => {
@@ -520,35 +513,32 @@ export function registerWorkingDirectoryIpc(deps: {
   // Lazy directory listing for the Workbench file tree. Returns immediate
   // children only — the tree fetches deeper levels on expand.
   ipcMain.handle("files:list-dir", (_e, dir: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudListDir(dir) : listWorkdirDir(dir));
+    listWorkdirDir(dir));
 
   // Recursive NAME search under a root — powers the file tree's search box.
   // The old search only filtered rows already rendered, so anything inside a
   // collapsed (or never-expanded) folder was unfindable.
   ipcMain.handle("files:search", (_e, root: string, query: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudSearch(query) : searchWorkdirFiles(root, query));
+    searchWorkdirFiles(root, query));
 
   // Read a file's text contents. Cap to ~1MB to avoid blowing up the renderer
   // on accidental clicks into a giant binary.
   ipcMain.handle("files:read-file", (_e, filePath: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudReadFile(filePath) : readWorkdirFile(filePath));
+    readWorkdirFile(filePath));
 
   // ── File management (workbench Files panel) ─────────────────────────────
   ipcMain.handle("files:mkdir", async (_e, dirPath: string) => {
-    if (cloudFs.cloudFsActive()) return { ok: false, error: cloudFs.CLOUD_FS_UNSUPPORTED };
     if (typeof dirPath !== "string" || !dirPath) return { ok: false, error: "missing path" };
     try { await fs.mkdir(dirPath, { recursive: true }); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   // Delete = move to the OS trash (recoverable), never a hard unlink.
   ipcMain.handle("files:delete", async (_e, target: string) => {
-    if (cloudFs.cloudFsActive()) return { ok: false, error: cloudFs.CLOUD_FS_UNSUPPORTED };
     if (typeof target !== "string" || !target) return { ok: false, error: "missing path" };
     try { await shell.trashItem(target); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("files:rename", async (_e, oldPath: string, newPath: string) => {
-    if (cloudFs.cloudFsActive()) return { ok: false, error: cloudFs.CLOUD_FS_UNSUPPORTED };
     if (typeof oldPath !== "string" || !oldPath || typeof newPath !== "string" || !newPath) {
       return { ok: false, error: "missing path" };
     }
@@ -560,7 +550,6 @@ export function registerWorkingDirectoryIpc(deps: {
   // Native viewer: macOS gets Quick Look (renders pptx/docx/key/xlsx without
   // any dependency); everywhere else the file opens in its default app.
   ipcMain.handle("files:preview-native", async (_e, filePath: string) => {
-    if (cloudFs.cloudFsActive()) return { ok: false, error: cloudFs.CLOUD_FS_UNSUPPORTED };
     if (typeof filePath !== "string" || !filePath) return { ok: false, error: "missing path" };
     try {
       if (process.platform === "darwin") {
@@ -598,7 +587,6 @@ export function registerWorkingDirectoryIpc(deps: {
     return null;
   }
   ipcMain.handle("files:convert-preview", async (_e, filePath: string) => {
-    if (cloudFs.cloudFsActive()) return { error: cloudFs.CLOUD_FS_UNSUPPORTED };
     if (typeof filePath !== "string" || !filePath) return { error: "missing path" };
     const soffice = await findSoffice();
     if (!soffice) return { error: "no-converter" };
@@ -631,10 +619,10 @@ export function registerWorkingDirectoryIpc(deps: {
   // Write a text file, creating parent directories as needed. Used by the
   // Code workbench's Plan slot to persist <cwd>/plan.md.
   ipcMain.handle("files:write-file", (_e, filePath: string, content: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudWriteFile(filePath, content) : writeWorkdirFile(filePath, content));
+    writeWorkdirFile(filePath, content));
 
   // Unified git diff of the working tree (staged + unstaged + untracked). The
   // workbench Diff slot renders this; returns "" when the tree is clean.
   ipcMain.handle("files:git-diff", (_e, root: string) =>
-    cloudFs.cloudFsActive() ? cloudFs.cloudGitDiff() : gitDiffWorkdir(root));
+    gitDiffWorkdir(root));
 }

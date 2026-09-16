@@ -5,6 +5,9 @@
           <div id="layouts-toolbar" class="crud-toolbar">
             <input id="layout-search" type="text" class="crud-search" placeholder="Search workspaces..." spellcheck="false" autocomplete="off" />
             <button id="layout-new-btn" class="action-btn primary">+ New</button>
+            <button id="layouts-refresh-btn" class="action-btn" title="Refresh" aria-label="Refresh" style="padding:6px 9px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            </button>
           </div>
           <div id="layouts-list" class="crud-cards"></div>
           <div id="layout-editor" class="crud-inline-form hidden">
@@ -38,20 +41,24 @@
             </div>
 
 
-            <label class="settings-label" style="margin-top:16px;">Loop &amp; models</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches to this loop and binds its models. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
-            <div id="layout-loop-row" class="layout-loop-row">
-              <select id="layout-loop-select" class="settings-input"></select>
-              <div id="layout-loop-models" class="layout-loop-models"></div>
-            </div>
+            <!-- Restored from bc47a1d3^ (his order, 2026-09-14) — shown ONLY
+                 when the grid carries the Glyphh agent panel (tool:coding). -->
+            <div id="layout-agent-rows" class="hidden">
+              <label class="settings-label" style="margin-top:16px;">Loop &amp; model</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this loop and its model. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
+              <div id="layout-loop-row" class="layout-loop-row">
+                <select id="layout-loop-select" class="settings-input"></select>
+                <div id="layout-loop-models" class="layout-loop-models"></div>
+              </div>
 
-            <label class="settings-label" style="margin-top:16px;">Agent session</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this workspace opens.</div>
-            <select id="layout-session-mode" class="settings-input">
-              <option value="keep">Keep the current session</option>
-              <option value="new">Start a new session</option>
-              <option value="last">Resume this workspace&rsquo;s last session</option>
-            </select>
+              <label class="settings-label" style="margin-top:16px;">Agent session</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">What the agent&rsquo;s session does when this workspace opens &mdash; &ldquo;resume&rdquo; brings back this workspace&rsquo;s conversation and history.</div>
+              <select id="layout-session-mode" class="settings-input">
+                <option value="keep">Keep the current session</option>
+                <option value="new">Start a new session</option>
+                <option value="last">Resume this workspace&rsquo;s last session</option>
+              </select>
+            </div>
 
             <label class="settings-label" style="margin-top:16px;">Working folder</label>
             <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this folder. Leave empty to keep the current folder.</div>

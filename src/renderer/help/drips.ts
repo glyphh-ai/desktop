@@ -264,6 +264,7 @@ export { loadDrips };
 
 export function initDripsEvents() {
   document.getElementById("drip-new-btn")!.addEventListener("click", () => openDripEditor("", ""));
+  document.getElementById("drips-refresh-btn")?.addEventListener("click", () => { void loadDrips(); });
   document.getElementById("drip-save-btn")!.addEventListener("click", saveDrip);
   document.getElementById("drip-cancel-btn")!.addEventListener("click", closeDripEditor);
   document.getElementById("drip-back-link")!.addEventListener("click", closeDripEditor);

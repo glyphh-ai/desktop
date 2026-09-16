@@ -10,6 +10,8 @@
  */
 
 import fs from "fs";
+import { clearGatewayCreds } from "./gateway-token.js";
+import { primeAllLoopEnv } from "./cli-agents.js";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
@@ -87,11 +89,9 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// Attach lifecycle, wired via lazy import so auth.ts carries no static dep on
-// attach-client (which imports THIS module). Every sign-in/out path funnels
-// through here, so the outbound socket tracks auth exactly.
-function attachStart(): void { void import("./attach-client.js").then((m) => m.startAttach()).catch(() => {}); }
-function attachStop(): void { void import("./attach-client.js").then((m) => m.stopAttach()).catch(() => {}); }
+// THE PURGE: the outbound attach socket is gone — nothing tracks auth but us.
+function attachStart(): void { /* attach is dead */ }
+function attachStop(): void { /* attach is dead */ }
 
 setSignedOutHandler(() => {
   signedIn = false;
@@ -205,6 +205,9 @@ export async function initAuth(): Promise<void> {
       attachStart();
       // Prefs are the SERVER map now (zero-local law); warm it with the session.
       void loadPreferences();
+      // Every loop's env gets the router URL + this member's key NOW, so the
+      // first launch — whichever path composes it — is already proxied.
+      void primeAllLoopEnv();
     }
   }
   if (accountTimer) clearInterval(accountTimer);
@@ -243,6 +246,11 @@ export function logout(): void {
   // `loaded=true`, so the next user's loadPreferences() no-opped and they
   // booted from the prior user's wall state, icon order, and UI state.
   clearPreferences();
+  // THE GATEWAY CREDENTIAL is the same class of leak, and worse: a minted
+  // router key sits in every loop's env file, which is what the CLI actually
+  // reads. Left behind, the next person at this machine keeps authenticating
+  // as the last one and billing their org. Memo + files, both.
+  clearGatewayCreds();
   attachStop();
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory

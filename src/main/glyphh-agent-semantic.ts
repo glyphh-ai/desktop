@@ -10,20 +10,23 @@
  *
  * Connection-sourced ingestion goes through connections.runTool — the same
  * workspace-grant gate as every connector call the agent makes.
+ *
+ * RESTORED from add3f592^ (his order, 2026-09-14) — the purge took these as
+ * collateral of the engine move. The old in-main action gate is gone with
+ * that engine: these now serve over the LOCAL MCP SERVER, and the CLI's own
+ * permission mode is the gate (safe/ask/auto — cli-agents' vocabulary).
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
-import { llmChunk, vectorUpsert, vectorSearch, graphCypher, listCollections } from "./glyphh-app-ai";
-import { getExplicitWorkingDirectory } from "./working-directory";
-import { getClient } from "./glyphh-client";
-import type { GlyphhActionKind } from "./glyphh-agent-permissions";
+import { llmChunk, vectorUpsert, vectorSearch, graphCypher, listCollections } from "./glyphh-app-ai.js";
+import { getExplicitWorkingDirectory } from "./working-directory.js";
+import { getClient } from "./glyphh-client.js";
 
 interface SemanticToolDef {
   name: string;
   doc: string;
   run: (args: Record<string, unknown>) => Promise<string>;
-  action: (args: Record<string, unknown>) => { kind: GlyphhActionKind; title: string; detail?: string };
 }
 
 const MAX_FILES = 50;
@@ -73,15 +76,10 @@ async function indexText(
   return done;
 }
 
-/** Cypher statements that only read. Anything else gates (and audits) as a write. */
-const READ_CYPHER = /^\s*(MATCH|OPTIONAL\s+MATCH|RETURN|CALL\s+SHOW|WITH)\b/i;
-const WRITE_CYPHER = /\b(CREATE|MERGE|DELETE|DETACH|SET|DROP|COPY|ALTER)\b/i;
-
 export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "semantic_collections",
     doc: "semantic_collections(app) — the app's vector collections (name, model, items) and knowledge-graph tables. The map of an app's semantic layer.",
-    action: (a) => ({ kind: "read", title: `Inspect semantic layer of ${String(a.app ?? "")}` }),
     run: async (a) => {
       const slug = appSlug(a);
       // An empty/unbuilt store is a normal answer, not an error — the loops
@@ -99,10 +97,6 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "index_files",
     doc: "index_files(app, collection, paths, chunkChars?) — read working-folder files, chunk, embed, and upsert into the app's vector collection. Text files only; ids are <path>#<n>.",
-    action: (a) => ({
-      kind: "edit",
-      title: `Index ${Array.isArray(a.paths) ? a.paths.length : 0} file(s) into ${String(a.app ?? "")}/${String(a.collection ?? "")}`,
-    }),
     run: async (a) => {
       const slug = appSlug(a);
       const collection = collectionName(a);
@@ -131,7 +125,6 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "index_text",
     doc: "index_text(app, collection, id, text, chunkChars?) — chunk + embed raw text (a paste, an upload, a generated summary) into the app's vector collection under a stable source id.",
-    action: (a) => ({ kind: "edit", title: `Index text "${String(a.id ?? "")}" into ${String(a.app ?? "")}/${String(a.collection ?? "")}` }),
     run: async (a) => {
       const slug = appSlug(a);
       const collection = collectionName(a);
@@ -147,10 +140,6 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "index_connection",
     doc: "index_connection(app, collection, slug, tool, props?) — run a connector tool (Drive list/read, Gmail search, …) and index its output. Rides the workspace connection grants like every connector call.",
-    action: (a) => ({
-      kind: "network",
-      title: `Index ${String(a.slug ?? "?")}.${String(a.tool ?? "?")} into ${String(a.app ?? "")}/${String(a.collection ?? "")}`,
-    }),
     run: async (a) => {
       const app = appSlug(a);
       const collection = collectionName(a);
@@ -169,7 +158,6 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "vector_search",
     doc: "vector_search(app, collection, query, k?, filter?) — semantic retrieval from the app's vector collection. Returns the top-k chunks with scores + source metadata.",
-    action: (a) => ({ kind: "read", title: `Search ${String(a.app ?? "")}/${String(a.collection ?? "")}` }),
     run: async (a) => {
       const slug = appSlug(a);
       const collection = collectionName(a);
@@ -186,15 +174,6 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
   {
     name: "graph_query",
     doc: "graph_query(app, cypher) — Cypher against the app's embedded Kuzu knowledge graph. Reads (MATCH/RETURN/CALL SHOW) gate as reads; CREATE/MERGE/SET/DELETE gate as writes. Create node/rel tables first (CREATE NODE TABLE …).",
-    action: (a) => {
-      const q = String(a.cypher ?? "");
-      const write = WRITE_CYPHER.test(q) || !READ_CYPHER.test(q);
-      return {
-        kind: write ? "edit" : "read",
-        title: `${write ? "Write" : "Query"} knowledge graph of ${String(a.app ?? "")}`,
-        detail: q.slice(0, 200),
-      };
-    },
     run: async (a) => {
       const slug = appSlug(a);
       const q = String(a.cypher ?? "").trim();

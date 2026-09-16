@@ -34,15 +34,9 @@ import fs from "fs";
 import path from "path";
 import { initLocalDb } from "./local-db.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
-import { glyphhPath } from "./app-paths.js";
+import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { AppWorkerSpec, invokeAppWorkerHandler } from "./glyphh-app-worker.js";
 import { getClient } from "./glyphh-client.js";
-import {
-  getConnectorCatalog,
-  refreshConnectorCatalog,
-  getCatalogAge,
-  callConnectorTool,
-} from "./connector-tools-client.js";
 
 // ── wiring (injected by glyphh-app-host at startup) ─────────
 
@@ -65,7 +59,7 @@ function requireDeps(): AppServicesDeps {
 const appDbs = new Map<string, Database.Database>();
 
 export function appDataDir(slug: string): string {
-  return glyphhPath("app-data", slug);
+  return userScopedPath("app-data", slug);
 }
 
 function getAppDb(slug: string): Database.Database {
@@ -242,64 +236,21 @@ export function stopAllSchedules(): void {
 
 const CATALOG_MAX_AGE_MS = 5 * 60_000;
 
-async function freshCatalog() {
-  if (getCatalogAge() > CATALOG_MAX_AGE_MS) await refreshConnectorCatalog();
-  return getConnectorCatalog();
-}
+const CONNECTORS_DEAD = "connections are retired — the driving agent (your CLI) brings its own reach";
 
-function assertDeclaredConnector(declared: Set<string>, connector: string): string {
-  const c = String(connector || "").trim().toLowerCase();
-  if (!c) throw new Error("connector is required");
-  if (!declared.has(c)) throw new Error(`connector not declared in manifest: ${c}`);
-  return c;
-}
-
-/** Each declared connector + whether the caller can actually reach it.
- *  "Connected" is the SERVER's resolved answer (org-shared + personal, already
- *  narrowed by the workspace grant) — not a local account list. */
+/** THE PURGE: the governed connector catalog died with the server's
+ *  connections domain. The three app-facing verbs stay ANSWERABLE so an old
+ *  app gets a sentence instead of a dead socket. */
 export async function connectorStatus(declared: Set<string>): Promise<Array<{ connector: string; connected: boolean; healthy: boolean }>> {
-  const reachable = await getClient().connections.list()
-    .then((connections) => connections.filter((c) => c.enabled).map((c) => c.slug))
-    .catch(() => [] as string[]);
-  const set = new Set(reachable);
-  return [...declared].map((connector) => ({
-    connector,
-    connected: set.has(connector),
-    healthy: set.has(connector),
-  }));
+  return [...declared].map((connector) => ({ connector, connected: false, healthy: false }));
 }
 
-/** Tool catalog for the app's declared connectors (optionally one of them). */
-export async function connectorTools(declared: Set<string>, args: Record<string, unknown>): Promise<Array<{ connector: string; name: string; description: string; inputSchema: Record<string, unknown> }>> {
-  const only = args.connector ? assertDeclaredConnector(declared, String(args.connector)) : null;
-  const catalog = await freshCatalog();
-  return catalog
-    .filter((t) => declared.has(t.slug) && (!only || t.slug === only))
-    .map((t) => ({ connector: t.slug, name: t.name, description: t.description, inputSchema: t.inputSchema }));
+export async function connectorTools(_declared: Set<string>, _args: Record<string, unknown>): Promise<never> {
+  throw new Error(CONNECTORS_DEAD);
 }
 
-/** Invoke a connector tool. Auth lives in yo-server (Pipedream) — the app
- *  never sees tokens, and can only reach connectors it declared. */
-export async function connectorCall(declared: Set<string>, args: Record<string, unknown>): Promise<{ result: string }> {
-  const connector = assertDeclaredConnector(declared, String(args.connector || ""));
-  const tool = String(args.tool || "").trim();
-  if (!tool) throw new Error("tool is required");
-  const toolArgs = args.args && typeof args.args === "object" ? (args.args as Record<string, unknown>) : {};
-  // NAME THE ALTERNATIVES (his rule, 2026-08-25): an unknown tool name used to
-  // surface whatever the upstream said, teaching nothing. The catalog is right
-  // here — check first, and when it misses, LIST what this connector offers.
-  const names = await freshCatalog()
-    .then((c) => c.filter((t) => t.slug === connector).map((t) => t.name))
-    .catch(() => [] as string[]);
-  if (names.length && !names.includes(tool)) {
-    throw new Error(`'${tool}' is not a ${connector} tool. Available ${connector} tools: ${names.join(", ")}. (connector.tools { connector } returns them with their input schemas.)`);
-  }
-  try {
-    return { result: await callConnectorTool(connector, tool, toolArgs) };
-  } catch (e) {
-    const detail = (e as Error).message;
-    throw new Error(names.length ? `${detail} (${connector} tools: ${names.join(", ")})` : detail);
-  }
+export async function connectorCall(_declared: Set<string>, _args: Record<string, unknown>): Promise<never> {
+  throw new Error(CONNECTORS_DEAD);
 }
 
 // ── notifications (notify.send) ─────────────────────────────

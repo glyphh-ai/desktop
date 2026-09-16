@@ -40,9 +40,9 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { glyphhPath, appsRoot, appDir } from "./app-paths.js";
+import { userScopedPath, glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
-import { getClient } from "./glyphh-client.js";
+import * as appsStore from "./apps-store.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
@@ -51,12 +51,6 @@ import {
   initAppServices, dbExec, cronSchedule, cronCancel, cronList, notifySend,
   connectorStatus, connectorTools, connectorCall,
 } from "./glyphh-app-services.js";
-import {
-  llmEmbed, llmChunk,
-  vectorUpsert, vectorSearch, vectorDelete,
-  graphCypher,
-} from "./glyphh-app-ai.js";
-import { agentRun } from "./glyphh-app-agent.js";
 import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
 import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 
@@ -133,22 +127,16 @@ const KNOWN_CAPABILITIES = new Set([
 const DARWIN_ONLY_CAPABILITIES = new Set(["contacts.search", "messages.send"]);
 
 function customAppsDir(): string {
-  return glyphhPath("custom-apps");
+  return userScopedPath("custom-apps");
 }
 
 /** The active account's org id — the namespace for locally-held apps. Cached
  *  after the first resolve; best-effort (a pre-auth or offline call returns
  *  null and the caller falls back to the legacy flat root). */
-let cachedOrgId: string | null = null;
 async function currentOrgId(): Promise<string | null> {
-  if (cachedOrgId) return cachedOrgId;
-  try {
-    const org = await getClient().org.get();
-    cachedOrgId = org?.id || null;
-    return cachedOrgId;
-  } catch {
-    return null;
-  }
+  // THE PURGE: no server org — locally-held apps live under the flat root
+  // (a bundle's publisherOrgId still namespaces marketplace-era installs).
+  return null;
 }
 
 /** Directories that hold a registered Glyphh app's UI and must get the app-session
@@ -189,14 +177,13 @@ export async function registerAppInPlace(appProjectDir: string, manifestJson: st
   };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === manifest.slug)).catch(() => undefined);
-    const client = getClient();
     if (existing) {
       // Config vars (secrets) are USER data — preserve them across a re-register.
       const secrets = (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets;
       if (secrets && typeof secrets === "object") (fields.launchConfig as Record<string, unknown>).secrets = secrets;
-      await client.apps.updateEntry(existing.slug, { name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+      await appsStore.updateEntry(existing.slug, { name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
     } else {
-      await client.apps.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
+      await appsStore.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
     }
     invalidateOrgApps();
     for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
@@ -342,7 +329,6 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     const existing = await fetchOrgApps()
       .then((apps) => apps.find((a) => a.slug === manifest.slug))
       .catch(() => undefined);
-    const client = getClient();
     if (existing) {
       // Config vars (launchConfig.secrets) are USER data, not bundle data —
       // they must survive app updates, which otherwise replace launchConfig.
@@ -350,14 +336,14 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       if (secrets && typeof secrets === "object") {
         (fields.launchConfig as Record<string, unknown>).secrets = secrets;
       }
-      await client.apps.updateEntry(existing.slug, {
+      await appsStore.updateEntry(existing.slug, {
         name: fields.name,
         nativeRef: fields.execPath,
         config: fields.launchConfig,
       });
       updated = true;
     } else {
-      await client.apps.createEntry({
+      await appsStore.createEntry({
         // Its own kind: the config below is the BUNDLE CONTRACT (capabilities,
         // connectors, tools, worker), which the native allowlist rejects.
         kind: "glyphh",
@@ -532,30 +518,11 @@ async function runCapability(
     case "connector.call":   return connectorCall(connectors, args);
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
-    case "llm.embed":        return llmEmbed(args);
-    case "llm.chunk":        return llmChunk(args);
-    case "llm.complete": {
-      // One-shot completion = agent.run with no tools and a single turn.
-      // Same auth model: the APP's own config-var key, nothing Glyphh-level.
-      const app = await findAppRow(slug);
-      if (!app) throw new Error(`unknown app: ${slug}`);
-      const result = await agentRun(
-        slug, appName,
-        withAppApiKey(app, { ...args, tools: [], maxTurns: 1 }),
-        { tools: [], dispatch: () => Promise.reject(new Error("llm.complete has no tools")) }
-      );
-      return { text: result.text, usage: result.usage };
-    }
-    case "agent.run": {
-      const app = await findAppRow(slug);
-      if (!app) throw new Error(`unknown app: ${slug}`);
-      return agentRun(slug, appName, withAppApiKey(app, args), {
-        tools: (app.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-        // Re-enters callAppTool so every agent tool call is re-validated
-        // against the app's declared tools/capabilities.
-        dispatch: (tool, targs) => callAppTool(slug, tool, targs),
-      });
-    }
+    case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "llm.chunk":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "llm.complete":
+    case "agent.run":
+      throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
     case "secrets.get": {
       const key = String(args.key || "").trim();
       if (!key) throw new Error("key is required");
@@ -580,10 +547,10 @@ async function runCapability(
       const app = await findAppRow(slug);
       return secretKeysFromRow(app?.launchConfig as Record<string, unknown> | undefined);
     }
-    case "vector.upsert":    return vectorUpsert(slug, args);
-    case "vector.search":    return vectorSearch(slug, args);
-    case "vector.delete":    return vectorDelete(slug, args);
-    case "graph.cypher":     return graphCypher(slug, args);
+    case "vector.upsert":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "vector.search":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "vector.delete":    throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
+    case "graph.cypher":     throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
     // Filesystem is brokered + user-scoped: fs.pick (interactive OS dialog)
     // grants a root; read/write only resolve under a granted root. See glyphh-app-fs.
     case "fs.pick":          return fsPick(senderWc, args, slug);
@@ -744,7 +711,7 @@ async function migrateCustomAppsToOrgScoped(): Promise<void> {
         fs.mkdirSync(path.dirname(targetDir), { recursive: true });
         fs.renameSync(sourceDir, targetDir);
         const newExec = path.join(targetDir, path.relative(sourceDir, execPath));
-        await getClient().apps.updateEntry(row.slug, { nativeRef: newExec });
+        await appsStore.updateEntry(row.slug, { nativeRef: newExec });
         moved++;
       } catch (e) {
         console.error(`[glyphh-app] migrate ${row.slug} → org-scoped failed:`, e instanceof Error ? e.message : e);
@@ -871,7 +838,7 @@ export function registerGlyphhAppHost(): void {
       // open that instead of a dead-end error page (his report, 2026-09-09:
       // "FortessAI Marketing failed to open: App bundle is missing").
       try {
-        const mine = await getClient().apps.mine();
+        const mine = await appsStore.mine();
         const hosted = mine.find((a) => a.slug === row.slug || a.id === row.slug)?.prodUrl;
         if (hosted) return { ok: true, fileUrl: hosted, hosted: true };
       } catch { /* offline — fall through to the honest error */ }

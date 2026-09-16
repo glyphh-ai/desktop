@@ -40,6 +40,11 @@ export function registerWorkspacesIpc(): void {
   // Models: the org's EFFECTIVE set (global catalog ∩ org-supported ∩ the
   // caller's grants), not the whole catalog — a workspace can only narrow.
   ipcMain.handle("workspaces-model-catalog", () => wrap(() => getClient().models.available()));
+  // LOOPS — the effective set (org -> role policy) and the org's support list.
+  ipcMain.handle("loops-available", () => wrap(() => getClient().loops.list()));
+  ipcMain.handle("org-loops-list", () => wrap(() => getClient().orgLoops.list()));
+  ipcMain.handle("org-loop-set", (_e, cli: string, enabled: boolean) =>
+    wrap(() => getClient().orgLoops.setEnabled(String(cli), !!enabled)));
   // Shared connections: the org's Pipedream connectors + its custom MCP servers.
   ipcMain.handle("workspaces-org-connectors", () => wrap(async () => {
     const client = getClient();

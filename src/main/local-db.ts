@@ -189,6 +189,69 @@ const MIGRATIONS: Migration[] = [
     version: 7,
     sql: `ALTER TABLE tool_vectors ADD COLUMN paragraph TEXT;`,
   },
+  {
+    // Custom drip presets — LOCAL now (THE PURGE, 2026-09-10): the server's
+    // saved_drips lane is gone; the `.drip save` command and the Drips tab
+    // both persist here.
+    version: 8,
+    sql: `
+      CREATE TABLE IF NOT EXISTS drips (
+        name TEXT PRIMARY KEY,
+        recipe TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `,
+  },
+  {
+    // Scheduled loops (the build, 2026-09-10): a schedule binds a LOOP to a
+    // CLI AGENT on a cron; runs capture the headless output.
+    version: 9,
+    sql: `
+      CREATE TABLE IF NOT EXISTS loop_schedules (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        loop_slug TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS loop_runs (
+        id TEXT PRIMARY KEY,
+        schedule_id TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        duration_ms INTEGER,
+        status TEXT NOT NULL,
+        error TEXT,
+        output TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_schedule ON loop_runs (schedule_id, started_at);
+    `,
+  },
+  {
+    // AGENTS restored (2026-09-11): an agent is a standing worker that OWNS
+    // schedules. Rather than stand up a parallel scheduler, an agent's task
+    // IS a loop_schedules row stamped with its owner — so the existing cron
+    // arming, run capture and run feed all serve it unchanged.
+    //   owner_agent_id  the agent that owns this task (NULL = a loose
+    //                   schedule made straight from the Tasks page)
+    //   kind/target     what fires: a task spec ("task", target = its slug,
+    //                   the legacy loop_slug meaning) or a skill ("skill",
+    //                   target = the skill slug). Existing rows are task
+    //                   specs, hence the defaults.
+    //   args            JSON arguments handed to the target
+    // NOTE: agent_id on this table is the CLI LOOP that runs the task —
+    // named before the rename; it is NOT the owning agent.
+    version: 10,
+    sql: `
+      ALTER TABLE loop_schedules ADD COLUMN owner_agent_id TEXT;
+      ALTER TABLE loop_schedules ADD COLUMN kind TEXT NOT NULL DEFAULT 'task';
+      ALTER TABLE loop_schedules ADD COLUMN target TEXT NOT NULL DEFAULT '';
+      ALTER TABLE loop_schedules ADD COLUMN args TEXT NOT NULL DEFAULT '{}';
+      UPDATE loop_schedules SET target = loop_slug WHERE target = '';
+      CREATE INDEX IF NOT EXISTS idx_loop_schedules_owner ON loop_schedules (owner_agent_id);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

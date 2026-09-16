@@ -37,7 +37,6 @@
 
 import { BrowserWindow, clipboard as osClipboard } from "electron";
 import { registerRelayHandler } from "./relay-client.js";
-import { pushToAttach } from "./attach-client.js";
 import { toCdp, clampDim } from "./panel-input.js";
 import type { PanelNavAction } from "./panel-source.js";
 import type { InputEvent } from "./panel-input.js";
@@ -261,7 +260,10 @@ let seq = 0;
  * The frame/control sink. Production pushes up the attach socket; a test can
  * swap in its own so the capture code under test is identical to shipping.
  */
-let push: (channel: string, data: unknown) => void = (channel, data) => { pushToAttach(channel, data); };
+import { pushLocal } from "./relay-client.js";
+// THE PURGE: nothing streams off-machine — frames land on the local push bus
+// (relay-client.ts); the workbench or the CLI workpanel host subscribes.
+let push: (channel: string, data: unknown) => void = pushLocal;
 export function setPanelPushSink(fn: (channel: string, data: unknown) => void): void { push = fn; }
 
 function mintPanelId(): string {

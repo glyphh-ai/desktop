@@ -1,29 +1,21 @@
 /**
- * ui-state.ts — the workbench's UI state, server-side.
+ * ui-state.ts — the workbench's UI state, ON DISK (THE PURGE, 2026-09-10).
  *
- * ZERO-LOCAL-STORAGE LAW: the app stores nothing locally. The workbench's
- * arrangement — which panels are open in a layout, the geometry the user
- * dragged them into, the session a layout rides — was the last holdout: it
- * lived in `localStorage`, so it was per-DEVICE. Open a layout on the desktop,
- * open it on the web, and you got the server's default placement instead of
- * how you left it.
+ * The workbench's arrangement — which panels are open in a layout, the
+ * geometry the user dragged them into, the session a layout rides — persists
+ * to ~/.glyphh/workspaces/<id>/state.json (main's workspace-state.ts shards
+ * the map per workspace; non-workspace keys land in _global.json).
  *
- * This is a synchronous key → string store mirrored from ONE server pref
- * (`workbenchUiState`), so every existing call site keeps its `localStorage`
- * shape (`get`/`set`/`remove` of a JSON string) while the state itself follows
- * the user. `load()` must resolve before the first read; after that reads are
- * pure memory and writes are optimistic + debounced into one PATCH.
- *
- * NOT blob storage: a pref VALUE is capped at 32KB server-side, so writes evict
- * the least-recently-written entries to stay under budget. The state is a
- * convenience — losing the oldest folder's arrangement is survivable, a
- * rejected 32KB PATCH that drops EVERY arrangement is not.
+ * This stays a synchronous key → string store: `load()` must resolve before
+ * the first read; after that reads are pure memory and writes are optimistic
+ * + debounced into one wsStateSave. The old 32KB server-pref ceiling (and
+ * its eviction) is gone — files have no such budget. One-time migration: a
+ * still-populated `workbenchUiState` server pref seeds the files on first
+ * load, then the files are the truth.
  */
 
-const PREF_KEY = "workbenchUiState";
-/** Serialized ceiling for the whole map. The server rejects a value over 32KB. */
-const MAX_BYTES = 28 * 1024;
-/** Coalesce the burst of writes a single drag produces into one PATCH. */
+const LEGACY_PREF_KEY = "workbenchUiState";
+/** Coalesce the burst of writes a single drag produces into one save. */
 const FLUSH_MS = 800;
 
 interface Entry { v: string; at: number }
@@ -38,7 +30,8 @@ let dirty = false;
 
 const bridge = (): {
   getPreference?: (k: string, d?: unknown) => Promise<unknown>;
-  setPreference?: (k: string, v: unknown) => void;
+  wsStateLoad?: () => Promise<Record<string, Entry>>;
+  wsStateSave?: (snapshot: Record<string, Entry>) => Promise<boolean>;
 } => (window as unknown as { glyphh?: Record<string, never> }).glyphh ?? {};
 
 /** Monotonic write stamp. Date.now() ties within a millisecond during a drag,
@@ -56,8 +49,14 @@ export function loadUiState(): Promise<void> {
   if (!loading) {
     loading = (async () => {
       try {
-        const raw = await bridge().getPreference?.(PREF_KEY, null);
-        const map = typeof raw === "string" ? JSON.parse(raw) : raw;
+        let map: unknown = await bridge().wsStateLoad?.();
+        if (!map || Object.keys(map as object).length === 0) {
+          // MIGRATION: no files yet — the old server pref seeds them (the
+          // next flush writes the files; the pref is never written again).
+          const raw = await bridge().getPreference?.(LEGACY_PREF_KEY, null).catch(() => null);
+          map = typeof raw === "string" ? JSON.parse(raw) : raw;
+          if (map && Object.keys(map as object).length) dirty = true;
+        }
         if (map && typeof map === "object") {
           // Re-stamp in the PERSISTED write order, not iteration order. The
           // stored `at` is a per-session counter — meaningless as a value, but
@@ -146,43 +145,21 @@ function schedule(): void {
   flushTimer = window.setTimeout(flush, FLUSH_MS);
 }
 
-/**
- * The map to store, with the least-recently-written entries evicted until it
- * fits the server's per-value ceiling. Eviction is applied to `mem` too —
- * otherwise the dropped entries would be re-serialized on every later flush
- * and the map would never converge.
- *
- * Returns the OBJECT, not a string: the server measures a value by its own
- * JSON.stringify, and a pre-stringified map arrives re-escaped (every quote
- * becomes \") — roughly double the bytes, against the same 32KB ceiling.
- */
+/** The full map as a plain object — no eviction, files have no 32KB cap. */
 function snapshot(): Record<string, Entry> {
   const out: Record<string, Entry> = {};
   for (const [k, e] of mem) out[k] = e;
-  if (JSON.stringify(out).length <= MAX_BYTES) return out;
-
-  const oldestFirst = [...mem.entries()].sort((a, b) => a[1].at - b[1].at);
-  const evicted: string[] = [];
-  for (const [k] of oldestFirst) {
-    if (mem.size <= 1) break; // never evict the entry that was just written
-    delete out[k];
-    mem.delete(k);
-    evicted.push(k);
-    if (JSON.stringify(out).length <= MAX_BYTES) break;
-  }
-  // Never silent: an evicted key IS a forgotten arrangement somewhere.
-  if (evicted.length) console.warn("[ui-state] over budget — evicted:", evicted.join(", "));
   return out;
 }
 
-/** Push the map to the server. Failures are logged, never thrown: the
- *  in-memory state stays authoritative for this session either way. */
+/** Push the map to disk. Failures are logged, never thrown: the in-memory
+ *  state stays authoritative for this session either way. */
 function flush(): void {
   flushTimer = 0;
-  if (!loaded) return; // schedule() re-arms once the server map is whole
+  if (!loaded) return; // schedule() re-arms once the map is whole
   dirty = false;
   try {
-    bridge().setPreference?.(PREF_KEY, snapshot());
+    void bridge().wsStateSave?.(snapshot());
   } catch (e) {
     console.error("[ui-state] persist failed:", (e as Error).message);
   }
@@ -193,3 +170,8 @@ function flush(): void {
 export function flushUiState(): void {
   if (flushTimer) { clearTimeout(flushTimer); flush(); }
 }
+
+// The last toggle before a refresh must survive. The flush lives with the
+// OWNER module: the platform shell never ran the workbench's pagehide hook,
+// so any write inside the debounce window died with the page.
+window.addEventListener("pagehide", flushUiState);
