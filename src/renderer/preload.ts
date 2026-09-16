@@ -1254,6 +1254,7 @@ contextBridge.exposeInMainWorld("glyphh", {
 
   // Connectors (Pipedream OAuth)
   connectorsGetApps: (search?: string, after?: string, category?: string) => ipcRenderer.invoke("connectors-get-apps", search, after, category) as Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean; next?: string; total?: number }>,
+  connectorsGetPopular: () => ipcRenderer.invoke("connectors-get-popular") as Promise<Array<{ id: string; name: string; description: string; icon?: string; categories?: string[]; installs: number }>>,
   connectorsGetCategories: () => ipcRenderer.invoke("connectors-get-categories") as Promise<Array<{ name: string; count: number; apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }> }>>,
   connectorsGetAccounts: () => ipcRenderer.invoke("connectors-get-accounts") as Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>,
   connectorsConnect: (appSlug: string) => ipcRenderer.invoke("connectors-connect", appSlug) as Promise<{ ok: boolean; error?: string }>,

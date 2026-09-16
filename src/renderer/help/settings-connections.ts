@@ -55,6 +55,9 @@ let tab: "mine" | "discover" = "mine";
 let stateFilter: "all" | "connected" | "not" = "all";
 let query = "";
 let catalog: CatalogApp[] = [];
+/** Popular = most connected across the server, from the fork. */
+let popular: Array<CatalogApp & { installs: number }> = [];
+let popularLoaded = false;
 let catalogQuery = "";
 let catalogAll = false;
 /** The cursor for the directory's next page; empty = the end. */
@@ -252,26 +255,30 @@ function render(): void {
     host.appendChild(table);
   }
 
-  // POPULAR — directory apps not yet connected, three across.
+  // POPULAR — the most connected apps across the server (install counts),
+  // minus what this member already has, three across.
+  if (!popularLoaded) {
+    popularLoaded = true;
+    void window.glyphh.connectorsGetPopular().then((rows) => { popular = rows; if (tab === "mine") render(); }).catch(() => { popular = []; });
+  }
   const have = connectedSlugs();
-  const popular = catalog.filter((a) => !have.has(a.id)).slice(0, 3);
-  if (popular.length) {
+  const show = popular.filter((a) => !have.has(a.id)).slice(0, 3);
+  if (show.length) {
     const sec = document.createElement("div");
     sec.className = "conn2-popular";
     sec.innerHTML = `<div class="skill-group-head"><span>Popular</span></div><div class="conn2-popular-grid"></div>`;
     const grid = sec.querySelector(".conn2-popular-grid") as HTMLElement;
-    for (const a of popular) {
+    for (const a of show) {
       const card = document.createElement("div");
       card.className = "conn2-pop openable";
       card.innerHTML = `${iconForApp(a)}<span class="conn2-name"></span>`;
       (card.querySelector(".conn2-name") as HTMLElement).textContent = a.name;
+      card.title = a.installs ? `${a.installs} connection${a.installs === 1 ? "" : "s"} across Glyphh` : "Featured";
       card.appendChild(connectAppButton(a, true));
       card.addEventListener("click", () => void openDetail({ app: a }));
       grid.appendChild(card);
     }
     host.appendChild(sec);
-  } else if (!catalog.length && !catalogQuery) {
-    void loadCatalog("").then(() => { if (tab === "mine" && catalog.length) render(); });
   }
 }
 

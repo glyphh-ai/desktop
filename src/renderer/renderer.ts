@@ -532,6 +532,7 @@ declare global {
       mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
       // Connectors (Pipedream Connect)
       connectorsGetApps: (search?: string, after?: string, category?: string) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean; next?: string; total?: number }>;
+      connectorsGetPopular: () => Promise<Array<{ id: string; name: string; description: string; icon?: string; categories?: string[]; installs: number }>>;
       connectorsGetCategories: () => Promise<Array<{ name: string; count: number; apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }> }>>;
       connectorsGetAccounts: () => Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>;
       connectorsConnect?: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;

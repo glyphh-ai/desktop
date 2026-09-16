@@ -45,6 +45,15 @@ export class ConnectorManager extends EventEmitter {
 
   // ── Available apps (browse catalog) ───────────────────
 
+  async getPopular(): Promise<Array<ConnectorApp & { installs: number }>> {
+    try {
+      const { apps } = await getClient().connections.popular(6);
+      return apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [], installs: a.installs ?? 0 }));
+    } catch {
+      return [];
+    }
+  }
+
   async getCategories(): Promise<Array<{ name: string; count: number; apps: ConnectorApp[] }>> {
     try {
       const { categories } = await getClient().connections.categories();

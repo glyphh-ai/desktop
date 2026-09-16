@@ -200,6 +200,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     return cm()!.getApps(search, typeof after === "string" ? after : undefined, typeof category === "string" ? category : undefined);
   });
   ipcMain.handle("connectors-get-categories", async () => (cm() ? cm()!.getCategories() : []));
+  ipcMain.handle("connectors-get-popular", async () => (cm() ? cm()!.getPopular() : []));
   ipcMain.handle("connectors-get-accounts", async () => {
     if (!cm()) return [];
     return cm()!.getAccounts();
