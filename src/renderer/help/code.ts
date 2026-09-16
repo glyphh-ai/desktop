@@ -5443,6 +5443,38 @@ export function initCode(): void {
     }));
   }, 2500);
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
+  // SPACES: split the content side into more independent shells (his order, 2026-09-16).
+  const splits = el("space-splits");
+  let spaceSeq = 0;
+  const syncSpaces = (): void => {
+    const n = 1 + (splits?.childElementCount ?? 0);
+    document.body.style.setProperty("--space-count", String(n));
+    // Inline and !important: the template's own inset rule is !important too.
+    const shellEl = document.getElementById("help-overlay");
+    if (shellEl) { shellEl.style.setProperty("right", "auto", "important"); shellEl.style.setProperty("width", "var(--space-w)", "important"); }
+    window.dispatchEvent(new Event("resize"));
+  };
+  const addSpace = (): void => {
+    if (!splits) return;
+    if (splits.childElementCount >= 3) return;   // four shells across is the sane ceiling
+    const id = ++spaceSeq;
+    const cell = document.createElement("div");
+    cell.className = "space-split";
+    const wv = document.createElement("webview") as HTMLElement & { src: string };
+    wv.setAttribute("partition", "persist:yo");
+    wv.setAttribute("allowpopups", "true");
+    wv.setAttribute("src", new URL(`home.html?space=${id}`, window.location.href).href);
+    const x = document.createElement("button");
+    x.type = "button"; x.className = "space-close"; x.title = "Close this space";
+    x.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
+    x.addEventListener("click", () => { cell.remove(); syncSpaces(); });
+    cell.append(wv, x);
+    splits.appendChild(cell);
+    syncSpaces();
+  };
+  el("rail-split-btn")?.addEventListener("click", addSpace);
+  syncSpaces();
+  (window as unknown as { __glyphhAddSpace?: () => void }).__glyphhAddSpace = addSpace;
   el("rail-echo-btn")?.addEventListener("click", () => {
     const w = window as unknown as { __wbEchoShadowPin?: () => void };
     if (w.__wbEchoShadowPin) w.__wbEchoShadowPin(); else openCommandCenter();

@@ -337,6 +337,17 @@ void (async () => {
       go();
       return;
     }
+    // A SPACE (home.html?space=N): the whole content shell, minus the sidebar.
+    if (params.get("space")) {
+      document.documentElement.setAttribute("data-home-scope", "space");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope="space"] #app-rail, [data-home-scope="space"] #rail-collapsed-strip, [data-home-scope="space"] #app-rail-resize, [data-home-scope="space"] #space-splits, [data-home-scope="space"] #panel-wc, [data-home-scope="space"] #shell-drag-strip { display: none !important; }
+        [data-home-scope="space"] body { --rail-w: 0px !important; --space-count: 1 !important; }`;
+      document.head.appendChild(style);
+      document.title = `Space ${params.get("space")} — Glyphh`;
+      // Falls through to the normal boot: this space is a full Glyphh of its own.
+    }
     const urlSection = params.get("section");
     if (urlSection) {
       document.documentElement.setAttribute("data-home-scope", urlSection);

@@ -1103,7 +1103,7 @@ async function boot() {
     "will-attach-webview",
     (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
       const src = String(params?.src || "");
-      webPreferences.preload = src.includes("home.html?solo=tool:coding")
+      webPreferences.preload = (src.includes("home.html?solo=tool:coding") || src.includes("home.html?space="))
         ? path.join(__dirname, "..", "renderer", "preload.js")
         : path.join(__dirname, "glyphh-app-preload.js");
     },

@@ -236,7 +236,7 @@ export class HomeView {
       // A second Glyphh agent PANEL is the shell itself in a webview (his order,
       // 2026-09-16: no cap on open agents): it needs the shell preload, not the app bridge.
       const src = String(params?.src || "");
-      webPreferences.preload = src.includes("home.html?solo=tool:coding")
+      webPreferences.preload = (src.includes("home.html?solo=tool:coding") || src.includes("home.html?space="))
         ? path.join(__dirname, "..", "renderer", "preload.js")
         : path.join(__dirname, "glyphh-app-preload.js");
     });
