@@ -5164,42 +5164,15 @@ ol.docs-list li::before {
 }
 .action-btn.danger { color: var(--danger); border-color: var(--danger-bg); }
 .action-btn.danger:hover { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
-/* White resting, matching yo-web's marketing CTA — the accent→pink
-   gradient wipes in left→right on hover via a ::before layer, so no
-   markup change is needed on the many plain `<button class="action-btn
-   primary">` elements scattered through this file (static and JS-built). */
+/* The primary rests FILLED with the accent gradient with white text in every
+   theme (his order, 2026-09-16); hover lifts it. */
 .action-btn.primary {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-  background: #ffffff;
-  border: none;
-  color: #000;
-  transition: color 220ms ease;
-}
-.action-btn.primary::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
   background: var(--grad-accent);
-  transform: translateX(-100%);
-  transition: none;
+  border: none;
+  color: #fff;
 }
-.action-btn.primary:hover::before,
-.action-btn.primary:active::before,
-.action-btn.primary:focus-visible::before {
-  transform: translateX(0);
-  transition: transform 280ms ease;
-}
-.action-btn.primary:disabled::before {
-  transform: translateX(0);
-  transition: none;
-}
-/* Light theme: a white button vanishes on a light surface — the primary rests
-   FILLED with the accent gradient, so its text is white, not black. */
-[data-theme="light"] .action-btn.primary { color: #fff; }
-[data-theme="light"] .action-btn.primary::before { transform: translateX(0); transition: none; }
+.action-btn.primary:hover:not(:disabled) { color: #fff; background: var(--grad-accent); filter: brightness(1.12); border-color: transparent; }
+.action-btn.primary:disabled { color: #fff; opacity: 0.45; }
 
 .inline-empty {
   padding: 32px 16px;
