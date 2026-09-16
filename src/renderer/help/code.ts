@@ -118,7 +118,7 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
 // Loop: which agent loop runs the session. This chip replaced the old effort
 // dial; the dial's turn/token tiers are gone with it — an attended session is
 // governed by its human, budgets by the resolved model's own limits.
-let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean }> = [
+let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean; cli?: string }> = [
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
@@ -495,7 +495,7 @@ async function refreshLoops(): Promise<void> {
     if (rows.length) {
       // ownKey (a personal BYOK key on the loop) keeps its picker on the
       // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
-      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey }));
+      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey, cli: a.cli ?? "claude" }));
       loopsCanBuild = false;
     }
     // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
@@ -563,6 +563,9 @@ function renderLoopMenu(): void {
       item.type = "button";
       const main = document.createElement("div");
       main.className = "drop-main";
+      // The loop's CLI mark, the same one the rail shows (his order, 2026-09-16).
+      const mark = railCliMarks[l.cli || "claude"];
+      if (mark) { const im = document.createElement("img"); im.className = "loop-mark"; im.src = mark; im.alt = ""; main.appendChild(im); }
       const span = document.createElement("span");
       span.textContent = l.name;
       main.appendChild(span);
@@ -4583,6 +4586,11 @@ function renderRailSessions(): void {
       dot.classList.toggle("pinned", sessPinned(sess.id));
       dot.title = `Local — click to ${sessPinned(sess.id) ? "unpin" : "pin"}`;
       dot.addEventListener("click", (e) => { e.stopPropagation(); sessTogglePin(sess.id); });
+      const mark = railCliMarks[sess.cli];
+      const markEl = document.createElement("span");
+      markEl.className = "code-sess-mark";
+      if (mark) markEl.innerHTML = `<img src="${mark}" alt="" />`;
+      markEl.title = sess.cli;
       const label = document.createElement("span");
       label.className = "code-history-title";
       label.textContent = sess.title;
@@ -4592,7 +4600,7 @@ function renderRailSessions(): void {
       menuBtn.title = "More";
       menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
       menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openSessRowMenu(menuBtn, sess); });
-      row.append(dot, label, menuBtn);
+      row.append(dot, markEl, label, menuBtn);
       row.addEventListener("click", () => sessOpen(sess));
       host.appendChild(row);
     }

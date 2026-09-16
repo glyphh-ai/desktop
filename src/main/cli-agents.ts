@@ -22,6 +22,7 @@
  */
 
 import fs from "fs";
+import { execFileSync } from "child_process";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
@@ -544,6 +545,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
     ? row.cli === "claude" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue")
       : row.cli === "codex" ? (typeof ov.resume === "string" ? ` resume '${ov.resume.replace(/'/g, "")}'` : " resume --last")
       : row.cli === "gemini" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --resume latest")
+      : row.cli === "copilot" || row.cli === "cursor" ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue")
       : ""
     : "";
   // An INITIAL PROMPT seeds the interactive session (claude/codex take it
@@ -659,7 +661,81 @@ export function listCliAgents(): CliAgentListed[] {
 // The head of each file carries the real cwd and the first user message;
 // mtime orders the merged list. (Gemini joins when its store is wired.)
 
-export interface CliSessionRow { id: string; cli: "claude" | "codex" | "gemini"; title: string; cwd: string; mtime: number }
+export type SessionCli = "claude" | "codex" | "gemini" | "copilot" | "cursor";
+export interface CliSessionRow { id: string; cli: SessionCli; title: string; cwd: string; mtime: number }
+
+/** Copilot CLI: one folder per session under ~/.copilot/session-state, with
+ *  workspace.yaml (id, cwd) and events.jsonl (the first user.message is the title). */
+function copilotSessionFiles(): Array<{ file: string; mtime: number; cli: "copilot"; cwd: string }> {
+  const root = path.join(homedir(), ".copilot", "session-state");
+  let ids: string[] = [];
+  try { ids = fs.readdirSync(root); } catch { return []; }
+  const files: Array<{ file: string; mtime: number; cli: "copilot"; cwd: string }> = [];
+  for (const id of ids) {
+    const file = path.join(root, id, "events.jsonl");
+    let cwd = "";
+    try { cwd = /^cwd:\s*(.+)$/m.exec(fs.readFileSync(path.join(root, id, "workspace.yaml"), "utf-8"))?.[1]?.trim() ?? ""; } catch { cwd = ""; }
+    try { const st = fs.statSync(file); if (st.size > 0) files.push({ file, mtime: st.mtimeMs, cli: "copilot", cwd }); } catch { /* no events yet */ }
+  }
+  return files;
+}
+
+function readCopilotSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
+  let head = "";
+  try {
+    const fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(131_072);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    head = buf.toString("utf-8", 0, n);
+  } catch { return null; }
+  let id = "";
+  let title = "";
+  for (const line of head.split("\n")) {
+    if (!line.trim()) continue;
+    let j: { type?: string; data?: { sessionId?: string; content?: string; context?: { cwd?: string } } };
+    try { j = JSON.parse(line) as typeof j; } catch { continue; }
+    if (j.type === "session.start") { id = j.data?.sessionId || id; cwd = cwd || j.data?.context?.cwd || ""; }
+    if (j.type === "user.message" && !title && typeof j.data?.content === "string") title = j.data.content.trim();
+    if (id && title) break;
+  }
+  if (!id) id = path.basename(path.dirname(file));
+  if (!title) return null;
+  return { id, cli: "copilot", title: title.replace(/\s+/g, " ").slice(0, 80), cwd, mtime };
+}
+
+/** Cursor CLI: ~/.cursor/chats/<workspace>/<chatId>/ holds meta.json (cwd,
+ *  timestamps) and store.db, whose meta row names the chat. sqlite3 ships with
+ *  macOS; without it the chat still lists, untitled by its folder. */
+function cursorSessionFiles(): Array<{ file: string; mtime: number; cli: "cursor"; cwd: string }> {
+  const root = path.join(homedir(), ".cursor", "chats");
+  let spaces: string[] = [];
+  try { spaces = fs.readdirSync(root); } catch { return []; }
+  const files: Array<{ file: string; mtime: number; cli: "cursor"; cwd: string }> = [];
+  for (const ws of spaces) {
+    let chats: string[] = [];
+    try { chats = fs.readdirSync(path.join(root, ws)); } catch { continue; }
+    for (const id of chats) {
+      const dir = path.join(root, ws, id);
+      let meta: { cwd?: string; updatedAtMs?: number; hasConversation?: boolean } = {};
+      try { meta = JSON.parse(fs.readFileSync(path.join(dir, "meta.json"), "utf-8")) as typeof meta; } catch { continue; }
+      if (meta.hasConversation === false) continue;
+      files.push({ file: path.join(dir, "store.db"), mtime: Number(meta.updatedAtMs) || 0, cli: "cursor", cwd: meta.cwd || "" });
+    }
+  }
+  return files;
+}
+
+function readCursorSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
+  const id = path.basename(path.dirname(file));
+  let title = "";
+  try {
+    const hex = execFileSync("sqlite3", ["-readonly", file, "select hex(value) from meta where key = '0' limit 1"], { encoding: "utf-8", timeout: 3_000 }).trim();
+    if (hex) title = String((JSON.parse(Buffer.from(hex, "hex").toString("utf-8")) as { name?: string }).name || "");
+  } catch { title = ""; }
+  if (!title) return null;
+  return { id, cli: "cursor", title: title.replace(/\s+/g, " ").slice(0, 80), cwd, mtime };
+}
 
 /** Gemini CLI keeps a chat per session under ~/.gemini/tmp/<project>/chats/,
  *  with the project's folder named in .project_root beside it. */
@@ -755,11 +831,18 @@ function codexSessionFiles(): Array<{ file: string; mtime: number; cli: "codex" 
 }
 
 export function listCliSessions(limit = 40): CliSessionRow[] {
-  const files: Array<{ file: string; mtime: number; cli: "claude" | "codex" | "gemini"; cwd?: string }> = [...claudeSessionFiles(), ...codexSessionFiles(), ...geminiSessionFiles()];
+  const files: Array<{ file: string; mtime: number; cli: SessionCli; cwd?: string }> = [...claudeSessionFiles(), ...codexSessionFiles(), ...geminiSessionFiles(), ...copilotSessionFiles(), ...cursorSessionFiles()];
   files.sort((a, b) => b.mtime - a.mtime);
   const out: CliSessionRow[] = [];
+  const readers: Record<SessionCli, (f: { file: string; mtime: number; cwd?: string }) => CliSessionRow | null> = {
+    claude: (f) => readClaudeSessionHead(f.file, f.mtime),
+    codex: (f) => readCodexSessionHead(f.file, f.mtime),
+    gemini: (f) => readGeminiSessionHead(f.file, f.mtime, f.cwd || ""),
+    copilot: (f) => readCopilotSessionHead(f.file, f.mtime, f.cwd || ""),
+    cursor: (f) => readCursorSessionHead(f.file, f.mtime, f.cwd || ""),
+  };
   for (const f of files.slice(0, limit * 3)) {
-    const row = f.cli === "codex" ? readCodexSessionHead(f.file, f.mtime) : f.cli === "gemini" ? readGeminiSessionHead(f.file, f.mtime, f.cwd || "") : readClaudeSessionHead(f.file, f.mtime);
+    const row = readers[f.cli](f);
     if (row) out.push(row);
     if (out.length >= limit) break;
   }
@@ -858,6 +941,13 @@ export function registerCliAgentsIpc(): void {
       // gemini — the chat file's tail is the session id's first block; the head line carries the full id.
       const g = geminiSessionFiles().find((f) => { try { return fs.readFileSync(f.file, "utf-8").slice(0, 400).includes(`"sessionId":"${String(id)}"`); } catch { return false; } });
       if (g) { fs.rmSync(g.file); return { ok: true }; }
+      // copilot and cursor keep a folder per session; the folder is the id.
+      if (/^[0-9a-f-]{36}$/i.test(String(id))) {
+        const cp = path.join(homedir(), ".copilot", "session-state", String(id));
+        if (fs.existsSync(cp)) { fs.rmSync(cp, { recursive: true, force: true }); return { ok: true }; }
+        const cu = cursorSessionFiles().find((f) => path.basename(path.dirname(f.file)) === String(id));
+        if (cu) { fs.rmSync(path.dirname(cu.file), { recursive: true, force: true }); return { ok: true }; }
+      }
       throw new Error("session not found");
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };

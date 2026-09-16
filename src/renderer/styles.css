@@ -20737,3 +20737,7 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .tabs-list { margin-top: 4px; }
 .tabs-list .conn2-chips { margin: 2px 0 12px; }
 .drip-recipe { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
+.code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
+.code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
