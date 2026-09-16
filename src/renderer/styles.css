@@ -20241,7 +20241,7 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style
 body.echo-dock-tucked #echo-dock-layer::before {
   /* BELOW the drag strip — the traffic lights stay visible no matter what
      (his order, 2026-09-14). */
-  content: ""; position: fixed; top: var(--wb-top-inset, 0px); left: 0; right: 0;
+  content: ""; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0;
   height: 72px;
   background: linear-gradient(to bottom,
     var(--bg) 0%,
@@ -20255,7 +20255,8 @@ body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
 #echo-dock-layer .echo-topbar {
   /* Hug the chrome (his report, 2026-09-14: "drops down way too far") —
      just under the drag strip, wall margins zeroed on the parked bar. */
-  position: fixed; top: calc(var(--wb-top-inset, 0px) + 2px); left: 50%;
+  /* Centered over the CONTENT side, never the whole window: the fixed sidebar owns the left (2026-09-16). */
+  position: fixed; top: calc(var(--wb-top-inset, 0px) + 2px); left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2);
   margin: 0;
   transform: translate(-50%, 0);
   transition: transform 0.22s ease;
@@ -20278,7 +20279,7 @@ body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
    while the dock is tucked, so it never steals clicks otherwise. */
 .echo-dock-hotstrip { display: none; }
 body.echo-dock-tucked .echo-dock-hotstrip {
-  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: 0; right: 0; height: 16px;
+  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 16px;
   z-index: 131; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
