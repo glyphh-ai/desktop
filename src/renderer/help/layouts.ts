@@ -309,7 +309,7 @@ async function renderLoopModels(): Promise<void> {
     layoutLoopModels.innerHTML = `<label class="layout-loop-model">
       <span class="layout-loop-model-label">Model</span>
       <select class="settings-input" data-role="default">${
-        [`<option value="">Auto — loop default</option>`]
+        [`<option value="">Default</option>`]
           .concat(list.map((m) => `<option value="${escLayout(m.id)}"${m.id === picked ? " selected" : ""}>${escLayout(m.name || m.id)}</option>`))
           .join("")
       }</select>
