@@ -20801,43 +20801,9 @@ body.rail-collapsed #app-rail-resize { display: none; }
 .wb-session-search { display: flex; align-items: center; gap: 6px; }
 .wb-session-search input { flex: 1; min-width: 0; }
 
-/* ── SPACES: N independent content shells side by side (2026-09-16) ── */
-body { --space-count: 1; --space-w: calc((100vw - var(--rail-w)) / var(--space-count)); }
-#help-overlay { right: auto !important; width: var(--space-w); }
-#space-splits { position: fixed; top: 0; bottom: 0; left: calc(var(--rail-w) + var(--space-w)); right: 0; display: flex; z-index: 150; }
-#space-splits:empty { display: none; }
-.space-split { position: relative; flex: 1 1 0; min-width: 0; border-left: 1px solid var(--border); background: var(--bg); }
-.space-split webview { position: absolute; inset: 0; width: 100%; height: 100%; }
-.space-close { position: absolute; top: 6px; right: 6px; z-index: 2; width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0.7; }
-.space-close:hover { opacity: 1; color: var(--text); background: var(--hover); }
-/* The primary shell's fixed dock lanes stay inside ITS space. */
-#echo-dock-layer, .echo-dock-hotstrip { right: auto !important; width: var(--space-w); }
-#echo-dock-layer .echo-topbar { left: calc(var(--rail-w, 0px) + var(--space-w) / 2); }
-body.echo-dock-tucked #echo-dock-layer::before { right: auto; width: var(--space-w); }
 
 /* In a CARD the session controls sit at the TOP, so their menus open DOWNWARD:
    upward would land above the card, where the holder clips it (the "dots and
    drips do nothing" of 2026-09-16). */
 .ws-agent-holder .code-view-more-menu, .ws-agent-holder .echo-drip-pop { top: calc(100% + 6px); bottom: auto; }
 
-/* Space chrome: a grip on each split's left edge, a bar with collapse + × at its top right. */
-.space-grip { flex: 0 0 6px; cursor: col-resize; background: transparent; z-index: 3; margin: 0 -3px; position: relative; }
-.space-grip:hover, body.space-resizing .space-grip { background: color-mix(in srgb, var(--accent) 45%, transparent); }
-body.space-resizing, body.space-resizing * { cursor: col-resize !important; user-select: none; }
-body.space-resizing webview { pointer-events: none; }
-.space-bar { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
-.space-btn { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0.7; }
-.space-btn:hover { opacity: 1; color: var(--text); background: var(--hover); }
-.space-split.collapsed webview { visibility: hidden; }
-.space-split.collapsed { background: var(--surface-2); }
-.space-split.collapsed .space-bar { top: 6px; right: auto; left: 50%; transform: translateX(-50%); flex-direction: column; }
-#space-primary-grip { position: fixed; top: 0; bottom: 0; left: calc(var(--rail-w) + var(--space-w) - 3px); width: 6px; cursor: col-resize; z-index: 151; }
-#space-primary-grip:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
-body.space-primary-collapsed #help-overlay > * { visibility: hidden; }
-body.space-primary-collapsed #help-overlay { background: var(--surface-2); }
-#space-primary-grip { display: none; }
-body[style*="--space-count: 2"] #space-primary-grip, body[style*="--space-count: 3"] #space-primary-grip, body[style*="--space-count: 4"] #space-primary-grip { display: block; }
-/* Space edges: the split's left edge is flush (its shell zeroes --band-ml); the primary keeps 7px on its right so the pair reads as one gap. */
-.space-split { border-left: none; }
-.space-grip { margin: 0; flex-basis: 0; width: 0; }
-.space-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: -3px; width: 6px; }
