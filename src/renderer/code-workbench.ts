@@ -2136,6 +2136,8 @@ async function init(): Promise<void> {
       pendingSlotState?: Record<string, unknown>;
       /** Edge-driven: this card owns its column — nothing stacks under it. */
       flowSolo?: boolean;
+      /** Took another card's seat (a view switch): keeps that card's place in the flow, agent or not. */
+      seated?: boolean;
       /** WEB: the card's streamed-panel handle. Card teardown must dispose it
        *  or the desktop keeps casting to a removed element. */
       streamed?: StreamedPanelHandle;
@@ -3794,10 +3796,12 @@ async function init(): Promise<void> {
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
       const cols: TileEntry[][] = [];
       for (const e of cards) {
-        const solo = e.tile.kind === "agent" || e.flowSolo === true;
+        // An agent card that took a terminal's SEAT keeps that terminal's place
+        // in the flow (his rule, 2026-09-16); only a fresh agent is solo.
+        const solo = (e.tile.kind === "agent" && !e.seated) || e.flowSolo === true;
         const target = solo
           ? undefined
-          : cols.find((col) => col.length < 2 && !col.some((c) => c.tile.kind === "agent" || c.flowSolo === true));
+          : cols.find((col) => col.length < 2 && !col.some((c) => (c.tile.kind === "agent" && !c.seated) || c.flowSolo === true));
         if (target) target.push(e);
         else cols.push([e]);
       }
@@ -4710,6 +4714,7 @@ async function init(): Promise<void> {
         openList.splice(at, 0, e);
         e.memKey = h.donor.memKey;
         e.flowSolo = h.donor.flowSolo;
+        e.seated = true;
         closeCard(h.donor, { ...h.closeOpts });
       } else if (echoGrid && !openingLayout) {
         // FULL grid (his order, 2026-08-30 — the wipe rule is retired): the
