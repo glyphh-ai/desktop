@@ -4850,7 +4850,22 @@ async function init(): Promise<void> {
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
     // The terminal ⇄ chat SWITCH on a card: same seat, same loop, in place — never the door that could open a second panel.
-    (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat = (id) => { openAgentChatCard(id); };
+    (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat = (id) => {
+      // THE SLOT IS THE THING (his rule, 2026-09-16): the conversion lands in the
+      // terminal's own slot, and never takes the chat away from another loop in
+      // another slot. When the singleton chat is another loop's, this loop gets
+      // its own full panel in the terminal's seat.
+      const seated = openList.find((x) => x.card && x.tile.kind === "agent");
+      const bound = seated?.card?.dataset.boundAgent;
+      if (seated && bound && bound !== id) {
+        const term = openList.find((x) => x.tile.slug === `agent:${id}`);
+        if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
+        openAppCard(agentInstanceTile(id));
+        if (term && seatHandoff) { seatHandoff = null; closeCard(term, { parkTerms: true }); }
+        return;
+      }
+      openAgentChatCard(id);
+    };
 
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
