@@ -184,9 +184,14 @@ function paintChips(): void {
     mc.title = `${m.hint} — Shift+Tab cycles`;
     mc.className = `code-chip mode-${m.id}`;
   }
-  // The loop chip is retired (one loop) — hidden, not deleted.
   const ec = el("code-effort-chip");
-  if (ec) ec.classList.add("hidden");
+  if (ec) {
+    const lp = loops.find((x) => x.id === activeLoop()) ?? loops[0];
+    ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
+    ec.title = lp?.description ?? "Which agent loop runs this session";
+    ec.className = "code-chip";
+    ec.setAttribute("aria-disabled", "false");
+  }
 }
 
 function setMode(id: (typeof MODES)[number]["id"]): void {
@@ -271,8 +276,14 @@ const LOOP_PROVIDER: Record<string, string> = {
 };
 
 function modelsForLoop(): AvailModel[] {
-  // One loop, every model the gateway serves (the org's catalog + its own).
-  return availModels.filter((m) => m.pickerVisible !== false);
+  const l = loops.find((x) => x.id === activeLoop());
+  const prov = LOOP_PROVIDER[l?.description ?? ""];
+  const vis = availModels.filter((m) => m.pickerVisible !== false);
+  // A loop with NO personal key rides the gateway (BYOK wins; org key is
+  // the default lane) — its picker is every model the gateway can serve.
+  if (!prov || (gatewayLaneOn && !l?.ownKey)) return vis;
+  const scoped = vis.filter((m) => m.providerSlug === prov);
+  return scoped.length ? scoped : vis;
 }
 
 function selectedModel(): AvailModel | null {
@@ -469,13 +480,22 @@ async function refreshLoops(): Promise<void> {
   // LOOPS are the configured CLI loops (his ruling, 2026-09-11: the CLI is
   // the loop) — the same roster the wall's agent tiles ride. description
   // carries the cli name; the model chip filters by it.
-  // ONE LOOP (his ruling, 2026-09-15): the Glyphh agent through the gateway.
-  // The picker is the MODEL dropdown (model-picker.ts over the catalog); the
-  // loop chip is retired.
-  loops = [{ id: "glyphh", name: "Glyphh", description: "" }];
-  loopsCanBuild = false;
-  glyphhLoop = "glyphh";
-  paintChips();
+  try {
+    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean }> }> }).cliAgentsList?.();
+    const rows = r?.ok ? r.agents.filter((a) => a.enabled !== false) : [];
+    if (rows.length) {
+      // ownKey (a personal BYOK key on the loop) keeps its picker on the
+      // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
+      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey }));
+      loopsCanBuild = false;
+    }
+    // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
+    // loop decides what a session with no loop of its own opens on; empty
+    // means "my role's default", which /api/loops/available flags. Only
+    // then does first-in-the-list apply.
+    if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = await defaultLoopId() || loops[0]?.id || "default";
+    paintChips();
+  } catch { /* offline — the built-in default stands */ }
 }
 
 function renderLoopMenu(): void {

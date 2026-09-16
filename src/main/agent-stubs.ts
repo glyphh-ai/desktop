@@ -20,6 +20,7 @@ const RETIRED =
 
 /** Channels whose callers expect the { ok, error } envelope. */
 const ENVELOPE = [
+  "agent-dock:capture-target",
   "app-clone",
   "org-clients", "org-client-create", "org-client-cap", "org-client-detach",
   "app-collaborator-remove", "app-collaborator-set", "app-collaborators",
@@ -31,6 +32,7 @@ const ENVELOPE = [
   "files:r2-diff",
   "harness-stop-run",
   "hosting-deploy", "hosting-destroy", "hosting-status",
+  "loop-apply-config", "loop-role-set",
   "marketing-link-create", "marketing-link-delete", "marketing-link-update", "marketing-links",
   "memory-amend", "memory-browse", "memory-forget", "memory-graph", "memory-search",
   "org-custom-models-delete", "org-custom-models-list", "org-custom-models-save",
@@ -49,6 +51,9 @@ const ENVELOPE = [
   "app-source-restore",
   "app-traffic",
   "org-domains-traffic",
+  "glyphh-threads-delete",
+  "glyphh-threads-get",
+  "glyphh-threads-push",
   "library-admin-queue",
   "library-admin-review",
   "library-loop-create",
@@ -105,14 +110,16 @@ const ENVELOPE = [
 ] as const;
 
 /** Channels whose callers destructure a bare array. */
-const EMPTY_LIST: readonly string[] = [];
+const EMPTY_LIST = [
+  "glyphh-threads-list",
+] as const;
 
 export function registerAgentStubs(): void {
   for (const ch of ENVELOPE) {
     ipcMain.handle(ch, () => ({ ok: false, error: RETIRED }));
   }
   for (const ch of EMPTY_LIST) {
-    ipcMain.handle(String(ch), () => []);
+    ipcMain.handle(ch, () => []);
   }
   // Shape-specific dead ends — callers read named fields, not the envelope.
   // Background/resident mode is gone — report it off, refuse to arm it.
