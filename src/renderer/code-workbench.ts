@@ -3943,6 +3943,7 @@ async function init(): Promise<void> {
     };
     /** With a LAYOUT on stage the wall is fully invisible behind it — the
      *  cards are the surface. The ⌃⌥ / eye shadow peek brings it back. */
+    let dockProofTimer = 0;
     function syncWallVisibility(): void {
       if (!echoWired) return;
       const layoutUp = !!echoGrid && echoGrid.cells.length > 0;
@@ -3967,6 +3968,17 @@ async function init(): Promise<void> {
       const dockTucked = hidden && autoHideOn;
       if (bar) bar.style.visibility = "";
       document.body.classList.toggle("echo-dock-tucked", dockTucked);
+      // DOCK PROOF (2026-09-16): one line per visibility change, after layout settles.
+      window.clearTimeout(dockProofTimer);
+      dockProofTimer = window.setTimeout(() => {
+        const live = document.querySelector<HTMLElement>(".echo-topbar");
+        const r = live?.getBoundingClientRect();
+        const layer = document.getElementById("echo-dock-layer")?.getBoundingClientRect();
+        console.warn("[dock] sync", JSON.stringify({ hidden, autoHideOn, tucked: dockTucked, parked: !!live?.closest("#echo-dock-layer"),
+          bar: r ? `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}` : "absent",
+          layer: layer ? `${Math.round(layer.left)},${Math.round(layer.top)} ${Math.round(layer.width)}x${Math.round(layer.height)}` : "absent",
+          stage: `${stage.clientWidth}x${stage.clientHeight}`, cards: openList.filter((e) => e.card).length }));
+      }, 600);
       if (!dockTucked) document.body.classList.remove("echo-dock-peek");
       // The CC + reset buttons live in the COMPOSER'S side band now (help/
       // code.ts DOM) — a body class carries "needed": only over LOOSE cards; a
