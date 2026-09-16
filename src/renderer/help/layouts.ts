@@ -7,7 +7,6 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
-import { planGates } from "./plan-gate.js";
 
 /** Rewrite a workspace's launcher/dock tile key across the persisted order
  *  prefs (the command center owns these: ccIconOrder = page order,
@@ -265,10 +264,6 @@ const layoutLoopModels = document.getElementById("layout-loop-models");
 let builderLoop = "";
 let builderModelSelections: Record<string, string> = {};
 let builderLoopRows: Array<{ id: string; name: string; cli: string; ownKey: boolean }> = [];
-const BUILDER_LOOP_PROVIDER: Record<string, string> = {
-  claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor",
-};
-
 /** The Loop/Session rows exist only for a workspace hosting the agent. */
 function updateAgentRows(): void {
   const hasAgent = builderCells.some((c) => (c.panelId || "").trim().toLowerCase() === "tool:coding");
@@ -289,30 +284,31 @@ async function ensureLoopOptions(): Promise<void> {
   } catch { layoutLoopSelect.innerHTML = `<option value="">Leave as-is</option>`; }
 }
 
-/** The picked loop's MODEL dropdown — "" = Auto (the loop's own default). */
+/** The same list the agent's own Model picker shows for a loop (main's
+ *  loop-models: the gateway's list when the lane is on, else the org catalog
+ *  by the CLI's vendor), as <option>s. Grouped by provider when it spans more than one. */
+async function loopModelOptionsHtml(loopId: string, picked: string, blank: string): Promise<string> {
+  const r = await window.glyphh.loopModels(loopId).catch(() => null);
+  const models = r?.ok ? r.models : [];
+  const opt = (m: { id: string; name: string }) => `<option value="${escLayout(m.id)}"${m.id === picked ? " selected" : ""}>${escLayout(m.name || m.id)}</option>`;
+  const providers = [...new Set(models.map((m) => m.providerSlug))];
+  const body = providers.length > 1
+    ? providers.map((p) => `<optgroup label="${escLayout(p)}">${models.filter((m) => m.providerSlug === p).map(opt).join("")}</optgroup>`).join("")
+    : models.map(opt).join("");
+  const stray = picked && !models.some((m) => m.id === picked) ? `<option value="${escLayout(picked)}" selected>${escLayout(picked)} (not on this loop's list)</option>` : "";
+  return `<option value="">${escLayout(blank)}</option>${stray}${body}`;
+}
+
+/** The picked loop's MODEL dropdown — "" = Default (the loop's own). */
 async function renderLoopModels(): Promise<void> {
   if (!layoutLoopModels) return;
   if (!builderLoop) { layoutLoopModels.innerHTML = ""; return; }
   layoutLoopModels.innerHTML = `<div class="settings-hint">Loading models…</div>`;
   try {
-    const [catalog, gates] = await Promise.all([
-      window.glyphh.workspacesModelCatalog?.(),
-      planGates().catch(() => null),
-    ]);
-    const models = (catalog?.ok ? catalog.data ?? [] : []) as Array<{ id: string; name: string; providerSlug?: string }>;
-    const row = builderLoopRows.find((l) => l.id === builderLoop);
-    const prov = BUILDER_LOOP_PROVIDER[row?.cli ?? ""];
-    const gatewayLane = !!gates?.gatewayAllowed && !row?.ownKey;
-    const pool = !prov || gatewayLane ? models : models.filter((m) => m.providerSlug === prov);
-    const list = pool.length ? pool : models;
     const picked = builderModelSelections["default"] ?? "";
     layoutLoopModels.innerHTML = `<label class="layout-loop-model">
       <span class="layout-loop-model-label">Model</span>
-      <select class="settings-input" data-role="default">${
-        [`<option value="">Default</option>`]
-          .concat(list.map((m) => `<option value="${escLayout(m.id)}"${m.id === picked ? " selected" : ""}>${escLayout(m.name || m.id)}</option>`))
-          .join("")
-      }</select>
+      <select class="settings-input" data-role="default">${await loopModelOptionsHtml(builderLoop, picked, "Default")}</select>
     </label>`;
     layoutLoopModels.querySelectorAll<HTMLSelectElement>("select[data-role]").forEach((sel) => {
       sel.addEventListener("change", () => {
@@ -651,9 +647,20 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   const fields = document.createElement("div");
   fields.className = "layout-cell-fields";
   fields.appendChild(selectRow("View", [["", "Workspace default"], ["glyphh", "Glyphh"], ["cli", "CLI"]], cfg.view ?? "", (v) => setCellValue(i, "view", v)));
+  const model = document.createElement("label");
+  model.className = "layout-cell-field";
+  model.innerHTML = `<span class="layout-cell-field-label">Model</span><select class="settings-input"><option value="">Workspace default</option></select>`;
+  const msel = model.querySelector("select") as HTMLSelectElement;
+  msel.addEventListener("change", () => setCellValue(i, "model", msel.value));
+  // The cell's loop, else the workspace's: the model list follows whichever is in force.
+  const paintModels = async (loopId: string): Promise<void> => {
+    msel.innerHTML = await loopModelOptionsHtml(loopId, cfg.model ?? "", "Workspace default");
+    if (!loopId) msel.innerHTML = `<option value="">Workspace default</option>${cfg.model ? `<option value="${escLayout(cfg.model)}" selected>${escLayout(cfg.model)}</option>` : ""}`;
+  };
   if (c.panelId === "tool:coding") {
-    fields.appendChild(selectRow("Loop", [["", "Workspace default"], ...builderLoopRows.map((l): [string, string] => [l.id, l.name])], cfg.loop ?? "", (v) => setCellValue(i, "loop", v)));
+    fields.appendChild(selectRow("Loop", [["", "Workspace default"], ...builderLoopRows.map((l): [string, string] => [l.id, l.name])], cfg.loop ?? "", (v) => { setCellValue(i, "loop", v); void paintModels(v || builderLoop); }));
   }
+  void paintModels(cfg.loop || builderLoop);
   const folder = document.createElement("label");
   folder.className = "layout-cell-field";
   folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
@@ -663,12 +670,6 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   pick.addEventListener("click", () => { void window.glyphh.layoutsPickFolder().then((dir) => { if (dir) { fin.value = dir; setCellValue(i, "folder", dir); } }); });
   clear.addEventListener("click", () => { fin.value = ""; setCellValue(i, "folder", ""); });
   fields.appendChild(folder);
-  const model = document.createElement("label");
-  model.className = "layout-cell-field";
-  model.innerHTML = `<span class="layout-cell-field-label">Model</span><input class="settings-input" placeholder="Workspace default" spellcheck="false" />`;
-  const min = model.querySelector("input") as HTMLInputElement;
-  min.value = cfg.model ?? "";
-  min.addEventListener("input", () => setCellValue(i, "model", min.value.trim()));
   fields.appendChild(model);
   fields.appendChild(selectRow("Session", [["", "Workspace default"], ["keep", "Keep the current session"], ["new", "Start a new session"], ["last", "Resume the last session"]], cfg.session ?? "", (v) => setCellValue(i, "session", v)));
   row.appendChild(fields);
