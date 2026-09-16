@@ -5378,7 +5378,9 @@ export function initCode(): void {
     if (peekTimer) return;
     peekTimer = window.setTimeout(() => {
       peekTimer = null;
-      if (document.querySelector(RAIL_POPUPS)) return;   // a popup is still open: keep the sidebar
+      // A popup that is actually SHOWING keeps the sidebar; hidden dropdowns parked in the DOM don't count.
+      const showing = Array.from(document.querySelectorAll<HTMLElement>(RAIL_POPUPS)).some((n) => { const r = n.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(n).visibility !== "hidden"; });
+      if (showing) return;
       document.body.classList.remove("rail-peek");
     }, 350);
   });
