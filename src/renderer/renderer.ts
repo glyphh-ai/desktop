@@ -42,7 +42,7 @@ type SavedPanelApp = {
 type Connection = {
   id: string; accountId: string; appSlug: string; appName: string;
   label: string | null; healthy: boolean; hiddenTools: string[]; createdAt: string;
-  org?: boolean;
+  org?: boolean; shared?: boolean; connected?: boolean;
   // Governance, mirrored from preload.ts Connection.
   agentAllowed?: boolean; agentTools?: number; agentAvailable?: number;
 };

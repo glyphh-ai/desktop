@@ -109,7 +109,11 @@ export async function loadSettingsConnections(): Promise<void> {
       key: `pd:${c.id}`,
       kind: c.org ? "org" : "pipedream",
       name: c.label || c.appName,
-      sub: c.org ? "Org connection" : c.appName,
+      // ORG rows say what the member has to do: nothing for a shared account
+      // (the org's, connected for everyone), connect their own otherwise.
+      sub: c.org
+        ? (c.shared ? "Org connection · shared account" : c.connected ? "Org connection · your account is connected" : "Org connection · connect your account")
+        : c.appName,
       // ON = at least one tool exposed. hiddenTools carries the truth.
       enabled: true,
       icon: null,
@@ -315,6 +319,27 @@ async function buildEntryForm(panel: HTMLElement, e: Entry): Promise<void> {
     e.name, "", readOnly, (v) => e.mcp
       ? window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { name: v })
       : window.glyphh.connectionRename(e.conn!.id, v)));
+
+  // A per-member ORG connection the member hasn't authorized yet: the Connect
+  // button runs the same OAuth flow + New connection uses, for this app.
+  if (e.conn?.org && !e.conn.shared && !e.conn.connected) {
+    const wrap = document.createElement("div");
+    wrap.className = "set-pref-row";
+    wrap.innerHTML = `<div class="set-pref-text"><div class="set-pref-title">Your account</div><div class="set-pref-desc">Your organization added this app. Connect your own account to use it.</div></div><div class="set-pref-value"></div>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "action-btn primary";
+    btn.textContent = "Connect account";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "Connecting…";
+      const r = await (window.glyphh.connectorsConnect?.(e.conn!.appSlug) ?? Promise.resolve({ ok: false, error: "Connect is not available here." })).catch((err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      if (!r.ok) { btn.disabled = false; btn.textContent = "Connect account"; wrap.querySelector(".set-pref-desc")!.textContent = r.error || "Couldn't connect."; return; }
+      await loadSettingsConnections();
+    });
+    wrap.querySelector(".set-pref-value")!.appendChild(btn);
+    panel.appendChild(wrap);
+  }
 
   if (e.mcp && !readOnly) {
     panel.appendChild(fieldRow("Remote MCP server URL", "The endpoint the server dials.",

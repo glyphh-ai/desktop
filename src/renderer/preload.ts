@@ -50,8 +50,12 @@ export interface Connection {
   healthy: boolean;
   hiddenTools: string[];
   createdAt: string;
-  /** Org-SHARED connection (Configure → Connections) — read-only here. */
+  /** An ORG connection (admin-added) — read-only here. */
   org?: boolean;
+  /** A shared org account every member rides; nothing to connect. */
+  shared?: boolean;
+  /** An account is authorized (always true for a shared org connection). */
+  connected?: boolean;
   /** Governance, from the resolved catalog: false = this connection is
    *  connected but BLOCKED for the caller (workspace/org policy) — agents
    *  cannot call it. Undefined = governance unknown (offline). */

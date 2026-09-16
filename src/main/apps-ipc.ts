@@ -474,8 +474,11 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
       // 2026-09-14): what the org admin installs on the console is a whitelist
       // for the New-connection picker under governance, and invisible here
       // otherwise. Governance badges come from the resolved catalog by app.
+      // The server's list carries the org's connections too (his ruling,
+      // 2026-09-16): a shared one arrives connected, a per-member one connects
+      // once this member authorizes their own account.
       const connections = personal.map((c) => {
-        connIndex.set(c.id, { slug: c.appSlug, org: false });
+        connIndex.set(c.id, { slug: c.appSlug, org: !!c.org });
         return {
           id: c.id,
           accountId: c.id,
@@ -483,10 +486,11 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
           appName: c.appName || c.name || c.appSlug,
           label: c.label,
           healthy: c.healthy,
-          connected: true,
+          connected: c.connected ?? true,
           hiddenTools: [] as string[],
           createdAt: "",
-          org: false,
+          org: !!c.org,
+          shared: !!c.shared,
           ...governance(c.appSlug),
         };
       });
