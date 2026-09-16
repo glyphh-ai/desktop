@@ -66,9 +66,21 @@ export function parseSkillMd(text: string): { frontmatter: Record<string, string
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
   if (!m) return { frontmatter: {}, body: text };
   const fm: Record<string, string> = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
-    if (kv) fm[kv[1].toLowerCase()] = kv[2].trim().replace(/^["']|["']$/g, "");
+  const lines = m[1].split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(lines[i]);
+    if (!kv) continue;
+    const key = kv[1].toLowerCase();
+    let value = kv[2].trim();
+    // Block scalars (`>-`, `|`, `>`): the value is the indented lines that follow,
+    // folded to one line for `>` and kept line-by-line for `|`.
+    if (/^[>|][+-]?$/.test(value)) {
+      const fold = value.startsWith(">");
+      const block: string[] = [];
+      while (i + 1 < lines.length && (/^\s+\S/.test(lines[i + 1]) || lines[i + 1].trim() === "")) block.push(lines[++i].trim());
+      value = fold ? block.join(" ").replace(/\s+/g, " ").trim() : block.join("\n").trim();
+    }
+    fm[key] = value.replace(/^["']|["']$/g, "");
   }
   return { frontmatter: fm, body: text.slice(m[0].length) };
 }

@@ -432,6 +432,16 @@ export function openSettingsModal(sub?: string): void {
       // local General panel plus the API keys that authorize it.
       const mcpItem = nav.querySelector('.settings-nav-item[data-sub="mcp"]');
       if (mcpItem) { anchor.after(mcpItem); anchor = mcpItem; }
+      // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
+      const buildGroup = nav.querySelector("#nav-group-build");
+      if (buildGroup) {
+        anchor.after(buildGroup);
+        anchor = buildGroup;
+        for (const sub of ["skills", "connections-cfg", "plugins"]) {
+          const item = nav.querySelector(`.settings-nav-item[data-sub="${sub}"]`);
+          if (item) { anchor.after(item); anchor = item; }
+        }
+      }
       wireAppUserChip(nav as HTMLElement);
     }
   }

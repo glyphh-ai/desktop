@@ -20515,7 +20515,7 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 
 /* ── Settings → Build → Skills (2026-09-16) — the list/detail pages ───────── */
-.skills-panel { display: flex; flex-direction: column; min-height: 0; }
+.settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
 .skills-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .skills-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
 .skills-search { flex: 1; display: flex; align-items: center; gap: 8px; max-width: 420px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
