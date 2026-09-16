@@ -5398,7 +5398,8 @@ export function initCode(): void {
   if (railEl && !el("app-rail-resize")) {
     const grip = document.createElement("div");
     grip.id = "app-rail-resize";
-    railEl.appendChild(grip);
+    // On the body, straddling the rail's edge: inside the rail it was clipped by overflow and sat left of the border.
+    document.body.appendChild(grip);
     const applyWidth = (w: number): void => { document.body.style.setProperty("--rail-w-open", `${w}px`); };
     void window.glyphh.getPreference?.("railWidth", 264).then((v) => { const w = Number(v); if (w >= 180 && w <= 520) applyWidth(w); }).catch(() => {});
     grip.addEventListener("mousedown", (e) => {
