@@ -49,10 +49,15 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
   return `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 }
 
-async function discover(): Promise<DiscoverRow[]> {
+type Kind = "skill" | "app";
+const kindOf = (k: unknown): Kind => (k === "app" ? "app" : "skill");
+/** The hub kind behind a local id: the apps home publishes as kind app. */
+const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : "skill");
+
+async function discover(kind: Kind): Promise<DiscoverRow[]> {
   const client = getClient();
   const [org, pub] = await Promise.all([
-    client.http.get<OrgItem[]>("/api/library/skill").catch(() => [] as OrgItem[]),
+    client.http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]),
     client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
   ]);
   const rows: DiscoverRow[] = [];
@@ -60,22 +65,22 @@ async function discover(): Promise<DiscoverRow[]> {
     if (!it.headVersion) continue;
     rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [] });
   }
-  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === "skill")) {
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === kind)) {
     rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [] });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-async function install(ref: string): Promise<{ id: string }> {
+async function install(ref: string, kind: Kind): Promise<{ id: string }> {
   const client = getClient();
   const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
-  const base = from === "org" ? `/api/library/skill/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
-  const rows = from === "org" ? await client.http.get<OrgItem[]>("/api/library/skill") : await client.http.get<PublicItem[]>("/api/hub/public");
+  const base = from === "org" ? `/api/library/${kind}/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
+  const rows = from === "org" ? await client.http.get<OrgItem[]>(`/api/library/${kind}`) : await client.http.get<PublicItem[]>("/api/hub/public");
   const meta = (rows as Array<{ id: string; slug: string; name: string; description: string }>).find((r) => r.id === id);
-  if (!meta) throw new Error("that skill is no longer available to you");
+  if (!meta) throw new Error(`that ${kind} is no longer available to you`);
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
-  const installed = installSkill(meta.slug, files);
+  const installed = installSkill(meta.slug, files, kind);
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
 }
@@ -93,7 +98,7 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
   }
   const { body } = parseSkillMd(files["SKILL.md"] || "");
   const slug = skill.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "skill";
-  const r = await getClient().http.post<{ version: number; status: string }>("/api/library/skill/promote", {
+  const r = await getClient().http.post<{ version: number; status: string }>(`/api/library/${kindOfId(skillId)}/promote`, {
     slug, name: skill.name, description: skill.description, notes, payload: { files, prompt: body, manifest: skill.frontmatter },
   });
   return r;
@@ -104,25 +109,26 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
 async function versionsFor(skillId: string): Promise<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }> }> {
   const skill = getSkill(skillId);
   const slug = skill.id.slice(skill.id.indexOf(":") + 1);
-  const items = await getClient().http.get<OrgItem[]>("/api/library/skill").catch(() => [] as OrgItem[]);
+  const kind = kindOfId(skillId);
+  const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
   const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
   if (!item) return { itemId: null, versions: [] };
-  const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/skill/${encodeURIComponent(item.id)}/versions`).catch(() => []);
+  const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => []);
   return { itemId: item.id, versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })) };
 }
 
 /** One hub version's files, for read-only viewing beside the disk copy. */
-async function versionFiles(itemId: string, version: number): Promise<Record<string, string>> {
-  const payload = await getClient().http.get<Record<string, unknown>>(`/api/library/skill/${encodeURIComponent(itemId)}/payload?version=${version}`);
+async function versionFiles(itemId: string, version: number, kind: Kind): Promise<Record<string, string>> {
+  const payload = await getClient().http.get<Record<string, unknown>>(`/api/library/${kind}/${encodeURIComponent(itemId)}/payload?version=${version}`);
   const files = payload && typeof payload.files === "object" && payload.files ? (payload.files as Record<string, string>) : null;
   if (files) return files;
   return { "SKILL.md": typeof payload?.prompt === "string" ? payload.prompt : "" };
 }
 
 /** A hub item's folder as files, for the Discover detail view (read-only). */
-async function hubFiles(ref: string): Promise<Record<string, string>> {
+async function hubFiles(ref: string, kind: Kind): Promise<Record<string, string>> {
   const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
-  const base = from === "org" ? `/api/library/skill/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
+  const base = from === "org" ? `/api/library/${kind}/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
   const payload = await getClient().http.get<Record<string, unknown>>(`${base}/payload`);
   return filesFromHubPayload("skill", "", payload && typeof payload === "object" ? payload : {});
 }
@@ -134,11 +140,11 @@ async function categories(): Promise<Array<{ id: string; label: string }>> {
 
 export function registerHubIpc(): void {
   ipcMain.handle("hub-categories", () => env(categories));
-  ipcMain.handle("skill-hub-files", (_e, ref: string) => env(() => hubFiles(String(ref))));
+  ipcMain.handle("skill-hub-files", (_e, ref: string, kind?: string) => env(() => hubFiles(String(ref), kindOf(kind))));
   ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
-  ipcMain.handle("skill-version-files", (_e, itemId: string, version: number) => env(() => versionFiles(String(itemId), Number(version))));
+  ipcMain.handle("skill-version-files", (_e, itemId: string, version: number, kind?: string) => env(() => versionFiles(String(itemId), Number(version), kindOf(kind))));
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
-  ipcMain.handle("skills-discover", () => env(discover));
-  ipcMain.handle("skill-install", (_e, ref: string) => env(() => install(String(ref))));
+  ipcMain.handle("skills-discover", (_e, kind?: string) => env(() => discover(kindOf(kind))));
+  ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
   ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
 }

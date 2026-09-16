@@ -14,7 +14,7 @@ import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
-import { loadSkillsSettings, loadPluginsSettings } from "./settings-skills.js";
+import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings } from "./settings-skills.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
@@ -439,7 +439,7 @@ export function openSettingsModal(sub?: string): void {
       if (buildGroup) {
         anchor.after(buildGroup);
         anchor = buildGroup;
-        for (const sub of ["skills", "connections-cfg", "plugins"]) {
+        for (const sub of ["skills", "apps", "connections-cfg", "plugins"]) {
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -843,6 +843,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "org-library") loadOrgLibrary();
   else if (sub === "connections-cfg") void loadSettingsConnections();
   else if (sub === "skills") void loadSkillsSettings();
+  else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();

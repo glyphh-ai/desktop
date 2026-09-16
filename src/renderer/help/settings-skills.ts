@@ -13,17 +13,30 @@ import { escapeHtml, confirmAction } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { formatMarkdown } from "../format-markdown.js";
 
-type Source = "glyphh" | "claude" | "codex" | "gemini";
+type Source = "glyphh" | "app" | "claude" | "codex" | "gemini";
 interface SkillRow { id: string; source: Source; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
 interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[] }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
-const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
-const SOURCE_ORDER: Source[] = ["glyphh", "claude", "codex", "gemini"];
+const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
+const SOURCE_ORDER: Source[] = ["glyphh", "app", "claude", "codex", "gemini"];
 const ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
 
+/** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
+ *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
+export interface PageCfg {
+  kind: "skill" | "app";
+  /** The panel's ids: skills-* / skill-* for Skills, apps-* / app-* for Apps. */
+  id: (skillsId: string) => string;
+  panel: string;
+  noun: string;
+  nouns: string;
+  newPrompt: string;
+}
+
+export function createLibraryPage(cfg: PageCfg) {
 let wired = false;
 let tab: "mine" | "discover" = "mine";
 let query = "";
@@ -51,7 +64,7 @@ let viewedVersion: { itemId: string; version: number; files: Record<string, stri
 let hubItem: DiscoverRow | null = null;
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
 
-const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
+const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
 const api = () => window.glyphh;
 
 function when(iso: string): string {
@@ -71,20 +84,20 @@ function fail(msg: string): void {
 }
 
 // ── list ────────────────────────────────────────────────────────────────────
-export async function loadSkillsSettings(): Promise<void> {
+async function loadSkillsSettings(): Promise<void> {
   wire();
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");
   el("skills-error")?.classList.add("hidden");
-  const r = await api().skillsList() as Env<SkillRow[]>;
-  if (!r.ok) { fail(r.error || "Couldn't read your skills."); return; }
+  const r = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
+  if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
   if (tab === "discover") await loadDiscover();
   renderList();
 }
 
 async function loadDiscover(): Promise<void> {
-  const [r, c] = await Promise.all([api().skillsDiscover() as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
+  const [r, c] = await Promise.all([api().skillsDiscover(cfg.kind) as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
   if (!r.ok) { fail(r.error || "The hub didn't answer."); discoverRows = []; return; }
   discoverRows = r.data ?? [];
   hubCategories = c.ok ? (c.data ?? []) : [];
@@ -195,7 +208,7 @@ function renderList(): void {
   const host = el("skills-groups");
   if (!host) return;
   host.textContent = "";
-  document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   const q = query.trim().toLowerCase();
   const hit = (s: string) => !q || s.toLowerCase().includes(q);
 
@@ -205,10 +218,10 @@ function renderList(): void {
       .filter((s) => !filterSource || s.source === filterSource)
       .filter((s) => !filterAuthor || authorOf(s) === filterAuthor)
       .sort((a, b) => sortKey === "name" ? a.name.localeCompare(b.name) : sortKey === "author" ? authorOf(a).localeCompare(authorOf(b)) || a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
-    const count = el("skills-count"); if (count) count.textContent = `${shown.length} skill${shown.length === 1 ? "" : "s"}`;
+    const count = el("skills-count"); if (count) count.textContent = `${shown.length} ${shown.length === 1 ? cfg.noun : cfg.nouns}`;
     paintControls();
     if (!shown.length) {
-      host.innerHTML = `<div class="crud-empty">${q ? `No skills matching "${escapeHtml(q)}"` : "No skills yet. Add one, or install from Discover."}</div>`;
+      host.innerHTML = `<div class="crud-empty">${q ? `No ${cfg.nouns} matching "${escapeHtml(q)}"` : `No ${cfg.nouns} yet. Add one, or install from Discover.`}</div>`;
       return;
     }
     // Groups by author, like Claude's: yours first, then each named author.
@@ -226,7 +239,7 @@ function renderList(): void {
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
             { label: "Share", onClick: async () => { await openDetail(s.id); await share(); } },
-            ...(s.source !== "glyphh" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
+            ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
             { sep: true as const },
             { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
           ],
@@ -420,10 +433,10 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
 async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = "…";
-  const r = await api().skillInstall(d.ref) as Env<{ id: string }>;
+  const r = await api().skillInstall(d.ref, cfg.kind) as Env<{ id: string }>;
   if (!r.ok) { btn.disabled = false; btn.textContent = btn.classList.contains("skill-add-wide") ? "Add" : "+"; fail(r.error || "Install failed."); return; }
   d.installed = true;
-  const list = await api().skillsList() as Env<SkillRow[]>;
+  const list = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   if (hubItem && hubItem.ref === d.ref) { paintDetailChrome(); return; }
   renderList();
@@ -432,7 +445,7 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
 async function toggle(id: string, on: boolean): Promise<void> {
   const r = await api().skillSetEnabled(id, on) as Env<SkillRow>;
   if (!r.ok) { fail(r.error || "Couldn't change that."); return; }
-  const list = await api().skillsList() as Env<SkillRow[]>;
+  const list = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   if (current && current.id === id) { current.enabled = on; const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = on; }
   renderList();
@@ -500,8 +513,8 @@ function editWith(loop: LoopRow): void {
 /** A Discover item: the same detail page, read from the hub, with Add in place
  *  of Share. Back returns to Discover exactly where the user left it. */
 async function openHubDetail(d: DiscoverRow): Promise<void> {
-  const r = await api().skillHubFiles(d.ref) as Env<Record<string, string>>;
-  if (!r.ok || !r.data) { fail(r.error || "Couldn't open that skill."); return; }
+  const r = await api().skillHubFiles(d.ref, cfg.kind) as Env<Record<string, string>>;
+  if (!r.ok || !r.data) { fail(r.error || `Couldn't open that ${cfg.noun}.`); return; }
   const files = r.data;
   const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
   hubItem = d;
@@ -519,6 +532,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
+  void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
   paintDetailChrome();
@@ -557,9 +571,55 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
   return { frontmatter: fm, body: text.slice(m[0].length) };
 }
 
+/** APPS ONLY: the Overview gains what app.json declares — screenshots as a
+ *  gallery and the dependencies (connections, as member or org). Local apps
+ *  read the manifest and images from the folder; a hub item carries them in
+ *  its files (screenshots as data URLs). */
+async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | null): Promise<void> {
+  const host = el("skill-overview-extra");
+  if (!host) return;
+  host.textContent = "";
+  if (cfg.kind !== "app") return;
+  const read = async (rel: string): Promise<string> => {
+    if (hubFiles) return hubFiles[rel] ?? "";
+    const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
+    return r.ok && r.data && !r.data.binary ? r.data.text : "";
+  };
+  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string } = {};
+  try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
+  const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
+  const fromFolder = s.files.filter((f) => /^screenshots\/.*\.(png|jpe?g|gif|webp|svg)$/i.test(f.path)).map((f) => ({ path: f.path, caption: "" }));
+  const gallery = shots.length ? shots : fromFolder;
+  if (gallery.length) {
+    const g = document.createElement("div");
+    g.className = "app-gallery";
+    g.innerHTML = `<div class="skill-overview-label">Screenshots</div><div class="app-gallery-main"><img alt="" /><div class="app-gallery-caption"></div></div><div class="app-gallery-thumbs"></div>`;
+    const main = g.querySelector("img") as HTMLImageElement;
+    const cap = g.querySelector(".app-gallery-caption") as HTMLElement;
+    const thumbs = g.querySelector(".app-gallery-thumbs") as HTMLElement;
+    const urls = await Promise.all(gallery.map(async (shot) => {
+      if (hubFiles) return hubFiles[shot.path] || "";
+      const r = await api().skillImage(s.id, shot.path) as Env<string>;
+      return r.ok ? (r.data || "") : "";
+    }));
+    const show = (i: number): void => { main.src = urls[i]; cap.textContent = gallery[i].caption; thumbs.querySelectorAll("img").forEach((t, j) => t.classList.toggle("active", i === j)); };
+    urls.forEach((u, i) => { if (!u) return; const t = document.createElement("img"); t.src = u; t.alt = gallery[i].caption; t.addEventListener("click", () => show(i)); thumbs.appendChild(t); });
+    const first = urls.findIndex(Boolean);
+    if (first >= 0) { show(first); host.appendChild(g); }
+  }
+  const deps = manifest.dependencies?.connections ?? [];
+  const d = document.createElement("div");
+  d.className = "app-deps";
+  d.innerHTML = `<div class="skill-overview-label">Needs</div><div class="app-deps-list"></div>`;
+  const list = d.querySelector(".app-deps-list") as HTMLElement;
+  if (!deps.length) list.innerHTML = `<span class="conn2-chip-muted">No connections required.</span>`;
+  for (const c of deps) { const chip = document.createElement("span"); chip.className = "app-dep"; chip.textContent = `${c.app} · ${c.as === "org" ? "org account" : "your account"}`; list.appendChild(chip); }
+  host.appendChild(d);
+}
+
 async function openDetail(id: string): Promise<void> {
   const r = await api().skillGet(id) as Env<SkillDetail>;
-  if (!r.ok || !r.data) { fail(r.error || "Couldn't open that skill."); return; }
+  if (!r.ok || !r.data) { fail(r.error || `Couldn't open that ${cfg.noun}.`); return; }
   hubItem = null;
   current = r.data;
   currentFile = "";
@@ -573,8 +633,9 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
-  (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
-  (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
+  void paintExtras(s, null);
+  (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" || s.source === "app" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
+  (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" || s.source === "app" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
   paintDetailChrome();
   collapsedDirs = new Set();
@@ -614,7 +675,7 @@ async function chooseVersion(value: string): Promise<void> {
     const fresh = await api().skillGet(current.id) as Env<SkillDetail>;
     if (fresh.ok && fresh.data) current = fresh.data;
   } else {
-    const r = await api().skillVersionFiles(versionItemId, Number(value)) as Env<Record<string, string>>;
+    const r = await api().skillVersionFiles(versionItemId, Number(value), cfg.kind) as Env<Record<string, string>>;
     if (!r.ok || !r.data) { fail(r.error || "Couldn't load that version."); return; }
     viewedVersion = { itemId: versionItemId, version: Number(value), files: r.data };
   }
@@ -631,7 +692,7 @@ function filesNow(): SkillFile[] {
 }
 
 function selectDetailTab(t: "overview" | "contents"): void {
-  document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-dtab]").forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
@@ -866,7 +927,7 @@ function wire(): void {
   if (wired) return;
   wired = true;
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
-  document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-tab]").forEach((b) => b.addEventListener("click", async () => {
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-tab]`).forEach((b) => b.addEventListener("click", async () => {
     tab = b.dataset.tab as "mine" | "discover";
     discoverView = { kind: "home" };
     if (tab === "discover") await loadDiscover();
@@ -875,7 +936,7 @@ function wire(): void {
   el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
-    { label: "New skill", onClick: () => void createNew() },
+    { label: `New ${cfg.noun}`, onClick: () => void createNew() },
     { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
@@ -889,7 +950,7 @@ function wire(): void {
     }
     void loadSkillsSettings();
   });
-  document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-dtab]").forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as "overview" | "contents")));
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as "overview" | "contents")));
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
   el("skill-kebab")?.addEventListener("click", async (e) => {
@@ -916,22 +977,37 @@ function wire(): void {
 /** New skill = a session in the default loop, rooted at Glyphh's skills home,
  *  with the ask started in the composer and the cursor waiting for the rest. */
 async function createNew(): Promise<void> {
-  const r = await api().skillsHome() as Env<string>;
-  if (!r.ok || !r.data) { fail(r.error || "Couldn't find the skills folder."); return; }
+  const r = await api().skillsHome(cfg.kind) as Env<string>;
+  if (!r.ok || !r.data) { fail(r.error || `Couldn't find the ${cfg.nouns} folder.`); return; }
   openSessionWith({
     cwd: r.data,
-    prompt: `Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should `,
+    prompt: cfg.newPrompt,
   });
 }
 
 async function importFromFile(): Promise<void> {
-  const r = await api().skillImport() as Env<SkillRow | null>;
+  const r = await api().skillImport(cfg.kind) as Env<SkillRow | null>;
   if (!r.ok) { fail(r.error || "Import failed."); return; }
   if (!r.data) return;
   await loadSkillsSettings();
   await openDetail(r.data.id);
 }
 
+
+  return { load: loadSkillsSettings };
+}
+
+const SKILLS_PAGE = createLibraryPage({
+  kind: "skill", id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills",
+  newPrompt: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
+});
+const APPS_PAGE = createLibraryPage({
+  kind: "app", id: (x) => x.replace(/^skills-/, "apps-").replace(/^skill-/, "app-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps",
+  newPrompt: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
+});
+export const loadSkillsSettings = SKILLS_PAGE.load;
+export const loadAppsSettings = APPS_PAGE.load;
+
 export function loadPluginsSettings(): void {
-  // Plugins land right after Skills; the panel carries its own copy for now.
+  // Plugins land after Apps; the panel carries its own copy for now.
 }

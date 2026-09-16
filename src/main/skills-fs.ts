@@ -23,7 +23,9 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath } from "./app-paths.js";
 
-export type SkillSource = "glyphh" | "claude" | "codex" | "gemini";
+export type SkillSource = "glyphh" | "app" | "claude" | "codex" | "gemini";
+/** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
+export type HomeKind = "skill" | "app";
 
 export interface SkillSummary {
   id: string;
@@ -48,6 +50,7 @@ const SKIP_DIRS = new Set([".git", "node_modules", "__pycache__", ".DS_Store"]);
 
 const ROOTS: Record<SkillSource, () => string> = {
   glyphh: () => userScopedPath("skills"),
+  app: () => userScopedPath("apps"),
   claude: () => path.join(homedir(), ".claude", "skills"),
   codex: () => path.join(homedir(), ".codex", "skills"),
   gemini: () => path.join(homedir(), ".gemini", "skills"),
@@ -122,9 +125,11 @@ function isGlyphhLink(p: string): boolean {
   try {
     if (!fs.lstatSync(p).isSymbolicLink()) return false;
     const target = path.resolve(path.dirname(p), fs.readlinkSync(p));
-    return target.startsWith(ROOTS.glyphh() + path.sep);
+    return target.startsWith(ROOTS.glyphh() + path.sep) || target.startsWith(ROOTS.app() + path.sep);
   } catch { return false; }
 }
+const isApp = (dir: string): boolean => fs.existsSync(path.join(dir, "app.json"));
+const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : ROOTS.glyphh());
 
 function listIn(root: string, source: SkillSource, enabled: boolean): SkillSummary[] {
   let names: string[] = [];
@@ -164,11 +169,12 @@ function adoptAll(): void {
       const src = path.join(root, e.name);
       if (!fs.existsSync(path.join(src, "SKILL.md"))) continue;
       try {
-        fs.mkdirSync(home, { recursive: true });
-        let dest = path.join(home, e.name);
+        const target = isApp(src) ? ROOTS.app() : home;
+        fs.mkdirSync(target, { recursive: true });
+        let dest = path.join(target, e.name);
         if (fs.existsSync(dest)) {
           if (sameFolder(src, dest)) { fs.rmSync(src, { recursive: true, force: true }); fs.symlinkSync(dest, src, "dir"); continue; }
-          dest = path.join(home, `${e.name}-${source}`);
+          dest = path.join(target, `${e.name}-${source}`);
           if (fs.existsSync(dest)) continue;
         }
         fs.renameSync(src, dest);
@@ -182,9 +188,13 @@ function adoptAll(): void {
 
 export function syncLinks(): void {
   adoptAll();
-  const home = ROOTS.glyphh();
-  let mine: string[] = [];
-  try { mine = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* no skills yet */ }
+  // Both homes link into every CLI: an app's SKILL.md is how agents drive it.
+  const homes: Array<[string, string[]]> = [];
+  for (const home of [ROOTS.glyphh(), ROOTS.app()]) {
+    let names: string[] = [];
+    try { names = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* none yet */ }
+    homes.push([home, names]);
+  }
   for (const source of ["claude", "codex", "gemini"] as const) {
     const root = ROOTS[source]();
     if (!fs.existsSync(path.dirname(root))) continue;
@@ -194,7 +204,7 @@ export function syncLinks(): void {
         const p = path.join(root, e.name);
         if (isGlyphhLink(p) && !fs.existsSync(path.join(p, "SKILL.md"))) fs.rmSync(p, { force: true });
       }
-      for (const name of mine) {
+      for (const [home, names] of homes) for (const name of names) {
         const dest = path.join(root, name);
         let st: fs.Stats | null = null;
         try { st = fs.lstatSync(dest); } catch { /* absent */ }
@@ -209,14 +219,26 @@ export function syncLinks(): void {
   }
 }
 
-export function listSkills(): SkillSummary[] {
+export function listSkills(kind: HomeKind = "skill"): SkillSummary[] {
   syncLinks();
   const out: SkillSummary[] = [];
-  for (const source of Object.keys(ROOTS) as SkillSource[]) {
+  const sources: SkillSource[] = kind === "app" ? ["app"] : ["glyphh", "claude", "codex", "gemini"];
+  for (const source of sources) {
     out.push(...listIn(ROOTS[source](), source, true));
     out.push(...listIn(path.join(DISABLED_ROOT(), source), source, false));
   }
   return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** A file as a data URL (screenshots on the Overview). */
+export function readSkillImage(id: string, rel: string): string {
+  const { dir } = dirOf(id);
+  const full = safeJoin(dir, rel);
+  const st = fs.statSync(full);
+  if (st.size > 4 * 1024 * 1024) throw new Error("image is larger than 4 MB");
+  const ext = path.extname(full).toLowerCase().replace(".", "");
+  const mime = ext === "jpg" ? "image/jpeg" : ext === "svg" ? "image/svg+xml" : `image/${ext || "png"}`;
+  return `data:${mime};base64,${fs.readFileSync(full).toString("base64")}`;
 }
 
 function dirOf(id: string): { source: SkillSource; name: string; dir: string; enabled: boolean } {
@@ -279,33 +301,34 @@ export function deleteSkill(id: string): void {
 /** A CLI's own skill folder becomes a Glyphh skill: moved home, linked back. */
 export function adoptSkill(id: string): SkillSummary {
   const { source, name, dir } = dirOf(id);
-  if (source === "glyphh") throw new Error("already managed by Glyphh");
-  const home = path.join(ROOTS.glyphh(), name);
-  if (fs.existsSync(home)) throw new Error(`a Glyphh skill named "${name}" already exists`);
-  fs.mkdirSync(ROOTS.glyphh(), { recursive: true });
+  if (source === "glyphh" || source === "app") throw new Error("already managed by Glyphh");
+  const target: SkillSource = isApp(dir) ? "app" : "glyphh";
+  const home = path.join(ROOTS[target](), name);
+  if (fs.existsSync(home)) throw new Error(`a Glyphh ${target === "app" ? "app" : "skill"} named "${name}" already exists`);
+  fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.renameSync(dir, home);
   syncLinks();
-  return summarize("glyphh", name, home, true)!;
+  return summarize(target, name, home, true)!;
 }
 
 /** Replace a Glyphh skill's files with a folder the user picked (it must carry a SKILL.md). */
 export function replaceSkill(id: string, fromDir: string): SkillSummary {
   const { source, name, dir } = dirOf(id);
-  if (source !== "glyphh") throw new Error("only Glyphh-managed skills can be replaced here");
+  if (source !== "glyphh" && source !== "app") throw new Error("only Glyphh-managed skills can be replaced here");
   if (!fs.existsSync(path.join(fromDir, "SKILL.md"))) throw new Error("that folder has no SKILL.md");
   for (const e of fs.readdirSync(dir)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
   fs.cpSync(fromDir, dir, { recursive: true, filter: (src) => !SKIP_DIRS.has(path.basename(src)) });
-  return summarize("glyphh", name, dir, true)!;
+  return summarize(source, name, dir, true)!;
 }
 
 /** The skill as a zip at a path the user chose (a folder copy where zip isn't native). */
 export function exportSkill(id: string, to: string): void {
   const { dir } = dirOf(id);
-  if (process.platform === "darwin" && to.endsWith(".zip")) {
+  if (process.platform === "darwin" && /\.(zip|glyphh)$/i.test(to)) {
     execFileSync("ditto", ["-c", "-k", "--keepParent", dir, to]);
     return;
   }
-  fs.cpSync(dir, to.replace(/\.zip$/, ""), { recursive: true });
+  fs.cpSync(dir, to.replace(/\.(zip|glyphh)$/i, ""), { recursive: true });
 }
 
 export function revealSkill(id: string): void {
@@ -316,18 +339,22 @@ export function revealSkill(id: string): void {
 /** Install a skill as a folder into Glyphh's own skills directory — from the
  *  hub's payload (SKILL.md text + optional files) — and link it into every
  *  CLI's directory the machine has, so every loop can use it. */
-export function installSkill(name: string, files: Record<string, string>): SkillSummary {
+export function installSkill(name: string, files: Record<string, string>, kind: HomeKind = "skill"): SkillSummary {
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) throw new Error(`bad skill name: ${name}`);
   if (!files["SKILL.md"]) throw new Error("a skill needs a SKILL.md");
-  const dir = path.join(ROOTS.glyphh(), name);
+  const source: SkillSource = kind === "app" || files["app.json"] ? "app" : "glyphh";
+  const dir = path.join(ROOTS[source](), name);
   fs.mkdirSync(dir, { recursive: true });
   for (const [rel, text] of Object.entries(files)) {
     const full = safeJoin(dir, rel);
     fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, text, "utf-8");
+    // A screenshot rides the hub as a data URL; it lands as the file it was.
+    const m = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(text);
+    if (m && /\.(png|jpe?g|gif|webp|svg)$/i.test(rel)) fs.writeFileSync(full, Buffer.from(m[2], "base64"));
+    else fs.writeFileSync(full, text, "utf-8");
   }
   syncLinks();
-  return summarize("glyphh", name, dir, true)!;
+  return summarize(source, name, dir, true)!;
 }
 
 /** The hub payload shape today ({manifest, prompt, code}) as folder files. */
@@ -342,19 +369,22 @@ export function filesFromHubPayload(name: string, description: string, p: Record
 }
 
 /** A fresh skill folder from a template — the standard shape from the first byte. */
-export function createSkill(rawName: string): SkillSummary {
+export function createSkill(rawName: string, kind: HomeKind = "skill"): SkillSummary {
   const name = rawName.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   if (!name) throw new Error("a skill needs a name");
-  if (fs.existsSync(path.join(ROOTS.glyphh(), name))) throw new Error(`a skill named "${name}" already exists`);
-  const md = `---\nname: ${name}\ndescription: What this skill is for, in one line — the agent reads this to decide when to use it.\n---\n\n# ${name}\n\nInstructions the agent follows when this skill applies.\n`;
-  return installSkill(name, { "SKILL.md": md });
+  if (fs.existsSync(path.join(homeFor(kind), name))) throw new Error(`a ${kind} named "${name}" already exists`);
+  const md = `---\nname: ${name}\ndescription: What this ${kind} is for, in one line — the agent reads this to decide when to use it.\n---\n\n# ${name}\n\nInstructions the agent follows when this ${kind} applies.\n`;
+  if (kind === "skill") return installSkill(name, { "SKILL.md": md });
+  const manifest = JSON.stringify({ name, ui: "ui/index.html", tools: "tools/manifest.json", data: "data/schema.sql", dependencies: { connections: [] }, screenshots: [] }, null, 2) + "\n";
+  const ui = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8" /><title>${name}</title></head>\n<body><h1>${name}</h1><p>The app's face. The agent drives it through the tools in tools/manifest.json.</p></body></html>\n`;
+  return installSkill(name, { "SKILL.md": md, "app.json": manifest, "ui/index.html": ui, "tools/manifest.json": JSON.stringify({ tools: [] }, null, 2) + "\n" }, "app");
 }
 
 /** Import a skill from a .zip (Claude's export) or a folder into Glyphh's home. */
-export function importSkill(picked: string): SkillSummary {
+export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSummary {
   let folder = picked;
   let tmp = "";
-  if (/\.zip$/i.test(picked)) {
+  if (/\.(zip|glyphh)$/i.test(picked)) {
     if (process.platform !== "darwin") throw new Error("zip import needs macOS for now; unzip it and import the folder");
     tmp = fs.mkdtempSync(path.join(app.getPath("temp"), "skill-"));
     execFileSync("ditto", ["-x", "-k", picked, tmp]);
@@ -373,32 +403,37 @@ export function importSkill(picked: string): SkillSummary {
   const src = find(folder, 2);
   if (!src) throw new Error("no SKILL.md inside that");
   const { frontmatter } = parseSkillMd(fs.readFileSync(path.join(src, "SKILL.md"), "utf-8"));
-  const base = (frontmatter.name || path.basename(src === tmp ? picked.replace(/\.zip$/i, "") : src)).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "skill";
+  const base = (frontmatter.name || path.basename(src === tmp ? picked.replace(/\.(zip|glyphh)$/i, "") : src)).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || kind;
+  const target: SkillSource = kind === "app" || isApp(src) ? "app" : "glyphh";
   let name = base;
-  for (let i = 2; fs.existsSync(path.join(ROOTS.glyphh(), name)); i++) name = `${base}-${i}`;
-  const dest = path.join(ROOTS.glyphh(), name);
-  fs.mkdirSync(ROOTS.glyphh(), { recursive: true });
+  for (let i = 2; fs.existsSync(path.join(ROOTS[target](), name)); i++) name = `${base}-${i}`;
+  const dest = path.join(ROOTS[target](), name);
+  fs.mkdirSync(ROOTS[target](), { recursive: true });
   fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   syncLinks();
-  return summarize("glyphh", name, dest, true)!;
+  return summarize(target, name, dest, true)!;
 }
 
 export function registerSkillsIpc(): void {
-  ipcMain.handle("skills-home", () => { const d = ROOTS.glyphh(); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
-  ipcMain.handle("skill-import", async (e) => {
+  const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : "skill");
+  ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
+  ipcMain.handle("skill-import", async (e, kind?: string) => {
+    const k = kindOf(kind);
     const win = BrowserWindow.fromWebContents(e.sender);
     const picked = await dialog.showOpenDialog(win ?? undefined as never, {
-      title: "Import a skill", properties: ["openFile", "openDirectory"], filters: [{ name: "Skill (zip or folder)", extensions: ["zip"] }],
+      title: k === "app" ? "Import an app" : "Import a skill", properties: ["openFile", "openDirectory"],
+      filters: [{ name: k === "app" ? "App (.glyphh, zip or folder)" : "Skill (zip or folder)", extensions: k === "app" ? ["glyphh", "zip"] : ["zip"] }],
     });
     if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };
-    try { return { ok: true, data: importSkill(picked.filePaths[0]) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+    try { return { ok: true, data: importSkill(picked.filePaths[0], k) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("skill-create", (_e, name: string) => { try { return { ok: true, data: createSkill(String(name)) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; } });
+  ipcMain.handle("skill-image", (_e, id: string, rel: string) => { try { return { ok: true, data: readSkillImage(String(id), String(rel)) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; } });
+  ipcMain.handle("skill-create", (_e, name: string, kind?: string) => { try { return { ok: true, data: createSkill(String(name), kind === "app" ? "app" : "skill") }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; } });
   const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
     try { return { ok: true, data: fn() }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   };
-  ipcMain.handle("skills-list", () => env(() => listSkills()));
+  ipcMain.handle("skills-list", (_e, kind?: string) => env(() => listSkills(kind === "app" ? "app" : "skill")));
   ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));
@@ -415,7 +450,8 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skill-download", async (e, id: string) => {
     const win = BrowserWindow.fromWebContents(e.sender);
     const { name } = getSkill(String(id));
-    const picked = await dialog.showSaveDialog(win ?? undefined as never, { title: "Download skill", defaultPath: path.join(app.getPath("downloads"), `${name}.zip`), filters: [{ name: "Zip", extensions: ["zip"] }] });
+    const isAppId = String(id).startsWith("app:");
+    const picked = await dialog.showSaveDialog(win ?? undefined as never, { title: isAppId ? "Download app" : "Download skill", defaultPath: path.join(app.getPath("downloads"), `${name}.${isAppId ? "glyphh" : "zip"}`), filters: [{ name: isAppId ? "Glyphh app" : "Zip", extensions: [isAppId ? "glyphh" : "zip"] }] });
     if (picked.canceled || !picked.filePath) return { ok: true, data: null };
     return env(() => { exportSkill(String(id), picked.filePath); return picked.filePath; });
   });
