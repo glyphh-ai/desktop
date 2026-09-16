@@ -30,7 +30,7 @@ const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
  *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
 export interface PageCfg {
   kind: "skill" | "app";
-  /** The panel's ids: skills-* / skill-* for Skills, apps-* / app-* for Apps. */
+  /** The panel's ids: skills-* / skill-* for Skills, gapps-* / gapp-* for Apps (app-* belongs to Tabs). */
   id: (skillsId: string) => string;
   panel: string;
   noun: string;
@@ -559,7 +559,7 @@ function paintDetailChrome(): void {
   let add = el<HTMLButtonElement>("skill-hub-add");
   if (!add) {
     add = document.createElement("button");
-    add.id = "skill-hub-add";
+    add.id = cfg.id("skill-hub-add");
     add.type = "button";
     add.className = "action-btn primary";
     add.addEventListener("click", () => { if (hubItem) void installFrom(hubItem, add!); });
@@ -1069,7 +1069,7 @@ const SKILLS_PAGE = createLibraryPage({
   newPrompt: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
 });
 const APPS_PAGE = createLibraryPage({
-  kind: "app", id: (x) => x.replace(/^skills-/, "apps-").replace(/^skill-/, "app-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
+  kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
   newPrompt: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
 });
 export const loadSkillsSettings = SKILLS_PAGE.load;
