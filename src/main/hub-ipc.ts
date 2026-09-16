@@ -17,8 +17,8 @@ import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd } from "./skills-fs.js";
 
-interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; headVersion: number | null; updatedAt: string; visibility?: string }
-interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; version: number; updatedAt: string; kind: string }
+interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[] }
+interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[] }
 
 export interface DiscoverRow {
   ref: string;
@@ -30,7 +30,10 @@ export interface DiscoverRow {
   author: string;
   version: number | null;
   installed: boolean;
+  installs: number;
   updatedAt: string;
+  createdAt: string;
+  categories: string[];
 }
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
@@ -55,10 +58,10 @@ async function discover(): Promise<DiscoverRow[]> {
   const rows: DiscoverRow[] = [];
   for (const it of Array.isArray(org) ? org : []) {
     if (!it.headVersion) continue;
-    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, updatedAt: it.updatedAt });
+    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [] });
   }
   for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === "skill")) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, updatedAt: p.updatedAt });
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [] });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -116,7 +119,13 @@ async function versionFiles(itemId: string, version: number): Promise<Record<str
   return { "SKILL.md": typeof payload?.prompt === "string" ? payload.prompt : "" };
 }
 
+async function categories(): Promise<Array<{ id: string; label: string }>> {
+  const r = await getClient().http.get<Array<{ id: string; label: string }>>("/api/hub/categories").catch(() => []);
+  return Array.isArray(r) ? r : [];
+}
+
 export function registerHubIpc(): void {
+  ipcMain.handle("hub-categories", () => env(categories));
   ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
   ipcMain.handle("skill-version-files", (_e, itemId: string, version: number) => env(() => versionFiles(String(itemId), Number(version))));
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));

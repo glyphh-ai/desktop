@@ -17,7 +17,7 @@ type Source = "glyphh" | "claude" | "codex" | "gemini";
 interface SkillRow { id: string; source: Source; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; updatedAt: string }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[] }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -35,6 +35,10 @@ let sortKey: SortKey = "edited";
 const SORT_LABEL: Record<SortKey, string> = { edited: "Last edited", name: "Name", author: "Created by" };
 let skills: SkillRow[] = [];
 let discoverRows: DiscoverRow[] = [];
+let hubCategories: Array<{ id: string; label: string }> = [];
+/** Discover drill-down: the home, one category, or one shelf ("new" / "top" / "all"). */
+let discoverView: { kind: "home" } | { kind: "category"; id: string } | { kind: "shelf"; id: "new" | "top" | "all" } = { kind: "home" };
+let showAllCategories = false;
 let current: SkillDetail | null = null;
 let currentFile = "";
 let viewMode: "preview" | "code" = "preview";
@@ -78,9 +82,11 @@ export async function loadSkillsSettings(): Promise<void> {
 }
 
 async function loadDiscover(): Promise<void> {
-  const r = await api().skillsDiscover() as Env<DiscoverRow[]>;
+  const [r, c] = await Promise.all([api().skillsDiscover() as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
   if (!r.ok) { fail(r.error || "The hub didn't answer."); discoverRows = []; return; }
   discoverRows = r.data ?? [];
+  hubCategories = c.ok ? (c.data ?? []) : [];
+  discoverView = { kind: "home" };
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
@@ -231,24 +237,173 @@ function renderList(): void {
 
   const shown = discoverRows.filter((d) => hit(`${d.name} ${d.description} ${d.author}`));
   const count = el("skills-count"); if (count) count.textContent = `${shown.length} available`;
+  paintControls();
   if (!shown.length) {
     host.innerHTML = `<div class="crud-empty">${q ? `Nothing matching "${escapeHtml(q)}"` : "Nothing to discover yet — your organization hasn't published skills, and Glyphh's catalog has none your org allows."}</div>`;
     return;
   }
-  for (const from of ["org", "glyphh"] as const) {
-    const rows = shown.filter((d) => d.from === from);
-    if (!rows.length) continue;
-    const g = group(host, from === "org" ? "From your organization" : "From Glyphh", rows.length);
-    for (const d of rows) {
-      const action = document.createElement("button");
-      action.className = "action-btn skill-add-btn";
-      action.type = "button";
-      action.textContent = d.installed ? "Installed" : "+";
-      action.disabled = d.installed;
-      action.title = d.installed ? "Already in your skills" : "Install";
-      action.addEventListener("click", (e) => { e.stopPropagation(); void installFrom(d, action); });
-      g.appendChild(row({ name: d.name, by: `from ${d.author || "your org"}`, desc: d.description, right: d.version ? `v${d.version}` : "", action }));
+  if (q || discoverView.kind !== "home") { renderDiscoverList(host, shown); return; }
+  renderDiscoverHome(host, shown);
+}
+
+// ── Discover ────────────────────────────────────────────────────────────────
+const CATEGORY_GLYPHS: Record<string, string> = {
+  apis: `<path d="M8 4H6a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h2M16 4h2a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-2"/>`,
+  data: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/>`,
+  engineering: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14l2 2-2 2M12 18h4"/>`,
+  code: `<path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 4l-4 16"/>`,
+  files: `<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>`,
+  contacts: `<circle cx="12" cy="8" r="3.5"/><path d="M4 20a8 8 0 0 1 16 0"/>`,
+  pipelines: `<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/>`,
+  databases: `<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>`,
+  design: `<rect x="3" y="4" width="18" height="16" rx="2"/><path d="m3 16 5-5 4 4 3-3 6 6"/><circle cx="16" cy="9" r="1.5"/>`,
+  sales: `<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>`,
+  marketing: `<path d="M3 11v2a1 1 0 0 0 1 1h2l6 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M16 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12"/>`,
+  finance: `<path d="M12 3v18M17 7H9.5a2.5 2.5 0 0 0 0 5h5a2.5 2.5 0 0 1 0 5H7"/>`,
+  legal: `<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0zM17 7l-3 7a3 3 0 0 0 6 0z"/>`,
+  product: `<path d="M12 3 3 8l9 5 9-5zM3 8v8l9 5 9-5V8"/>`,
+  research: `<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M9 11h4M11 9v4"/>`,
+  productivity: `<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>`,
+  security: `<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>`,
+  support: `<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5M12 17h.01"/>`,
+  memory: `<path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/>`,
+  apps: `<rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/>`,
+};
+const glyph = (id: string, size = 20): string => `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${CATEGORY_GLYPHS[id] ?? CATEGORY_GLYPHS.productivity}</svg>`;
+const catLabel = (id: string): string => hubCategories.find((c) => c.id === id)?.label ?? id;
+const fmtInstalls = (n: number): string => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+const isNew = (d: DiscoverRow): boolean => Date.now() - Date.parse(d.createdAt || d.updatedAt) < 14 * 864e5;
+
+function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = wide ? "action-btn skill-add-wide" : "action-btn skill-add-btn";
+  b.textContent = d.installed ? (wide ? "Added" : "✓") : (wide ? "Add" : "+");
+  b.disabled = d.installed;
+  b.title = d.installed ? "Already in your skills" : "Add to your skills";
+  b.addEventListener("click", (e) => { e.stopPropagation(); void installFrom(d, b); });
+  return b;
+}
+
+function discoverCard(d: DiscoverRow): HTMLElement {
+  const c = document.createElement("div");
+  c.className = "disc-card";
+  c.innerHTML = `<div class="skill-tile-icon">${glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta"></div></div>`;
+  (c.querySelector(".disc-card-name") as HTMLElement).textContent = d.name;
+  (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
+  (c.querySelector(".disc-card-meta") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
+  c.appendChild(addButton(d));
+  return c;
+}
+
+function shelf(host: HTMLElement, title: string, rows: DiscoverRow[], seeAll: (() => void) | null, limit = 8): void {
+  if (!rows.length) return;
+  const sec = document.createElement("section");
+  sec.className = "disc-shelf";
+  const head = document.createElement("div");
+  head.className = "disc-shelf-head";
+  head.innerHTML = `<span></span>`;
+  (head.querySelector("span") as HTMLElement).textContent = title;
+  if (seeAll && rows.length > limit) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "disc-link"; b.textContent = "See all ›";
+    b.addEventListener("click", seeAll); head.appendChild(b);
+  }
+  const grid = document.createElement("div");
+  grid.className = "disc-grid";
+  rows.slice(0, limit).forEach((d) => grid.appendChild(discoverCard(d)));
+  sec.append(head, grid);
+  host.appendChild(sec);
+}
+
+function renderDiscoverHome(host: HTMLElement, rows: DiscoverRow[]): void {
+  // FEATURED: the newest Glyphh catalog pick, else the org's newest share.
+  const featured = [...rows].sort((a, b) => (a.from === b.from ? b.createdAt.localeCompare(a.createdAt) : a.from === "glyphh" ? -1 : 1))[0];
+  if (featured) {
+    const f = document.createElement("div");
+    f.className = "disc-featured";
+    f.innerHTML = `<div class="disc-featured-main"><div class="disc-featured-from"></div><div class="disc-featured-name"></div><div class="disc-featured-desc"></div></div><div class="disc-featured-art">${glyph(featured.categories[0] || "productivity", 96)}</div>`;
+    (f.querySelector(".disc-featured-from") as HTMLElement).textContent = `From ${featured.author || "your organization"}`;
+    (f.querySelector(".disc-featured-name") as HTMLElement).textContent = featured.name;
+    (f.querySelector(".disc-featured-desc") as HTMLElement).textContent = featured.description;
+    (f.querySelector(".disc-featured-main") as HTMLElement).appendChild(addButton(featured, true));
+    host.appendChild(f);
+  }
+  const byInstalls = [...rows].sort((a, b) => b.installs - a.installs || b.createdAt.localeCompare(a.createdAt));
+  shelf(host, "For you", byInstalls.filter((d) => !d.installed), () => { discoverView = { kind: "shelf", id: "all" }; renderList(); }, 6);
+
+  // BROWSE BY CATEGORY — counts over what this member can see; "Show all" opens the rest.
+  const counts = new Map<string, number>();
+  for (const d of rows) for (const c of d.categories) counts.set(c, (counts.get(c) ?? 0) + 1);
+  const cats = hubCategories.filter((c) => counts.get(c.id)).sort((a, b) => (counts.get(b.id)! - counts.get(a.id)!) || a.label.localeCompare(b.label));
+  if (cats.length) {
+    const sec = document.createElement("section");
+    sec.className = "disc-shelf";
+    const head = document.createElement("div");
+    head.className = "disc-shelf-head";
+    head.innerHTML = `<span>Browse by category</span>`;
+    if (cats.length > 9) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "disc-link";
+      b.textContent = showAllCategories ? "Show fewer ⌃" : `Show all ${cats.length} ⌄`;
+      b.addEventListener("click", () => { showAllCategories = !showAllCategories; renderList(); });
+      head.appendChild(b);
     }
+    const grid = document.createElement("div");
+    grid.className = "disc-cat-grid";
+    for (const c of showAllCategories ? cats : cats.slice(0, 9)) {
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "disc-cat";
+      t.innerHTML = `<span class="disc-cat-icon">${glyph(c.id, 22)}</span><span class="disc-cat-label"></span><span class="disc-cat-count"></span>`;
+      (t.querySelector(".disc-cat-label") as HTMLElement).textContent = c.label;
+      (t.querySelector(".disc-cat-count") as HTMLElement).textContent = String(counts.get(c.id));
+      t.addEventListener("click", () => { discoverView = { kind: "category", id: c.id }; renderList(); });
+      grid.appendChild(t);
+    }
+    sec.append(head, grid);
+    host.appendChild(sec);
+  }
+  shelf(host, "New", [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)), () => { discoverView = { kind: "shelf", id: "new" }; renderList(); });
+  shelf(host, "Most installed", byInstalls.filter((d) => d.installs > 0), () => { discoverView = { kind: "shelf", id: "top" }; renderList(); });
+}
+
+function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
+  const v = discoverView;
+  let list = rows;
+  let title = "Results";
+  if (v.kind === "category") { list = rows.filter((d) => d.categories.includes(v.id)); title = catLabel(v.id); }
+  else if (v.kind === "shelf") {
+    title = v.id === "new" ? "New" : v.id === "top" ? "Most installed" : "All skills";
+    list = v.id === "new" ? [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [...rows].sort((a, b) => b.installs - a.installs || a.name.localeCompare(b.name));
+  }
+  if (v.kind !== "home") {
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "disc-back";
+    back.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Discover</span>`;
+    back.addEventListener("click", () => { discoverView = { kind: "home" }; renderList(); });
+    host.appendChild(back);
+  }
+  const h = document.createElement("div");
+  h.className = "disc-shelf-head";
+  h.innerHTML = `<span></span>`;
+  (h.querySelector("span") as HTMLElement).textContent = title;
+  host.appendChild(h);
+  if (!list.length) { host.insertAdjacentHTML("beforeend", `<div class="crud-empty">Nothing here yet.</div>`); return; }
+  for (const d of list) {
+    const r = document.createElement("div");
+    r.className = "disc-row";
+    r.innerHTML = `<div class="skill-tile-icon">${glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-row-main"><div class="disc-row-title"><span class="disc-row-name"></span></div><div class="disc-row-sub"></div></div><div class="disc-row-installs"></div>`;
+    (r.querySelector(".disc-row-name") as HTMLElement).textContent = d.name;
+    const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
+    const chips: string[] = [];
+    if (isNew(d)) chips.push("New");
+    if (d.categories[0]) chips.push(catLabel(d.categories[0]));
+    if (d.categories.length > 1) chips.push(`+${d.categories.length - 1}`);
+    for (const c of chips) { const s = document.createElement("span"); s.className = "disc-chip" + (c === "New" ? " new" : ""); s.textContent = c; titleEl.appendChild(s); }
+    (r.querySelector(".disc-row-sub") as HTMLElement).textContent = `by ${d.author || "your org"} · ${d.description || "No description"}`;
+    (r.querySelector(".disc-row-installs") as HTMLElement).textContent = d.installs ? `${fmtInstalls(d.installs)} installs` : "";
+    r.appendChild(addButton(d, true));
+    host.appendChild(r);
   }
 }
 
@@ -256,7 +411,7 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
   btn.disabled = true;
   btn.textContent = "…";
   const r = await api().skillInstall(d.ref) as Env<{ id: string }>;
-  if (!r.ok) { btn.disabled = false; btn.textContent = "+"; fail(r.error || "Install failed."); return; }
+  if (!r.ok) { btn.disabled = false; btn.textContent = btn.classList.contains("skill-add-wide") ? "Add" : "+"; fail(r.error || "Install failed."); return; }
   d.installed = true;
   const list = await api().skillsList() as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
@@ -640,6 +795,7 @@ function wire(): void {
   el<HTMLInputElement>("skills-search")?.addEventListener("input", (e) => { query = (e.target as HTMLInputElement).value; renderList(); });
   document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-tab]").forEach((b) => b.addEventListener("click", async () => {
     tab = b.dataset.tab as "mine" | "discover";
+    discoverView = { kind: "home" };
     if (tab === "discover") await loadDiscover();
     renderList();
   }));
