@@ -421,6 +421,8 @@ declare global {
       skillsDiscover: () => Promise<LibEnvelope>;
       skillInstall: (ref: string) => Promise<LibEnvelope>;
       skillPublish: (id: string, notes?: string) => Promise<LibEnvelope>;
+      skillVersions: (id: string) => Promise<LibEnvelope>;
+      skillVersionFiles: (itemId: string, version: number) => Promise<LibEnvelope>;
       platformPanelUrl: (next?: string) => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;

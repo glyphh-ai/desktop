@@ -20571,7 +20571,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skill-author { font-size: 13.5px; color: var(--text); }
 .skill-author-meta { font-size: 12px; color: var(--text-3); margin-top: 4px; }
 .skill-contents-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.skill-version { padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px; color: var(--text-2); }
+.skill-version { padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 12.5px; color: var(--text-2); background: var(--surface-2); cursor: pointer; }
+.skill-version:disabled { cursor: default; opacity: .8; }
 .skill-files { display: grid; grid-template-columns: 240px 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; min-height: 460px; height: calc(100vh - 340px); }
 .skill-tree { border-right: 1px solid var(--border); padding: 10px 6px; overflow-y: auto; background: var(--surface-2); }
 .skill-tree-dir { display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 12.5px; color: var(--text-2); }

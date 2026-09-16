@@ -96,7 +96,29 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
   return r;
 }
 
+/** The hub versions behind a local skill: the org item whose slug is the
+ *  folder's name. "current" is the disk; these are the immutable shares. */
+async function versionsFor(skillId: string): Promise<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }> }> {
+  const skill = getSkill(skillId);
+  const slug = skill.id.slice(skill.id.indexOf(":") + 1);
+  const items = await getClient().http.get<OrgItem[]>("/api/library/skill").catch(() => [] as OrgItem[]);
+  const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
+  if (!item) return { itemId: null, versions: [] };
+  const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/skill/${encodeURIComponent(item.id)}/versions`).catch(() => []);
+  return { itemId: item.id, versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })) };
+}
+
+/** One hub version's files, for read-only viewing beside the disk copy. */
+async function versionFiles(itemId: string, version: number): Promise<Record<string, string>> {
+  const payload = await getClient().http.get<Record<string, unknown>>(`/api/library/skill/${encodeURIComponent(itemId)}/payload?version=${version}`);
+  const files = payload && typeof payload.files === "object" && payload.files ? (payload.files as Record<string, string>) : null;
+  if (files) return files;
+  return { "SKILL.md": typeof payload?.prompt === "string" ? payload.prompt : "" };
+}
+
 export function registerHubIpc(): void {
+  ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
+  ipcMain.handle("skill-version-files", (_e, itemId: string, version: number) => env(() => versionFiles(String(itemId), Number(version))));
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
   ipcMain.handle("skills-discover", () => env(discover));
   ipcMain.handle("skill-install", (_e, ref: string) => env(() => install(String(ref))));

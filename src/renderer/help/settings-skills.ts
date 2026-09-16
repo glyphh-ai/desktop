@@ -32,6 +32,8 @@ let current: SkillDetail | null = null;
 let currentFile = "";
 let viewMode: "preview" | "code" = "preview";
 let editing = false;
+/** A hub version being viewed read-only (null = the folder on disk). */
+let viewedVersion: { itemId: string; version: number; files: Record<string, string> } | null = null;
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
@@ -239,16 +241,66 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-overview-body") as HTMLElement).innerHTML = formatMarkdown(s.body.trim() || "*This skill's SKILL.md has no instructions yet.*");
   (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
-  (el("skill-version") as HTMLElement).textContent = `${s.name} · current`;
+  viewedVersion = null;
+  paintVersions([]);
+  void loadVersions();
   selectDetailTab("overview");
   renderTree();
+}
+
+function paintVersions(rows: Array<{ version: number; notes: string; createdAt: string }>): void {
+  const sel = el<HTMLSelectElement>("skill-version");
+  if (!sel || !current) return;
+  const name = current.name;
+  sel.innerHTML = [`<option value="current">${escapeHtml(name)} · current</option>`]
+    .concat(rows.map((r) => `<option value="${r.version}">${escapeHtml(name)} · v${r.version}${r.createdAt ? ` · ${escapeHtml(when(r.createdAt))}` : ""}</option>`))
+    .join("");
+  sel.value = viewedVersion ? String(viewedVersion.version) : "current";
+  sel.disabled = rows.length === 0;
+  sel.title = rows.length ? "Shared versions on your organization's hub" : "Not shared yet — the folder is the only version";
+}
+
+let versionItemId: string | null = null;
+async function loadVersions(): Promise<void> {
+  if (!current) return;
+  const id = current.id;
+  const r = await api().skillVersions(id) as Env<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }> }>;
+  if (!current || current.id !== id) return;
+  versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
+  paintVersions(r.ok ? (r.data?.versions ?? []) : []);
+}
+
+async function chooseVersion(value: string): Promise<void> {
+  if (!current) return;
+  if (editing && !(await leaveEditing())) { paintVersionsKeep(); return; }
+  if (value === "current" || !versionItemId) {
+    viewedVersion = null;
+    const fresh = await api().skillGet(current.id) as Env<SkillDetail>;
+    if (fresh.ok && fresh.data) current = fresh.data;
+  } else {
+    const r = await api().skillVersionFiles(versionItemId, Number(value)) as Env<Record<string, string>>;
+    if (!r.ok || !r.data) { fail(r.error || "Couldn't load that version."); return; }
+    viewedVersion = { itemId: versionItemId, version: Number(value), files: r.data };
+  }
+  const editBtn = el<HTMLButtonElement>("skill-edit");
+  if (editBtn) { editBtn.disabled = !!viewedVersion; editBtn.title = viewedVersion ? "Older versions are read-only — switch to current to edit" : ""; }
+  currentFile = "";
+  renderTree();
+  const first = filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? "");
+  await openFile(first);
+}
+function paintVersionsKeep(): void { const sel = el<HTMLSelectElement>("skill-version"); if (sel) sel.value = viewedVersion ? String(viewedVersion.version) : "current"; }
+/** The files being browsed: the hub version's, or the folder's. */
+function filesNow(): SkillFile[] {
+  if (viewedVersion) return Object.keys(viewedVersion.files).sort().map((p) => ({ path: p, size: viewedVersion!.files[p].length }));
+  return current?.files ?? [];
 }
 
 function selectDetailTab(t: "overview" | "contents"): void {
   document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-dtab]").forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
-  if (t === "contents" && current && !currentFile) void openFile(current.files.some((f) => f.path === "SKILL.md") ? "SKILL.md" : (current.files[0]?.path ?? ""));
+  if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
   if (t === "contents") editor?.layout();
 }
 
@@ -258,7 +310,7 @@ function renderTree(): void {
   host.textContent = "";
   // Folders first, then files — one indented list, folders as headings.
   const dirs = new Map<string, SkillFile[]>();
-  for (const f of current.files) {
+  for (const f of filesNow()) {
     const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
     if (!dirs.has(dir)) dirs.set(dir, []);
     dirs.get(dir)!.push(f);
@@ -307,7 +359,9 @@ async function openFile(rel: string): Promise<void> {
   currentFile = rel;
   (el("skill-file-path") as HTMLElement).textContent = `/${rel}`;
   renderTree();
-  const r = await api().skillFileRead(current.id, rel) as Env<{ text: string; binary: boolean; size: number }>;
+  const r = viewedVersion
+    ? { ok: true, data: { text: viewedVersion.files[rel] ?? "", binary: false, size: (viewedVersion.files[rel] ?? "").length } }
+    : await api().skillFileRead(current.id, rel) as Env<{ text: string; binary: boolean; size: number }>;
   if (!r.ok || !r.data) { fail(r.error || "Couldn't read that file."); return; }
   const isMd = /\.(md|markdown)$/i.test(rel);
   document.querySelector<HTMLElement>(".skill-view-toggle")?.classList.toggle("hidden", !isMd);
@@ -374,7 +428,7 @@ function paintEditButton(): void {
 }
 
 async function onEdit(): Promise<void> {
-  if (!current || !currentFile) return;
+  if (!current || !currentFile || viewedVersion) return;
   if (!editing) {
     editing = true;
     if (viewMode === "preview" || !editor) {
@@ -434,6 +488,7 @@ function wire(): void {
     { label: "Delete", danger: true, onClick: () => void remove(current!.id, current!.name) },
   ]); });
   el("skill-reveal")?.addEventListener("click", () => { if (current) void api().skillReveal(current.id); });
+  el<HTMLSelectElement>("skill-version")?.addEventListener("change", (e) => void chooseVersion((e.target as HTMLSelectElement).value));
   el("skill-edit")?.addEventListener("click", () => void onEdit());
   el("skill-view-preview")?.addEventListener("click", () => { viewMode = "preview"; void openFile(currentFile); });
   el("skill-view-code")?.addEventListener("click", () => { viewMode = "code"; void openFile(currentFile); });

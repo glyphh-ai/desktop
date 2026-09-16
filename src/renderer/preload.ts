@@ -1102,6 +1102,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillsDiscover: () => ipcRenderer.invoke("skills-discover") as Promise<LibEnvelope>,
   skillInstall: (ref: string) => ipcRenderer.invoke("skill-install", ref) as Promise<LibEnvelope>,
   skillPublish: (id: string, notes?: string) => ipcRenderer.invoke("skill-publish", id, notes) as Promise<LibEnvelope>,
+  skillVersions: (id: string) => ipcRenderer.invoke("skill-versions", id) as Promise<LibEnvelope>,
+  skillVersionFiles: (itemId: string, version: number) => ipcRenderer.invoke("skill-version-files", itemId, version) as Promise<LibEnvelope>,
   /** The console, signed in — the Platform work panel. */
   platformPanelUrl: (next?: string) => ipcRenderer.invoke("platform-url", next) as Promise<LibEnvelope>,
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
