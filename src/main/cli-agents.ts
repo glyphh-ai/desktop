@@ -437,7 +437,8 @@ function permFlag(row: Pick<CliAgentRow, "cli" | "permission">, headless: boolea
 
 function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   if (!model) return "";
-  const m = model.replace(/"/g, "");
+  // A catalog id ("anthropic::claude-sonnet-5") from the org pickers; the CLI's flag takes the bare name.
+  const m = model.replace(/"/g, "").replace(/^[a-z0-9_-]+::/i, "");
   switch (cli) {
     case "claude": return ` --model "${m}"`;
     case "codex": return ` -m "${m}"`;
