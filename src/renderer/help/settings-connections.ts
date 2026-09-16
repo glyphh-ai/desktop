@@ -19,7 +19,7 @@
 
 import { escapeHtml, confirmAction } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
-import { adoptConnectionsInto, onConnectionsChanged, closeConnDetail } from "./connections.js";
+import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
 
 type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
 type McpConn = Awaited<ReturnType<typeof window.glyphh.mcpConnectionsList>>["connections"][number];
@@ -79,6 +79,8 @@ export async function loadSettingsConnections(): Promise<void> {
     window.glyphh.mcpCustomAllowed?.().catch(() => ({ allowed: false })) ?? Promise.resolve({ allowed: false }),
   ]);
   customAllowed = !!(gate as { allowed?: boolean })?.allowed;
+  const addBtn = el<HTMLButtonElement>("conn2-add");
+  if (addBtn) { addBtn.disabled = !customAllowed; addBtn.title = customAllowed ? "Add an MCP server of your own" : (gate as { reason?: string })?.reason || "Custom MCP servers aren't available on your plan"; }
   const conns = (res as { connections?: Conn[] })?.connections ?? [];
   const mcps = (custom as { connections?: McpConn[] })?.connections ?? [];
   const mcpSlugs = new Set(mcps.map((m) => m.slug));
@@ -762,11 +764,8 @@ function wire(): void {
     if (tab === "discover" && (query.trim() !== catalogQuery || !catalog.length)) await loadCatalog(query.trim());
     render();
   }));
-  el("conn2-add")?.addEventListener("click", (ev) => openMenu(ev.currentTarget as HTMLElement, [
-    { label: "New connection", onClick: () => driveOriginal("conn-add-btn") },
-    ...(customAllowed ? [{ label: "Custom MCP server", onClick: () => void openCustomMcpModal() }] : []),
-    { label: "Browse the directory", onClick: async () => { tab = "discover"; if (!catalog.length) await loadCatalog(""); render(); } },
-  ]));
+  // Apps come from Discover; the button is for a server of your own.
+  el("conn2-add")?.addEventListener("click", () => void openCustomMcpModal());
   el("conn2-back")?.addEventListener("click", () => {
     current = null;
     el("conn2-detail-view")?.classList.add("hidden");
@@ -778,7 +777,6 @@ function wire(): void {
 // ── the adopted original: catalog modal + connect flow (one implementation) ──
 let adopted = false;
 let selfTriggered = false;
-let suspendRefresh = false;
 let refreshing = false;
 async function refreshFromStore(): Promise<void> {
   if (refreshing) return;
@@ -793,29 +791,9 @@ function ensureAdopted(): void {
   adoptConnectionsInto(host, [], null);
   onConnectionsChanged(() => {
     if (selfTriggered) { selfTriggered = false; return; }
-    if (suspendRefresh || current) return;
+    if (current) return;
     void refreshFromStore();
   });
-}
-
-/** Click the real catalog button: the real modal, the real connect flow. */
-function driveOriginal(id: string): void {
-  closeConnDetail();
-  const btn = document.getElementById(id) as HTMLElement | null;
-  if (!btn) return;
-  suspendRefresh = true;
-  btn.click();
-  const modal = document.getElementById("conn-modal");
-  if (!modal) { suspendRefresh = false; return; }
-  const obs = new MutationObserver(() => {
-    if (!modal.classList.contains("hidden")) return;
-    obs.disconnect();
-    suspendRefresh = false;
-    let tries = 0;
-    const tick = (): void => { void refreshFromStore().then(() => { if (++tries < 8) setTimeout(tick, 1500); }); };
-    setTimeout(tick, 400);
-  });
-  obs.observe(modal, { attributes: true, attributeFilter: ["class"] });
 }
 
 /** + Custom MCP uses the app's standard form modal. */
