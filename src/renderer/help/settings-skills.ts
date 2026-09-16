@@ -295,7 +295,6 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
-  (el("skill-overview-body") as HTMLElement).innerHTML = formatMarkdown(s.body.trim() || "*This skill's SKILL.md has no instructions yet.*");
   (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
