@@ -68,6 +68,13 @@ export function getPreference<T = unknown>(key: string, defaultValue?: T): T {
 
 /** Set a preference: optimistic in the map, persisted to the server.
  *  `null`/`undefined` deletes the key (the server treats null as delete). */
+/** Every loaded preference under a key prefix, keyed without the prefix. */
+export function preferencesByPrefix<T = unknown>(prefix: string): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(prefs ?? {})) if (k.startsWith(prefix)) out[k.slice(prefix.length)] = v as T;
+  return out;
+}
+
 export function setPreference(key: string, value: unknown): void {
   if (!prefs) prefs = {};
   if (value === null || value === undefined) delete prefs[key];

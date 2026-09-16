@@ -27,6 +27,7 @@ import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { preferencesByPrefix } from "./stores/preferences-db";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient } from "./glyphh-client.js";
@@ -449,6 +450,29 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   }
 }
 
+/** The tool modes from Settings → Connections (Always allow / Needs approval /
+ *  Never), projected onto Claude Code's own permission flags. "Never" is
+ *  already enforced at the gateway (the tool is not served to this member);
+ *  here it is also denied, and "Always allow" runs without a prompt. The
+ *  gateway's tools reach Claude as mcp__glyphh_gateway__<server>-<tool>.
+ *  Codex, Gemini and Copilot have no per-tool allow seam on their command
+ *  line: for them Never holds at the gateway and the CLI prompts for the rest. */
+function claudeToolFlags(): string {
+  const modes = preferencesByPrefix<Record<string, string>>("connToolModes:");
+  const allow: string[] = [];
+  const deny: string[] = [];
+  for (const [key, byTool] of Object.entries(modes)) {
+    if (key.startsWith("app:") || !byTool || typeof byTool !== "object") continue;
+    for (const [tool, mode] of Object.entries(byTool)) {
+      const id = `mcp__glyphh_gateway__${tool.replace(/["'\s]/g, "")}`;
+      if (mode === "allow") allow.push(id);
+      else if (mode === "never") deny.push(id);
+    }
+  }
+  const list = (flag: string, ids: string[]): string => (ids.length ? ` ${flag} ${ids.map((x) => `"${x}"`).join(" ")}` : "");
+  return list("--allowedTools", allow) + list("--disallowedTools", deny);
+}
+
 /** resume: true = the CLI's continue-last; a string = a SPECIFIC session id
  *  (claude --resume <id> / codex resume <id>) — the rail Recents rides it. */
 export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }
@@ -479,7 +503,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   let core: string;
   switch (row.cli) {
     case "claude":
-      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
       break;
     case "codex": {
       const token = row.mcp ? mcpTokenOf(row.id) : "";
@@ -543,7 +567,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /
