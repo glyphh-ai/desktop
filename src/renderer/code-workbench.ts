@@ -333,7 +333,9 @@ async function openPlatformPanel(): Promise<void> {
     .__wbOpenApp?.({ slug: "platform", name: "Platform", url });
 }
 
-const WALL_STATE_PREF = "echoWallState";
+const SPACE_ID = new URLSearchParams(window.location.search).get("space") || "";
+/** Each SPACE remembers its own wall (2026-09-16); the first space keeps the original key. */
+const WALL_STATE_PREF = SPACE_ID ? `echoWallState:${SPACE_ID}` : "echoWallState";
 let wallRestored = false;
 
 /** Tile keys renamed under him — persisted surfaces (echoDockOrder,

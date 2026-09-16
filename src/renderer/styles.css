@@ -16727,8 +16727,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 /* SAME square as the dock slots — one icon language everywhere. */
 .echo-app-ic {
   display: flex; align-items: center; justify-content: center;
-  width: clamp(46px, 7.2vw, var(--echo-icon-size, 76px)); height: clamp(46px, 7.2vw, var(--echo-icon-size, 76px));
-  border-radius: clamp(12px, 1.8vw, 18px);
+  width: var(--echo-icon-size, 76px); height: var(--echo-icon-size, 76px);
+  border-radius: 18px;
   background: var(--surface-3);
   color: var(--text-2);
   overflow: hidden;
@@ -16858,7 +16858,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    highlight ink). */
 .echo-dock {
   display: flex; align-items: center;
-  gap: clamp(9px, 1.6vw, 20px);   /* a touch more air between slots */
+  gap: 14px;   /* the same in every space (2026-09-16) */
   max-width: calc(100vw - 32px);
   margin-top: 10px;               /* and a tad more drop below the dock line */
 }
@@ -16866,9 +16866,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    glyphs ride along), so the dock always fits the window on one row. */
 .echo-dock-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: clamp(46px, 7.2vw, var(--echo-icon-size, 76px)); height: clamp(46px, 7.2vw, var(--echo-icon-size, 76px));
+  width: var(--echo-icon-size, 76px); height: var(--echo-icon-size, 76px);
   padding: 0; flex-shrink: 1; min-width: 40px;
-  border: none; border-radius: clamp(12px, 1.8vw, 18px);
+  border: none; border-radius: 18px;
   background: var(--surface-3);
   cursor: pointer;
   transition: box-shadow 0.12s ease;
@@ -20819,3 +20819,21 @@ body.echo-dock-tucked #echo-dock-layer::before { right: auto; width: var(--space
    upward would land above the card, where the holder clips it (the "dots and
    drips do nothing" of 2026-09-16). */
 .ws-agent-holder .code-view-more-menu, .ws-agent-holder .echo-drip-pop { top: calc(100% + 6px); bottom: auto; }
+
+/* Space chrome: a grip on each split's left edge, a bar with collapse + × at its top right. */
+.space-grip { flex: 0 0 6px; cursor: col-resize; background: transparent; z-index: 3; margin: 0 -3px; position: relative; }
+.space-grip:hover, body.space-resizing .space-grip { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+body.space-resizing, body.space-resizing * { cursor: col-resize !important; user-select: none; }
+body.space-resizing webview { pointer-events: none; }
+.space-bar { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 4px; }
+.space-btn { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0.7; }
+.space-btn:hover { opacity: 1; color: var(--text); background: var(--hover); }
+.space-split.collapsed webview { visibility: hidden; }
+.space-split.collapsed { background: var(--surface-2); }
+.space-split.collapsed .space-bar { top: 6px; right: auto; left: 50%; transform: translateX(-50%); flex-direction: column; }
+#space-primary-grip { position: fixed; top: 0; bottom: 0; left: calc(var(--rail-w) + var(--space-w) - 3px); width: 6px; cursor: col-resize; z-index: 151; }
+#space-primary-grip:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+body.space-primary-collapsed #help-overlay > * { visibility: hidden; }
+body.space-primary-collapsed #help-overlay { background: var(--surface-2); }
+#space-primary-grip { display: none; }
+body[style*="--space-count: 2"] #space-primary-grip, body[style*="--space-count: 3"] #space-primary-grip, body[style*="--space-count: 4"] #space-primary-grip { display: block; }
