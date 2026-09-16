@@ -9465,6 +9465,12 @@ async function init(): Promise<void> {
       document.getElementById("code-input")?.focus();
       return;
     }
+    // The agent is a CARD now (the sidebar era, 2026-09-16): + starts the new
+    // session in that card; it never closes the card it was pressed in.
+    if (document.querySelector(".ws-agent-placeholder")) {
+      document.getElementById("code-input")?.focus();
+      return;
+    }
     const ids = rails.flatMap((r) => r.slots.filter((s) => s.view !== "echo").map((s) => s.id));
     for (const id of ids) closeSlot(id);
     openEchoSurface();
