@@ -1091,6 +1091,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   tasksRunList: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-list", ref, taskId) as Promise<LibEnvelope>,
   // The AI Hub (the Marketplace rail item → the org's hub on the console, in a work panel).
   hubUrl: () => ipcRenderer.invoke("hub-url") as Promise<LibEnvelope>,
+  /** The console, signed in — the Platform work panel. */
+  platformPanelUrl: (next?: string) => ipcRenderer.invoke("platform-url", next) as Promise<LibEnvelope>,
   hubPublish: (kind: string, ref: string, notes?: string) => ipcRenderer.invoke("hub-publish", kind, ref, notes) as Promise<LibEnvelope>,
   hubSync: () => ipcRenderer.invoke("hub-sync") as Promise<LibEnvelope>,
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,

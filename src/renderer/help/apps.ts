@@ -1071,6 +1071,14 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // The Glyphh system app can't be deleted (server enforces it) — don't offer.
   document.getElementById("app-detail-delete")?.classList.toggle("hidden", app.slug === "glyphh");
+  // Publishing is for apps this org BUILT — never a marketplace install, never
+  // the system app. The button also resets its label per app.
+  const pubBtn = document.getElementById("app-detail-publish") as HTMLButtonElement | null;
+  if (pubBtn) {
+    pubBtn.classList.toggle("hidden", mktInstalled || app.slug === "glyphh");
+    pubBtn.textContent = "Publish to AI Hub";
+    pubBtn.disabled = false;
+  }
   // The open action resets per app — a prior suspended marketplace app must
   // not leave the button dead for the next one opened.
   const openBtn = document.getElementById("app-detail-open") as HTMLButtonElement | null;
@@ -1416,6 +1424,31 @@ function initApps() {
 
   // Dashboard cancel
   document.getElementById("app-dash-cancel")?.addEventListener("click", () => closeAppDetail());
+
+  // PUBLISH TO THE AI HUB (his order, 2026-09-16) — the same submission skills,
+  // tasks and agents make: the app's manifest goes to the org's hub as an
+  // immutable version. An org admin's goes live at once; a member's waits on
+  // the review desk.
+  document.getElementById("app-detail-publish")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget as HTMLButtonElement;
+    const app = currentApp;
+    if (!app) return;
+    const confirmed = await confirmAction({
+      title: `Publish “${app.name}” to the AI Hub?`,
+      body: "It goes to your organization's hub, where members can install it. An org admin's publish goes live at once; anyone else's waits on the review desk.",
+      confirmLabel: "Publish",
+    });
+    if (!confirmed) return;
+    btn.disabled = true;
+    const env = await window.glyphh.hubPublish("app", app.slug);
+    btn.disabled = false;
+    if (!env.ok) {
+      await confirmAction({ title: "Couldn't publish", body: env.error || "The hub didn't accept it.", confirmLabel: "OK" });
+      return;
+    }
+    const r = env.data as { version: number; status: string };
+    btn.textContent = r.status === "approved" ? `Published · v${r.version}` : `Sent for review · v${r.version}`;
+  });
 
   // Delete
   document.getElementById("app-detail-delete")?.addEventListener("click", async () => {

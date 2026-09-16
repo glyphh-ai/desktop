@@ -74,6 +74,16 @@ function importOne(kind: Kind, it: HubItem, p: Record<string, unknown>): void {
   });
 }
 
+/** The CONSOLE, signed in: a console session minted on this login handed to
+ *  the console's own login page, which sets the cookie and lands on `next`.
+ *  Members get their own scope, org admins get theirs, and the super admin
+ *  gets every org — the server decides, from the same identity. */
+export async function platformUrl(next = "/ui/"): Promise<string> {
+  const { token } = await getClient().http.post<{ token: string }>("/api/gateway/ui-session", {});
+  if (!token) throw new Error("the console session couldn't be minted");
+  return `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
+}
+
 /** The PUBLIC hub page (/ui/model_hub — no login, no console shell), carrying
  *  the member's own gateway key so installs and the review desk work. */
 export async function hubUrl(): Promise<string> {
@@ -83,6 +93,8 @@ export async function hubUrl(): Promise<string> {
 
 export function registerHubIpc(): void {
   ipcMain.handle("hub-url", () => env(async () => ({ url: await hubUrl() })));
+
+  ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
 
   ipcMain.handle("hub-publish", (_e, kind: Kind, ref: string, notes?: string) => env(async () => {
     if (!KINDS.includes(kind)) throw new Error(`cannot publish a ${String(kind)}`);

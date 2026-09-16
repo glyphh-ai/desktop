@@ -411,6 +411,7 @@ declare global {
       librarySkillCreate: (input: unknown) => Promise<LibEnvelope>;
       librarySkillUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
       hubUrl: () => Promise<LibEnvelope>;
+      platformPanelUrl: (next?: string) => Promise<LibEnvelope>;
       hubPublish: (kind: string, ref: string, notes?: string) => Promise<LibEnvelope>;
       hubSync: () => Promise<LibEnvelope>;
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;

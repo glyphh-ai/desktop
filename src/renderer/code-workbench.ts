@@ -293,6 +293,11 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "tasks",       title: "Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
   { key: "skills",      title: "Skills",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z" style="fill:#f59e0b;stroke:#d97706;stroke-width:1.2;stroke-linejoin:round"/><circle cx="12" cy="10.5" r="2" style="fill:#fef3c7;stroke:none"/></svg>` },
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
+  // PLATFORM — the console as a work panel (his order, 2026-09-16): usage,
+  // billing, members, models, the hub. A member lands in their own scope, an
+  // org admin in theirs. Icon in the dock's language: a full-bleed purple
+  // shield over a lighter pillar, white plate details, no glyph-in-a-square.
+  { key: "platform",    title: "Platform",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 1.6 3.2 4.9v6.4c0 5.3 3.6 9.4 8.8 11.1 5.2-1.7 8.8-5.8 8.8-11.1V4.9L12 1.6z" style="fill:#8c3bf2"/><path d="M12 1.6 3.2 4.9v6.4c0 5.3 3.6 9.4 8.8 11.1V1.6z" style="fill:#a855f7"/><rect x="6.9" y="13.4" width="2.6" height="4.6" rx="1" style="fill:#ffffff" opacity=".95"/><rect x="10.7" y="10.6" width="2.6" height="7.4" rx="1" style="fill:#ffffff"/><rect x="14.5" y="12" width="2.6" height="6" rx="1" style="fill:#ffffff" opacity=".85"/><circle cx="12" cy="7.2" r="1.7" style="fill:#ffffff"/></svg>` },
   { key: "preview",     title: "Browser",         icon: VIEW_META.preview.icon },
   { key: "settings",    title: "Settings",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g style="fill:#71717a;stroke:none"><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(45 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(90 12 12)"/><rect x="10.6" y="1.2" width="2.8" height="21.6" rx="1.3" transform="rotate(135 12 12)"/><circle cx="12" cy="12" r="8"/></g><circle cx="12" cy="12" r="3.2" style="fill:#ffffff;stroke:none"/></svg>` },
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
@@ -306,6 +311,20 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
 // /api/me/prefs, the SDK path) so the next boot reopens exactly what the user
 // was looking at. Module scope so the one-shot restore survives wall remounts
 // within a single app launch (but re-arms on a fresh launch).
+/** PLATFORM — the console, opened signed-in as a work panel. The server mints
+ *  a console session for whoever is signed in here, so the panel lands in
+ *  their own scope (member, org admin, or every org for the super admin). */
+async function openPlatformPanel(): Promise<void> {
+  const api = (window as unknown as { glyphh?: { platformPanelUrl?: (next?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }> } }).glyphh;
+  const res = await api?.platformPanelUrl?.().catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  // Signed out, or the gateway isn't configured: the tile stays inert rather
+  // than opening a login page the user can do nothing with.
+  if (!res?.ok) { console.warn("[platform] couldn't open:", res?.error); return; }
+  const { url } = res.data as { url: string };
+  (window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string }) => void })
+    .__wbOpenApp?.({ slug: "platform", name: "Platform", url });
+}
+
 const WALL_STATE_PREF = "echoWallState";
 let wallRestored = false;
 
@@ -4028,6 +4047,7 @@ async function init(): Promise<void> {
           }
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
 
+          if (key === "platform") { void openPlatformPanel(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "tasks") w.__wbOpenSection?.("tasks");
