@@ -5456,7 +5456,7 @@ export function initCode(): void {
         visibility: cs?.visibility, display: cs?.display, opacity: cs?.opacity, transform: cs?.transform,
         body: Array.from(document.body.classList).filter((c) => c.startsWith("echo") || c.startsWith("wb") || c.startsWith("rail")).join(" "),
         topInset: getComputedStyle(document.body).getPropertyValue("--wb-top-inset").trim() || "unset",
-        cards: document.querySelectorAll(".echo-card").length, agentHolder: rectOf(".ws-agent-holder"),
+        cards: document.querySelectorAll(".echo-card").length, agentHolder: (() => { const n = document.querySelector<HTMLElement>(".ws-agent-holder"); if (!n) return "absent"; const q = n.getBoundingClientRect(); return `${Math.round(q.left)},${Math.round(q.top)} ${Math.round(q.width)}x${Math.round(q.height)}`; })(),
       }));
     }, at);
   }

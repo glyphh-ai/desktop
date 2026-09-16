@@ -4699,6 +4699,18 @@ async function init(): Promise<void> {
         const h = seatHandoff;
         seatHandoff = null;
         closeCard(h.donor, { ...h.closeOpts, keepSeat: true });
+      } else if (seatHandoff && openList.includes(seatHandoff.donor)) {
+        // LOOSE cards (no workspace grid) flow in openList order, so the seat IS
+        // the donor's index (his report, 2026-09-16: a terminal switching to
+        // chat opened in another panel). Take that index; the donor closes.
+        const h = seatHandoff;
+        seatHandoff = null;
+        const at = openList.indexOf(h.donor);
+        openList.splice(openList.indexOf(e), 1);
+        openList.splice(at, 0, e);
+        e.memKey = h.donor.memKey;
+        e.flowSolo = h.donor.flowSolo;
+        closeCard(h.donor, { ...h.closeOpts });
       } else if (echoGrid && !openingLayout) {
         // FULL grid (his order, 2026-08-30 — the wipe rule is retired): the
         // new card joins the layout beside the definition, following the
