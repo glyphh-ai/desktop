@@ -30,6 +30,8 @@ function ensureLayer(): HTMLDivElement {
   if (layer && layer.isConnected) return layer;
   layer = document.createElement("div");
   layer.id = "echo-dock-layer";
+  // The portal spans the CONTENT side only: the fixed sidebar owns the left (2026-09-16).
+  layer.style.left = "var(--rail-w, 0px)";
   document.body.appendChild(layer);
   return layer;
 }

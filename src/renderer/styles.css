@@ -20753,7 +20753,16 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
    panel, full height at the left, carrying the only header on the page. The
    content side starts at the very top; work panels bring their own heads. ── */
 body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w-open: 264px; --rail-w: var(--rail-w-open); }
-body.rail-collapsed { --rail-w: 96px; }
+/* Collapsed: the sidebar leaves entirely (content takes the width); hovering
+   the strip's icon PEEKS it back as an overlay in its old place. */
+body.rail-collapsed { --rail-w: 0px; }
+body.rail-collapsed #app-rail { width: var(--rail-w-open); transform: translateX(-100%); transition: transform 0.16s ease; box-shadow: none; }
+body.rail-collapsed.rail-peek #app-rail { transform: translateX(0); box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35); }
+#rail-collapsed-strip { position: fixed; top: 0; left: 0; height: var(--rail-top-h); width: 122px; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; z-index: 210; }
+#rail-collapsed-strip.hidden { display: none; }
+#rail-collapsed-strip .app-rail-drag { display: none; }
+body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }
+#echo-dock-layer, .echo-dock-hotstrip { left: var(--rail-w) !important; }
 body.rail-resizing, body.rail-resizing * { cursor: col-resize !important; user-select: none; }
 body.rail-resizing #app-rail, body.rail-resizing #help-overlay { transition: none !important; }
 #app-rail-resize { position: absolute; top: var(--rail-top-h); right: -3px; bottom: 0; width: 6px; cursor: col-resize; z-index: 2; }
@@ -20776,9 +20785,6 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail-top .app-rail-drag { flex: 1 1 auto; align-self: stretch; -webkit-app-region: drag; }
 .app-rail-top-btn { -webkit-app-region: no-drag; width: 26px; height: 26px; border-radius: 6px; border: none; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .app-rail-top-btn:hover { color: var(--text); background: var(--hover); }
-body.rail-collapsed #app-rail > :not(#app-rail-top) { display: none !important; }
-body.rail-collapsed #app-rail-top { padding-left: 74px; }
-body.rail-collapsed #rail-echo-btn { display: none; }
 #shell-drag-strip { display: none !important; }
 #shell-drag-strip .shell-drag-area { -webkit-app-region: no-drag; }
 #help-overlay { top: 0; left: var(--rail-w); }

@@ -5340,9 +5340,14 @@ export function initCode(): void {
   // The sidebar's own header: collapse (persisted) and the Echo launcher.
   const setRailCollapsed = (on: boolean, persist: boolean): void => {
     document.body.classList.toggle("rail-collapsed", on);
-    const b = el("rail-collapse-btn"); if (b) b.title = on ? "Expand the sidebar" : "Collapse the sidebar";
+    document.body.classList.remove("rail-peek");
+    el("rail-collapsed-strip")?.classList.toggle("hidden", !on);
     if (persist) void window.glyphh.setPreference?.("railCollapsed", on);
   };
+  // Collapsed: the strip's icon peeks the sidebar on hover; leaving the sidebar hides it again; a click expands for good.
+  el("rail-expand-btn")?.addEventListener("mouseenter", () => { if (document.body.classList.contains("rail-collapsed")) document.body.classList.add("rail-peek"); });
+  el("rail-expand-btn")?.addEventListener("click", () => setRailCollapsed(false, true));
+  el("app-rail")?.addEventListener("mouseleave", () => { if (document.body.classList.contains("rail-collapsed")) document.body.classList.remove("rail-peek"); });
   // Delegated: the strip is an OS drag region, so the click is caught at the document and logged.
   document.addEventListener("click", (e) => {
     const t = (e.target as HTMLElement | null)?.closest?.("#rail-collapse-btn");
