@@ -333,8 +333,9 @@ async function reloadQuietly(): Promise<void> {
 
 // ── discover ────────────────────────────────────────────────────────────────
 function renderDiscover(host: HTMLElement): void {
-  // The page's own search box serves the directory; a category page carries its own.
-  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.toggle("hidden", !!catView);
+  // On Discover the header search steps aside: the search and the Filter sit
+  // under the breadcrumb (his screens, 2026-09-16).
+  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.add("hidden");
   if (catView) { renderCategoryPage(host); return; }
   const count = el("conn2-count"); if (count) count.textContent = `${catalog.length} available`;
   const crumb = document.createElement("div");
@@ -342,6 +343,7 @@ function renderDiscover(host: HTMLElement): void {
   crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
   crumb.querySelector(".crumb-link")!.addEventListener("click", () => { tab = "mine"; render(); });
   host.appendChild(crumb);
+  host.appendChild(dirBar(catalogQuery, (q) => { void loadCatalog(q).then(() => { catalogAll = false; render(); refocusDirSearch(); }); }, "All"));
 
 
   const have = connectedSlugs();
@@ -413,6 +415,32 @@ function dirCard(a: CatalogApp, have: Set<string>): HTMLElement {
   return card;
 }
 
+/** The directory bar under the breadcrumb: search on the left, "Filter: <x>"
+ *  on the right opening the category list. */
+function dirBar(value: string, onQuery: (q: string) => void, filterLabel: string): HTMLElement {
+  const bar = document.createElement("div");
+  bar.className = "conn2-dir-bar";
+  bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"><span class="conn2-muted">Filter:</span> <span></span></button>`;
+  const input = bar.querySelector("input") as HTMLInputElement;
+  input.value = value;
+  let t: ReturnType<typeof setTimeout> | null = null;
+  input.addEventListener("input", () => { if (t) clearTimeout(t); t = setTimeout(() => onQuery(input.value.trim()), 250); });
+  const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
+  (filter.querySelector("span:last-child") as HTMLElement).textContent = filterLabel;
+  filter.addEventListener("click", () => {
+    if (!categoriesLoaded) { void loadCategories().then(() => filter.click()); return; }
+    openMenu(filter, [
+      { label: "All connectors", onClick: () => void openCategory(null) },
+      ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
+    ]);
+  });
+  return bar;
+}
+function refocusDirSearch(): void {
+  const again = document.querySelector<HTMLInputElement>(".conn2-dir-search input");
+  if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+}
+
 /** A category page: breadcrumb, its own search with the Filter dropdown, the
  *  grid paging by scroll. */
 function renderCategoryPage(host: HTMLElement): void {
@@ -424,32 +452,7 @@ function renderCategoryPage(host: HTMLElement): void {
   crumb.querySelector(".crumb-link:not(.dir)")!.addEventListener("click", () => { catView = null; tab = "mine"; render(); });
   crumb.querySelector(".crumb-link.dir")!.addEventListener("click", () => void openCategory(null));
   host.appendChild(crumb);
-
-  const bar = document.createElement("div");
-  bar.className = "conn2-dir-bar";
-  bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"></button>`;
-  const input = bar.querySelector("input") as HTMLInputElement;
-  input.value = catQuery;
-  let t: ReturnType<typeof setTimeout> | null = null;
-  input.addEventListener("input", () => {
-    catQuery = input.value;
-    if (t) clearTimeout(t);
-    t = setTimeout(() => {
-      void loadCategoryPage(true).then(() => {
-        render();
-        const again = document.querySelector<HTMLInputElement>(".conn2-dir-search input");
-        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-      });
-    }, 250);
-  });
-  const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
-  filter.innerHTML = `<span class="conn2-muted">Filter:</span> <span></span>`;
-  (filter.querySelector("span:last-child") as HTMLElement).textContent = catView!;
-  filter.addEventListener("click", () => openMenu(filter, [
-    { label: "All connectors", onClick: () => void openCategory(null) },
-    ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
-  ]));
-  host.appendChild(bar);
+  host.appendChild(dirBar(catQuery, (q) => { catQuery = q; void loadCategoryPage(true).then(() => { render(); refocusDirSearch(); }); }, catView!));
 
   const have = connectedSlugs();
   const grid = document.createElement("div");
@@ -902,17 +905,13 @@ function openMenu(anchor: HTMLElement, items: Array<{ label: string; danger?: bo
 function wire(): void {
   if (wired) return;
   wired = true;
-  let dirTimer: ReturnType<typeof setTimeout> | null = null;
   el<HTMLInputElement>("conn2-search")?.addEventListener("input", (ev) => {
     query = (ev.target as HTMLInputElement).value;
-    if (tab !== "discover") { render(); return; }
-    // On Discover the same box searches the directory (debounced; Pipedream answers the query).
-    if (dirTimer) clearTimeout(dirTimer);
-    dirTimer = setTimeout(() => { void loadCatalog(query.trim()).then(() => { catalogAll = false; render(); }); }, 250);
+    render();
   });
   document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.addEventListener("click", async () => {
     tab = b.dataset.conn2Tab as "mine" | "discover";
-    if (tab === "discover" && (query.trim() !== catalogQuery || !catalog.length)) await loadCatalog(query.trim());
+    if (tab === "discover" && !catalog.length) await loadCatalog("");
     render();
   }));
   // Apps come from Discover; the button is for a server of your own.
