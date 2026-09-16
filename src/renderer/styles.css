@@ -20515,9 +20515,10 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* ── Settings → Build → Skills (2026-09-16) — the list/detail pages ───────── */
 .settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
-.skills-head { display: grid; grid-template-columns: 1fr minmax(0, 420px) 1fr; align-items: center; gap: 14px; margin-bottom: 14px; }
+.skills-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; min-height: 36px; }
 .skills-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.skills-head > #skills-add { justify-self: end; }
+/* The search is centered on the page itself, whatever the title and button widths. */
+.skills-head > .skills-search { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, 46%); }
 .skills-search { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
 .skills-search svg { width: 14px; height: 14px; flex-shrink: 0; }
 .skills-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; outline: none; }
