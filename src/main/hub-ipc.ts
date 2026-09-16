@@ -22,6 +22,8 @@ type Kind = "skill" | "task" | "agent";
 const KINDS: readonly Kind[] = ["skill", "task", "agent"];
 
 interface HubItem { id: string; kind: Kind; slug: string; name: string; description: string; installed: boolean; headVersion: number | null }
+/** A Glyphh catalog item (published by another org, approved by Glyphh). */
+interface PublicItem { id: string; kind: Kind; slug: string; name: string; description: string; installed: boolean; version: number }
 interface Role { name?: string; label?: string; description?: string; default?: string | null; model?: string | null }
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
@@ -103,6 +105,23 @@ export function registerHubIpc(): void {
           errors.push(`${kind} ${it.slug}: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
+    }
+    // THE GLYPHH CATALOG (his ruling, 2026-09-16): items other orgs published
+    // and Glyphh approved — installed ones land as local rows the same way.
+    // The server already hides what this org hasn't allowed on a governed plan.
+    try {
+      const pubs = await client.http.get<PublicItem[]>("/api/hub/public");
+      for (const it of (Array.isArray(pubs) ? pubs : []).filter((i) => i.installed && KINDS.includes(i.kind))) {
+        try {
+          const p = await client.http.get<Record<string, unknown>>(`/api/hub/public/${encodeURIComponent(it.id)}/payload`);
+          importOne(it.kind, { ...it, headVersion: it.version }, p && typeof p === "object" ? p : {});
+          counts[it.kind] += 1;
+        } catch (err) {
+          errors.push(`glyphh ${it.kind} ${it.slug}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } catch (err) {
+      errors.push(`glyphh catalog: ${err instanceof Error ? err.message : String(err)}`);
     }
     return { counts, errors };
   }));
