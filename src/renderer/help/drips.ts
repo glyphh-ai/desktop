@@ -11,6 +11,7 @@ let allDrips: Array<{ name: string; recipe: string }> = [];
 let builtinEffects: string[] = [];
 const dripsListEl = document.getElementById("drips-list")!;
 const dripsToolbar = document.getElementById("drips-toolbar")!;
+const dripsHead = document.getElementById("drips-head");
 const dripEditor = document.getElementById("drip-editor")!;
 const dripNameInput = document.getElementById("drip-name") as HTMLInputElement;
 const dripDeleteBtn = document.getElementById("drip-delete-btn") as HTMLButtonElement;
@@ -99,7 +100,7 @@ async function loadDrips() {
   dripFormError.classList.add("hidden");
 
   document.getElementById("drips-upgrade-gate")!.classList.add("hidden");
-  dripsToolbar.classList.remove("hidden");
+  dripsToolbar.classList.remove("hidden"); dripsHead?.classList.remove("hidden");
   dripsListEl.classList.remove("hidden");
 
   if (builtinEffects.length === 0) {
@@ -200,7 +201,7 @@ function openDripEditor(name: string, recipe: string) {
   }
 
   dripsListEl.classList.add("hidden");
-  dripsToolbar.classList.add("hidden");
+  dripsToolbar.classList.add("hidden"); dripsHead?.classList.add("hidden");
   dripEditor.classList.remove("hidden");
   dripNameInput.focus();
 }
@@ -212,7 +213,7 @@ function closeDripEditor() {
   void window.glyphh.dripsStop().catch(() => { /* manager gone — nothing to stop */ });
   dripEditor.classList.add("hidden");
   dripsListEl.classList.remove("hidden");
-  dripsToolbar.classList.remove("hidden");
+  dripsToolbar.classList.remove("hidden"); dripsHead?.classList.remove("hidden");
   editingDripName = null;
   loadDrips();
 }

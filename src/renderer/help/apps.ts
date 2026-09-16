@@ -41,6 +41,7 @@ const appPreview = document.getElementById("app-preview") as HTMLElement & {
   reload: () => void;
 };
 const appsToolbar = document.getElementById("apps-toolbar")!;
+const appsHead = document.getElementById("tabs-head");
 const appFormError = document.getElementById("app-form-error")!;
 const appDetailHeading = document.getElementById("app-detail-heading")!;
 
@@ -359,7 +360,7 @@ async function loadApps() {
 
   document.getElementById("apps-pro-gate")?.classList.add("hidden");
   appsList.classList.remove("hidden");
-  appsToolbar.classList.remove("hidden");
+  appsToolbar.classList.remove("hidden"); appsHead?.classList.remove("hidden");
 
   try {
     const apps = (await window.glyphh.panelAppsList?.()) || [];
@@ -1065,7 +1066,7 @@ async function openPanelAppDetail(app: PanelApp) {
 
   // Show detail, hide grid
   appsList.classList.add("hidden");
-  appsToolbar.classList.add("hidden");
+  appsToolbar.classList.add("hidden"); appsHead?.classList.add("hidden");
   appAddForm.classList.add("hidden");
   appDetail.classList.remove("hidden");
 
@@ -1087,7 +1088,7 @@ function closeAppDetail() {
   panelLoaded = false;
   appDetail.classList.add("hidden");
   appsList.classList.remove("hidden");
-  appsToolbar.classList.remove("hidden");
+  appsToolbar.classList.remove("hidden"); appsHead?.classList.remove("hidden");
   loadApps();
 }
 
@@ -1261,7 +1262,7 @@ function initApps() {
     toggleArchetypeFields("app-add", "generic");
     appFormError.classList.add("hidden");
     appsList.classList.add("hidden");
-    appsToolbar.classList.add("hidden");
+    appsToolbar.classList.add("hidden"); appsHead?.classList.add("hidden");
     appAddForm.classList.remove("hidden");
     addNameInput.focus();
   });

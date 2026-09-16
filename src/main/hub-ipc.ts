@@ -49,10 +49,10 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
   return `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 }
 
-type Kind = "skill" | "app";
-const kindOf = (k: unknown): Kind => (k === "app" ? "app" : "skill");
+type Kind = "skill" | "app" | "plugin";
+const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : "skill");
 /** The hub kind behind a local id: the apps home publishes as kind app. */
-const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : "skill");
+const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : id.startsWith("plugin:") ? "plugin" : "skill");
 
 async function discover(kind: Kind): Promise<DiscoverRow[]> {
   const client = getClient();

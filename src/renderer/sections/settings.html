@@ -2114,8 +2114,75 @@
                 </div>
               </div>
               <div class="settings-panel skills-panel" data-sub="plugins">
-                <div class="skills-head"><h2>Plugins</h2></div>
-                <p class="section-desc">Plugins bundle skills, agents, commands, hooks and MCP servers into one install. Coming right after Skills.</p>
+                <div id="gplugs-list-view">
+                  <div class="skills-head">
+                    <h2>Plugins</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gplugs-search" type="text" placeholder="Search plugins" spellcheck="false" autocomplete="off" /></div>
+                    <button id="gplugs-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your plugins</button>
+                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
+                    <div style="flex:1;"></div>
+                    <span id="gplugs-count" class="skills-count"></span>
+                    <button id="gplugs-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                    <button id="gplugs-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  </div>
+                  <div id="gplugs-error" class="crud-form-error hidden"></div>
+                  <div id="gplugs-groups"></div>
+                </div>
+                <div id="gplug-detail-view" class="hidden">
+                  <button id="gplug-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Apps</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="gplug-detail-name" class="skill-detail-name"></div>
+                      <div id="gplug-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <button id="gplug-share" class="action-btn" type="button">Share</button>
+                    <label class="skills-switch" title="Enabled"><input id="gplug-enabled" type="checkbox" /><span></span></label>
+                    <button id="gplug-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="gplug-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="skills" type="button">Skills <span id="gplug-skill-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="gplug-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="gplug-skills-list" class="app-bundle-list"></div></div></div>
+                  <div id="gplug-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="gplug-overview-desc" class="skill-overview-desc"></div>
+                      <div id="gplug-overview-extra" class="app-overview-extra"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="gplug-author" class="skill-author"></div>
+                      <div id="gplug-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="gplug-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <select id="gplug-version" class="skill-version"></select>
+                      <div style="flex:1;"></div>
+                      <button id="gplug-reveal" class="action-btn" type="button">Show in folder</button>
+                      <button id="gplug-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="gplug-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="gplug-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="gplug-view-preview" class="active" type="button" title="Preview">👁</button><button id="gplug-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="gplug-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="gplug-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <!-- Connections — the connections section body (from
                    sections/connections.html) is MOVED into this host on open and

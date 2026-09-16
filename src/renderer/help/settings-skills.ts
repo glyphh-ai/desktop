@@ -25,12 +25,13 @@ const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "C
 const SOURCE_ORDER: Source[] = ["glyphh", "app", "claude", "codex", "gemini"];
 const SKILL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
 const CONN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`;
+const PLUGIN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg>`;
 const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
 
 /** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
  *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
 export interface PageCfg {
-  kind: "skill" | "app";
+  kind: "skill" | "app" | "plugin";
   /** The panel's ids: skills-* / skill-* for Skills, gapps-* / gapp-* for Apps (app-* belongs to Tabs). */
   id: (skillsId: string) => string;
   panel: string;
@@ -611,12 +612,13 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   const host = el("skill-overview-extra");
   if (!host) return;
   host.textContent = "";
-  if (cfg.kind !== "app") return;
+  if (cfg.kind === "skill") return;
   const read = async (rel: string): Promise<string> => {
     if (hubFiles) return hubFiles[rel] ?? "";
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
+  if (cfg.kind === "plugin") { await paintBundleSkills(s, read); return; }
   let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string; tools?: string } = {};
   try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
   const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
@@ -1116,9 +1118,10 @@ const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
   newPrompt: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
 });
+const PLUGINS_PAGE = createLibraryPage({
+  kind: "plugin", id: (x) => x.replace(/^skills-/, "gplugs-").replace(/^skill-/, "gplug-"), panel: '.settings-panel[data-sub="plugins"]', noun: "plugin", nouns: "plugins", icon: PLUGIN_ICON, back: "Plugins",
+  newPrompt: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
+});
 export const loadSkillsSettings = SKILLS_PAGE.load;
 export const loadAppsSettings = APPS_PAGE.load;
-
-export function loadPluginsSettings(): void {
-  // Plugins land after Apps; the panel carries its own copy for now.
-}
+export const loadPluginsSettings = PLUGINS_PAGE.load;

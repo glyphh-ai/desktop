@@ -43,6 +43,7 @@ import { pathToFileURL, fileURLToPath } from "url";
 import { userScopedPath, glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
+import { getPreference } from "./stores/preferences-db.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
@@ -643,7 +644,13 @@ interface AppRow {
   name: string;
   appArchetype?: string | null;
   execPath?: string | null;
-  launchConfig?: { capabilities?: string[]; connectors?: string[]; tools?: GlyphhAppTool[]; worker?: string | null } | null;
+  launchConfig?: { capabilities?: string[]; connectors?: string[]; tools?: Array<GlyphhAppTool & { run?: string; input?: Record<string, unknown> }>; worker?: string | null; bundleDir?: string } | null;
+}
+
+/** Tools the user set to Never on the app's Tools tab (Settings → Build → Apps). */
+function hiddenAppTools(slug: string): Set<string> {
+  const list = getPreference<unknown>(`appHiddenTools:${slug}`, []);
+  return new Set(Array.isArray(list) ? list.map(String) : []);
 }
 
 /** Saved-app row → the spec needed to run its worker (null if it has none). */
@@ -686,11 +693,14 @@ export async function listInstalledAppTools(): Promise<Array<{ app: string; name
   const apps = await fetchOrgApps().catch(() => []) as AppRow[];
   return apps
     .filter((a) => isGlyphhAppRow(a))
-    .map((a) => ({
-      app: a.slug,
-      name: a.name,
-      tools: (a.launchConfig?.tools || []).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })),
-    }))
+    .map((a) => {
+      const hidden = hiddenAppTools(a.slug);
+      return {
+        app: a.slug,
+        name: a.name,
+        tools: (a.launchConfig?.tools || []).filter((t) => !hidden.has(t.name)).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema ?? t.input })),
+      };
+    })
     .filter((a) => a.tools.length > 0);
 }
 
@@ -702,6 +712,25 @@ export async function callAppTool(appSlug: string, toolName: string, args: Recor
   if (!app) throw new Error(`unknown app: ${appSlug}`);
   const tool = (app.launchConfig?.tools || []).find((t) => t.name === toolName);
   if (!tool) throw new Error(`app "${appSlug}" has no tool "${toolName}"`);
+  if (hiddenAppTools(app.slug).has(toolName)) throw new Error(`tool "${toolName}" is set to Never for this app`);
+
+  // A bundle tool (Settings → Build → Apps): `run` is a script in the bundle
+  // with the tool's input as JSON on stdin and its JSON answer on stdout.
+  if (tool.run) {
+    const dir = app.launchConfig?.bundleDir || path.dirname(String(app.execPath || ""));
+    const [script, ...rest] = tool.run.split(/\s+/);
+    if (!script) throw new Error(`tool "${toolName}" names no script`);
+    const file = path.resolve(dir, script);
+    if (!file.startsWith(path.resolve(dir) + path.sep)) throw new Error(`tool "${toolName}" reaches outside its bundle`);
+    return new Promise((resolve, reject) => {
+      const child = execFile(process.execPath, [file, ...rest], { cwd: dir, timeout: 60_000, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", GLYPHH_APP: app.slug } }, (err, stdout, stderr) => {
+        if (err) { reject(new Error(String(stderr || err.message).trim().slice(0, 2000))); return; }
+        const out = String(stdout).trim();
+        try { resolve(out ? JSON.parse(out) : { ok: true }); } catch { resolve({ output: out }); }
+      });
+      child.stdin?.end(JSON.stringify(args || {}));
+    });
+  }
 
   if (tool.handler) {
     const spec = workerSpecFromRow(app);
