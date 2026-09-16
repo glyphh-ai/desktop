@@ -29,6 +29,7 @@ import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
+import { getClient } from "./glyphh-client.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -106,6 +107,11 @@ const slug = (name: string): string =>
 /** A loop's row — saved, or the virtual default for a bare CLI id. The
  *  model-list seam (loop-models.ts) reads it to know which endpoint to ask. */
 export function agentRowFor(id: string): CliAgentRow | null {
+  const srv = orgLoops?.get(id);
+  if (srv) return rowFromServer(srv);
+  // With a roster loaded, an id it does not carry is a loop the org turned
+  // off — not a local file to fall back on.
+  if (orgLoops) return null;
   return readAgent(id) ?? defaultRowFor(id);
 }
 
@@ -131,6 +137,57 @@ function readAgent(id: string): CliAgentRow | null {
   } catch {
     return null;
   }
+}
+
+// ── THE ROSTER RIDES THE SERVER SEAM (his ruling, 2026-09-15) ───────────────
+// The org's loops and their pre-config come from /api/loops/available — the
+// org admin's Loops page decides what every member's terminal starts with.
+// Nothing about a loop is kept on disk any more except the member's OWN
+// vendor key (the BYOK lane), which stays in the loop's 0600 env file.
+// Offline, or before sign-in, the branded defaults stand in.
+interface ServerLoop {
+  cli: string; name: string; provider: string; enabled: boolean; icon: string; cmd: string;
+  mcp: boolean; session: "keep" | "new" | "last"; permission: "safe" | "ask" | "auto"; cwd: string; updatedAt?: string | null;
+}
+let orgLoops: Map<string, ServerLoop> | null = null;
+let orgLoopsAt = 0;
+let orgLoopsInflight: Promise<void> | null = null;
+const ORG_LOOPS_TTL_MS = 60_000;
+
+/** Refresh the roster from the server; a failure keeps the last good roster
+ *  (or the defaults) and retries on the next call — never a blocked composer. */
+export async function ensureOrgLoops(force = false): Promise<void> {
+  if (!force && orgLoops && Date.now() - orgLoopsAt < ORG_LOOPS_TTL_MS) return;
+  if (orgLoopsInflight) return orgLoopsInflight;
+  orgLoopsInflight = (async () => {
+    try {
+      const rows = await getClient().http.get<ServerLoop[]>("/api/loops/available");
+      if (Array.isArray(rows)) {
+        orgLoops = new Map(rows.filter((r) => r && r.cli).map((r) => [r.cli, r]));
+        orgLoopsAt = Date.now();
+      }
+    } catch (err) {
+      console.warn("[agents] org loops unavailable — defaults stand:", err instanceof Error ? err.message : String(err));
+      orgLoopsAt = Date.now() - ORG_LOOPS_TTL_MS + 10_000; // retry in 10s
+    } finally {
+      orgLoopsInflight = null;
+    }
+  })();
+  return orgLoopsInflight;
+}
+
+/** A roster row as the desktop's loop record: the org's pre-config plus the
+ *  member's own key (local, write-only) when they set one. */
+function rowFromServer(l: ServerLoop): CliAgentRow {
+  const local = readAgent(l.cli);
+  const cli = (["codex", "gemini", "copilot", "cursor"].includes(l.cli) ? l.cli : "claude") as CliAgentRow["cli"];
+  const now = new Date().toISOString();
+  return {
+    id: l.cli, name: l.name, cli, icon: l.icon || "", cmd: l.cmd || l.cli, model: "",
+    mcp: l.mcp !== false, cwd: l.cwd || "", session: l.session ?? "keep", permission: l.permission ?? "ask",
+    apiKey: local?.apiKey ?? null, enabled: l.enabled !== false,
+    createdAt: local?.createdAt ?? now, updatedAt: l.updatedAt ?? local?.updatedAt ?? now,
+  };
 }
 
 function writeAgent(row: CliAgentRow): void {
@@ -538,6 +595,13 @@ function defaultRowFor(id: string): CliAgentRow | null {
 }
 
 export function listCliAgents(): CliAgentListed[] {
+  if (orgLoops) {
+    return [...orgLoops.values()]
+      .filter((l) => l.enabled !== false)
+      .map((l) => rowFromServer(l))
+      .map((row) => ({ ...row, command: composeCommand(row) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
   let ids: string[] = [];
   try { ids = fs.readdirSync(AGENTS_DIR()); } catch { ids = []; }
   const out: CliAgentListed[] = [];
@@ -690,6 +754,8 @@ function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | nul
 }
 
 export function registerCliAgentsIpc(): void {
+  // The roster is server-side; warm it (a pre-sign-in miss just retries later).
+  void ensureOrgLoops();
   ipcMain.handle("cli-session-delete", (_e, id: string) => {
     try {
       const base = `${String(id)}.jsonl`;
@@ -713,7 +779,8 @@ export function registerCliAgentsIpc(): void {
     try { return { ok: true, sessions: listCliSessions() }; }
     catch (err) { return { ok: false, sessions: [], error: err instanceof Error ? err.message : String(err) }; }
   });
-  ipcMain.handle("cli-agents-list", () => {
+  ipcMain.handle("cli-agents-list", async () => {
+    await ensureOrgLoops();
     try { return { ok: true, agents: listCliAgents() }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), agents: [] }; }
   });
@@ -728,7 +795,8 @@ export function registerCliAgentsIpc(): void {
       const id = input.id ? String(input.id) : slug(String(input.name ?? ""));
       // A branded loop with no file yet patches over its virtual default row,
       // so Settings → Loops' one-field saves work on a fresh account.
-      const existing = readAgent(id) ?? defaultRowFor(id);
+      // The org's row is the base; a save here only ever adds the member's own key.
+      const existing = agentRowFor(id) ?? readAgent(id) ?? defaultRowFor(id);
       const name = String(input.name ?? existing?.name ?? "").trim();
       const cmd = String(input.cmd ?? existing?.cmd ?? "").trim();
       if (!name) return { ok: false, error: "a loop needs a name" };
@@ -802,11 +870,12 @@ export function registerCliAgentsIpc(): void {
   // "Open" = make sure the pre-config's dependencies are live. The command
   // itself types into the terminal the renderer opens.
   ipcMain.handle("cli-agent-open", async (_e, id: string, overrides?: OpenOverrides) => {
+    await ensureOrgLoops();
     try {
       // The virtual default Claude loop opens like a saved one (the same row
       // listCliAgents serves) — nothing is written until the user configures it.
-      const row = readAgent(String(id)) ?? defaultRowFor(String(id));
-      if (!row) return { ok: false, error: "agent not found" };
+      const row = agentRowFor(String(id));
+      if (!row) return { ok: false, error: "this loop isn't enabled for your organization" };
       if (overrides?.light !== undefined) {
         try {
           if (row.cli === "claude") ensureClaudeTheme(overrides.light);
