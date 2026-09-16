@@ -798,19 +798,11 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
     for (const t of g.items) {
       const row = document.createElement("div");
       row.className = "conn2-prow";
-      row.innerHTML = `<div class="conn2-perm-main"><span class="conn2-perm-name"></span>${t.description ? `<button type="button" class="conn2-info" title="What this tool does"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button><div class="conn2-pop hidden"></div>` : ""}</div><div class="conn2-seg">${(["allow", "ask", "never"] as ToolMode[]).map((m) => `<button type="button" data-mode="${m}" title="${MODE_LABEL[m]}">${MODE_ICON[m]}</button>`).join("")}</div>`;
-      (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = humanize(t.name, appName);
-      (row.querySelector(".conn2-perm-name") as HTMLElement).title = t.name;
-      const pop = row.querySelector<HTMLElement>(".conn2-pop");
-      if (pop) {
-        pop.textContent = t.description || "";
-        row.querySelector(".conn2-info")!.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          const open = !pop.classList.contains("hidden");
-          document.querySelectorAll<HTMLElement>(".conn2-pop").forEach((x) => x.classList.add("hidden"));
-          pop.classList.toggle("hidden", open);
-        });
-      }
+      row.innerHTML = `<div class="conn2-perm-main"><span class="conn2-perm-name"></span></div><div class="conn2-seg">${(["allow", "ask", "never"] as ToolMode[]).map((m) => `<button type="button" data-mode="${m}" title="${MODE_LABEL[m]}">${MODE_ICON[m]}</button>`).join("")}</div>`;
+      const nameEl = row.querySelector(".conn2-perm-name") as HTMLElement;
+      nameEl.textContent = humanize(t.name, appName);
+      // No popover (his call, 2026-09-16): the description rides the tooltip.
+      nameEl.title = t.description ? `${t.name}\n\n${t.description}` : t.name;
       row.querySelectorAll<HTMLButtonElement>(".conn2-seg button").forEach((b) => {
         b.disabled = readOnly;
         b.addEventListener("click", () => { setMode(t, b.dataset.mode as ToolMode); paintGroup(); void persist(); });
