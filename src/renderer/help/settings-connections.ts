@@ -775,7 +775,6 @@ async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogA
   ].filter((g) => g.items.length);
   for (const g of groups) {
     const sec = document.createElement("div");
-    sec.className = "conn2-group";
     sec.className = "conn2-group open";
     sec.innerHTML = `<div class="conn2-group-head"><svg class="conn2-group-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span class="conn2-group-label"></span><span class="conn2-group-count"></span><div style="flex:1"></div><button type="button" class="conn2-mode-btn"></button></div><div class="conn2-group-body"></div>`;
     (sec.querySelector(".conn2-group-label") as HTMLElement).textContent = g.label;
