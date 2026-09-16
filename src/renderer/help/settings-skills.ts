@@ -589,12 +589,14 @@ function paintDetailChrome(): void {
 async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   if (!current) return;
   btn.disabled = true;
-  type TabEnv = { ok: boolean; data?: { slug: string; name: string }; error?: string };
+  type TabEnv = { ok: boolean; data?: { slug: string; name: string; tool?: string }; error?: string };
   const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
   btn.disabled = false;
   const tab = r.data;
   if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
   closeSettingsModal();
+  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in panel.
+  if (tab.tool) { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(tab.tool); return; }
   (window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }) => void }).__wbOpenApp?.({ slug: tab.slug, name: tab.name, url: "", glyphh: true });
 }
 

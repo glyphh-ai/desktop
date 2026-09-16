@@ -19,6 +19,7 @@ import { app } from "electron";
 import { GLYPHH_DIR, getActiveUserId, setActiveUserIdState, userScopedDir } from "./app-paths";
 import { initLocalDb, closeLocalDb } from "./local-db";
 import { appCache } from "./glyphh-client";
+import { installDefaultHubItems } from "./hub-ipc.js";
 import { provisionUserDefaults } from "./user-defaults.js";
 
 // main.ts registers how to reload the UI (it owns the BrowserWindow).
@@ -92,7 +93,7 @@ export function setActiveUser(userId: string | null): void {
   fs.mkdirSync(userScopedDir(), { recursive: true });
   // A NEW account is never empty: workspaces are local, so the desktop
   // provisions its own defaults here — the first moment the scope is known.
-  if (userId) provisionUserDefaults();
+  if (userId) { provisionUserDefaults(); void installDefaultHubItems(); }
   initLocalDb();
   appCache.invalidate();
 

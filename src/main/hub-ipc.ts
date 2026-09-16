@@ -15,7 +15,7 @@
 
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
-import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd } from "./skills-fs.js";
+import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills } from "./skills-fs.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[] }
 interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[] }
@@ -83,6 +83,24 @@ async function install(ref: string, kind: Kind): Promise<{ id: string }> {
   const installed = installSkill(meta.slug, files, kind);
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
+}
+
+/** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
+ *  skill and its plugin from the public catalog, installed once when absent. */
+const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }];
+export async function installDefaultHubItems(): Promise<void> {
+  try {
+    const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);
+    for (const want of DEFAULT_INSTALLS) {
+      if (listSkills(want.kind).some((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`))) continue;
+      const hit = pub.find((p) => p.kind === want.kind && p.slug === want.slug);
+      if (!hit) continue;
+      await install(`glyphh:${hit.id}`, want.kind);
+      console.info(`[hub] installed the default ${want.kind} "${want.slug}"`);
+    }
+  } catch (err) {
+    console.warn("[hub] default installs:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 async function publish(skillId: string, notes: string): Promise<{ version: number; status: string }> {

@@ -517,7 +517,7 @@ export function registerSkillsIpc(): void {
       const { source, dir } = dirOf(String(id));
       if (source !== "app") return { ok: false, error: "only an app opens as a tab" };
       const r = await registerBundleApp(dir, { name: opts?.name, slug: opts?.slug });
-      return r.ok ? { ok: true, data: { slug: r.slug, name: r.name } } : { ok: false, error: r.error };
+      return r.ok ? { ok: true, data: { slug: r.slug, name: r.name, tool: r.tool } } : { ok: false, error: r.error };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));

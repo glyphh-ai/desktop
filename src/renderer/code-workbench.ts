@@ -2927,6 +2927,11 @@ async function init(): Promise<void> {
       // Unconnected required connections = ISSUES: the tile wears the same red
       // count badge the nav icons use, one per connection to resolve.
       const issues = (a.requiredConnections || []).filter((c) => !c.connected).length;
+      // A TOOL-BACKED app (Design, Slides, Images, Video, Audio from the hub): its tile IS the built-in panel.
+      const toolOf = (a.launchConfig as { tool?: unknown } | null | undefined)?.tool;
+      if (typeof toolOf === "string" && toolOf) {
+        return { name: a.name, slug, appId: a.id, kind: "tool", toolView: toolOf as Exclude<ViewKind, "app">, iconUrl: appIconUrl(icon) || undefined, orderKey: `app:${slug}` };
+      }
       return {
         name: a.name, slug, appId: a.id, url: a.url || undefined,
         // No id = a HOUSE DEFAULT (the glyphh launcher set, not a user row).

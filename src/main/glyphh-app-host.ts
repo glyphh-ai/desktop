@@ -200,6 +200,8 @@ const BUNDLE_DEFAULT_CAPABILITIES = ["db.exec", "notify.send", "agent.run", "llm
 interface BundleManifest {
   name?: string;
   ui?: string;
+  /** A built-in work panel (gdesign, gpoint, gimage, gvideo, gsound): the tab opens it instead of the ui. */
+  tool?: string;
   tools?: string;
   capabilities?: string[];
   dependencies?: { connections?: Array<{ app?: string; as?: string }> };
@@ -210,7 +212,7 @@ interface BundleManifest {
  *  declares (or the bundle defaults) and its connection dependencies. Idempotent:
  *  a second call updates the row in place. `slug` and `name` let a user make a
  *  second tab for the same bundle under another name. */
-export async function registerBundleApp(dir: string, opts: { slug?: string; name?: string } = {}): Promise<{ ok: boolean; slug?: string; name?: string; error?: string }> {
+export async function registerBundleApp(dir: string, opts: { slug?: string; name?: string } = {}): Promise<{ ok: boolean; slug?: string; name?: string; tool?: string; error?: string }> {
   let m: BundleManifest;
   try { m = JSON.parse(fs.readFileSync(path.join(dir, "app.json"), "utf-8")) as BundleManifest; }
   catch (e) { return { ok: false, error: `app.json unreadable: ${(e as Error).message}` }; }
@@ -226,7 +228,7 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
   const name = opts.name || String(m.name || path.basename(dir));
   const capabilities = Array.isArray(m.capabilities) && m.capabilities.length ? m.capabilities.map(String) : BUNDLE_DEFAULT_CAPABILITIES;
   const connectors = (m.dependencies?.connections || []).map((c) => String(c.app || "")).filter(Boolean);
-  const config = { capabilities, connectors, tools, bundleDir: dir };
+  const config = { capabilities, connectors, tools, bundleDir: dir, ...(m.tool ? { tool: String(m.tool) } : {}) };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === slug)).catch(() => undefined);
     if (existing) {
@@ -240,7 +242,7 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
   } catch (e) {
     return { ok: false, error: `register failed: ${(e as Error).message}` };
   }
-  return { ok: true, slug, name };
+  return { ok: true, slug, name, ...(m.tool ? { tool: String(m.tool) } : {}) };
 }
 
 /** The bundle is gone: drop every tab that pointed into its folder. */
