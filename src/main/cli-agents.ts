@@ -462,7 +462,7 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
   claude: { plan: " --permission-mode plan", acceptEdits: " --permission-mode acceptEdits", auto: " --dangerously-skip-permissions" },
   codex: { plan: " --sandbox read-only", acceptEdits: " --full-auto", auto: " --dangerously-bypass-approvals-and-sandbox" },
   gemini: { acceptEdits: " --approval-mode auto_edit", auto: " --yolo" },
-  copilot: {}, cursor: {}, custom: {},
+  copilot: { acceptEdits: " --allow-all-tools", auto: " --allow-all" }, cursor: {}, custom: {},
 };
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
@@ -494,8 +494,12 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
     case "gemini":
       core = `${row.cmd}${modelFlag(row.cli, m)}${perm} -p '${p}'`;
       break;
+    case "copilot":
+      // Copilot CLI 1.0: -p runs one prompt and exits; the MCP config rides inline (same mcpServers shape as Claude's file).
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${rid ? ` --resume '${rid}'` : ""} --no-color -p '${p}'${row.mcp ? ` --additional-mcp-config "$(cat "${mcpFile(row.id)}")"` : ""}`;
+      break;
     default:
-      throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex or gemini for scheduled loops`);
+      throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex, gemini or copilot for scheduled loops`);
   }
   const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${core}` : core;
   // Source the env file whenever it EXISTS, not only when a BYOK key is set:
