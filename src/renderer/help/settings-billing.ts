@@ -466,7 +466,7 @@ async function stripePollTick(): Promise<void> {
     const api = accountApi();
     // Reads are independent: a member's 403 on the credit pool must not stop
     // the tier watch (that is exactly the post-subscribe case).
-    const [c, s] = await Promise.all([api.credits().catch(() => null), api.status().catch(() => null)]);
+    const [c, s] = await Promise.all([api.credits().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
     let changed = false;
     if (s) { changed = changed || s.tier !== pollBaseline.tier; sub = s; }
     if (c) { changed = changed || c.balance !== pollBaseline.balance; credits = c; }
@@ -483,7 +483,7 @@ async function refreshCredits(): Promise<void> {
   btn?.classList.add("spinning");
   try {
     const api = accountApi();
-    const [c, s] = await Promise.all([api.credits().catch(() => null), api.status().catch(() => null)]);
+    const [c, s] = await Promise.all([api.credits().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
     if (c) credits = c;
     if (s) sub = s;
     paintCredits();
@@ -754,7 +754,14 @@ async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
   if (!(await embeddedReady())) return false;
   const key = (await publishableKey())!;
   const res = await accountApi().subscribeEmbedded(p.tier);
-  if (!res.ok || !res.data) { embeddedFailure = (res.ok ? "" : res.error) || "the server sent no client secret"; return false; }
+  if (!res.ok) { embeddedFailure = res.error || "the server refused the checkout"; return false; }
+  if (!res.data) {
+    // No secret means no checkout was needed: the org already has a live subscription and the server changed the plan in place.
+    toast(`Plan updated to ${p.displayName || p.tier}.`);
+    void loadBilling();
+    repollAfterStripe();
+    return true;
+  }
   const overlay = document.createElement("div");
   overlay.className = "confirm-overlay buy-credits-overlay";
   overlay.innerHTML = `
