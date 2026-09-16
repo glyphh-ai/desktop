@@ -5363,7 +5363,25 @@ export function initCode(): void {
   // Collapsed: the strip's icon peeks the sidebar on hover; leaving the sidebar hides it again; a click expands for good.
   el("rail-expand-btn")?.addEventListener("mouseenter", () => { if (document.body.classList.contains("rail-collapsed")) document.body.classList.add("rail-peek"); });
   el("rail-expand-btn")?.addEventListener("click", () => setRailCollapsed(false, true));
-  el("app-rail")?.addEventListener("mouseleave", () => { if (document.body.classList.contains("rail-collapsed")) document.body.classList.remove("rail-peek"); });
+  // The peeked sidebar stays while the pointer is over it OR over any popup it
+  // opened (menus land on the body, outside the rail): hide only once the
+  // pointer has been off both for a moment.
+  const RAIL_POPUPS = ".code-menu, .rail-more-menu, .wb-session-menu, .code-drop, .rail-account-menu, .settings-nav-menu, .confirm-overlay";
+  let peekTimer: number | null = null;
+  const overRailOrPopup = (x: number, y: number): boolean => {
+    const n = document.elementFromPoint(x, y) as HTMLElement | null;
+    return !!n && (!!n.closest("#app-rail") || !!n.closest("#rail-collapsed-strip") || !!n.closest(RAIL_POPUPS));
+  };
+  document.addEventListener("mousemove", (e) => {
+    if (!document.body.classList.contains("rail-collapsed") || !document.body.classList.contains("rail-peek")) return;
+    if (overRailOrPopup(e.clientX, e.clientY)) { if (peekTimer) { window.clearTimeout(peekTimer); peekTimer = null; } return; }
+    if (peekTimer) return;
+    peekTimer = window.setTimeout(() => {
+      peekTimer = null;
+      if (document.querySelector(RAIL_POPUPS)) return;   // a popup is still open: keep the sidebar
+      document.body.classList.remove("rail-peek");
+    }, 350);
+  });
   // Delegated: the strip is an OS drag region, so the click is caught at the document and logged.
   document.addEventListener("click", (e) => {
     const t = (e.target as HTMLElement | null)?.closest?.("#rail-collapse-btn");
