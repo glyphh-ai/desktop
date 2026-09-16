@@ -44,8 +44,8 @@
             <!-- Restored from bc47a1d3^ (his order, 2026-09-14) — shown ONLY
                  when the grid carries the Glyphh agent panel (tool:coding). -->
             <div id="layout-agent-rows" class="hidden">
-              <label class="settings-label" style="margin-top:16px;">Loop &amp; model</label>
-              <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this loop and its model. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
+              <label class="settings-label" style="margin-top:16px;">Loop &amp; model (overall)</label>
+              <div class="settings-hint" style="margin:-2px 0 8px;">What every agent on this page opens with unless its own cell says otherwise. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
               <div id="layout-loop-row" class="layout-loop-row">
                 <select id="layout-loop-select" class="settings-input"></select>
                 <div id="layout-loop-models" class="layout-loop-models"></div>
@@ -60,8 +60,8 @@
               </select>
             </div>
 
-            <label class="settings-label" style="margin-top:16px;">Working folder</label>
-            <div class="settings-hint" style="margin:-2px 0 8px;">Opening this workspace switches the agent to this folder. Leave empty to keep the current folder.</div>
+            <label class="settings-label" style="margin-top:16px;">Working folder (overall)</label>
+            <div class="settings-hint" style="margin:-2px 0 8px;">The folder every agent on this page opens in unless its own cell names one. Leave empty to keep the current folder.</div>
             <div class="layout-folder-row">
               <input id="layout-folder-input" class="settings-input" placeholder="No folder — keeps the current one" spellcheck="false" readonly />
               <button id="layout-folder-pick" class="layout-folder-icon" title="Choose folder">
@@ -84,7 +84,7 @@
                 <label class="settings-label" style="margin-top:0;">App setup</label>
                 <div class="settings-hint" style="margin:2px 0 10px;">How this workspace opens its panels: the Browser&rsquo;s page, the Terminal&rsquo;s first command (runs after the working folder is set), the Rail&rsquo;s sections.</div>
                 <div id="layout-cell-config-list"></div>
-                <div id="layout-cell-config-empty" class="settings-hint">Add a Browser, Terminal or Rail panel to the grid and its setup appears here.</div>
+                <div id="layout-cell-config-empty" class="settings-hint">Add an agent, a Browser, a Terminal or a Rail panel to the grid and its setup appears here. Each agent on the page carries its own view, loop, folder, model and session.</div>
               </div>
             </div>
             </div>

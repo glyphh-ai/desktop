@@ -352,6 +352,17 @@ type WallState = { layout: string | null; cards: WallCard[] };
 
 const prefsYo = (): { getPreference?: (k: string, d?: unknown) => Promise<unknown> } =>
   (window as unknown as { glyphh?: { getPreference?: (k: string, d?: unknown) => Promise<unknown> } }).glyphh ?? {};
+// AGENT LOOP DEFAULTS (his order, 2026-09-16): the app-wide loop and how it
+// opens (glyphh = the chat panel, cli = the loop's own terminal). Cached so the
+// synchronous layout-open path can read them; Settings re-fires the event.
+let defaultLoopView: "glyphh" | "cli" = "glyphh";
+let defaultLoopPref = "";
+const refreshLoopPrefs = (): void => {
+  void prefsYo().getPreference?.("defaultLoopView", "glyphh").then((v) => { defaultLoopView = v === "cli" ? "cli" : "glyphh"; }).catch(() => {});
+  void prefsYo().getPreference?.("defaultLoop", "").then((v) => { defaultLoopPref = String(v ?? ""); }).catch(() => {});
+};
+refreshLoopPrefs();
+window.addEventListener("glyphh:pref-changed", refreshLoopPrefs);
 
 /**
  * The configured start page. Cached after the first read so the paint path
@@ -830,7 +841,7 @@ async function init(): Promise<void> {
   /** Per-cell app setup a workspace applies on open. Flat by design — it
    *  round-trips verbatim through the desktop IPC, the web bridge and the
    *  server's opaque `data` JSON, so a new key needs no migration. */
-  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean };
+  type CellConfig = { url?: string; cmd?: string; keepAlive?: boolean; railMenu?: boolean; railRecents?: boolean; railLayouts?: boolean; railHideLeft?: boolean; railHideRight?: boolean; loop?: string; view?: "glyphh" | "cli"; folder?: string; model?: string; session?: "keep" | "new" | "last" };
   /** The Rail panel's section toggles, read off a cell config. Absent = shown,
    *  so only an explicit `false` hides — a workspace saved before the panel
    *  existed opens the full rail. */
@@ -4931,8 +4942,29 @@ async function init(): Promise<void> {
         // agent stays on screen through a layout; agent cells are skipped.)
         if (wasInLayout && codingHosted()) closeAllOfView("coding");
         const gridCells: Array<{ entry: TileEntry; col: number; row: number; colSpan: number; rowSpan: number }> = [];
+        // EACH AGENT INSTANCE picks its own surface (his order, 2026-09-16):
+        // an agent cell IS a loop; the Glyphh panel cell takes its loop from
+        // the cell, then the workspace, then the app default. A cell's VIEW
+        // (or the app default) decides chat panel vs the loop's terminal.
+        const loopIdKnown = (lp: string): boolean => !!lp && cliAgentRows.some((x) => x.id === lp);
+        const appDefaultLoop = (): string => (loopIdKnown(defaultLoopPref) ? defaultLoopPref : cliAgentRows[0]?.id ?? "");
+        const surfaceOf = (c: { panelId?: string; config?: CellConfig }): { id: string; loop: string } => {
+          const pid = (c.panelId || "").trim().toLowerCase();
+          const cf = (c.config || {}) as CellConfig;
+          const view = cf.view || defaultLoopView;
+          if (pid === "tool:coding") {
+            const lp = [cf.loop, layout.loop, appDefaultLoop()].find((x) => loopIdKnown(x || "")) || "";
+            return view === "cli" && lp ? { id: `agent:${lp}`, loop: lp } : { id: pid, loop: lp };
+          }
+          if (pid.startsWith("agent:")) return view === "glyphh" ? { id: "tool:coding", loop: pid.slice(6) } : { id: pid, loop: pid.slice(6) };
+          return { id: pid, loop: "" };
+        };
+        const codingCell = cells.find((c) => surfaceOf(c).id === "tool:coding");
+        const codingCfg = (codingCell?.config || {}) as CellConfig;
+        const codingLoop = codingCell ? surfaceOf(codingCell).loop : "";
+        const codingFolder = codingCfg.folder || "";
         for (const cell of cells) {
-          const id = (cell.panelId || "").trim().toLowerCase();
+          const { id, loop: cellLoop } = surfaceOf(cell);
           if (!id) continue;
           // the memKey this cell WILL get — the remembered state must shape
           // the card at creation (a web card mounts on its saved page)
@@ -4947,7 +4979,7 @@ async function init(): Promise<void> {
             // with the WORKSPACE's overrides (model / folder) beating it.
             const aid = id.slice(6);
             const arow = cliAgentRows.find((x) => x.id === aid);
-            const cellCfg = (cell.config || {}) as { model?: string; session?: "keep" | "new" | "last"; keepAlive?: boolean };
+            const cellCfg = (cell.config || {}) as CellConfig;
             const mode = cellCfg.session ?? arow?.session ?? (cellCfg.keepAlive === false ? "new" : "keep");
             // NO cliAgent on the cell tile — activateTile would bounce it
             // back to openAgentCliCard instead of minting the terminal.
@@ -4965,12 +4997,11 @@ async function init(): Promise<void> {
             activateTile(entry);
             pendingParkedTerms = null;
             if (!parkedA && arow) {
-              // The WORKSPACE's working folder rules the agent's own (no
-              // per-cell folder field — his rule, 2026-09-10).
+              // The cell's own folder, else the workspace's (his order, 2026-09-16).
               const overrides = {
                 light: document.documentElement.getAttribute("data-theme") === "light",
                 ...(cellCfg.model ? { model: cellCfg.model } : {}),
-                ...(layout.folder ? { cwd: layout.folder } : {}),
+                ...(cellCfg.folder || layout.folder ? { cwd: cellCfg.folder || layout.folder } : {}),
                 ...(mode === "last" ? { resume: true } : {}),
               };
               if (Object.keys(overrides).length) {
@@ -5009,7 +5040,8 @@ async function init(): Promise<void> {
             // The agent seat is BACK (his order, 2026-09-11) — and it is the
             // SAME surface the glyphh tile opens (his report: two versions).
             if (v === "coding") {
-              if (cliAgentRows[0]) entry = openAgentChatCard(cliAgentRows[0].id) ?? openAgentPanel();
+              const want = cellLoop || cliAgentRows[0]?.id || "";
+              if (want && cliAgentRows.some((x) => x.id === want)) entry = openAgentChatCard(want) ?? openAgentPanel();
               else {
                 // BOOT RACE (his report, 2026-09-14): a workspace restoring at
                 // boot ran this before the agent roster landed — the seat came
@@ -5017,7 +5049,7 @@ async function init(): Promise<void> {
                 // then bind the chat chrome the moment the roster arrives.
                 entry = openAgentPanel();
                 void yoApi?.cliAgentsList?.().then((r: { ok: boolean; agents: CliAgentRowLite[] } | null) => {
-                  if (r?.ok && r.agents[0]) { cliAgentRows = r.agents; openAgentChatCard(r.agents[0].id); }
+                  if (r?.ok && r.agents[0]) { cliAgentRows = r.agents; openAgentChatCard(r.agents.some((x) => x.id === want) ? want : r.agents[0].id); }
                 }).catch(() => {});
               }
             }
@@ -5171,7 +5203,7 @@ async function init(): Promise<void> {
           // resumed session's own loop + models (switch repaints them); the
           // reset to the layout's declared config happens on a NEW session.
           const stampLayoutModels = (): void => {
-            if (layout.loop) sess?.stampLoop?.(layout.loop);
+            if (codingLoop || layout.loop) sess?.stampLoop?.(codingLoop || layout.loop!);
             if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
           };
           if (sess && mode === "new") {
@@ -5194,8 +5226,9 @@ async function init(): Promise<void> {
               stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
             }
           }
-          // the layout's folder rides the session, same as standard mode
-          if (sess && layout.folder) sess.stampWorkdir?.(layout.folder, true);   // weak — a thread's own folder wins
+          // the cell's folder is a hard bind; the layout's rides weak, same as standard mode
+          if (sess && codingFolder) sess.stampWorkdir?.(codingFolder);
+          else if (sess && layout.folder) sess.stampWorkdir?.(layout.folder, true);   // weak — a thread's own folder wins
         }
       } finally {
         openingLayout = false;
@@ -9078,8 +9111,11 @@ async function init(): Promise<void> {
         const sess = (window as unknown as { __agentSessions?: SessionsApi }).__agentSessions;
         const space = activateLayoutSpace(layout);
         const mode = layout.sessionMode ?? "keep";
+        // The agent cell's own loop + folder beat the workspace's (his order, 2026-09-16).
+        const codingCfg = (cells.find((c) => c.tool === "coding")?.config || {}) as CellConfig;
         const stampFolder = (): void => {
-          if (layout.folder) sess?.stampWorkdir(layout.folder, true);   // weak — a thread's own folder wins
+          if (codingCfg.folder) sess?.stampWorkdir(codingCfg.folder);
+          else if (layout.folder) sess?.stampWorkdir(layout.folder, true);   // weak — a thread's own folder wins
         };
         // The layout's loop + model slots follow the SESSION contract (his
         // rule, 2026-09-08): they bind only to a session the layout CREATES.
@@ -9087,7 +9123,7 @@ async function init(): Promise<void> {
         // resumed session's own loop + models (switch repaints them); the
         // reset to the layout's declared config happens on a NEW session.
         const stampConfig = (): void => {
-          if (layout.loop) sess?.stampLoop?.(layout.loop);
+          if (codingCfg.loop || layout.loop) sess?.stampLoop?.(codingCfg.loop || layout.loop!);
           if (layout.modelSelections && Object.keys(layout.modelSelections).length) sess?.stampModels?.(layout.modelSelections);
         };
         if (!sess || mode === "keep") { stampFolder(); return; }
@@ -9424,6 +9460,13 @@ async function init(): Promise<void> {
     const ids = rails.flatMap((r) => r.slots.filter((s) => s.view !== "echo").map((s) => s.id));
     for (const id of ids) closeSlot(id);
     openEchoSurface();
+    // DEFAULT VIEW = CLI (Settings → General → Agent loop): + New opens the
+    // default loop in its own terminal instead of the chat panel.
+    if (defaultLoopView === "cli") {
+      const w = window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void };
+      const lp = defaultLoopPref || "";
+      if (w.__wbOpenAgentCli && lp) { w.__wbOpenAgentCli(lp, undefined, { fresh: true }); return; }
+    }
     let tries = 0;
     const go = (): void => {
       if (!echoCtl) { if (tries++ < 40) requestAnimationFrame(go); return; }

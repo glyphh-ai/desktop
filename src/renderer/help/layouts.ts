@@ -355,6 +355,14 @@ interface CellConfig {
   url?: string;
   cmd?: string;
   keepAlive?: boolean;
+  /** AGENT cells (his order, 2026-09-16): each agent instance on the page
+   *  carries its own loop, view, folder, model and session. Absent = the
+   *  workspace's overall setting, then the app default. */
+  loop?: string;
+  view?: "glyphh" | "cli";
+  folder?: string;
+  model?: string;
+  session?: "keep" | "new" | "last";
   railMenu?: boolean;
   railRecents?: boolean;
   railLayouts?: boolean;
@@ -605,6 +613,68 @@ function renderCellToggles(
   return row;
 }
 
+/** Write or clear one string key on a cell's config; an emptied config drops off the cell. */
+function setCellValue(index: number, key: keyof CellConfig, value: string): void {
+  const cell = builderCells[index];
+  if (!cell) return;
+  const cfg = { ...(cell.config || {}) } as Record<string, unknown>;
+  if (value) cfg[key] = value; else delete cfg[key];
+  if (Object.keys(cfg).length) cell.config = cfg as CellConfig; else delete cell.config;
+}
+
+function selectRow(label: string, options: Array<[string, string]>, value: string, onChange: (v: string) => void): HTMLElement {
+  const wrap = document.createElement("label");
+  wrap.className = "layout-cell-field";
+  const t = document.createElement("span");
+  t.className = "layout-cell-field-label";
+  t.textContent = label;
+  const sel = document.createElement("select");
+  sel.className = "settings-input";
+  sel.innerHTML = options.map(([v, l]) => `<option value="${escLayout(v)}">${escLayout(l)}</option>`).join("");
+  sel.value = options.some(([v]) => v === value) ? value : options[0]?.[0] ?? "";
+  sel.addEventListener("change", () => onChange(sel.value));
+  wrap.append(t, sel);
+  return wrap;
+}
+
+/** One agent instance's own setup: view, loop (the Glyphh panel only — an
+ *  agent cell IS a loop), folder, model, session. Every field defaults to the
+ *  workspace's overall setting, which in turn defaults to the app's. */
+function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
+  const cfg = (c.config || {}) as CellConfig;
+  const row = document.createElement("div");
+  row.className = "layout-cell-config-row layout-agent-cell";
+  const label = document.createElement("span");
+  label.className = "layout-cell-config-label";
+  label.textContent = `${c.panelId === "tool:coding" ? "Glyphh agent" : panelLabel(c.panelId)} · cell ${c.col + 1},${c.row + 1}`;
+  row.appendChild(label);
+  const fields = document.createElement("div");
+  fields.className = "layout-cell-fields";
+  fields.appendChild(selectRow("View", [["", "Workspace default"], ["glyphh", "Glyphh"], ["cli", "CLI"]], cfg.view ?? "", (v) => setCellValue(i, "view", v)));
+  if (c.panelId === "tool:coding") {
+    fields.appendChild(selectRow("Loop", [["", "Workspace default"], ...builderLoopRows.map((l): [string, string] => [l.id, l.name])], cfg.loop ?? "", (v) => setCellValue(i, "loop", v)));
+  }
+  const folder = document.createElement("label");
+  folder.className = "layout-cell-field";
+  folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
+  const fin = folder.querySelector("input") as HTMLInputElement;
+  fin.value = cfg.folder ?? "";
+  const [pick, clear] = Array.from(folder.querySelectorAll("button"));
+  pick.addEventListener("click", () => { void window.glyphh.layoutsPickFolder().then((dir) => { if (dir) { fin.value = dir; setCellValue(i, "folder", dir); } }); });
+  clear.addEventListener("click", () => { fin.value = ""; setCellValue(i, "folder", ""); });
+  fields.appendChild(folder);
+  const model = document.createElement("label");
+  model.className = "layout-cell-field";
+  model.innerHTML = `<span class="layout-cell-field-label">Model</span><input class="settings-input" placeholder="Workspace default" spellcheck="false" />`;
+  const min = model.querySelector("input") as HTMLInputElement;
+  min.value = cfg.model ?? "";
+  min.addEventListener("input", () => setCellValue(i, "model", min.value.trim()));
+  fields.appendChild(model);
+  fields.appendChild(selectRow("Session", [["", "Workspace default"], ["keep", "Keep the current session"], ["new", "Start a new session"], ["last", "Resume the last session"]], cfg.session ?? "", (v) => setCellValue(i, "session", v)));
+  row.appendChild(fields);
+  return row;
+}
+
 function renderCellConfigs(): void {
   const list = document.getElementById("layout-cell-config-list");
   const empty = document.getElementById("layout-cell-config-empty");
@@ -616,44 +686,9 @@ function renderCellConfigs(): void {
     // (the workspace's working folder rules the agent's folder by itself).
     // Each slotted agent gets its own session choice — a page can carry
     // several agents handled differently.
-    if (c.panelId?.startsWith("agent:")) {
+    if (c.panelId?.startsWith("agent:") || c.panelId === "tool:coding") {
       fields++;
-      const row = document.createElement("div");
-      row.className = "layout-cell-config-row";
-      const label = document.createElement("span");
-      label.className = "layout-cell-config-label";
-      label.textContent = `${panelLabel(c.panelId)} (agent) · cell ${c.col + 1},${c.row + 1}`;
-      const model = document.createElement("input");
-      model.className = "settings-input";
-      model.placeholder = "model override — empty keeps the agent's";
-      model.spellcheck = false;
-      model.value = String((c.config as Record<string, unknown> | undefined)?.model ?? "");
-      model.addEventListener("input", () => {
-        const cell = builderCells[i];
-        if (!cell) return;
-        const v = model.value.trim();
-        const cfg = (cell.config || {}) as Record<string, unknown>;
-        if (v) { cfg.model = v; cell.config = cfg as typeof cell.config; }
-        else { delete cfg.model; if (!Object.keys(cfg).length) delete cell.config; }
-      });
-      const sess = document.createElement("select");
-      sess.className = "settings-input";
-      sess.innerHTML = `
-        <option value="">Agent default</option>
-        <option value="keep">Keep the current session</option>
-        <option value="new">Start a new session</option>
-        <option value="last">Resume the last session</option>`;
-      sess.value = String((c.config as Record<string, unknown> | undefined)?.session ?? "");
-      sess.addEventListener("change", () => {
-        const cell = builderCells[i];
-        if (!cell) return;
-        const v = sess.value;
-        const cfg = (cell.config || {}) as Record<string, unknown>;
-        if (v) { cfg.session = v; cell.config = cfg as typeof cell.config; }
-        else { delete cfg.session; if (!Object.keys(cfg).length) delete cell.config; }
-      });
-      row.append(label, model, sess);
-      list.appendChild(row);
+      list.appendChild(renderAgentCellConfig(c, i));
       return;
     }
     const toggleSpec = CELL_TOGGLE_SPECS[c.panelId];

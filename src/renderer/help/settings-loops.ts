@@ -470,6 +470,7 @@ export async function loadAgentDefaults(): Promise<void> {
 
   loopSel.addEventListener("change", () => {
     prefs.setPreference?.("defaultLoop", loopSel.value);
+    window.dispatchEvent(new CustomEvent("glyphh:pref-changed"));
     // A model from the previous loop's vendor is meaningless under the new
     // one — reset rather than silently keeping an unreachable binding.
     prefs.setPreference?.("defaultModel", "");
@@ -479,6 +480,15 @@ export async function loadAgentDefaults(): Promise<void> {
     prefs.setPreference?.("defaultModel", modelSel.value);
     paintModels(modelSel.value);
   });
+
+  // DEFAULT VIEW (his order, 2026-09-16): a loop opens as Glyphh's chat or as
+  // the CLI in a terminal. App-wide; a workspace overrides it per agent cell.
+  const viewSel = el<HTMLSelectElement>("set-default-loop-view");
+  if (viewSel) {
+    const saved = String((await prefs.getPreference?.("defaultLoopView", "glyphh")) ?? "glyphh");
+    viewSel.value = saved === "cli" ? "cli" : "glyphh";
+    viewSel.addEventListener("change", () => { prefs.setPreference?.("defaultLoopView", viewSel.value); window.dispatchEvent(new CustomEvent("glyphh:pref-changed")); });
+  }
 }
 
 // ── Settings → General: embeddings ──────────────────────────────────────────

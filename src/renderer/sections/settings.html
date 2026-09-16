@@ -70,6 +70,7 @@
                      the loops are what the role allows, the models are that
                      loop's allowed models. Nothing here is free text — you
                      cannot default to something you may not use. -->
+                <h3 class="settings-subheading" style="margin-top:0;">Agent loop</h3>
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Default loop</div>
@@ -88,6 +89,21 @@
                     <select id="set-default-model" class="settings-input"></select>
                   </div>
                 </div>
+
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default view</div>
+                    <div class="set-pref-desc">How a loop opens: Glyphh's chat (the agent panel) or the CLI itself in a terminal. Each workspace can choose per agent.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop-view" class="settings-input">
+                      <option value="glyphh">Glyphh</option>
+                      <option value="cli">CLI</option>
+                    </select>
+                  </div>
+                </div>
+
+                <h3 class="settings-subheading">App</h3>
 
                 <!-- EMBEDDINGS (his order, 2026-09-14): on-device ONNX is the
                      default; a Together AI key + model upgrade every
@@ -138,7 +154,7 @@
                   </div>
                 </div>
 
-                <div class="set-pref-row">
+                <div class="set-pref-row hidden">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Default agent</div>
                     <div class="set-pref-desc">The agent that answers &ldquo;+ New&rdquo; on Loops and Skills (and anything else that needs an agent without asking).</div>
