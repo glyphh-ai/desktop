@@ -20755,3 +20755,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .app-gallery-thumbs img.active, .app-gallery-thumbs img:hover { opacity: 1; border-color: var(--accent); }
 .app-deps-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .app-dep { font-size: 12.5px; padding: 5px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+
+.app-bundle-list { display: flex; flex-direction: column; margin-top: 10px; }
+.app-bundle-list .skill-row:first-child { border-top: none; }
+.app-conn-state { font-size: 12px; color: var(--text-3); }
+.app-conn-state.on { color: var(--accent); }

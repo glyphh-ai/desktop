@@ -23,6 +23,7 @@ type Env<T> = { ok: boolean; data?: T; error?: string };
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
 const SOURCE_ORDER: Source[] = ["glyphh", "app", "claude", "codex", "gemini"];
 const SKILL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
+const CONN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`;
 const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
 
 /** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
@@ -612,14 +613,70 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const first = urls.findIndex(Boolean);
     if (first >= 0) { show(first); host.appendChild(g); }
   }
-  const deps = manifest.dependencies?.connections ?? [];
-  const d = document.createElement("div");
-  d.className = "app-deps";
-  d.innerHTML = `<div class="skill-overview-label">Needs</div><div class="app-deps-list"></div>`;
-  const list = d.querySelector(".app-deps-list") as HTMLElement;
-  if (!deps.length) list.innerHTML = `<span class="conn2-chip-muted">No connections required.</span>`;
-  for (const c of deps) { const chip = document.createElement("span"); chip.className = "app-dep"; chip.textContent = `${c.app} · ${c.as === "org" ? "org account" : "your account"}`; list.appendChild(chip); }
-  host.appendChild(d);
+  await Promise.all([paintBundleSkills(s, read), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
+}
+
+/** The bundle's skills: its own SKILL.md plus any under skills/<name>/. */
+async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<string>): Promise<void> {
+  const host = el("skill-skills-list"); const count = el("skill-skill-count");
+  if (!host) return;
+  const paths = s.files.map((f) => f.path).filter((p) => p === "SKILL.md" || /^skills\/[^/]+\/SKILL\.md$/.test(p)).sort();
+  const rows = await Promise.all(paths.map(async (p) => {
+    const fm = parseFrontmatter(await read(p)).frontmatter;
+    return { path: p, name: fm.name || (p === "SKILL.md" ? s.name : p.split("/")[1]), description: fm.description || "" };
+  }));
+  if (count) count.textContent = `· ${rows.length}`;
+  host.textContent = "";
+  for (const r of rows) {
+    const row = document.createElement("div");
+    row.className = "skill-row openable";
+    row.innerHTML = `<div class="skill-tile-icon">${SKILL_ICON}</div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div>`;
+    (row.querySelector(".skill-row-name") as HTMLElement).textContent = `/${r.name}`;
+    (row.querySelector(".skill-row-desc") as HTMLElement).textContent = r.description || "No description in the frontmatter.";
+    row.addEventListener("click", () => { selectDetailTab("contents"); void openFile(r.path); });
+    host.appendChild(row);
+  }
+}
+
+/** The app's connection dependencies against what this member has connected. */
+async function paintBundleConnections(deps: Array<{ app: string; as?: string }>): Promise<void> {
+  const host = el("skill-connections-list"); const count = el("skill-conn-count");
+  if (!host) return;
+  if (count) count.textContent = `· ${deps.length}`;
+  host.textContent = "";
+  if (!deps.length) { host.innerHTML = `<div class="crud-empty">This app needs no connections.</div>`; return; }
+  const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] }));
+  const have = new Map(mine.connections.map((c) => [c.appSlug, c]));
+  for (const dep of deps) {
+    const c = have.get(dep.app);
+    const org = dep.as === "org";
+    const ready = !!c && (c.connected || c.shared);
+    const row = document.createElement("div");
+    row.className = "skill-row";
+    row.innerHTML = `<div class="skill-tile-icon"></div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
+    (row.querySelector(".skill-tile-icon") as HTMLElement).innerHTML = CONN_ICON;
+    (row.querySelector(".skill-row-name") as HTMLElement).textContent = c?.label || c?.appName || dep.app.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+    (row.querySelector(".skill-row-desc") as HTMLElement).textContent = org ? "Org account, shared by your admin" : "Your account";
+    const right = row.querySelector(".skill-row-right") as HTMLElement;
+    const chip = document.createElement("span");
+    chip.className = ready ? "app-conn-state on" : "app-conn-state";
+    chip.textContent = ready ? "Connected" : (org ? "Ask your admin" : "Not connected");
+    right.appendChild(chip);
+    if (!ready && !org) {
+      const btn = document.createElement("button");
+      btn.className = "action-btn primary"; btn.type = "button"; btn.textContent = "Connect";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true; btn.textContent = "Connecting…";
+        const r = await (window.glyphh.connectorsConnect?.(dep.app) ?? Promise.resolve({ ok: false, error: "Connect is not available here." })).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+        if (!r.ok) { btn.disabled = false; btn.textContent = "Connect"; fail(r.error || "Couldn't connect."); return; }
+        let tries = 0;
+        const tick = async (): Promise<void> => { await paintBundleConnections(deps); const fresh = (await window.glyphh.connectionsList().catch(() => ({ connections: [] }))).connections.find((x) => x.appSlug === dep.app); if (!(fresh?.connected || fresh?.shared) && ++tries < 6) setTimeout(() => void tick(), 1500); };
+        setTimeout(() => void tick(), 1500);
+      });
+      right.appendChild(btn);
+    }
+    host.appendChild(row);
+  }
 }
 
 async function openDetail(id: string): Promise<void> {
@@ -696,10 +753,13 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-function selectDetailTab(t: "overview" | "contents"): void {
+type DetailTab = "overview" | "contents" | "skills" | "connections";
+function selectDetailTab(t: DetailTab): void {
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
+  el("skill-skills")?.classList.toggle("hidden", t !== "skills");
+  el("skill-connections")?.classList.toggle("hidden", t !== "connections");
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
   if (t === "contents") editor?.layout();
 }
@@ -957,7 +1017,7 @@ function wire(): void {
     }
     void loadSkillsSettings();
   });
-  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as "overview" | "contents")));
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as DetailTab)));
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
   el("skill-kebab")?.addEventListener("click", async (e) => {
