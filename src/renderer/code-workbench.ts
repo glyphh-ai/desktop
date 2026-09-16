@@ -4766,27 +4766,11 @@ async function init(): Promise<void> {
      *  2026-09-11: every extra state write forked the head). The only
      *  addition is the >_ hop, LEFT of expand, which reopens the loop's
      *  terminal card; the CLI's own continue-last carries the session. */
-    const openAgentChatCard = (agentId: string): TileEntry | null => {
-      const row = cliAgentRows.find((x) => x.id === agentId);
-      if (!row) return null;
-      const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
-      // SEAT HANDOFF (his repro, 2026-09-14): the chat takes the terminal's
-      // grid seat in place — declared before the open so openShell consumes
-      // it atomically. No seat (loose card / no layout) → plain close.
-      if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
-      const entry = openAgentPanel();
-      if (term && seatHandoff) {
-        seatHandoff = null;
-        closeCard(term, { parkTerms: true });
-      }
-      const holder = openList.find((x) => x.card && x.tile.kind === "agent");
-      const card = holder?.card ?? null;
-      if (card) card.dataset.boundAgent = agentId;
-      (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(agentId);
-      uiStateSet("agentLastView", "chat");
-      // The >_ toggle rides the panel's OWN header cluster, first in the
-      // row — identical anatomy to the terminal header. Injected once into
-      // the singleton; the bound agent is read live at click.
+    /** The >_ hop on the chat's head (Terminal view), injected once into the
+     *  singleton whenever the chat card comes up — from a loop tile, the Glyphh
+     *  mark, a workspace cell, or the boot (his report, 2026-09-16: it vanished
+     *  when the card opened without a loop in hand). */
+    function ensureTermToggle(): void {
       const headActions = document.querySelector<HTMLElement>(".session-head-actions");
       if (headActions && !document.getElementById("code-term-toggle")) {
         const termBtn = document.createElement("button");
@@ -4839,9 +4823,34 @@ async function init(): Promise<void> {
         });
         headActions.insertBefore(termBtn, headActions.firstChild);
       }
+    }
+    const openAgentChatCard = (agentId: string): TileEntry | null => {
+      const row = cliAgentRows.find((x) => x.id === agentId);
+      if (!row) return null;
+      const term = openList.find((x) => x.tile.slug === `agent:${agentId}`);
+      // SEAT HANDOFF (his repro, 2026-09-14): the chat takes the terminal's
+      // grid seat in place — declared before the open so openShell consumes
+      // it atomically. No seat (loose card / no layout) → plain close.
+      if (term) seatHandoff = { donor: term, closeOpts: { parkTerms: true } };
+      const entry = openAgentPanel();
+      if (term && seatHandoff) {
+        seatHandoff = null;
+        closeCard(term, { parkTerms: true });
+      }
+      const holder = openList.find((x) => x.card && x.tile.kind === "agent");
+      const card = holder?.card ?? null;
+      if (card) card.dataset.boundAgent = agentId;
+      (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(agentId);
+      uiStateSet("agentLastView", "chat");
+      // The >_ toggle rides the panel's OWN header cluster, first in the
+      // row — identical anatomy to the terminal header. Injected once into
+      // the singleton; the bound agent is read live at click.
+      ensureTermToggle();
       return entry;
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
+    // The terminal ⇄ chat SWITCH on a card: same seat, same loop, in place — never the door that could open a second panel.
+    (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat = (id) => { openAgentChatCard(id); };
 
     const openAgentPanel = (): TileEntry | null => {
       const existing = openList.find((x) => x.tile.kind === "agent");
@@ -4854,6 +4863,7 @@ async function init(): Promise<void> {
         `<div class="ws-agent-placeholder" data-agent-host="echo"></div>`;
       scheduleAgentSync();
       ensureAgentSession();
+      ensureTermToggle();
       return entry;
     };
     /** The agent NEVER lands on a blank panel. A session with real content
@@ -8537,7 +8547,7 @@ async function init(): Promise<void> {
     // LOOP'S LANE only; nothing in the lane opens a fresh chat.
     const toChat = (): void => {
       void scopedCliSessions(agent.id).then((rows) => {
-        (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(agent.id);
+        (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat?.(agent.id);
         const newest = rows[0];
         if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli: cliAgentRows.find((r) => r.id === agent.id)?.cli });
       });
@@ -8598,7 +8608,7 @@ async function init(): Promise<void> {
               // bound to run on ITS agent (never a cross-CLI resume).
               const target = cliAgentRows.find((r) => r.cli === sess.cli);
               if (!target) return;
-              (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(target.id);
+              (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat?.(target.id);
               (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
                 .__glyphhAdoptCliSession?.({ agentName: target.name, sessionId: sess.id, agentId: target.id, cli: target.cli });
             },
