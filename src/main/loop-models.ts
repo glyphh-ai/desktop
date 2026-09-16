@@ -82,7 +82,7 @@ async function listAt(cli: string, base: string, token: string, viaGateway: bool
 /** The org's catalog, by the CLI's vendor (his ruling, 2026-09-16: on Free
  *  every curated model is on and the list is just their names; a paid org
  *  with the gateway on gets the gateway's list instead). */
-const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github" };
 
 async function orgModels(cli: string): Promise<LoopModel[]> {
   const vendor = CLI_VENDOR[cli];
