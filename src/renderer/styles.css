@@ -20758,7 +20758,7 @@ body { --titlebar-h: 0px; --rail-top-h: 38px; --rail-w-open: 264px; --rail-w: va
 body.rail-collapsed { --rail-w: 0px; }
 body.rail-collapsed #app-rail { width: var(--rail-w-open); transform: translateX(-100%); transition: transform 0.16s ease; box-shadow: none; }
 body.rail-collapsed.rail-peek #app-rail { transform: translateX(0); box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35); }
-#rail-collapsed-strip { position: fixed; top: 0; left: 0; height: var(--rail-top-h); width: 122px; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; z-index: 210; }
+#rail-collapsed-strip { position: fixed; top: 0; left: 0; height: var(--rail-top-h); width: 116px; display: flex; align-items: center; justify-content: flex-start; padding-left: 84px; z-index: 210; }
 #rail-collapsed-strip.hidden { display: none; }
 #rail-collapsed-strip .app-rail-drag { display: none; }
 body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }
@@ -20779,7 +20779,7 @@ body.rail-collapsed #app-rail-resize { display: none; }
    (the original rail bug). Only the empty middle drags. */
 #app-rail-top {
   position: absolute; top: 0; left: 0; right: 0; height: var(--rail-top-h);
-  display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: 0 6px 0 84px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 2px; padding: 0 6px 0 84px;
   border-bottom: 1px solid var(--border); -webkit-app-region: no-drag;
 }
 #app-rail-top .app-rail-drag { flex: 1 1 auto; align-self: stretch; -webkit-app-region: drag; }

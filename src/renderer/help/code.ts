@@ -5411,11 +5411,13 @@ export function initCode(): void {
     const at = (x: number, y: number): string => { const n = document.elementFromPoint(x, y) as HTMLElement | null; return n ? `${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}${n.className && typeof n.className === "string" ? "." + n.className.split(" ").slice(0, 2).join(".") : ""}` : "none"; };
     const rail = document.getElementById("app-rail");
     const railR = rail?.getBoundingClientRect();
+    const rectOf = (sel: string): string => { const n = document.querySelector<HTMLElement>(sel); if (!n) return "absent"; const r = n.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)} in:${n.parentElement?.id || n.parentElement?.className || "?"}`; };
     console.warn("[rail] geometry", JSON.stringify({
       railW: railR ? Math.round(railR.width) : null, railLeft: railR ? Math.round(railR.left) : null,
       shellLeft: shell ? getComputedStyle(shell).left : null, shellTop: shell ? getComputedStyle(shell).top : null,
       railWVar: getComputedStyle(document.body).getPropertyValue("--rail-w").trim(),
-      atLights: at(20, 15), atCollapse: at((railR?.width ?? 264) - 48, 19), atEcho: at((railR?.width ?? 264) - 20, 19), atContent: at((railR?.width ?? 264) + 40, 300), atUnderRail: at(120, 400),
+      atLights: at(20, 15), atCollapse: at(97, 19), atEcho: at(125, 19), atContent: at((railR?.width ?? 264) + 40, 300), atUnderRail: at(120, 400),
+      dockLayer: rectOf("#echo-dock-layer"), topbar: rectOf(".echo-topbar"), echoBody: rectOf(".ws-echo-body"), hotstrip: rectOf(".echo-dock-hotstrip"),
     }));
   }, 2500);
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
