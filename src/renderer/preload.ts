@@ -1090,11 +1090,20 @@ contextBridge.exposeInMainWorld("glyphh", {
   tasksRunNow: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-now", ref, taskId) as Promise<LibEnvelope>,
   tasksRunList: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-list", ref, taskId) as Promise<LibEnvelope>,
   // The AI Hub (the Marketplace rail item → the org's hub on the console, in a work panel).
-  hubUrl: () => ipcRenderer.invoke("hub-url") as Promise<LibEnvelope>,
+  // SKILLS (2026-09-16): folders on disk, the Agent Skills standard.
+  skillsList: () => ipcRenderer.invoke("skills-list") as Promise<LibEnvelope>,
+  skillCreate: (name: string) => ipcRenderer.invoke("skill-create", name) as Promise<LibEnvelope>,
+  skillGet: (id: string) => ipcRenderer.invoke("skill-get", id) as Promise<LibEnvelope>,
+  skillFileRead: (id: string, rel: string) => ipcRenderer.invoke("skill-file-read", id, rel) as Promise<LibEnvelope>,
+  skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,
+  skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
+  skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
+  skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,
+  skillsDiscover: () => ipcRenderer.invoke("skills-discover") as Promise<LibEnvelope>,
+  skillInstall: (ref: string) => ipcRenderer.invoke("skill-install", ref) as Promise<LibEnvelope>,
+  skillPublish: (id: string, notes?: string) => ipcRenderer.invoke("skill-publish", id, notes) as Promise<LibEnvelope>,
   /** The console, signed in — the Platform work panel. */
   platformPanelUrl: (next?: string) => ipcRenderer.invoke("platform-url", next) as Promise<LibEnvelope>,
-  hubPublish: (kind: string, ref: string, notes?: string) => ipcRenderer.invoke("hub-publish", kind, ref, notes) as Promise<LibEnvelope>,
-  hubSync: () => ipcRenderer.invoke("hub-sync") as Promise<LibEnvelope>,
   libraryAgentTaskRunning: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-running", ref, taskId) as Promise<LibEnvelope>,
   libraryAgentTaskDelete: (ref: string, taskId: string) => ipcRenderer.invoke("library-agent-task-delete", ref, taskId) as Promise<LibEnvelope>,
   // The loop decides the picker's shape: one slot → one dropdown, two → two.

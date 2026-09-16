@@ -1,140 +1,104 @@
 /**
- * hub-ipc.ts — the AI HUB lanes (his order, 2026-09-15: the Marketplace is
- * back and hardcodes to the org's AI Hub on the console).
+ * hub-ipc — the hub lanes for SKILLS (his order, 2026-09-16: skills are the
+ * Agent Skills standard, folders on disk; the hub stores a folder as files).
  *
- *   hub-url      the hub in a work panel, signed in: a console session minted
- *                on this login (POST /api/gateway/ui-session) handed to the
- *                console's login page as ?handoff=…&next=/ui/model-hub-table
- *   hub-publish  a local skill / task / agent → the org library (promote); an
- *                org admin's own goes live at once, a member's lands on the
- *                review desk
- *   hub-sync     everything the caller INSTALLED on the hub → local rows
- *                (~/.glyphh/{skills,tasks,agents}) so the pages and the loops
- *                see them like anything built here
+ *   skills-discover   what the member may install: the org's approved skills
+ *                     and the Glyphh catalog items the org allowed
+ *   skill-install     a hub skill → a folder in Glyphh's skills directory,
+ *                     mirrored into every CLI's skills directory on the box
+ *   skill-publish     a local folder → the org's hub (an org admin's goes live,
+ *                     a member's waits on the review desk)
+ *
+ * Payload on the wire: { files: { "SKILL.md": "...", "scripts/x.py": "..." },
+ * prompt: <SKILL.md body> } — `prompt` keeps the proxy's skills mirror fed.
  */
 
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
-import { getSkillRow, getTaskRow, putSkillRow, saveTaskSpec } from "./local-library.js";
-import { getAgent, saveAgent } from "./local-agents.js";
+import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd } from "./skills-fs.js";
 
-type Kind = "skill" | "task" | "agent";
-const KINDS: readonly Kind[] = ["skill", "task", "agent"];
+interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; headVersion: number | null; updatedAt: string; visibility?: string }
+interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; version: number; updatedAt: string; kind: string }
 
-interface HubItem { id: string; kind: Kind; slug: string; name: string; description: string; installed: boolean; headVersion: number | null }
-/** A Glyphh catalog item (published by another org, approved by Glyphh). */
-interface PublicItem { id: string; kind: Kind; slug: string; name: string; description: string; installed: boolean; version: number }
-interface Role { name?: string; label?: string; description?: string; default?: string | null; model?: string | null }
+export interface DiscoverRow {
+  ref: string;
+  from: "org" | "glyphh";
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  author: string;
+  version: number | null;
+  installed: boolean;
+  updatedAt: string;
+}
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
   try { return { ok: true, data: await fn() }; }
   catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
 };
 
-function payloadOf(kind: Kind, ref: string): { slug: string; name: string; description: string; payload: unknown } {
-  if (kind === "skill") {
-    const r = getSkillRow(ref);
-    return { slug: r.slug, name: r.name, description: r.description, payload: { manifest: r.manifest, prompt: r.prompt, code: r.code } };
-  }
-  if (kind === "task") {
-    const r = getTaskRow(ref);
-    return { slug: r.slug, name: r.name, description: r.description, payload: { manifest: r.manifest, code: r.code } };
-  }
-  const a = getAgent(ref);
-  return {
-    slug: a.slug, name: a.name, description: a.description,
-    payload: {
-      prompt: a.prompt, loopId: a.loopId, provider: a.provider, model: a.model,
-      selections: { roles: [], skills: a.skills, apps: a.apps }, guardrails: a.guardrails,
-    },
-  };
-}
-
-function importOne(kind: Kind, it: HubItem, p: Record<string, unknown>): void {
-  const str = (k: string): string => (typeof p[k] === "string" ? (p[k] as string) : "");
-  const manifest = (p.manifest && typeof p.manifest === "object" ? p.manifest : {}) as Record<string, unknown>;
-  if (kind === "skill") {
-    putSkillRow({ slug: it.slug, name: it.name, description: it.description, manifest, prompt: str("prompt"), code: str("code") });
-    return;
-  }
-  if (kind === "task") {
-    const roles = (Array.isArray(manifest.roles) ? manifest.roles : []) as Role[];
-    saveTaskSpec({
-      slug: it.slug, name: it.name, description: it.description, program: str("code"),
-      slots: roles.map((r) => ({ name: r.name, label: r.label, description: r.description, agent: r.default ?? null, model: r.model ?? null })),
-    });
-    return;
-  }
-  const sel = (p.selections && typeof p.selections === "object" ? p.selections : {}) as { skills?: unknown; apps?: unknown };
-  saveAgent({
-    slug: it.slug, name: it.name, description: it.description, prompt: str("prompt"),
-    loopId: typeof p.loopId === "string" ? p.loopId : null, provider: str("provider"), model: str("model"),
-    skills: Array.isArray(sel.skills) ? sel.skills.map(String) : [], apps: Array.isArray(sel.apps) ? sel.apps.map(String) : [],
-    guardrails: (p.guardrails && typeof p.guardrails === "object" ? p.guardrails : null) as never,
-  });
-}
-
 /** The CONSOLE, signed in: a console session minted on this login handed to
- *  the console's own login page, which sets the cookie and lands on `next`.
- *  Members get their own scope, org admins get theirs, and the super admin
- *  gets every org — the server decides, from the same identity. */
+ *  the console's own login page, which sets the cookie and lands on `next`. */
 export async function platformUrl(next = "/ui/"): Promise<string> {
   const { token } = await getClient().http.post<{ token: string }>("/api/gateway/ui-session", {});
   if (!token) throw new Error("the console session couldn't be minted");
   return `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 }
 
-/** The PUBLIC hub page (/ui/model_hub — no login, no console shell), carrying
- *  the member's own gateway key so installs and the review desk work. */
-export async function hubUrl(): Promise<string> {
-  const { token } = await getClient().gateway.token();
-  return `${PLATFORM_URL}/ui/model_hub/?key=${encodeURIComponent(token)}`;
+async function discover(): Promise<DiscoverRow[]> {
+  const client = getClient();
+  const [org, pub] = await Promise.all([
+    client.http.get<OrgItem[]>("/api/library/skill").catch(() => [] as OrgItem[]),
+    client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
+  ]);
+  const rows: DiscoverRow[] = [];
+  for (const it of Array.isArray(org) ? org : []) {
+    if (!it.headVersion) continue;
+    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, updatedAt: it.updatedAt });
+  }
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === "skill")) {
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, updatedAt: p.updatedAt });
+  }
+  return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+async function install(ref: string): Promise<{ id: string }> {
+  const client = getClient();
+  const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
+  const base = from === "org" ? `/api/library/skill/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
+  const rows = from === "org" ? await client.http.get<OrgItem[]>("/api/library/skill") : await client.http.get<PublicItem[]>("/api/hub/public");
+  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string }>).find((r) => r.id === id);
+  if (!meta) throw new Error("that skill is no longer available to you");
+  const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
+  const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
+  const installed = installSkill(meta.slug, files);
+  await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
+  return { id: installed.id };
+}
+
+async function publish(skillId: string, notes: string): Promise<{ version: number; status: string }> {
+  const skill = getSkill(skillId);
+  const files: Record<string, string> = {};
+  let bytes = 0;
+  for (const f of skill.files) {
+    const r = readSkillFile(skillId, f.path);
+    if (r.binary) throw new Error(`"${f.path}" is binary — the hub carries text files only (put assets behind a URL)`);
+    bytes += Buffer.byteLength(r.text);
+    if (bytes > 900_000) throw new Error("this skill's files exceed the hub's 1 MB text limit");
+    files[f.path] = r.text;
+  }
+  const { body } = parseSkillMd(files["SKILL.md"] || "");
+  const slug = skill.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "skill";
+  const r = await getClient().http.post<{ version: number; status: string }>("/api/library/skill/promote", {
+    slug, name: skill.name, description: skill.description, notes, payload: { files, prompt: body, manifest: skill.frontmatter },
+  });
+  return r;
 }
 
 export function registerHubIpc(): void {
-  ipcMain.handle("hub-url", () => env(async () => ({ url: await hubUrl() })));
-
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
-
-  ipcMain.handle("hub-publish", (_e, kind: Kind, ref: string, notes?: string) => env(async () => {
-    if (!KINDS.includes(kind)) throw new Error(`cannot publish a ${String(kind)}`);
-    const { slug, name, description, payload } = payloadOf(kind, ref);
-    return getClient().orgLibrary.promote(kind, { slug, name, description, notes: String(notes ?? ""), payload });
-  }));
-
-  ipcMain.handle("hub-sync", () => env(async () => {
-    const client = getClient();
-    const counts: Record<Kind, number> = { skill: 0, task: 0, agent: 0 };
-    const errors: string[] = [];
-    for (const kind of KINDS) {
-      const items = (await client.orgLibrary.list(kind)) as unknown as HubItem[];
-      for (const it of items.filter((i) => i.installed && i.headVersion)) {
-        try {
-          const p = await client.http.get<Record<string, unknown>>(`/api/library/${kind}/${encodeURIComponent(it.id)}/payload`);
-          importOne(kind, it, p && typeof p === "object" ? p : {});
-          counts[kind] += 1;
-        } catch (err) {
-          errors.push(`${kind} ${it.slug}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    }
-    // THE GLYPHH CATALOG (his ruling, 2026-09-16): items other orgs published
-    // and Glyphh approved — installed ones land as local rows the same way.
-    // The server already hides what this org hasn't allowed on a governed plan.
-    try {
-      const pubs = await client.http.get<PublicItem[]>("/api/hub/public");
-      for (const it of (Array.isArray(pubs) ? pubs : []).filter((i) => i.installed && KINDS.includes(i.kind))) {
-        try {
-          const p = await client.http.get<Record<string, unknown>>(`/api/hub/public/${encodeURIComponent(it.id)}/payload`);
-          importOne(it.kind, { ...it, headVersion: it.version }, p && typeof p === "object" ? p : {});
-          counts[it.kind] += 1;
-        } catch (err) {
-          errors.push(`glyphh ${it.kind} ${it.slug}: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    } catch (err) {
-      errors.push(`glyphh catalog: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    return { counts, errors };
-  }));
+  ipcMain.handle("skills-discover", () => env(discover));
+  ipcMain.handle("skill-install", (_e, ref: string) => env(() => install(String(ref))));
+  ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
 }

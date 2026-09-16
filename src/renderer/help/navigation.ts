@@ -13,13 +13,11 @@ import { loadLayouts, initLayoutsEvents } from "./layouts.js";
 import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js";
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
-import { loadAgents, initAgentsEvents } from "./agents.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
+import { loadSkillsSettings, loadPluginsSettings } from "./settings-skills.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
-import { loadTasksPage, initTasksPage } from "./tasks-page.js";
-import { loadSkillsLibrary, initSkillsLibraryEvents } from "./skills-library.js";
 import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, loadMcp, loadWorkspacesPanel, loadUsageAppView } from "./settings.js";
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
@@ -144,10 +142,7 @@ export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
   else if (sec === "drips") loadDrips();
-  else if (sec === "agents") void loadAgents();
-  else if (sec === "skills") void loadSkillsLibrary();
   else if (sec === "connections") void loadConnections();
-  else if (sec === "tasks") loadTasksPage();
   else if (sec === "layouts") loadLayouts();
   else if (sec === "files") void loadFiles();
   else if (sec === "apps") loadApps();
@@ -201,7 +196,7 @@ export function gotoSection(section: string, sub?: string): void {
   // the settings modal.
   // Loops + Skills are WORKPANEL apps now (his rule, 2026-08-24) — they open
   // as section panels beside the agent, never inside settings.
-  if (["apps", "layouts", "drips", "agents", "skills", "connections", "tasks"].includes(section)) {
+  if (["apps", "layouts", "drips", "connections"].includes(section)) {
     (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(section);
     return;
   }
@@ -835,6 +830,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "org-loops") void loadOrgLoops();
   else if (sub === "org-library") loadOrgLibrary();
   else if (sub === "connections-cfg") void loadSettingsConnections();
+  else if (sub === "skills") void loadSkillsSettings();
+  else if (sub === "plugins") void loadPluginsSettings();
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
@@ -853,11 +850,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
-  // The BUILD group's restored pages — Tasks (the former loop library),
-  // Agents, Skills — adopt their sections exactly as apps/connections do.
-  else if (sub === "tasks") { mountSettingsSection("tasks"); loadTasksPage(); }
-  else if (sub === "agents") { mountSettingsSection("agents"); void loadAgents(); }
-  else if (sub === "skills") { mountSettingsSection("skills"); void loadSkillsLibrary(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -915,11 +907,6 @@ const SETTINGS_SECTIONS: Record<string, { host: string }> = {
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
-  // The BUILD group (his order, 2026-09-12): the restored library pages ride
-  // the same whole-node adoption into the platform nav.
-  agents: { host: "settings-agents-host" },
-  skills: { host: "settings-skills-host" },
-  tasks: { host: "settings-tasks-host" },
 };
 
 /** Where a moved section lives when NOT adopted (the hidden #page-body pen),
@@ -1015,29 +1002,9 @@ export function initHelp() {
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
   const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts" };
-  // Marketplace = the org's AI HUB on the console (his order, 2026-09-15),
-  // opened signed-in as a work panel. Installs made there are pulled into
-  // the local library first, so the pages see them the moment it opens.
-  const openMarketplace = async (btn: HTMLButtonElement): Promise<void> => {
-    btn.disabled = true;
-    try {
-      const sync = await window.glyphh.hubSync();
-      if (!sync.ok) console.warn("[hub] sync failed:", sync.error);
-      const res = await window.glyphh.hubUrl();
-      if (!res.ok) {
-        await confirmAction({ title: "Couldn't open the AI Hub", body: res.error || "The hub didn't answer.", confirmLabel: "OK" });
-        return;
-      }
-      const { url } = res.data as { url: string };
-      openAppInWorkbench({ slug: "ai-hub", name: "AI Hub", url, workbench: true });
-    } finally {
-      btn.disabled = false;
-    }
-  };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;
-      if (sub === "marketplace") { void openMarketplace(btn); return; }
       const wb = RAIL_WB_SECTIONS[sub];
       if (wb) (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.(wb);
       else openSettingsModal(sub);
@@ -1047,10 +1014,6 @@ export function initHelp() {
   // surface: Loops/Skills open as section cards, Browser as the preview
   // tool, Scheduled Tasks as the tasks view (all back, his order 2026-09-10).
   const MORE_ITEMS: Array<{ label: string; icon: string; open: () => void }> = [
-    { label: "Tasks", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("tasks") },
-    { label: "Skills", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-      open: () => (window as unknown as { __wbOpenSection?: (s: string) => void }).__wbOpenSection?.("skills") },
     { label: "Browser", icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       open: () => (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.("preview") },
   ];
@@ -1198,10 +1161,7 @@ export function initHelp() {
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
-  boot("agents", initAgentsEvents);
-  boot("skills", initSkillsLibraryEvents);
   boot("connections", initConnections);
-  boot("tasks", initTasksPage);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);
   // The shell steers sections too (the first-run walkthrough lands on Home).

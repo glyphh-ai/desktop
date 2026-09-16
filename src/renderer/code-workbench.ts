@@ -101,7 +101,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "tasks" | "thread" | "section" | "app" | "rail";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -169,7 +169,6 @@ interface RailPanelSlot {
  *  fires next, how the last run went, and (per task) the full run history.
  *  Deliberately NOT in TOOL_VIEWS or the layout tool list — it opens ONLY
  *  from its rail tab. `taskId` remembers an opened detail across renders. */
-interface TasksSlot { id: number; view: "tasks"; taskId?: string; sticky?: boolean }
 /** The Glyphh seat (internal view "coding" — persisted layouts reference the
  *  key) — HOSTS the live agent DOM (same sessions, same composer); nothing
  *  of its own beyond the header's session controls. */
@@ -223,7 +222,7 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | TasksSlot | SectionSlot | AppSlot | RailPanelSlot;
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -284,14 +283,8 @@ const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as {
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
   { key: "apps",        title: "Apps",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
-  // (Loops left the wall — they are SETTINGS now, not a card you open.)
-  // Agents keeps the robot mark it always wore — the key freed up when the
-  // CLI pre-configs became Loops.
-  { key: "agents",      title: "Agents",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   // (Connections moved into Settings — his ruling, 2026-09-12; no dock tile.)
-  { key: "tasks",       title: "Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5" style="fill:#f43f5e;stroke:none"/><rect x="6.6" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="15.4" y="2.5" width="2" height="4.4" rx="1" style="fill:#be123c;stroke:none"/><rect x="5.4" y="10.4" width="13.2" height="8.2" rx="1.2" style="fill:#ffffff;stroke:none"/><path d="m9.4 14.4 2 2 3.6-3.6" style="fill:none;stroke:#f43f5e;stroke-width:2"/></svg>` },
-  { key: "skills",      title: "Skills",          icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z" style="fill:#f59e0b;stroke:#d97706;stroke-width:1.2;stroke-linejoin:round"/><circle cx="12" cy="10.5" r="2" style="fill:#fef3c7;stroke:none"/></svg>` },
   { key: "drips",       title: "Drips",           icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><g style="stroke:#ec4899;stroke-width:2.2;stroke-linecap:round"><path d="M12 4.5V2.2"/><path d="M12 21.8v-2.3"/><path d="M4.5 12H2.2"/><path d="M21.8 12h-2.3"/></g><g style="stroke:#a855f7;stroke-width:2.2;stroke-linecap:round"><path d="M6.7 6.7 5.1 5.1"/><path d="M18.9 18.9l-1.6-1.6"/><path d="M17.3 6.7l1.6-1.6"/><path d="M5.1 18.9l1.6-1.6"/></g><circle cx="12" cy="12" r="3.4" style="fill:#f59e0b"/><circle cx="12" cy="12" r="1.4" style="fill:#fef3c7"/></svg>` },
   // PLATFORM — the console as a work panel (his order, 2026-09-16): usage,
   // billing, members, models, the hub. A member lands in their own scope, an
@@ -1334,7 +1327,6 @@ async function init(): Promise<void> {
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
     if (view === "rail") return { id, view };
-    if (view === "tasks") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1935,7 +1927,6 @@ async function init(): Promise<void> {
     else if (slot.view === "diff")     void renderDiffIntoSlot(body, slot);
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
@@ -4050,7 +4041,6 @@ async function init(): Promise<void> {
           if (key === "platform") { void openPlatformPanel(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
-          else if (key === "tasks") w.__wbOpenSection?.("tasks");
           else if (key === "preview") w.__wbOpenTool?.(key);
           else if (key) w.__wbOpenSection?.(key);
           return;
@@ -5447,7 +5437,6 @@ async function init(): Promise<void> {
         else if (slot.view === "diff") void renderDiffIntoSlot(body, slot);
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
-    else if (slot.view === "tasks") void renderTasksIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
     };
 
@@ -5717,7 +5706,6 @@ async function init(): Promise<void> {
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
-        else if (t.navKey === "tasks") w.__wbOpenSection?.("tasks");
         else if (t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
         else w.__wbOpenSection?.(t.navKey);
         return;
@@ -7582,276 +7570,6 @@ async function init(): Promise<void> {
     return chartLibP;
   }
 
-  async function renderTasksIntoSlot(body: HTMLElement, slot: TasksSlot): Promise<void> {
-    body.classList.add("ws-tasks-body");
-    // The panel header already says "Tasks" — no second heading. Layout:
-    // chart (runs/day, ok vs failed) → two columns (create | recent runs) →
-    // the full task list. A clicked task swaps the whole scroll to its
-    // run-history detail; ‹ returns to the overview.
-    body.innerHTML = `
-      <div class="ws-tasks-scroll">
-        <div class="ws-tasks-page">
-        <h2 class="ws-tasks-title">Scheduled Tasks</h2>
-        <p class="section-desc">Everything your agents run on a schedule — what fires next, how recent runs went, and a place to create more.</p>
-        <div class="ws-tasks-chartwrap">
-          <canvas class="ws-tasks-canvas"></canvas>
-          <button type="button" class="ws-icon-btn ws-tasks-refresh" title="Refresh">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
-          </button>
-        </div>
-        <div class="ws-tasks-cols">
-          <div class="ws-tasks-col">
-            <div class="ws-tasks-coltitle">All tasks</div>
-            <div class="ws-tasks-list"><div class="ws-rel-empty">Loading…</div></div>
-          </div>
-          <div class="ws-tasks-col">
-            <div class="ws-tasks-coltitle">Recent runs</div>
-            <div class="ws-tasks-recent-list"><div class="ws-rel-empty">Loading…</div></div>
-          </div>
-        </div>
-        </div>
-      </div>`;
-    const scroll = body.querySelector(".ws-tasks-scroll") as HTMLElement;
-    const list = body.querySelector(".ws-tasks-list") as HTMLElement;
-    const recentsHost = body.querySelector(".ws-tasks-recent-list") as HTMLElement;
-    const canRunNow = !!tasksIpc().tasksRunNow
-      && !(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-
-    interface Row { agent: WbAgentRow; task: WbTaskRow; next: Date | null }
-    interface RecentRun extends WbTaskRun { taskName: string; agentName: string }
-    let rows: Row[] = [];
-    let recents: RecentRun[] = [];
-    let agents: WbAgentRow[] = [];
-
-    async function load(): Promise<void> {
-      const a = await tasksIpc().tasksAgentsList?.().catch(() => null);
-      if (!a?.ok) { list.innerHTML = `<div class="ws-rel-empty">${relEsc(a?.error || "Couldn't load agents — sign in and try again.")}</div>`; return; }
-      agents = a.data ?? [];
-      const now = new Date();
-      const all: Row[] = [];
-      await Promise.all(agents.map(async (agent) => {
-        const t = await tasksIpc().tasksForAgent?.(agent.id).catch(() => null);
-        for (const task of t?.ok ? t.data ?? [] : []) {
-          all.push({ agent, task, next: task.enabled ? cronNext(task.cron, now) : null });
-        }
-      }));
-      all.sort((x, y) => (x.next?.getTime() ?? Infinity) - (y.next?.getTime() ?? Infinity));
-      rows = all;
-      // Run history for the chart + recents: the tasks that have actually run,
-      // capped so a big fleet doesn't fan out dozens of reads.
-      const ran = all.filter((r) => r.task.lastRunAt).slice(0, 12);
-      const merged: RecentRun[] = [];
-      await Promise.all(ran.map(async (r) => {
-        const res = await tasksIpc().tasksRunList?.(r.agent.id, r.task.id).catch(() => null);
-        for (const run of res?.ok ? res.data ?? [] : []) {
-          merged.push({ ...run, taskName: r.task.name, agentName: r.agent.name });
-        }
-      }));
-      merged.sort((x, y) => Date.parse(y.startedAt) - Date.parse(x.startedAt));
-      recents = merged;
-    }
-
-    function paintChart(): void {
-      const canvas = body.querySelector(".ws-tasks-canvas") as HTMLCanvasElement | null;
-      if (!canvas) return;
-      const css = getComputedStyle(document.documentElement);
-      const accent = css.getPropertyValue("--accent").trim() || "#af5fff";
-      const danger = css.getPropertyValue("--danger").trim() || "#e5534b";
-      const text3 = css.getPropertyValue("--text-3").trim() || "#888";
-      // Last 14 days, oldest → newest.
-      const days: string[] = [];
-      const keys: string[] = [];
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
-        keys.push(d.toDateString());
-        days.push(d.toLocaleDateString(undefined, { month: "short", day: "numeric" }));
-      }
-      const ok = new Array(14).fill(0);
-      const bad = new Array(14).fill(0);
-      for (const run of recents) {
-        const idx = keys.indexOf(new Date(run.startedAt).toDateString());
-        if (idx === -1) continue;
-        if (run.status === "ok") ok[idx]++; else bad[idx]++;
-      }
-      void ensureChartJs().then((ChartLib) => {
-        if (!body.isConnected || !ChartLib) return;
-        type ChartCtor = new (el: HTMLCanvasElement, cfg: unknown) => { destroy(): void };
-        const Chart = ChartLib as ChartCtor & { getChart?: (el: HTMLCanvasElement) => { destroy(): void } | undefined };
-        Chart.getChart?.(canvas)?.destroy();
-        new Chart(canvas, {
-          type: "bar",
-          data: {
-            labels: days,
-            datasets: [
-              { label: "ok", data: ok, backgroundColor: accent, borderRadius: 3, maxBarThickness: 34 },
-              { label: "failed", data: bad, backgroundColor: danger, borderRadius: 3, maxBarThickness: 34 },
-            ],
-          },
-          options: {
-            responsive: true, maintainAspectRatio: false, animation: false,
-            plugins: {
-              legend: { position: "bottom", labels: { color: text3, usePointStyle: true, pointStyle: "circle", boxWidth: 6, boxHeight: 6, font: { size: 11 } } },
-              tooltip: { mode: "index", intersect: false },
-            },
-            scales: {
-              x: { stacked: true, grid: { display: false }, ticks: { color: text3, maxRotation: 0, autoSkip: true } },
-              y: { stacked: true, beginAtZero: true, grid: { color: css.getPropertyValue("--border").trim() || "rgba(255,255,255,0.08)" }, ticks: { color: text3, precision: 0 } },
-            },
-          },
-        });
-      }).catch(() => { /* chartless is fine — the lists still work */ });
-    }
-
-    function paintRecents(): void {
-      if (!recents.length) { recentsHost.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
-      recentsHost.textContent = "";
-      for (const run of recents.slice(0, 15)) {
-        const el = document.createElement("div");
-        el.className = "ws-task-recent" + (run.status === "ok" ? "" : " failed");
-        const when = new Date(run.startedAt);
-        el.innerHTML = `
-          <span class="ws-task-chip ${run.status === "ok" ? "ok" : "err"}">${relEsc(run.status)}</span>
-          <span class="ws-task-recent-name">${relEsc(run.taskName)}</span>
-          <span class="ws-task-run-when" title="${relEsc(when.toLocaleString())}">${relEsc(relSpan(when.getTime() - Date.now()))}</span>`;
-        const owner = rows.find((r) => r.task.name === run.taskName && r.agent.name === run.agentName);
-        if (owner) el.addEventListener("click", () => { slot.taskId = owner.task.id; void paintDetail(owner); });
-        recentsHost.appendChild(el);
-      }
-    }
-
-    let taskPage = 0;
-    function paintList(): void {
-      if (!body.isConnected) return;
-      if (!rows.length) {
-        list.innerHTML = `<div class="ws-rel-empty">No scheduled tasks yet — open a task and add a schedule.</div>`;
-        return;
-      }
-      list.textContent = "";
-      const now = Date.now();
-      const PER = 10;
-      const totalPages = Math.max(1, Math.ceil(rows.length / PER));
-      taskPage = Math.max(0, Math.min(taskPage, totalPages - 1));
-      for (const r of rows.slice(taskPage * PER, (taskPage + 1) * PER)) {
-        const card = document.createElement("div");
-        card.className = "ws-task-card" + (r.task.enabled ? "" : " off");
-        const status = r.task.lastStatus
-          ? `<span class="ws-task-chip ${r.task.lastStatus === "ok" ? "ok" : "err"}">${r.task.lastStatus === "ok" ? "ok" : "error"}</span>`
-          : `<span class="ws-task-chip">never run</span>`;
-        const next = r.task.enabled
-          ? (r.next ? `<span class="ws-task-next" title="${relEsc(r.next.toLocaleString())}">${relEsc(relSpan(r.next.getTime() - now))}</span>` : `<span class="ws-task-next">—</span>`)
-          : `<span class="ws-task-next">paused</span>`;
-        card.innerHTML = `
-          <div class="ws-task-head">
-            <span class="ws-task-name">${relEsc(r.task.name)}</span>
-            ${status}${next}
-          </div>
-          <div class="ws-task-sub">
-            <span class="ws-task-agent">${relEsc(r.agent.name)}</span>
-            <span class="ws-task-kind">${relEsc(r.task.kind.replace("_", " "))}</span>
-            <span class="ws-task-target">${relEsc(r.task.target)}</span>
-            <span class="ws-task-cron" title="${relEsc(r.task.cron)}">${relEsc(cronHuman(r.task.cron))}</span>
-          </div>
-          ${r.task.lastError ? `<div class="ws-task-lasterr">${relEsc(r.task.lastError)}</div>` : ""}`;
-        // A task card opens the TASK for editing (his order, 2026-09-10);
-        // run history stays one click away in Recent runs.
-        card.addEventListener("click", () => {
-          const open = (window as unknown as { __glyphhOpenTask?: (slug: string) => void }).__glyphhOpenTask;
-          if (open) open(r.task.target);
-          else { slot.taskId = r.task.id; void paintDetail(r); }
-        });
-        list.appendChild(card);
-      }
-      if (totalPages > 1) {
-        const bar = document.createElement("div");
-        bar.className = "pagination-bar";
-        const nav = document.createElement("div");
-        nav.className = "pagination-nav";
-        const mk = (label: string, to: number, disabled: boolean): HTMLButtonElement => {
-          const b = document.createElement("button");
-          b.className = "pagination-btn";
-          b.textContent = label;
-          b.disabled = disabled;
-          b.addEventListener("click", () => { taskPage = to; paintList(); });
-          return b;
-        };
-        nav.appendChild(mk("\u2039", taskPage - 1, taskPage === 0));
-        const info = document.createElement("span");
-        info.className = "pagination-info";
-        info.textContent = `${taskPage + 1}/${totalPages}`;
-        nav.appendChild(info);
-        nav.appendChild(mk("\u203a", taskPage + 1, taskPage >= totalPages - 1));
-        bar.appendChild(nav);
-        list.appendChild(bar);
-      }
-    }
-
-    function paintOverview(): void {
-      paintChart(); paintRecents(); paintList();
-    }
-
-    async function paintDetail(r: Row): Promise<void> {
-      if (!body.isConnected) return;
-      scroll.classList.add("hidden");
-      let detail = body.querySelector<HTMLElement>(".ws-task-detailwrap");
-      if (!detail) { detail = document.createElement("div"); detail.className = "ws-task-detailwrap"; body.appendChild(detail); }
-      detail.classList.remove("hidden");
-      detail.innerHTML = `
-        <div class="ws-tasks-page">
-        <div class="ws-task-detail-head">
-          <button type="button" class="action-btn ws-task-back">‹ All tasks</button>
-          <span class="ws-task-name">${relEsc(r.task.name)}</span>
-          <span class="ws-task-cron">${relEsc(cronHuman(r.task.cron))}</span>
-          ${canRunNow ? `<button type="button" class="action-btn primary ws-task-run">Run now</button>` : ""}
-        </div>
-        <div class="ws-task-runs"><div class="ws-rel-empty">Loading history…</div></div>
-        </div>`;
-      detail.querySelector(".ws-task-back")?.addEventListener("click", () => {
-        slot.taskId = undefined;
-        detail!.classList.add("hidden");
-        scroll.classList.remove("hidden");
-        paintOverview();
-      });
-      detail.querySelector(".ws-task-run")?.addEventListener("click", async (ev) => {
-        const btn = ev.currentTarget as HTMLButtonElement;
-        btn.disabled = true; btn.textContent = "Running…";
-        try {
-          const res = await tasksIpc().tasksRunNow?.(r.agent.id, r.task.id);
-          if (!res?.ok) btn.textContent = res?.error ? "Failed" : "Run now";
-        } catch { /* reported below on refresh */ }
-        setTimeout(() => { if (body.isConnected && slot.taskId === r.task.id) void paintDetail(r); }, 4000);
-        btn.disabled = false; btn.textContent = "Run now";
-      });
-      const runsHost = detail.querySelector(".ws-task-runs") as HTMLElement;
-      const runs = await tasksIpc().tasksRunList?.(r.agent.id, r.task.id).catch(() => null);
-      if (!body.isConnected || slot.taskId !== r.task.id) return;
-      if (!runs?.ok) { runsHost.innerHTML = `<div class="ws-rel-empty">${relEsc(runs?.error || "Couldn't load run history")}</div>`; return; }
-      if (!runs.data?.length) { runsHost.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
-      runsHost.textContent = "";
-      for (const run of runs.data) {
-        const el = document.createElement("div");
-        el.className = "ws-task-run" + (run.status === "ok" ? "" : " failed");
-        const when = new Date(run.startedAt);
-        el.innerHTML = `
-          <div class="ws-task-run-head">
-            <span class="ws-task-chip ${run.status === "ok" ? "ok" : "err"}">${relEsc(run.status)}</span>
-            <span class="ws-task-run-when" title="${relEsc(when.toLocaleString())}">${relEsc(relSpan(when.getTime() - Date.now()))}</span>
-            ${run.durationMs != null ? `<span class="ws-task-run-dur">${relEsc((run.durationMs / 1000).toFixed(1))}s</span>` : ""}
-          </div>
-          ${run.error ? `<pre class="ws-task-run-err">${relEsc(run.error)}</pre>` : ""}
-          ${run.output ? `<pre class="ws-task-run-out">${linkifyOutput(run.output)}</pre>` : ""}`;
-        runsHost.appendChild(el);
-      }
-    }
-
-    // ── Prompt cards — creating a scheduled task is a CONVERSATION, not a
-    // form: each card seeds the composer with a prompt the agent knows how to
-    // fulfil (build the skill + schedule it), then the user makes it theirs.
-
-    body.querySelector(".ws-tasks-refresh")?.addEventListener("click", () => { void load().then(() => { if (!slot.taskId) paintOverview(); }); });
-    await load();
-    const opened = slot.taskId ? rows.find((r) => r.task.id === slot.taskId) : null;
-    if (opened) void paintDetail(opened); else { slot.taskId = undefined; paintOverview(); }
-  }
 
   // ── Diff view ──
   async function renderDiffIntoSlot(body: HTMLElement, slot: DiffSlot): Promise<void> {
@@ -9727,8 +9445,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "tasks", "rail"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo" && v !== "tasks") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);

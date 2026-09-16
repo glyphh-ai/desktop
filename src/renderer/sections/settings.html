@@ -41,10 +41,15 @@
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-plans"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Plans</span></button>
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item nav-super platform-only hidden" data-sub="padmin-orgs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 13h.01"/><path d="M15 13h.01"/><path d="M9 17h6"/></svg><span>Orgs</span></button>
+              <!-- BUILD (his order, 2026-09-16): what the org's agents are made of —
+                   Connections, Skills (the Agent Skills standard), Plugins. -->
+              <div class="settings-nav-group not-on-platform" id="nav-group-build">Build</div>
+              <button class="settings-nav-item not-on-platform" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Skills</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item not-on-platform hidden" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
@@ -1936,20 +1941,86 @@
                 <div id="settings-apps-host"></div>
               </div>
 
+              <!-- SKILLS (his order, 2026-09-16) — the Agent Skills standard: every
+                   skill is a folder with SKILL.md at its root, read from the CLIs'
+                   own skill directories and Glyphh's. List → detail (Overview /
+                   Contents). Discover = the org's hub + the Glyphh catalog. -->
+              <div class="settings-panel skills-panel" data-sub="skills">
+                <div id="skills-list-view">
+                  <div class="skills-head">
+                    <h2>Skills</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="skills-search" type="text" placeholder="Search skills and plugins" spellcheck="false" autocomplete="off" /></div>
+                    <button id="skills-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your skills</button>
+                    <button class="skills-tab" data-tab="discover" type="button">Discover</button>
+                    <div style="flex:1;"></div>
+                    <span id="skills-count" class="skills-count"></span>
+                  </div>
+                  <div id="skills-error" class="crud-form-error hidden"></div>
+                  <div id="skills-groups"></div>
+                </div>
+                <div id="skill-detail-view" class="hidden">
+                  <button id="skill-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Skills</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="skill-detail-name" class="skill-detail-name"></div>
+                      <div id="skill-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <button id="skill-share" class="action-btn" type="button">Share</button>
+                    <label class="skills-switch" title="Enabled"><input id="skill-enabled" type="checkbox" /><span></span></label>
+                    <button id="skill-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="skill-file-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="skill-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="skill-overview-desc" class="skill-overview-desc"></div>
+                      <div id="skill-overview-body" class="lib-md-render"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="skill-author" class="skill-author"></div>
+                      <div id="skill-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="skill-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <span id="skill-version" class="skill-version"></span>
+                      <div style="flex:1;"></div>
+                      <button id="skill-reveal" class="action-btn" type="button" title="Show the folder">Reveal</button>
+                      <button id="skill-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="skill-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="skill-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="skill-view-preview" class="active" type="button" title="Preview">👁</button><button id="skill-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="skill-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="skill-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel skills-panel" data-sub="plugins">
+                <div class="skills-head"><h2>Plugins</h2></div>
+                <p class="section-desc">Plugins bundle skills, agents, commands, hooks and MCP servers into one install. Coming right after Skills.</p>
+              </div>
               <!-- Connections — the connections section body (from
                    sections/connections.html) is MOVED into this host on open and
                    parked back on close; loadConnections binds unchanged. -->
               <div class="settings-panel settings-panel-section" data-sub="connections">
                 <div id="settings-connections-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="agents">
-                <div id="settings-agents-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="skills">
-                <div id="settings-skills-host"></div>
-              </div>
-              <div class="settings-panel settings-panel-section" data-sub="tasks">
-                <div id="settings-tasks-host"></div>
               </div>
 
               <!-- Layouts — the layout builder/library management page moved in
