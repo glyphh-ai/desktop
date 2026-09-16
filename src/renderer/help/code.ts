@@ -5379,6 +5379,12 @@ export function initCode(): void {
   // The shell starts to the RIGHT of the fixed sidebar and at the very top, inline so no later stylesheet rule can undo it.
   const shell = document.getElementById("help-overlay");
   if (shell) { shell.style.left = "var(--rail-w)"; shell.style.top = "0px"; }
+  // The rail leaves the shell's stacking context (#help-overlay is z 100): as a
+  // child of #home-root it competes at the body level with the agent/app/dock
+  // layers, so it paints above the panels instead of under them.
+  const railNode = document.getElementById("app-rail");
+  const home = document.getElementById("home-root");
+  if (railNode && home && railNode.parentElement !== home) home.appendChild(railNode);
   // GEOMETRY PROOF (2026-09-16): what actually sits where, so a bleed or a dead
   // button is diagnosed from one pasted line instead of guessed at.
   window.setTimeout(() => {

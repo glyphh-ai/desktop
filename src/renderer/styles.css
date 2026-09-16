@@ -20762,20 +20762,24 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail-top { pointer-events: auto; }
 #app-rail {
   position: fixed; top: 0; left: 0; bottom: 0; width: var(--rail-w); min-width: 0;
-  display: flex !important; z-index: 385; padding-top: var(--rail-top-h);
+  display: flex !important; z-index: 500; padding-top: var(--rail-top-h);
   transition: width 0.16s ease;
 }
+/* The strip itself is NO drag region: a drag region under the traffic lights
+   or the buttons eats their clicks at the compositor, whatever the z-index
+   (the original rail bug). Only the empty middle drags. */
 #app-rail-top {
   position: absolute; top: 0; left: 0; right: 0; height: var(--rail-top-h);
   display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding: 0 6px 0 84px;
-  border-bottom: 1px solid var(--border); -webkit-app-region: drag;
+  border-bottom: 1px solid var(--border); -webkit-app-region: no-drag;
 }
+#app-rail-top .app-rail-drag { flex: 1 1 auto; align-self: stretch; -webkit-app-region: drag; }
 .app-rail-top-btn { -webkit-app-region: no-drag; width: 26px; height: 26px; border-radius: 6px; border: none; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .app-rail-top-btn:hover { color: var(--text); background: var(--hover); }
 body.rail-collapsed #app-rail > :not(#app-rail-top) { display: none !important; }
 body.rail-collapsed #app-rail-top { padding-left: 74px; }
 body.rail-collapsed #rail-echo-btn { display: none; }
-#shell-drag-strip { right: auto; width: var(--rail-w); height: var(--rail-top-h); background: none; border-bottom: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+#shell-drag-strip { display: none !important; }
 #shell-drag-strip .shell-drag-area { -webkit-app-region: no-drag; }
 #help-overlay { top: 0; left: var(--rail-w); }
 .ws-rail-placeholder-note { padding: 18px; font-size: 13px; color: var(--text-3); }

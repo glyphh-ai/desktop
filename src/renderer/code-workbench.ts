@@ -6207,11 +6207,7 @@ async function init(): Promise<void> {
    *  (equally hidden) rail splitter. MOVE, never clone — every binding
    *  help/code.ts and navigation.ts made at init is on these nodes. */
   function parkRailHome(): void {
-    const rail = document.getElementById("app-rail");
-    const home = document.getElementById("help-layout");
-    if (!rail || !home || rail.parentElement === home) return;
-    const splitter = document.getElementById("code-rail-splitter");
-    home.insertBefore(rail, splitter && splitter.parentElement === home ? splitter : home.firstChild);
+    // The rail is the fixed sidebar (2026-09-16): it never moves.
   }
 
   /** The one visible Rail placeholder. Two Rail panels can exist (a workspace
@@ -6245,7 +6241,7 @@ async function init(): Promise<void> {
     ensureRailLayer();
     const rail = document.getElementById("app-rail");
     const ph = activeRailPlaceholder();
-    if (rail && ph && railHolder) {
+    if (rail && ph && railHolder && false) {
       if (rail.parentElement !== railHolder) railHolder.appendChild(rail);
       applyRailConfig(rail, ph);
       const rect = ph.getBoundingClientRect();
