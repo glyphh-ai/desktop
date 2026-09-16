@@ -26,6 +26,7 @@ declare const Chart: any;
 // ── Apps (unified: apps + MCP + connections) ────────────
 
 let appsPage = 0;
+let tabsKind: "" | "web" | "app" = "";
 const appsList = document.getElementById("apps-list")!;
 const appDetail = document.getElementById("app-detail")!;
 const appAddForm = document.getElementById("app-add-form")!;
@@ -392,65 +393,53 @@ async function loadApps() {
 function renderAppsList() {
   const query = appSearchInput.value.trim().toLowerCase();
 
-  const filtered = query
-    ? panelApps.filter((a) => a.name.toLowerCase().includes(query) || (a.url || "").toLowerCase().includes(query))
-    : panelApps;
+  const kindOf = (a: PanelApp): "web" | "app" | "native" => a.appArchetype === "glyphh-app" ? "app" : a.url ? "web" : "native";
+  const filtered = panelApps
+    .filter((a) => !query || a.name.toLowerCase().includes(query) || (a.url || "").toLowerCase().includes(query) || a.slug.toLowerCase().includes(query))
+    .filter((a) => !tabsKind || kindOf(a) === tabsKind);
+  const count = document.getElementById("tabs-count");
+  if (count) count.textContent = `${panelApps.length} tab${panelApps.length === 1 ? "" : "s"}`;
 
-  // ONE grid for everything: #apps-grid is static in sections/apps.html and
-  // already holds the ten built-in work-panel cards. We only manage the org
-  // cards rendered after them — clear those (plus any pagination bar / empty
-  // message, which live as SIBLINGS of the grid; a bar inside the grid would
-  // be a stray grid cell) and leave the work panels alone.
+  // The Connections grammar (his order, 2026-09-16): chips, then one table.
   const grid = document.getElementById("apps-grid")!;
-  grid.querySelectorAll(".app-card:not(.workpanel-card)").forEach((el) => el.remove());
+  grid.textContent = "";
   appsList.querySelectorAll(".pagination-bar, .crud-empty").forEach((el) => el.remove());
+  const chips = document.createElement("div");
+  chips.className = "conn2-chips";
+  for (const [id, label] of [["", "All"], ["web", "Web"], ["app", "Apps"]] as const) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "conn2-chip" + (tabsKind === id ? " active" : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { tabsKind = id; renderAppsList(); });
+    chips.appendChild(b);
+  }
+  grid.appendChild(chips);
 
-  // The work panels join the search: hide the cards that don't match.
-  let panelsVisible = 0;
-  grid.querySelectorAll<HTMLElement>(".workpanel-card").forEach((card) => {
-    const name = (card.querySelector(".app-card-name")?.textContent || "").toLowerCase();
-    const hit = !query || name.includes(query);
-    card.classList.toggle("hidden", !hit);
-    if (hit) panelsVisible++;
-  });
-
-  if (query && filtered.length === 0) {
-    if (panelsVisible === 0) {
-      appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps matching "${escapeHtml(query)}"</div>`);
-    }
+  if (!filtered.length) {
+    grid.insertAdjacentHTML("beforeend", `<div class="crud-empty">${query ? `No tabs matching "${escapeHtml(query)}"` : "No tabs yet — <b>+ Add</b> opens a web page or an installed app beside your agent."}</div>`);
     return;
   }
-  // ZERO apps, no query — the standard empty line every list page carries
-  // (his report, 2026-09-12: a bare grid reads as broken, not as empty).
-  if (filtered.length === 0) {
-    appsList.insertAdjacentHTML("beforeend", `<div class="crud-empty">No apps yet — <b>+ New</b> scaffolds your first one.</div>`);
-    return;
+  const table = document.createElement("div");
+  table.className = "conn2-table";
+  table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Tab</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
+  const TYPE: Record<string, string> = { web: "Web", app: "App", native: "Native" };
+  for (const app of filtered) {
+    const tr = document.createElement("div");
+    tr.className = "conn2-tr openable";
+    tr.innerHTML = `<span class="conn2-icon">${appIconInner(app, app.name, "conn2-icon-initial")}</span><span class="conn2-name"></span><span class="conn2-type"><span></span></span><span class="conn2-status"></span>`;
+    (tr.querySelector(".conn2-name") as HTMLElement).textContent = app.name;
+    (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = TYPE[kindOf(app)];
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "action-btn conn2-connect";
+    open.textContent = "Open";
+    open.addEventListener("click", (ev) => { ev.stopPropagation(); void launchPanelApp(app); });
+    (tr.querySelector(".conn2-status") as HTMLElement).appendChild(open);
+    tr.addEventListener("click", () => openPanelAppDetail(app));
+    table.appendChild(tr);
   }
-
-  const { items: pageApps, state } = paginate(filtered, appsPage);
-  appsPage = state.page;
-
-  for (const app of pageApps) {
-    const badges: string[] = [];
-
-    const card = document.createElement("div");
-    card.className = "app-card";
-    card.innerHTML = `
-      ${badges.join("")}
-      <div class="app-card-icon">${appIconInner(app, app.name, "app-card-initial")}</div>
-      <div class="app-card-name">${app.name}</div>
-      <div class="app-card-id">${app.slug}</div>`;
-
-    card.addEventListener("click", () => openPanelAppDetail(app));
-    // Double-click skips the editor and opens the app per its config (5b) —
-    // webview window, native Chrome, or a native executable.
-    card.addEventListener("dblclick", () => { void launchPanelApp(app); });
-    grid.appendChild(card);
-  }
-
-  if (state.totalPages > 1) {
-    appsList.appendChild(renderPaginationBar(state, (p) => { appsPage = p; renderAppsList(); }));
-  }
+  grid.appendChild(table);
 }
 
 // ── Work panels (built-in) ───────────────────────────────

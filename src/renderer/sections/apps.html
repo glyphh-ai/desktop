@@ -4,45 +4,32 @@
                #apps-library-page wrapper stays: the flex pass-through CSS and
                the detail-open :has() rules key on it. -->
           <div id="apps-library-page" class="apps-page">
-          <h2 class="apps-page-heading">Tabs</h2>
-          <p class="section-desc">Web apps and native tools your agent opens as panels beside you.</p>
-
-          <!-- Upgrade gate (shown for non-Advanced when trying to connect) -->
+          <div class="skills-head">
+            <h2>Tabs</h2>
+            <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="app-search" type="text" placeholder="Search tabs" spellcheck="false" autocomplete="off" /></div>
+            <button id="apps-add-btn" class="action-btn primary" type="button">+ Add</button>
+            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
+            <button id="apps-refresh-btn" class="action-btn hidden" title="Refresh tabs" aria-label="Refresh tabs" type="button"></button>
+          </div>
           <div id="apps-pro-gate" class="hidden" style="text-align:center;padding:32px 16px;">
             <p style="color:var(--text-2);font-size:14px;margin-bottom:12px;">App connections require an Advanced subscription.</p>
             <button id="apps-upgrade-btn" class="action-btn primary">Upgrade to Advanced</button>
           </div>
-
-          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 tabs. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
-          <div id="apps-toolbar" class="crud-toolbar">
-            <input id="app-search" type="text" class="crud-search" placeholder="Search apps..." spellcheck="false" autocomplete="off" />
-            <button id="apps-add-btn" class="action-btn primary">+ New</button>
-            <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
-            <button id="apps-refresh-btn" class="action-btn" title="Refresh tabs" aria-label="Refresh tabs" style="padding:6px 9px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
+          <div id="apps-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 10 tabs. <a id="apps-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> for more.</div>
+          <div id="apps-toolbar" class="skills-tabs">
+            <button class="skills-tab active" type="button">Your tabs</button>
+            <div style="flex:1;"></div>
+            <span id="tabs-count" class="skills-count"></span>
           </div>
-
-          <!-- Org approval queue (co-working): releases submitted to the org
-               admins. Renders only when the caller is an org admin AND the
-               queue is non-empty; filled by loadOrgApprovals(). -->
           <div id="apps-approvals" class="hidden" style="margin:0 0 14px;"></div>
-
-          <!-- ONE grid for every app. The ten built-in work panels (Office /
-               Design / Memory / Media — fixed fixtures: no editor, no kebab,
-               The org's apps are rendered by renderAppsList() — ONLY what the
-               user built or installed (his rule, 2026-08-19): the built-in
-               workpanels live on the command center, not here. The pagination bar
-               is appended as a SIBLING of the grid (never a grid cell). -->
-          <div id="apps-list" class="app-list-wrap">
-            <div id="apps-grid" class="app-grid">
-            </div>
+          <div id="apps-list" class="tabs-list">
+            <div id="apps-grid"></div>
           </div>
 
           <!-- App add form -->
           <div id="app-add-form" class="crud-inline-form hidden">
             <div class="crud-inline-header">
-              <a class="crud-breadcrumb-back" id="app-add-cancel">← Tabs</a>
+              <button class="skills-back" id="app-add-cancel" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Tabs</button>
               <div class="crud-spacer"></div>
             </div>
             <div id="app-form-error" class="crud-form-error hidden"></div>
@@ -122,7 +109,7 @@
           <!-- App detail (tabbed) -->
           <div id="app-detail" class="hidden">
             <div class="crud-inline-header">
-              <a class="crud-breadcrumb-back" id="app-detail-close">← Tabs</a>
+              <button class="skills-back" id="app-detail-close" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Tabs</button>
               <span id="app-detail-heading" class="hidden"></span>
               <span style="flex:1;"></span>
               <button id="app-detail-open" class="action-btn primary" type="button" title="Open this app as a panel">Open app</button>

@@ -139,44 +139,42 @@ function dripIconsHtml(recipe: string): string {
 
 function renderDripsList() {
   const query = dripSearchInput.value.trim().toLowerCase();
-  const filtered = query ? allDrips.filter((d) => d.name.toLowerCase().includes(query)) : allDrips;
+  const filtered = query ? allDrips.filter((d) => d.name.toLowerCase().includes(query) || d.recipe.toLowerCase().includes(query)) : allDrips;
+  const count = document.getElementById("drips-count");
+  if (count) count.textContent = `${allDrips.length} drip${allDrips.length === 1 ? "" : "s"}`;
 
-  // Same tile grid as the Apps/Connections pages (.app-list-wrap .app-grid).
+  // The Connections grammar (his order, 2026-09-16): one table, a row per drip.
   const wasHidden = dripsListEl.classList.contains("hidden") || !dripEditor.classList.contains("hidden");
-  dripsListEl.className = wasHidden ? "app-list-wrap hidden" : "app-list-wrap";
+  dripsListEl.className = wasHidden ? "tabs-list hidden" : "tabs-list";
   dripsListEl.innerHTML = "";
-
   if (allDrips.length === 0) {
-    dripsListEl.innerHTML = '<div class="crud-empty">No custom drips yet — click "+ New" to create one.</div>';
+    dripsListEl.innerHTML = '<div class="crud-empty">No custom drips yet — <b>+ Add</b> makes your first one.</div>';
     return;
   }
   if (filtered.length === 0) {
-    dripsListEl.innerHTML = `<div class="crud-empty">No drips matching "${query}"</div>`;
+    dripsListEl.innerHTML = `<div class="crud-empty">No drips matching "${query.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c))}"</div>`;
     return;
   }
-
-  const { items, state } = paginate(filtered, dripsPage);
-  dripsPage = state.page;
-
-  const grid = document.createElement("div");
-  grid.className = "app-grid";
-  for (const drip of items) {
-    const card = document.createElement("div");
-    card.className = "app-card";
-    card.innerHTML = `
-      <div class="drip-card-icons">${dripIconsHtml(drip.recipe)}</div>
-      <div class="app-card-name"></div>
-      <div class="app-card-id"></div>`;
-    card.querySelector(".app-card-name")!.textContent = drip.name;
-    card.querySelector(".app-card-id")!.textContent = drip.recipe;
-    card.addEventListener("click", () => openDripEditor(drip.name, drip.recipe));
-    grid.appendChild(card);
+  const table = document.createElement("div");
+  table.className = "conn2-table";
+  table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Drip</span><span>Recipe</span><span class="conn2-head-status">Status</span></div>`;
+  for (const drip of filtered) {
+    const tr = document.createElement("div");
+    tr.className = "conn2-tr openable";
+    tr.innerHTML = `<span class="conn2-icon"><span class="conn2-icon-initial"></span></span><span class="conn2-name"></span><span class="conn2-type"><span class="drip-recipe"></span></span><span class="conn2-status"></span>`;
+    (tr.querySelector(".conn2-icon-initial") as HTMLElement).textContent = dripEmojis(drip.recipe)[0] || "✨";
+    (tr.querySelector(".conn2-name") as HTMLElement).textContent = drip.name;
+    (tr.querySelector(".drip-recipe") as HTMLElement).textContent = drip.recipe;
+    const play = document.createElement("button");
+    play.type = "button";
+    play.className = "action-btn conn2-connect";
+    play.textContent = "Play";
+    play.addEventListener("click", (ev) => { ev.stopPropagation(); window.glyphh.dripsPreview(drip.recipe); });
+    (tr.querySelector(".conn2-status") as HTMLElement).appendChild(play);
+    tr.addEventListener("click", () => openDripEditor(drip.name, drip.recipe));
+    table.appendChild(tr);
   }
-  dripsListEl.appendChild(grid);
-
-  if (state.totalPages > 1) {
-    dripsListEl.appendChild(renderPaginationBar(state, (p) => { dripsPage = p; renderDripsList(); }));
-  }
+  dripsListEl.appendChild(table);
 }
 
 function openDripEditor(name: string, recipe: string) {
