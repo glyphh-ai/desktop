@@ -159,7 +159,7 @@ function renderList(): void {
           onOpen: () => void openDetail(s.id),
           menu: [
             { label: s.enabled ? "Disable" : "Enable", onClick: () => void toggle(s.id, !s.enabled) },
-            { label: "Reveal folder", onClick: () => void api().skillReveal(s.id) },
+            { label: "Show in folder", onClick: () => void api().skillReveal(s.id) },
             { label: "Delete", danger: true, onClick: () => void remove(s.id, s.name) },
           ],
         }));
@@ -430,7 +430,7 @@ function wire(): void {
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
   el("skill-kebab")?.addEventListener("click", (e) => { if (!current) return; openMenu(e.currentTarget as HTMLElement, [
-    { label: "Reveal folder", onClick: () => void api().skillReveal(current!.id) },
+    { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },
     { label: "Delete", danger: true, onClick: () => void remove(current!.id, current!.name) },
   ]); });
   el("skill-reveal")?.addEventListener("click", () => { if (current) void api().skillReveal(current.id); });
