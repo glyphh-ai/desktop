@@ -280,8 +280,22 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
 // dock backfill read this same filtered list, so a saved "preview" slot
 // simply stops materializing there.
 const IS_WEB_TARGET = typeof window !== "undefined" && !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
+/** Settings → Customize → Tabs with the New form open; the wall repaints on save (glyphh:apps-changed). */
+function openNewTabForm(): void {
+  (window as unknown as { __glyphhOpenSettings?: (sub?: string) => void }).__glyphhOpenSettings?.("tabs");
+  let tries = 0;
+  const tick = (): void => {
+    const btn = document.getElementById("apps-add-btn");
+    if (btn) { btn.click(); return; }
+    if (++tries < 20) window.setTimeout(tick, 60);
+  };
+  window.setTimeout(tick, 60);
+}
+
 const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "glyphh",      title: "New session",     icon: `<img src="brand/glyphh-mark.png" alt="" draggable="false"/>` },
+  // An empty square with a + (his order, 2026-09-16): the New tab form, straight from the dock.
+  { key: "newtab",      title: "New tab",         icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 2.5"/><path d="M12 8v8M8 12h8"/></svg>` },
   { key: "apps",        title: "Tabs",            icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2" style="fill:#6366f1;stroke:none"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2" style="fill:#38bdf8;stroke:none"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#f59e0b;stroke:none"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2" style="fill:#ec4899;stroke:none"/></svg>` },
   { key: "layouts",     title: "Workspaces",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#475569;stroke:none"/><rect x="4.5" y="5.5" width="15" height="3.2" rx="1" style="fill:#94a3b8;stroke:none"/><rect x="4.5" y="10" width="6.6" height="8.5" rx="1" style="fill:#e2e8f0;stroke:none"/><rect x="12.4" y="10" width="7.1" height="8.5" rx="1" style="fill:#ffffff;stroke:none"/></svg>` },
   // (Connections moved into Settings — his ruling, 2026-09-12; no dock tile.)
@@ -4051,6 +4065,7 @@ async function init(): Promise<void> {
           if (key === "logout") { void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.(); return; }
 
           if (key === "platform") { void openPlatformPanel(); return; }
+          if (key === "newtab") { openNewTabForm(); return; }
           if (key === "preview" && IS_WEB_TARGET) { window.open(browserHome(), "_blank", "noopener"); return; }
           if (key === "settings") w.__glyphhOpenSettings?.();
           else if (key === "preview") w.__wbOpenTool?.(key);
@@ -5738,6 +5753,7 @@ async function init(): Promise<void> {
       if (t.navKey) {
         const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
         if (t.navKey === "glyphh") w.__glyphhNewSession?.();
+        else if (t.navKey === "newtab") openNewTabForm();
         else if (t.navKey === "logout") void (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh?.logout?.();
         else if (t.navKey === "settings") w.__glyphhOpenSettings?.();
         else if (t.navKey === "preview") w.__wbOpenTool?.(t.navKey);
