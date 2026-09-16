@@ -203,13 +203,16 @@ function renderList(): void {
       host.innerHTML = `<div class="crud-empty">${q ? `No skills matching "${escapeHtml(q)}"` : "No skills yet. Add one, or install from Discover."}</div>`;
       return;
     }
-    for (const src of SOURCE_ORDER) {
-      const rows = shown.filter((s) => s.source === src);
-      if (!rows.length) continue;
-      const g = group(host, SOURCE_LABEL[src], rows.length);
+    // Groups by author, like Claude's: yours first, then each named author.
+    const groups = new Map<string, SkillRow[]>();
+    for (const s of shown) { const k = s.author ? s.author : ""; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
+    const keys = [...groups.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
+    for (const k of keys) {
+      const rows = groups.get(k)!;
+      const g = group(host, k ? `From ${k}` : "Created by you", rows.length);
       for (const s of rows) {
         g.appendChild(row({
-          name: s.name, by: s.source === "glyphh" ? (s.author ? `by ${s.author}` : "by you") : `from ${s.author || SOURCE_LABEL[src].replace("From ", "")}`,
+          name: s.name, by: s.author ? `by ${s.author}` : "by you",
           desc: s.description, right: when(s.updatedAt),
           onOpen: () => void openDetail(s.id),
           menu: [
@@ -338,7 +341,7 @@ async function openDetail(id: string): Promise<void> {
   el("skill-detail-view")?.classList.remove("hidden");
   const s = current;
   (el("skill-detail-name") as HTMLElement).textContent = s.name;
-  (el("skill-detail-sub") as HTMLElement).textContent = `${s.source === "glyphh" ? (s.author ? `by ${s.author}` : "by you") : `from ${s.author || SOURCE_LABEL[s.source].replace("From ", "")}`} · updated ${when(s.updatedAt)}`;
+  (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
   const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = s.enabled;
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;

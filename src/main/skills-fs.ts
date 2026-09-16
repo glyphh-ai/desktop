@@ -7,7 +7,8 @@
  *   claude   ~/.claude/skills/<name>/
  *   codex    ~/.codex/skills/<name>/
  *   gemini   ~/.gemini/skills/<name>/
- *   glyphh   ~/.glyphh/<user>/skills/<name>/     (what Glyphh installs)
+ *   glyphh   ~/.glyphh/<user>/skills/<name>/     (THE home: every skill lives here,
+ *            linked into each CLI's directory; a CLI's own folder is adopted on sight)
  *
  * — and serves them to the Skills page: list, detail (frontmatter + body +
  * file tree), file read/write, enable/disable (a disabled skill is MOVED out
@@ -140,7 +141,47 @@ function listIn(root: string, source: SkillSource, enabled: boolean): SkillSumma
  *  CLI skills directory on the box; links whose skill is gone are removed. A
  *  real folder of the same name in a CLI's directory is that CLI's own and is
  *  left alone. */
+/** Two folders hold the same files? (names, sizes and bytes of every text file) */
+function sameFolder(a: string, b: string): boolean {
+  const fa = walk(a), fb = walk(b);
+  if (fa.length !== fb.length || fa.some((f, i) => f.path !== fb[i].path || f.size !== fb[i].size)) return false;
+  return fa.every((f) => { try { return fs.readFileSync(path.join(a, f.path)).equals(fs.readFileSync(path.join(b, f.path))); } catch { return false; } });
+}
+
+/** ADOPTION (his ruling, 2026-09-16): a skill a CLI holds as a real folder moves
+ *  into Glyphh's home and a link takes its place, so Glyphh is the one copy and
+ *  every CLI sees it. A same-named skill already home with different files
+ *  lands as <name>-<cli>; an identical one is dropped for the link. Links a
+ *  CLI planted itself (a plugin, a marketplace) are not ours and stay. */
+function adoptAll(): void {
+  const home = ROOTS.glyphh();
+  for (const source of ["claude", "codex", "gemini"] as const) {
+    const root = ROOTS[source]();
+    let ents: fs.Dirent[] = [];
+    try { ents = fs.readdirSync(root, { withFileTypes: true }); } catch { continue; }
+    for (const e of ents) {
+      if (!e.isDirectory() || e.name.startsWith(".")) continue;
+      const src = path.join(root, e.name);
+      if (!fs.existsSync(path.join(src, "SKILL.md"))) continue;
+      try {
+        fs.mkdirSync(home, { recursive: true });
+        let dest = path.join(home, e.name);
+        if (fs.existsSync(dest)) {
+          if (sameFolder(src, dest)) { fs.rmSync(src, { recursive: true, force: true }); fs.symlinkSync(dest, src, "dir"); continue; }
+          dest = path.join(home, `${e.name}-${source}`);
+          if (fs.existsSync(dest)) continue;
+        }
+        fs.renameSync(src, dest);
+        fs.symlinkSync(dest, src, "dir");
+      } catch (err) {
+        console.warn(`[skills] adopting ${source}/${e.name} failed:`, err instanceof Error ? err.message : String(err));
+      }
+    }
+  }
+}
+
 export function syncLinks(): void {
+  adoptAll();
   const home = ROOTS.glyphh();
   let mine: string[] = [];
   try { mine = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* no skills yet */ }
