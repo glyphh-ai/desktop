@@ -862,7 +862,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
-  else if (sub === "apps") { mountSettingsSection("apps"); loadApps(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
@@ -916,7 +915,6 @@ function parkSettingsDocs(): void {
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
 const SETTINGS_SECTIONS: Record<string, { host: string }> = {
-  apps: { host: "settings-apps-host" },
   layouts: { host: "settings-layouts-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
