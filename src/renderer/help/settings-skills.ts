@@ -27,6 +27,12 @@ const ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 let wired = false;
 let tab: "mine" | "discover" = "mine";
 let query = "";
+/** List controls: filter by origin and author; sort order. */
+let filterSource: Source | "" = "";
+let filterAuthor = "";
+type SortKey = "edited" | "name" | "author";
+let sortKey: SortKey = "edited";
+const SORT_LABEL: Record<SortKey, string> = { edited: "Last edited", name: "Name", author: "Created by" };
 let skills: SkillRow[] = [];
 let discoverRows: DiscoverRow[] = [];
 let current: SkillDetail | null = null;
@@ -77,7 +83,7 @@ async function loadDiscover(): Promise<void> {
   discoverRows = r.data ?? [];
 }
 
-type MenuItem = { label: string; danger?: boolean; onClick: () => void } | { sep: true };
+type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
 function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
@@ -109,26 +115,58 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
 }
 
 let menuEl: HTMLElement | null = null;
-function closeMenu(): void { menuEl?.remove(); menuEl = null; }
+let subMenuEl: HTMLElement | null = null;
+function closeMenu(): void { subMenuEl?.remove(); subMenuEl = null; menuEl?.remove(); menuEl = null; }
+
+const CHECK = `<svg class="menu-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>`;
+const ARROW = `<svg class="menu-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>`;
+
+function fillMenu(m: HTMLElement, items: MenuItem[]): void {
+  for (const it of items) {
+    if ("sep" in it) { const d = document.createElement("div"); d.className = "code-menu-sep"; m.appendChild(d); continue; }
+    if ("heading" in it) { const d = document.createElement("div"); d.className = "code-menu-label"; d.textContent = it.heading; m.appendChild(d); continue; }
+    const b = document.createElement("button");
+    b.type = "button";
+    if ("children" in it) {
+      b.className = "code-menu-item";
+      b.innerHTML = `<span></span>${ARROW}`;
+      (b.querySelector("span") as HTMLElement).textContent = it.label;
+      const open = (): void => {
+        subMenuEl?.remove();
+        const sub = document.createElement("div");
+        sub.className = "code-menu skills-menu";
+        fillMenu(sub, it.children);
+        document.body.appendChild(sub);
+        const r = b.getBoundingClientRect();
+        const left = r.right + 4 + sub.offsetWidth > window.innerWidth - 8 ? r.left - sub.offsetWidth - 4 : r.right + 4;
+        sub.style.left = `${Math.max(8, left)}px`;
+        sub.style.top = `${Math.min(r.top - 4, window.innerHeight - sub.offsetHeight - 8)}px`;
+        subMenuEl = sub;
+      };
+      b.addEventListener("mouseenter", open);
+      b.addEventListener("click", open);
+      m.appendChild(b);
+      continue;
+    }
+    b.className = "code-menu-item" + (it.danger ? " danger" : "") + (it.checked ? " checked" : "");
+    b.innerHTML = `<span></span>${CHECK}`;
+    (b.querySelector("span") as HTMLElement).textContent = it.label;
+    b.addEventListener("click", () => { closeMenu(); it.onClick(); });
+    m.appendChild(b);
+  }
+}
 function openMenu(anchor: HTMLElement, items: MenuItem[]): void {
   closeMenu();
   const m = document.createElement("div");
   m.className = "code-menu skills-menu";
-  for (const it of items) {
-    if ("sep" in it) { const d = document.createElement("div"); d.className = "code-menu-sep"; m.appendChild(d); continue; }
-    const b = document.createElement("button");
-    b.className = "code-menu-item" + (it.danger ? " danger" : "");
-    b.textContent = it.label;
-    b.addEventListener("click", () => { closeMenu(); it.onClick(); });
-    m.appendChild(b);
-  }
+  fillMenu(m, items);
   document.body.appendChild(m);
   const rect = anchor.getBoundingClientRect();
   m.style.left = `${Math.max(8, Math.min(rect.right - m.offsetWidth, window.innerWidth - m.offsetWidth - 8))}px`;
   m.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - m.offsetHeight - 8)}px`;
   menuEl = m;
   const dismiss = (e: MouseEvent): void => {
-    if (menuEl && menuEl.contains(e.target as Node)) return;
+    if ((menuEl && menuEl.contains(e.target as Node)) || (subMenuEl && subMenuEl.contains(e.target as Node))) return;
     document.removeEventListener("mousedown", dismiss, true);
     closeMenu();
   };
@@ -154,8 +192,13 @@ function renderList(): void {
   const hit = (s: string) => !q || s.toLowerCase().includes(q);
 
   if (tab === "mine") {
-    const shown = skills.filter((s) => hit(`${s.name} ${s.description} ${s.author}`));
+    const shown = skills
+      .filter((s) => hit(`${s.name} ${s.description} ${s.author}`))
+      .filter((s) => !filterSource || s.source === filterSource)
+      .filter((s) => !filterAuthor || authorOf(s) === filterAuthor)
+      .sort((a, b) => sortKey === "name" ? a.name.localeCompare(b.name) : sortKey === "author" ? authorOf(a).localeCompare(authorOf(b)) || a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
     const count = el("skills-count"); if (count) count.textContent = `${shown.length} skill${shown.length === 1 ? "" : "s"}`;
+    paintControls();
     if (!shown.length) {
       host.innerHTML = `<div class="crud-empty">${q ? `No skills matching "${escapeHtml(q)}"` : "No skills yet. Add one, or install from Discover."}</div>`;
       return;
@@ -553,6 +596,40 @@ async function share(): Promise<void> {
   if (btn) btn.textContent = r.data?.status === "approved" ? `Shared · v${r.data.version}` : `Sent for review · v${r.data?.version}`;
 }
 
+function authorOf(s: SkillRow): string {
+  return s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
+}
+
+function paintControls(): void {
+  const f = el("skills-filter"); const so = el("skills-sort");
+  const mine = tab === "mine";
+  f?.classList.toggle("hidden", !mine); so?.classList.toggle("hidden", !mine);
+  f?.classList.toggle("on", !!(filterSource || filterAuthor));
+  const fl = f?.querySelector("span"); if (fl) fl.textContent = filterSource || filterAuthor ? `Filter · ${[filterSource ? SOURCE_LABEL[filterSource].replace("From ", "").replace("Created by you", "You") : "", filterAuthor].filter(Boolean).join(", ")}` : "Filter";
+  const sl = so?.querySelector("span"); if (sl) sl.textContent = `Sort · ${SORT_LABEL[sortKey]}`;
+}
+
+function filterMenu(): MenuItem[] {
+  const authors = [...new Set(skills.map(authorOf))].sort((a, b) => a.localeCompare(b));
+  const sources = SOURCE_ORDER.filter((src) => skills.some((s) => s.source === src));
+  return [
+    { heading: "Filter by" },
+    { label: "Source", children: [
+      { label: "All", checked: !filterSource, onClick: () => { filterSource = ""; renderList(); } },
+      ...sources.map((src) => ({ label: src === "glyphh" ? "Glyphh" : SOURCE_LABEL[src].replace("From ", ""), checked: filterSource === src, onClick: () => { filterSource = src; renderList(); } })),
+    ] },
+    { label: "Created by", children: [
+      { label: "All", checked: !filterAuthor, onClick: () => { filterAuthor = ""; renderList(); } },
+      ...authors.map((a) => ({ label: a, checked: filterAuthor === a, onClick: () => { filterAuthor = a; renderList(); } })),
+    ] },
+    ...(filterSource || filterAuthor ? [{ sep: true as const }, { label: "Clear filters", onClick: () => { filterSource = ""; filterAuthor = ""; renderList(); } }] : []),
+  ];
+}
+
+function sortMenu(): MenuItem[] {
+  return (Object.keys(SORT_LABEL) as SortKey[]).map((k) => ({ label: SORT_LABEL[k], checked: sortKey === k, onClick: () => { sortKey = k; renderList(); } }));
+}
+
 // ── wiring ──────────────────────────────────────────────────────────────────
 function wire(): void {
   if (wired) return;
@@ -563,6 +640,8 @@ function wire(): void {
     if (tab === "discover") await loadDiscover();
     renderList();
   }));
+  el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
+  el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
     { label: "New skill", onClick: () => void createNew() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },

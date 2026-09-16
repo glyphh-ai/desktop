@@ -20523,6 +20523,17 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skills-search svg { width: 14px; height: 14px; flex-shrink: 0; }
 .skills-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; outline: none; }
 .skills-tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
+.skills-pill { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 12.5px; cursor: pointer; }
+.skills-pill:hover { color: var(--text); background: var(--hover); }
+.skills-pill.on { color: var(--text); border-color: var(--accent); }
+.skills-pill svg { width: 13px; height: 13px; }
+.skills-pill .skills-pill-caret { width: 12px; height: 12px; color: var(--text-3); }
+.skills-menu .code-menu-label { padding: 6px 10px 4px; font-size: 11.5px; color: var(--text-3); }
+.skills-menu .code-menu-item { display: flex; align-items: center; gap: 8px; }
+.skills-menu .code-menu-item > span:first-child { flex: 1; }
+.skills-menu .code-menu-item .menu-check { width: 14px; height: 14px; color: var(--accent); visibility: hidden; }
+.skills-menu .code-menu-item.checked .menu-check { visibility: visible; }
+.skills-menu .code-menu-item .menu-arrow { width: 12px; height: 12px; color: var(--text-3); }
 .skills-tabs.detail { border-bottom: 1px solid var(--border); margin-bottom: 16px; gap: 0; }
 .skills-tab { padding: 6px 10px; border: none; border-radius: 7px; background: none; color: var(--text-3); font-size: 13px; cursor: pointer; }
 .skills-tab:hover { color: var(--text); }
