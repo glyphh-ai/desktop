@@ -418,6 +418,9 @@ declare global {
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;
       skillDelete: (id: string) => Promise<LibEnvelope>;
       skillReveal: (id: string) => Promise<LibEnvelope>;
+      skillAdopt: (id: string) => Promise<LibEnvelope>;
+      skillReplace: (id: string) => Promise<LibEnvelope>;
+      skillDownload: (id: string) => Promise<LibEnvelope>;
       skillsDiscover: () => Promise<LibEnvelope>;
       skillInstall: (ref: string) => Promise<LibEnvelope>;
       skillPublish: (id: string, notes?: string) => Promise<LibEnvelope>;

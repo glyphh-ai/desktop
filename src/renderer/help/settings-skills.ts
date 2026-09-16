@@ -10,6 +10,7 @@
  */
 
 import { escapeHtml, confirmAction, promptAction } from "./shared.js";
+import { closeSettingsModal } from "./navigation.js";
 import { formatMarkdown } from "../format-markdown.js";
 
 type Source = "glyphh" | "claude" | "codex" | "gemini";
@@ -32,6 +33,8 @@ let current: SkillDetail | null = null;
 let currentFile = "";
 let viewMode: "preview" | "code" = "preview";
 let editing = false;
+/** The file text as loaded from disk; the editor is dirty when it differs. */
+let loadedText = "";
 /** A hub version being viewed read-only (null = the folder on disk). */
 let viewedVersion: { itemId: string; version: number; files: Record<string, string> } | null = null;
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
@@ -74,7 +77,8 @@ async function loadDiscover(): Promise<void> {
   discoverRows = r.data ?? [];
 }
 
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: Array<{ label: string; danger?: boolean; onClick: () => void }>; action?: HTMLElement }): HTMLElement {
+type MenuItem = { label: string; danger?: boolean; onClick: () => void } | { sep: true };
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
   r.innerHTML = `<div class="skill-tile-icon">${ICON}</div>
@@ -106,11 +110,12 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
 
 let menuEl: HTMLElement | null = null;
 function closeMenu(): void { menuEl?.remove(); menuEl = null; }
-function openMenu(anchor: HTMLElement, items: Array<{ label: string; danger?: boolean; onClick: () => void }>): void {
+function openMenu(anchor: HTMLElement, items: MenuItem[]): void {
   closeMenu();
   const m = document.createElement("div");
   m.className = "code-menu skills-menu";
   for (const it of items) {
+    if ("sep" in it) { const d = document.createElement("div"); d.className = "code-menu-sep"; m.appendChild(d); continue; }
     const b = document.createElement("button");
     b.className = "code-menu-item" + (it.danger ? " danger" : "");
     b.textContent = it.label;
@@ -160,9 +165,11 @@ function renderList(): void {
           desc: s.description, right: when(s.updatedAt),
           onOpen: () => void openDetail(s.id),
           menu: [
-            { label: s.enabled ? "Disable" : "Enable", onClick: () => void toggle(s.id, !s.enabled) },
-            { label: "Show in folder", onClick: () => void api().skillReveal(s.id) },
-            { label: "Delete", danger: true, onClick: () => void remove(s.id, s.name) },
+            { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
+            { label: "Share", onClick: async () => { await openDetail(s.id); await share(); } },
+            ...(s.source !== "glyphh" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
+            { sep: true as const },
+            { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
           ],
         }));
         if (!s.enabled) (g.lastElementChild as HTMLElement).classList.add("disabled");
@@ -215,11 +222,61 @@ async function toggle(id: string, on: boolean): Promise<void> {
 }
 
 async function remove(id: string, name: string): Promise<void> {
-  const sure = await confirmAction({ title: `Delete "${name}"?`, body: "The folder is removed from this machine. Loops that used it lose it on their next session.", confirmLabel: "Delete", danger: true });
+  const sure = await confirmAction({ title: `Remove "${name}"?`, body: "The folder is removed from this machine and from every loop that used it. A shared copy on your organization's hub stays.", confirmLabel: "Remove", danger: true });
   if (!sure) return;
   const r = await api().skillDelete(id) as Env<boolean>;
-  if (!r.ok) { fail(r.error || "Delete failed."); return; }
+  if (!r.ok) { fail(r.error || "Remove failed."); return; }
   await loadSkillsSettings();
+}
+
+async function adopt(id: string): Promise<void> {
+  const r = await api().skillAdopt(id) as Env<SkillRow>;
+  if (!r.ok) { fail(r.error || "Couldn't move that skill."); return; }
+  await loadSkillsSettings();
+  if (r.data) await openDetail(r.data.id);
+}
+
+async function replaceFiles(): Promise<void> {
+  if (!current || current.source !== "glyphh") { fail("Only skills managed by Glyphh can be replaced. Use Manage in Glyphh first."); return; }
+  const sure = await confirmAction({ title: `Replace "${current.name}"?`, body: "Pick a folder with a SKILL.md. Every file in this skill is replaced by that folder's files.", confirmLabel: "Choose folder" });
+  if (!sure) return;
+  const r = await api().skillReplace(current.id) as Env<SkillRow | null>;
+  if (!r.ok) { fail(r.error || "Replace failed."); return; }
+  if (r.data) await openDetail(current.id);
+}
+
+async function download(): Promise<void> {
+  if (!current) return;
+  const r = await api().skillDownload(current.id) as Env<string | null>;
+  if (!r.ok) fail(r.error || "Download failed.");
+}
+
+type LoopRow = { id: string; name: string; icon?: string };
+async function configuredLoops(): Promise<LoopRow[]> {
+  const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents?: LoopRow[] }> }).cliAgentsList?.().catch(() => null);
+  return r?.ok && r.agents ? r.agents : [];
+}
+
+/** A new session in the workbench: in `loop` (or the current one), rooted at
+ *  `cwd` when given, with `prompt` waiting in the composer. */
+function openSessionWith(opts: { loop?: string; cwd?: string; prompt: string }): void {
+  closeSettingsModal();
+  const w = window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void };
+  if (!w.__glyphhOpenSessionWith) { fail("The agent isn't ready yet."); return; }
+  w.__glyphhOpenSessionWith(opts);
+}
+
+function tryInChat(): void {
+  if (!current) return;
+  openSessionWith({ prompt: `Use the "${current.name}" skill: ${current.description || "show me what it does"}.` });
+}
+
+function editWith(loop: LoopRow): void {
+  if (!current) return;
+  openSessionWith({
+    loop: loop.id, cwd: current.dir,
+    prompt: `This folder is the "${current.name}" skill (Agent Skills format: SKILL.md with name/description frontmatter, instructions below, optional scripts and references). Read it and help me improve it. Keep the format.`,
+  });
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
@@ -282,8 +339,6 @@ async function chooseVersion(value: string): Promise<void> {
     if (!r.ok || !r.data) { fail(r.error || "Couldn't load that version."); return; }
     viewedVersion = { itemId: versionItemId, version: Number(value), files: r.data };
   }
-  const editBtn = el<HTMLButtonElement>("skill-edit");
-  if (editBtn) { editBtn.disabled = !!viewedVersion; editBtn.title = viewedVersion ? "Older versions are read-only — switch to current to edit" : ""; }
   currentFile = "";
   renderTree();
   const first = filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? "");
@@ -401,15 +456,22 @@ function mountEditor(text: string, language: string): void {
   const w = window as unknown as { monaco: { editor: { create: (h: HTMLElement, o: Record<string, unknown>) => typeof editor; createModel: (v: string, l: string) => unknown; setModelLanguage: (m: unknown, l: string) => void }; Uri?: unknown } };
   if (!editor) {
     editor = w.monaco.editor.create(host, {
-      value: text, language, readOnly: !editing, automaticLayout: true, minimap: { enabled: false },
+      value: text, language, readOnly: !!viewedVersion, automaticLayout: true, minimap: { enabled: false },
       fontSize: 12.5, lineNumbers: "on", scrollBeyondLastLine: false, wordWrap: "on", theme: document.documentElement.classList.contains("light") ? "vs" : "vs-dark",
     });
-    editor!.updateOptions({ readOnly: !editing });
+    (editor as unknown as { onDidChangeModelContent: (f: () => void) => void }).onDidChangeModelContent(() => {
+      if (viewedVersion) return;
+      editing = (editor?.getValue() ?? "") !== loadedText;
+      paintEditButton();
+    });
   } else {
     editor.setValue(text);
     w.monaco.editor.setModelLanguage(editor.getModel(), language);
-    editor.updateOptions({ readOnly: !editing });
+    editor.updateOptions({ readOnly: !!viewedVersion });
   }
+  loadedText = text;
+  editing = false;
+  paintEditButton();
 }
 
 async function leaveEditing(): Promise<boolean> {
@@ -418,32 +480,24 @@ async function leaveEditing(): Promise<boolean> {
   if (!sure) return false;
   editing = false;
   paintEditButton();
-  editor?.updateOptions({ readOnly: true });
   return true;
 }
 
+/** The one button: hidden until the file differs from disk, then "Save". */
 function paintEditButton(): void {
   const b = el<HTMLButtonElement>("skill-edit");
-  if (b) b.textContent = editing ? "Save" : "Edit";
+  if (!b) return;
+  b.textContent = "Save";
+  b.classList.toggle("hidden", !editing);
 }
 
 async function onEdit(): Promise<void> {
-  if (!current || !currentFile || viewedVersion) return;
-  if (!editing) {
-    editing = true;
-    if (viewMode === "preview" || !editor) {
-      viewMode = "code";
-      await openFile(currentFile);
-    }
-    editor?.updateOptions({ readOnly: false });
-    paintEditButton();
-    return;
-  }
+  if (!current || !currentFile || viewedVersion || !editing) return;
   const text = editor?.getValue() ?? "";
   const r = await api().skillFileWrite(current.id, currentFile, text) as Env<boolean>;
   if (!r.ok) { fail(r.error || "Save failed."); return; }
+  loadedText = text;
   editing = false;
-  editor?.updateOptions({ readOnly: true });
   paintEditButton();
   // SKILL.md changed → the name/description/body may have too.
   if (currentFile === "SKILL.md") { const id = current.id; await openDetail(id); selectDetailTab("contents"); await openFile("SKILL.md"); }
@@ -483,10 +537,20 @@ function wire(): void {
   document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-dtab]").forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as "overview" | "contents")));
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
-  el("skill-kebab")?.addEventListener("click", (e) => { if (!current) return; openMenu(e.currentTarget as HTMLElement, [
-    { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },
-    { label: "Delete", danger: true, onClick: () => void remove(current!.id, current!.name) },
-  ]); });
+  el("skill-kebab")?.addEventListener("click", async (e) => {
+    if (!current) return;
+    const anchor = e.currentTarget as HTMLElement;
+    const loops = await configuredLoops();
+    openMenu(anchor, [
+      { label: "Try in chat", onClick: tryInChat },
+      ...loops.map((l) => ({ label: `Edit with ${l.name}`, onClick: () => editWith(l) })),
+      { label: "Replace", onClick: () => void replaceFiles() },
+      { label: "Download", onClick: () => void download() },
+      { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },
+      { sep: true as const },
+      { label: "Remove", danger: true, onClick: () => void remove(current!.id, current!.name) },
+    ]);
+  });
   el("skill-reveal")?.addEventListener("click", () => { if (current) void api().skillReveal(current.id); });
   el<HTMLSelectElement>("skill-version")?.addEventListener("change", (e) => void chooseVersion((e.target as HTMLSelectElement).value));
   el("skill-edit")?.addEventListener("click", () => void onEdit());

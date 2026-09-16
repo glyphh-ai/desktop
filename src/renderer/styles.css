@@ -20516,11 +20516,10 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 
 /* ── Settings → Build → Skills (2026-09-16) — the list/detail pages ───────── */
 .settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
-.skills-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.skills-head { display: grid; grid-template-columns: 1fr minmax(0, 420px) 1fr; align-items: center; gap: 14px; margin-bottom: 14px; }
 .skills-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.skills-head > h2 { flex: 1; }
-.skills-head > #skills-add { margin-left: auto; }
-.skills-search { flex: 0 1 420px; display: flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
+.skills-head > #skills-add { justify-self: end; }
+.skills-search { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
 .skills-search svg { width: 14px; height: 14px; flex-shrink: 0; }
 .skills-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; outline: none; }
 .skills-tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
@@ -20552,6 +20551,7 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skills-kebab { width: 28px; height: 28px; border: none; border-radius: 6px; background: none; color: var(--text-3); font-size: 16px; cursor: pointer; }
 .skills-kebab:hover { background: var(--hover); color: var(--text); }
 .skills-menu { position: fixed; z-index: 1000; }
+.skills-menu .code-menu-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .skills-back { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px; padding: 4px 6px; border: none; background: none; color: var(--text-3); font-size: 13px; cursor: pointer; border-radius: 6px; }
 .skills-back svg { width: 14px; height: 14px; }
 .skills-back:hover { color: var(--text); background: var(--hover); }

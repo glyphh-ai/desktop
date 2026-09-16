@@ -18,7 +18,8 @@
 import fs from "fs";
 import path from "path";
 import { homedir } from "os";
-import { ipcMain, shell } from "electron";
+import { execFileSync } from "child_process";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath } from "./app-paths.js";
 
 export type SkillSource = "glyphh" | "claude" | "codex" | "gemini";
@@ -115,13 +116,60 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   };
 }
 
+/** Is this path a link Glyphh planted (a symlink whose target sits in Glyphh's skills root)? */
+function isGlyphhLink(p: string): boolean {
+  try {
+    if (!fs.lstatSync(p).isSymbolicLink()) return false;
+    const target = path.resolve(path.dirname(p), fs.readlinkSync(p));
+    return target.startsWith(ROOTS.glyphh() + path.sep);
+  } catch { return false; }
+}
+
 function listIn(root: string, source: SkillSource, enabled: boolean): SkillSummary[] {
   let names: string[] = [];
-  try { names = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { return []; }
+  try {
+    names = fs.readdirSync(root, { withFileTypes: true })
+      .filter((e) => !e.name.startsWith(".") && (e.isDirectory() || e.isSymbolicLink()))
+      .filter((e) => source === "glyphh" || !isGlyphhLink(path.join(root, e.name)))
+      .map((e) => e.name);
+  } catch { return []; }
   return names.map((n) => summarize(source, n, path.join(root, n), enabled)).filter((s): s is SkillSummary => !!s);
 }
 
+/** ONE home, every loop sees it: each enabled Glyphh skill is linked into every
+ *  CLI skills directory on the box; links whose skill is gone are removed. A
+ *  real folder of the same name in a CLI's directory is that CLI's own and is
+ *  left alone. */
+export function syncLinks(): void {
+  const home = ROOTS.glyphh();
+  let mine: string[] = [];
+  try { mine = fs.readdirSync(home, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name); } catch { /* no skills yet */ }
+  for (const source of ["claude", "codex", "gemini"] as const) {
+    const root = ROOTS[source]();
+    if (!fs.existsSync(path.dirname(root))) continue;
+    try {
+      fs.mkdirSync(root, { recursive: true });
+      for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+        const p = path.join(root, e.name);
+        if (isGlyphhLink(p) && !fs.existsSync(path.join(p, "SKILL.md"))) fs.rmSync(p, { force: true });
+      }
+      for (const name of mine) {
+        const dest = path.join(root, name);
+        let st: fs.Stats | null = null;
+        try { st = fs.lstatSync(dest); } catch { /* absent */ }
+        if (st && !st.isSymbolicLink()) continue;
+        if (st && isGlyphhLink(dest)) continue;
+        if (st) fs.rmSync(dest, { force: true });
+        fs.symlinkSync(path.join(home, name), dest, "dir");
+      }
+    } catch (err) {
+      console.warn(`[skills] sync into ${source} failed:`, err instanceof Error ? err.message : String(err));
+    }
+  }
+}
+
 export function listSkills(): SkillSummary[] {
+  syncLinks();
   const out: SkillSummary[] = [];
   for (const source of Object.keys(ROOTS) as SkillSource[]) {
     out.push(...listIn(ROOTS[source](), source, true));
@@ -177,12 +225,46 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   const dest = on ? path.join(ROOTS[source](), name) : path.join(DISABLED_ROOT(), source, name);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
+  syncLinks();
   return summarize(source, name, dest, on)!;
 }
 
 export function deleteSkill(id: string): void {
   const { dir } = dirOf(id);
   fs.rmSync(dir, { recursive: true, force: true });
+  syncLinks();
+}
+
+/** A CLI's own skill folder becomes a Glyphh skill: moved home, linked back. */
+export function adoptSkill(id: string): SkillSummary {
+  const { source, name, dir } = dirOf(id);
+  if (source === "glyphh") throw new Error("already managed by Glyphh");
+  const home = path.join(ROOTS.glyphh(), name);
+  if (fs.existsSync(home)) throw new Error(`a Glyphh skill named "${name}" already exists`);
+  fs.mkdirSync(ROOTS.glyphh(), { recursive: true });
+  fs.renameSync(dir, home);
+  syncLinks();
+  return summarize("glyphh", name, home, true)!;
+}
+
+/** Replace a Glyphh skill's files with a folder the user picked (it must carry a SKILL.md). */
+export function replaceSkill(id: string, fromDir: string): SkillSummary {
+  const { source, name, dir } = dirOf(id);
+  if (source !== "glyphh") throw new Error("only Glyphh-managed skills can be replaced here");
+  if (!fs.existsSync(path.join(fromDir, "SKILL.md"))) throw new Error("that folder has no SKILL.md");
+  for (const e of fs.readdirSync(dir)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
+  fs.cpSync(fromDir, dir, { recursive: true, filter: (src) => !SKIP_DIRS.has(path.basename(src)) });
+  return summarize("glyphh", name, dir, true)!;
+}
+
+/** The skill as a zip at a path the user chose (a folder copy where zip isn't native). */
+export function exportSkill(id: string, to: string): void {
+  const { dir } = dirOf(id);
+  if (process.platform === "darwin" && to.endsWith(".zip")) {
+    execFileSync("ditto", ["-c", "-k", "--keepParent", dir, to]);
+    return;
+  }
+  fs.cpSync(dir, to.replace(/\.zip$/, ""), { recursive: true });
 }
 
 export function revealSkill(id: string): void {
@@ -191,7 +273,7 @@ export function revealSkill(id: string): void {
 }
 
 /** Install a skill as a folder into Glyphh's own skills directory — from the
- *  hub's payload (SKILL.md text + optional files) — and mirror it into every
+ *  hub's payload (SKILL.md text + optional files) — and link it into every
  *  CLI's directory the machine has, so every loop can use it. */
 export function installSkill(name: string, files: Record<string, string>): SkillSummary {
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) throw new Error(`bad skill name: ${name}`);
@@ -203,18 +285,7 @@ export function installSkill(name: string, files: Record<string, string>): Skill
     fs.mkdirSync(path.dirname(full), { recursive: true });
     fs.writeFileSync(full, text, "utf-8");
   }
-  for (const source of ["claude", "codex", "gemini"] as const) {
-    const root = ROOTS[source]();
-    if (!fs.existsSync(path.dirname(root))) continue; // that CLI isn't on this machine
-    const dest = path.join(root, name);
-    try {
-      fs.mkdirSync(root, { recursive: true });
-      fs.rmSync(dest, { recursive: true, force: true });
-      fs.cpSync(dir, dest, { recursive: true });
-    } catch (err) {
-      console.warn(`[skills] mirror into ${source} failed:`, err instanceof Error ? err.message : String(err));
-    }
-  }
+  syncLinks();
   return summarize("glyphh", name, dir, true)!;
 }
 
@@ -250,4 +321,18 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
   ipcMain.handle("skill-delete", (_e, id: string) => env(() => { deleteSkill(String(id)); return true; }));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
+  ipcMain.handle("skill-adopt", (_e, id: string) => env(() => adoptSkill(String(id))));
+  ipcMain.handle("skill-replace", async (e, id: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const picked = await dialog.showOpenDialog(win ?? undefined as never, { title: "Replace with a skill folder", properties: ["openDirectory"] });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };
+    return env(() => replaceSkill(String(id), picked.filePaths[0]));
+  });
+  ipcMain.handle("skill-download", async (e, id: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const { name } = getSkill(String(id));
+    const picked = await dialog.showSaveDialog(win ?? undefined as never, { title: "Download skill", defaultPath: path.join(app.getPath("downloads"), `${name}.zip`), filters: [{ name: "Zip", extensions: ["zip"] }] });
+    if (picked.canceled || !picked.filePath) return { ok: true, data: null };
+    return env(() => { exportSkill(String(id), picked.filePath); return picked.filePath; });
+  });
 }

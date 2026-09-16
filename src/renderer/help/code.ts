@@ -5314,6 +5314,20 @@ export function initCode(): void {
   // the same as the agent header's own + button.
   el("code-new-chat")?.addEventListener("click", () => newSessionInPlace());
   (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession = newSessionInPlace;
+  // A fresh session on request from elsewhere (Settings → Skills: "Try in chat",
+  // "Edit with <loop>"): loop + folder are held for the session the first send
+  // creates; the prompt waits in the composer for the user to send.
+  (window as unknown as { __glyphhOpenSessionWith?: (o: { loop?: string; cwd?: string; prompt: string }) => void }).__glyphhOpenSessionWith = (o) => {
+    newSessionInPlace();
+    if (o.loop) setLoop(o.loop);
+    if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
+    const put = (tries = 0): void => {
+      const ta = input();
+      if (ta) { ta.value = o.prompt; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.focus(); return; }
+      if (tries < 40) requestAnimationFrame(() => put(tries + 1));
+    };
+    put();
+  };
   // Reset (rail section headers): back to the agent, full screen.
   // The Apps/Layouts rail resets do EXACTLY what Echo's ⟲ does: close every
   // panel and return to the bare wall.
