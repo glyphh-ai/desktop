@@ -449,7 +449,7 @@ export function openSettingsModal(sub?: string): void {
       if (customizeGroup) {
         anchor.after(customizeGroup);
         anchor = customizeGroup;
-        for (const sub of ["layouts", "drips"]) {
+        for (const sub of ["tabs", "layouts", "drips"]) {
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -874,6 +874,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "docs") { mountSettingsDocs(); loadDocs(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
+  else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }
   // Artifacts adopts the FILES section (the gallery page) — same page, second door.
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
@@ -925,7 +926,8 @@ function parkSettingsDocs(): void {
 // detail-pane CSS still applies), then parked straight back into #page-body on
 // close. Its `data-section` never triggers the workbench, since nothing routes
 // these sections there anymore.
-const SETTINGS_SECTIONS: Record<string, { host: string }> = {
+const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
+  tabs: { host: "settings-tabs-host", section: "apps" },
   layouts: { host: "settings-layouts-host" },
   drips: { host: "settings-drips-host" },
   files: { host: "settings-files-host" },
@@ -942,7 +944,7 @@ function mountSettingsSection(section: string): void {
   const cfg = SETTINGS_SECTIONS[section];
   if (!cfg) return;
   const host = document.getElementById(cfg.host);
-  const sec = document.querySelector<HTMLElement>(`.help-section[data-section='${section}']`);
+  const sec = document.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
   if (!host || !sec) return;
   if (sec.parentElement === host) { sec.classList.add("active"); return; }
   settingsSectionPen[section] = sec.parentElement as HTMLElement | null;
@@ -955,7 +957,7 @@ function parkSettingsSection(section: string): void {
   const cfg = SETTINGS_SECTIONS[section];
   if (!cfg) return;
   const host = document.getElementById(cfg.host);
-  const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${section}']`);
+  const sec = host?.querySelector<HTMLElement>(`.help-section[data-section='${cfg.section ?? section}']`);
   const pen = settingsSectionPen[section];
   if (sec && pen) { sec.classList.remove("active"); pen.appendChild(sec); }
 }

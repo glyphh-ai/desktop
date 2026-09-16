@@ -296,8 +296,8 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "logout",      title: "Sign out",        icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10.2" style="fill:#f43f5e"/><path d="M8.1 8.4a5.6 5.6 0 1 0 7.8 0" style="stroke:#ffffff;stroke-width:2.4;stroke-linecap:round"/><rect x="10.7" y="4.4" width="2.6" height="7" rx="1.3" style="fill:#ffffff"/></svg>` },
   { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
-  // Workspaces and Drips live in Settings → Customize (his order, 2026-09-16); no dock tile.
-  ].filter((d) => d.key !== "layouts" && d.key !== "drips");
+  // Tabs, Workspaces and Drips live in Settings → Customize (his order, 2026-09-16); no dock tiles.
+  ].filter((d) => d.key !== "apps" && d.key !== "layouts" && d.key !== "drips");
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
