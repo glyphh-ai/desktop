@@ -1782,7 +1782,10 @@ function renderHistory(): void {
   list.textContent = "";
   cwPaint?.();
   const q = recentsQuery.trim().toLowerCase();
-  const visible = chats.filter((c) => !q || c.title.toLowerCase().includes(q));
+  const loopIds = new Set(loopFilter);
+  const visible = chats
+    .filter((c) => !loopIds.size || (c.loop ? loopIds.has(c.loop) : false))
+    .filter((c) => !q || c.title.toLowerCase().includes(q));
   // All sessions, not just rows surviving the filter — a search that matches
   // nothing must keep its own box on screen to be cleared.
   paintRecentsSearch(chats.length);
@@ -4420,6 +4423,49 @@ const railAgentsHosts = new Set<RailGridHost>();
 //    grouping powers the agent-card dropdown (__glyphhSessionsMenu below).
 interface RailSession { id: string; cli: string; title: string; cwd: string; mtime: number }
 let railSessions: RailSession[] = [];
+/** Recents filter by loop (his order, 2026-09-16): loop ids; empty = every loop. Persisted. */
+let loopFilter: string[] = [];
+const LOOP_FILTER_PREF = "recentsLoopFilter";
+/** The CLIs the chosen loops run on; null = no filter. */
+function loopFilterClis(): Set<string> | null {
+  const ids = new Set(loopFilter.filter((id) => railAgents.some((a) => a.id === id)));
+  if (!ids.size) return null;
+  return new Set(railAgents.filter((a) => ids.has(a.id)).map((a) => a.cli || "claude"));
+}
+function setLoopFilter(ids: string[]): void {
+  loopFilter = ids;
+  void window.glyphh.setPreference?.(LOOP_FILTER_PREF, ids);
+  el("recent-sessions-filter")?.classList.toggle("active", ids.length > 0);
+  renderRailSessions();
+  renderHistory();
+}
+let loopFilterMenu: HTMLDivElement | null = null;
+function openLoopFilterMenu(anchor: HTMLElement): void {
+  loopFilterMenu?.remove();
+  const m = document.createElement("div");
+  m.className = "code-menu";
+  const row = (label: string, on: boolean, mark: string, onClick: () => void): void => {
+    const b = document.createElement("button");
+    b.className = "code-menu-item" + (on ? " on" : "");
+    b.innerHTML = `${mark ? `<img class="loop-mark" src="${mark}" alt="" />` : ""}<span></span>${on ? `<svg class="menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>` : ""}`;
+    (b.querySelector("span") as HTMLElement).textContent = label;
+    b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openLoopFilterMenu(anchor); });
+    m.appendChild(b);
+  };
+  row("All loops", loopFilter.length === 0, "", () => setLoopFilter([]));
+  for (const a of railAgents) {
+    const on = loopFilter.includes(a.id);
+    row(a.name, on, railCliMarks[a.cli || "claude"] || "", () => setLoopFilter(on ? loopFilter.filter((x) => x !== a.id) : [...loopFilter, a.id]));
+  }
+  const r = anchor.getBoundingClientRect();
+  m.style.position = "fixed";
+  m.style.left = `${r.left}px`;
+  m.style.top = `${r.bottom + 4}px`;
+  document.body.appendChild(m);
+  loopFilterMenu = m;
+  const close = (ev: MouseEvent): void => { if (!m.contains(ev.target as Node) && ev.target !== anchor) { m.remove(); loopFilterMenu = null; document.removeEventListener("mousedown", close, true); } };
+  document.addEventListener("mousedown", close, true);
+}
 let railSessionPins: string[] = [];
 const SESS_PINS_PREF = "railSessionPins";
 
@@ -4565,7 +4611,10 @@ function renderRailSessions(): void {
   const host = el<HTMLDivElement>("recent-sessions-list");
   if (!host) return;
   const q = (el<HTMLInputElement>("recent-sessions-search")?.value ?? "").trim().toLowerCase();
-  const items = q ? railSessions.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : railSessions;
+  const clis = loopFilterClis();
+  const items = railSessions
+    .filter((x) => !clis || clis.has(x.cli))
+    .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
   console.warn("[rail] painted", JSON.stringify({ items: items.length, q: q || null, hostInDoc: host.isConnected, hostParent: host.parentElement?.className || null }));
   host.textContent = "";
   if (!items.length) {
@@ -5289,6 +5338,8 @@ export function initCode(): void {
     renderHistory();   // the search box follows the disclosure
   });
   wireRailSearch(el<HTMLInputElement>("recents-search"), (v) => { recentsQuery = v; renderHistory(); });
+  el("recent-sessions-filter")?.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(e.currentTarget as HTMLElement); });
+  void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => { if (Array.isArray(v)) { loopFilter = v.map(String); el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0); renderRailSessions(); renderHistory(); } }).catch(() => {});
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
    *  selection and shows the space's landing. Both entry points use this:

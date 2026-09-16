@@ -20741,3 +20741,11 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
 .code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
 .code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
+
+.app-rail-search { display: flex; align-items: center; gap: 6px; }
+.app-rail-search .search-clear-wrap, .app-rail-search input { flex: 1; min-width: 0; }
+.rail-filter-btn { flex: none; width: 24px; height: 24px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.rail-filter-btn:hover { color: var(--text); background: var(--hover); }
+.rail-filter-btn.active { color: var(--accent); border-color: var(--accent); }
+.code-menu-item .loop-mark { vertical-align: middle; }
+.code-menu-item .menu-check { margin-left: auto; }
