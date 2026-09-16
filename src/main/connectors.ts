@@ -48,7 +48,7 @@ export class ConnectorManager extends EventEmitter {
   async getApps(search?: string, _offset?: number): Promise<{ apps: ConnectorApp[]; hasMore: boolean }> {
     try {
       const { apps } = await getClient().connections.apps(search ? { search } : {});
-      this.cachedApps = apps.map((a) => ({ id: a.id, name: a.name, description: "", icon: a.icon ?? undefined }));
+      this.cachedApps = apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [] }));
       return { apps: this.cachedApps, hasMore: false };
     } catch {
       return { apps: this.cachedApps, hasMore: false };

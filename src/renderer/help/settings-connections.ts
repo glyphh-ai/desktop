@@ -323,6 +323,13 @@ async function openDetail(target: { entry?: Entry; app?: CatalogApp }, quiet = f
     const mine = entries.find((e) => e.conn?.appSlug === target.app!.id);
     if (mine) target = { entry: mine, app: target.app };
   }
+  // A connection of ours opened from the list: fetch its app so the detail
+  // carries Pipedream's blurb and categories, not just the app name.
+  if (target.entry?.conn && !target.app) {
+    const slug = target.entry.conn.appSlug;
+    const hit = catalog.find((x) => x.id === slug) ?? (await window.glyphh.connectorsGetApps(target.entry.conn.appName, 0).catch(() => ({ apps: [] as CatalogApp[] }))).apps.find((x) => x.id === slug);
+    if (hit) target = { entry: target.entry, app: hit };
+  }
   current = target;
   const host = el("conn2-detail");
   if (!host) return;
@@ -405,6 +412,7 @@ async function openDetail(target: { entry?: Entry; app?: CatalogApp }, quiet = f
     ...(e?.mcp?.url ? [["Server URL", e.mcp.url] as [string, string]] : []),
     ["Sign-in", e?.conn?.shared ? "Org account (shared)" : e?.mcp ? (e.mcp.headerKeys?.length ? "Headers" : "Server's own") : "Required"],
     ...(e?.conn ? [["Access", e.kind === "org" ? "Managed by your organization" : "Yours"] as [string, string]] : []),
+    ...(a?.categories?.length ? [["Categories", a.categories.join(", ")] as [string, string]] : []),
   ];
   for (const [k, v] of metaRows) {
     const cell = document.createElement("div");
