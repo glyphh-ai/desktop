@@ -244,12 +244,30 @@ function adoptSessionMode(chatId: string, mode: string): void {
   if (chatId === currentId) { glyphhMode = c.permission; paintChips(); renderModeMenu(); }
 }
 
+/** A session is bound to its CLI PROCESS, not its model (his ruling,
+ *  2026-09-15): the CLI keeps its context across a model switch, but its
+ *  session id never moves to another CLI. So a different loop on a session
+ *  that already has turns is not a switch — it is a NEW session, opened in
+ *  place with the new loop, the old one left in recents. */
+function loopSwitchStartsNewSession(id: string): boolean {
+  const c = current();
+  return !!c && c.messages.length > 0 && !!c.loop && c.loop !== id;
+}
+
 function setLoop(id: string): void {
   glyphhLoop = id;
+  void window.glyphh.setPreference?.("glyphhLoop", id);
+  if (loopSwitchStartsNewSession(id)) {
+    // The new session is born on the first send and adopts pendingLoop.
+    pendingLoop = id;
+    (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    paintChips();
+    void refreshModelList();
+    return;
+  }
   // The pick binds to THIS session (ambient default for new ones stays too).
   const c = current();
   if (c) { c.loop = id; void saveStore(); } else pendingLoop = id;
-  void window.glyphh.setPreference?.("glyphhLoop", id);
   paintChips();
   // A different loop declares different slots — the model chip and the meter
   // both go stale the moment the loop changes.
@@ -564,7 +582,17 @@ function renderLoopMenu(): void {
         main.appendChild(infoBtn);
       }
       item.appendChild(main);
-      if (l.description) {
+      // Another loop on a session with turns = a new session (the CLI's
+      // context cannot move). Say so on the row instead of surprising anyone.
+      const boundary = loopSwitchStartsNewSession(l.id);
+      if (boundary) {
+        item.classList.add("loop-drop-boundary");
+        item.title = "Starts a new session — this one stays in Recents";
+        const sub = document.createElement("span");
+        sub.className = "drop-sub loop-drop-sub";
+        sub.textContent = "Starts a new session";
+        item.appendChild(sub);
+      } else if (l.description) {
         // NAME + ONE SENTENCE, clamped to a single line — two lines, never more.
         const sub = document.createElement("span");
         sub.className = "drop-sub loop-drop-sub";
