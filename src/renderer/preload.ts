@@ -1107,6 +1107,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
   skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
+  /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */
+  skillTab: (id: string, opts?: { name?: string; slug?: string }) => ipcRenderer.invoke("skill-tab", id, opts) as Promise<{ ok: boolean; data?: { slug: string; name: string }; error?: string }>,
   skillReveal: (id: string) => ipcRenderer.invoke("skill-reveal", id) as Promise<LibEnvelope>,
   skillAdopt: (id: string) => ipcRenderer.invoke("skill-adopt", id) as Promise<LibEnvelope>,
   skillReplace: (id: string) => ipcRenderer.invoke("skill-replace", id) as Promise<LibEnvelope>,

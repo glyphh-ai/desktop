@@ -1235,11 +1235,42 @@ function initApps() {
   // (The Marketplace storefront is its own left-rail section now — its search,
   // scope, sort, and refresh are wired by help/marketplace.ts.)
 
+  // A tab is a web page, or an installed Glyphh app bundle (Settings → Build → Apps).
+  const addSource = document.getElementById("app-add-source") as HTMLSelectElement | null;
+  const addBundle = document.getElementById("app-add-bundle") as HTMLSelectElement | null;
+  const addBundleFields = document.getElementById("app-add-bundle-fields");
+  const addBrowserFields = document.getElementById("app-add-browser-fields");
+  const paintSource = (): void => {
+    const glyphh = addSource?.value === "glyphh";
+    addBundleFields?.classList.toggle("hidden", !glyphh);
+    addBrowserFields?.classList.toggle("hidden", glyphh);
+  };
+  addSource?.addEventListener("change", () => {
+    paintSource();
+    const picked = addBundle?.selectedOptions[0];
+    if (addSource?.value === "glyphh" && picked && !addNameInput.value.trim()) { addNameInput.value = picked.textContent || ""; addSlugInput.value = ""; slugTouched = false; }
+  });
+  addBundle?.addEventListener("change", () => {
+    const picked = addBundle.selectedOptions[0];
+    if (picked && !slugTouched) { addNameInput.value = picked.textContent || ""; addSlugInput.value = ""; }
+  });
+  const loadBundles = async (): Promise<void> => {
+    if (!addBundle) return;
+    const r = await window.glyphh.skillsList("app").catch(() => ({ ok: false, data: [] as Array<{ id: string; name: string }> }));
+    const rows = (r.ok && Array.isArray(r.data) ? r.data : []) as Array<{ id: string; name: string }>;
+    addBundle.innerHTML = rows.length ? rows.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("") : `<option value="">No apps installed yet</option>`;
+    const glyphhOpt = addSource?.querySelector<HTMLOptionElement>('option[value="glyphh"]');
+    if (glyphhOpt) glyphhOpt.disabled = rows.length === 0;
+  };
+
   document.getElementById("apps-add-btn")?.addEventListener("click", () => {
     addNameInput.value = "";
     addSlugInput.value = "";
     slugTouched = false;
     addUrlInput.value = "";
+    if (addSource) addSource.value = "browser";
+    paintSource();
+    void loadBundles();
     // Every new app is a WEB PANEL.
     addExecPath.value = "";
     addArchetypeSelect.value = "generic";
@@ -1266,6 +1297,20 @@ function initApps() {
     const name = addNameInput.value.trim();
     const url = addUrlInput.value.trim();
     const slugInput = addSlugInput.value.trim();
+    if (addSource?.value === "glyphh") {
+      const bundleId = addBundle?.value || "";
+      if (!bundleId) { appFormError.textContent = "Pick an installed app."; appFormError.classList.remove("hidden"); return; }
+      const slug = slugInput ? slugify(slugInput) : undefined;
+      const r: { ok: boolean; data?: { slug: string; name: string }; error?: string } = await window.glyphh.skillTab(bundleId, { name: name || undefined, slug }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+      const tab = r.data;
+      if (!r.ok || !tab) { appFormError.textContent = r.error || "Failed to create the tab."; appFormError.classList.remove("hidden"); return; }
+      appAddForm.classList.add("hidden");
+      const apps = (await window.glyphh.panelAppsList?.()) || [];
+      reloadPanelApps(apps.map(toPanelApp));
+      const createdLocal = panelApps.find((a) => a.slug === tab.slug);
+      if (createdLocal) openPanelAppDetail(createdLocal);
+      return;
+    }
     const addType = "browser" as AppType;   // apps ARE web panels
     const isBrowser = true;
     const execPath = addExecPath.value.trim();

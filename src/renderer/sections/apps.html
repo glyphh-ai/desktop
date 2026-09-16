@@ -46,6 +46,16 @@
               <div class="crud-spacer"></div>
             </div>
             <div id="app-form-error" class="crud-form-error hidden"></div>
+            <label class="settings-label">What opens</label>
+            <select id="app-add-source" class="settings-input">
+              <option value="browser">A web page</option>
+              <option value="glyphh">An installed Glyphh app</option>
+            </select>
+            <div id="app-add-bundle-fields" class="hidden">
+              <label class="settings-label">App</label>
+              <select id="app-add-bundle" class="settings-input"></select>
+              <p class="settings-hint">Installed from Settings → Build → Apps. The tab keeps the app's id, so it survives updates.</p>
+            </div>
             <label class="settings-label">Name</label>
             <input id="app-add-name" type="text" class="settings-input" placeholder="e.g. Gmail" spellcheck="false" autocomplete="off" />
             <label class="settings-label">Slug <span class="settings-hint">— how you'll dip to it (.dip &lt;slug&gt;)</span></label>

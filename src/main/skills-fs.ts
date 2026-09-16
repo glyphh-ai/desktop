@@ -22,6 +22,7 @@ import { homedir } from "os";
 import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath } from "./app-paths.js";
+import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 
 export type SkillSource = "glyphh" | "app" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
@@ -293,9 +294,10 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
 }
 
 export function deleteSkill(id: string): void {
-  const { dir } = dirOf(id);
+  const { source, dir } = dirOf(id);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
+  if (source === "app") void unregisterBundleApp(dir);
 }
 
 /** A CLI's own skill folder becomes a Glyphh skill: moved home, linked back. */
@@ -354,6 +356,7 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
     else fs.writeFileSync(full, text, "utf-8");
   }
   syncLinks();
+  if (source === "app") void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   return summarize(source, name, dir, true)!;
 }
 
@@ -412,7 +415,19 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
   fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
   syncLinks();
+  if (target === "app") void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   return summarize(target, name, dest, true)!;
+}
+
+/** Bundles already in the apps home (adopted, or from before tabs) get their tab once per run. */
+const tabbed = new Set<string>();
+function tabBundles(): void {
+  for (const s of listSkills("app")) {
+    const { dir, enabled } = dirOf(s.id);
+    if (!enabled || tabbed.has(dir)) continue;
+    tabbed.add(dir);
+    void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${s.name}" has no tab: ${r.error}`); });
+  }
 }
 
 export function registerSkillsIpc(): void {
@@ -433,7 +448,15 @@ export function registerSkillsIpc(): void {
   const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
     try { return { ok: true, data: fn() }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   };
-  ipcMain.handle("skills-list", (_e, kind?: string) => env(() => listSkills(kind === "app" ? "app" : "skill")));
+  ipcMain.handle("skills-list", (_e, kind?: string) => env(() => { if (kind === "app") tabBundles(); return listSkills(kind === "app" ? "app" : "skill"); }));
+  ipcMain.handle("skill-tab", async (_e, id: string, opts?: { name?: string; slug?: string }) => {
+    try {
+      const { source, dir } = dirOf(String(id));
+      if (source !== "app") return { ok: false, error: "only an app opens as a tab" };
+      const r = await registerBundleApp(dir, { name: opts?.name, slug: opts?.slug });
+      return r.ok ? { ok: true, data: { slug: r.slug, name: r.name } } : { ok: false, error: r.error };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));

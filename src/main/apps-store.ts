@@ -55,7 +55,11 @@ export interface CreateEntryInput {
 
 export type UpdateEntryInput = Partial<Omit<CreateEntryInput, "slug">> & { secretNames?: string[] };
 
-const rowFile = (slug: string): string => path.join(APPS_DIR(), slug, "app.json");
+/** The tab row. A Glyphh app BUNDLE lives in the same folder and owns app.json
+ *  (its manifest), so the row keeps its own file beside it. */
+const rowFile = (slug: string): string => path.join(APPS_DIR(), slug, "tab.json");
+const legacyRowFile = (slug: string): string => path.join(APPS_DIR(), slug, "app.json");
+const ROW_KINDS = new Set(["web", "native", "glyphh"]);
 
 function writeRow(row: LocalAppRow): void {
   const dir = path.join(APPS_DIR(), row.slug);
@@ -69,6 +73,21 @@ function readRow(slug: string): LocalAppRow | null {
   try {
     const row = JSON.parse(fs.readFileSync(rowFile(slug), "utf-8")) as LocalAppRow;
     return row && row.slug ? row : null;
+  } catch {
+    return migrateLegacyRow(slug);
+  }
+}
+
+/** Rows written before tab.json sat in app.json; a bundle manifest there has no
+ *  slug/kind and is left alone. */
+function migrateLegacyRow(slug: string): LocalAppRow | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(legacyRowFile(slug), "utf-8")) as Partial<LocalAppRow>;
+    if (!raw || typeof raw.slug !== "string" || !ROW_KINDS.has(String(raw.kind))) return null;
+    const row = raw as LocalAppRow;
+    writeRow(row);
+    fs.rmSync(legacyRowFile(slug), { force: true });
+    return row;
   } catch {
     return null;
   }
@@ -131,8 +150,12 @@ export async function updateEntry(slug: string, patch: UpdateEntryInput): Promis
 }
 
 export async function removeEntry(slug: string): Promise<void> {
-  try { fs.rmSync(path.join(APPS_DIR(), slug.toLowerCase().trim()), { recursive: true, force: true }); }
-  catch { /* already gone */ }
+  const dir = path.join(APPS_DIR(), slug.toLowerCase().trim());
+  try {
+    fs.rmSync(rowFile(slug), { force: true });
+    // The folder is also a bundle's home when SKILL.md is there: the tab goes, the app stays.
+    if (!fs.existsSync(path.join(dir, "SKILL.md"))) fs.rmSync(dir, { recursive: true, force: true });
+  } catch { /* already gone */ }
 }
 
 /** Bump the row's version after a local build cut. */

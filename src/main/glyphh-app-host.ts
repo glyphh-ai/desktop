@@ -193,6 +193,65 @@ export async function registerAppInPlace(appProjectDir: string, manifestJson: st
   return { ok: true, name: manifest.name };
 }
 
+/** What a bundle's page may reach through window.glyphh when app.json names no capabilities. */
+const BUNDLE_DEFAULT_CAPABILITIES = ["db.exec", "notify.send", "agent.run", "llm.complete", "connector.status", "connector.tools", "connector.call"];
+
+interface BundleManifest {
+  name?: string;
+  ui?: string;
+  tools?: string;
+  capabilities?: string[];
+  dependencies?: { connections?: Array<{ app?: string; as?: string }> };
+}
+
+/** A Glyphh app BUNDLE (SKILL.md + app.json + ui/) in the apps home becomes a
+ *  tab: a glyphh-app row whose entry is the bundle's ui, granted the caps it
+ *  declares (or the bundle defaults) and its connection dependencies. Idempotent:
+ *  a second call updates the row in place. `slug` and `name` let a user make a
+ *  second tab for the same bundle under another name. */
+export async function registerBundleApp(dir: string, opts: { slug?: string; name?: string } = {}): Promise<{ ok: boolean; slug?: string; name?: string; error?: string }> {
+  let m: BundleManifest;
+  try { m = JSON.parse(fs.readFileSync(path.join(dir, "app.json"), "utf-8")) as BundleManifest; }
+  catch (e) { return { ok: false, error: `app.json unreadable: ${(e as Error).message}` }; }
+  const ui = String(m.ui || "ui/index.html");
+  const entryPath = path.join(dir, ui);
+  if (!fs.existsSync(entryPath)) return { ok: false, error: `the app's ui entry is missing: ${ui}` };
+  let tools: unknown[] = [];
+  if (m.tools) {
+    try { const t = JSON.parse(fs.readFileSync(path.join(dir, m.tools), "utf-8")) as { tools?: unknown[] }; tools = Array.isArray(t.tools) ? t.tools : []; }
+    catch { tools = []; }
+  }
+  const slug = (opts.slug || path.basename(dir)).toLowerCase().trim();
+  const name = opts.name || String(m.name || path.basename(dir));
+  const capabilities = Array.isArray(m.capabilities) && m.capabilities.length ? m.capabilities.map(String) : BUNDLE_DEFAULT_CAPABILITIES;
+  const connectors = (m.dependencies?.connections || []).map((c) => String(c.app || "")).filter(Boolean);
+  const config = { capabilities, connectors, tools, bundleDir: dir };
+  try {
+    const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === slug)).catch(() => undefined);
+    if (existing) {
+      const secrets = (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets;
+      await appsStore.updateEntry(slug, { name, kind: "glyphh", nativeRef: entryPath, config: secrets && typeof secrets === "object" ? { ...config, secrets } : config });
+    } else {
+      await appsStore.createEntry({ kind: "glyphh", slug, name, nativeRef: entryPath, config });
+    }
+    invalidateOrgApps();
+    for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+  } catch (e) {
+    return { ok: false, error: `register failed: ${(e as Error).message}` };
+  }
+  return { ok: true, slug, name };
+}
+
+/** The bundle is gone: drop every tab that pointed into its folder. */
+export async function unregisterBundleApp(dir: string): Promise<void> {
+  const rows = await appsStore.mine();
+  for (const r of rows) {
+    if ((r.config as { bundleDir?: string } | null)?.bundleDir === dir) await appsStore.removeEntry(r.slug);
+  }
+  invalidateOrgApps();
+  for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+}
+
 /** Parse + validate a glyphh-app manifest ("" slug etc. rejected). */
 export function readGlyphhAppManifest(json: string): GlyphhAppManifest | null {
   let m: GlyphhAppManifest;
@@ -738,7 +797,7 @@ function hardenAppSession(ses: Electron.Session): void {
   // the org-scoped root (apps/<org>/<slug>), the legacy flat root (custom-apps/),
   // and any registered in-place dev build. Widening here is strictly ADDITIVE —
   // it only ever ADDS the egress lockdown to more file:// documents.
-  const prefixRoots = [appsRoot() + path.sep, customAppsDir() + path.sep];
+  const prefixRoots = [appsRoot() + path.sep, customAppsDir() + path.sep, appsStore.APPS_DIR() + path.sep];
   ses.webRequest.onHeadersReceived({ urls: ["file://*/*"] }, (details, callback) => {
     const headers = details.responseHeaders || {};
     if (details.resourceType === "mainFrame" && !details.url.includes(".glyphh-worker.html")) {

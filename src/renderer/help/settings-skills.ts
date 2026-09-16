@@ -567,6 +567,31 @@ function paintDetailChrome(): void {
   }
   add.classList.toggle("hidden", !hub);
   if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
+  if (cfg.kind !== "app") return;
+  let open = el<HTMLButtonElement>("skill-open-tab");
+  if (!open) {
+    open = document.createElement("button");
+    open.id = cfg.id("skill-open-tab");
+    open.type = "button";
+    open.className = "action-btn primary";
+    open.textContent = "Open";
+    open.addEventListener("click", () => void openAsTab(open!));
+    el("skill-share")?.before(open);
+  }
+  open.classList.toggle("hidden", hub || !current);
+}
+
+/** The app opens as a tab beside the agent: registered on first open, then the workbench door. */
+async function openAsTab(btn: HTMLButtonElement): Promise<void> {
+  if (!current) return;
+  btn.disabled = true;
+  type TabEnv = { ok: boolean; data?: { slug: string; name: string }; error?: string };
+  const r: TabEnv = await window.glyphh.skillTab(current.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  btn.disabled = false;
+  const tab = r.data;
+  if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
+  closeSettingsModal();
+  (window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }) => void }).__wbOpenApp?.({ slug: tab.slug, name: tab.name, url: "", glyphh: true });
 }
 
 function parseFrontmatter(text: string): { frontmatter: Record<string, string>; body: string } {
