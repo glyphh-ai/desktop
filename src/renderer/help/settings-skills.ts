@@ -9,7 +9,7 @@
  * and Contents (the folder's files with a Monaco viewer — preview or code).
  */
 
-import { escapeHtml, confirmAction, promptAction } from "./shared.js";
+import { escapeHtml, confirmAction } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { formatMarkdown } from "../format-markdown.js";
 
@@ -647,6 +647,7 @@ function wire(): void {
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
     { label: "New skill", onClick: () => void createNew() },
+    { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
   el("skill-back")?.addEventListener("click", () => void loadSkillsSettings());
@@ -674,15 +675,23 @@ function wire(): void {
   el("skill-view-code")?.addEventListener("click", () => { viewMode = "code"; void openFile(currentFile); });
 }
 
+/** New skill = a session in the default loop, rooted at Glyphh's skills home,
+ *  with the ask started in the composer and the cursor waiting for the rest. */
 async function createNew(): Promise<void> {
-  const name = await promptAction("New skill — a folder name, lowercase; it becomes the skill's id.", "", "my-skill", "Create");
-  if (!name) return;
-  const r = await api().skillCreate(name) as Env<SkillRow>;
-  if (!r.ok || !r.data) { fail(r.error || "Couldn't create it."); return; }
-  const list = await api().skillsList() as Env<SkillRow[]>;
-  if (list.ok) skills = list.data ?? [];
+  const r = await api().skillsHome() as Env<string>;
+  if (!r.ok || !r.data) { fail(r.error || "Couldn't find the skills folder."); return; }
+  openSessionWith({
+    cwd: r.data,
+    prompt: `Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should `,
+  });
+}
+
+async function importFromFile(): Promise<void> {
+  const r = await api().skillImport() as Env<SkillRow | null>;
+  if (!r.ok) { fail(r.error || "Import failed."); return; }
+  if (!r.data) return;
+  await loadSkillsSettings();
   await openDetail(r.data.id);
-  selectDetailTab("contents");
 }
 
 export function loadPluginsSettings(): void {

@@ -1093,6 +1093,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // SKILLS (2026-09-16): folders on disk, the Agent Skills standard.
   skillsList: () => ipcRenderer.invoke("skills-list") as Promise<LibEnvelope>,
   skillCreate: (name: string) => ipcRenderer.invoke("skill-create", name) as Promise<LibEnvelope>,
+  skillsHome: () => ipcRenderer.invoke("skills-home") as Promise<LibEnvelope>,
+  skillImport: () => ipcRenderer.invoke("skill-import") as Promise<LibEnvelope>,
   skillGet: (id: string) => ipcRenderer.invoke("skill-get", id) as Promise<LibEnvelope>,
   skillFileRead: (id: string, rel: string) => ipcRenderer.invoke("skill-file-read", id, rel) as Promise<LibEnvelope>,
   skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,

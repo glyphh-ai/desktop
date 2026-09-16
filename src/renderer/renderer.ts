@@ -412,6 +412,8 @@ declare global {
       librarySkillUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
       skillsList: () => Promise<LibEnvelope>;
       skillCreate: (name: string) => Promise<LibEnvelope>;
+      skillsHome: () => Promise<LibEnvelope>;
+      skillImport: () => Promise<LibEnvelope>;
       skillGet: (id: string) => Promise<LibEnvelope>;
       skillFileRead: (id: string, rel: string) => Promise<LibEnvelope>;
       skillFileWrite: (id: string, rel: string, text: string) => Promise<LibEnvelope>;

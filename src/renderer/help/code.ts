@@ -5323,7 +5323,7 @@ export function initCode(): void {
     if (o.cwd) { pendingWorkdir = o.cwd; applySessionFolder({ workdir: o.cwd } as CodeChat); }
     const put = (tries = 0): void => {
       const ta = input();
-      if (ta) { ta.value = o.prompt; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.focus(); return; }
+      if (ta) { ta.value = o.prompt; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); return; }
       if (tries < 40) requestAnimationFrame(() => put(tries + 1));
     };
     put();

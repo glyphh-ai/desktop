@@ -350,7 +350,50 @@ export function createSkill(rawName: string): SkillSummary {
   return installSkill(name, { "SKILL.md": md });
 }
 
+/** Import a skill from a .zip (Claude's export) or a folder into Glyphh's home. */
+export function importSkill(picked: string): SkillSummary {
+  let folder = picked;
+  let tmp = "";
+  if (/\.zip$/i.test(picked)) {
+    if (process.platform !== "darwin") throw new Error("zip import needs macOS for now; unzip it and import the folder");
+    tmp = fs.mkdtempSync(path.join(app.getPath("temp"), "skill-"));
+    execFileSync("ditto", ["-x", "-k", picked, tmp]);
+    folder = tmp;
+  }
+  const find = (dir: string, depth: number): string | null => {
+    if (fs.existsSync(path.join(dir, "SKILL.md"))) return dir;
+    if (depth === 0) return null;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name.startsWith(".") || e.name === "__MACOSX") continue;
+      const hit = find(path.join(dir, e.name), depth - 1);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const src = find(folder, 2);
+  if (!src) throw new Error("no SKILL.md inside that");
+  const { frontmatter } = parseSkillMd(fs.readFileSync(path.join(src, "SKILL.md"), "utf-8"));
+  const base = (frontmatter.name || path.basename(src === tmp ? picked.replace(/\.zip$/i, "") : src)).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "skill";
+  let name = base;
+  for (let i = 2; fs.existsSync(path.join(ROOTS.glyphh(), name)); i++) name = `${base}-${i}`;
+  const dest = path.join(ROOTS.glyphh(), name);
+  fs.mkdirSync(ROOTS.glyphh(), { recursive: true });
+  fs.cpSync(src, dest, { recursive: true, filter: (f) => !SKIP_DIRS.has(path.basename(f)) });
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  syncLinks();
+  return summarize("glyphh", name, dest, true)!;
+}
+
 export function registerSkillsIpc(): void {
+  ipcMain.handle("skills-home", () => { const d = ROOTS.glyphh(); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
+  ipcMain.handle("skill-import", async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const picked = await dialog.showOpenDialog(win ?? undefined as never, {
+      title: "Import a skill", properties: ["openFile", "openDirectory"], filters: [{ name: "Skill (zip or folder)", extensions: ["zip"] }],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };
+    try { return { ok: true, data: importSkill(picked.filePaths[0]) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("skill-create", (_e, name: string) => { try { return { ok: true, data: createSkill(String(name)) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; } });
   const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
     try { return { ok: true, data: fn() }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
