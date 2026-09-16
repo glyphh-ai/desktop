@@ -4290,8 +4290,7 @@ function setRecentsOpen(open: boolean, persist: boolean): void {
 // stale value would decide the panel's shape for him.
 interface RailSectionDef { toggle: string; body: string; pref: string }
 const RAIL_SECTIONS: RailSectionDef[] = [
-  { toggle: "rail-apps-toggle", body: "rail-apps-body", pref: "railPanelAppsOpen" },
-  { toggle: "rail-layouts-toggle", body: "rail-layouts-body", pref: "railPanelLayoutsOpen" },
+  // Tabs and Workspaces left the rail for Settings (his order, 2026-09-16); their trays stay hidden.
   { toggle: "rail-recents-toggle", body: "rail-recents-body", pref: "railPanelRecentsOpen" },
 ];
 

@@ -1454,6 +1454,7 @@ function initApps() {
 
   // Dashboard cancel
   document.getElementById("app-dash-cancel")?.addEventListener("click", () => closeAppDetail());
+  document.getElementById("app-detail-close")?.addEventListener("click", () => closeAppDetail());
 
   // Delete
   document.getElementById("app-detail-delete")?.addEventListener("click", async () => {
