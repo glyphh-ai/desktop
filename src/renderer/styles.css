@@ -20797,3 +20797,5 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail .app-rail-scroll { overflow-y: auto; }
 #echo-dock-layer { left: var(--rail-w); }
 #drag-overlay, #grid-handles { left: var(--rail-w); }
+.wb-session-search { display: flex; align-items: center; gap: 6px; }
+.wb-session-search input { flex: 1; min-width: 0; }

@@ -4436,7 +4436,9 @@ function setLoopFilter(ids: string[]): void {
   el("recent-sessions-filter")?.classList.toggle("active", ids.length > 0);
   renderRailSessions();
   renderHistory();
+  document.dispatchEvent(new CustomEvent("glyphh:loop-filter-changed"));
 }
+const FILTER_SVG = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>`;
 let loopFilterMenu: HTMLDivElement | null = null;
 function openLoopFilterMenu(anchor: HTMLElement): void {
   loopFilterMenu?.remove();
@@ -4671,18 +4673,32 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   search.autocomplete = "off";
   search.addEventListener("mousedown", (e) => e.stopPropagation());
   searchWrap.appendChild(search);
+  // The same loop filter the rail has, to the right of the search (his order, 2026-09-16).
+  const filterBtn = document.createElement("button");
+  filterBtn.type = "button";
+  filterBtn.className = "rail-filter-btn" + (loopFilter.length ? " active" : "");
+  filterBtn.title = "Filter by loop";
+  filterBtn.innerHTML = FILTER_SVG;
+  filterBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+  filterBtn.addEventListener("click", (e) => { e.stopPropagation(); openLoopFilterMenu(filterBtn); });
+  searchWrap.appendChild(filterBtn);
   menu.appendChild(searchWrap);
   const listHost = document.createElement("div");
   listHost.className = "wb-session-list";
   menu.appendChild(listHost);
   search.addEventListener("input", () => { menuQuery = search.value; paint(); });
+  const onFilter = (): void => { if (!menu.isConnected) { document.removeEventListener("glyphh:loop-filter-changed", onFilter); return; } filterBtn.classList.toggle("active", loopFilter.length > 0); paint(); };
+  document.addEventListener("glyphh:loop-filter-changed", onFilter);
   // ONE COMBINED LIST here too (his order, 2026-09-14) — the caller's
   // cli/cwd describe its LANE for routing a pick, never a filter.
   const pool = railSessions;
   const paint = (): void => {
     listHost.innerHTML = "";
     const q = menuQuery.trim().toLowerCase();
-    const visible = q ? pool.filter((x) => `${x.title} ${x.cwd}`.toLowerCase().includes(q)) : pool;
+    const clis = loopFilterClis();
+    const visible = pool
+      .filter((x) => !clis || clis.has(x.cli))
+      .filter((x) => !q || `${x.title} ${x.cwd}`.toLowerCase().includes(q));
     const mkRow = (sess: RailSession): HTMLElement => {
       const row = document.createElement("div");
       row.className = "wb-session-row";
