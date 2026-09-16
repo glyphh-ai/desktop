@@ -20766,7 +20766,7 @@ body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }
 #echo-dock-layer, .echo-dock-hotstrip { left: var(--rail-w) !important; }
 body.rail-resizing, body.rail-resizing * { cursor: col-resize !important; user-select: none; }
 body.rail-resizing #app-rail, body.rail-resizing #help-overlay { transition: none !important; }
-#app-rail-resize { position: fixed; top: var(--rail-top-h); left: calc(var(--rail-w) - 3px); bottom: 0; width: 7px; cursor: col-resize; z-index: 201; }
+#app-rail-resize { position: fixed; top: 0; left: calc(var(--rail-w) - 3px); bottom: 0; width: 7px; cursor: col-resize; z-index: 201; }
 #app-rail-resize:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail-top { pointer-events: auto; }

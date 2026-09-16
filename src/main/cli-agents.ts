@@ -880,7 +880,7 @@ function readCodexSessionHead(file: string, mtime: number): CliSessionRow | null
         .find((c) => c.type === "input_text" && c.text)?.text ?? "";
       // codex prepends AGENTS.md instructions + environment context as user
       // messages — nothing a human typed; skip until the real first message.
-      if (t && !/^(#|<INSTRUCTIONS|<environment_context|<ENVIRONMENT)/.test(t.trim())) title = t;
+      if (t && !/^(#|<INSTRUCTIONS|<environment_context|<ENVIRONMENT)/.test(t.trim()) && !NOISE_TITLE.test(t.trim())) title = t;
     }
     if (id && cwd && title) break;
   }
@@ -911,11 +911,14 @@ function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | nul
     if (!title && j.type === "summary" && typeof j.summary === "string") title = j.summary;
     if (!title && j.type === "user") {
       const msg = (j.message as { content?: unknown } | undefined)?.content;
-      if (typeof msg === "string") title = msg;
+      let cand = "";
+      if (typeof msg === "string") cand = msg;
       else if (Array.isArray(msg)) {
         const t = msg.find((c) => (c as { type?: string }).type === "text") as { text?: string } | undefined;
-        if (t?.text) title = t.text;
+        if (t?.text) cand = t.text;
       }
+      // A CLI banner pasted or echoed as the first message is never the title.
+      if (cand.trim() && !NOISE_TITLE.test(cand.trim())) title = cand;
     }
     if (cwd && title) break;
   }
