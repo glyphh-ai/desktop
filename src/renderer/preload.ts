@@ -445,8 +445,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
   // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
   // BYOK — key write-only, calls direct from this machine, never proxied.
-  embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; keySet: boolean; keyHint: string; models: string[] }>,
-  embeddingsConfigSet: (input: { model?: string; key?: string; clearKey?: boolean }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; keySet?: boolean; keyHint?: string; error?: string }>,
+  embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,
+  embeddingsConfigSet: (input: { model?: string }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; model?: string; error?: string }>,
   cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
   cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
   cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,

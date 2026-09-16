@@ -1,97 +1,81 @@
 /**
- * embeddings-config — the CLIENT-SIDE embeddings upgrade (his order,
- * 2026-09-14): ONNX on-device is the default; a Together AI key + a picked
- * model upgrade every chunk/embed lane. Calls go DIRECT from this machine to
- * Together — never proxied through the glyphh server.
+ * embeddings-config — embeddings run on the GATEWAY (his order, 2026-09-16:
+ * no local model, no vendor key on the machine). The org admin publishes
+ * embedding models in the console; a member picks one here and every
+ * chunk/embed lane calls the gateway with their own key.
  *
- * The key lives write-only in a 0600 file beside the other user-scoped
- * secrets (the loop API-key pattern); reads hand back only a hint. The
- * chosen model + enablement ride ordinary preferences.
- *
- * A Together-backed model is namespaced "together:<model>" wherever a model
- * string travels (collection metadata pins it per store, so index and query
- * always embed with the same model).
+ * No pick (or an org with no embedding models) = the semantic features are
+ * off, and callers say so rather than silently degrading.
  */
-
-import fs from "fs";
 import { ipcMain } from "electron";
-import { userScopedPath } from "./app-paths.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
+import { getClient } from "./glyphh-client.js";
+import { gatewayCreds } from "./gateway-token.js";
 
-export const TOGETHER_PREFIX = "together:";
-export const TOGETHER_API = "https://api.together.xyz/v1/embeddings";
+export interface EmbedModel { id: string; name: string; providerSlug: string }
 
-/** The supported Together embedding models — curated, diverse (quality /
- *  fast / long-context / multilingual). */
-export const TOGETHER_EMBED_MODELS = [
-  "BAAI/bge-large-en-v1.5",
-  "BAAI/bge-base-en-v1.5",
-  "togethercomputer/m2-bert-80M-32k-retrieval",
-  "intfloat/multilingual-e5-large-instruct",
-];
+const MODELS_TTL_MS = 60_000;
+let cached: { at: number; models: EmbedModel[] } | null = null;
 
-const keyFile = (): string => userScopedPath("together-embeddings.key");
-
-function readKey(): string {
-  try { return fs.readFileSync(keyFile(), "utf-8").trim(); } catch { return ""; }
+/** The org's embedding models, as the server's catalog reports them. */
+export async function orgEmbedModels(force = false): Promise<EmbedModel[]> {
+  if (!force && cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
+  try {
+    const rows = await getClient().http.get<Array<{ id: string; name: string; providerSlug: string; modality?: string; active?: boolean }>>("/api/models/available");
+    const models = (Array.isArray(rows) ? rows : [])
+      .filter((m) => m && m.modality === "embedding")
+      .map((m) => ({ id: m.id, name: m.name || m.id, providerSlug: m.providerSlug || "" }));
+    cached = { at: Date.now(), models };
+    return models;
+  } catch (err) {
+    console.warn("[embeddings] model list unavailable:", err instanceof Error ? err.message : String(err));
+    return cached?.models ?? [];
+  }
 }
 
-function keyHint(key: string): string {
-  const k = key.trim();
-  return k.length >= 12 ? `${k.slice(0, 6)}...${k.slice(-4)}` : k ? "..." : "";
+/** The member's pick, or "" when they have not chosen one. */
+export function selectedEmbedModel(): string {
+  return String(getPreference<string>("embeddingsModel", "") ?? "");
 }
 
-/** The model every embed defaults to: "together:<model>" when the upgrade is
- *  configured (key + pick), else "" — the caller's ONNX default stands. */
-export function defaultEmbedModel(): string {
-  const model = String(getPreference<string>("embeddingsModel", "") ?? "");
-  if (!model || !TOGETHER_EMBED_MODELS.includes(model)) return "";
-  return readKey() ? `${TOGETHER_PREFIX}${model}` : "";
+/** The model id the gateway should embed with, stripped of our provider prefix. */
+function routeName(id: string): string {
+  const cut = id.indexOf("::");
+  return cut === -1 ? id : id.slice(cut + 2);
 }
 
-/** Embed via Together — direct call, the user's own key. */
-export async function togetherEmbed(texts: string[], model: string): Promise<number[][]> {
-  const key = readKey();
-  if (!key) throw new Error("Together AI embeddings need a key — Settings → Embeddings");
-  const res = await fetch(TOGETHER_API, {
+/** Embed through the gateway with the member's own key: the org's allow-list,
+ *  its rate limits and its spend, like every other model call. */
+export async function gatewayEmbed(texts: string[], model: string): Promise<number[][]> {
+  const creds = await gatewayCreds();
+  if (!creds) throw new Error("embeddings need the gateway — sign in, or ask your admin to enable it");
+  const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/v1/embeddings`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "content-type": "application/json" },
-    body: JSON.stringify({ model, input: texts }),
-    signal: AbortSignal.timeout(30_000),
+    headers: { authorization: `Bearer ${creds.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ model: routeName(model), input: texts }),
+    signal: AbortSignal.timeout(60_000),
   });
-  if (!res.ok) throw new Error(`Together embeddings failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
-  const json = (await res.json()) as { data?: Array<{ index: number; embedding: number[] }> };
-  const rows = (json.data ?? []).slice().sort((a, b) => a.index - b.index);
-  if (rows.length !== texts.length) throw new Error("Together embeddings returned the wrong count");
-  return rows.map((r) => r.embedding);
+  if (!res.ok) throw new Error(`the gateway refused the embedding (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  const body = await res.json() as { data?: Array<{ embedding?: number[]; index?: number }> };
+  const rows = body.data ?? [];
+  if (rows.length !== texts.length) throw new Error(`the gateway returned ${rows.length} vectors for ${texts.length} texts`);
+  return rows
+    .slice()
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .map((d) => {
+      if (!Array.isArray(d.embedding)) throw new Error("the gateway returned no vector");
+      return d.embedding;
+    });
 }
 
 export function registerEmbeddingsIpc(): void {
-  ipcMain.handle("embeddings-config-get", () => {
-    const key = readKey();
-    return {
-      ok: true,
-      model: String(getPreference<string>("embeddingsModel", "") ?? ""),
-      keySet: !!key,
-      keyHint: keyHint(key),
-      models: TOGETHER_EMBED_MODELS,
-    };
+  ipcMain.handle("embeddings-config-get", async () => {
+    const models = await orgEmbedModels();
+    return { ok: true, model: selectedEmbedModel(), models };
   });
-  ipcMain.handle("embeddings-config-set", (_e, input: { model?: string; key?: string; clearKey?: boolean }) => {
-    try {
-      if (input?.clearKey) { try { fs.rmSync(keyFile(), { force: true }); } catch { /* gone */ } }
-      if (typeof input?.key === "string" && input.key.trim()) {
-        fs.writeFileSync(keyFile(), input.key.trim(), { encoding: "utf-8", mode: 0o600 });
-      }
-      if (typeof input?.model === "string") {
-        const m = input.model.trim();
-        if (m && !TOGETHER_EMBED_MODELS.includes(m)) return { ok: false, error: `unsupported embeddings model: ${m}` };
-        setPreference("embeddingsModel", m);
-      }
-      const key = readKey();
-      return { ok: true, keySet: !!key, keyHint: keyHint(key) };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
+
+  ipcMain.handle("embeddings-config-set", (_e, input: { model?: string }) => {
+    if (typeof input?.model === "string") setPreference("embeddingsModel", input.model);
+    return { ok: true, model: selectedEmbedModel() };
   });
 }

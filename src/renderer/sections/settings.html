@@ -91,20 +91,10 @@
                 <div class="set-pref-row">
                   <div class="set-pref-text">
                     <div class="set-pref-title">Embeddings model</div>
-                    <div class="set-pref-desc">On-device is the default. Pick a Together AI model for a major quality upgrade — needs your Together key; calls go directly from this machine.</div>
+                    <div class="set-pref-desc" id="set-embeddings-desc">Powers memory, search and app data. Your organization's admin configures which embeddings models are available.</div>
                   </div>
                   <div class="set-pref-value">
                     <select id="set-embeddings-model" class="settings-input"></select>
-                  </div>
-                </div>
-                <div class="set-pref-row" id="set-embeddings-key-row">
-                  <div class="set-pref-text">
-                    <div class="set-pref-title">Together AI key</div>
-                    <div class="set-pref-desc" id="set-embeddings-key-hint">Write-only — stored on this machine, never sent to Glyphh.</div>
-                  </div>
-                  <div class="set-pref-value" style="display:flex; gap:6px;">
-                    <input type="password" id="set-embeddings-key" class="settings-input" placeholder="together_…" autocomplete="new-password" spellcheck="false" />
-                    <button type="button" id="set-embeddings-key-clear" class="layout-folder-icon" title="Remove key"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
                   </div>
                 </div>
 

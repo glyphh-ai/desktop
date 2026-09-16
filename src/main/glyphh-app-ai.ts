@@ -11,10 +11,11 @@
  *
  * Everything here is ON-DEVICE and slug-scoped like the other services:
  * vectors in ~/.glyphh/app-data/<slug>/vectors.sqlite, the graph in graph.kuzu/.
- * Embeddings run locally via @huggingface/transformers + onnxruntime
- * (already shipped); the model downloads once to ~/.glyphh/models. Glyphh itself
- * makes no LLM calls — remote model access (llm.complete / agent.run) lives
- * in glyphh-app-agent.ts and runs on the app's own config-var key.
+ * Embeddings run on the GATEWAY (2026-09-16): the org publishes embedding
+ * models, the member picks one in Settings, and every embed is a governed,
+ * metered call with their own key. No model ships and no vendor key sits on
+ * this machine. Remote chat access (llm.complete / agent.run) lives in
+ * glyphh-app-agent.ts and runs on the app's own config-var key.
  *
  * Vector search is exact cosine over Float32 blobs — at desktop scale
  * (≤ ~100k items) that's a few ms and beats shipping an ANN engine.
@@ -26,7 +27,7 @@ import fs from "fs";
 import path from "path";
 import { appDataDir } from "./glyphh-app-services.js";
 import { glyphhPath } from "./app-paths.js";
-import { TOGETHER_PREFIX, togetherEmbed, defaultEmbedModel } from "./embeddings-config.js";
+import { gatewayEmbed, selectedEmbedModel } from "./embeddings-config.js";
 
 // kuzu ships a native addon (kuzujs.node) for the per-app GRAPH memory. It's an
 // OPTIONAL feature, and on some machines the prebuilt can't load — most often a
@@ -49,59 +50,20 @@ function loadKuzu(): KuzuModule | null {
   return kuzuMod;
 }
 
-// ── local embeddings (llm.embed) ────────────────────────────
-
-const DEFAULT_EMBED_MODEL = "Xenova/all-MiniLM-L6-v2";
+// ── embeddings (llm.embed) ──────────────────────────────────
 const MAX_EMBED_BATCH = 64;
 const MAX_EMBED_CHARS = 8_000;
-
-// @huggingface/transformers is ESM-only; this file compiles to CommonJS.
-const dynamicImport = new Function("specifier", "return import(specifier)") as
-  (specifier: string) => Promise<any>;
-
-const embedders = new Map<string, Promise<any>>(); // model → pipeline promise
-
-function getEmbedder(model: string): Promise<any> {
-  let p = embedders.get(model);
-  if (!p) {
-    p = (async () => {
-      const tf = await dynamicImport("@huggingface/transformers");
-      tf.env.cacheDir = glyphhPath("models");
-      try {
-        return await tf.pipeline("feature-extraction", model);
-      } catch (err) {
-        // onnxruntime-node ships no prebuilt binding for some platforms
-        // (notably darwin/x64 since 1.20) — fall back to the WASM backend,
-        // which transformers bundles via onnxruntime-web. Slower, works
-        // everywhere.
-        if (/onnxruntime_binding|Cannot find module/.test(String(err))) {
-          return await tf.pipeline("feature-extraction", model, { device: "wasm" });
-        }
-        throw err;
-      }
-    })();
-    p.catch(() => embedders.delete(model)); // failed load shouldn't poison retries
-    embedders.set(model, p);
-  }
-  return p;
-}
+const NO_EMBED_MODEL = "no embedding model is configured — pick one in Settings, or ask your org admin to publish one";
 
 async function embedTexts(texts: string[], model: string): Promise<number[][]> {
-  const clipped = texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS));
-  // The UPGRADE LANE (his order, 2026-09-14): a "together:<model>" string
-  // embeds via the user's own Together AI key, direct from this machine —
-  // never proxied. Collections pin their model, so a store indexed on one
-  // lane always queries on the same one.
-  if (model.startsWith(TOGETHER_PREFIX)) return togetherEmbed(clipped, model.slice(TOGETHER_PREFIX.length));
-  const extractor = await getEmbedder(model);
-  const out = await extractor(clipped, { pooling: "mean", normalize: true });
-  return out.tolist() as number[][];
+  if (!model) throw new Error(NO_EMBED_MODEL);
+  return gatewayEmbed(texts.map((t) => String(t).slice(0, MAX_EMBED_CHARS)), model);
 }
 
-/** The default model for NEW collections/embeds: the configured Together
- *  upgrade when the user enabled it, else the on-device ONNX default. */
+/** The model NEW collections and embeds use: the member's pick, else "" —
+ *  which embedTexts reports as "not configured" rather than guessing. */
 function activeEmbedModel(): string {
-  return defaultEmbedModel() || DEFAULT_EMBED_MODEL;
+  return selectedEmbedModel();
 }
 
 export async function llmEmbed(args: Record<string, unknown>): Promise<{ model: string; dim: number; vectors: number[][] }> {

@@ -481,46 +481,35 @@ export async function loadAgentDefaults(): Promise<void> {
   });
 }
 
-// ── Settings → General: the embeddings upgrade ──────────────────────────────
-// ONNX on-device default; Together AI BYOK upgrade (his order, 2026-09-14).
-// Desktop-only — the stores and the embedder live in main; the web shim
-// answers not-ok and the rows stay in their default state.
+// ── Settings → General: embeddings ──────────────────────────────────────────
+// The GATEWAY embeds (his order, 2026-09-16): the dropdown lists the org's
+// embedding models; no key lives here. An org with none published gets a
+// disabled control saying so — the feature is off until an admin configures it.
 export async function loadEmbeddingsSettings(): Promise<void> {
   const modelSel = el<HTMLSelectElement>("set-embeddings-model");
-  const keyInput = el<HTMLInputElement>("set-embeddings-key");
-  const keyHintEl = el("set-embeddings-key-hint");
-  const clearBtn = el<HTMLButtonElement>("set-embeddings-key-clear");
-  if (!modelSel || !keyInput) return;
+  const desc = el("set-embeddings-desc");
+  if (!modelSel) return;
   const g = window.glyphh as unknown as {
-    embeddingsConfigGet?: () => Promise<{ ok: boolean; model: string; keySet: boolean; keyHint: string; models: string[] }>;
-    embeddingsConfigSet?: (i: { model?: string; key?: string; clearKey?: boolean }) => Promise<{ ok: boolean; keySet?: boolean; keyHint?: string; error?: string }>;
+    embeddingsConfigGet?: () => Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>;
+    embeddingsConfigSet?: (i: { model?: string }) => Promise<{ ok: boolean; model?: string; error?: string }>;
   };
   const cfg = await g.embeddingsConfigGet?.().catch(() => null);
   if (!cfg?.ok) return;
-  modelSel.innerHTML = [`<option value="">On-device (default)</option>`]
-    .concat(cfg.models.map((m) => `<option value="${m}"${m === cfg.model ? " selected" : ""}>${m}</option>`))
-    .join("");
-  const paintHint = (keySet: boolean, hint: string): void => {
-    if (keyHintEl) {
-      keyHintEl.textContent = keySet
-        ? `Key set (${hint}) — write-only, stored on this machine, never sent to Glyphh.`
-        : "Write-only — stored on this machine, never sent to Glyphh.";
-    }
-  };
-  paintHint(cfg.keySet, cfg.keyHint);
-  modelSel.onchange = () => { void g.embeddingsConfigSet?.({ model: modelSel.value }); };
-  keyInput.onchange = () => {
-    const key = keyInput.value.trim();
-    if (!key) return;
-    void g.embeddingsConfigSet?.({ key }).then((r) => {
-      if (r?.ok) { keyInput.value = ""; paintHint(!!r.keySet, r.keyHint ?? ""); }
-    });
-  };
-  if (clearBtn) {
-    clearBtn.onclick = () => {
-      void g.embeddingsConfigSet?.({ clearKey: true }).then((r) => { if (r?.ok) paintHint(false, ""); });
-    };
+
+  const models = cfg.models ?? [];
+  if (!models.length) {
+    modelSel.innerHTML = `<option value="">None available</option>`;
+    modelSel.disabled = true;
+    if (desc) desc.textContent = "Configure embeddings models in your organization's admin console to enable memory, search and app data.";
+    return;
   }
+  modelSel.disabled = false;
+  modelSel.innerHTML = [`<option value="">Off</option>`]
+    .concat(models.map((m) => `<option value="${m.id}"${m.id === cfg.model ? " selected" : ""}>${m.name}${m.providerSlug ? ` — ${m.providerSlug}` : ""}</option>`))
+    .join("");
+  if (desc) desc.textContent = "Powers memory, search and app data. Embedding runs on the Glyphh gateway with your own key.";
+  modelSel.onchange = () => { void g.embeddingsConfigSet?.({ model: modelSel.value }); };
+
   // The memory bridge toggle — a plain preference; main reads it at the
   // next loop open (cli-agents wraps the base URL through the bridge).
   const bridgeBox = el<HTMLInputElement>("toggle-memory-bridge");
