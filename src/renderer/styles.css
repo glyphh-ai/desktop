@@ -20713,3 +20713,28 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .conn2-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 24px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--border); }
 .conn2-meta-k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
 .conn2-meta-v { font-size: 13.5px; color: var(--text); word-break: break-all; }
+.conn2-tr { grid-template-columns: 28px minmax(0, 1fr) 150px 110px; }
+.conn2-tr.head .conn2-head-connector { grid-column: 1 / 3; }
+.conn2-head-status, .conn2-status { justify-self: end; }
+.conn2-status .conn2-check { padding: 0 10px; }
+.conn2-tool-chip { font-family: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.conn2-phead { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+.conn2-phead .conn2-icon { width: 28px; height: 28px; border-radius: 7px; }
+.conn2-phead-name { font-size: 16px; font-weight: 600; color: var(--text); }
+.conn2-groups { display: flex; flex-direction: column; }
+.conn2-group { border-bottom: 1px solid var(--border); }
+.conn2-group-head { display: flex; align-items: center; gap: 8px; padding: 12px 4px; cursor: pointer; user-select: none; }
+.conn2-group-chev { color: var(--text-3); transition: transform .12s; }
+.conn2-group.open .conn2-group-chev { transform: rotate(90deg); }
+.conn2-group-label { font-size: 14px; color: var(--text); }
+.conn2-group-count { font-size: 11.5px; padding: 1px 7px; border-radius: 6px; background: var(--hover); color: var(--text-2); }
+.conn2-mode-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.conn2-mode-btn:disabled { cursor: default; opacity: .7; }
+.conn2-group-body { padding: 0 0 6px 22px; }
+.conn2-prow { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-top: 1px solid var(--border); }
+.conn2-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); flex-shrink: 0; }
+.conn2-seg button { width: 26px; height: 24px; border: none; border-radius: 6px; background: none; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.conn2-seg button:hover { color: var(--text); }
+.conn2-seg button.active { background: var(--hover); color: var(--text); }
+.conn2-seg button:disabled { cursor: default; }
+.conn2-more { padding: 16px; text-align: center; font-size: 12.5px; color: var(--text-3); }

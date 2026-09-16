@@ -531,7 +531,7 @@ declare global {
       openFile: (filePath: string) => void;
       mkdir: (dirPath: string) => Promise<{ ok: boolean; error?: string }>;
       // Connectors (Pipedream Connect)
-      connectorsGetApps: (search?: string, offset?: number) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean }>;
+      connectorsGetApps: (search?: string, after?: string) => Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean; next?: string }>;
       connectorsGetAccounts: () => Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>;
       connectorsConnect?: (appSlug: string) => Promise<{ ok: boolean; error?: string }>;
       connectorsDisconnect: (accountId: string) => Promise<boolean>;

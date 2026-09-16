@@ -45,13 +45,14 @@ export class ConnectorManager extends EventEmitter {
 
   // ── Available apps (browse catalog) ───────────────────
 
-  async getApps(search?: string, _offset?: number): Promise<{ apps: ConnectorApp[]; hasMore: boolean }> {
+  async getApps(search?: string, after?: string): Promise<{ apps: ConnectorApp[]; hasMore: boolean; next?: string }> {
     try {
-      const { apps } = await getClient().connections.apps(search ? { search } : {});
-      this.cachedApps = apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [] }));
-      return { apps: this.cachedApps, hasMore: false };
+      const { apps, next } = await getClient().connections.apps({ ...(search ? { search } : {}), ...(after ? { after } : {}), limit: 24 });
+      const rows = apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [] }));
+      this.cachedApps = after ? [...this.cachedApps, ...rows] : rows;
+      return { apps: rows, hasMore: !!next, next: next || undefined };
     } catch {
-      return { apps: this.cachedApps, hasMore: false };
+      return { apps: after ? [] : this.cachedApps, hasMore: false };
     }
   }
 

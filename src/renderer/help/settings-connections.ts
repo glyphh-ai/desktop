@@ -57,6 +57,9 @@ let query = "";
 let catalog: CatalogApp[] = [];
 let catalogQuery = "";
 let catalogAll = false;
+/** The cursor for the directory's next page; empty = the end. */
+let catalogNext = "";
+let catalogLoading = false;
 /** The detail on screen: a connection of ours, or a directory app not yet connected. */
 let current: { entry?: Entry; app?: CatalogApp } | null = null;
 let wired = false;
@@ -115,12 +118,31 @@ export async function loadSettingsConnections(): Promise<void> {
 
 async function loadCatalog(q: string): Promise<void> {
   catalogQuery = q;
+  catalogNext = "";
   try {
-    const r = await window.glyphh.connectorsGetApps(q, 0);
+    const r = await window.glyphh.connectorsGetApps(q);
     catalog = r.apps ?? [];
+    catalogNext = r.next || "";
   } catch (err) {
     catalog = [];
     fail(err instanceof Error ? err.message : String(err));
+  }
+}
+
+/** Show all = the directory keeps loading as the user scrolls, page by page. */
+async function loadMoreCatalog(): Promise<void> {
+  if (!catalogNext || catalogLoading) return;
+  catalogLoading = true;
+  try {
+    const r = await window.glyphh.connectorsGetApps(catalogQuery, catalogNext);
+    const seen = new Set(catalog.map((a) => a.id));
+    catalog = [...catalog, ...(r.apps ?? []).filter((a) => !seen.has(a.id))];
+    catalogNext = r.next || "";
+  } catch (err) {
+    catalogNext = "";
+    fail(err instanceof Error ? err.message : String(err));
+  } finally {
+    catalogLoading = false;
   }
 }
 
@@ -168,7 +190,7 @@ function render(): void {
   } else {
     const table = document.createElement("div");
     table.className = "conn2-table";
-    table.innerHTML = `<div class="conn2-tr head"><span></span><span>Connector</span><span>Type</span><span>Status</span></div>`;
+    table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
     for (const e of shown) {
       const tr = document.createElement("div");
       tr.className = "conn2-tr openable";
@@ -178,7 +200,7 @@ function render(): void {
       const st = tr.querySelector(".conn2-status") as HTMLElement;
       if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
       else st.appendChild(connectButton(e));
-      tr.addEventListener("click", () => void openDetail({ entry: e }));
+      tr.addEventListener("click", () => void openDetail({ entry: e, page: "permissions" }));
       table.appendChild(tr);
     }
     host.appendChild(table);
@@ -295,7 +317,7 @@ function renderDiscover(host: HTMLElement): void {
   const sec = document.createElement("section");
   sec.className = "disc-shelf";
   sec.innerHTML = `<div class="disc-shelf-head"><span>${catalogQuery ? "Results" : "Top connectors"}</span></div><div class="conn2-dir-grid"></div>`;
-  if (rows.length > 8) {
+  if (rows.length > 8 || catalogNext) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "disc-link"; b.textContent = catalogAll ? "Show fewer" : "Show all";
     b.addEventListener("click", () => { catalogAll = !catalogAll; render(); });
@@ -314,21 +336,61 @@ function renderDiscover(host: HTMLElement): void {
     grid.appendChild(card);
   }
   host.appendChild(sec);
+  // SHOW ALL paginates by scrolling: a sentinel under the grid pulls the next
+  // page as it comes into view, until the directory runs out.
+  if (catalogAll && catalogNext) {
+    const more = document.createElement("div");
+    more.className = "conn2-more";
+    more.textContent = "Loading more…";
+    sec.appendChild(more);
+    const scroller = host.closest(".settings-panels") ?? undefined;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((x) => x.isIntersecting)) return;
+      io.disconnect();
+      void loadMoreCatalog().then(() => { if (tab === "discover") render(); });
+    }, { root: scroller as Element | undefined, rootMargin: "240px" });
+    io.observe(more);
+  }
+}
+
+// ── tools: names people can read, split by what they do ─────────────────────
+const READ_VERBS = /^(get|list|search|find|read|fetch|retrieve|query|describe|count|check|lookup|view|show|download|export|preview|watch|summarize|detect)\b/i;
+/** "gmail-send-email" → "Send email"; the raw name rides the tooltip. */
+function humanize(name: string, app?: string): string {
+  let n = name;
+  const prefix = (app || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const flat = n.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (prefix && flat.startsWith(prefix)) n = n.replace(new RegExp(`^${app!.replace(/[^a-z0-9]/gi, "[^a-z0-9]?")}[-_ ]?`, "i"), "");
+  n = n.replace(/[-_.]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim().toLowerCase();
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : name;
+}
+const isReadTool = (name: string, app?: string): boolean => READ_VERBS.test(humanize(name, app));
+type ToolMode = "allow" | "ask" | "never";
+const MODE_LABEL: Record<ToolMode, string> = { allow: "Always allow", ask: "Needs approval", never: "Never" };
+const MODE_ICON: Record<ToolMode, string> = {
+  allow: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>`,
+  ask: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V6a2 2 0 1 1 4 0v6M12 7a2 2 0 1 1 4 0v6M16 9a2 2 0 1 1 4 0v5a7 7 0 0 1-7 7h-1a7 7 0 0 1-6-3.4L3.4 13a2 2 0 0 1 3.4-2L8 13"/></svg>`,
+  never: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>`,
+};
+/** Modes other than Never are the member's preference, per connection (server-side prefs). */
+async function readModes(key: string): Promise<Record<string, ToolMode>> {
+  const raw = await window.glyphh.getPreference?.(`connToolModes:${key}`, {}).catch(() => ({}));
+  return raw && typeof raw === "object" ? (raw as Record<string, ToolMode>) : {};
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
-async function openDetail(target: { entry?: Entry; app?: CatalogApp }, quiet = false): Promise<void> {
+async function openDetail(target: { entry?: Entry; app?: CatalogApp; page?: "summary" | "permissions" }, quiet = false): Promise<void> {
   // A directory app we already have becomes its connection's detail.
   if (target.app && !target.entry) {
     const mine = entries.find((e) => e.conn?.appSlug === target.app!.id);
-    if (mine) target = { entry: mine, app: target.app };
+    if (mine) target = { entry: mine, app: target.app, page: target.page };
   }
   // A connection of ours opened from the list: fetch its app so the detail
   // carries Pipedream's blurb and categories, not just the app name.
   if (target.entry?.conn && !target.app) {
     const slug = target.entry.conn.appSlug;
-    const hit = catalog.find((x) => x.id === slug) ?? (await window.glyphh.connectorsGetApps(target.entry.conn.appName, 0).catch(() => ({ apps: [] as CatalogApp[] }))).apps.find((x) => x.id === slug);
-    if (hit) target = { entry: target.entry, app: hit };
+    const hit = catalog.find((x) => x.id === slug) ?? (await window.glyphh.connectorsGetApps(target.entry.conn.appName).catch(() => ({ apps: [] as CatalogApp[] }))).apps.find((x) => x.id === slug);
+    if (hit) target = { entry: target.entry, app: hit, page: target.page };
   }
   current = target;
   const host = el("conn2-detail");
@@ -338,6 +400,9 @@ async function openDetail(target: { entry?: Entry; app?: CatalogApp }, quiet = f
     el("conn2-detail-view")?.classList.remove("hidden");
   }
   host.textContent = "";
+  // A CONNECTED connection opened from Your connections is the permissions
+  // page; Discover opens the summary (hero, description, tools, metadata).
+  if (target.page === "permissions" && target.entry) { await renderPermissionsPage(host, target.entry, target.app); return; }
   const e = target.entry;
   const a = target.app;
   const name = e?.name ?? a?.name ?? "";
@@ -441,7 +506,8 @@ async function paintTools(e: Entry, chips: HTMLElement, perms: HTMLElement): Pro
   }
   if (!tools.length) { chips.innerHTML = `<span class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</span>`; return; }
   chips.textContent = "";
-  for (const t of tools) { const c = document.createElement("span"); c.className = "conn2-tool-chip" + (t.hidden ? " off" : ""); c.textContent = t.name; chips.appendChild(c); }
+  const appName = e.conn?.appName || e.name;
+  for (const t of tools) { const c = document.createElement("span"); c.className = "conn2-tool-chip" + (t.hidden ? " off" : ""); c.textContent = humanize(t.name, appName); c.title = t.name; chips.appendChild(c); }
 
   const readOnly = e.kind === "org";
   const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
@@ -473,7 +539,8 @@ async function paintTools(e: Entry, chips: HTMLElement, perms: HTMLElement): Pro
     const row = document.createElement("div");
     row.className = "conn2-perm";
     row.innerHTML = `<div class="conn2-perm-main"><div class="conn2-perm-name"></div><div class="conn2-perm-desc"></div></div><label class="skills-switch"><input type="checkbox" /><span></span></label>`;
-    (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = t.name;
+    (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = humanize(t.name, appName);
+    (row.querySelector(".conn2-perm-name") as HTMLElement).title = t.name;
     (row.querySelector(".conn2-perm-desc") as HTMLElement).textContent = t.description || "";
     const box = row.querySelector("input") as HTMLInputElement;
     box.checked = !hidden.has(t.name);
@@ -483,6 +550,139 @@ async function paintTools(e: Entry, chips: HTMLElement, perms: HTMLElement): Pro
     list.appendChild(row);
   }
   paintAll();
+}
+
+/** THE PERMISSIONS PAGE (his screens, 2026-09-16): a compact header, the
+ *  description, then the tools in two groups, Read-only and Write/delete, each
+ *  with a group mode and a three-way switch per tool: Always allow, Needs
+ *  approval, Never. Never = hidden from every agent (the existing hidden
+ *  list); the other two are the member's preference per connection. */
+async function renderPermissionsPage(host: HTMLElement, e: Entry, app?: CatalogApp): Promise<void> {
+  const head = document.createElement("div");
+  head.className = "conn2-phead";
+  head.innerHTML = `${iconFor(e, "conn2-icon")}<span class="conn2-phead-name"></span><div style="flex:1"></div><div class="conn2-hero-actions"></div>`;
+  (head.querySelector(".conn2-phead-name") as HTMLElement).textContent = e.name;
+  const actions = head.querySelector(".conn2-hero-actions") as HTMLElement;
+  if (e.kind !== "org") {
+    const dis = document.createElement("button");
+    dis.type = "button";
+    dis.className = "action-btn";
+    dis.textContent = e.mcp ? "Delete" : "Disconnect";
+    dis.addEventListener("click", () => void removeEntry(e));
+    actions.appendChild(dis);
+  } else if (!e.connected && !e.conn?.shared) {
+    const b = connectButton(e); b.classList.add("primary"); actions.appendChild(b);
+  }
+  const kebab = document.createElement("button");
+  kebab.type = "button";
+  kebab.className = "skills-kebab";
+  kebab.title = "More";
+  kebab.textContent = "⋮";
+  kebab.addEventListener("click", () => openMenu(kebab, [
+    { label: "About this connector", onClick: () => void openDetail({ entry: e, app, page: "summary" }) },
+    ...(e.mcp?.url ? [{ label: "Copy server URL", onClick: () => { void navigator.clipboard?.writeText(e.mcp!.url); } }] : []),
+    ...(e.mcp && e.kind !== "org" ? [{ label: e.enabled ? "Turn off" : "Turn on", onClick: async () => { await window.glyphh.mcpConnectionsUpdate(e.mcp!.slug, { enabled: !e.enabled }); await reloadQuietly(); const fresh = entries.find((x) => x.key === e.key); if (fresh) await openDetail({ entry: fresh, app, page: "permissions" }, true); } }] : []),
+  ]));
+  actions.appendChild(kebab);
+  host.appendChild(head);
+
+  const about = document.createElement("p");
+  about.className = "conn2-about";
+  about.textContent = app?.description || (e.mcp ? (e.mcp.url || "A custom MCP server your agents reach through the gateway.") : e.desc);
+  host.appendChild(about);
+
+  if (e.mcp && e.kind !== "org") host.appendChild(customFields(e));
+
+  const title = document.createElement("div");
+  title.className = "conn2-h3";
+  title.textContent = "Tool permissions";
+  host.appendChild(title);
+  const sub = document.createElement("div");
+  sub.className = "conn2-muted";
+  sub.style.marginBottom = "10px";
+  sub.textContent = e.kind === "org" ? "Managed by your organization." : "Choose when your AI is allowed to use these tools.";
+  host.appendChild(sub);
+
+  const groupsHost = document.createElement("div");
+  groupsHost.className = "conn2-groups";
+  groupsHost.innerHTML = `<div class="conn2-chip-muted">Loading tools…</div>`;
+  host.appendChild(groupsHost);
+
+  let tools: Array<{ name: string; description?: string; hidden?: boolean }> = [];
+  try {
+    const res = e.mcp ? await window.glyphh.mcpConnectionsTools(e.mcp.slug) : await window.glyphh.connectionToolsList(e.conn!.id);
+    if (!(res as { ok?: boolean })?.ok) throw new Error((res as { error?: string }).error || "couldn't load tools");
+    tools = (res as { tools?: typeof tools }).tools ?? [];
+  } catch (err) {
+    groupsHost.innerHTML = `<div class="conn2-chip-muted">Couldn't load tools.</div>`;
+    fail(err instanceof Error ? err.message : String(err));
+    return;
+  }
+  if (!tools.length) { groupsHost.innerHTML = `<div class="conn2-chip-muted">${e.connected ? "This connection publishes no tools yet." : "Connect to see its tools."}</div>`; return; }
+
+  const appName = e.conn?.appName || e.name;
+  const readOnly = e.kind === "org";
+  const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
+  const prefs = await readModes(e.key);
+  const modeOf = (t: { name: string }): ToolMode => hidden.has(t.name) ? "never" : (prefs[t.name] ?? (isReadTool(t.name, appName) ? "allow" : "ask"));
+  const persist = async (): Promise<void> => {
+    try {
+      const list = Array.from(hidden);
+      if (e.mcp) await window.glyphh.mcpConnectionsUpdate(e.mcp.slug, { hiddenTools: list });
+      else await window.glyphh.connectionToolsSet(e.conn!.id, list);
+      window.glyphh.setPreference?.(`connToolModes:${e.key}`, prefs);
+    } catch (err) { fail(err instanceof Error ? err.message : String(err)); }
+  };
+  const setMode = (t: { name: string }, m: ToolMode): void => {
+    if (m === "never") { hidden.add(t.name); delete prefs[t.name]; }
+    else { hidden.delete(t.name); prefs[t.name] = m; }
+  };
+
+  groupsHost.textContent = "";
+  const groups: Array<{ label: string; items: typeof tools }> = [
+    { label: "Read-only tools", items: tools.filter((t) => isReadTool(t.name, appName)) },
+    { label: "Write/delete tools", items: tools.filter((t) => !isReadTool(t.name, appName)) },
+  ].filter((g) => g.items.length);
+  for (const g of groups) {
+    const sec = document.createElement("div");
+    sec.className = "conn2-group";
+    sec.innerHTML = `<div class="conn2-group-head"><svg class="conn2-group-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span class="conn2-group-label"></span><span class="conn2-group-count"></span><div style="flex:1"></div><button type="button" class="conn2-mode-btn"></button></div><div class="conn2-group-body hidden"></div>`;
+    (sec.querySelector(".conn2-group-label") as HTMLElement).textContent = g.label;
+    (sec.querySelector(".conn2-group-count") as HTMLElement).textContent = String(g.items.length);
+    const modeBtn = sec.querySelector(".conn2-mode-btn") as HTMLButtonElement;
+    const body = sec.querySelector(".conn2-group-body") as HTMLElement;
+    const rows = new Map<string, HTMLElement>();
+    const paintGroup = (): void => {
+      const modes = new Set(g.items.map(modeOf));
+      const m: ToolMode | null = modes.size === 1 ? [...modes][0] : null;
+      modeBtn.innerHTML = `${m ? MODE_ICON[m] : ""}<span>${m ? MODE_LABEL[m] : "Mixed"}</span><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+      modeBtn.disabled = readOnly;
+      for (const t of g.items) {
+        const row = rows.get(t.name); if (!row) continue;
+        const cur = modeOf(t);
+        row.querySelectorAll<HTMLButtonElement>(".conn2-seg button").forEach((b) => b.classList.toggle("active", b.dataset.mode === cur));
+      }
+    };
+    modeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); openMenu(modeBtn, (["allow", "ask", "never"] as ToolMode[]).map((m) => ({ label: MODE_LABEL[m], onClick: () => { for (const t of g.items) setMode(t, m); paintGroup(); void persist(); } }))); });
+    sec.querySelector(".conn2-group-head")!.addEventListener("click", () => { sec.classList.toggle("open"); body.classList.toggle("hidden", !sec.classList.contains("open")); });
+    for (const t of g.items) {
+      const row = document.createElement("div");
+      row.className = "conn2-prow";
+      row.innerHTML = `<div class="conn2-perm-main"><div class="conn2-perm-name"></div><div class="conn2-perm-desc"></div></div><div class="conn2-seg">${(["allow", "ask", "never"] as ToolMode[]).map((m) => `<button type="button" data-mode="${m}" title="${MODE_LABEL[m]}">${MODE_ICON[m]}</button>`).join("")}</div>`;
+      (row.querySelector(".conn2-perm-name") as HTMLElement).textContent = humanize(t.name, appName);
+      (row.querySelector(".conn2-perm-name") as HTMLElement).title = t.name;
+      (row.querySelector(".conn2-perm-desc") as HTMLElement).textContent = t.description || "";
+      row.querySelector(".conn2-perm-main")!.addEventListener("click", () => row.classList.toggle("expanded"));
+      row.querySelectorAll<HTMLButtonElement>(".conn2-seg button").forEach((b) => {
+        b.disabled = readOnly;
+        b.addEventListener("click", () => { setMode(t, b.dataset.mode as ToolMode); paintGroup(); void persist(); });
+      });
+      rows.set(t.name, row);
+      body.appendChild(row);
+    }
+    paintGroup();
+    groupsHost.appendChild(sec);
+  }
 }
 
 /** A custom MCP server's fields, committing on change. */

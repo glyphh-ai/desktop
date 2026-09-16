@@ -195,9 +195,9 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
   // ── Connectors (Pipedream Connect) — RESTORED 2026-09-11 ────────────────
   const cm = () => deps.connectorManager;
-  ipcMain.handle("connectors-get-apps", async (_e, search?: string, offset?: number) => {
+  ipcMain.handle("connectors-get-apps", async (_e, search?: string, after?: string) => {
     if (!cm()) return { apps: [], hasMore: false };
-    return cm()!.getApps(search, offset);
+    return cm()!.getApps(search, typeof after === "string" ? after : undefined);
   });
   ipcMain.handle("connectors-get-accounts", async () => {
     if (!cm()) return [];

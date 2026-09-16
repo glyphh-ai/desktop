@@ -792,7 +792,7 @@ function closeCatalog(): void { modalEl.classList.add("hidden"); }
 async function loadCatalog(search?: string): Promise<void> {
   if (catalogOffset === 0) catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Loading…</div>`;
   let apps: CatalogApp[] = [], hasMore = false;
-  try { ({ apps, hasMore } = await window.glyphh.connectorsGetApps(search, catalogOffset)); }
+  try { ({ apps, hasMore } = await window.glyphh.connectorsGetApps(search)); }
   catch { catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Couldn't load apps.</div>`; return; }
 
   if (catalogOffset === 0) {

@@ -1253,7 +1253,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   openFile: (filePath: string) => ipcRenderer.send("file-open", filePath),
 
   // Connectors (Pipedream OAuth)
-  connectorsGetApps: (search?: string, offset?: number) => ipcRenderer.invoke("connectors-get-apps", search, offset) as Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean }>,
+  connectorsGetApps: (search?: string, after?: string) => ipcRenderer.invoke("connectors-get-apps", search, after) as Promise<{ apps: Array<{ id: string; name: string; description: string; icon?: string; categories?: string[] }>; hasMore: boolean; next?: string }>,
   connectorsGetAccounts: () => ipcRenderer.invoke("connectors-get-accounts") as Promise<Array<{ id: string; appSlug: string; appName: string; createdAt: string; healthy: boolean }>>,
   connectorsConnect: (appSlug: string) => ipcRenderer.invoke("connectors-connect", appSlug) as Promise<{ ok: boolean; error?: string }>,
   onGlyphhAgentConnect: (cb: (p: { id: string; app: { appId: string; name: string; icon?: string | null } }) => void) => {
