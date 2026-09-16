@@ -20509,7 +20509,6 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .settings-panel[data-sub="connections-cfg"].editing > h2,
 .settings-panel[data-sub="connections-cfg"].editing > .section-desc,
 .settings-panel[data-sub="connections-cfg"].editing > .crud-toolbar,
-.settings-panel[data-sub="connections-cfg"].editing > #conncfg-accordion { display: none !important; }
 /* Inside an OPEN ROW the detail is the row's form — visible there, hidden in
    the parts-bin host it came from. */
 
@@ -20647,3 +20646,70 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .disc-row-installs { font-size: 12px; color: var(--text-3); white-space: nowrap; }
 .disc-chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--hover); color: var(--text-2); }
 .disc-chip.new { background: rgba(140, 59, 242, .18); color: var(--accent); }
+
+/* ── Connections in the Skills grammar (his order, 2026-09-16) ── */
+.conn2-chips { display: flex; gap: 4px; margin: 2px 0 12px; }
+.conn2-chip { padding: 5px 10px; border: none; border-radius: 7px; background: none; color: var(--text-3); font: inherit; font-size: 13px; cursor: pointer; }
+.conn2-chip:hover { color: var(--text); }
+.conn2-chip.active { background: var(--hover); color: var(--text); }
+.conn2-table { display: flex; flex-direction: column; }
+.conn2-tr { display: grid; grid-template-columns: 28px minmax(0, 1fr) 160px 130px; align-items: center; gap: 12px; padding: 11px 8px; border-top: 1px solid var(--border); }
+.conn2-tr.head { border-top: none; padding: 6px 8px; font-size: 12.5px; color: var(--text-3); }
+.conn2-tr.openable { cursor: pointer; }
+.conn2-tr.openable:hover { background: var(--hover); border-radius: 8px; }
+.conn2-icon { width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; background: var(--surface-2); border: 1px solid var(--border); flex-shrink: 0; }
+.conn2-icon img { width: 100%; height: 100%; object-fit: contain; }
+.conn2-icon.lg { width: 44px; height: 44px; border-radius: 10px; }
+.conn2-icon.xl { width: 72px; height: 72px; border-radius: 16px; }
+.conn2-icon-initial { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.conn2-icon.xl .conn2-icon-initial { font-size: 26px; }
+.conn2-name { font-size: 13.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn2-type { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-3); }
+.conn2-badge { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--hover); color: var(--text-2); }
+.conn2-status { display: flex; align-items: center; }
+.conn2-check { color: var(--text-2); display: inline-flex; padding-left: 6px; }
+.conn2-connect { min-width: 84px; }
+.conn2-plus { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.conn2-plus.done { color: #4ade80; border-color: transparent; background: rgba(74, 222, 128, .12); }
+.conn2-popular { margin-top: 22px; }
+.conn2-popular-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.conn2-pop { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.conn2-pop .conn2-name { flex: 1; }
+.conn2-pop.openable, .conn2-dir-card.openable { cursor: pointer; }
+.conn2-pop.openable:hover, .conn2-dir-card.openable:hover { background: var(--hover); }
+.conn2-crumb { display: flex; gap: 8px; font-size: 13.5px; color: var(--text-3); margin: 2px 0 12px; }
+.conn2-crumb .here { color: var(--text); }
+.conn2-dir-bar { display: flex; gap: 8px; margin-bottom: 18px; }
+.conn2-dir-search { flex: 1; max-width: none; }
+.conn2-dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.conn2-dir-card { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.conn2-dir-main { flex: 1; min-width: 0; }
+.conn2-dir-name { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--text); }
+.conn2-verified { color: #4ade80; display: inline-flex; }
+.conn2-dir-desc { font-size: 12.5px; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.conn2-hero { display: flex; align-items: center; gap: 22px; padding: 36px 26px; margin: 0 -8px 18px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.conn2-hero-main { flex: 1; min-width: 0; }
+.conn2-hero-name { font-size: 24px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.conn2-hero-desc { font-size: 13.5px; color: var(--text-2); max-width: 560px; }
+.conn2-hero-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.conn2-connected { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: var(--hover); color: var(--text); font-size: 13px; }
+.conn2-detail-body { padding: 0 4px 24px; }
+.conn2-about { font-size: 14px; line-height: 1.55; color: var(--text-2); margin: 0 0 24px; }
+.conn2-h3 { font-size: 18px; font-weight: 600; color: var(--text); margin: 24px 0 12px; }
+.conn2-muted { font-size: 12.5px; color: var(--text-3); }
+.conn2-tool-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.conn2-tool-chip { font-family: var(--font-mono); font-size: 12px; padding: 5px 10px; border-radius: 8px; background: var(--hover); color: var(--text); }
+.conn2-tool-chip.off { opacity: .45; text-decoration: line-through; }
+.conn2-chip-muted { font-size: 12.5px; color: var(--text-3); }
+.conn2-perms { margin-top: 22px; }
+.conn2-perms-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.conn2-perm-list { border-top: 1px solid var(--border); }
+.conn2-perm { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); }
+.conn2-perm-main { flex: 1; min-width: 0; cursor: pointer; }
+.conn2-perm-name { font-size: 13.5px; color: var(--text); }
+.conn2-perm-desc { font-size: 12.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn2-perm.expanded .conn2-perm-desc { white-space: normal; }
+.conn2-fields { margin: 0 0 12px; }
+.conn2-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px 24px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--border); }
+.conn2-meta-k { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
+.conn2-meta-v { font-size: 13.5px; color: var(--text); word-break: break-all; }
