@@ -60,6 +60,17 @@ let catalogAll = false;
 /** The cursor for the directory's next page; empty = the end. */
 let catalogNext = "";
 let catalogLoading = false;
+/** The directory by category (name, count, a few featured apps), loaded once. */
+type Category = { name: string; count: number; apps: CatalogApp[] };
+let categories: Category[] = [];
+let categoriesLoaded = false;
+/** A category page: its apps so far, the next offset, its own search. */
+let catView: string | null = null;
+let catApps: CatalogApp[] = [];
+let catNext = "";
+let catQuery = "";
+let catTotal = 0;
+let catLoading = false;
 /** The detail on screen: a connection of ours, or a directory app not yet connected. */
 let current: { entry?: Entry; app?: CatalogApp } | null = null;
 let wired = false;
@@ -129,6 +140,39 @@ async function loadCatalog(q: string): Promise<void> {
     catalog = [];
     fail(err instanceof Error ? err.message : String(err));
   }
+}
+
+async function loadCategories(): Promise<void> {
+  if (categoriesLoaded) return;
+  try { categories = await window.glyphh.connectorsGetCategories(); } catch { categories = []; }
+  categoriesLoaded = true;
+}
+
+async function loadCategoryPage(reset: boolean): Promise<void> {
+  if (!catView || catLoading) return;
+  if (!reset && !catNext) return;
+  catLoading = true;
+  try {
+    const r = await window.glyphh.connectorsGetApps(catQuery.trim(), reset ? undefined : catNext, catView);
+    catApps = reset ? (r.apps ?? []) : [...catApps, ...(r.apps ?? [])];
+    catNext = r.next || "";
+    catTotal = r.total ?? catApps.length;
+  } catch (err) {
+    if (reset) catApps = [];
+    catNext = "";
+    fail(err instanceof Error ? err.message : String(err));
+  } finally {
+    catLoading = false;
+  }
+}
+
+async function openCategory(name: string | null): Promise<void> {
+  catView = name;
+  catQuery = "";
+  catApps = [];
+  catNext = "";
+  if (name) await loadCategoryPage(true);
+  render();
 }
 
 /** Show all = the directory keeps loading as the user scrolls, page by page. */
@@ -289,10 +333,14 @@ async function reloadQuietly(): Promise<void> {
 
 // ── discover ────────────────────────────────────────────────────────────────
 function renderDiscover(host: HTMLElement): void {
+  // The page's own search box serves the directory; a category page carries its own.
+  document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.toggle("hidden", !!catView);
+  if (catView) { renderCategoryPage(host); return; }
   const count = el("conn2-count"); if (count) count.textContent = `${catalog.length} available`;
   const crumb = document.createElement("div");
   crumb.className = "conn2-crumb";
-  crumb.innerHTML = `<span>Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
+  crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
+  crumb.querySelector(".crumb-link")!.addEventListener("click", () => { tab = "mine"; render(); });
   host.appendChild(crumb);
 
 
@@ -309,32 +357,107 @@ function renderDiscover(host: HTMLElement): void {
   }
   const grid = sec.querySelector(".conn2-dir-grid") as HTMLElement;
   if (!rows.length) grid.innerHTML = `<div class="crud-empty">${catalogQuery ? `Nothing matching "${escapeHtml(catalogQuery)}"` : "The directory is empty."}</div>`;
-  for (const a of catalogAll ? rows : rows.slice(0, 8)) {
-    const card = document.createElement("div");
-    card.className = "conn2-dir-card openable";
-    card.innerHTML = `${iconForApp(a, "conn2-icon lg")}<div class="conn2-dir-main"><div class="conn2-dir-name"><span></span>${have.has(a.id) ? `<span class="conn2-verified" title="Connected">${CHECK}</span>` : ""}</div><div class="conn2-dir-desc"></div></div>`;
-    (card.querySelector(".conn2-dir-name > span") as HTMLElement).textContent = a.name;
-    (card.querySelector(".conn2-dir-desc") as HTMLElement).textContent = a.description || "";
-    card.appendChild(connectAppButton(a));
-    card.addEventListener("click", () => void openDetail({ app: a }));
-    grid.appendChild(card);
-  }
+  for (const a of catalogAll ? rows : rows.slice(0, 8)) grid.appendChild(dirCard(a, have));
   host.appendChild(sec);
   // SHOW ALL paginates by scrolling: a sentinel under the grid pulls the next
   // page as it comes into view, until the directory runs out.
   if (catalogAll && catalogNext) {
-    const more = document.createElement("div");
-    more.className = "conn2-more";
-    more.textContent = "Loading more…";
-    sec.appendChild(more);
-    const scroller = host.closest(".settings-panels") ?? undefined;
-    const io = new IntersectionObserver((entries) => {
-      if (!entries.some((x) => x.isIntersecting)) return;
-      io.disconnect();
-      void loadMoreCatalog().then(() => { if (tab === "discover") render(); });
-    }, { root: scroller as Element | undefined, rootMargin: "240px" });
-    io.observe(more);
+    sec.appendChild(sentinel(host, () => loadMoreCatalog().then(() => { if (tab === "discover") render(); })));
+    return;
   }
+  // BY CATEGORY (his order, 2026-09-16): a section per category with a few
+  // featured apps, Show all opening the category page. Not under a search.
+  if (catalogQuery || catalogAll) return;
+  if (!categoriesLoaded) {
+    host.insertAdjacentHTML("beforeend", `<div class="conn2-more">Indexing the directory…</div>`);
+    void loadCategories().then(() => { if (tab === "discover" && !catView) render(); });
+    return;
+  }
+  for (const c of categories) {
+    const csec = document.createElement("section");
+    csec.className = "disc-shelf";
+    csec.innerHTML = `<div class="disc-shelf-head"><span></span></div><div class="conn2-dir-grid"></div>`;
+    (csec.querySelector(".disc-shelf-head > span") as HTMLElement).textContent = c.name;
+    const all = document.createElement("button");
+    all.type = "button"; all.className = "disc-link"; all.textContent = "Show all";
+    all.addEventListener("click", () => void openCategory(c.name));
+    csec.querySelector(".disc-shelf-head")!.appendChild(all);
+    const cgrid = csec.querySelector(".conn2-dir-grid") as HTMLElement;
+    for (const a of c.apps.slice(0, 6)) cgrid.appendChild(dirCard(a, have));
+    host.appendChild(csec);
+  }
+}
+
+function sentinel(host: HTMLElement, more: () => Promise<void>): HTMLElement {
+  const m = document.createElement("div");
+  m.className = "conn2-more";
+  m.textContent = "Loading more…";
+  const scroller = host.closest(".settings-panels") ?? undefined;
+  const io = new IntersectionObserver((entries) => {
+    if (!entries.some((x) => x.isIntersecting)) return;
+    io.disconnect();
+    void more();
+  }, { root: scroller as Element | undefined, rootMargin: "240px" });
+  io.observe(m);
+  return m;
+}
+
+function dirCard(a: CatalogApp, have: Set<string>): HTMLElement {
+  const card = document.createElement("div");
+  card.className = "conn2-dir-card openable";
+  card.innerHTML = `${iconForApp(a, "conn2-icon lg")}<div class="conn2-dir-main"><div class="conn2-dir-name"><span></span>${have.has(a.id) ? `<span class="conn2-verified" title="Connected">${CHECK}</span>` : ""}</div><div class="conn2-dir-desc"></div></div>`;
+  (card.querySelector(".conn2-dir-name > span") as HTMLElement).textContent = a.name;
+  (card.querySelector(".conn2-dir-desc") as HTMLElement).textContent = a.description || "";
+  card.appendChild(connectAppButton(a));
+  card.addEventListener("click", () => void openDetail({ app: a }));
+  return card;
+}
+
+/** A category page: breadcrumb, its own search with the Filter dropdown, the
+ *  grid paging by scroll. */
+function renderCategoryPage(host: HTMLElement): void {
+  const count = el("conn2-count"); if (count) count.textContent = `${catTotal} in ${catView}`;
+  const crumb = document.createElement("div");
+  crumb.className = "conn2-crumb";
+  crumb.innerHTML = `<span class="crumb-link">Connections</span><span class="sep">/</span><span class="crumb-link dir">Directory</span><span class="sep">/</span><span class="here"></span>`;
+  (crumb.querySelector(".here") as HTMLElement).textContent = catView!;
+  crumb.querySelector(".crumb-link:not(.dir)")!.addEventListener("click", () => { catView = null; tab = "mine"; render(); });
+  crumb.querySelector(".crumb-link.dir")!.addEventListener("click", () => void openCategory(null));
+  host.appendChild(crumb);
+
+  const bar = document.createElement("div");
+  bar.className = "conn2-dir-bar";
+  bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div><button type="button" class="action-btn conn2-filter"></button>`;
+  const input = bar.querySelector("input") as HTMLInputElement;
+  input.value = catQuery;
+  let t: ReturnType<typeof setTimeout> | null = null;
+  input.addEventListener("input", () => {
+    catQuery = input.value;
+    if (t) clearTimeout(t);
+    t = setTimeout(() => {
+      void loadCategoryPage(true).then(() => {
+        render();
+        const again = document.querySelector<HTMLInputElement>(".conn2-dir-search input");
+        if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+      });
+    }, 250);
+  });
+  const filter = bar.querySelector(".conn2-filter") as HTMLButtonElement;
+  filter.innerHTML = `<span class="conn2-muted">Filter:</span> <span></span>`;
+  (filter.querySelector("span:last-child") as HTMLElement).textContent = catView!;
+  filter.addEventListener("click", () => openMenu(filter, [
+    { label: "All connectors", onClick: () => void openCategory(null) },
+    ...categories.map((c) => ({ label: `${c.name} (${c.count})`, onClick: () => void openCategory(c.name) })),
+  ]));
+  host.appendChild(bar);
+
+  const have = connectedSlugs();
+  const grid = document.createElement("div");
+  grid.className = "conn2-dir-grid";
+  if (!catApps.length) grid.innerHTML = `<div class="crud-empty">${catLoading ? "Loading…" : catQuery ? `Nothing in ${escapeHtml(catView!)} matching "${escapeHtml(catQuery)}"` : "Nothing here yet."}</div>`;
+  for (const a of catApps) grid.appendChild(dirCard(a, have));
+  host.appendChild(grid);
+  if (catNext) host.appendChild(sentinel(host, () => loadCategoryPage(false).then(() => { if (tab === "discover" && catView) render(); })));
 }
 
 // ── tools: names people can read, split by what they do ─────────────────────
@@ -468,7 +591,15 @@ async function openDetail(target: { entry?: Entry; app?: CatalogApp; page?: "sum
     cell.className = "conn2-meta-cell";
     cell.innerHTML = `<div class="conn2-meta-k"></div><div class="conn2-meta-v"></div>`;
     (cell.querySelector(".conn2-meta-k") as HTMLElement).textContent = k;
-    (cell.querySelector(".conn2-meta-v") as HTMLElement).textContent = v;
+    const val = cell.querySelector(".conn2-meta-v") as HTMLElement;
+    if (k === "Made by" && v === "Pipedream") {
+      const link = document.createElement("a");
+      link.href = "https://pipedream.com/";
+      link.textContent = "Pipedream";
+      link.className = "conn2-link";
+      link.addEventListener("click", (ev) => { ev.preventDefault(); const g = window.glyphh as unknown as { openExternal?: (u: string) => void }; if (g.openExternal) g.openExternal("https://pipedream.com/"); else window.open("https://pipedream.com/", "_blank", "noopener"); });
+      val.appendChild(link);
+    } else val.textContent = v;
     meta.appendChild(cell);
   }
   body.appendChild(meta);
@@ -772,6 +903,9 @@ function wire(): void {
     el("conn2-list-view")?.classList.remove("hidden");
     render();
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.conn2Tab === "mine") document.querySelector<HTMLElement>("#conn2-list-view .skills-search")?.classList.remove("hidden");
+  }));
 }
 
 // ── the adopted original: catalog modal + connect flow (one implementation) ──

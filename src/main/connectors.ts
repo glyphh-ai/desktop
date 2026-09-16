@@ -45,12 +45,21 @@ export class ConnectorManager extends EventEmitter {
 
   // ── Available apps (browse catalog) ───────────────────
 
-  async getApps(search?: string, after?: string): Promise<{ apps: ConnectorApp[]; hasMore: boolean; next?: string }> {
+  async getCategories(): Promise<Array<{ name: string; count: number; apps: ConnectorApp[] }>> {
     try {
-      const { apps, next } = await getClient().connections.apps({ ...(search ? { search } : {}), ...(after ? { after } : {}), limit: 24 });
+      const { categories } = await getClient().connections.categories();
+      return categories.map((c) => ({ name: c.name, count: c.count, apps: c.apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [] })) }));
+    } catch {
+      return [];
+    }
+  }
+
+  async getApps(search?: string, after?: string, category?: string): Promise<{ apps: ConnectorApp[]; hasMore: boolean; next?: string; total?: number }> {
+    try {
+      const { apps, next, total } = await getClient().connections.apps({ ...(search ? { search } : {}), ...(after ? { after } : {}), ...(category ? { category } : {}), limit: 24 });
       const rows = apps.map((a) => ({ id: a.id, name: a.name, description: a.description ?? "", icon: a.icon ?? undefined, categories: a.categories ?? [] }));
       this.cachedApps = after ? [...this.cachedApps, ...rows] : rows;
-      return { apps: rows, hasMore: !!next, next: next || undefined };
+      return { apps: rows, hasMore: !!next, next: next || undefined, total };
     } catch {
       return { apps: after ? [] : this.cachedApps, hasMore: false };
     }
