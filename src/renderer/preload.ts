@@ -834,6 +834,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   // panel can show an honest error; writes answer with { ok, error }. ──
   billingPlans: () => ipcRenderer.invoke("billing-plans") as Promise<AccountBillingPlan[]>,
   billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
+  /** Pull the org's plan, allowance, and top-ups from Stripe's records (the embedded checkout's settle). */
+  billingReconcile: () => ipcRenderer.invoke("billing-reconcile") as Promise<AccountSubscription>,
   billingCredits: () => ipcRenderer.invoke("billing-credits") as Promise<AccountCredits>,
   billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
   billingPaymentMethod: () => ipcRenderer.invoke("billing-payment-method") as Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>,

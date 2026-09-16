@@ -132,6 +132,7 @@ interface SdkAccountHandle {
   billing?: {
     plans?: () => Promise<BillingPlan[]>;
     status?: () => Promise<Subscription>;
+    reconcile?: () => Promise<Subscription>;
     credits?: () => Promise<CreditsBreakdown>;
     invoices?: () => Promise<Invoice[]>;
     autotopup?: () => Promise<Autotopup>;
@@ -181,6 +182,7 @@ export interface OrgDomain {
 interface DesktopAccountIpc {
   billingPlans?: () => Promise<BillingPlan[]>;
   billingStatus?: () => Promise<Subscription>;
+  billingReconcile?: () => Promise<Subscription>;
   billingCredits?: () => Promise<CreditsBreakdown>;
   billingInvoices?: () => Promise<Invoice[]>;
   billingAutotopupGet?: () => Promise<Autotopup>;
@@ -213,6 +215,8 @@ interface DesktopAccountIpc {
 export interface AccountApi {
   plans(): Promise<BillingPlan[]>;
   status(): Promise<Subscription>;
+  /** Stripe's records applied now: plan, allowance, paid top-ups. Falls back to a plain status read. */
+  reconcile(): Promise<Subscription>;
   credits(): Promise<CreditsBreakdown>;
   invoices(): Promise<Invoice[]>;
   autotopup(): Promise<Autotopup>;
@@ -301,6 +305,7 @@ export function accountApi(): AccountApi {
     return {
       plans: () => need(b.plans, b),
       status: () => need(b.status, b),
+      reconcile: () => (b.reconcile ? b.reconcile() : need(b.status, b)),
       credits: () => need(b.credits, b),
       invoices: () => need(b.invoices, b),
       autotopup: () => need(b.autotopup, b),
@@ -358,6 +363,7 @@ export function accountApi(): AccountApi {
   return {
     plans: () => need(g?.billingPlans, g),
     status: () => need(g?.billingStatus, g),
+    reconcile: () => (g?.billingReconcile ? g.billingReconcile() : need(g?.billingStatus, g)),
     credits: () => need(g?.billingCredits, g),
     invoices: () => need(g?.billingInvoices, g),
     autotopup: () => need(g?.billingAutotopupGet, g),

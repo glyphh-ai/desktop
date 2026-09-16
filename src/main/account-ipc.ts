@@ -58,6 +58,7 @@ export function registerAccountIpc(): void {
   ipcMain.handle("voice-synthesize", (_e, text: string, model: string, voiceId: string | null) =>
     getClient().voice.synthesize(text, model, voiceId).then((buf) => Buffer.from(buf)));
   ipcMain.handle("billing-autotopup-get", () => getClient().billing.autotopup());
+  ipcMain.handle("billing-reconcile", () => getClient().billing.reconcile());
 
   // ── Billing (writes + Stripe hand-offs) ─────────────────────────────────
   // Each returns the hosted URL (or the plan-change effect) inside an ok/error
