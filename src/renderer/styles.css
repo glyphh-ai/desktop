@@ -20762,7 +20762,7 @@ body.rail-collapsed #app-rail-resize { display: none; }
 #app-rail-top { pointer-events: auto; }
 #app-rail {
   position: fixed; top: 0; left: 0; bottom: 0; width: var(--rail-w); min-width: 0;
-  display: flex !important; z-index: 500; padding-top: var(--rail-top-h);
+  display: flex !important; z-index: 200; padding-top: var(--rail-top-h);
   transition: width 0.16s ease;
 }
 /* The strip itself is NO drag region: a drag region under the traffic lights

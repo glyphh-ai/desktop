@@ -5383,8 +5383,7 @@ export function initCode(): void {
   // child of #home-root it competes at the body level with the agent/app/dock
   // layers, so it paints above the panels instead of under them.
   const railNode = document.getElementById("app-rail");
-  const home = document.getElementById("home-root");
-  if (railNode && home && railNode.parentElement !== home) home.appendChild(railNode);
+  if (railNode && railNode.parentElement !== document.body) document.body.appendChild(railNode);
   // GEOMETRY PROOF (2026-09-16): what actually sits where, so a bleed or a dead
   // button is diagnosed from one pasted line instead of guessed at.
   window.setTimeout(() => {
