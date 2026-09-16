@@ -1,18 +1,20 @@
         <div class="help-section" data-section="layouts">
-          <h2 id="layouts-heading">Workspaces</h2>
-          <p class="section-desc">Saved workspace arrangements — a grid of panels, each with its own setup, opened in one click.</p>
-          <div id="layouts-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 5 workspaces. <a id="layouts-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> to add more.</div>
-          <div id="layouts-toolbar" class="crud-toolbar">
-            <input id="layout-search" type="text" class="crud-search" placeholder="Search workspaces..." spellcheck="false" autocomplete="off" />
-            <button id="layout-new-btn" class="action-btn primary">+ New</button>
-            <button id="layouts-refresh-btn" class="action-btn" title="Refresh" aria-label="Refresh" style="padding:6px 9px;">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-            </button>
+          <div id="layouts-head" class="skills-head">
+            <h2 id="layouts-heading">Workspaces</h2>
+            <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="layout-search" type="text" placeholder="Search workspaces" spellcheck="false" autocomplete="off" /></div>
+            <button id="layout-new-btn" class="action-btn primary" type="button">+ Add</button>
+            <button id="layouts-refresh-btn" class="action-btn hidden" title="Refresh" aria-label="Refresh" type="button"></button>
+          </div>
+          <div id="layouts-limit-msg" class="hidden" style="padding:4px 0 8px;font-size:13px;color:var(--text-2);">You've reached the free plan limit of 5 workspaces. <a id="layouts-upgrade-link" href="#" style="color:var(--accent);">Upgrade</a> for more.</div>
+          <div id="layouts-toolbar" class="skills-tabs">
+            <button class="skills-tab active" type="button">Your workspaces</button>
+            <div style="flex:1;"></div>
+            <span id="layouts-count" class="skills-count"></span>
           </div>
           <div id="layouts-list" class="crud-cards"></div>
           <div id="layout-editor" class="crud-inline-form hidden">
 <div class="crud-inline-header">
-              <a class="crud-breadcrumb-back" id="layout-back-link">&larr; Workspaces</a>
+              <button class="skills-back" id="layout-back-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Workspaces</button>
               <div class="crud-spacer"></div>
               <button id="layout-open-btn" class="action-btn primary" type="button" title="Open this workspace">Open workspace</button>
             </div>

@@ -201,6 +201,7 @@ function renderLayoutHead(layout: { name: string; splits: Array<{ panelId: strin
 const layoutsList = document.getElementById("layouts-list")!;
 const layoutEditor = document.getElementById("layout-editor")!;
 const layoutsToolbar = document.getElementById("layouts-toolbar")!;
+const layoutsHead = document.getElementById("layouts-head");
 const layoutSearchInput = document.getElementById("layout-search") as HTMLInputElement;
 
 const layoutNameInput = document.getElementById("layout-new-name") as HTMLInputElement;
@@ -1041,7 +1042,7 @@ async function loadLayouts() {
   // the toolbar and the heading it hid have to come back with it.
   layoutEditor.classList.add("hidden");
   layoutsList.classList.remove("hidden");
-  layoutsToolbar.classList.remove("hidden");
+  layoutsToolbar.classList.remove("hidden"); layoutsHead?.classList.remove("hidden");
   document.getElementById("layouts-heading")?.classList.remove("hidden");
   editingLayoutName = null;
   layoutFormError.classList.add("hidden");
@@ -1060,6 +1061,8 @@ async function loadLayouts() {
 }
 
 function renderLayoutsList() {
+  const count = document.getElementById("layouts-count");
+  if (count) count.textContent = `${allLayouts.length} workspace${allLayouts.length === 1 ? "" : "s"}`;
   const query = layoutSearchInput.value.trim().toLowerCase();
   const bySpace = allLayouts;
   const filtered = query ? bySpace.filter((l) => l.name.toLowerCase().includes(query)) : bySpace;
@@ -1167,7 +1170,7 @@ async function editLayout(name: string) {
   layoutGridBuilder.classList.remove("hidden");
 
   layoutsList.classList.add("hidden");
-  layoutsToolbar.classList.add("hidden");
+  layoutsToolbar.classList.add("hidden"); layoutsHead?.classList.add("hidden");
   layoutEditor.classList.remove("hidden");
   document.getElementById("layouts-heading")?.classList.add("hidden");
   renderGridPreview();
@@ -1194,7 +1197,7 @@ async function newLayout() {
   layoutGridBuilder.classList.remove("hidden");
   renderGridPreview();
   layoutsList.classList.add("hidden");
-  layoutsToolbar.classList.add("hidden");
+  layoutsToolbar.classList.add("hidden"); layoutsHead?.classList.add("hidden");
   layoutEditor.classList.remove("hidden");
   layoutNameInput.focus();
   renderGridPreview();
@@ -1203,7 +1206,7 @@ async function newLayout() {
 function cancelLayout() {
   layoutEditor.classList.add("hidden");
   layoutsList.classList.remove("hidden");
-  layoutsToolbar.classList.remove("hidden");
+  layoutsToolbar.classList.remove("hidden"); layoutsHead?.classList.remove("hidden");
   document.getElementById("layouts-heading")?.classList.remove("hidden");
   editingLayoutName = null;
   loadLayouts();
