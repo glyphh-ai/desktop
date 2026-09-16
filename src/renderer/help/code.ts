@@ -5379,6 +5379,19 @@ export function initCode(): void {
   // The shell starts to the RIGHT of the fixed sidebar and at the very top, inline so no later stylesheet rule can undo it.
   const shell = document.getElementById("help-overlay");
   if (shell) { shell.style.left = "var(--rail-w)"; shell.style.top = "0px"; }
+  // GEOMETRY PROOF (2026-09-16): what actually sits where, so a bleed or a dead
+  // button is diagnosed from one pasted line instead of guessed at.
+  window.setTimeout(() => {
+    const at = (x: number, y: number): string => { const n = document.elementFromPoint(x, y) as HTMLElement | null; return n ? `${n.tagName.toLowerCase()}${n.id ? "#" + n.id : ""}${n.className && typeof n.className === "string" ? "." + n.className.split(" ").slice(0, 2).join(".") : ""}` : "none"; };
+    const rail = document.getElementById("app-rail");
+    const railR = rail?.getBoundingClientRect();
+    console.warn("[rail] geometry", JSON.stringify({
+      railW: railR ? Math.round(railR.width) : null, railLeft: railR ? Math.round(railR.left) : null,
+      shellLeft: shell ? getComputedStyle(shell).left : null, shellTop: shell ? getComputedStyle(shell).top : null,
+      railWVar: getComputedStyle(document.body).getPropertyValue("--rail-w").trim(),
+      atLights: at(20, 15), atCollapse: at((railR?.width ?? 264) - 48, 19), atEcho: at((railR?.width ?? 264) - 20, 19), atContent: at((railR?.width ?? 264) + 40, 300), atUnderRail: at(120, 400),
+    }));
+  }, 2500);
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
   el("rail-echo-btn")?.addEventListener("click", () => {
     const w = window as unknown as { __wbEchoShadowPin?: () => void };

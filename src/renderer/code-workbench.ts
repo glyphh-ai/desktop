@@ -3379,9 +3379,7 @@ async function init(): Promise<void> {
         yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
       ]).then(([d, z, pp]) => {
-        // The dock always shows (his order, 2026-09-16): no auto-hide, no control.
-        void d;
-        document.body.classList.remove("echo-dock-autohide");
+        document.body.classList.toggle("echo-dock-autohide", d !== false);
         document.body.classList.remove("echo-dock-peek");
         const zn = Number(z);
         // CLAMPED at 1.5 (his rule, 2026-08-20): past that the arc outgrows
