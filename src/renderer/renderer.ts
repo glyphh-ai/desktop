@@ -414,6 +414,7 @@ declare global {
       skillCreate: (name: string) => Promise<LibEnvelope>;
       skillsHome: () => Promise<LibEnvelope>;
       hubCategories: () => Promise<LibEnvelope>;
+      skillHubFiles: (ref: string) => Promise<LibEnvelope>;
       skillImport: () => Promise<LibEnvelope>;
       skillGet: (id: string) => Promise<LibEnvelope>;
       skillFileRead: (id: string, rel: string) => Promise<LibEnvelope>;

@@ -20625,6 +20625,8 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .disc-link { border: none; background: none; color: var(--text-3); font: inherit; font-size: 12.5px; font-weight: 400; cursor: pointer; }
 .disc-link:hover { color: var(--text); }
 .disc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.disc-card.openable, .disc-row.openable, .disc-featured.openable { cursor: pointer; }
+.disc-card.openable:hover, .disc-row.openable:hover { background: var(--hover); }
 .disc-card { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
 .disc-card-main { flex: 1; min-width: 0; }
 .disc-card-name { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }

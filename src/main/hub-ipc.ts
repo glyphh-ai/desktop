@@ -119,6 +119,14 @@ async function versionFiles(itemId: string, version: number): Promise<Record<str
   return { "SKILL.md": typeof payload?.prompt === "string" ? payload.prompt : "" };
 }
 
+/** A hub item's folder as files, for the Discover detail view (read-only). */
+async function hubFiles(ref: string): Promise<Record<string, string>> {
+  const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
+  const base = from === "org" ? `/api/library/skill/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
+  const payload = await getClient().http.get<Record<string, unknown>>(`${base}/payload`);
+  return filesFromHubPayload("skill", "", payload && typeof payload === "object" ? payload : {});
+}
+
 async function categories(): Promise<Array<{ id: string; label: string }>> {
   const r = await getClient().http.get<Array<{ id: string; label: string }>>("/api/hub/categories").catch(() => []);
   return Array.isArray(r) ? r : [];
@@ -126,6 +134,7 @@ async function categories(): Promise<Array<{ id: string; label: string }>> {
 
 export function registerHubIpc(): void {
   ipcMain.handle("hub-categories", () => env(categories));
+  ipcMain.handle("skill-hub-files", (_e, ref: string) => env(() => hubFiles(String(ref))));
   ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
   ipcMain.handle("skill-version-files", (_e, itemId: string, version: number) => env(() => versionFiles(String(itemId), Number(version))));
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));

@@ -47,6 +47,8 @@ let editing = false;
 let loadedText = "";
 /** A hub version being viewed read-only (null = the folder on disk). */
 let viewedVersion: { itemId: string; version: number; files: Record<string, string> } | null = null;
+/** The Discover item on the detail page (read-only, Add instead of Share), or null for a local skill. */
+let hubItem: DiscoverRow | null = null;
 let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Record<string, unknown>): void; layout(): void; dispose(): void; getModel(): unknown } | null = null;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
@@ -293,6 +295,8 @@ function discoverCard(d: DiscoverRow): HTMLElement {
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
   (c.querySelector(".disc-card-meta") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
   c.appendChild(addButton(d));
+  c.classList.add("openable");
+  c.addEventListener("click", () => void openHubDetail(d));
   return c;
 }
 
@@ -326,6 +330,8 @@ function renderDiscoverHome(host: HTMLElement, rows: DiscoverRow[]): void {
     (f.querySelector(".disc-featured-name") as HTMLElement).textContent = featured.name;
     (f.querySelector(".disc-featured-desc") as HTMLElement).textContent = featured.description;
     (f.querySelector(".disc-featured-main") as HTMLElement).appendChild(addButton(featured, true));
+    f.classList.add("openable");
+    f.addEventListener("click", () => void openHubDetail(featured));
     host.appendChild(f);
   }
   const byInstalls = [...rows].sort((a, b) => b.installs - a.installs || b.createdAt.localeCompare(a.createdAt));
@@ -403,6 +409,8 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
     (r.querySelector(".disc-row-sub") as HTMLElement).textContent = `by ${d.author || "your org"} · ${d.description || "No description"}`;
     (r.querySelector(".disc-row-installs") as HTMLElement).textContent = d.installs ? `${fmtInstalls(d.installs)} installs` : "";
     r.appendChild(addButton(d, true));
+    r.classList.add("openable");
+    r.addEventListener("click", () => void openHubDetail(d));
     host.appendChild(r);
   }
 }
@@ -415,6 +423,7 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
   d.installed = true;
   const list = await api().skillsList() as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
+  if (hubItem && hubItem.ref === d.ref) { paintDetailChrome(); return; }
   renderList();
 }
 
@@ -486,9 +495,70 @@ function editWith(loop: LoopRow): void {
 }
 
 // ── detail ──────────────────────────────────────────────────────────────────
+/** A Discover item: the same detail page, read from the hub, with Add in place
+ *  of Share. Back returns to Discover exactly where the user left it. */
+async function openHubDetail(d: DiscoverRow): Promise<void> {
+  const r = await api().skillHubFiles(d.ref) as Env<Record<string, string>>;
+  if (!r.ok || !r.data) { fail(r.error || "Couldn't open that skill."); return; }
+  const files = r.data;
+  const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
+  hubItem = d;
+  current = {
+    id: `hub:${d.ref}`, source: "glyphh", name: d.name, description: d.description || frontmatter.description || "", author: d.author,
+    enabled: true, dir: "", fileCount: Object.keys(files).length, updatedAt: d.updatedAt, frontmatter, body,
+    files: Object.keys(files).sort().map((p) => ({ path: p, size: files[p].length })),
+  };
+  viewedVersion = { itemId: d.id, version: d.version ?? 1, files };
+  currentFile = "";
+  editing = false;
+  el("skills-list-view")?.classList.add("hidden");
+  el("skill-detail-view")?.classList.remove("hidden");
+  (el("skill-detail-name") as HTMLElement).textContent = d.name;
+  (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
+  (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
+  (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
+  (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
+  (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
+  paintDetailChrome();
+  collapsedDirs = new Set();
+  const sel = el<HTMLSelectElement>("skill-version");
+  if (sel) { sel.innerHTML = `<option value="${d.version ?? 1}">${escapeHtml(d.name)} · v${d.version ?? 1}</option>`; sel.disabled = true; sel.title = "The version on the hub"; }
+  selectDetailTab("overview");
+  renderTree();
+}
+
+/** Share / enabled / ⋮ for a local skill; one Add button for a hub item. */
+function paintDetailChrome(): void {
+  const hub = !!hubItem;
+  el("skill-share")?.classList.toggle("hidden", hub);
+  el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
+  el("skill-kebab")?.classList.toggle("hidden", hub);
+  el("skill-edit")?.classList.add("hidden");
+  let add = el<HTMLButtonElement>("skill-hub-add");
+  if (!add) {
+    add = document.createElement("button");
+    add.id = "skill-hub-add";
+    add.type = "button";
+    add.className = "action-btn primary";
+    add.addEventListener("click", () => { if (hubItem) void installFrom(hubItem, add!); });
+    el("skill-share")?.before(add);
+  }
+  add.classList.toggle("hidden", !hub);
+  if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
+}
+
+function parseFrontmatter(text: string): { frontmatter: Record<string, string>; body: string } {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  if (!m) return { frontmatter: {}, body: text };
+  const fm: Record<string, string> = {};
+  for (const line of m[1].split(/\r?\n/)) { const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line); if (kv) fm[kv[1].toLowerCase()] = kv[2].trim().replace(/^["']|["']$/g, ""); }
+  return { frontmatter: fm, body: text.slice(m[0].length) };
+}
+
 async function openDetail(id: string): Promise<void> {
   const r = await api().skillGet(id) as Env<SkillDetail>;
   if (!r.ok || !r.data) { fail(r.error || "Couldn't open that skill."); return; }
+  hubItem = null;
   current = r.data;
   currentFile = "";
   editing = false;
@@ -504,6 +574,7 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
+  paintDetailChrome();
   collapsedDirs = new Set();
   paintVersions([]);
   void loadVersions();
@@ -806,7 +877,16 @@ function wire(): void {
     { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
-  el("skill-back")?.addEventListener("click", () => void loadSkillsSettings());
+  el("skill-back")?.addEventListener("click", () => {
+    if (hubItem) {
+      hubItem = null; viewedVersion = null; current = null;
+      el("skill-detail-view")?.classList.add("hidden");
+      el("skills-list-view")?.classList.remove("hidden");
+      renderList();
+      return;
+    }
+    void loadSkillsSettings();
+  });
   document.querySelectorAll<HTMLButtonElement>(".skills-panel .skills-tab[data-dtab]").forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as "overview" | "contents")));
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
