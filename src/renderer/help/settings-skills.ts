@@ -127,7 +127,12 @@ function openMenu(anchor: HTMLElement, items: MenuItem[]): void {
   m.style.left = `${Math.max(8, Math.min(rect.right - m.offsetWidth, window.innerWidth - m.offsetWidth - 8))}px`;
   m.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - m.offsetHeight - 8)}px`;
   menuEl = m;
-  setTimeout(() => document.addEventListener("mousedown", (e) => { if (menuEl && !menuEl.contains(e.target as Node)) closeMenu(); }, { once: true }), 0);
+  const dismiss = (e: MouseEvent): void => {
+    if (menuEl && menuEl.contains(e.target as Node)) return;
+    document.removeEventListener("mousedown", dismiss, true);
+    closeMenu();
+  };
+  setTimeout(() => document.addEventListener("mousedown", dismiss, true), 0);
 }
 
 function group(host: HTMLElement, label: string, count: number): HTMLElement {
