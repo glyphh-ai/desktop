@@ -32,13 +32,12 @@ function vibe(): GridLayout {
   return {
     name: "Vibe",
     version: 2,
-    cols: 2,
+    cols: 1,
     rows: 1,
-    colWidths: [0.22, 0.78],
+    colWidths: [1],
     rowHeights: [1],
     cells: [
-      { panelId: "tool:rail", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:coding", col: 1, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
+      { panelId: "tool:coding", col: 0, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
     ],
   };
 }
@@ -52,17 +51,16 @@ function dev(): GridLayout {
   return {
     name: "Dev",
     version: 2,
-    cols: 4,
+    cols: 3,
     rows: 2,
-    colWidths: [0.16, 0.2, 0.36, 0.28],
+    colWidths: [0.24, 0.42, 0.34],
     rowHeights: [0.5, 0.5],
     cells: [
-      { panelId: "tool:rail", col: 0, row: 0, colSpan: 1, rowSpan: 2 },
-      { panelId: "tool:files", col: 1, row: 0, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:diff", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:monaco", col: 2, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
-      { panelId: "tool:terminal", col: 2, row: 1, colSpan: 1, rowSpan: 1 },
-      { panelId: "tool:coding", col: 3, row: 0, colSpan: 1, rowSpan: 2 },
+      { panelId: "tool:files", col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:diff", col: 0, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:monaco", col: 1, row: 0, colSpan: 1, rowSpan: 1, sticky: true },
+      { panelId: "tool:terminal", col: 1, row: 1, colSpan: 1, rowSpan: 1 },
+      { panelId: "tool:coding", col: 2, row: 0, colSpan: 1, rowSpan: 2 },
     ],
   };
 }
@@ -80,6 +78,26 @@ const SEED_ID_FIX: Record<string, string> = {
   glyphh: "tool:coding",
 };
 
+/** The rail is the fixed sidebar (2026-09-16): a workspace's Rail cell goes,
+ *  and a column it had to itself goes with it, widths renormalized. */
+function dropRailCells(grid: GridLayout): boolean {
+  const rail = grid.cells.filter((c) => (c.panelId || "").trim().toLowerCase() === "tool:rail");
+  if (!rail.length) return false;
+  grid.cells = grid.cells.filter((c) => !rail.includes(c));
+  const emptyCols = new Set<number>();
+  for (const r of rail) for (let k = 0; k < (r.colSpan || 1); k++) emptyCols.add(r.col + k);
+  for (const c of grid.cells) for (let k = 0; k < (c.colSpan || 1); k++) emptyCols.delete(c.col + k);
+  if (emptyCols.size && Array.isArray(grid.colWidths)) {
+    const keep = grid.colWidths.map((_, i) => !emptyCols.has(i));
+    const widths = grid.colWidths.filter((_, i) => keep[i]);
+    const total = widths.reduce((a, b) => a + b, 0) || 1;
+    grid.colWidths = widths.map((w) => w / total);
+    grid.cols = widths.length;
+    for (const c of grid.cells) c.col -= Array.from(emptyCols).filter((i) => i < c.col).length;
+  }
+  return true;
+}
+
 /** Rewrite bare seeded panelIds in existing workspace files (idempotent). */
 function repairSeededIds(): void {
   let ids: string[] = [];
@@ -94,6 +112,7 @@ function repairSeededIds(): void {
         const fix = SEED_ID_FIX[(c.panelId || "").trim().toLowerCase()];
         if (fix) { c.panelId = fix; changed = true; }
       }
+      if (dropRailCells(grid)) changed = true;
       if (changed) {
         fs.writeFileSync(file, JSON.stringify(grid, null, 2), "utf-8");
         console.info("[user-defaults] repaired seeded panel ids in", id);

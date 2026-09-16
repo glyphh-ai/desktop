@@ -29,27 +29,25 @@ interface Template {
 const TEMPLATES: Record<"vibe" | "dev" | "design" | "email" | "research", Template> = {
   // The out-of-the-box workspace: the Rail beside the agent, nothing else.
   vibe: {
-    name: "Vibe", cols: 2, rows: 1, colWidths: [0.2, 0.8],
-    build: () => [cell("tool:rail", 0, 0), cell("tool:coding", 1, 0)],
+    name: "Vibe", cols: 1, rows: 1, colWidths: [1],
+    build: () => [cell("tool:coding", 0, 0)],
   },
   // Rail | Files/Diff | Editor/Terminal | the agent full-height on the right.
   dev: {
-    name: "Dev", cols: 4, rows: 2, colWidths: [0.14, 0.27, 0.27, 0.32],
+    name: "Dev", cols: 3, rows: 2, colWidths: [0.3, 0.32, 0.38],
     build: () => [
-      cell("tool:rail", 0, 0, 2),
-      cell("tool:files", 1, 0), cell("tool:diff", 1, 1),
-      cell("tool:monaco", 2, 0), cell("tool:terminal", 2, 1),
-      cell("tool:coding", 3, 0, 2),
+      cell("tool:files", 0, 0), cell("tool:diff", 0, 1),
+      cell("tool:monaco", 1, 0), cell("tool:terminal", 1, 1),
+      cell("tool:coding", 2, 0, 2),
     ],
   },
   // Rail | the agent | Image/Design | Video/Slides.
   design: {
-    name: "Design", cols: 4, rows: 2, colWidths: [0.14, 0.36, 0.25, 0.25],
+    name: "Design", cols: 3, rows: 2, colWidths: [0.42, 0.29, 0.29],
     build: () => [
-      cell("tool:rail", 0, 0, 2),
-      cell("tool:coding", 1, 0, 2),
-      cell("tool:gimage", 2, 0), cell("tool:gdesign", 2, 1),
-      cell("tool:gvideo", 3, 0), cell("tool:gpoint", 3, 1),
+      cell("tool:coding", 0, 0, 2),
+      cell("tool:gimage", 1, 0), cell("tool:gdesign", 1, 1),
+      cell("tool:gvideo", 2, 0), cell("tool:gpoint", 2, 1),
     ],
   },
   // The mailbox beside the calendar.
