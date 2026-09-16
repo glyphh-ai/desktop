@@ -293,24 +293,6 @@ function renderDiscover(host: HTMLElement): void {
   crumb.innerHTML = `<span>Connections</span><span class="sep">/</span><span class="here">Directory</span>`;
   host.appendChild(crumb);
 
-  const bar = document.createElement("div");
-  bar.className = "conn2-dir-bar";
-  bar.innerHTML = `<div class="skills-search conn2-dir-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input type="text" placeholder="Search connectors" spellcheck="false" autocomplete="off" /></div>`;
-  const input = bar.querySelector("input") as HTMLInputElement;
-  input.value = catalogQuery;
-  let t: ReturnType<typeof setTimeout> | null = null;
-  input.addEventListener("input", () => {
-    if (t) clearTimeout(t);
-    t = setTimeout(() => {
-      void loadCatalog(input.value.trim()).then(() => {
-        catalogAll = false;
-        render();
-        const again = document.querySelector<HTMLInputElement>(".conn2-dir-search input");
-        if (again) { again.value = input.value; again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-      });
-    }, 250);
-  });
-  host.appendChild(bar);
 
   const have = connectedSlugs();
   const rows = catalog;
@@ -767,10 +749,17 @@ function openMenu(anchor: HTMLElement, items: Array<{ label: string; danger?: bo
 function wire(): void {
   if (wired) return;
   wired = true;
-  el<HTMLInputElement>("conn2-search")?.addEventListener("input", (ev) => { query = (ev.target as HTMLInputElement).value; render(); });
+  let dirTimer: ReturnType<typeof setTimeout> | null = null;
+  el<HTMLInputElement>("conn2-search")?.addEventListener("input", (ev) => {
+    query = (ev.target as HTMLInputElement).value;
+    if (tab !== "discover") { render(); return; }
+    // On Discover the same box searches the directory (debounced; Pipedream answers the query).
+    if (dirTimer) clearTimeout(dirTimer);
+    dirTimer = setTimeout(() => { void loadCatalog(query.trim()).then(() => { catalogAll = false; render(); }); }, 250);
+  });
   document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.addEventListener("click", async () => {
     tab = b.dataset.conn2Tab as "mine" | "discover";
-    if (tab === "discover" && !catalog.length) await loadCatalog("");
+    if (tab === "discover" && (query.trim() !== catalogQuery || !catalog.length)) await loadCatalog(query.trim());
     render();
   }));
   el("conn2-add")?.addEventListener("click", (ev) => openMenu(ev.currentTarget as HTMLElement, [
