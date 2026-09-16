@@ -403,9 +403,9 @@ export function accountApi(): AccountApi {
 export const MICRO = 1_000_000;
 
 /** Top-up rate — DISPLAY only; the server prices the actual purchase. */
-export const USD_PER_CREDIT = 0.024;
+export const USD_PER_CREDIT = 0.02;
 export const creditsForUsd = (usd: number): number => Math.floor((usd || 0) / USD_PER_CREDIT);
-/** VOLUME DISCOUNTS — mirrors the server's TOPUP_DISCOUNT_TIERS (pricing.ts);
+/** VOLUME DISCOUNTS — mirrors the server's TOPUP_DISCOUNT_TIERS (billing.py);
  *  thresholds in credits, fraction off the flat rate. Keep them in sync. */
 export const TOPUP_DISCOUNT_TIERS: ReadonlyArray<readonly [number, number]> = [
   [10_000, 0.30],

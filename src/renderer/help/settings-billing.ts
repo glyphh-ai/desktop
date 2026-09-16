@@ -24,8 +24,8 @@
 import { confirmAction, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 import { openUrlInWorkbench } from "./code.js";
 import {
-  accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, MICRO, openHostedPage,
-  toCredits, USD_PER_CREDIT,
+  accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, openHostedPage,
+  USD_PER_CREDIT,
   TOPUP_CREDIT_BUCKETS, topupDiscount, usdForCredits, creditsForUsdTiered,
   type Autotopup, type BillingPlan, type CreditsBreakdown, type Invoice, type Subscription,
 } from "./settings-api.js";
@@ -78,14 +78,14 @@ function fail(msg: string): void {
 // ── Painters ─────────────────────────────────────────────────────────────
 
 function paintCredits(): void {
-  setText("billing-balance", credits ? fmtInt(toCredits(credits.balance)) : "—");
+  setText("billing-balance", credits ? fmtInt(credits.balance) : "—");
   // "Plan allowance" = what the CURRENT PLAN allocates each month, from the
   // plan catalog — NOT credits.grants, which the server computes as the sum of
   // REMAINING expiring grant credits (a burn-down that read like the balance).
   // Painted after plans + status settle in loadBilling; "—" until both known.
   const plan = plans.find((p) => p.tier === (sub?.tier || "free"));
   setText("billing-grants", plan ? fmtInt(plan.monthlyCredits || 0) : "—");
-  setText("billing-purchases", credits ? fmtInt(toCredits(credits.purchases)) : "—");
+  setText("billing-purchases", credits ? fmtInt(credits.purchases) : "—");
 }
 
 // ── The Need-more-usage form (ua-buy-form) — ONE node serving Usage AND
@@ -544,9 +544,8 @@ export async function buyTopup(credits: number, btn?: HTMLButtonElement): Promis
   try {
     // Embedded first — the purchase completes in an in-app overlay.
     if (await embeddedTopupOverlay(credits)) { repollAfterStripe(); return; }
-    // topup() takes MICRO-credits; the server prices them with the same
-    // volume-discount tiers this page displays.
-    const res = await accountApi().topup(Math.round(credits * MICRO));
+    // The server prices whole credits with the same volume-discount tiers this page displays.
+    const res = await accountApi().topup(Math.round(credits));
     if (!res.ok) { toast(`Could not start the top-up — ${res.error}`); return; }
     const hostedInFront = (name: string, url: string): void => {
       // The settings modal guards webviews (wb-modal-open hides them), so a
@@ -621,7 +620,7 @@ async function tryEmbeddedTopup(
   if (!key) return false;
   const Stripe = await loadStripeJs();
   if (!Stripe) return false;
-  const res = await accountApi().topupEmbedded(Math.round(credits * MICRO));
+  const res = await accountApi().topupEmbedded(Math.round(credits));
   if (!res.ok) return false;   // old server without embedded support → hosted
 
   const api = accountApi();
@@ -686,7 +685,7 @@ export async function openBuyCreditsModal(): Promise<void> {
   document.body.appendChild(overlay);
 
   // Live balance.
-  void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(toCredits(c.balance)); }).catch(() => { /* leave the dash */ });
+  void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(c.balance); }).catch(() => { /* leave the dash */ });
 
   // One-time top-up cards → the SAME Stripe checkout the Billing page uses.
   const grid = overlay.querySelector<HTMLElement>("#bc-grid")!;
@@ -712,7 +711,7 @@ export async function openBuyCreditsModal(): Promise<void> {
           if (!overlay.isConnected) return;
           if (grantSeen) {
             stage.innerHTML = `<div class="bc-confirming bc-done">✓ Credits added — you're good to go.</div>`;
-            void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(toCredits(c.balance)); }).catch(() => {});
+            void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(c.balance); }).catch(() => {});
             window.setTimeout(() => { if (overlay.isConnected) close(); }, 1600);
           } else {
             stage.innerHTML = `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
@@ -734,7 +733,7 @@ export async function openBuyCreditsModal(): Promise<void> {
           return;
         }
         // No key / no Stripe.js / old server → the hosted page, as before.
-        const res = await api.topup(Math.round(credits * MICRO));
+        const res = await api.topup(Math.round(credits));
         if (!res.ok) { setErr(res.error || "Could not start checkout."); return; }
         if (!openHostedPage("Add credits", res.data, openUrlInWorkbench)) { setErr("The checkout link came back malformed."); return; }
         close();   // Stripe opens; credits land via webhook and refresh on Billing.
@@ -751,8 +750,8 @@ export async function openBuyCreditsModal(): Promise<void> {
     setErr("");
     const res = await api.setAutotopup({
       enabled: at.checked,
-      thresholdCredits: Math.round((autoTopup.thresholdCredits || 100) * MICRO),
-      topupCredits: Math.round(creditsForUsd(autoTopup.packUsd || 24) * MICRO),
+      thresholdCredits: Math.round(autoTopup.thresholdCredits || 100),
+      topupCredits: creditsForUsd(autoTopup.packUsd || 24),
     }).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     if (!res.ok) { setErr(res.error || "Could not save auto-top-up."); at.checked = !at.checked; }
     else autoTopup.enabled = at.checked;
@@ -916,16 +915,13 @@ async function saveAutotopup(): Promise<void> {
   const statusEl = $("billing-at-status");
   if (statusEl) { statusEl.textContent = "Saving…"; statusEl.className = "set-save-state"; }
   try {
-    // The SDK stores MICRO-credits: the threshold is whole credits (×1e6), and
-    // the USD pack converts to credits through the display rate (×1e6).
-    // Math.round both — the server schema is z.number().int(), and a typed
-    // decimal (or float arithmetic on the rate) makes ×1e6 non-integral → the
-    // whole write bounces with "invalid request body".
-    // The 30-day cap is NOT persisted by the server yet — see the field's hint.
+    // Whole credits on the wire (the server's units); the USD pack converts
+    // through the display rate. The 30-day cap is NOT persisted by the server
+    // yet — see the field's hint.
     const res = await accountApi().setAutotopup({
       enabled: autoTopup.enabled,
-      thresholdCredits: Math.round((autoTopup.thresholdCredits || 0) * MICRO),
-      topupCredits: Math.round(creditsForUsd(autoTopup.packUsd) * MICRO),
+      thresholdCredits: Math.round(autoTopup.thresholdCredits || 0),
+      topupCredits: creditsForUsd(autoTopup.packUsd),
     });
     if (statusEl) {
       statusEl.textContent = res.ok ? "Saved" : res.error;
@@ -1120,8 +1116,8 @@ export async function loadBilling(): Promise<void> {
     const a: Autotopup = atRes.value;
     autoTopup = {
       enabled: !!a.enabled,
-      thresholdCredits: toCredits(a.thresholdCredits),
-      packUsd: Math.round(toCredits(a.topupCredits) * USD_PER_CREDIT),
+      thresholdCredits: Math.round(a.thresholdCredits || 0),
+      packUsd: Math.round((a.topupCredits || 0) * USD_PER_CREDIT),
       // The server does not persist a 30-day cap yet — a LOCAL preference
       // (billingMonthlyCapUsd) shared with the Usage page's spend-limit form.
       monthlyCapUsd: Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd)) || autoTopup.monthlyCapUsd,
