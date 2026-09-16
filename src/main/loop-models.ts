@@ -100,9 +100,12 @@ function loginModels(cli: string): LoopModel[] {
     if (id && !rows.some((r) => r.id === id)) rows.push({ id, name, providerSlug: providerSlug || (providerOf(id) === "other" ? CLI_SLUG[cli] : providerOf(id)) });
   };
   if (cli === "claude") {
-    try { const m = (JSON.parse(read(path.join(homedir(), ".claude", "settings.json"))) as { model?: string }).model; if (m) push(m); } catch { /* no settings */ }
-    for (const a of CLAUDE_ALIASES) push(a);
-    for (const id of claudeBinaryIds()) push(id);
+    try { const m = (JSON.parse(read(path.join(homedir(), ".claude", "settings.json"))) as { model?: string }).model; if (m) push(m, `${m} · your Claude Code default`); } catch { /* no settings */ }
+    const newest = claudeBinaryIds();
+    for (const a of CLAUDE_ALIASES) {
+      const id = newest.get(a === "opusplan" ? "opus" : a);
+      push(a, `${CLAUDE_ALIAS_NAMES[a]}${id ? ` · ${id}` : ""}`);
+    }
   } else if (cli === "codex") {
     for (const m of read(path.join(homedir(), ".codex", "config.toml")).matchAll(/^\s*model\s*=\s*"([^"]+)"/gm)) push(m[1]);
     try {
@@ -120,8 +123,9 @@ function loginModels(cli: string): LoopModel[] {
 }
 
 const CLI_SLUG: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
-/** The aliases Claude Code's --model flag accepts (its help names them). */
+/** The aliases Claude Code's --model flag accepts (its help names them), in Claude Code's own picker order. */
 const CLAUDE_ALIASES = ["fable", "opus", "sonnet", "haiku", "opusplan"];
+const CLAUDE_ALIAS_NAMES: Record<string, string> = { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku", opusplan: "Opus plan mode" };
 
 function cliBinary(cli: string): string {
   try {
@@ -152,8 +156,8 @@ const byVersionDesc = (a: string, b: string): number => {
   return 0;
 };
 
-/** The newest full id per family that the installed Claude Code names. */
-function claudeBinaryIds(): string[] {
+/** The newest full id per family that the installed Claude Code names: what each alias resolves to. */
+function claudeBinaryIds(): Map<string, string> {
   const all = idsInBinary("claude", /claude-(fable|opus|sonnet|haiku)-[0-9]+(?:-[0-9]+)?(?![0-9-])/g);
   const newest = new Map<string, string>();
   for (const id of all) {
@@ -161,7 +165,7 @@ function claudeBinaryIds(): string[] {
     const cur = newest.get(fam);
     if (!cur || byVersionDesc(id.slice(fam.length + 8), cur.slice(fam.length + 8)) < 0) newest.set(fam, id);
   }
-  return ["fable", "opus", "sonnet", "haiku"].map((f) => newest.get(f) || "").filter(Boolean);
+  return newest;
 }
 
 /** The Gemini ids the installed Gemini CLI ships, newest first. */
@@ -193,7 +197,8 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
   } catch (err) {
     value = { ok: false, source: "none", baseUrl: null, models: [], error: err instanceof Error ? err.message : String(err) };
   }
-  value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
+  // An endpoint's list sorts; the CLI's own list keeps the CLI's order (configured model first, then its aliases).
+  if (value.source !== "login") value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
   if (value.ok) cache.set(loopId, { at: Date.now(), value });
   return value;
 }
