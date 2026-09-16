@@ -20518,7 +20518,9 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .settings-panel.skills-panel.active { display: flex; flex-direction: column; min-height: 0; }
 .skills-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
 .skills-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
-.skills-search { flex: 1; display: flex; align-items: center; gap: 8px; max-width: 420px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
+.skills-head > h2 { flex: 1; }
+.skills-head > #skills-add { margin-left: auto; }
+.skills-search { flex: 0 1 420px; display: flex; align-items: center; gap: 8px; margin: 0 auto; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); color: var(--text-3); }
 .skills-search svg { width: 14px; height: 14px; flex-shrink: 0; }
 .skills-search input { flex: 1; border: none; background: none; color: var(--text); font-size: 13px; outline: none; }
 .skills-tabs { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; }
