@@ -370,10 +370,19 @@ const prefsYo = (): { getPreference?: (k: string, d?: unknown) => Promise<unknow
 // AGENT LOOP DEFAULTS (his order, 2026-09-16): the app-wide loop and how it
 // opens (glyphh = the chat panel, cli = the loop's own terminal). Cached so the
 // synchronous layout-open path can read them; Settings re-fires the event.
-let defaultLoopView: "glyphh" | "cli" = "glyphh";
+/** Settings → General → Default view. "last" = defer to the workspace cell, then the remembered view. */
+let defaultLoopView: "glyphh" | "cli" | "last" = "glyphh";
+/** THE VIEW AN AGENT OPENS IN (his order, 2026-09-16), in this precedence:
+ *  the app setting when it names a view; else the workspace cell's own view;
+ *  else the last view used before the restart. */
+function resolveAgentView(cellView?: string): "glyphh" | "cli" {
+  if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
+  if (cellView === "glyphh" || cellView === "cli") return cellView;
+  return uiStateGet("agentLastView") === "chat" ? "glyphh" : "cli";
+}
 let defaultLoopPref = "";
 const refreshLoopPrefs = (): void => {
-  void prefsYo().getPreference?.("defaultLoopView", "glyphh").then((v) => { defaultLoopView = v === "cli" ? "cli" : "glyphh"; }).catch(() => {});
+  void prefsYo().getPreference?.("defaultLoopView", "glyphh").then((v) => { defaultLoopView = v === "cli" || v === "last" ? v : "glyphh"; }).catch(() => {});
   void prefsYo().getPreference?.("defaultLoop", "").then((v) => { defaultLoopPref = String(v ?? ""); }).catch(() => {});
 };
 refreshLoopPrefs();
@@ -4952,7 +4961,7 @@ async function init(): Promise<void> {
         const surfaceOf = (c: { panelId?: string; config?: CellConfig }): { id: string; loop: string } => {
           const pid = (c.panelId || "").trim().toLowerCase();
           const cf = (c.config || {}) as CellConfig;
-          const view = cf.view || defaultLoopView;
+          const view = resolveAgentView(cf.view);
           if (pid === "tool:coding") {
             const lp = [cf.loop, layout.loop, appDefaultLoop()].find((x) => loopIdKnown(x || "")) || "";
             return view === "cli" && lp ? { id: `agent:${lp}`, loop: lp } : { id: pid, loop: lp };
@@ -5510,7 +5519,7 @@ async function init(): Promise<void> {
       // last-used view was chat; terminal otherwise.
       const first = cliAgentRows[0];
       if (first) {
-        if (uiStateGet("agentLastView") === "chat") openAgentChatCard(first.id);
+        if (resolveAgentView() === "glyphh") openAgentChatCard(first.id);
         else openAgentCliCard(cliAgentTileOf(first));
         return;
       }
@@ -9476,7 +9485,7 @@ async function init(): Promise<void> {
     openEchoSurface();
     // DEFAULT VIEW = CLI (Settings → General → Agent loop): + New opens the
     // default loop in its own terminal instead of the chat panel.
-    if (defaultLoopView === "cli") {
+    if (resolveAgentView() === "cli") {
       const w = window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void };
       const lp = defaultLoopPref || "";
       if (w.__wbOpenAgentCli && lp) { w.__wbOpenAgentCli(lp, undefined, { fresh: true }); return; }

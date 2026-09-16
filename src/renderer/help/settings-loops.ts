@@ -486,7 +486,7 @@ export async function loadAgentDefaults(): Promise<void> {
   const viewSel = el<HTMLSelectElement>("set-default-loop-view");
   if (viewSel) {
     const saved = String((await prefs.getPreference?.("defaultLoopView", "glyphh")) ?? "glyphh");
-    viewSel.value = saved === "cli" ? "cli" : "glyphh";
+    viewSel.value = saved === "cli" || saved === "last" ? saved : "glyphh";
     viewSel.addEventListener("change", () => { prefs.setPreference?.("defaultLoopView", viewSel.value); window.dispatchEvent(new CustomEvent("glyphh:pref-changed")); });
   }
 }
