@@ -534,15 +534,29 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
   custom: {},
 };
 
-/** Which session modes a loop can actually honor. "ask" is every CLI's own
- *  default, so it needs no flag and is always offered; the rest are the ones
- *  that CLI has a switch for. A surface shows THIS, not a fixed four (his
- *  report, 2026-09-17: four chips where the CLI has three). */
-export function modesFor(cli: CliAgentRow["cli"]): SessionPermission[] {
+/**
+ * Which CLIs can ASK the user mid-turn.
+ *
+ * Claude's headless run takes `--permission-prompt-tool stdio`, so each
+ * request rides our control channel and becomes an approval card above the
+ * composer. No other CLI has that seam: their print modes either run the call
+ * or refuse it, with nobody to ask (his report, 2026-09-17: "why are these not
+ * prompting the user to approve?"). Offering Ask mode on those loops promises
+ * a prompt that cannot arrive, and the refusal reads as the user's own.
+ */
+const CAN_PROMPT: Partial<Record<CliAgentRow["cli"], boolean>> = { claude: true };
+
+/** Which session modes a loop can honor, on a given surface. In a TERMINAL the
+ *  CLI prompts the user itself, so Ask always works; in the agent PANEL it only
+ *  works where we have a prompt route. The rest are the modes that CLI has a
+ *  switch for — a surface shows THIS, not a fixed four (his report,
+ *  2026-09-17: four chips where the CLI has three). */
+export function modesFor(cli: CliAgentRow["cli"], surface: "panel" | "terminal" = "terminal"): SessionPermission[] {
   const table = SESSION_PERM_HEADLESS[cli] ?? {};
-  return ["ask", "plan", "acceptEdits", "auto"].filter(
-    (m) => m === "ask" || !!table[m as SessionPermission],
-  ) as SessionPermission[];
+  const askWorks = surface === "terminal" || !!CAN_PROMPT[cli];
+  return (["ask", "plan", "acceptEdits", "auto"] as SessionPermission[]).filter(
+    (m) => (m === "ask" ? askWorks : !!table[m]),
+  );
 }
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
@@ -693,7 +707,7 @@ export function listCliAgents(): CliAgentListed[] {
     return [...orgLoops.values()]
       .filter((l) => l.enabled !== false)
       .map((l) => rowFromServer(l))
-      .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) }))
+      .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli, "panel") }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   let ids: string[] = [];
@@ -701,7 +715,7 @@ export function listCliAgents(): CliAgentListed[] {
   const out: CliAgentListed[] = [];
   for (const id of ids) {
     const row = readAgent(id);
-    if (row) out.push({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) });
+    if (row) out.push({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli, "panel") });
   }
   // EVERY branded loop exists (his report, 2026-09-14: the picker showed
   // only Claude while the rest were enabled) — an explicit row (even a
@@ -709,7 +723,7 @@ export function listCliAgents(): CliAgentListed[] {
   for (const cli of Object.keys(DEFAULT_LOOP_NAMES)) {
     if (!out.some((r) => r.cli === cli)) {
       const def = defaultRowFor(cli)!;
-      out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless, modes: modesFor(def.cli) });
+      out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless, modes: modesFor(def.cli, "panel") });
     }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -788,13 +802,33 @@ export function cursorSessionFiles(): Array<{ file: string; mtime: number; cli: 
   return files;
 }
 
+/** One shell-out per chat per change (his report, 2026-09-17: "unable to open
+ *  database file" three times a second). The rail polls, and this ran sqlite3
+ *  for every chat every time, printing that CLI's own stderr into the app log
+ *  whenever a store was missing or half-written. */
+const cursorTitles = new Map<string, { mtime: number; title: string }>();
+
 export function readCursorSessionHead(file: string, mtime: number, cwd: string): CliSessionRow | null {
   const id = path.basename(path.dirname(file));
-  let title = "";
-  try {
-    const hex = execFileSync("sqlite3", ["-readonly", file, "select hex(value) from meta where key = '0' limit 1"], { encoding: "utf-8", timeout: 3_000 }).trim();
-    if (hex) title = String((JSON.parse(Buffer.from(hex, "hex").toString("utf-8")) as { name?: string }).name || "");
-  } catch { title = ""; }
+  const seen = cursorTitles.get(file);
+  let title = seen && seen.mtime === mtime ? seen.title : "";
+  if (!seen || seen.mtime !== mtime) {
+    title = "";
+    // A store that is not there yet is not an error worth a line of output.
+    if (fs.existsSync(file)) {
+      try {
+        const hex = execFileSync("sqlite3", ["-readonly", file, "select hex(value) from meta where key = '0' limit 1"], {
+          encoding: "utf-8", timeout: 3_000,
+          // sqlite3 writes its own failures to stderr; inheriting that is how
+          // a missing store became app-log noise on every poll.
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+        if (hex) title = String((JSON.parse(Buffer.from(hex, "hex").toString("utf-8")) as { name?: string }).name || "");
+      } catch { title = ""; }
+    }
+    cursorTitles.set(file, { mtime, title });
+    if (cursorTitles.size > 500) for (const k of [...cursorTitles.keys()].slice(0, 100)) cursorTitles.delete(k);
+  }
   if (!title) return null;
   return { id, cli: "cursor", title: title.replace(/\s+/g, " ").slice(0, 80), cwd, mtime };
 }
@@ -1083,7 +1117,7 @@ export function registerCliAgentsIpc(): void {
       }
       writeAgent(row);
       if (row.mcp) ensureMcpConfig(id);
-      return { ok: true, agent: { ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) } };
+      return { ok: true, agent: { ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli, "panel") } };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
