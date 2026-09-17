@@ -201,6 +201,21 @@ function writeAgent(row: CliAgentRow): void {
   fs.renameSync(`${file}.tmp`, file);
 }
 
+/**
+ * OUR TOOL SURFACE, NOT THE MACHINE'S (his report, 2026-09-17: asked to read
+ * his mail, the CLI reached for its own Gmail server and reported it
+ * disconnected).
+ *
+ * `--mcp-config` ADDS to whatever the user has configured in Claude Code, so
+ * an agent opened from Glyphh saw both our servers and theirs, and picked
+ * theirs. With this flag the file we write is the whole surface: the local
+ * Glyphh server and the gateway, where the org's connected accounts live.
+ * Anything the user runs themselves is still theirs; this is only what WE
+ * launch. The other CLIs have no equivalent switch — their seams are their
+ * own settings files.
+ */
+const STRICT_MCP = " --strict-mcp-config";
+
 /** (Re)write the agent's --mcp-config file against the CURRENT port. The
  *  bearer token mints once per agent and lives inside this file — it grants
  *  loopback access to this machine's own tool surface, nothing remote. */
@@ -507,7 +522,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   let core: string;
   switch (row.cli) {
     case "claude":
-      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"` : ""}`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
       break;
     case "codex": {
       const token = row.mcp ? mcpTokenOf(row.id) : "";
@@ -573,7 +588,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
-      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"`;
+      base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}`;
     }
     // gemini / copilot / cursor: nothing on the line — their settings-file
     // seams are written at open (ensureGeminiMcp / ensureCopilotMcp /

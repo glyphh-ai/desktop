@@ -107,9 +107,13 @@ export async function loadSettingsConnections(): Promise<void> {
       key: `pd:${c.id}`,
       kind: c.org ? "org" : "pipedream",
       name: c.label || c.appName,
-      desc: c.org ? (c.shared ? "Shared org account — every member rides it." : "Added by your organization.") : c.appName,
+      // A SHARED ACCOUNT NOBODY SIGNED INTO (his report, 2026-09-17): say so
+      // here, since a member cannot fix it and every call it makes is refused.
+      desc: c.org
+        ? (c.shared ? (c.connected === false ? "Shared org account — your admin has not signed into it yet." : "Shared org account — every member rides it.") : "Added by your organization.")
+        : c.appName,
       type: "Web",
-      badge: c.org ? (c.shared ? "Shared" : "Org") : "",
+      badge: c.org ? (c.shared ? (c.connected === false ? "Needs your admin" : "Shared") : "Org") : "",
       connected: c.connected !== false,
       enabled: true,
       icon: null,
@@ -256,11 +260,13 @@ function render(): void {
     for (const e of shown) {
       const tr = document.createElement("div");
       tr.className = "conn2-tr openable";
+      const adminsToFix = e.kind === "org" && !e.connected;
       tr.innerHTML = `${iconFor(e)}<span class="conn2-name"></span><span class="conn2-type"><span></span>${e.badge ? `<span class="conn2-badge">${escapeHtml(e.badge)}</span>` : ""}</span><span class="conn2-status"></span>`;
       (tr.querySelector(".conn2-name") as HTMLElement).textContent = e.name;
       (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = e.type;
       const st = tr.querySelector(".conn2-status") as HTMLElement;
       if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
+      else if (adminsToFix) st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
       else st.appendChild(connectButton(e));
       tr.addEventListener("click", () => void openDetail({ entry: e, page: "permissions" }));
       table.appendChild(tr);
@@ -346,8 +352,10 @@ export async function renderConnectionTable(
     const e: Entry = c
       ? {
           key: `pd:${c.id}`, kind: c.org ? "org" : "pipedream", name: c.label || c.appName || pretty(dep.app),
-          desc: c.appName || "", type: "Web", badge: c.org ? (c.shared ? "Shared" : "Org") : "",
-          connected: c.connected !== false || !!c.shared, enabled: true, icon: null, conn: c,
+          desc: c.appName || "", type: "Web",
+          badge: c.org ? (c.shared ? (c.connected === false ? "Needs your admin" : "Shared") : "Org") : "",
+          // A shared account is only usable once an admin has signed into it.
+          connected: c.connected !== false, enabled: true, icon: null, conn: c,
         }
       : {
           key: `dep:${dep.app}`, kind: "pipedream", name: pretty(dep.app), desc: "", type: "Web",
@@ -361,7 +369,7 @@ export async function renderConnectionTable(
     (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = e.type;
     const st = tr.querySelector(".conn2-status") as HTMLElement;
     if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
-    else if (org) st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
+    else if (org || e.kind === "org") st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
     else {
       // The catalog row when we have it (its own name and logo), else the slug.
       const app: CatalogApp = catalog.find((a) => a.id === dep.app) ?? { id: dep.app, name: e.name, description: "" };
