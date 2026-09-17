@@ -15,7 +15,8 @@ import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
-import { normalizeConnDeps, type ConnDep } from "../../shared/bundle-shape.js";
+import { normalizeConnDeps, WHERE_TO_SEE, type ConnDep } from "../../shared/bundle-shape.js";
+import { toastOk, toastError } from "./toast.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -221,24 +222,16 @@ function when(iso: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+/** ONE PATTERN FOR WHAT JUST HAPPENED (his order, 2026-09-17): the toast
+ *  stack, top right, above the settings overlay. The page's own error row is
+ *  gone — it lived under whatever the user was reading and said nothing at all
+ *  when an install worked. */
 function fail(msg: string): void {
-  const e = el("skills-error");
-  if (!e) return;
-  e.classList.remove("ok");
-  e.textContent = msg;
-  e.classList.remove("hidden");
+  toastError(msg);
 }
 
-/** Said, not whispered: what just happened, on the same row failures use. */
-let noticeTimer = 0;
-function notice(msg: string): void {
-  const e = el("skills-error");
-  if (!e) return;
-  e.classList.add("ok");
-  e.textContent = msg;
-  e.classList.remove("hidden");
-  window.clearTimeout(noticeTimer);
-  noticeTimer = window.setTimeout(() => { if (e.classList.contains("ok")) e.classList.add("hidden"); }, 9000);
+function notice(msg: string, opts?: { detail?: string }): void {
+  toastOk(msg, opts);
 }
 
 /** Ask the hub what has moved on. Never blocks the list; repaints if it finds any. */
@@ -260,6 +253,7 @@ async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
     .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ version: number }>);
   if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = "Update"; } fail(r.error || "Couldn't update."); return; }
   delete updates[id];
+  notice(`${up.name} updated to v${r.data?.version ?? up.latest}`);
   const wasOpen = current?.id === id;
   await loadSkillsSettings();
   if (wasOpen) await openDetail(id);
@@ -270,7 +264,6 @@ async function loadSkillsSettings(): Promise<void> {
   wire();
   el("skill-detail-view")?.classList.add("hidden");
   el("skills-list-view")?.classList.remove("hidden");
-  el("skills-error")?.classList.add("hidden");
   if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
   void refreshUpdates();
   const r = await api().skillsList(KINDS) as Env<SkillRow[]>;
@@ -640,6 +633,8 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
   d.installed = true;
   const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
+  const installed = (list.ok ? list.data ?? [] : []).find((s) => s.name === d.name || s.id.endsWith(`:${d.slug ?? ""}`));
+  notice(`${d.name} installed`, installed ? { detail: `${TYPE_LABEL[typeOf(installed)]} · ${WHERE_TO_SEE[typeOf(installed)]}` } : undefined);
   if (hubItem && hubItem.ref === d.ref) { paintDetailChrome(); return; }
   renderList();
 }
@@ -650,6 +645,8 @@ async function toggle(id: string, on: boolean): Promise<void> {
   const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   if (current && current.id === id) { current.enabled = on; const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = on; }
+  const row = (list.ok ? list.data ?? [] : []).find((x) => x.id === id);
+  notice(`${row?.name ?? "That"} turned ${on ? "on" : "off"}`, on ? undefined : { detail: "The folder stays; every loop stops seeing it." });
   renderList();
 }
 
@@ -658,12 +655,14 @@ async function remove(id: string, name: string): Promise<void> {
   if (!sure) return;
   const r = await api().skillDelete(id) as Env<boolean>;
   if (!r.ok) { fail(r.error || "Remove failed."); return; }
+  notice(`${name} removed`);
   await loadSkillsSettings();
 }
 
 async function adopt(id: string): Promise<void> {
   const r = await api().skillAdopt(id) as Env<SkillRow>;
   if (!r.ok) { fail(r.error || "Couldn't move that skill."); return; }
+  notice(`${r.data?.name ?? "It"} is managed by Glyphh now`, { detail: "Every loop on this machine reads it from one folder." });
   await loadSkillsSettings();
   if (r.data) await openDetail(r.data.id);
 }
@@ -1537,6 +1536,7 @@ async function importFromFile(): Promise<void> {
   const r = await api().skillImport(cfg.kind) as Env<SkillRow | null>;
   if (!r.ok) { fail(r.error || "Import failed."); return; }
   if (!r.data) return;
+  notice(`${r.data.name} imported`, { detail: WHERE_TO_SEE[typeOf(r.data)] });
   await loadSkillsSettings();
   await openDetail(r.data.id);
 }

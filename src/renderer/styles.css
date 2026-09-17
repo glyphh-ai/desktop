@@ -6218,6 +6218,94 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   position: relative;
 }
 
+/* ── TOASTS — the app's notifications (his order, 2026-09-17) ──────────
+   One stack, top right, ABOVE the settings overlay and every modal (the
+   highest z-index in this file is 100000, so the stack sits past it). The
+   look is the house toast the downloader and updater already wear. */
+
+#toast-stack {
+  position: fixed;
+  top: 44px;                 /* clear of the title bar's drag strip */
+  right: 14px;
+  z-index: 1000000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  pointer-events: none;      /* the page keeps working behind the stack */
+  max-width: min(420px, calc(100vw - 28px));
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 240px;
+  max-width: 100%;
+  padding: 10px 10px 10px 12px;
+  background: var(--toast-bg);
+  border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px var(--shadow);
+  animation: toast-slide-in 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+.toast.going { animation: toast-slide-out 0.16s ease-in forwards; }
+
+@keyframes toast-slide-in {
+  from { transform: translateX(14px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes toast-slide-out {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(14px); opacity: 0; }
+}
+
+.toast-ok    { border-left-color: var(--success); }
+.toast-error { border-left-color: var(--danger); }
+.toast-info  { border-left-color: var(--accent); }
+
+.toast-mark { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 1px; }
+.toast-mark svg { width: 16px; height: 16px; display: block; }
+.toast-ok .toast-mark    { color: var(--success); }
+.toast-error .toast-mark { color: var(--danger); }
+.toast-info .toast-mark  { color: var(--accent); }
+
+.toast-body { min-width: 0; flex: 1; }
+.toast-msg { font-size: 13px; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; }
+.toast-detail { margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--text-3); overflow-wrap: anywhere; }
+
+.toast-right { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+
+.toast-action {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent-text);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.toast-action:hover { background: var(--hover); }
+
+.toast-x {
+  background: none;
+  border: none;
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.toast-x:hover { color: var(--text); background: var(--hover); }
+
 /* ── Download toast ────────────────────────────────────── */
 
 .download-toast {

@@ -8,6 +8,9 @@
 import { initHelp, gotoSection, openSettingsModal } from "./help/index.js";
 import { seedNewSession } from "./help/code.js";
 import { initSearchClears } from "./search-clear.js";
+// ONE NOTIFICATION STACK for the whole panel, and the bridge the workbench
+// bundle reaches it through: imported here so it exists from the first paint.
+import "./help/toast.js";
 import { installAutofillGuard } from "./autofill-guard.js";
 
 // Theme: the inline script in home.html applied localStorage theme synchronously.

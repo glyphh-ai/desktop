@@ -11,6 +11,7 @@
 
 import { escapeHtml } from "./shared.js";
 import { confirmAction } from "./shared.js";
+import { toastError } from "./toast.js";
 
 interface Env<T> { ok: boolean; data?: T; error?: string }
 interface ScheduleRow {
@@ -152,13 +153,11 @@ const relSpan = (ms: number): string => {
 // ── load + paint ─────────────────────────────────────────────────────────────
 
 function fail(msg: string): void {
-  const e = el("schedules-error"); if (!e) return;
-  e.textContent = msg; e.classList.remove("hidden");
+  toastError(msg);
 }
 
 export async function loadSchedulesPage(): Promise<void> {
   wire();
-  el("schedules-error")?.classList.add("hidden");
   const [r, rr, t, s, a] = await Promise.all([
     api().schedulesList(), api().scheduleRecentRuns(),
     api().tasksSpecs().catch(() => ({ ok: false } as Env<TaskSpecLite[]>)),

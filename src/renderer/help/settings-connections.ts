@@ -20,6 +20,7 @@
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
+import { toastError } from "./toast.js";
 
 type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
 type McpConn = Awaited<ReturnType<typeof window.glyphh.mcpConnectionsList>>["connections"][number];
@@ -43,10 +44,7 @@ interface Entry {
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
 function fail(msg: string): void {
-  const e = el("conn2-error");
-  if (!e) return;
-  e.textContent = msg;
-  e.classList.toggle("hidden", !msg);
+  if (msg) toastError(msg);
 }
 
 let entries: Entry[] = [];

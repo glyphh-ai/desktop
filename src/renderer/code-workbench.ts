@@ -1231,6 +1231,12 @@ async function init(): Promise<void> {
     const fn = (window as unknown as { __appChoice?: (o: unknown) => Promise<"yes" | "alt" | "no"> }).__appChoice;
     return typeof fn === "function" ? fn(opts) : Promise.resolve("yes");
   }
+  /** The app's toast stack (help/toast.ts), bridged like the confirm modal.
+   *  Every outcome out here used to be a console.warn nobody reads. */
+  type ToastBridge = { ok: (m: string, o?: { detail?: string }) => void; error: (m: string, o?: { detail?: string }) => void; info: (m: string, o?: { detail?: string }) => void };
+  const toasts = (): ToastBridge | null => (window as unknown as { __toast?: ToastBridge }).__toast ?? null;
+  const toastOk = (m: string, detail?: string): void => { toasts()?.ok(m, detail ? { detail } : undefined); };
+  const toastErr = (m: string, detail?: string): void => { toasts()?.error(m, detail ? { detail } : undefined); };
 
   // ── Smart file router — the ONE open-a-file entry point (Files tree,
   //    agent file cards, anything else). Routes by what can actually render
@@ -2569,7 +2575,12 @@ async function init(): Promise<void> {
           if (choice === "no") return;
           const lib = (window as unknown as { glyphh?: { skillDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; skillSetEnabled?: (id: string, on: boolean) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
           const res = choice === "yes" ? await lib?.skillDelete?.(bundleId) : await lib?.skillSetEnabled?.(bundleId, false);
-          if (res && res.ok === false) { console.warn(`[echo] ${choice === "yes" ? "delete" : "disable"} "${t.name}" failed: ${res.error || "unknown error"}`); return; }
+          if (res && res.ok === false) {
+            toastErr(`Couldn't ${choice === "yes" ? "remove" : "turn off"} "${t.name}"`, res.error || undefined);
+            return;
+          }
+          if (choice === "yes") toastOk(`${t.name} removed`);
+          else toastOk(`${t.name} turned off`, "It stays in Settings, Build, Skills.");
           const bk = keyOf(t);
           if (bk) dockKeys = dockKeys.filter((x) => x !== bk);
           dropTileEntry(e);
@@ -2605,10 +2616,11 @@ async function init(): Promise<void> {
           }
           else if (t.appId) {
             const res = await yo?.panelAppsDelete?.(t.appId);
-            if (res && res.ok === false) { console.warn(`[echo] delete "${t.name}" failed: ${res.error || "unknown error"}`); return; }
+            if (res && res.ok === false) { toastErr(`Couldn't delete "${t.name}"`, res.error || undefined); return; }
+            toastOk(`${t.name} deleted`);
           }
         } catch (err) {
-          console.warn(`[echo] delete "${t.name}" failed:`, err);
+          toastErr(`Couldn't delete "${t.name}"`, err instanceof Error ? err.message : String(err));
           return;
         }
         const k = keyOf(t);
