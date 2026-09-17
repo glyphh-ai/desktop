@@ -339,7 +339,9 @@ const DOCK_ITEMS: Array<{ key: string; title: string; icon: string }> = [
   { key: "cc",          title: "Command center",  icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8.5" height="8.5" rx="2" style="fill:#8c3bf2"/><rect x="12.5" y="3" width="8.5" height="8.5" rx="2" style="fill:#a855f7"/><rect x="3" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#7c3aed"/><rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2" style="fill:#c084fc"/></svg>` },
   { key: "closeall",    title: "Close all",       icon: `<svg class="icon" viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="5" style="fill:#f43f5e"/><rect x="5.5" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.9"/><rect x="13.1" y="5.5" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><rect x="5.5" y="13.1" width="5.4" height="5.4" rx="1.4" style="fill:#ffe4e6;opacity:.55"/><path d="m13.6 13.6 4.9 4.9m0-4.9-4.9 4.9" style="stroke:#fff;stroke-width:2.2;stroke-linecap:round"/></svg>` },
   // Tabs, Workspaces and Drips live in Settings → Customize (his order, 2026-09-16); no dock tiles.
-  ].filter((d) => ["glyphh", "newtab", "cc", "closeall"].includes(d.key));
+  // Settings is back (his order, 2026-09-17). Tabs, Workspaces and Drips live
+  // in Settings → Customize and keep no dock tile of their own.
+  ].filter((d) => ["glyphh", "newtab", "cc", "settings", "closeall"].includes(d.key));
 
 // ── Echo wall persistence ────────────────────────────────────────────────
 // The whole open arrangement — a layout, or the set of ad-hoc app/tool/section
@@ -3184,11 +3186,27 @@ async function init(): Promise<void> {
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
-      // THE DOCK IS FIXED (his order, 2026-09-16, Settings back 2026-09-17):
-      // Glyphh, New tab, one slot per agent loop, Command center, Settings,
-      // Close all. No traded icons, no saved order.
-      void dockPref; void legacyKey;
-      dockKeys = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "cc", "settings", "closeall"];
+      // THE DOCK'S SPINE is fixed (his order, 2026-09-16, Settings back
+      // 2026-09-17): Glyphh, New tab, one slot per agent loop, then the system
+      // controls. What the user TRADES onto it is theirs and survives a restart
+      // (his report, 2026-09-17: a workspace dragged to the dock fell back to
+      // the wall) — the saved order leads, the spine fills in what it lacks.
+      const SPINE = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!)];
+      const TAIL = ["cc", "settings", "closeall"];
+      const liveAgent = new Set(agentTiles.map((t) => t.orderKey!));
+      // A key from an older dock (logout, Tabs, Workspaces, Drips) names a
+      // button that no longer exists; it leaves rather than haunting the saved
+      // order. Traded icons carry a family prefix and are always usable.
+      const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
+      const saved = Array.isArray(dockPref)
+        ? (dockPref as unknown[]).map(legacyKey).filter((k) => !!k && (k.includes(":") || navKeys.has(k)))
+        : null;
+      // An agent slot whose loop is gone leaves with it; everything else the
+      // user put there stays exactly where they put it.
+      const keys = saved?.length ? saved.filter((k) => !k.startsWith("agent:") || liveAgent.has(k)) : [...SPINE];
+      for (const k of SPINE) if (!keys.includes(k)) keys.push(k);
+      if (!keys.includes("glyphh")) keys.unshift("glyphh");
+      dockKeys = [...keys.filter((k) => !TAIL.includes(k)), ...TAIL];
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
       const byK = new Map<string, EchoTile>();
