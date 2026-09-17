@@ -3192,27 +3192,34 @@ async function init(): Promise<void> {
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
-      // THE DOCK'S SPINE is fixed (his order, 2026-09-16, Settings back
-      // 2026-09-17): Glyphh, New tab, one slot per agent loop, then the system
-      // controls. What the user TRADES onto it is theirs and survives a restart
-      // (his report, 2026-09-17: a workspace dragged to the dock fell back to
-      // the wall) — the saved order leads, the spine fills in what it lacks.
-      const SPINE = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!)];
-      const TAIL = ["cc", "settings", "closeall"];
+      // THE DOCK IS THE USER'S (his order, 2026-09-17). The default reads
+      // right to left as Close all, Command center, Settings, with the agent
+      // loops and the two openers ahead of them — but it is only the DEFAULT.
+      // Once the dock has been arranged, that arrangement is law: nothing here
+      // re-sorts it, and the only things that move are a loop that no longer
+      // exists (out) and a slot the user has never seen (in).
+      const DEFAULT_DOCK = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "settings", "cc", "closeall"];
+      const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
       const liveAgent = new Set(agentTiles.map((t) => t.orderKey!));
       // A key from an older dock (logout, Tabs, Workspaces, Drips) names a
-      // button that no longer exists; it leaves rather than haunting the saved
-      // order. Traded icons carry a family prefix and are always usable.
-      const navKeys = new Set(DOCK_ITEMS.map((d) => d.key));
+      // button that no longer exists; it leaves rather than haunting the order.
       const saved = Array.isArray(dockPref)
         ? (dockPref as unknown[]).map(legacyKey).filter((k) => !!k && (k.includes(":") || navKeys.has(k)))
         : null;
-      // An agent slot whose loop is gone leaves with it; everything else the
-      // user put there stays exactly where they put it.
-      const keys = saved?.length ? saved.filter((k) => !k.startsWith("agent:") || liveAgent.has(k)) : [...SPINE];
-      for (const k of SPINE) if (!keys.includes(k)) keys.push(k);
-      if (!keys.includes("glyphh")) keys.unshift("glyphh");
-      dockKeys = [...keys.filter((k) => !TAIL.includes(k)), ...TAIL];
+      if (!saved?.length) {
+        dockKeys = DEFAULT_DOCK;
+      } else {
+        dockKeys = saved.filter((k) => !k.startsWith("agent:") || liveAgent.has(k));
+        // A slot that shipped after this dock was saved joins it — unless the
+        // user deliberately parked it on the pages, which the page order says.
+        const parked = new Set((Array.isArray(orderPref) ? (orderPref as unknown[]).map(legacyKey) : []).flatMap((k) => [k, k.replace(/^dock:/, "")]));
+        const joiners = DEFAULT_DOCK.filter((k) => !dockKeys.includes(k) && !parked.has(k) && !parked.has(`dock:${k}`));
+        const firstControl = dockKeys.findIndex((k) => k === "settings" || k === "cc" || k === "closeall");
+        for (const k of joiners) {
+          if (k === "glyphh") dockKeys.unshift(k);
+          else dockKeys.splice(firstControl < 0 ? dockKeys.length : firstControl, 0, k);
+        }
+      }
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
       const byK = new Map<string, EchoTile>();
