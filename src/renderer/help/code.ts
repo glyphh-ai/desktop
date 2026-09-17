@@ -4935,8 +4935,10 @@ function paintAppsGrid(host: RailGridHost): void {
       // An installed Glyphh app is a tab beside the agent, the same door the Apps page's Open uses.
       if (a.appArchetype === "glyphh-app") {
         const tool = (a.launchConfig as { tool?: unknown } | null | undefined)?.tool;
-        if (typeof tool === "string" && tool) { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(tool); return; }
-        (window as unknown as { __wbOpenApp?: (x: { slug: string; name: string; url: string; glyphh?: boolean }) => void }).__wbOpenApp?.({ slug: (a.slug || a.id).toLowerCase(), name: a.name, url: "", glyphh: true });
+        // Cold-safe like every other door: boot the workbench and wait for the
+        // bridge instead of calling one that may not exist yet.
+        if (typeof tool === "string" && tool) { openWorkPanelInWorkbench("__wbOpenTool", tool); return; }
+        openAppInWorkbench({ slug: (a.slug || a.id).toLowerCase(), name: a.name, url: "", glyphh: true });
         return;
       }
       // Same open the Apps page's "Open app" uses (per-config launch).

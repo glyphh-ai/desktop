@@ -1376,6 +1376,16 @@ function initApps() {
     const app = panelApps.find((a) => a.id === currentAppId);
     if (!app) return;
     const glyphh = app.appArchetype === "glyphh-app";
+    // AN APP THAT IS A BUILT-IN PANEL OPENS THAT PANEL (his report,
+    // 2026-09-17: Open tab on Design opened nothing useful). The left rail has
+    // always read `tool` off the row; this button did not, so Design, Slides,
+    // Images, Video and Audio opened their bundle's placeholder page instead.
+    const tool = (app.launchConfig as { tool?: unknown } | null | undefined)?.tool;
+    if (glyphh && typeof tool === "string" && tool) {
+      closeSettingsModal();
+      openWorkPanelInWorkbench("__wbOpenTool", tool);
+      return;
+    }
     if (app.url || glyphh) {
       closeSettingsModal();
       // A marketplace-installed app is a chromeless panel to the installer.

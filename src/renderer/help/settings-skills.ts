@@ -11,6 +11,7 @@
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
+import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
@@ -811,9 +812,12 @@ async function openAsTab(btn: HTMLButtonElement): Promise<void> {
   const tab = r.data;
   if (!r.ok || !tab) { fail(r.error || "Couldn't open the app."); return; }
   closeSettingsModal();
-  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in panel.
-  if (tab.tool) { (window as unknown as { __wbOpenTool?: (v: string) => void }).__wbOpenTool?.(tab.tool); return; }
-  (window as unknown as { __wbOpenApp?: (a: { slug: string; name: string; url: string; glyphh?: boolean }) => void }).__wbOpenApp?.({ slug: tab.slug, name: tab.name, url: "", glyphh: true });
+  // A tool-backed app (Design, Slides, Images, Video, Audio) opens its built-in
+  // panel. Both doors go through the cold-safe openers, which boot the
+  // workbench and wait for its bridge — calling the bridge directly was a
+  // silent no-op whenever the workbench had not mounted yet.
+  if (tab.tool) { openWorkPanelInWorkbench("__wbOpenTool", tab.tool); return; }
+  openAppInWorkbench({ slug: tab.slug, name: tab.name, url: "", glyphh: true });
 }
 
 function parseFrontmatter(text: string): { frontmatter: Record<string, string>; body: string } {
