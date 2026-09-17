@@ -124,6 +124,69 @@ export function loopGraph(name: string, manifest: LoopManifest, models: Record<s
   return { nodes, edges };
 }
 
+/** A TASK as a flow (2026-09-17). The program is code, so this reads it the
+ *  only honest way: a lexical scan for the seams it can only reach through ctx
+ *  — agent turns, connection calls, app data, checkpoints — laid out in source
+ *  order between the trigger and the result. It is a map of what the program
+ *  touches, not a claim about its control flow. */
+export function taskGraph(
+  name: string,
+  manifest: { schedule?: string | null; result?: unknown; slots?: Record<string, unknown> },
+  program: string,
+): Graph {
+  const nodes: FlowNode[] = [];
+  const edges: FlowEdge[] = [];
+  const CY = 220;
+  const STEP_X = 250;
+
+  interface Hit { at: number; kind: string; label: string; sub?: string }
+  const hits: Hit[] = [];
+  const add = (re: RegExp, make: (m: RegExpExecArray) => Hit | null): void => {
+    for (let m = re.exec(program); m; m = re.exec(program)) {
+      const h = make(m);
+      if (h) hits.push(h);
+    }
+  };
+  add(/ctx\s*\.\s*agents\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["'`]([^"'`]+)["'`]\s*\])\s*\.\s*run\s*\(/g,
+    (m) => ({ at: m.index, kind: "agent", label: m[1] || m[2] || "agent", sub: "an agent turn" }));
+  add(/ctx\s*\.\s*connections\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*["'`]([^"'`]+)["'`]\s*\])\s*\.\s*call\s*\(\s*["'`]([^"'`]+)["'`]/g,
+    (m) => ({ at: m.index, kind: "connection", label: m[1] || m[2] || "connection", sub: m[3] }));
+  add(/ctx\s*\.\s*data\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g,
+    (m) => ({ at: m.index, kind: "memory", label: m[1]!, sub: "app data" }));
+  const marks: Array<{ at: number; key: string }> = [];
+  add(/ctx\s*\.\s*checkpoint\s*\(\s*["'`]([^"'`]+)["'`]/g,
+    (m) => { marks.push({ at: m.index, key: m[1]! }); return null; });
+  hits.sort((a, b) => a.at - b.at);
+
+  // A checkpoint wraps the call it guards, so it reads as a note ON that step
+  // rather than a step of its own; one that guards nothing stands alone.
+  for (const mk of marks) {
+    const owner = hits.find((h) => h.at > mk.at && h.at - mk.at < 200);
+    if (owner) owner.sub = `${owner.sub ?? ""}${owner.sub ? " · " : ""}checkpoint "${mk.key}"`;
+    else hits.push({ at: mk.at, kind: "memory", label: `checkpoint "${mk.key}"`, sub: "journaled" });
+  }
+  hits.sort((a, b) => a.at - b.at);
+
+  nodes.push(node("trigger", "trigger", manifest.schedule ? `Scheduled · ${manifest.schedule}` : "On demand",
+    0, CY, manifest.schedule ? "cron" : "Run now, or a schedule you add"));
+  let prev = "trigger";
+  if (!hits.length) {
+    nodes.push(node("program", "skill", name || "Program", STEP_X, CY, "the program drives this on its own"));
+    edges.push(edge(prev, "program"));
+    prev = "program";
+  }
+  hits.forEach((h, i) => {
+    const id = `step-${i}`;
+    nodes.push(node(id, h.kind, h.label, STEP_X * (i + 1), CY, h.sub));
+    edges.push(edge(prev, id));
+    prev = id;
+  });
+  const shape = manifest.result && typeof manifest.result === "object" ? Object.keys(manifest.result as object).join(", ") : "";
+  nodes.push(node("result", "output", "Result", STEP_X * ((hits.length || 1) + 1), CY, shape || undefined));
+  edges.push(edge(prev, "result"));
+  return { nodes, edges };
+}
+
 // ── Mount ────────────────────────────────────────────────────────────────────
 
 /** Render (or re-render) a graph into `host`. Safe to call on every form edit. */

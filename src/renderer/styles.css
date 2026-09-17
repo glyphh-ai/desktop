@@ -20826,9 +20826,6 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .skill-tile-icon.own { background: transparent; border-color: transparent; }
 .skill-tile-icon.own svg { width: 26px; height: 26px; }
 .skill-tile-icon.lg.own svg { width: 34px; height: 34px; }
-.task-overview-meta { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
-.task-meta-line { font-size: 12.5px; color: var(--text-2); }
-.task-meta-line code { font-family: ui-monospace, monospace; font-size: 12px; }
 .ws-task-run.running { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2)); }
 .ws-task-run + .ws-task-run { margin-top: 6px; }
 .ws-task-run-head { cursor: pointer; user-select: none; }
@@ -20875,3 +20872,5 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .icon-mark { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: none; color: var(--text-2); }
 .icon-mark.art svg { width: 100%; height: 100%; }
 .icon-mark.glyph svg { width: 64%; height: 64%; }
+/* The FLOW tab: the React-Flow island needs a measured box to lay out in. */
+.skill-flow-host { height: min(560px, calc(100vh - 320px)); min-height: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); overflow: hidden; }

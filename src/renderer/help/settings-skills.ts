@@ -14,7 +14,7 @@ import { closeSettingsModal } from "./navigation.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
-import { cronToWords } from "./schedules.js";
+import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -735,10 +735,22 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
  *  gallery and the dependencies (connections, as member or org). Local apps
  *  read the manifest and images from the folder; a hub item carries them in
  *  its files (screenshots as data URLs). */
+/** The graph behind the Flow tab, rebuilt whenever a detail is opened. */
+let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
+function paintFlow(): void {
+  const host = el("skill-flow-host");
+  if (!host) return;
+  if (!flowGraph) { host.innerHTML = `<div class="crud-empty">Nothing to draw yet.</div>`; return; }
+  void renderFlow(host, flowGraph);
+}
+
 async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | null): Promise<void> {
   const host = el("skill-overview-extra");
   if (!host) return;
   host.textContent = "";
+  const flowHost = el("skill-flow-host");
+  if (flowHost) { unmountFlow(flowHost); flowHost.textContent = ""; }
+  flowGraph = null;
   const type = typeOf(s);
   if (type === "skill") return;
   const read = async (rel: string): Promise<string> => {
@@ -748,14 +760,14 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   };
   if (type === "plugin") { await paintBundleSkills(s, read); return; }
   if (type === "task") {
-    let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; schedule?: string | null; program?: string } = {};
+    let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; schedule?: string | null; program?: string; result?: unknown } = {};
     try { tm = JSON.parse(await read("task.json") || "{}"); } catch { tm = {}; }
-    const meta = document.createElement("div");
-    meta.className = "task-overview-meta";
-    meta.innerHTML = `<div class="skill-overview-label">Program</div><div class="task-meta-line"><code></code></div><div class="skill-overview-label">Schedule</div><div class="task-meta-line task-schedule"></div>`;
-    (meta.querySelector("code") as HTMLElement).textContent = tm.program || "run.js";
-    (meta.querySelector(".task-schedule") as HTMLElement).textContent = tm.schedule ? `${cronToWords(tm.schedule)} (${tm.schedule}) · turn it on under Customize → Schedules` : "None. Run it now, or put it on a clock under Customize → Schedules.";
-    host.appendChild(meta);
+    // The FLOW tab's picture is built from the same read: the manifest, plus
+    // the program itself (lib-flow scans it for the seams it reaches through ctx).
+    void read(tm.program || "run.js").then((code) => {
+      flowGraph = taskGraph(s.name, tm, code || "");
+      if (!el("skill-flow")?.classList.contains("hidden")) paintFlow();
+    });
     await Promise.all([paintTaskSlots(s, tm.slots ?? {}), paintBundleConnections(tm.dependencies?.connections ?? [])]);
     if (!hubItem) void paintTaskRuns(s);
     return;
@@ -1049,13 +1061,13 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "slots" | "runs";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "slots" | "runs" | "flow";
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
   skill: ["overview", "contents"],
   app: ["overview", "contents", "skills", "tools", "connections"],
-  task: ["overview", "contents", "slots", "runs", "connections"],
+  task: ["overview", "flow", "contents", "slots", "runs", "connections"],
   plugin: ["overview", "contents", "skills"],
 };
 /** Show only the tabs this item earns. */
@@ -1074,7 +1086,9 @@ function selectDetailTab(t: DetailTab): void {
   el("skill-connections")?.classList.toggle("hidden", t !== "connections");
   el("skill-slots")?.classList.toggle("hidden", t !== "slots");
   el("skill-runs")?.classList.toggle("hidden", t !== "runs");
+  el("skill-flow")?.classList.toggle("hidden", t !== "flow");
   if (t === "runs" && current && !hubItem) void paintTaskRuns(current);
+  if (t === "flow") paintFlow();
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
   if (t === "contents") editor?.layout();
 }

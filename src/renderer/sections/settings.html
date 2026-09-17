@@ -2008,6 +2008,7 @@
                   </div>
                   <div class="skills-tabs detail">
                     <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab hidden" data-dtab="flow" type="button">Flow</button>
                     <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="skill-file-count" class="skills-count"></span></button>
                     <button class="skills-tab hidden" data-dtab="skills" type="button">Skills <span id="skill-skill-count" class="skills-count"></span></button>
                     <button class="skills-tab hidden" data-dtab="tools" type="button">Tools <span id="skill-tool-count" class="skills-count"></span></button>
@@ -2020,6 +2021,7 @@
                   <div id="skill-slots" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Who does the work where the program calls an agent. A slot filled here holds for every run.</div><div id="skill-slots-list" class="skill-list"></div></div></div>
                   <div id="skill-runs" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Every run is a story: the agents it called, the connections it used, what it checkpointed, and what it returned.</div><div id="skill-runs-list" class="skill-list"></div></div></div>
                   <div id="skill-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this works through. Connect the ones it needs before opening it.</div><div id="skill-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="skill-flow" class="skill-overview hidden"><div id="skill-flow-host" class="skill-flow-host"></div></div>
                   <div id="skill-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>
@@ -2162,6 +2164,7 @@
                   </div>
                   <div class="skills-tabs detail">
                     <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab hidden" data-dtab="flow" type="button">Flow</button>
                     <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="gtask-file-count" class="skills-count"></span></button>
                     <button class="skills-tab" data-dtab="slots" type="button">Slots <span id="gtask-slot-count" class="skills-count"></span></button>
                     <button class="skills-tab" data-dtab="runs" type="button">Runs <span id="gtask-run-count" class="skills-count"></span></button>
@@ -2170,6 +2173,7 @@
                   <div id="gtask-slots" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Who does the work where the program calls an agent. A slot filled here holds for every run.</div><div id="gtask-slots-list" class="skill-list"></div></div></div>
                   <div id="gtask-runs" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Every run is a story: the agents it called, the connections it used, what it checkpointed, and what it returned.</div><div id="gtask-runs-list" class="skill-list"></div></div></div>
                   <div id="gtask-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this task works through. Unattended runs only use tools set to Always allow.</div><div id="gtask-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="gtask-flow" class="skill-overview hidden"><div id="gtask-flow-host" class="skill-flow-host"></div></div>
                   <div id="gtask-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>

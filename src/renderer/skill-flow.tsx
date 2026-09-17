@@ -25,7 +25,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./skill-flow.css";
 
-type Kind = "start" | "trigger" | "input" | "skill" | "tool" | "subskill" | "app" | "output" | "end" | "model" | "connection" | "memory";
+type Kind = "start" | "trigger" | "input" | "skill" | "tool" | "subskill" | "app" | "output" | "end" | "model" | "connection" | "memory" | "agent";
 
 const KIND: Record<Kind, { color: string; glyph: string; tag: string }> = {
   start:    { color: "#af5fff", glyph: "▶", tag: "Start" },
@@ -41,6 +41,8 @@ const KIND: Record<Kind, { color: string; glyph: string; tag: string }> = {
   model:      { color: "#34d399", glyph: "◈", tag: "Model" },
   connection: { color: "#4a9eff", glyph: "⇄", tag: "Connection" },
   memory:     { color: "#f59e0b", glyph: "▤", tag: "Memory" },
+  // A TASK's program reaches an agent through a slot (2026-09-17).
+  agent:      { color: "#d946ef", glyph: "◉", tag: "Agent" },
 };
 
 function safeHost(url?: string): string | null {
