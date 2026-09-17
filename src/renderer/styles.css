@@ -20847,3 +20847,17 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .help-section[data-section="schedules"] .ws-task-card { cursor: pointer; }
 .help-section[data-section="schedules"] .ws-task-card + .ws-task-card { margin-top: 6px; }
 @media (max-width: 900px) { .help-section[data-section="schedules"] .ws-tasks-cols { grid-template-columns: 1fr; } }
+/* A skill's TYPE (2026-09-17): every bundle on the library pages is a skill;
+   the chip says which kind it is, and shows only when that differs from the
+   page you are already on. */
+.skill-type-chip {
+  flex: 0 0 auto; align-self: center;
+  padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border-2); background: var(--surface-2);
+  color: var(--text-2); font-size: 10.5px; line-height: 1.5;
+  letter-spacing: .03em; text-transform: lowercase;
+}
+.skill-row-sub .skill-type-chip { margin-right: 2px; }
+.skill-detail-sub .skill-type-chip { margin-right: 6px; }
+.disc-card-meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.disc-card-metatext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

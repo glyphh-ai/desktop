@@ -16,10 +16,15 @@ import { formatMarkdown } from "../format-markdown.js";
 import { cronToWords } from "./schedules.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
-interface SkillRow { id: string; source: Source; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null }
+/** Every folder on this page is a skill; the TYPE says what kind of skill it
+ *  is (his ruling, 2026-09-17): "this skill is an app", "this skill is a
+ *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
+type BundleType = "skill" | "app" | "task" | "plugin";
+const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -53,6 +58,8 @@ let query = "";
 /** List controls: filter by origin and author; sort order. */
 let filterSource: Source | "" = "";
 let filterAuthor = "";
+/** List control: show only one type of skill (app, task, …). */
+let filterType: BundleType | "" = "";
 type SortKey = "edited" | "name" | "author";
 let sortKey: SortKey = "edited";
 const SORT_LABEL: Record<SortKey, string> = { edited: "Last edited", name: "Name", author: "Created by" };
@@ -76,6 +83,10 @@ let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Re
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
 const api = () => window.glyphh;
+/** The type reads as a chip only when it is NOT what this page is already
+ *  about — a plain skill on Skills says nothing, an app among them says "app". */
+const typeChip = (type: BundleType | undefined): string =>
+  type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
 /** A bundle's own icon.svg when the manifest names one, else the page's mark. */
 const iconOf = (own: string | null | undefined): string => (own && own.includes("<svg") ? own : cfg.icon);
 const setDetailIcon = (own: string | null | undefined): void => { document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = iconOf(own); }); };
@@ -120,13 +131,13 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; type?: BundleType }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
   r.innerHTML = `<div class="skill-tile-icon${opts.icon && opts.icon.includes("<svg") ? " own" : ""}">${iconOf(opts.icon)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"></div>
-      <div class="skill-row-sub"><span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
+      <div class="skill-row-sub">${typeChip(opts.type)}<span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
     </div>
     <div class="skill-row-right"></div>`;
   (r.querySelector(".skill-row-name") as HTMLElement).textContent = opts.name;
@@ -231,6 +242,7 @@ function renderList(): void {
     const shown = skills
       .filter((s) => hit(`${s.name} ${s.description} ${s.author}`))
       .filter((s) => !filterSource || s.source === filterSource)
+      .filter((s) => !filterType || s.type === filterType)
       .filter((s) => !filterAuthor || authorOf(s) === filterAuthor)
       .sort((a, b) => sortKey === "name" ? a.name.localeCompare(b.name) : sortKey === "author" ? authorOf(a).localeCompare(authorOf(b)) || a.name.localeCompare(b.name) : b.updatedAt.localeCompare(a.updatedAt));
     const count = el("skills-count"); if (count) count.textContent = `${shown.length} ${shown.length === 1 ? cfg.noun : cfg.nouns}`;
@@ -249,7 +261,7 @@ function renderList(): void {
       for (const s of rows) {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
-          desc: s.description, right: when(s.updatedAt), icon: s.icon,
+          desc: s.description, right: when(s.updatedAt), icon: s.icon, type: s.type,
           onOpen: () => void openDetail(s.id),
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
@@ -318,10 +330,10 @@ function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
 function discoverCard(d: DiscoverRow): HTMLElement {
   const c = document.createElement("div");
   c.className = "disc-card";
-  c.innerHTML = `<div class="skill-tile-icon${d.icon && d.icon.includes("<svg") ? " own" : ""}">${d.icon && d.icon.includes("<svg") ? d.icon : glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta"></div></div>`;
+  c.innerHTML = `<div class="skill-tile-icon${d.icon && d.icon.includes("<svg") ? " own" : ""}">${d.icon && d.icon.includes("<svg") ? d.icon : glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta">${typeChip(d.type)}<span class="disc-card-metatext"></span></div></div>`;
   (c.querySelector(".disc-card-name") as HTMLElement).textContent = d.name;
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
-  (c.querySelector(".disc-card-meta") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
+  (c.querySelector(".disc-card-metatext") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
   c.appendChild(addButton(d));
   c.classList.add("openable");
   c.addEventListener("click", () => void openHubDetail(d));
@@ -534,7 +546,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
   hubItem = d;
   current = {
-    id: `hub:${d.ref}`, source: "glyphh", name: d.name, description: d.description || frontmatter.description || "", author: d.author,
+    id: `hub:${d.ref}`, source: "glyphh", type: d.type ?? cfg.kind, name: d.name, description: d.description || frontmatter.description || "", author: d.author,
     enabled: true, dir: "", fileCount: Object.keys(files).length, updatedAt: d.updatedAt, frontmatter, body,
     files: Object.keys(files).sort().map((p) => ({ path: p, size: files[p].length })),
   };
@@ -544,7 +556,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
   (el("skill-detail-name") as HTMLElement).textContent = d.name;
-  (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
+  (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(d.type)}${escapeHtml(`from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
   setDetailIcon(d.icon);
@@ -884,7 +896,7 @@ async function openDetail(id: string): Promise<void> {
   el("skill-detail-view")?.classList.remove("hidden");
   const s = current;
   (el("skill-detail-name") as HTMLElement).textContent = s.name;
-  (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
+  (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(s.type)}${escapeHtml(`${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`)}`;
   const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = s.enabled;
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
@@ -1161,16 +1173,21 @@ function paintControls(): void {
   const f = el("skills-filter"); const so = el("skills-sort");
   const mine = tab === "mine";
   f?.classList.toggle("hidden", !mine); so?.classList.toggle("hidden", !mine);
-  f?.classList.toggle("on", !!(filterSource || filterAuthor));
-  const fl = f?.querySelector("span"); if (fl) fl.textContent = filterSource || filterAuthor ? `Filter · ${[filterSource ? SOURCE_LABEL[filterSource].replace("From ", "").replace("Created by you", "You") : "", filterAuthor].filter(Boolean).join(", ")}` : "Filter";
+  f?.classList.toggle("on", !!(filterSource || filterAuthor || filterType));
+  const fl = f?.querySelector("span"); if (fl) fl.textContent = filterSource || filterAuthor || filterType ? `Filter · ${[filterType ? TYPE_LABEL[filterType] : "", filterSource ? SOURCE_LABEL[filterSource].replace("From ", "").replace("Created by you", "You") : "", filterAuthor].filter(Boolean).join(", ")}` : "Filter";
   const sl = so?.querySelector("span"); if (sl) sl.textContent = `Sort · ${SORT_LABEL[sortKey]}`;
 }
 
 function filterMenu(): MenuItem[] {
   const authors = [...new Set(skills.map(authorOf))].sort((a, b) => a.localeCompare(b));
   const sources = SOURCE_ORDER.filter((src) => skills.some((s) => s.source === src));
+  const types = (["skill", "app", "task", "plugin"] as BundleType[]).filter((t) => skills.some((s) => s.type === t));
   return [
     { heading: "Filter by" },
+    ...(types.length > 1 ? [{ label: "Type", children: [
+      { label: "All", checked: !filterType, onClick: () => { filterType = ""; renderList(); } },
+      ...types.map((t) => ({ label: `${TYPE_LABEL[t][0]!.toUpperCase()}${TYPE_LABEL[t].slice(1)}`, checked: filterType === t, onClick: () => { filterType = t; renderList(); } })),
+    ] }] : []),
     { label: "Source", children: [
       { label: "All", checked: !filterSource, onClick: () => { filterSource = ""; renderList(); } },
       ...sources.map((src) => ({ label: src === "glyphh" ? "Glyphh" : SOURCE_LABEL[src].replace("From ", ""), checked: filterSource === src, onClick: () => { filterSource = src; renderList(); } })),
@@ -1179,7 +1196,7 @@ function filterMenu(): MenuItem[] {
       { label: "All", checked: !filterAuthor, onClick: () => { filterAuthor = ""; renderList(); } },
       ...authors.map((a) => ({ label: a, checked: filterAuthor === a, onClick: () => { filterAuthor = a; renderList(); } })),
     ] },
-    ...(filterSource || filterAuthor ? [{ sep: true as const }, { label: "Clear filters", onClick: () => { filterSource = ""; filterAuthor = ""; renderList(); } }] : []),
+    ...(filterSource || filterAuthor || filterType ? [{ sep: true as const }, { label: "Clear filters", onClick: () => { filterSource = ""; filterAuthor = ""; filterType = ""; renderList(); } }] : []),
   ];
 }
 

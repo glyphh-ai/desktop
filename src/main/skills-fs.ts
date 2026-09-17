@@ -30,9 +30,27 @@ export type HomeKind = "skill" | "app" | "plugin" | "task";
 /** The tasks home: bundles the desktop runs itself (task-runner.ts). */
 export const TASKS_HOME = (): string => userScopedPath("tasks");
 
+/** WHAT A BUNDLE IS (his ruling, 2026-09-17): every folder here is a skill;
+ *  the type says what KIND of skill it is. "This skill is an app", "this skill
+ *  is a task". The type is what the folder can DO — the manifest beside
+ *  SKILL.md — so it is read from the bundle, never guessed from where it
+ *  lives. SKILL.md frontmatter may declare `type:` and that is honored only
+ *  when no manifest is there yet (an agent naming its intent mid-build). */
+export type BundleType = "skill" | "app" | "task" | "plugin";
+
+export function bundleType(dir: string, declared?: string): BundleType {
+  if (fs.existsSync(path.join(dir, "task.json"))) return "task";
+  if (fs.existsSync(path.join(dir, "app.json"))) return "app";
+  if (isPlugin(dir)) return "plugin";
+  const d = (declared || "").trim().toLowerCase();
+  return d === "app" || d === "task" || d === "plugin" ? d : "skill";
+}
+
 export interface SkillSummary {
   id: string;
   source: SkillSource;
+  /** What kind of skill this is: a plain skill, an app, a task, a plugin. */
+  type: BundleType;
   name: string;
   description: string;
   author: string;
@@ -140,18 +158,19 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   } else if (!text) return null;
   let updatedAt = "";
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
+  const type = bundleType(dir, frontmatter.type);
   return {
-    id: idOf(source, name), source, name: frontmatter.name || name, description: frontmatter.description || "",
+    id: idOf(source, name), source, type, name: frontmatter.name || name, description: frontmatter.description || "",
     author: frontmatter.author || frontmatter.from || "", enabled, dir, fileCount: walk(dir).length, updatedAt,
-    icon: bundleIcon(dir, source),
+    icon: bundleIcon(dir, type),
   };
 }
 
 /** The icon an app or task manifest names (an .svg in the bundle), as markup. */
-export function bundleIcon(dir: string, source: SkillSource): string | null {
-  if (source !== "app" && source !== "task") return null;
+export function bundleIcon(dir: string, type: BundleType): string | null {
+  if (type !== "app" && type !== "task") return null;
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(dir, `${source}.json`), "utf-8")) as { icon?: unknown };
+    const m = JSON.parse(fs.readFileSync(path.join(dir, `${type}.json`), "utf-8")) as { icon?: unknown };
     if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return null;
     const svg = fs.readFileSync(safeJoin(dir, m.icon), "utf-8");
     return svg.includes("<svg") && svg.length < 64_000 ? svg : null;

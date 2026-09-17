@@ -36,6 +36,8 @@ export interface DiscoverRow {
   categories: string[];
   /** App and task items: the manifest's icon.svg, from the catalog row. */
   icon?: string | null;
+  /** What kind of skill this is — the hub kind it was listed under. */
+  type: Kind;
 }
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
@@ -65,10 +67,10 @@ async function discover(kind: Kind): Promise<DiscoverRow[]> {
   const rows: DiscoverRow[] = [];
   for (const it of Array.isArray(org) ? org : []) {
     if (!it.headVersion) continue;
-    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null });
+    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
   }
   for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === kind)) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null });
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
