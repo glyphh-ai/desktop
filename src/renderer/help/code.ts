@@ -181,7 +181,13 @@ function paintChips(): void {
     glyphhMode = currentMode();
     // A mode this loop cannot honor is not a mode: fall back to asking, which
     // every CLI does by default, rather than showing a gate that is not there.
-    if (!modesForLoop().some((m) => m.id === glyphhMode)) glyphhMode = "ask";
+    // The session is moved with it — a chip that says one thing while the turn
+    // sends another is the bug this page keeps having.
+    if (!modesForLoop().some((m) => m.id === glyphhMode)) {
+      glyphhMode = "ask";
+      const c = current();
+      if (c && c.permission !== "ask") { c.permission = "ask"; void saveStore(); }
+    }
     const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;

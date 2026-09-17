@@ -154,6 +154,17 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
     if (req.subtype === "can_use_tool") {
       const requestId = String(ev.request_id ?? "");
       const name = String(req.tool_name ?? "tool");
+      // AUTO TRUMPS THE ASK (his report, 2026-09-17). Bypass covers the CLI's
+      // own tools, but an MCP server can still send a request up this channel,
+      // and queueing a card for it makes Auto mode stop and wait for a person
+      // who was promised they would not be asked. Answer it here.
+      if (c.permission === "auto") {
+        c.proc.stdin.write(JSON.stringify({
+          type: "control_response",
+          response: { subtype: "success", request_id: requestId, response: { behavior: "allow" } },
+        }) + "\n");
+        return;
+      }
       const approvalId = `${chatId}:${requestId}`;
       c.pending.set(approvalId, requestId);
       emit(c, "glyphh-agent:approval", {
