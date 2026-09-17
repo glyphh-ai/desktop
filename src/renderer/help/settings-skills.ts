@@ -283,6 +283,26 @@ async function refreshShares(): Promise<void> {
   if (changed && el("skills-groups")) renderList();
 }
 
+/** TAKE IT BACK OFF THE DESK (his report, 2026-09-17: "the user has no way to
+ *  revoke their submission"). Only a share still waiting can be withdrawn;
+ *  once an admin approves it, it belongs to the org. */
+async function withdrawShare(id: string, name: string): Promise<void> {
+  const sure = await confirmAction({
+    title: `Withdraw "${name}" from review?`,
+    body: "It comes off your organization's review desk. Nothing changes on this machine, and you can share it again whenever you want.",
+    confirmLabel: "Withdraw",
+  });
+  if (!sure) return;
+  const r = await (api() as unknown as { skillWithdraw: (id: string) => Promise<Env<{ withdrawn: number }>> }).skillWithdraw(id)
+    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ withdrawn: number }>);
+  if (!r.ok) { fail(r.error || "Couldn't withdraw that submission."); return; }
+  notice(`${name} is off the review desk`, { detail: `v${r.data?.withdrawn ?? ""} was never published.` });
+  delete shares[id];
+  await refreshShares();
+  if (current?.id === id) await loadVersions();
+  renderList();
+}
+
 async function refreshStandings(): Promise<void> {
   const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
     .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
@@ -370,6 +390,7 @@ async function loadSkillsSettings(): Promise<void> {
   el("skills-list-view")?.classList.remove("hidden");
   if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
   void refreshUpdates();
+  void refreshShares();
   const r = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
@@ -529,7 +550,9 @@ function renderList(): void {
           action: up ? updateButton(s.id, up.latest) : undefined,
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
-            { label: "Share", onClick: async () => { await openDetail(s.id); await share(); } },
+            ...(shares[s.id]?.pending
+              ? [{ label: "Withdraw from review", onClick: () => void withdrawShare(s.id, s.name) }]
+              : [{ label: "Share", onClick: async () => { await openDetail(s.id); await share(); } }]),
             ...(s.source !== "glyphh" && s.source !== "app" ? [{ label: "Manage in Glyphh", onClick: () => void adopt(s.id) }] : []),
             { sep: true as const },
             { label: "Remove", danger: true, onClick: () => void remove(s.id, s.name) },
@@ -1791,6 +1814,7 @@ function wire(): void {
       { label: "Try in chat", onClick: tryInChat },
       ...loops.map((l) => ({ label: `Edit with ${l.name}`, onClick: () => editWith(l) })),
       { label: "Check for updates", onClick: () => void checkForUpdates() },
+      ...(shareState.pending ? [{ label: `Withdraw v${shareState.pending} from review`, onClick: () => void withdrawShare(current!.id, current!.name) }] : []),
       ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
       { label: "Replace", onClick: () => void replaceFiles() },
       { label: "Download", onClick: () => void download() },

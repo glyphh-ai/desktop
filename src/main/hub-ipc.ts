@@ -133,7 +133,11 @@ async function install(ref: string, kind: Kind): Promise<{ id: string }> {
   return { id: installed.id };
 }
 
-const versionOf = (r: { headVersion?: number | null; version?: number | null }): number => Number(r.headVersion ?? r.version ?? 1);
+/** A catalog row's LIVE version, or 0 when nothing of it is approved yet. It
+ *  used to default to 1, so an item whose only version was sitting on the
+ *  review desk read as v1 available and every list row grew an Update button
+ *  for a version nobody could install (his report, 2026-09-17). */
+const versionOf = (r: { headVersion?: number | null; version?: number | null }): number => Number(r.headVersion ?? r.version ?? 0);
 
 /** Every catalog row this member can see, by kind, org rows first. */
 type CatalogRow = { id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null };
@@ -165,7 +169,7 @@ async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "o
   const recorded = originOf(skillId);
   if (recorded) return recorded;
   const slug = skillId.slice(skillId.indexOf(":") + 1).toLowerCase();
-  const rows = catalog ?? await catalogRows([kind]);
+  const rows = (catalog ?? await catalogRows([kind])).filter((c) => versionOf(c.row) > 0);
   const hit = rows.find((c) => c.kind === kind && c.row.slug?.toLowerCase() === slug)
     ?? rows.find((c) => c.kind === kind && c.row.name?.toLowerCase() === slug);
   if (!hit) return null;
@@ -233,11 +237,27 @@ async function shareStates(): Promise<Record<string, ShareState>> {
   return out;
 }
 
+/**
+ * TAKE A SUBMISSION BACK (his report, 2026-09-17: "the user has no way to
+ * revoke their submission"). A share that is still waiting is the author's to
+ * withdraw; an approved one is the org's and stays.
+ */
+async function withdrawShare(skillId: string): Promise<{ withdrawn: number }> {
+  const kind = kindOfId(skillId);
+  const slug = skillId.slice(skillId.indexOf(":") + 1).toLowerCase();
+  const name = getSkill(skillId).name;
+  const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
+  const item = (Array.isArray(items) ? items : []).find((it) => it.slug?.toLowerCase() === slug || it.name === name);
+  if (!item) throw new Error("this one isn't on your organization's hub");
+  const r = await getClient().http.del<{ withdrawn: number }>(`/api/library/${kind}/${encodeURIComponent(item.id)}/submission`);
+  return { withdrawn: Number(r?.withdrawn ?? 0) };
+}
+
 /** Installed bundles the catalog has moved past, by folder id. */
 async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
   const out: Record<string, { have: number; latest: number; name: string }> = {};
   for (const [id, st] of Object.entries(await standings())) {
-    if (st.latest > st.have) out[id] = { have: st.have, latest: st.latest, name: st.name };
+    if (st.latest > 0 && st.latest > st.have) out[id] = { have: st.have, latest: st.latest, name: st.name };
   }
   return out;
 }
@@ -383,6 +403,7 @@ export function registerHubIpc(): void {
   ipcMain.handle("skill-updates", () => env(updatesAvailable));
   ipcMain.handle("skill-standings", () => env(standings));
   ipcMain.handle("skill-shares", () => env(shareStates));
+  ipcMain.handle("skill-withdraw", (_e, id: string) => env(() => withdrawShare(String(id))));
   // The shelves a shared bundle sits on. Promote guesses them from the payload;
   // this is how a person corrects the guess without leaving the app.
   ipcMain.handle("skill-categories-set", (_e, itemId: string, kind: string, ids: unknown) => env(async () => {

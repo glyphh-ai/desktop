@@ -1145,6 +1145,7 @@ contextBridge.exposeInMainWorld("glyphh", {
    *  detail page's source line and its "Check for updates". */
   skillStandings: () => ipcRenderer.invoke("skill-standings") as Promise<LibEnvelope>,
   skillShares: () => ipcRenderer.invoke("skill-shares") as Promise<LibEnvelope>,
+  skillWithdraw: (id: string) => ipcRenderer.invoke("skill-withdraw", id) as Promise<LibEnvelope>,
   skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => ipcRenderer.invoke("skill-categories-set", itemId, kind, ids) as Promise<LibEnvelope>,
   skillUpdate: (id: string) => ipcRenderer.invoke("skill-update", id) as Promise<LibEnvelope>,
   skillInstall: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => ipcRenderer.invoke("skill-install", ref, kind) as Promise<LibEnvelope>,
