@@ -4219,14 +4219,18 @@ async function init(): Promise<void> {
         if (!b || !dockEl.contains(b)) return;
         ev.stopPropagation();
         const key = b.dataset.dock || "";
-        // SHIFT (his order, 2026-09-16): open that thing AGAIN — another agent
-        // panel, another tab form, another card of the tool.
+        // SHIFT (his order, 2026-09-16): open that thing AGAIN — another tab
+        // form, another card of the tool.
+        //
+        // NOT an agent, for now (his order, 2026-09-17). A second agent panel
+        // has to boot a whole second shell in a webview, because the agent's
+        // view is one node the page moves between hosts rather than clones, and
+        // it reads wrong beside the real one. Shift on an agent falls through
+        // to the ordinary open, which re-fronts the one that is already there.
         if (ev.shiftKey) {
-          if (key === "glyphh") { const first = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0]; if (first) openAgentForLoop(first.id, { again: true }); return; }
           if (key === "newtab") { openNewTabForm(); return; }
-          const again = entriesByKey().get(key);
-          if (again?.tile.cliAgent) { openAgentForLoop(again.tile.cliAgent.id, { again: true }); return; }
-          if (again) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
+          const again = key === "glyphh" ? null : entriesByKey().get(key);
+          if (again && !again.tile.cliAgent) { activateTile({ tile: { ...again.tile }, iconEl: again.iconEl, img: null }); return; }
         }
         if (DOCK_ITEMS.some((d) => d.key === key)) {
           const w = window as unknown as { __wbOpenSection?: (s: string) => void; __wbOpenTool?: (v: string) => void; __glyphhOpenSettings?: () => void; __glyphhNewSession?: () => void };
