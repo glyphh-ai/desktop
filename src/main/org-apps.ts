@@ -131,7 +131,7 @@ function toRow(app: LocalAppRow): OrgAppRow {
     secretNames: app.secretNames ?? [],
     requiredConnections: app.requiredConnections,
     connectionIds: app.requiredConnections.map((c) => c.slug),
-    iconUrl: null,
+    iconUrl: typeof app.config?.iconUrl === "string" ? app.config.iconUrl : null,
     listing: null,
     mcp: null,
     commands: {},

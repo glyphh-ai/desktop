@@ -200,6 +200,8 @@ const BUNDLE_DEFAULT_CAPABILITIES = ["db.exec", "notify.send", "agent.run", "llm
 interface BundleManifest {
   name?: string;
   ui?: string;
+  /** An .svg in the bundle: the tab's icon on the rail, the wall and the dock. */
+  icon?: string;
   /** A built-in work panel (gdesign, gpoint, gimage, gvideo, gsound): the tab opens it instead of the ui. */
   tool?: string;
   tools?: string;
@@ -228,7 +230,14 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
   const name = opts.name || String(m.name || path.basename(dir));
   const capabilities = Array.isArray(m.capabilities) && m.capabilities.length ? m.capabilities.map(String) : BUNDLE_DEFAULT_CAPABILITIES;
   const connectors = (m.dependencies?.connections || []).map((c) => String(c.app || "")).filter(Boolean);
-  const config = { capabilities, connectors, tools, bundleDir: dir, ...(m.tool ? { tool: String(m.tool) } : {}) };
+  let iconUrl: string | null = null;
+  if (typeof m.icon === "string" && m.icon.endsWith(".svg")) {
+    const iconPath = path.resolve(dir, m.icon);
+    if (iconPath.startsWith(path.resolve(dir) + path.sep)) {
+      try { const svg = fs.readFileSync(iconPath); if (svg.length < 64_000) iconUrl = `data:image/svg+xml;base64,${svg.toString("base64")}`; } catch { iconUrl = null; }
+    }
+  }
+  const config = { capabilities, connectors, tools, bundleDir: dir, ...(m.tool ? { tool: String(m.tool) } : {}), ...(iconUrl ? { iconUrl } : {}) };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === slug)).catch(() => undefined);
     if (existing) {

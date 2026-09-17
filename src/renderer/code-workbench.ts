@@ -45,6 +45,10 @@ import { relaySdk } from "./relay-socket.js";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
+import { initGPoint, type GPointPanel } from "./wb-gpoint.js";
+import { initGDrive, type GDrivePanel } from "./wb-drive.js";
+import { initDesign, type DesignPanel, type DesignSlotState } from "./wb-design.js";
+import { initMedia, type MediaPanel, type MediaSlotState, type MediaView } from "./wb-media.js";
 
 interface FileEntry { name: string; path: string; kind: "dir" | "file" }
 interface TreeNode extends FileEntry {
@@ -101,7 +105,7 @@ interface WbApi {
 }
 declare global { interface Window { wb: WbApi } }
 
-type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail";
+type ViewKind = "files" | "terminal" | "diff" | "preview" | "monaco" | "plan" | "coding" | "echo" | "thread" | "section" | "app" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound";
 
 interface MonacoTab {
   name: string; path: string; content: string;
@@ -222,7 +226,24 @@ interface AppSlot {
    *  layout designates a sticky cell; at most one app slot is sticky. */
   sticky?: boolean;
 }
-type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot;
+/** Slides — the deck library (~/.glyphh/gpoints) as cards; opening one flips the
+ *  SAME slot into a reader. `file` is runtime-only: a restored layout lands on the library. */
+interface GPointSlot {
+  id: number; view: "gpoint";
+  file?: string; title?: string; slideIdx?: number; railWidth?: number; page?: number;
+  sticky?: boolean;
+}
+/** Drive — folders + pointers over everything the apps make (wb-drive.ts). */
+interface GDriveSlot {
+  id: number; view: "gdrive";
+  folderId?: string | null; railOpen?: boolean; viewMode?: "browse" | "list"; page?: number; listPage?: number;
+  sticky?: boolean;
+}
+/** Design — Glyphh Design systems (library ↔ studio; wb-design.ts). */
+interface GDesignSlot extends DesignSlotState { view: "gdesign"; sticky?: boolean }
+/** Media — Image / Video / Sounds, one panel three views (wb-media.ts). */
+interface GMediaSlot extends MediaSlotState { sticky?: boolean }
+type Slot = MonacoSlot | FilesSlot | TermSlot | DiffSlot | PreviewSlot | PlanSlot | CodingSlot | ThreadSlot | EchoSlot | SectionSlot | AppSlot | RailPanelSlot | GPointSlot | GDriveSlot | GDesignSlot | GMediaSlot;
 
 interface Rail { id: number; slots: Slot[]; prefWidth?: number; banner?: "top" | "bottom"; heightFrac?: number }
 
@@ -267,6 +288,13 @@ const VIEW_META: Record<string, { title: string; icon: string }> = {
   tasks:    { title: "Scheduled Tasks", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 11 17 15 13"/></svg>` },
   thread:   { title: "Transcript", icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/></svg>` },
   app:      { title: "App",      icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>` },
+  // The hub's work-panel apps (Design, Slides, Images, Video, Audio, Drive), back on the surface 2026-09-17 with the icons they always wore.
+  gpoint:   { title: "Slides",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3.5" width="20" height="13" rx="2.5" style="fill:#af5fff;stroke:none"/><path d="M11 16.5h2v2.2h3.2a.9.9 0 1 1 0 1.8H7.8a.9.9 0 1 1 0-1.8H11z" style="fill:#6d28d9;stroke:none"/><path d="M10 7.2 15.4 10 10 12.8z" style="fill:#ffffff;stroke:none"/></svg>` },
+  gdrive:   { title: "Drive",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.1 4.6A2.5 2.5 0 0 1 8.4 3h7.2a2.5 2.5 0 0 1 2.3 1.6L21.5 12h-19z" style="fill:#2dd4bf;stroke:none"/><path d="M2.5 12h19v5.5A2.5 2.5 0 0 1 19 20H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#0f766e;stroke:none"/><circle cx="6.8" cy="16" r="1.25" style="fill:#ffffff;stroke:none"/><circle cx="10.6" cy="16" r="1.25" style="fill:#5eead4;stroke:none"/></svg>` },
+  gdesign:  { title: "Design",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a9.5 9.5 0 1 0 0 19h1.2a2 2 0 0 0 1.5-3.3 1.6 1.6 0 0 1 1.2-2.7h2.1A3.5 3.5 0 0 0 21.5 12 9.6 9.6 0 0 0 12 2.5z" style="fill:#ec4899;stroke:none"/><circle cx="8" cy="9" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="12.5" cy="6.8" r="1.5" style="fill:#f9a8d4;stroke:none"/><circle cx="16.4" cy="9.4" r="1.5" style="fill:#ffffff;stroke:none"/><circle cx="7.2" cy="13.8" r="1.5" style="fill:#f9a8d4;stroke:none"/></svg>` },
+  gimage:   { title: "Image",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="2.5" style="fill:#f59e0b;stroke:none"/><circle cx="8.6" cy="9" r="1.9" style="fill:#ffffff;stroke:none"/><path d="M2.5 17.5 8.5 12l4 3.6 3.6-3 5.4 4.9v3H5a2.5 2.5 0 0 1-2.5-2.5z" style="fill:#b45309;stroke:none"/></svg>` },
+  gvideo:   { title: "Video",    icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="15" rx="2.5" style="fill:#ef4444;stroke:none"/><path d="M2.5 8.6h19M6.9 5l2 3.6M12 5l2 3.6M17.1 5l2 3.6" style="stroke:#991b1b;stroke-width:1.6"/><path d="M10.2 11.6l5 2.9-5 2.9z" style="fill:#ffffff;stroke:none"/></svg>` },
+  gsound:   { title: "Sounds",   icon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8;stroke:none"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
 };
 
 // ── The Echo dock — FIXED nav slots above the wall's search box. Same icon
@@ -1003,7 +1031,7 @@ async function init(): Promise<void> {
           // The transcript panel is the same deal: it hosts live singleton DOM
           // and re-opens on demand, never from a saved layout.
           continue;
-        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco") {
+        } else if (v === "files" || v === "terminal" || v === "diff" || v === "preview" || v === "plan" || v === "echo" || v === "monaco" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
           slots.push(makeSlot(v));
         }
       }
@@ -1169,7 +1197,7 @@ async function init(): Promise<void> {
     // never as a rail slot beside it. (echo/coding/thread have their own
     // paths — Echo must never adopt the transcript and fight parkThread.)
     if (echoCtl && view !== "echo" && view !== "coding" && view !== "thread") {
-      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail");
+      echoCtl.openTool(view as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound");
       return;
     }
     placeSlot(makeSlot(view));
@@ -1240,7 +1268,7 @@ async function init(): Promise<void> {
     closeTool(view: string): void;
     refreshForCwd(): void;
     reset(): void;
-    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): void;
+    openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1356,6 +1384,10 @@ async function init(): Promise<void> {
     if (view === "thread") return { id, view };
     if (view === "echo") return { id, view };
     if (view === "rail") return { id, view };
+    if (view === "gpoint") return { id, view };
+    if (view === "gdrive") return { id, view };
+    if (view === "gdesign") return { id, view };
+    if (view === "gimage" || view === "gvideo" || view === "gsound") return { id, view };
     if (view === "plan") return { id, view, mode: "preview" };
     return { id, view: "preview", url: "" };
   }
@@ -1957,6 +1989,22 @@ async function init(): Promise<void> {
     else if (slot.view === "preview")  void renderPreviewIntoSlot(body, slot);
     else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
     else if (slot.view === "rail") renderRailIntoSlot(body, slot);
+    else if (slot.view === "gpoint") {
+      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
+      void renderGPointIntoSlot(body, slot, wrap);
+    }
+    else if (slot.view === "gdrive") {
+      body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
+      void renderGDriveIntoSlot(body, slot, wrap);
+    }
+    else if (slot.view === "gdesign") {
+      body.classList.add("ws-gdesign-body");
+      void renderDesignIntoSlot(body, slot, wrap);
+    }
+    else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
+      body.classList.add("ws-gmedia-body");
+      void renderMediaIntoSlot(body, slot, wrap);
+    }
     else if (slot.view === "coding") renderCodingIntoSlot(body, wrap);
     else if (slot.view === "thread") renderThreadIntoSlot(body);
     else if (slot.view === "echo") {
@@ -1976,6 +2024,94 @@ async function init(): Promise<void> {
     else if (slot.view === "app") renderAppIntoSlot(body, slot);
     return wrap;
   }
+
+  // ── The hub's work-panel apps — Slides, Drive, Design, Media (wb-*.ts) ──
+  // Lazy singletons behind HOISTED renderers, so the dispatch works no matter
+  // when the first render fires.
+  let gpointPanel: GPointPanel | null = null;
+  function gpointPanelInstance(): GPointPanel {
+    if (!gpointPanel) {
+      gpointPanel = initGPoint({
+        confirm: (o) => appConfirm(o),
+        slotById: (id) => {
+          const s = rails.flatMap((r) => r.slots).find((sl) => sl.id === id && sl.view === "gpoint") ?? echoCtl?.toolSlotById(id);
+          return s?.view === "gpoint" ? (s as GPointSlot) : undefined;
+        },
+        icon: VIEW_META.gpoint.icon,
+      });
+    }
+    return gpointPanel;
+  }
+  function renderGPointIntoSlot(body: HTMLElement, slot: GPointSlot, wrap: HTMLElement): Promise<void> {
+    return gpointPanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+  (window as unknown as { __wbOpenGPoint?: (file?: string, title?: string) => void }).__wbOpenGPoint = (file, title) => {
+    openToolWithPayload("gpoint", (t) => {
+      const sl = t as GPointSlot;
+      if (!file) return;
+      gpointPanelInstance().invalidate(file);
+      sl.file = file;
+      sl.title = title ?? file;
+    });
+  };
+
+  let gdrivePanel: GDrivePanel | null = null;
+  function gdrivePanelInstance(): GDrivePanel {
+    if (!gdrivePanel) {
+      gdrivePanel = initGDrive({
+        confirm: (o) => appConfirm(o),
+        icons: {
+          slides: VIEW_META.gpoint.icon,
+          folder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>`,
+        },
+        openFile: (_kind, file, title) => (window as unknown as { __wbOpenGPoint?: (f?: string, t?: string) => void }).__wbOpenGPoint?.(file, title),
+      });
+    }
+    return gdrivePanel;
+  }
+  function renderGDriveIntoSlot(body: HTMLElement, slot: GDriveSlot, wrap: HTMLElement): Promise<void> {
+    return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+  (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => { openToolWithPayload("gdrive", () => {}); };
+
+  let gdesignPanel: DesignPanel | null = null;
+  function gdesignPanelInstance(): DesignPanel {
+    if (!gdesignPanel) gdesignPanel = initDesign({ confirm: (o) => appConfirm(o), icon: VIEW_META.gdesign.icon });
+    return gdesignPanel;
+  }
+  function renderDesignIntoSlot(body: HTMLElement, slot: GDesignSlot, wrap: HTMLElement): Promise<void> {
+    return gdesignPanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+  (window as unknown as { __wbOpenDesign?: (file?: string, title?: string) => void }).__wbOpenDesign = (file, title) => {
+    openToolWithPayload("gdesign", (t) => {
+      const sl = t as GDesignSlot;
+      if (!file) return;
+      gdesignPanelInstance().invalidate(file);
+      sl.file = file;
+      sl.title = title ?? file;
+    });
+  };
+
+  let gmediaPanel: MediaPanel | null = null;
+  function gmediaPanelInstance(): MediaPanel {
+    if (!gmediaPanel) {
+      gmediaPanel = initMedia({
+        confirm: (o) => appConfirm(o),
+        icons: { gimage: VIEW_META.gimage.icon, gvideo: VIEW_META.gvideo.icon, gsound: VIEW_META.gsound.icon },
+      });
+    }
+    return gmediaPanel;
+  }
+  function renderMediaIntoSlot(body: HTMLElement, slot: GMediaSlot, wrap: HTMLElement): Promise<void> {
+    return gmediaPanelInstance().renderIntoSlot(body, slot, wrap);
+  }
+  (window as unknown as { __wbOpenMedia?: (view: MediaView, assetId?: string, songId?: string) => void }).__wbOpenMedia = (view, assetId, songId) => {
+    void songId;
+    openToolWithPayload(view, (t) => {
+      const m = t as GMediaSlot;
+      if (assetId) { gmediaPanelInstance().invalidate(); m.assetId = assetId; }
+    });
+  };
 
   // Drive's text/code files open IN THE EDITOR as content tabs (drive://
   // paths — viewable, copyable; a disk save is refused by the write bridge).
@@ -5122,7 +5258,7 @@ async function init(): Promise<void> {
               }
             }
             else if (v === "rail") { continue; }   // the rail is the fixed sidebar (2026-09-16): a Rail cell opens nothing
-            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan") {
+            else if (v === "files" || v === "terminal" || v === "monaco" || v === "diff" || v === "preview" || v === "plan" || v === "gpoint" || v === "gdrive" || v === "gdesign" || v === "gimage" || v === "gvideo" || v === "gsound") {
               entry = adHoc({ name: VIEW_META[v].title, slug: v, kind: "tool", toolView: v, sticky: cell.sticky });
               // A PARKED terminal (this same layout cell, closed by nav-away)
               // re-attaches: same pty, same buffer, the CLI agent inside
@@ -5540,6 +5676,22 @@ async function init(): Promise<void> {
         else if (slot.view === "preview") void renderPreviewIntoSlot(body, slot);
         else if (slot.view === "plan") void renderPlanIntoSlot(body, slot);
         else if (slot.view === "rail") { renderRailIntoSlot(body, slot); wireRailCollapse(card, slot, body); }
+        else if (slot.view === "gpoint") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Slides — loading your decks…</div>`;
+          void renderGPointIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gdrive") {
+          body.innerHTML = `<div style="padding:16px;font:12px ui-monospace,monospace;color:#9aa0aa">Drive — loading…</div>`;
+          void renderGDriveIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gdesign") {
+          body.classList.add("ws-gdesign-body");
+          void renderDesignIntoSlot(body, slot, card);
+        }
+        else if (slot.view === "gimage" || slot.view === "gvideo" || slot.view === "gsound") {
+          body.classList.add("ws-gmedia-body");
+          void renderMediaIntoSlot(body, slot, card);
+        }
     };
 
     let openingLayout = false;
@@ -6019,7 +6171,7 @@ async function init(): Promise<void> {
       card.classList.add("flash");
       window.setTimeout(() => card.classList.remove("flash"), 600);
     };
-    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"): TileEntry => {
+    const getOrOpenTool = (view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): TileEntry => {
       let entry = openList.find((x) => x.tile.toolView === view);
       if (!entry) {
         entry = entries.find((x) => x.tile.toolView === view)
@@ -9297,7 +9449,7 @@ async function init(): Promise<void> {
     maximizedSlotId = null;
     const cols = Math.max(1, layout.cols);
     const usable = Math.max(0, railsBudget() - (cols + 1) * 6);
-    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail"]);
+    const TOOL_VIEWS = new Set(["files", "terminal", "diff", "preview", "plan", "coding", "echo", "monaco", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"]);
     const toSlot = (c: WbLayoutCell): Slot => {
       if (c.tool && TOOL_VIEWS.has(c.tool)) {
         const slot = makeSlot(c.tool as Exclude<ViewKind, "app">);
@@ -9575,8 +9727,8 @@ async function init(): Promise<void> {
     });
   (window as unknown as { __wbOpenTool?: (view: string) => void }).__wbOpenTool = (view: string) => {
     const v = view === "editor" ? "monaco" : view;
-    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail"].includes(v)) return;
-    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail"); return; }
+    if (!["files", "terminal", "diff", "preview", "plan", "monaco", "echo", "coding", "rail", "gpoint", "gdrive", "gdesign", "gimage", "gvideo", "gsound"].includes(v)) return;
+    if (echoCtl && v !== "coding" && v !== "echo") { echoCtl.openTool(v as "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"); return; }
     if (!viewIsOpen(v as ViewKind)) placeView(v as Exclude<ViewKind, "app">);
   };
   wbApp.__wbOpenSection = (section: string) => openSectionInWorkbench(section);
