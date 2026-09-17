@@ -226,6 +226,9 @@ function paintShareChip(): void {
   if (hubItem) return;
   const chip = shareChip(shareState);
   if (chip) host.appendChild(chip);
+  // The share state arrives after the header is drawn, so the header is drawn
+  // again: it decides whether Share is still offered.
+  paintDetailChrome();
 }
 
 /** The name, with the type beside it (never under it — his order, 2026-09-17). */
@@ -883,7 +886,9 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
 /** Share / enabled / ⋮ for a local skill; one Add button for a hub item. */
 function paintDetailChrome(): void {
   const hub = !!hubItem;
-  el("skill-share")?.classList.toggle("hidden", hub);
+  // Share goes away once there IS a share (his order, 2026-09-17). Waiting on
+  // the desk or live on the hub, the door out is Withdraw in the ⋮.
+  el("skill-share")?.classList.toggle("hidden", hub || !!shareState.pending || !!shareState.head);
   el("skill-enabled")?.closest(".skills-switch")?.classList.toggle("hidden", hub);
   el("skill-kebab")?.classList.toggle("hidden", hub);
   el("skill-edit")?.classList.add("hidden");
