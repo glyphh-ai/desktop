@@ -679,13 +679,12 @@ function gateAdminSubs(): void {
     // button retargets; admins keep the org support list.
     const buildLoops = document.querySelector<HTMLElement>('.settings-nav-item[data-sub="org-loops"], .settings-nav-item[data-sub="loops"].platform-only');
     if (buildLoops && !admin) buildLoops.dataset.sub = "loops";
-    // Members on the PLATFORM see nothing org-financial and no catalog:
-    // Billing is org_admin's alone; Models/Marketplace open to admins too.
-    // The server 403s the reads regardless — this hides the doors. Desktop
-    // keeps Billing personal-visible as before.
-    if (document.body.classList.contains("platform-shell")) {
-      document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
-    }
+    // BILLING IS THE MONEY DOOR and it is org_admin's alone, on every surface
+    // (his order, 2026-09-17: a member of an org should not see it in the app
+    // either). Someone who signed up alone is org_admin of their own org, so
+    // they keep it; an invited member does not. The server 403s the reads
+    // regardless — this hides the door.
+    document.getElementById("nav-billing")?.classList.toggle("hidden", !orgAdmin);
     // The Platform group (the super-admin console — Catalog / Plans / Usage /
     // Orgs) is a TIER above the org-admin gate: super_admin only. The server
     // enforces the role on every route regardless — this only hides the nav.
