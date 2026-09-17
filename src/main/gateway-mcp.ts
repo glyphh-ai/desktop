@@ -38,18 +38,69 @@ async function connect(): Promise<Client> {
 export function resetGatewayMcp(): void {
   const c = client;
   client = null;
+  toolNames = null;
   if (c) void c.close().catch(() => {});
 }
 
 /**
- * Call one connected app's tool through the gateway. The gateway prefixes each
- * tool with its server's name, so a bare tool name is qualified with the app.
- * An error RESULT is raised as an error: the gateway answers a refusal with
- * `isError` and ordinary content, which a caller that only checks for throws
- * would read as data.
+ * THE GATEWAY NAMES ITS OWN TOOLS (his report, 2026-09-17: every connector
+ * call came back "User not allowed to call this tool", which reads as a
+ * governance refusal).
+ *
+ * A tool there is prefixed with the SERVER's registered name, and a
+ * connection's server is named for the org and the account —
+ * `pd_<org>_google_drive_u_<user>` — not for the app slug. We asked for
+ * `google_drive-list_files`, which resolves to no server at all, and the
+ * permission check then refuses a server it could not identify. The CLI
+ * never hit this because it lists the tools and calls them by the names it
+ * was given.
+ *
+ * So do that: ask the gateway what it has, and match the app and the tool
+ * against real names. The answer is cached per connection and refreshed when
+ * a name misses, since a connection added today must not need a restart.
+ */
+let toolNames: string[] | null = null;
+
+async function knownToolNames(force = false): Promise<string[]> {
+  if (toolNames && !force) return toolNames;
+  try {
+    const c = await connect();
+    const listed = await c.listTools();
+    toolNames = (listed?.tools ?? []).map((t) => String(t.name));
+  } catch { toolNames = toolNames ?? []; }
+  return toolNames;
+}
+
+/** The gateway's own name for one app's tool, or null when it has no such tool. */
+async function resolveToolName(appSlug: string, tool: string, force = false): Promise<string | null> {
+  const names = await knownToolNames(force);
+  const bare = tool.includes("-") ? tool.slice(tool.lastIndexOf("-") + 1) : tool;
+  const app = appSlug.toLowerCase();
+  const exact = names.find((n) => n === tool);
+  if (exact) return exact;
+  const byApp = names.filter((n) => n.toLowerCase().includes(app));
+  const hit = byApp.find((n) => n === `${appSlug}-${tool}`)
+    ?? byApp.find((n) => n.endsWith(`-${tool}`))
+    ?? byApp.find((n) => n.endsWith(`-${bare}`))
+    ?? byApp.find((n) => n.toLowerCase().endsWith(bare.toLowerCase()));
+  if (hit) return hit;
+  return force ? null : resolveToolName(appSlug, tool, true);
+}
+
+/**
+ * Call one connected app's tool through the gateway. An error RESULT is raised
+ * as an error: the gateway answers a refusal with `isError` and ordinary
+ * content, which a caller that only checks for throws would read as data.
  */
 export async function callGatewayTool(appSlug: string, tool: string, args: Record<string, unknown> = {}): Promise<unknown> {
-  const name = tool.startsWith(`${appSlug}-`) ? tool : `${appSlug}-${tool}`;
+  const resolved = await resolveToolName(appSlug, tool);
+  if (!resolved) {
+    const names = (await knownToolNames()).filter((n) => n.toLowerCase().includes(appSlug.toLowerCase())).slice(0, 12);
+    throw new Error(names.length
+      ? `"${tool}" is not a tool on ${appSlug}. It has: ${names.join(", ")}`
+      : `${appSlug} has no tools on the gateway — connect it, or ask your admin to authorize the shared account`);
+  }
+  const name = resolved;
   let res: unknown;
   try {
     const c = await connect();
