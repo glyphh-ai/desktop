@@ -12,7 +12,7 @@
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
-import { renderToolGroups } from "./settings-connections.js";
+import { renderToolGroups, renderConnectionTable } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
@@ -34,7 +34,6 @@ type Env<T> = { ok: boolean; data?: T; error?: string };
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
 const SOURCE_ORDER: Source[] = ["glyphh", "app", "plugin", "task", "claude", "codex", "gemini"];
 const SKILL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
-const CONN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`;
 const PLUGIN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg>`;
 const TASK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg>`;
 const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
@@ -116,8 +115,16 @@ const typeChip = (type: BundleType | undefined): string =>
  *  IS, else its type's. The middle step matters for the work-panel apps —
  *  Design, Slides, Drive and the media panels are those panels, and the ones
  *  installed before the catalog shipped icons carry no icon.svg at all. */
-const markOf = (s: { icon?: string | null; tool?: string | null } | null | undefined): string =>
-  (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
+/** The Glyphh bundle wears the brand mark (his order, 2026-09-17), the same
+ *  image the Glyphh app row wears everywhere else — it is Glyphh's own skill,
+ *  not a generic one. */
+const GLYPHH_MARK = `<img src="brand/glyphh-mark.png" alt="" class="skill-brand-mark" />`;
+const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
+  const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
+  return slug === "glyphh";
+};
+const markOf = (s: { icon?: string | null; tool?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
+  isGlyphhBundle(s) ? GLYPHH_MARK : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
 /** The shelves a shared bundle sits on, and the door to change them. Nothing
  *  to show until it has been shared — an unshared folder is on no shelf. */
@@ -1040,13 +1047,11 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
   }
 }
 
-/** The app's connection dependencies against what this member has connected.
- *
- *  A manifest in the wild carries either shape — `["gmail"]` or
- *  `[{ app: "gmail", as: "member" }]` — and a bare string used to throw
- *  mid-loop, which left the pane blank under a count of 2 (his report,
- *  2026-09-17). Normalize first, drop what has no app slug, and count what
- *  actually renders. */
+/** A bundle's declared accounts, as the Connections page draws them (his
+ *  order, 2026-09-17): the connector's own logo, a Type column, the Shared
+ *  badge, a check when connected and a Connect button when not. The rows are
+ *  rendered by that page so the two tables cannot drift. Either manifest
+ *  shape is accepted, since a hand-written one carries bare slugs. */
 async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<void> {
   const deps = normalizeConnDeps(raw);
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
@@ -1055,57 +1060,13 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
   const blurb = el("skill-connections")?.querySelector(".skill-overview-desc");
   if (blurb) {
     blurb.textContent = typeOf(current) === "task"
-      ? "Accounts this task works through. An unattended run only uses the tools you set to Always allow."
-      : "Accounts this app works through. Connect the ones it needs before opening it.";
+      ? "Accounts this task works through. Every one is required, and an unattended run only uses the tools you set to Always allow."
+      : "Accounts this app works through. Every one is required; connect them before opening it.";
   }
   if (count) count.textContent = `· ${deps.length}`;
   host.textContent = "";
   if (!deps.length) { host.innerHTML = `<div class="crud-empty">This ${TYPE_LABEL[typeOf(current)]} needs no connections.</div>`; return; }
-  const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] }));
-  const have = new Map(mine.connections.map((c) => [c.appSlug, c]));
-  for (const dep of deps) {
-    try { paintConnRow(host, dep, have, () => paintBundleConnections(raw)); }
-    // ONE BAD ROW NEVER BLANKS THE PANE (his report, twice): whatever a
-    // manifest carries, every row that can render does.
-    catch (err) { console.warn("[skills] connection row skipped:", err); }
-  }
-}
-
-interface ConnRow { appSlug: string; label?: string | null; appName?: string | null; connected?: boolean; shared?: boolean }
-
-function paintConnRow(host: HTMLElement, dep: ConnDep, have: Map<string, ConnRow>, refresh: () => Promise<void>): void {
-  {
-    const c = have.get(dep.app);
-    const org = dep.as === "org";
-    const ready = !!c && (c.connected || c.shared);
-    const row = document.createElement("div");
-    row.className = "skill-row";
-    row.innerHTML = `<div class="skill-tile-icon"></div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
-    (row.querySelector(".skill-tile-icon") as HTMLElement).innerHTML = CONN_ICON;
-    (row.querySelector(".skill-row-name") as HTMLElement).textContent = c?.label || c?.appName || dep.app.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-    // Every declared dependency is required — say so, so a missing one reads as
-    // something to fix rather than a suggestion.
-    (row.querySelector(".skill-row-desc") as HTMLElement).textContent = org ? "Required · Org account, shared by your admin" : "Required · Your account";
-    const right = row.querySelector(".skill-row-right") as HTMLElement;
-    const chip = document.createElement("span");
-    chip.className = ready ? "app-conn-state on" : "app-conn-state";
-    chip.textContent = ready ? "Connected" : (org ? "Ask your admin" : "Not connected");
-    right.appendChild(chip);
-    if (!ready && !org) {
-      const btn = document.createElement("button");
-      btn.className = "action-btn primary"; btn.type = "button"; btn.textContent = "Connect";
-      btn.addEventListener("click", async () => {
-        btn.disabled = true; btn.textContent = "Connecting…";
-        const r = await (window.glyphh.connectorsConnect?.(dep.app) ?? Promise.resolve({ ok: false, error: "Connect is not available here." })).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-        if (!r.ok) { btn.disabled = false; btn.textContent = "Connect"; fail(r.error || "Couldn't connect."); return; }
-        let tries = 0;
-        const tick = async (): Promise<void> => { await refresh(); const fresh = (await window.glyphh.connectionsList().catch(() => ({ connections: [] }))).connections.find((x) => x.appSlug === dep.app); if (!(fresh?.connected || fresh?.shared) && ++tries < 6) setTimeout(() => void tick(), 1500); };
-        setTimeout(() => void tick(), 1500);
-      });
-      right.appendChild(btn);
-    }
-    host.appendChild(row);
-  }
+  await renderConnectionTable(host, deps);
 }
 
 async function openDetail(id: string): Promise<void> {

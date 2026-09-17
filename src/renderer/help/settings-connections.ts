@@ -283,6 +283,80 @@ function render(): void {
   }
 }
 
+/**
+ * ONE CONNECTION TABLE (his order, 2026-09-17).
+ *
+ * A bundle's Connections tab listed its accounts as plain rows with a link
+ * glyph while the Connections page showed a real table: the connector's own
+ * logo, a Type column, the Shared badge, a check when connected. Both
+ * surfaces render HERE now, so they cannot drift again — the same lesson as
+ * the app list the wall and the rail share.
+ *
+ * `deps` are what a manifest declares. Every one is REQUIRED: an unconnected
+ * account gets the page's own Connect button, which runs the same flow.
+ */
+export async function renderConnectionTable(
+  host: HTMLElement,
+  deps: ReadonlyArray<{ app: string; as?: string }>,
+  opts: { onChanged?: () => void } = {},
+): Promise<void> {
+  host.textContent = "";
+  if (!deps.length) return;
+  const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] }));
+  const have = new Map((mine.connections ?? []).map((c) => [c.appSlug, c]));
+  const pretty = (slug: string): string => slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
+
+  const table = document.createElement("div");
+  table.className = "conn2-table";
+  table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
+  const rows: Entry[] = [];
+  for (const dep of deps) {
+    const c = have.get(dep.app);
+    const org = dep.as === "org";
+    const e: Entry = c
+      ? {
+          key: `pd:${c.id}`, kind: c.org ? "org" : "pipedream", name: c.label || c.appName || pretty(dep.app),
+          desc: c.appName || "", type: "Web", badge: c.org ? (c.shared ? "Shared" : "Org") : "",
+          connected: c.connected !== false || !!c.shared, enabled: true, icon: null, conn: c,
+        }
+      : {
+          key: `dep:${dep.app}`, kind: "pipedream", name: pretty(dep.app), desc: "", type: "Web",
+          badge: org ? "Org" : "", connected: false, enabled: true, icon: catalog.find((a) => a.id === dep.app)?.icon ?? null,
+        };
+    rows.push(e);
+    const tr = document.createElement("div");
+    tr.className = "conn2-tr";
+    tr.innerHTML = `${iconFor(e)}<span class="conn2-name"></span><span class="conn2-type"><span></span>${e.badge ? `<span class="conn2-badge">${escapeHtml(e.badge)}</span>` : ""}</span><span class="conn2-status"></span>`;
+    (tr.querySelector(".conn2-name") as HTMLElement).textContent = e.name;
+    (tr.querySelector(".conn2-type > span") as HTMLElement).textContent = e.type;
+    const st = tr.querySelector(".conn2-status") as HTMLElement;
+    if (e.connected) st.innerHTML = `<span class="conn2-check">${CHECK}</span>`;
+    else if (org) st.innerHTML = `<span class="conn2-muted">Ask your admin</span>`;
+    else {
+      // The catalog row when we have it (its own name and logo), else the slug.
+      const app: CatalogApp = catalog.find((a) => a.id === dep.app) ?? { id: dep.app, name: e.name, description: "" };
+      const btn = connectAppButton(app, true);
+      btn.addEventListener("click", () => {
+        // The flow finishes out of band; re-read until the row turns.
+        let tries = 0;
+        const tick = (): void => {
+          void renderConnectionTable(host, deps, opts).then(() => { opts.onChanged?.(); });
+          if (++tries < 6) window.setTimeout(tick, 1500);
+        };
+        window.setTimeout(tick, 1500);
+      });
+      st.appendChild(btn);
+    }
+    table.appendChild(tr);
+  }
+  host.appendChild(table);
+  // Connected accounts wear their own logo once the icon cache warms.
+  void primeConnectedIcons(
+    rows.filter((x) => x.conn).map((x) => ({ connection: { accountId: x.conn!.accountId, pipedreamSlug: x.conn!.appSlug } })),
+    () => { void renderConnectionTable(host, deps, opts); },
+  );
+}
+
 function connectButton(e: Entry): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";

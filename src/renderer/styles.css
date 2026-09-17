@@ -6218,6 +6218,9 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   position: relative;
 }
 
+/* The Glyphh bundle's brand mark inside a library tile. */
+.skill-brand-mark { width: 68%; height: 68%; object-fit: contain; display: block; }
+
 /* ── TOASTS — the app's notifications (his order, 2026-09-17) ──────────
    One stack, top right, ABOVE the settings overlay and every modal (the
    highest z-index in this file is 100000, so the stack sits past it). The
