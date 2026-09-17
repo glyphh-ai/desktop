@@ -23,8 +23,20 @@ function fail(err: unknown): { ok: false; error: string } {
 }
 
 export function registerSupportIpc(): void {
-  ipcMain.handle("support-tickets", () => getClient().support.tickets());
-  ipcMain.handle("support-thread", (_e, id: string) => getClient().support.thread(String(id || "")));
+  // A READ BEFORE SIGN-IN IS NOT A FAULT (his log, 2026-09-17): the panel asks
+  // on boot, the client has no token yet, and an unhandled rejection paints
+  // "Error occurred in handler for 'support-tickets'" across the log. An
+  // unauthenticated read answers with nothing; every other failure still
+  // propagates, so a real outage is not disguised as an empty list.
+  const unauthed = (err: unknown): boolean => /not authenticated|unauthorized|401/i.test(err instanceof Error ? err.message : String(err));
+  ipcMain.handle("support-tickets", async () => {
+    try { return await getClient().support.tickets(); }
+    catch (err) { if (unauthed(err)) return []; throw err; }
+  });
+  ipcMain.handle("support-thread", async (_e, id: string) => {
+    try { return await getClient().support.thread(String(id || "")); }
+    catch (err) { if (unauthed(err)) return null; throw err; }
+  });
   ipcMain.handle("support-create-ticket", async (_e, input: SupportTicketCreate) => {
     try { return { ok: true as const, thread: await getClient().support.createTicket(input) }; }
     catch (err) { return fail(err); }
