@@ -453,10 +453,18 @@ function permFlag(row: Pick<CliAgentRow, "cli" | "permission">, headless: boolea
   return table?.[mode] ?? "";
 }
 
+/**
+ * A catalog id ("anthropic::claude-sonnet-5") as the vendor's own name. Every
+ * picker in the app stores catalog ids; no CLI has ever understood the
+ * provider prefix, so a lane that forgets to strip it hands the CLI a model
+ * that cannot exist (his report, 2026-09-17: "There's an issue with the
+ * selected model (anthropic::claude-haiku-4-5)").
+ */
+export const bareModel = (model: string): string => model.replace(/"/g, "").replace(/^[a-z0-9_-]+::/i, "").trim();
+
 function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   if (!model) return "";
-  // A catalog id ("anthropic::claude-sonnet-5") from the org pickers; the CLI's flag takes the bare name.
-  const m = model.replace(/"/g, "").replace(/^[a-z0-9_-]+::/i, "");
+  const m = bareModel(model);
   switch (cli) {
     case "claude": return ` --model "${m}"`;
     case "codex": return ` -m "${m}"`;

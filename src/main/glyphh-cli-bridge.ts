@@ -22,7 +22,7 @@ import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
-import { listCliAgents, composeHeadless, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -320,7 +320,10 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     // the can_use_tool handler above turns each ask into an approval card.
     "--permission-prompt-tool", "stdio",
   ];
-  if (p.model?.trim()) parts.push("--model", p.model.trim());
+  // The CLI takes the vendor's own name; the app stores catalog ids. This lane
+  // used to pass the id whole, so the panel asked for "anthropic::claude-…".
+  const wanted = bareModel(p.model ?? "");
+  if (wanted) parts.push("--model", wanted);
   if (resume) parts.push("--resume", resume);
   const mcp = bridgeMcpFile();
   if (mcp) parts.push("--mcp-config", mcp);

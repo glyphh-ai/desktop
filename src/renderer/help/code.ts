@@ -293,8 +293,16 @@ function modelsForLoop(): AvailModel[] {
   return availModels;
 }
 
+/** WHAT THE CHIP SHOWS IS WHAT THE TURN SENDS (his report, 2026-09-17: the
+ *  composer said one model while another was asked for). The chip used to read
+ *  the session's own pick only, while a turn falls back to Settings' default
+ *  model — so a chat with no pick of its own displayed one thing and ran
+ *  another. Both resolve here. */
+function effectiveModelId(): string | null {
+  return current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref ?? null;
+}
 function selectedModel(): AvailModel | null {
-  const id = current()?.models?.["default"] ?? pendingModels?.["default"] ?? null;
+  const id = effectiveModelId();
   return availModels.find((m) => m.id === id) ?? null;
 }
 
@@ -302,9 +310,14 @@ function paintModelChip(): void {
   const mc = el("code-model-chip");
   if (!mc) return;
   const sel = selectedModel();
-  mc.textContent = `Model: ${sel?.name ?? "Default"}`;
-  mc.title = sel ? `${sel.name} — ${sel.providerSlug}` : "The loop's own default model";
-  mc.className = "code-chip";
+  const id = effectiveModelId();
+  // A model the catalog no longer carries still RUNS, so name it rather than
+  // calling it the default: a stale pick is a thing to notice, not to hide.
+  mc.textContent = `Model: ${sel?.name ?? (id ? id : "Default")}`;
+  mc.title = sel ? `${sel.name} — ${sel.providerSlug}`
+    : id ? `${id} — not in your model list; the loop may refuse it`
+    : "The loop's own default model";
+  mc.className = "code-chip" + (!sel && id ? " warn" : "");
 }
 
 async function refreshModelList(force?: boolean): Promise<void> {
