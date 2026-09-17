@@ -6229,13 +6229,18 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
    the settings overlay — at .conn-modal's own z-index it opened behind it and
    the user could not see it at all (his report, 2026-09-17). Toasts still win,
    since they report what the modal just did. */
-.skill-sched-modal { z-index: 999000; }
-.skill-sched-panel {
+/* Both selectors carry the base class too: these rules sit ABOVE .conn-modal
+   in this file, and at equal specificity the later rule wins — which is how
+   the panel stayed 680x600 and opened behind the settings overlay after I
+   "fixed" it (his report, 2026-09-17). */
+.conn-modal.skill-sched-modal { z-index: 999000; }
+.conn-modal-panel.skill-sched-panel {
   height: auto; max-height: 82vh; width: min(360px, 92vw);
   padding: 14px 14px 12px; border-radius: 12px;
 }
 .skill-sched-panel .conn-modal-header { margin-bottom: 10px; }
 .skill-sched-panel .conn-modal-title { font-size: 14px; }
+.conn-modal-panel.skill-sched-panel .settings-input { margin-bottom: 0; }
 .skill-sched-form { display: flex; flex-direction: column; gap: 8px; }
 .skill-sched-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); }
 .skill-sched-field .settings-input { margin-bottom: 0; width: 170px; flex-shrink: 0; padding: 5px 8px; font-size: 13px; }
