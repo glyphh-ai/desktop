@@ -1090,7 +1090,7 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
   const every = existing ? (hour0 === "*" ? "hour" : dow0 === "1-5" ? "weekday" : /^[0-6]$/.test(dow0) ? "week" : "day") : "day";
 
   const wrap = document.createElement("div");
-  wrap.className = "conn-modal";
+  wrap.className = "conn-modal skill-sched-modal";
   wrap.innerHTML = `<div class="conn-modal-backdrop"></div><div class="conn-modal-panel skill-sched-panel">
     <div class="conn-modal-header"><h3 class="conn-modal-title">Schedule ${escapeHtml(s.name)}</h3><button class="conn-modal-close" type="button">✕</button></div>
     <div class="skill-sched-form">
@@ -1142,7 +1142,9 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
   [everySel, hourSel, minSel, dowSel].forEach((el2) => el2.addEventListener("change", sync));
   sync();
 
-  const close = (): void => wrap.remove();
+  const close = (): void => { document.removeEventListener("keydown", onKey); wrap.remove(); };
+  const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  document.addEventListener("keydown", onKey);
   q(".conn-modal-backdrop").addEventListener("click", close);
   q(".conn-modal-close").addEventListener("click", close);
   q('[data-a="cancel"]').addEventListener("click", close);

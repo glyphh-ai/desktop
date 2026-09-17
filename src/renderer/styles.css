@@ -6225,13 +6225,22 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 .skill-model-select { min-width: 150px; max-width: 220px; }
 .skill-tile-icon.own img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
 
-/* The schedule modal: three dropdowns, never a cron field. */
-.skill-sched-panel { height: auto; max-height: 82vh; width: min(460px, 92vw); }
-.skill-sched-form { display: flex; flex-direction: column; gap: 12px; }
-.skill-sched-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text-2); }
-.skill-sched-field .settings-input { margin-bottom: 0; width: 200px; flex-shrink: 0; }
-.skill-sched-preview { font-size: 12.5px; color: var(--text-3); padding-top: 4px; border-top: 1px solid var(--border); }
-.skill-sched-actions-row { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+/* The schedule modal: three dropdowns, never a cron field. Compact, and ABOVE
+   the settings overlay — at .conn-modal's own z-index it opened behind it and
+   the user could not see it at all (his report, 2026-09-17). Toasts still win,
+   since they report what the modal just did. */
+.skill-sched-modal { z-index: 999000; }
+.skill-sched-panel {
+  height: auto; max-height: 82vh; width: min(360px, 92vw);
+  padding: 14px 14px 12px; border-radius: 12px;
+}
+.skill-sched-panel .conn-modal-header { margin-bottom: 10px; }
+.skill-sched-panel .conn-modal-title { font-size: 14px; }
+.skill-sched-form { display: flex; flex-direction: column; gap: 8px; }
+.skill-sched-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--text-2); }
+.skill-sched-field .settings-input { margin-bottom: 0; width: 170px; flex-shrink: 0; padding: 5px 8px; font-size: 13px; }
+.skill-sched-preview { font-size: 12.5px; color: var(--text-3); padding-top: 8px; margin-top: 2px; border-top: 1px solid var(--border); }
+.skill-sched-actions-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 
 /* A slot's agent picker: wide enough for a real agent name (it was 80px, so
    every option read "First ag…"), and it never outgrows the row. */
