@@ -242,14 +242,74 @@ function notice(msg: string, opts?: { detail?: string }): void {
   toastOk(msg, opts);
 }
 
+/** WHERE EACH BUNDLE CAME FROM (his report, 2026-09-17: "there is no update
+ *  mechanism"). The detail page says the source and the version even when
+ *  nothing is newer, and the ⋮ can always check or re-pull. */
+interface Standing { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
+let standings: Record<string, Standing> = {};
+
+async function refreshStandings(): Promise<void> {
+  const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
+    .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
+  standings = r.ok ? r.data ?? {} : {};
+  if (current) paintSource(current.id);
+}
+
+/** The Overview's source line: a folder from a hub says so and names its version. */
+function paintSource(id: string): void {
+  const st = standings[id];
+  const authorEl = el("skill-author"); const metaEl = el("skill-author-meta");
+  if (!st || !authorEl || !metaEl) return;
+  authorEl.textContent = st.from === "org" ? "Your organization's hub" : "Glyphh";
+  metaEl.textContent = st.have ? `Installed from ${st.sourceName} · v${st.have}${st.latest > st.have ? ` · v${st.latest} available` : " · up to date"}` : `From ${st.sourceName}`;
+}
+
 /** Ask the hub what has moved on. Never blocks the list; repaints if it finds any. */
 async function refreshUpdates(): Promise<void> {
   const r = await (api() as unknown as { skillUpdates: () => Promise<Env<typeof updates>> }).skillUpdates().catch(() => ({ ok: false } as Env<typeof updates>));
   const next = r.ok ? r.data ?? {} : {};
   const changed = Object.keys(next).join() !== Object.keys(updates).join();
   updates = next;
+  void refreshStandings();
   if (changed && el("skills-groups")) renderList();
   if (changed && current) paintDetailChrome();
+}
+
+/** ALWAYS A DOOR: ask the hub now and say what came back, whether or not
+ *  anything moved. Without this a bundle that was current looked like a
+ *  bundle with no update mechanism at all. */
+async function checkForUpdates(): Promise<void> {
+  if (!current) return;
+  const id = current.id, name = current.name;
+  await refreshUpdates();
+  await refreshStandings();
+  paintDetailChrome();
+  const up = updates[id]; const st = standings[id];
+  if (up) notice(`${name} can go to v${up.latest}`, { detail: `You are on v${up.have}. Update is in the header.` });
+  else if (st) notice(`${name} is up to date`, { detail: `v${st.have} from ${st.sourceName}` });
+  else notice(`${name} isn't on a hub`, { detail: "Nothing to update from. Share it to put it on your organization's hub." });
+}
+
+/** Take the hub's copy again even when the versions match — the way back from
+ *  a local edit. */
+async function reinstall(): Promise<void> {
+  if (!current) return;
+  const st = standings[current.id];
+  if (!st) { fail("This one isn't on a hub, so there is nothing to reinstall from."); return; }
+  const sure = await confirmAction({
+    title: `Reinstall "${current.name}"?`,
+    body: `The hub's v${st.latest} is written over this copy. Files you added stay; files the hub dropped go.`,
+    confirmLabel: "Reinstall",
+  });
+  if (!sure) return;
+  const id = current.id;
+  const r = await (api() as unknown as { skillUpdate: (id: string) => Promise<Env<{ version: number }>> }).skillUpdate(id)
+    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ version: number }>);
+  if (!r.ok) { fail(r.error || "Couldn't reinstall."); return; }
+  notice(`${current.name} reinstalled at v${r.data?.version ?? st.latest}`);
+  delete updates[id];
+  await loadSkillsSettings();
+  await openDetail(id);
 }
 
 /** Take the catalog's version over this copy. */
@@ -1090,6 +1150,7 @@ async function openDetail(id: string): Promise<void> {
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
+  paintSource(s.id);
   viewedVersion = null;
   shareState = { head: null, pending: null };
   shareItem = null;
@@ -1472,6 +1533,8 @@ function wire(): void {
     openMenu(anchor, [
       { label: "Try in chat", onClick: tryInChat },
       ...loops.map((l) => ({ label: `Edit with ${l.name}`, onClick: () => editWith(l) })),
+      { label: "Check for updates", onClick: () => void checkForUpdates() },
+      ...(standings[current.id] ? [{ label: `Reinstall v${standings[current.id]!.latest} from the hub`, onClick: () => void reinstall() }] : []),
       { label: "Replace", onClick: () => void replaceFiles() },
       { label: "Download", onClick: () => void download() },
       { label: "Show in folder", onClick: () => void api().skillReveal(current!.id) },

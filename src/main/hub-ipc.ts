@@ -174,9 +174,15 @@ async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "o
   return { from: hit.from, itemId: hit.row.id, kind, slug: hit.row.slug, version: 0, files: [], installedAt: "" };
 }
 
-/** Installed bundles the catalog has moved past, by folder id. */
-async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
-  const out: Record<string, { have: number; latest: number; name: string }> = {};
+/**
+ * WHERE EVERY INSTALLED BUNDLE STANDS (his report, 2026-09-17: "there is no
+ * update mechanism"). One read, used by the badge AND by the detail page, so
+ * a bundle from the catalog can always say where it came from, which version
+ * it is on, and what the catalog has — even when the two match.
+ */
+export interface BundleStanding { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
+async function standings(): Promise<Record<string, BundleStanding>> {
+  const out: Record<string, BundleStanding> = {};
   const mine = listSkills(["skill", "app", "task", "plugin"]);
   if (!mine.length) return out;
   const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
@@ -188,9 +194,22 @@ async function updatesAvailable(): Promise<Record<string, { have: number; latest
     if (!o) continue;
     const hit = catalog.find((c) => c.from === o.from && c.kind === kind && c.row.id === o.itemId);
     if (!hit) continue;
-    const latest = versionOf(hit.row);
-    const have = Number(o.version || 0);
-    if (latest > have) out[sk.id] = { have, latest, name: hit.row.name };
+    out[sk.id] = {
+      from: o.from,
+      sourceName: o.from === "org" ? "your organization's hub" : "the Glyphh catalog",
+      name: hit.row.name,
+      have: Number(o.version || 0),
+      latest: versionOf(hit.row),
+    };
+  }
+  return out;
+}
+
+/** Installed bundles the catalog has moved past, by folder id. */
+async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
+  const out: Record<string, { have: number; latest: number; name: string }> = {};
+  for (const [id, st] of Object.entries(await standings())) {
+    if (st.latest > st.have) out[id] = { have: st.have, latest: st.latest, name: st.name };
   }
   return out;
 }
@@ -198,6 +217,8 @@ async function updatesAvailable(): Promise<Record<string, { have: number; latest
 /** Take the catalog's current version over this copy: write what the payload
  *  has, take away what it dropped, and keep anything the user added. */
 async function update(skillId: string): Promise<{ version: number }> {
+  // Same path whether the catalog moved or not: "Reinstall from the hub" is
+  // this with nothing newer to fetch, which is how a local edit is undone.
   const o = await originFor(skillId, kindOfId(skillId));
   if (!o) throw new Error("no catalog item matches this one by slug, so there is nothing to update from");
   const client = getClient();
@@ -316,6 +337,7 @@ export function registerHubIpc(): void {
   ipcMain.handle("skills-discover", (_e, kind?: string | string[]) => env(() => discover(kindsOf(kind))));
   ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
   ipcMain.handle("skill-updates", () => env(updatesAvailable));
+  ipcMain.handle("skill-standings", () => env(standings));
   // The shelves a shared bundle sits on. Promote guesses them from the payload;
   // this is how a person corrects the guess without leaving the app.
   ipcMain.handle("skill-categories-set", (_e, itemId: string, kind: string, ids: unknown) => env(async () => {
