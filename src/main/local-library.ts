@@ -178,7 +178,19 @@ export const slotAgentRoster = (): SlotAgent[] => agentChoices?.() ?? [];
 /** The task runner (task-runner.ts) — late-bound, since it imports this module. */
 let taskRunner: ((slug: string, scheduleId: string, input: unknown) => void) | null = null;
 export function setTaskRunner(fn: (slug: string, scheduleId: string, input: unknown) => void): void { taskRunner = fn; }
-interface RunRow { id: string; schedule_id: string; started_at: string; duration_ms: number | null; status: string; error: string | null; output: string | null }
+interface RunRow {
+  id: string; schedule_id: string; started_at: string; duration_ms: number | null; status: string;
+  error: string | null; output: string | null;
+  trigger?: string | null; input?: string | null; result?: string | null; journal?: string | null;
+}
+
+/** A journalled column is TEXT holding JSON; a missing or broken one is not
+ *  worth failing a history read over. */
+const jsonOr = <T>(raw: unknown, fallback: T): T | unknown => {
+  if (raw == null) return fallback;
+  if (typeof raw !== "string") return raw;
+  try { return JSON.parse(raw) as unknown; } catch { return fallback; }
+};
 
 const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -545,7 +557,14 @@ export function registerLocalLibraryIpc(): void {
     // whole history lives, so this is the deep read; the card and the recents
     // lane are the shallow ones.
     (getLocalDb().prepare("SELECT * FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 500").all(String(id)) as Array<RunRow & { task_slug?: string | null }>)
-      .map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output, taskSlug: r.task_slug ?? null }))));
+      // THE WHOLE ROW (his order, 2026-09-17): the schedule's history renders
+      // with the same renderer as a bundle's Runs tab, which tells the story
+      // from the journal, so the journal has to come with it.
+      .map((r) => ({
+        id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error,
+        output: r.output, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null,
+        input: jsonOr(r.input, null), result: jsonOr(r.result, null), journal: jsonOr(r.journal, { checkpoints: {}, events: [] }),
+      }))));
   ipcMain.handle("schedule-recent-runs", () => env(() =>
     (getLocalDb().prepare(`SELECT r.*, s.name AS schedule_name FROM loop_runs r LEFT JOIN loop_schedules s ON s.id = r.schedule_id ORDER BY r.started_at DESC LIMIT 60`).all() as Array<RunRow & { schedule_name: string | null; task_slug?: string | null; trigger?: string | null }>)
       .map((r) => ({ id: r.id, scheduleId: r.schedule_id || null, scheduleName: r.schedule_name, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error }))));

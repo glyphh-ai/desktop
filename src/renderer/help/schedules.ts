@@ -9,9 +9,11 @@
  * A schedule is written in words ("weekdays at 9am") or as a five-field cron.
  */
 
-import { escapeHtml } from "./shared.js";
-import { confirmAction } from "./shared.js";
+import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
+import { closeSettingsModal } from "./navigation.js";
 import { toastError, toastOk } from "./toast.js";
+import { renderRunList, type RunRowLite } from "./lib-runs.js";
+let openRunId: string | null = null;
 
 interface Env<T> { ok: boolean; data?: T; error?: string }
 interface ScheduleRow {
@@ -373,25 +375,21 @@ function closeEditor(): void {
 
 async function paintRuns(id: string): Promise<void> {
   const host = el("schedule-runs"); if (!host) return;
-  host.innerHTML = `<div class="crud-empty">Loading history…</div>`;
+  host.innerHTML = loadingHtml("Loading history…");
   const r = await api().scheduleRuns(id);
   if (!host.isConnected || editing?.id !== id) return;
-  if (!r.ok) { host.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "Couldn't load runs")}</div>`; return; }
-  const runs = r.data ?? [];
-  if (!runs.length) { host.innerHTML = `<div class="crud-empty">No runs yet.</div>`; return; }
-  host.textContent = "";
-  for (const run of runs) {
-    const e = document.createElement("div");
-    e.className = "ws-task-run" + (run.status === "ok" ? "" : " failed");
-    const when = new Date(run.startedAt);
-    e.innerHTML = `<div class="ws-task-run-head"><span class="ws-task-chip ${run.status === "ok" ? "ok" : run.status === "running" ? "" : "err"}">${escapeHtml(run.status)}</span><span class="ws-task-run-when" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(relSpan(when.getTime() - Date.now()))}</span>${run.durationMs != null ? `<span class="ws-task-run-dur">${(run.durationMs / 1000).toFixed(1)}s</span>` : ""}${run.taskSlug ? `<button class="action-btn ws-task-story-btn" type="button">Story</button>` : ""}</div>${run.error ? `<pre class="ws-task-run-err"></pre>` : ""}${run.output && !run.taskSlug ? `<pre class="ws-task-run-out"></pre>` : ""}`;
-    const err = e.querySelector(".ws-task-run-err") as HTMLElement | null; if (err) err.textContent = run.error || "";
-    const out = e.querySelector(".ws-task-run-out") as HTMLElement | null; if (out) out.textContent = run.output || "";
-    e.querySelector(".ws-task-story-btn")?.addEventListener("click", () => {
-      (window as unknown as { __glyphhOpenTaskRun?: (slug: string, runId: string) => void }).__glyphhOpenTaskRun?.(run.taskSlug!, run.id);
-    });
-    host.appendChild(e);
-  }
+  // THE SAME LIST THE BUNDLE SHOWS (his order, 2026-09-17): expand a run for
+  // its whole story, including each agent turn's prompt and output.
+  renderRunList(host, (r.ok ? r.data ?? [] : []) as RunRowLite[], {
+    empty: r.ok ? "No runs." : (r.error || "Couldn't load runs."),
+    openId: openRunId,
+    onToggle: (rid) => { openRunId = rid; },
+    onOpenAgent: (prompt) => {
+      closeSettingsModal();
+      // The same bridge the library uses to start a session with a prompt.
+      (window as unknown as { __glyphhOpenSessionWith?: (o: { prompt: string }) => void }).__glyphhOpenSessionWith?.({ prompt });
+    },
+  });
 }
 
 async function save(): Promise<void> {

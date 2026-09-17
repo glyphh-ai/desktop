@@ -18,6 +18,7 @@ import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { cronToWords, openScheduleOnLoad } from "./schedules.js";
+import { renderRunList } from "./lib-runs.js";
 import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
 
@@ -1273,55 +1274,17 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
   if (!host.isConnected || current?.id !== s.id) return;
   const runs = r.ok ? r.data ?? [] : [];
   if (count) count.textContent = runs.length ? `· ${runs.length}` : "";
-  host.textContent = "";
-  if (!runs.length) { host.innerHTML = `<div class="crud-empty">${r.ok ? "No runs." : escapeHtml(r.error || "Couldn't load runs.")}</div>`; return; }
-  const rel = (ms: number): string => { const a = Math.abs(ms); const u = a < 60_000 ? ["s", 1000] as const : a < 3_600_000 ? ["m", 60_000] as const : a < 86_400_000 ? ["h", 3_600_000] as const : ["d", 86_400_000] as const; return `${Math.round(a / u[1])}${u[0]} ago`; };
-  for (const run of runs) {
-    const e = document.createElement("div");
-    e.className = "ws-task-run" + (run.status === "ok" ? "" : run.status === "running" ? " running" : " failed") + (openRunId === run.id ? " open" : "");
-    const when = new Date(run.startedAt);
-    e.innerHTML = `<div class="ws-task-run-head"><span class="ws-task-chip ${run.status === "ok" ? "ok" : run.status === "running" ? "" : "err"}">${escapeHtml(run.status)}</span><span class="ws-task-run-trigger">${escapeHtml(run.trigger)}</span><span class="ws-task-run-when" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(rel(when.getTime() - Date.now()))}</span>${run.durationMs != null ? `<span class="ws-task-run-dur">${(run.durationMs / 1000).toFixed(1)}s</span>` : ""}<span class="ws-task-run-count">${run.journal.events.length} events</span>${run.status === "running" ? `<button class="action-btn ws-task-cancel" type="button">Cancel</button>` : ""}</div><div class="task-story hidden"></div>`;
-    const head = e.querySelector(".ws-task-run-head") as HTMLElement;
-    const story = e.querySelector(".task-story") as HTMLElement;
-    head.addEventListener("click", (ev) => {
-      if ((ev.target as HTMLElement).closest(".ws-task-cancel")) return;
-      openRunId = openRunId === run.id ? null : run.id;
-      e.classList.toggle("open", openRunId === run.id);
-      story.classList.toggle("hidden", openRunId !== run.id);
-      if (openRunId === run.id && !story.childElementCount) paintStory(story, run);
-    });
-    e.querySelector(".ws-task-cancel")?.addEventListener("click", async () => {
-      await (api() as unknown as { taskRunCancel: (id: string) => Promise<Env<unknown>> }).taskRunCancel(run.id);
+  // ONE RENDERER (lib-runs.ts): the schedule's Run history draws the same rows.
+  renderRunList(host, runs, {
+    empty: r.ok ? "No runs." : (r.error || "Couldn't load runs."),
+    openId: openRunId,
+    onToggle: (id) => { openRunId = id; },
+    onCancel: async (id) => {
+      await (api() as unknown as { taskRunCancel: (i: string) => Promise<Env<unknown>> }).taskRunCancel(id);
       void paintTaskRuns(s);
-    });
-    if (openRunId === run.id) paintStory(story, run);
-    host.appendChild(e);
-  }
-}
-
-function paintStory(host: HTMLElement, run: TaskRunRow): void {
-  host.textContent = "";
-  const line = (kind: string, title: string, body?: string, cls = ""): void => {
-    const d = document.createElement("div");
-    d.className = `task-event task-event-${kind}${cls ? ` ${cls}` : ""}`;
-    d.innerHTML = `<div class="task-event-head"><span class="task-event-kind">${escapeHtml(kind)}</span><span class="task-event-title"></span></div>${body ? `<pre class="task-event-body"></pre>` : ""}`;
-    (d.querySelector(".task-event-title") as HTMLElement).textContent = title;
-    const pre = d.querySelector(".task-event-body") as HTMLElement | null; if (pre) pre.textContent = body || "";
-    host.appendChild(d);
-  };
-  const show = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
-  if (run.input && Object.keys(run.input as object).length) line("input", "what it got", show(run.input));
-  for (const ev of run.journal.events) {
-    const t = new Date(ev.t).toLocaleTimeString();
-    if (ev.kind === "agent") line("agent", `${t} · ${ev.agent || ev.slot} took the ${ev.slot} slot${ev.error ? " · failed" : ""}`, `${show(ev.prompt)}\n\n→ ${ev.error ? show(ev.error) : show(ev.json ?? ev.output)}`, ev.error ? "failed" : "");
-    else if (ev.kind === "connection") line("connection", `${t} · ${ev.app} · ${ev.tool}${ev.error ? " · failed" : ""}`, `${show(ev.args)}\n\n→ ${ev.error ? show(ev.error) : show(ev.result)}`, ev.error ? "failed" : "");
-    else if (ev.kind === "data") line("data", `${t} · ${ev.repo}${ev.rows != null ? ` · ${ev.rows} rows` : ev.changes != null ? ` · ${ev.changes} changed` : ""}${ev.error ? " · failed" : ""}`, `${show(ev.sql)}${ev.error ? `\n\n→ ${show(ev.error)}` : ""}`, ev.error ? "failed" : "");
-    else if (ev.kind === "checkpoint") line("checkpoint", `${t} · ${ev.key}${ev.replayed ? " · replayed" : ""}`);
-    else if (ev.kind === "log") line("log", `${t} · ${show(ev.message)}`, ev.detail != null ? show(ev.detail) : undefined);
-    else if (ev.kind === "resume") line("resume", `${t} · picked up after a restart`);
-  }
-  if (run.error) line("failed", run.error, undefined, "failed");
-  if (run.status === "ok") line("result", "what it returned", show(run.result));
+    },
+    onOpenAgent: (prompt) => { closeSettingsModal(); openSessionWith({ cwd: s.dir, prompt }); },
+  });
 }
 
 const AGENT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>`;

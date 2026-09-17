@@ -6221,6 +6221,12 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* A task's clock, on its Overview. (skill-overview-extra hosts these blocks;
    each one gets its own top gap so they read as separate facts.) */
 .skill-overview-block { margin-top: 20px; }
+/* A story event's own actions: copy the output, carry it on in a session. */
+.task-event-head { display: flex; align-items: center; gap: 8px; }
+.task-event-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.task-event-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; font: inherit; font-size: 11.5px; color: var(--text-3); cursor: pointer; }
+.task-event-btn:hover { color: var(--text); border-color: var(--border-2); background: var(--hover); }
+
 /* "Open schedule": a quiet link beside the control, not a second button. */
 .skill-sched-open { background: none; border: none; padding: 0; font: inherit; font-size: 12.5px; color: var(--accent-text); cursor: pointer; }
 .skill-sched-open:hover { text-decoration: underline; }
