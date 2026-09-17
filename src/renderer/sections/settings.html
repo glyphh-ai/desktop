@@ -50,7 +50,8 @@
               <button class="settings-nav-item not-on-platform hidden" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>Apps</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
-              <button class="settings-nav-item not-on-platform" data-sub="tasks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg><span>Tasks</span></button>
+              <!-- Tasks moved onto Skills (2026-09-17), same as Apps: hidden, not gone. -->
+              <button class="settings-nav-item not-on-platform hidden" data-sub="tasks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg><span>Tasks</span></button>
               <!-- CUSTOMIZE (his order, 2026-09-16): the work panel's own shape, Workspaces and Drips. -->
               <div class="settings-nav-group not-on-platform" id="nav-group-customize">Customize</div>
               <button class="settings-nav-item not-on-platform" data-sub="tabs"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8.4" height="8.4" rx="2"/><rect x="12.6" y="3" width="8.4" height="8.4" rx="2"/><rect x="3" y="12.6" width="8.4" height="8.4" rx="2"/><rect x="12.6" y="12.6" width="8.4" height="8.4" rx="2"/></svg><span>Tabs</span></button>
@@ -2021,7 +2022,7 @@
                   <div id="skill-slots" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Who does the work where the program calls an agent. A slot filled here holds for every run.</div><div id="skill-slots-list" class="skill-list"></div></div></div>
                   <div id="skill-runs" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Every run is a story: the agents it called, the connections it used, what it checkpointed, and what it returned.</div><div id="skill-runs-list" class="skill-list"></div></div></div>
                   <div id="skill-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this works through. Connect the ones it needs before opening it.</div><div id="skill-connections-list" class="app-bundle-list"></div></div></div>
-                  <div id="skill-flow" class="skill-overview hidden"><div id="skill-flow-host" class="skill-flow-host"></div></div>
+                  <div id="skill-flow" class="skill-flow-pane hidden"><div id="skill-flow-host" class="skill-flow-host"></div></div>
                   <div id="skill-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>
@@ -2173,7 +2174,7 @@
                   <div id="gtask-slots" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Who does the work where the program calls an agent. A slot filled here holds for every run.</div><div id="gtask-slots-list" class="skill-list"></div></div></div>
                   <div id="gtask-runs" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Every run is a story: the agents it called, the connections it used, what it checkpointed, and what it returned.</div><div id="gtask-runs-list" class="skill-list"></div></div></div>
                   <div id="gtask-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this task works through. Unattended runs only use tools set to Always allow.</div><div id="gtask-connections-list" class="app-bundle-list"></div></div></div>
-                  <div id="gtask-flow" class="skill-overview hidden"><div id="gtask-flow-host" class="skill-flow-host"></div></div>
+                  <div id="gtask-flow" class="skill-flow-pane hidden"><div id="gtask-flow-host" class="skill-flow-host"></div></div>
                   <div id="gtask-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>

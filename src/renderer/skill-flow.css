@@ -2,6 +2,10 @@
    Bundled into dist/renderer/skill-flow.css alongside @xyflow/react's own
    styles. Reads the app's design tokens from styles.css (with fallbacks). */
 
+/* Every rule below is scoped to the flow SURFACE, which is either host: the
+   old split layout's, or the library detail's Flow tab (.skill-flow-host).
+   The surface's own box (size, position) belongs to whoever hosts it. */
+
 /* Theme-aware chrome colors for the canvas (edges, dot grid). */
 :root,
 html[data-theme="light"] { --sf-edge: #c2c2c2; }
@@ -14,7 +18,7 @@ html[data-theme="dark"]  { --sf-edge: #454545; }
   position: relative;
 }
 
-.lib-split-flow .react-flow { background: var(--surface, #0e0e0e); }
+:is(.lib-split-flow, .skill-flow-host) .react-flow { background: var(--surface, #0e0e0e); }
 
 .skill-flow-loading {
   display: flex;
@@ -117,25 +121,25 @@ html[data-theme="dark"]  { --sf-edge: #454545; }
 /* ── Zoom / fit controls (bottom-left) ───────────────────────
    React Flow ships these light-themed, so on the dark canvas they render as
    a white block with invisible icons. Theme them to match. */
-.lib-split-flow .react-flow__controls {
+:is(.lib-split-flow, .skill-flow-host) .react-flow__controls {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
   border: 1px solid var(--border, #2a2a2a);
   border-radius: 7px;
   overflow: hidden;
 }
 
-.lib-split-flow .react-flow__controls-button {
+:is(.lib-split-flow, .skill-flow-host) .react-flow__controls-button {
   background: var(--surface-2, #1a1a1a);
   border-bottom: 1px solid var(--border, #2a2a2a);
   width: 26px;
   height: 26px;
 }
 
-.lib-split-flow .react-flow__controls-button:hover {
+:is(.lib-split-flow, .skill-flow-host) .react-flow__controls-button:hover {
   background: var(--surface-3, #242424);
 }
 
-.lib-split-flow .react-flow__controls-button svg {
+:is(.lib-split-flow, .skill-flow-host) .react-flow__controls-button svg {
   fill: var(--text-2, #bbbbbb);
   max-width: 12px;
   max-height: 12px;

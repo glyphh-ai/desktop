@@ -20872,5 +20872,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .icon-mark { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: none; color: var(--text-2); }
 .icon-mark.art svg { width: 100%; height: 100%; }
 .icon-mark.glyph svg { width: 64%; height: 64%; }
-/* The FLOW tab: the React-Flow island needs a measured box to lay out in. */
-.skill-flow-host { height: min(560px, calc(100vh - 320px)); min-height: 340px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); overflow: hidden; }
+/* The FLOW tab: one full-width surface, not the two-column overview grid, and
+   as tall as the panel leaves it. The island needs a measured box to lay out. */
+.skill-flow-pane { display: block; width: 100%; min-width: 0; }
+.skill-flow-host { position: relative; width: 100%; height: calc(100vh - 250px); min-height: 380px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
