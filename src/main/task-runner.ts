@@ -262,6 +262,8 @@ function saveJournal(runId: string, journal: RunJournal): void {
 
 interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string }
 const live = new Map<string, Live>();
+/** How many restarts a single run may survive before it is called dead. */
+const MAX_RESUMES = 2;
 
 const summarize = (v: unknown, max = 4000): unknown => {
   const s = typeof v === "string" ? v : JSON.stringify(v);
@@ -328,8 +330,19 @@ async function connectionCall(spec: TaskSpec, appSlug: string, tool: string, arg
   if (listConnRows().some((r) => r.slug === appSlug)) return callConnectionTool(appSlug, tool, a);
   const client = await gatewayClient();
   const name = tool.startsWith(`${appSlug}-`) ? tool : `${appSlug}-${tool}`;
-  try { return await client.callTool({ name, arguments: a }); }
+  let res: unknown;
+  try { res = await client.callTool({ name, arguments: a }); }
   catch (err) { gateway = null; throw err; }
+  // AN ERROR RESULT IS AN ERROR (his report, 2026-09-17): the gateway answers a
+  // refusal as a normal result carrying isError, so the program read "User not
+  // allowed to call this tool" as data and logged "found 0 events". A refusal
+  // has to reach the program as a throw, and the journal as a failure.
+  const r = res as { isError?: boolean; content?: Array<{ type?: string; text?: string }> };
+  if (r && r.isError) {
+    const said = (r.content ?? []).map((c) => c?.text).filter(Boolean).join(" ").trim();
+    throw new Error(said || `"${tool}" on ${appSlug} was refused by the gateway`);
+  }
+  return res;
 }
 
 function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<unknown> {
@@ -511,6 +524,14 @@ export function resumeInterruptedRuns(): void {
     if (!run.taskSlug) {
       // A skill run is a shell process: it died with the app and cannot resume.
       finish(run.id, run.startedAt, "failed", "interrupted by a restart", null);
+      continue;
+    }
+    // A RUN IS NOT IMMORTAL: a program that never finishes would otherwise be
+    // picked up again on every single start, forever (his report: three
+    // resumes of the same run).
+    const resumes = run.journal.events.filter((e) => e.kind === "resume").length;
+    if (resumes >= MAX_RESUMES) {
+      finish(run.id, run.startedAt, "failed", `gave up after ${resumes} restarts without finishing`, null);
       continue;
     }
     try {
