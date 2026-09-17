@@ -165,6 +165,10 @@ const TOOL_PANELS: Array<{ id: string; label: string; icon: string }> = [
   { id: "tool:gsound",   label: "Sounds", icon: `<svg viewBox="0 0 24 24" fill="none"><rect x="2.5" y="2.5" width="19" height="19" rx="4" style="fill:#38bdf8"/><path d="M6 12v0M9 8.5v7M12 6v12M15 9v6M18 11v2" style="stroke:#ffffff;stroke-width:1.9;stroke-linecap:round"/></svg>` },
 ];
 const toolPanelIcon = (id: string): string => TOOL_PANELS.find((t) => t.id === id)?.icon || "";
+/** The mark a built-in work panel wears, by its view key ("gdesign"). The
+ *  library pages use it for an app that IS a panel and ships no icon of its
+ *  own (his report, 2026-09-17: the Design app's icon wasn't rendering). */
+export const toolViewIcon = (view: string): string => toolPanelIcon(`tool:${view}`);
 
 // ── Layout SPACE (which agent rides it) — mirrors code-workbench ─────────
 // Explicit `space` wins; else dev tool panels make it a Code layout, and

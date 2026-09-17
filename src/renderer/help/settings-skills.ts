@@ -13,6 +13,7 @@ import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
+import { toolViewIcon } from "./layouts.js";
 import { cronToWords } from "./schedules.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -21,10 +22,10 @@ type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemin
  *  task". It is read from the bundle's own manifest (main/skills-fs.ts). */
 type BundleType = "skill" | "app" | "task" | "plugin";
 const TYPE_LABEL: Record<BundleType, string> = { skill: "skill", app: "app", task: "task", plugin: "plugin" };
-interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null }
+interface SkillRow { id: string; source: Source; type: BundleType; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null; tool?: string | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; type?: BundleType }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null; tool?: string | null; type?: BundleType }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
 const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
@@ -106,13 +107,18 @@ const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.t
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
 const typeChip = (type: BundleType | undefined): string =>
   type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
-/** A bundle's own icon.svg when its manifest names one, else its type's mark. */
-const iconOf = (own: string | null | undefined, type?: BundleType): string =>
-  (own && own.includes("<svg") ? own : TYPE_ICON[type ?? cfg.kind]);
-const setDetailIcon = (own: string | null | undefined, type?: BundleType): void => {
+/** The mark a bundle wears: the icon.svg it ships, else the built-in panel it
+ *  IS, else its type's. The middle step matters for the work-panel apps —
+ *  Design, Slides, Drive and the media panels are those panels, and the ones
+ *  installed before the catalog shipped icons carry no icon.svg at all. */
+const markOf = (s: { icon?: string | null; tool?: string | null } | null | undefined): string =>
+  (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
+const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
+const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType } | null | undefined): void => {
+  const mark = markOf(row);
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
-    n.innerHTML = iconOf(own, type);
-    n.classList.toggle("own", !!(own && own.includes("<svg")));
+    n.innerHTML = iconOf(mark, row?.type);
+    n.classList.toggle("own", !!mark);
   });
 };
 
@@ -156,10 +162,11 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; type?: BundleType }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType }): HTMLElement {
+  const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
-  r.innerHTML = `<div class="skill-tile-icon${opts.icon && opts.icon.includes("<svg") ? " own" : ""}">${iconOf(opts.icon, opts.type)}</div>
+  r.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${iconOf(mark, opts.type)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"></div>
       <div class="skill-row-sub">${typeChip(opts.type)}<span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
@@ -286,7 +293,7 @@ function renderList(): void {
       for (const s of rows) {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
-          desc: s.description, right: when(s.updatedAt), icon: s.icon, type: s.type,
+          desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           onOpen: () => void openDetail(s.id),
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
@@ -355,7 +362,8 @@ function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
 function discoverCard(d: DiscoverRow): HTMLElement {
   const c = document.createElement("div");
   c.className = "disc-card";
-  c.innerHTML = `<div class="skill-tile-icon${d.icon && d.icon.includes("<svg") ? " own" : ""}">${d.icon && d.icon.includes("<svg") ? d.icon : glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta">${typeChip(d.type)}<span class="disc-card-metatext"></span></div></div>`;
+  const mark = markOf(d);
+  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta">${typeChip(d.type)}<span class="disc-card-metatext"></span></div></div>`;
   (c.querySelector(".disc-card-name") as HTMLElement).textContent = d.name;
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
   (c.querySelector(".disc-card-metatext") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
@@ -584,7 +592,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(d.type)}${escapeHtml(`from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
-  setDetailIcon(d.icon, d.type);
+  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type });
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
@@ -921,7 +929,7 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
-  setDetailIcon(s.icon, s.type);
+  setDetailIcon(s);
   void paintExtras(s, null);
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
