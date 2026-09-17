@@ -139,6 +139,7 @@ export function saveTaskSpec(input: {
   const description = String(input.description ?? existing?.description ?? "");
   if (existing) {
     writeManifest(existing.dir, manifest);
+    pinCommonJs(existing.dir);
     if (input.program !== undefined) fs.writeFileSync(path.join(existing.dir, "run.js"), String(input.program), "utf-8");
     if (input.description !== undefined) {
       const md = path.join(existing.dir, "SKILL.md");
@@ -156,10 +157,23 @@ export function saveTaskSpec(input: {
   installSkill(slug, {
     "SKILL.md": `---\nname: ${slug}\ndescription: ${description.replace(/\n/g, " ") || name}\n---\n\n# ${name}\n\nA Glyphh task: a program the desktop runs on its own.\n`,
     [MANIFEST]: JSON.stringify(manifest, null, 2) + "\n",
+    // THE BUNDLE SAYS WHAT ITS PROGRAM IS (his report, 2026-09-17). Node reads
+    // the nearest package.json to decide, and a "type": "module" anywhere above
+    // the bundle — a home directory will do — turned run.js into an ES module
+    // and broke module.exports. This one is nearer than anything else.
+    "package.json": JSON.stringify({ type: "commonjs", private: true }, null, 2) + "\n",
     "run.js": program,
   }, "task");
   if (armWanted) ensureTaskSchedule(slug, manifest.schedule ?? null, name);
   return getTaskSpec(slug);
+}
+
+/** Pin a bundle's program to CommonJS, whatever package.json sits above it. */
+function pinCommonJs(dir: string): void {
+  const f = path.join(dir, "package.json");
+  if (fs.existsSync(f)) return;
+  try { fs.writeFileSync(f, JSON.stringify({ type: "commonjs", private: true }, null, 2) + "\n", "utf-8"); }
+  catch (err) { console.warn("[tasks] could not pin the program's module type:", err instanceof Error ? err.message : err); }
 }
 
 /** A program that hands one prompt to one slot: the shape every pre-bundle task had. */
@@ -410,6 +424,9 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
   proc.on("exit", (code) => {
     if (live.has(run.id)) finish(run.id, run.startedAt, "failed", code === 0 ? "the program exited without a result" : `the program died (exit ${code})`, null);
   });
+  // Whoever wrote this bundle — us, an agent, the hub — its program is CommonJS
+  // unless it says otherwise, and no package.json further up gets a vote.
+  pinCommonJs(spec.dir);
   proc.postMessage({ type: "start", dir: spec.dir, program: spec.program, input: run.input, slots: spec.slots.map((s) => s.name), connections: spec.connections, repos: [] });
 }
 

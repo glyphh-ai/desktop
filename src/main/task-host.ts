@@ -13,6 +13,7 @@
  * run replays from the last checkpoint the program chose.
  */
 
+import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
 
@@ -72,6 +73,27 @@ function makeCtx(start: StartMsg): Record<string, unknown> {
   };
 }
 
+/**
+ * Evaluate the program as CommonJS ourselves.
+ *
+ * Node decides what a `.js` file IS from the nearest package.json, and a
+ * `"type": "module"` ANYWHERE above the bundle — his home directory, in the
+ * report — makes every task program an ES module. Then `module is not defined`
+ * kills the import, and require() refuses the same file for the same reason,
+ * so a perfectly good program cannot run because of a file it has never heard
+ * of. This path owes nothing to that lookup.
+ */
+function evalCommonJs(file: string): Record<string, unknown> {
+  const src = fs.readFileSync(file, "utf8");
+  const mod = { exports: {} as Record<string, unknown> };
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const run = new Function("module", "exports", "require", "__filename", "__dirname", src) as
+    (m: typeof mod, e: Record<string, unknown>, r: NodeRequire, f: string, d: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  run(mod, mod.exports, require, file, path.dirname(file));
+  return mod.exports;
+}
+
 async function loadProgram(file: string): Promise<(ctx: unknown, input: unknown) => unknown> {
   // TS under commonjs rewrites import() to require(); a real dynamic import
   // is the only door for an ESM program, so it is built out of the compiler's sight.
@@ -79,9 +101,11 @@ async function loadProgram(file: string): Promise<(ctx: unknown, input: unknown)
   let mod: Record<string, unknown>;
   try { mod = await dynamicImport(pathToFileURL(file).href); }
   catch (err) {
-    if (!/\.cjs$|\.js$/.test(file)) throw err;
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    mod = require(file) as Record<string, unknown>;
+    if (!/\.cjs$|\.m?js$/.test(file)) throw err;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      mod = require(file) as Record<string, unknown>;
+    } catch { mod = evalCommonJs(file); }
   }
   const fn = (typeof mod.default === "function" ? mod.default : typeof mod.run === "function" ? mod.run : typeof mod === "function" ? mod : null) as ((ctx: unknown, input: unknown) => unknown) | null;
   if (!fn) throw new Error("the program exports no run(ctx, input) function (export default, exports.run, or module.exports)");
