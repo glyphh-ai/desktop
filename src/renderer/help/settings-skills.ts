@@ -18,6 +18,7 @@ import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
+import { refreshRoles } from "./model-picker.js";
 import { toastOk, toastError } from "./toast.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -938,6 +939,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
+  void paintBundleAgents(s);
   if (type === "plugin") { await paintBundleSkills(s, read); return; }
   if (type === "task") {
     let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<ConnDep | string> }; schedule?: string | null; program?: string; result?: unknown } = {};
@@ -948,7 +950,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
       flowGraph = taskGraph(s.name, tm, code || "");
       if (!el("skill-flow")?.classList.contains("hidden")) paintFlow();
     });
-    await Promise.all([paintTaskSlots(s, tm.slots ?? {}), paintBundleConnections(tm.dependencies?.connections ?? [])]);
+    await Promise.all([paintBundleAgents(s), paintBundleConnections(tm.dependencies?.connections ?? [])]);
     if (!hubItem) { void paintTaskRuns(s); void paintTaskSchedule(s, tm.schedule ?? null); }
     return;
   }
@@ -1032,60 +1034,230 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   host.appendChild(block);
 }
 
-/** TASKS: each slot the program calls an agent through, with the agent picker.
- *  The pick is written into task.json (the install-time fill) and holds for every run. */
-async function paintTaskSlots(s: SkillDetail, slots: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>): Promise<void> {
-  const host = el("skill-slots-list"); const count = el("skill-slot-count");
+/**
+ * A BUNDLE'S AGENTS (his order, 2026-09-17: "slots become agents").
+ *
+ * One row per agent the bundle ships — `agents/*.md` per the standard, or a
+ * task's slots, which are the same thing under an older name. Far left the
+ * mark of what runs it, then its name and description, and on the right the
+ * three things a person changes: what it runs on, which model, and its clock.
+ */
+const LOOP_FAVICON: Record<string, string> = {
+  claude: "https://claude.ai/favicon.ico",
+  codex: "https://openai.com/favicon.ico",
+  gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
+  copilot: "https://github.com/favicon.ico",
+  cursor: "https://cursor.com/favicon.ico",
+};
+let loopRows: LoopRow[] = [];
+
+/** A fixed loop's id IS its CLI (claude, codex, gemini…), which is what the
+ *  dock keys its marks on, so the row wears the same face as the agent tile. */
+const loopMark = (id: string): string => {
+  const url = LOOP_FAVICON[String(id || "").toLowerCase()];
+  return url ? `<img src="${url}" alt="" />` : AGENT_ICON;
+};
+
+/** A cron in the words a person uses. */
+function cronLabel(cron: string): string {
+  const [min, hour, dom, mon, dow] = String(cron || "").trim().split(/\s+/);
+  if (!min || !hour) return cron || "Off";
+  const at = (h: string, m: string): string => {
+    const hh = Number(h), mm = Number(m);
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return `${h}:${m}`;
+    const ampm = hh < 12 ? "am" : "pm";
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    return mm ? `${h12}:${String(mm).padStart(2, "0")}${ampm}` : `${h12}${ampm}`;
+  };
+  if (hour === "*") return min.startsWith("*/") ? `Every ${min.slice(2)} min` : "Hourly";
+  if (dom === "*" && mon === "*" && dow === "*") return `Daily ${at(hour, min)}`;
+  if (dow === "1-5") return `Weekdays ${at(hour, min)}`;
+  if (dom === "*" && mon === "*" && /^[0-6]$/.test(dow ?? "")) return `${DAYS[Number(dow)]} ${at(hour, min)}`;
+  if (/^\d+$/.test(dom ?? "")) return `Monthly on the ${dom} ${at(hour, min)}`;
+  return cron;
+}
+const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
+
+/**
+ * THE CLOCK, BUILT FROM DROPDOWNS (his order, 2026-09-17) — nobody should
+ * have to write cron. How often, what time, which day; the cron is composed
+ * from those three and saved as the schedule this bundle runs on.
+ */
+function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: ScheduleRow | null): void {
+  const slug = s.id.slice(s.id.indexOf(":") + 1);
+  const isTask = typeOf(s) === "task";
+  const [min0 = "0", hour0 = "9", , , dow0 = "*"] = (existing?.cron || "0 9 * * *").split(/\s+/);
+  const every = existing ? (hour0 === "*" ? "hour" : dow0 === "1-5" ? "weekday" : /^[0-6]$/.test(dow0) ? "week" : "day") : "day";
+
+  const wrap = document.createElement("div");
+  wrap.className = "conn-modal";
+  wrap.innerHTML = `<div class="conn-modal-backdrop"></div><div class="conn-modal-panel skill-sched-panel">
+    <div class="conn-modal-header"><h3 class="conn-modal-title">Schedule ${escapeHtml(s.name)}</h3><button class="conn-modal-close" type="button">✕</button></div>
+    <div class="skill-sched-form">
+      <label class="skill-sched-field"><span>How often</span><select class="settings-input" data-k="every">
+        <option value="hour">Every hour</option><option value="day">Every day</option>
+        <option value="weekday">Every weekday</option><option value="week">Once a week</option>
+      </select></label>
+      <label class="skill-sched-field"><span>At</span><select class="settings-input" data-k="hour">${
+        Array.from({ length: 24 }, (_, h) => `<option value="${h}">${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}</option>`).join("")
+      }</select></label>
+      <label class="skill-sched-field"><span>Minutes past</span><select class="settings-input" data-k="min">${
+        [0, 15, 30, 45].map((m) => `<option value="${m}">:${String(m).padStart(2, "0")}</option>`).join("")
+      }</select></label>
+      <label class="skill-sched-field" data-day><span>Day</span><select class="settings-input" data-k="dow">${
+        DAYS.map((d, i) => `<option value="${i}">${d}</option>`).join("")
+      }</select></label>
+      <div class="skill-sched-preview"></div>
+    </div>
+    <div class="skill-sched-actions-row">
+      ${existing ? `<button class="action-btn danger" data-a="off" type="button">Take off the clock</button>` : ""}
+      <span style="flex:1"></span>
+      <button class="action-btn" data-a="cancel" type="button">Cancel</button>
+      <button class="action-btn primary" data-a="save" type="button">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(wrap);
+  const q = <T extends HTMLElement = HTMLElement>(sel: string): T => wrap.querySelector(sel) as T;
+  const everySel = q<HTMLSelectElement>('[data-k="every"]');
+  const hourSel = q<HTMLSelectElement>('[data-k="hour"]');
+  const minSel = q<HTMLSelectElement>('[data-k="min"]');
+  const dowSel = q<HTMLSelectElement>('[data-k="dow"]');
+  everySel.value = every;
+  hourSel.value = hour0 === "*" ? "9" : hour0;
+  minSel.value = /^\d+$/.test(min0) ? String(Math.min(45, Math.round(Number(min0) / 15) * 15)) : "0";
+  dowSel.value = /^[0-6]$/.test(dow0) ? dow0 : "1";
+
+  const cronOf = (): string => {
+    const m = minSel.value, h = hourSel.value;
+    if (everySel.value === "hour") return `${m} * * * *`;
+    if (everySel.value === "weekday") return `${m} ${h} * * 1-5`;
+    if (everySel.value === "week") return `${m} ${h} * * ${dowSel.value}`;
+    return `${m} ${h} * * *`;
+  };
+  const sync = (): void => {
+    q('[data-day]').classList.toggle("hidden", everySel.value !== "week");
+    q<HTMLElement>('[data-k="hour"]').closest(".skill-sched-field")!.classList.toggle("hidden", everySel.value === "hour");
+    q(".skill-sched-preview").textContent = `Runs ${cronLabel(cronOf()).toLowerCase()} · ${cronOf()}`;
+  };
+  [everySel, hourSel, minSel, dowSel].forEach((el2) => el2.addEventListener("change", sync));
+  sync();
+
+  const close = (): void => wrap.remove();
+  q(".conn-modal-backdrop").addEventListener("click", close);
+  q(".conn-modal-close").addEventListener("click", close);
+  q('[data-a="cancel"]').addEventListener("click", close);
+  wrap.querySelector('[data-a="off"]')?.addEventListener("click", async () => {
+    if (!existing) return;
+    const r = await api().scheduleDelete(existing.id) as Env<unknown>;
+    if (!r.ok) { fail(r.error || "Couldn't remove the schedule."); return; }
+    notice(`${s.name} is off the clock`);
+    close();
+    void paintBundleAgents(s);
+  });
+  q('[data-a="save"]').addEventListener("click", async () => {
+    const cron = cronOf();
+    const input: Record<string, unknown> = existing
+      ? { id: existing.id, kind: existing.kind, target: existing.target, cron, name: existing.name ?? s.name, agentId: existing.agentId }
+      : { kind: isTask ? "task" : "skill", target: slug, cron, name: s.name, ...(isTask ? {} : { agentId: a.loop }) };
+    const r = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> }).scheduleSave(input)
+      .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
+    if (!r.ok) { fail(r.error || "Couldn't save the schedule."); return; }
+    notice(`${s.name} runs ${cronLabel(cron).toLowerCase()}`, { detail: "Change or remove it here, or under Customize → Schedules." });
+    close();
+    void paintBundleAgents(s);
+  });
+}
+
+async function paintBundleAgents(s: SkillDetail): Promise<void> {
+  const host = el("skill-agents-list"); const count = el("skill-agent-count");
   if (!host) return;
-  const names = Object.keys(slots);
-  if (count) count.textContent = `· ${names.length}`;
+  const [env, loops, scheds] = await Promise.all([
+    api().skillAgents(s.id) as Promise<Env<BundleAgentRow[]>>,
+    (api() as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: LoopRow[] }> }).cliAgentsList?.().catch(() => ({ ok: false, agents: [] })) ?? Promise.resolve({ ok: false, agents: [] as LoopRow[] }),
+    api().schedulesList() as Promise<Env<ScheduleRow[]>>,
+  ]);
+  const agents = env.ok ? env.data ?? [] : [];
+  loopRows = loops.ok ? loops.agents ?? [] : [];
+  const slug = s.id.slice(s.id.indexOf(":") + 1);
+  const rows = scheds.ok ? scheds.data ?? [] : [];
+  const isTask = typeOf(s) === "task";
+
+  if (count) count.textContent = `· ${agents.length}`;
   host.textContent = "";
-  if (!names.length) { host.innerHTML = `<div class="crud-empty">This program calls no agents. It runs on connections and data alone.</div>`; return; }
-  const agents = (await (api() as unknown as { libraryAgentsList: () => Promise<{ ok: boolean; data?: Array<{ id: string; name: string }> }> }).libraryAgentsList().catch(() => ({ ok: false }))) as { ok: boolean; data?: Array<{ id: string; name: string }> };
-  const roster = agents.ok ? agents.data ?? [] : [];
-  for (const name of names) {
-    const sl = slots[name]!;
+  if (!agents.length) {
+    host.innerHTML = `<div class="crud-empty">This ${TYPE_LABEL[typeOf(s)]} ships no agents. Add one as <code>agents/&lt;name&gt;.md</code> in Contents.</div>`;
+    return;
+  }
+
+  for (const a of agents) {
+    const sched = isTask
+      ? rows.find((x) => x.kind === "task" && x.target === slug) ?? null
+      : rows.find((x) => x.kind === "skill" && x.target === slug && x.agentId === a.loop) ?? null;
     const r = document.createElement("div");
     r.className = "skill-row";
-    r.innerHTML = `<div class="skill-tile-icon">${AGENT_ICON}</div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
-    (r.querySelector(".skill-row-name") as HTMLElement).textContent = sl.label || name;
-    (r.querySelector(".skill-row-desc") as HTMLElement).textContent = `${sl.description || `ctx.agents.${name}`}${sl.model ? ` · ${sl.model}` : ""}`;
+    r.innerHTML = `<div class="skill-tile-icon own">${loopMark(a.loop)}</div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
+    (r.querySelector(".skill-row-name") as HTMLElement).textContent = a.name;
+    (r.querySelector(".skill-row-desc") as HTMLElement).textContent = a.description;
     const right = r.querySelector(".skill-row-right") as HTMLElement;
     if (hubItem) {
-      const chip = document.createElement("span"); chip.className = "app-conn-state"; chip.textContent = "Filled after Add"; right.appendChild(chip);
-    } else {
-      // NO ROSTER, NO PICKER (his report, 2026-09-17: "this dropdown is not
-      // working / rendering properly"). It was 80px wide, so every name was
-      // clipped to "First ag…", and with no agents saved the only choice was
-      // that placeholder — a control that looked broken because it was empty.
-      if (!roster.length) {
-        const chip = document.createElement("span");
-        chip.className = "app-conn-state";
-        chip.textContent = "First agent";
-        chip.title = "No saved agents yet, so this slot runs on the first agent that exists.";
-        right.appendChild(chip);
-      } else {
-        const sel = document.createElement("select");
-        sel.className = "settings-input skill-slot-select";
-        sel.innerHTML = `<option value="">First agent</option>` + roster.map((a) => `<option value="${escapeHtml(a.id)}"${a.id === sl.agent ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
-        sel.title = "Which agent this slot runs on, for every run";
-        sel.addEventListener("change", async () => {
-          const slug = s.id.replace(/^task:/, "");
-          const chosen = roster.find((a) => a.id === sel.value);
-          const res = await (api() as unknown as { taskSlotSet: (slug: string, slot: string, agent: string | null) => Promise<Env<unknown>> }).taskSlotSet(slug, name, sel.value || null);
-          if (!res.ok) { fail(res.error || "Couldn't set the slot."); return; }
-          notice(`${sl.label || name} runs on ${chosen?.name ?? "the first agent"}`);
-        });
-        right.appendChild(sel);
-      }
+      const chip = document.createElement("span");
+      chip.className = "app-conn-state";
+      chip.textContent = "Set after Add";
+      right.appendChild(chip);
+      host.appendChild(r);
+      continue;
     }
+
+    // WHAT IT RUNS ON.
+    const loopSel = document.createElement("select");
+    loopSel.className = "settings-input skill-slot-select";
+    loopSel.title = "What this agent runs on";
+    loopSel.innerHTML = `<option value="">Default</option>` + loopRows.map((l) => `<option value="${escapeHtml(l.id)}"${l.id === a.loop ? " selected" : ""}>${escapeHtml(l.name)}</option>`).join("");
+    loopSel.addEventListener("change", () => void setAgent(s, a, { loop: loopSel.value }, `${a.name} runs on ${loopRows.find((l) => l.id === loopSel.value)?.name ?? "the default"}`));
+    right.appendChild(loopSel);
+
+    // WHICH MODEL — the loop's own choices, so nothing offers a model it can't run.
+    const modelSel = document.createElement("select");
+    modelSel.className = "settings-input skill-model-select";
+    modelSel.title = "Model for this agent";
+    modelSel.innerHTML = `<option value="">Model: default</option>${a.model ? `<option value="${escapeHtml(a.model)}" selected>${escapeHtml(a.model)}</option>` : ""}`;
+    modelSel.addEventListener("change", () => void setAgent(s, a, { model: modelSel.value }, `${a.name} uses ${modelSel.value || "the default model"}`));
+    right.appendChild(modelSel);
+    void fillModelChoices(modelSel, a.loop || loopRows[0]?.id || "", a.model);
+
+    // ITS CLOCK.
+    const schedBtn = document.createElement("button");
+    schedBtn.type = "button";
+    schedBtn.className = "action-btn";
+    schedBtn.textContent = sched ? (sched.enabled ? cronLabel(sched.cron) : `Off · ${cronLabel(sched.cron)}`) : "Schedule";
+    schedBtn.addEventListener("click", () => openScheduleModal(s, a, sched));
+    right.appendChild(schedBtn);
+
     host.appendChild(r);
   }
 }
 
+/** The models the chosen loop actually offers (the model picker's own source). */
+async function fillModelChoices(sel: HTMLSelectElement, loop: string, chosen: string): Promise<void> {
+  if (!loop) return;
+  const roles = await refreshRoles(loop).catch(() => []);
+  const seen = new Set<string>();
+  const choices: Array<{ id: string; name: string }> = [];
+  for (const role of roles) for (const c of role.choices) { if (!seen.has(c.id)) { seen.add(c.id); choices.push({ id: c.id, name: c.name }); } }
+  if (!choices.length) return;
+  sel.innerHTML = `<option value="">Model: default</option>` + choices.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === chosen ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+}
+
 interface TaskRunRow { id: string; trigger: string; startedAt: string; durationMs: number | null; status: string; error: string | null; input: unknown; result: unknown; journal: { checkpoints: Record<string, unknown>; events: Array<Record<string, unknown> & { t: string; kind: string }> } }
 let openRunId: string | null = null;
-/** TASKS: the run list; a run opens as its story (every agent turn, connection call, checkpoint and log, then the result). */
+
+async function setAgent(s: SkillDetail, a: BundleAgentRow, patch: { loop?: string; model?: string }, said: string): Promise<void> {
+  const r = await api().skillAgentSet(s.id, a.ref, patch) as Env<BundleAgentRow[]>;
+  if (!r.ok) { fail(r.error || "Couldn't change that agent."); return; }
+  notice(said);
+  void paintBundleAgents(s);
+}
+
 async function paintTaskRuns(s: SkillDetail): Promise<void> {
   const host = el("skill-runs-list"); const count = el("skill-run-count");
   if (!host) return;
@@ -1295,13 +1467,16 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "slots" | "runs" | "flow";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "agents" | "runs" | "flow";
+/** One agent a bundle ships: agents/<name>.md, or a task's slot under the older name. */
+interface BundleAgentRow { ref: string; name: string; description: string; loop: string; model: string; source: "file" | "slot" }
+interface ScheduleRow { id: string; kind: string; target: string; cron: string; enabled: boolean; agentId?: string; name?: string }
 /** Which tabs a type earns. Overview and Contents are every bundle's; the rest
  *  are what that kind of skill actually has. */
 const TABS_FOR: Record<BundleType, DetailTab[]> = {
-  skill: ["overview", "contents"],
-  app: ["overview", "contents", "skills", "tools", "connections"],
-  task: ["overview", "flow", "contents", "slots", "runs", "connections"],
+  skill: ["overview", "contents", "agents"],
+  app: ["overview", "contents", "skills", "tools", "agents", "connections"],
+  task: ["overview", "flow", "contents", "agents", "runs", "connections"],
   plugin: ["overview", "contents", "skills"],
 };
 /** Show only the tabs this item earns. */
@@ -1318,7 +1493,7 @@ function selectDetailTab(t: DetailTab): void {
   el("skill-skills")?.classList.toggle("hidden", t !== "skills");
   el("skill-tools")?.classList.toggle("hidden", t !== "tools");
   el("skill-connections")?.classList.toggle("hidden", t !== "connections");
-  el("skill-slots")?.classList.toggle("hidden", t !== "slots");
+  el("skill-agents")?.classList.toggle("hidden", t !== "agents");
   el("skill-runs")?.classList.toggle("hidden", t !== "runs");
   el("skill-flow")?.classList.toggle("hidden", t !== "flow");
   if (t === "runs" && current && !hubItem) void paintTaskRuns(current);

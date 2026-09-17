@@ -1124,6 +1124,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillGet: (id: string) => ipcRenderer.invoke("skill-get", id) as Promise<LibEnvelope>,
   skillFileRead: (id: string, rel: string) => ipcRenderer.invoke("skill-file-read", id, rel) as Promise<LibEnvelope>,
   skillFileWrite: (id: string, rel: string, text: string) => ipcRenderer.invoke("skill-file-write", id, rel, text) as Promise<LibEnvelope>,
+  /** A bundle's own agents (agents/*.md, or a task's slots) and what they run on. */
+  skillAgents: (id: string) => ipcRenderer.invoke("skill-agents", id) as Promise<LibEnvelope>,
+  skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) =>
+    ipcRenderer.invoke("skill-agent-set", id, ref, patch) as Promise<LibEnvelope>,
   skillSetEnabled: (id: string, on: boolean) => ipcRenderer.invoke("skill-set-enabled", id, on) as Promise<LibEnvelope>,
   skillDelete: (id: string) => ipcRenderer.invoke("skill-delete", id) as Promise<LibEnvelope>,
   /** An app bundle as a tab: registers (idempotently) and hands back the tab's slug + name. */

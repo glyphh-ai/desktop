@@ -436,6 +436,99 @@ export function deleteSkill(id: string): void {
   forgetInstall?.(id);
 }
 
+/**
+ * A BUNDLE'S OWN AGENTS (his ruling, 2026-09-17: "don't skills now contain
+ * sub-agents per the spec?" — and "slots become agents").
+ *
+ * Who does the work ships INSIDE the bundle, per the Agent Skills standard:
+ * `agents/<name>.md`, frontmatter naming it and pinning what it runs on. A
+ * task written before this carries the same list as `task.json` slots, so
+ * both are read here and each row says where it came from; a write goes back
+ * to whichever file the row came from. There is no machine-wide roster: the
+ * old one was invisible in the UI and bound to a concept we removed.
+ */
+export interface BundleAgent {
+  /** Stable handle for a write: "agents/writer.md" or "slot:main". */
+  ref: string;
+  name: string;
+  description: string;
+  /** What runs it (a cli-agents id). Empty = the app's default. */
+  loop: string;
+  /** Model override. Empty = whatever the loop resolves. */
+  model: string;
+  source: "file" | "slot";
+}
+
+const AGENT_KEYS = ["loop", "model"] as const;
+
+export function listBundleAgents(id: string): BundleAgent[] {
+  const { dir } = dirOf(id);
+  const out: BundleAgent[] = [];
+  const agentsDir = path.join(dir, "agents");
+  let files: string[] = [];
+  try { files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md")).sort(); } catch { files = []; }
+  for (const f of files) {
+    let fm: Record<string, string> = {};
+    try { fm = parseSkillMd(fs.readFileSync(path.join(agentsDir, f), "utf-8")).frontmatter; } catch { fm = {}; }
+    out.push({
+      ref: `agents/${f}`,
+      name: fm.name || f.replace(/\.md$/, ""),
+      description: fm.description || "",
+      loop: fm.loop || "",
+      model: fm.model || "",
+      source: "file",
+    });
+  }
+  if (out.length) return out;
+  // A task's slots ARE its agents.
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, "task.json"), "utf-8")) as {
+      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>;
+    };
+    for (const [name, sl] of Object.entries(m.slots ?? {})) {
+      out.push({
+        ref: `slot:${name}`,
+        name: sl.label || name,
+        description: sl.description || `ctx.agents.${name}`,
+        loop: sl.agent || "",
+        model: sl.model || "",
+        source: "slot",
+      });
+    }
+  } catch { /* not a task */ }
+  return out;
+}
+
+/** Write what an agent runs on, into the file that declares it. */
+export function setBundleAgent(id: string, ref: string, patch: { loop?: string; model?: string }): BundleAgent[] {
+  const { dir } = dirOf(id);
+  if (ref.startsWith("slot:")) {
+    const slot = ref.slice("slot:".length);
+    const file = path.join(dir, "task.json");
+    const m = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>;
+    };
+    const cur = m.slots?.[slot];
+    if (!m.slots || !cur) throw new Error(`no agent "${slot}" in this task`);
+    if (patch.loop !== undefined) cur.agent = patch.loop || null;
+    if (patch.model !== undefined) cur.model = patch.model || null;
+    fs.writeFileSync(file, JSON.stringify(m, null, 2) + "\n", "utf-8");
+    return listBundleAgents(id);
+  }
+  const file = safeJoin(dir, ref);
+  if (!fs.existsSync(file)) throw new Error(`no such agent: ${ref}`);
+  const text = fs.readFileSync(file, "utf-8");
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  const lines = m ? m[1].split(/\r?\n/).filter((l) => !AGENT_KEYS.some((k) => new RegExp(`^${k}:\\s`, "i").test(l))) : [];
+  for (const k of AGENT_KEYS) {
+    const v = patch[k];
+    if (v) lines.push(`${k}: ${v}`);
+  }
+  const body = m ? text.slice(m[0].length) : text;
+  fs.writeFileSync(file, `---\n${lines.join("\n")}\n---\n${body.startsWith("\n") ? "" : "\n"}${body}`, "utf-8");
+  return listBundleAgents(id);
+}
+
 /** Take named files out of a bundle, and any folder they emptied. An update
  *  uses it for what the new payload dropped; whatever the user added stays. */
 export function removeSkillFiles(id: string, rels: string[]): void {
@@ -778,6 +871,9 @@ export function registerSkillsIpc(): void {
   ipcMain.handle("skill-get", (_e, id: string) => env(() => getSkill(String(id))));
   ipcMain.handle("skill-file-read", (_e, id: string, rel: string) => env(() => readSkillFile(String(id), String(rel))));
   ipcMain.handle("skill-file-write", (_e, id: string, rel: string, text: string) => env(() => { writeSkillFile(String(id), String(rel), String(text)); return true; }));
+  ipcMain.handle("skill-agents", (_e, id: string) => env(() => listBundleAgents(String(id))));
+  ipcMain.handle("skill-agent-set", (_e, id: string, ref: string, patch: { loop?: string; model?: string }) =>
+    env(() => setBundleAgent(String(id), String(ref), patch ?? {})));
   ipcMain.handle("skill-set-enabled", (_e, id: string, on: boolean) => env(() => setSkillEnabled(String(id), !!on)));
   ipcMain.handle("skill-delete", (_e, id: string) => env(() => { deleteSkill(String(id)); return true; }));
   ipcMain.handle("skill-reveal", (_e, id: string) => env(() => { revealSkill(String(id)); return true; }));
