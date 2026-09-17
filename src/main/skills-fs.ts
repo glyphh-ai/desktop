@@ -402,12 +402,32 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   return summarize(source, name, dest, on)!;
 }
 
+/** The hub side of a delete (hub-ipc registers it): a folder that came from the
+ *  catalog tells it so when it goes. Late-bound, since hub-ipc reads this file. */
+let forgetInstall: ((id: string) => void) | null = null;
+export function setInstallForgetter(fn: (id: string) => void): void { forgetInstall = fn; }
+
 export function deleteSkill(id: string): void {
   const { dir } = dirOf(id);
   const type = bundleType(dir);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
   if (type === "app") void unregisterBundleApp(dir);
+  forgetInstall?.(id);
+}
+
+/** Take named files out of a bundle, and any folder they emptied. An update
+ *  uses it for what the new payload dropped; whatever the user added stays. */
+export function removeSkillFiles(id: string, rels: string[]): void {
+  const { dir } = dirOf(id);
+  for (const rel of rels) {
+    let full: string;
+    try { full = safeJoin(dir, rel); } catch { continue; }
+    fs.rmSync(full, { force: true });
+    for (let d = path.dirname(full); d.startsWith(path.resolve(dir) + path.sep); d = path.dirname(d)) {
+      try { if (fs.readdirSync(d).length) break; fs.rmdirSync(d); } catch { break; }
+    }
+  }
 }
 
 /** A CLI's own skill folder becomes a Glyphh skill: moved home, linked back. */

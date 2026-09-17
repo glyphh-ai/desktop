@@ -20861,3 +20861,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .skill-detail-sub .skill-type-chip { margin-right: 6px; }
 .disc-card-meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .disc-card-metatext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The type sits BESIDE the name, never under it (his order, 2026-09-17). */
+.skill-row-name, .disc-card-name, .skill-detail-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.skill-row-title, .disc-card-title, .skill-detail-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-row-sub .skill-type-chip, .skill-detail-sub .skill-type-chip { margin-right: 0; }
+.skill-update-btn { height: 24px; padding: 0 10px; font-size: 11px; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--accent); }

@@ -81,6 +81,8 @@ let sortKey: SortKey = "edited";
 const SORT_LABEL: Record<SortKey, string> = { edited: "Last edited", name: "Name", author: "Created by" };
 let skills: SkillRow[] = [];
 let discoverRows: DiscoverRow[] = [];
+/** Installed bundles the catalog has moved past, by folder id. */
+let updates: Record<string, { have: number; latest: number; name: string }> = {};
 let hubCategories: Array<{ id: string; label: string }> = [];
 /** Discover drill-down: the home, one category, or one shelf ("new" / "top" / "all"). */
 let discoverView: { kind: "home" } | { kind: "category"; id: string } | { kind: "shelf"; id: "new" | "top" | "all" } = { kind: "home" };
@@ -114,6 +116,13 @@ const typeChip = (type: BundleType | undefined): string =>
 const markOf = (s: { icon?: string | null; tool?: string | null } | null | undefined): string =>
   (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
+/** The name, with the type beside it (never under it — his order, 2026-09-17). */
+const setDetailName = (name: string, type?: BundleType): void => {
+  const host = el("skill-detail-name");
+  if (!host) return;
+  host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}`;
+  (host.querySelector(".skill-detail-title") as HTMLElement).textContent = name;
+};
 const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType } | null | undefined): void => {
   const mark = markOf(row);
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
@@ -138,6 +147,30 @@ function fail(msg: string): void {
   e.classList.remove("hidden");
 }
 
+/** Ask the hub what has moved on. Never blocks the list; repaints if it finds any. */
+async function refreshUpdates(): Promise<void> {
+  const r = await (api() as unknown as { skillUpdates: () => Promise<Env<typeof updates>> }).skillUpdates().catch(() => ({ ok: false } as Env<typeof updates>));
+  const next = r.ok ? r.data ?? {} : {};
+  const changed = Object.keys(next).join() !== Object.keys(updates).join();
+  updates = next;
+  if (changed && el("skills-groups")) renderList();
+  if (changed && current) paintDetailChrome();
+}
+
+/** Take the catalog's version over this copy. */
+async function updateNow(id: string, btn?: HTMLButtonElement): Promise<void> {
+  const up = updates[id];
+  if (!up) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Updating…"; }
+  const r = await (api() as unknown as { skillUpdate: (id: string) => Promise<Env<{ version: number }>> }).skillUpdate(id)
+    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ version: number }>);
+  if (!r.ok) { if (btn) { btn.disabled = false; btn.textContent = "Update"; } fail(r.error || "Couldn't update."); return; }
+  delete updates[id];
+  const wasOpen = current?.id === id;
+  await loadSkillsSettings();
+  if (wasOpen) await openDetail(id);
+}
+
 // ── list ────────────────────────────────────────────────────────────────────
 async function loadSkillsSettings(): Promise<void> {
   wire();
@@ -145,6 +178,7 @@ async function loadSkillsSettings(): Promise<void> {
   el("skills-list-view")?.classList.remove("hidden");
   el("skills-error")?.classList.add("hidden");
   if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
+  void refreshUpdates();
   const r = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
@@ -168,11 +202,11 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
   r.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${iconOf(mark, opts.type)}</div>
     <div class="skill-row-main">
-      <div class="skill-row-name"></div>
-      <div class="skill-row-sub">${typeChip(opts.type)}<span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
+      <div class="skill-row-name"><span class="skill-row-title"></span>${typeChip(opts.type)}</div>
+      <div class="skill-row-sub"><span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
     </div>
     <div class="skill-row-right"></div>`;
-  (r.querySelector(".skill-row-name") as HTMLElement).textContent = opts.name;
+  (r.querySelector(".skill-row-title") as HTMLElement).textContent = opts.name;
   (r.querySelector(".skill-row-by") as HTMLElement).textContent = opts.by;
   (r.querySelector(".skill-row-desc") as HTMLElement).textContent = opts.desc || "No description";
   const right = r.querySelector(".skill-row-right") as HTMLElement;
@@ -291,10 +325,12 @@ function renderList(): void {
       const rows = groups.get(k)!;
       const g = group(host, k ? `From ${k}` : "Created by you", rows.length);
       for (const s of rows) {
+        const up = updates[s.id];
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
           onOpen: () => void openDetail(s.id),
+          action: up ? updateButton(s.id, up.latest) : undefined,
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
             { label: "Share", onClick: async () => { await openDetail(s.id); await share(); } },
@@ -348,6 +384,17 @@ const catLabel = (id: string): string => hubCategories.find((c) => c.id === id)?
 const fmtInstalls = (n: number): string => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 const isNew = (d: DiscoverRow): boolean => Date.now() - Date.parse(d.createdAt || d.updatedAt) < 14 * 864e5;
 
+/** "Update" on a row whose catalog version has moved past this copy. */
+function updateButton(id: string, latest: number): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "action-btn skill-update-btn";
+  b.textContent = "Update";
+  b.title = `Version ${latest} is on the hub`;
+  b.addEventListener("click", (e) => { e.stopPropagation(); void updateNow(id, b); });
+  return b;
+}
+
 function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
@@ -363,8 +410,8 @@ function discoverCard(d: DiscoverRow): HTMLElement {
   const c = document.createElement("div");
   c.className = "disc-card";
   const mark = markOf(d);
-  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta">${typeChip(d.type)}<span class="disc-card-metatext"></span></div></div>`;
-  (c.querySelector(".disc-card-name") as HTMLElement).textContent = d.name;
+  c.innerHTML = `<div class="skill-tile-icon${mark ? " own" : ""}">${mark || glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"><span class="disc-card-title"></span>${typeChip(d.type)}</div><div class="disc-card-desc"></div><div class="disc-card-meta"><span class="disc-card-metatext"></span></div></div>`;
+  (c.querySelector(".disc-card-title") as HTMLElement).textContent = d.name;
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
   (c.querySelector(".disc-card-metatext") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
   c.appendChild(addButton(d));
@@ -476,6 +523,7 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
     const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
     // The category being browsed leads the chips; the rest fold into +N.
     const lead = v.kind === "category" && d.categories.includes(v.id) ? v.id : d.categories[0];
+    titleEl.insertAdjacentHTML("beforeend", typeChip(d.type));
     const chips: string[] = [];
     if (isNew(d)) chips.push("New");
     if (lead) chips.push(catLabel(lead));
@@ -588,8 +636,8 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   editing = false;
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
-  (el("skill-detail-name") as HTMLElement).textContent = d.name;
-  (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(d.type)}${escapeHtml(`from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`)}`;
+  setDetailName(d.name, d.type);
+  (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
   setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type });
@@ -623,16 +671,15 @@ function paintDetailChrome(): void {
   }
   add.classList.toggle("hidden", !hub);
   if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
-  // The type's own action. Both buttons are resolved every time, because a
-  // mixed list moves between an app and a skill and a stale Open must go.
-  const type = typeOf(current);
-  const action = (id: string, label: string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
+  // The detail's actions, resolved every time: a mixed list moves between an
+  // app and a skill, and a stale Open must not survive the move.
+  const action = (id: string, label: string, primary: boolean, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
     let b = el<HTMLButtonElement>(id);
     if (!b) {
       b = document.createElement("button");
       b.id = cfg.id(id);
       b.type = "button";
-      b.className = "action-btn primary";
+      b.className = primary ? "action-btn primary" : "action-btn";
       b.textContent = label;
       const self = b;
       b.addEventListener("click", () => onClick(self));
@@ -640,8 +687,13 @@ function paintDetailChrome(): void {
     }
     return b;
   };
-  if (type === "app" || el("skill-open-tab")) action("skill-open-tab", "Open", (b) => void openAsTab(b)).classList.toggle("hidden", hub || !current || type !== "app");
-  if (type === "task" || el("skill-run-now")) action("skill-run-now", "Run now", (b) => void runNow(b)).classList.toggle("hidden", hub || !current || type !== "task");
+  const up = current ? updates[current.id] : undefined;
+  const upBtn = action("skill-update", "Update", false, (b) => { if (current) void updateNow(current.id, b); });
+  upBtn.classList.toggle("hidden", hub || !up);
+  if (up) { upBtn.textContent = `Update to v${up.latest}`; upBtn.disabled = false; }
+  const type = typeOf(current);
+  if (type === "app" || el("skill-open-tab")) action("skill-open-tab", "Open", true, (b) => void openAsTab(b)).classList.toggle("hidden", hub || !current || type !== "app");
+  if (type === "task" || el("skill-run-now")) action("skill-run-now", "Run now", true, (b) => void runNow(b)).classList.toggle("hidden", hub || !current || type !== "task");
 }
 
 /** TASKS: start a run and land on its story. */
@@ -923,8 +975,8 @@ async function openDetail(id: string): Promise<void> {
   el("skills-list-view")?.classList.add("hidden");
   el("skill-detail-view")?.classList.remove("hidden");
   const s = current;
-  (el("skill-detail-name") as HTMLElement).textContent = s.name;
-  (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(s.type)}${escapeHtml(`${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`)}`;
+  setDetailName(s.name, s.type);
+  (el("skill-detail-sub") as HTMLElement).textContent = `${s.author ? `by ${s.author}` : "by you"} · updated ${when(s.updatedAt)}`;
   const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = s.enabled;
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;

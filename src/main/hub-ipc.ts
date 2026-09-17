@@ -15,7 +15,8 @@
 
 import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
-import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills } from "./skills-fs.js";
+import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills, setInstallForgetter, removeSkillFiles } from "./skills-fs.js";
+import { getPreference, setPreference, preferencesByPrefix } from "./stores/preferences-db.js";
 
 interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
 interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
@@ -83,18 +84,100 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+/** WHERE AN INSTALLED BUNDLE CAME FROM (2026-09-17). Without this an installed
+ *  folder is an orphan: the hub can't be told when it goes, and nothing knows
+ *  a newer version exists. Kept in the user's prefs (no local store), keyed by
+ *  the folder's own id, and cleared when the folder goes. */
+export interface InstallOrigin {
+  from: "org" | "glyphh";
+  itemId: string;
+  kind: Kind;
+  slug: string;
+  /** The catalog version this copy was written from. */
+  version: number;
+  /** What the payload wrote, so an update can take away what it removed. */
+  files: string[];
+  installedAt: string;
+}
+const ORIGIN_KEY = (skillId: string): string => `bundleSource:${skillId}`;
+const originOf = (skillId: string): InstallOrigin | null => {
+  const v = getPreference<InstallOrigin | null>(ORIGIN_KEY(skillId), null);
+  return v && typeof v === "object" && v.itemId ? v : null;
+};
+const baseFor = (o: { from: "org" | "glyphh"; kind: Kind; itemId: string }): string =>
+  (o.from === "org" ? `/api/library/${o.kind}/${encodeURIComponent(o.itemId)}` : `/api/hub/public/${encodeURIComponent(o.itemId)}`);
+
+/** The folder is gone: tell the hub this member no longer has it, and forget
+ *  where it came from. Best effort — the folder is the truth either way. */
+async function forget(skillId: string): Promise<void> {
+  const o = originOf(skillId);
+  setPreference(ORIGIN_KEY(skillId), null);
+  if (!o) return;
+  await getClient().http.del(`${baseFor(o)}/install`).catch(() => undefined);
+}
+
 async function install(ref: string, kind: Kind): Promise<{ id: string }> {
   const client = getClient();
   const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
   const base = from === "org" ? `/api/library/${kind}/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
   const rows = from === "org" ? await client.http.get<OrgItem[]>(`/api/library/${kind}`) : await client.http.get<PublicItem[]>("/api/hub/public");
-  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string }>).find((r) => r.id === id);
+  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null }>).find((r) => r.id === id);
   if (!meta) throw new Error(`that ${kind} is no longer available to you`);
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
   const installed = installSkill(meta.slug, files, kind);
+  setPreference(ORIGIN_KEY(installed.id), {
+    from, itemId: id, kind, slug: meta.slug, version: versionOf(meta), files: Object.keys(files), installedAt: new Date().toISOString(),
+  } satisfies InstallOrigin);
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };
+}
+
+const versionOf = (r: { headVersion?: number | null; version?: number | null }): number => Number(r.headVersion ?? r.version ?? 1);
+
+/** Installed bundles the catalog has moved past, by folder id. */
+async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
+  const origins = preferencesByPrefix<InstallOrigin>("bundleSource:");
+  const out: Record<string, { have: number; latest: number; name: string }> = {};
+  const wanted = Object.entries(origins).filter(([, o]) => o && typeof o === "object" && o.itemId);
+  if (!wanted.length) return out;
+  const client = getClient();
+  const kinds = [...new Set(wanted.map(([, o]) => o.kind))];
+  const [orgLists, pub] = await Promise.all([
+    Promise.all(kinds.map(async (k) => [k, await client.http.get<OrgItem[]>(`/api/library/${k}`).catch(() => [] as OrgItem[])] as const)),
+    client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
+  ]);
+  const org = new Map(orgLists.flatMap(([, rows]) => (Array.isArray(rows) ? rows : []).map((r) => [r.id, r] as const)));
+  const glyphh = new Map((Array.isArray(pub) ? pub : []).map((r) => [r.id, r] as const));
+  for (const [key, o] of wanted) {
+    const row = o.from === "org" ? org.get(o.itemId) : glyphh.get(o.itemId);
+    if (!row) continue;
+    const latest = versionOf(row);
+    if (latest > Number(o.version || 1)) out[key] = { have: Number(o.version || 1), latest, name: row.name };
+  }
+  return out;
+}
+
+/** Take the catalog's current version over this copy: write what the payload
+ *  has, take away what it dropped, and keep anything the user added. */
+async function update(skillId: string): Promise<{ version: number }> {
+  const o = originOf(skillId);
+  if (!o) throw new Error("this one didn't come from the hub, so there is nothing to update from");
+  const client = getClient();
+  const rows = o.from === "org"
+    ? await client.http.get<OrgItem[]>(`/api/library/${o.kind}`)
+    : await client.http.get<PublicItem[]>("/api/hub/public");
+  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null }>).find((r) => r.id === o.itemId);
+  if (!meta) throw new Error(`that ${o.kind} is no longer available to you`);
+  const payload = await client.http.get<Record<string, unknown>>(`${baseFor(o)}/payload`);
+  const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
+  const name = skillId.slice(skillId.indexOf(":") + 1);
+  const gone = (o.files ?? []).filter((f) => !(f in files));
+  installSkill(name, files, o.kind);
+  if (gone.length) removeSkillFiles(skillId, gone);
+  const version = versionOf(meta);
+  setPreference(ORIGIN_KEY(skillId), { ...o, version, files: Object.keys(files) } satisfies InstallOrigin);
+  return { version };
 }
 
 /** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
@@ -169,6 +252,8 @@ async function categories(): Promise<Array<{ id: string; label: string }>> {
 }
 
 export function registerHubIpc(): void {
+  // A removed folder tells the hub it is gone (skills-fs owns the delete).
+  setInstallForgetter((id) => { void forget(id); });
   ipcMain.handle("hub-categories", () => env(categories));
   ipcMain.handle("skill-hub-files", (_e, ref: string, kind?: string) => env(() => hubFiles(String(ref), kindOf(kind))));
   ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
@@ -176,5 +261,7 @@ export function registerHubIpc(): void {
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
   ipcMain.handle("skills-discover", (_e, kind?: string | string[]) => env(() => discover(kindsOf(kind))));
   ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
+  ipcMain.handle("skill-updates", () => env(updatesAvailable));
+  ipcMain.handle("skill-update", (_e, id: string) => env(() => update(String(id))));
   ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
 }
