@@ -928,9 +928,16 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
 async function paintBundleConnections(deps: Array<{ app: string; as?: string }>): Promise<void> {
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
+  // One pane, two meanings: an app opens with them, a task runs unattended.
+  const blurb = el("skill-connections")?.querySelector(".skill-overview-desc");
+  if (blurb) {
+    blurb.textContent = typeOf(current) === "task"
+      ? "Accounts this task works through. An unattended run only uses the tools you set to Always allow."
+      : "Accounts this app works through. Connect the ones it needs before opening it.";
+  }
   if (count) count.textContent = `· ${deps.length}`;
   host.textContent = "";
-  if (!deps.length) { host.innerHTML = `<div class="crud-empty">This app needs no connections.</div>`; return; }
+  if (!deps.length) { host.innerHTML = `<div class="crud-empty">This ${TYPE_LABEL[typeOf(current)]} needs no connections.</div>`; return; }
   const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] }));
   const have = new Map(mine.connections.map((c) => [c.appSlug, c]));
   for (const dep of deps) {
@@ -1387,7 +1394,7 @@ async function importFromFile(): Promise<void> {
 }
 
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", kinds: ["skill", "app"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
+  kind: "skill", kinds: ["skill", "app", "task"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
 });
 const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
