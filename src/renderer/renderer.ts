@@ -14,6 +14,10 @@ import { installAutofillGuard } from "./autofill-guard.js";
 import type { RoleView as LoopRoleView } from "./help/model-picker.js";
 import type { LibEnvelope } from "./help/library-types.js";
 
+/** The library kinds a bundle can be: every one of them is a skill, the kind
+ *  says which sort (his ruling, 2026-09-17). */
+type SkillKind = "skill" | "app" | "plugin" | "task";
+
 // Mirrors preload.ts's SavedPanelApp — duplicated rather than imported so
 // the renderer program (ES2022 module tsconfig) never pulls preload.ts
 // (CommonJS-targeted) into its compile graph, which previously caused
@@ -410,7 +414,7 @@ declare global {
       librarySkillGet: (ref: string) => Promise<LibEnvelope>;
       librarySkillCreate: (input: unknown) => Promise<LibEnvelope>;
       librarySkillUpdate: (ref: string, patch: unknown) => Promise<LibEnvelope>;
-      skillsList: (kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
+      skillsList: (kind?: SkillKind | SkillKind[]) => Promise<LibEnvelope>;
       skillCreate: (name: string, kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillsHome: (kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
       skillImage: (id: string, rel: string) => Promise<LibEnvelope>;
@@ -427,7 +431,7 @@ declare global {
       skillAdopt: (id: string) => Promise<LibEnvelope>;
       skillReplace: (id: string) => Promise<LibEnvelope>;
       skillDownload: (id: string) => Promise<LibEnvelope>;
-      skillsDiscover: (kind?: "skill" | "app" | "plugin" | "task") => Promise<LibEnvelope>;
+      skillsDiscover: (kind?: SkillKind | SkillKind[]) => Promise<LibEnvelope>;
       tasksSpecs: () => Promise<LibEnvelope>;
       taskSpec: (slug: string) => Promise<LibEnvelope>;
       taskSlotSet: (slug: string, slot: string, agentId: string | null) => Promise<LibEnvelope>;

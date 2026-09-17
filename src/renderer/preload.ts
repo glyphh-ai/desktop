@@ -314,6 +314,10 @@ export interface PanelAppInput {
 
 /** The `{ ok, data | error }` envelope every library IPC handler returns. */
 interface LibEnvelope { ok: boolean; data?: unknown; error?: string }
+/** The library kinds a bundle can be: every one of them is a skill, the
+ *  kind says which sort (his ruling, 2026-09-17). */
+type SkillKind = "skill" | "app" | "plugin" | "task";
+
 
 /** One model slot a loop declares, resolved for this caller — what a picker renders. */
 interface VoiceSettingsView {
@@ -1094,7 +1098,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   tasksRunList: (ref: string, taskId: string) => ipcRenderer.invoke("tasks-run-list", ref, taskId) as Promise<LibEnvelope>,
   // The AI Hub (the Marketplace rail item → the org's hub on the console, in a work panel).
   // SKILLS (2026-09-16): folders on disk, the Agent Skills standard.
-  skillsList: (kind?: "skill" | "app" | "plugin" | "task") => ipcRenderer.invoke("skills-list", kind) as Promise<LibEnvelope>,
+  skillsList: (kind?: SkillKind | SkillKind[]) => ipcRenderer.invoke("skills-list", kind) as Promise<LibEnvelope>,
   // TASKS (2026-09-17): bundles the desktop runs itself (task-runner.ts) and the SCHEDULES lane over them.
   tasksSpecs: () => ipcRenderer.invoke("tasks-specs") as Promise<LibEnvelope>,
   taskSpec: (slug: string) => ipcRenderer.invoke("task-spec", slug) as Promise<LibEnvelope>,
@@ -1128,7 +1132,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillAdopt: (id: string) => ipcRenderer.invoke("skill-adopt", id) as Promise<LibEnvelope>,
   skillReplace: (id: string) => ipcRenderer.invoke("skill-replace", id) as Promise<LibEnvelope>,
   skillDownload: (id: string) => ipcRenderer.invoke("skill-download", id) as Promise<LibEnvelope>,
-  skillsDiscover: (kind?: "skill" | "app" | "plugin" | "task") => ipcRenderer.invoke("skills-discover", kind) as Promise<LibEnvelope>,
+  skillsDiscover: (kind?: SkillKind | SkillKind[]) => ipcRenderer.invoke("skills-discover", kind) as Promise<LibEnvelope>,
   skillInstall: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => ipcRenderer.invoke("skill-install", ref, kind) as Promise<LibEnvelope>,
   skillPublish: (id: string, notes?: string) => ipcRenderer.invoke("skill-publish", id, notes) as Promise<LibEnvelope>,
   skillVersions: (id: string) => ipcRenderer.invoke("skill-versions", id) as Promise<LibEnvelope>,

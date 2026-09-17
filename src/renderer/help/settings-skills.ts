@@ -38,7 +38,10 @@ const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 /** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
  *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
 export interface PageCfg {
-  kind: "skill" | "app" | "plugin" | "task";
+  kind: BundleType;
+  /** The homes this page lists. Defaults to its own kind; the Skills page
+   *  lists apps beside skills while the Apps page still stands. */
+  kinds?: BundleType[];
   /** The panel's ids: skills-* / skill-* for Skills, gapps-* / gapp-* for Apps (app-* belongs to Tabs). */
   id: (skillsId: string) => string;
   panel: string;
@@ -83,6 +86,10 @@ let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Re
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
 const api = () => window.glyphh;
+/** What this page lists, and what an item IS — every per-item call rides the
+ *  item's own type, never the page's (a mixed list has both). */
+const KINDS: BundleType[] = cfg.kinds ?? [cfg.kind];
+const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.type ?? cfg.kind;
 /** The type reads as a chip only when it is NOT what this page is already
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
 const typeChip = (type: BundleType | undefined): string =>
@@ -114,7 +121,7 @@ async function loadSkillsSettings(): Promise<void> {
   el("skills-list-view")?.classList.remove("hidden");
   el("skills-error")?.classList.add("hidden");
   if (!skills.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml(`Loading your ${cfg.nouns}…`); }
-  const r = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
+  const r = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (!r.ok) { fail(r.error || `Couldn't read your ${cfg.nouns}.`); return; }
   skills = r.data ?? [];
   if (tab === "discover") await loadDiscover();
@@ -123,7 +130,7 @@ async function loadSkillsSettings(): Promise<void> {
 
 async function loadDiscover(): Promise<void> {
   if (!discoverRows.length) { const h = el("skills-groups"); if (h) h.innerHTML = loadingHtml("Loading the hub…"); }
-  const [r, c] = await Promise.all([api().skillsDiscover(cfg.kind) as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
+  const [r, c] = await Promise.all([api().skillsDiscover(KINDS) as Promise<Env<DiscoverRow[]>>, api().hubCategories() as Promise<Env<Array<{ id: string; label: string }>>>]);
   if (!r.ok) { fail(r.error || "The hub didn't answer."); discoverRows = []; return; }
   discoverRows = r.data ?? [];
   hubCategories = c.ok ? (c.data ?? []) : [];
@@ -418,7 +425,7 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
   let title = "Results";
   if (v.kind === "category") { list = rows.filter((d) => d.categories.includes(v.id)); title = catLabel(v.id); }
   else if (v.kind === "shelf") {
-    title = v.id === "new" ? "New" : v.id === "top" ? "Most installed" : "All skills";
+    title = v.id === "new" ? "New" : v.id === "top" ? "Most installed" : `All ${cfg.nouns}`;
     list = v.id === "new" ? [...rows].sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [...rows].sort((a, b) => b.installs - a.installs || a.name.localeCompare(b.name));
   }
   if (v.kind !== "home") {
@@ -460,10 +467,10 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
 async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = "…";
-  const r = await api().skillInstall(d.ref, cfg.kind) as Env<{ id: string }>;
+  const r = await api().skillInstall(d.ref, d.type ?? cfg.kind) as Env<{ id: string }>;
   if (!r.ok) { btn.disabled = false; btn.textContent = btn.classList.contains("skill-add-wide") ? "Add" : "+"; fail(r.error || "Install failed."); return; }
   d.installed = true;
-  const list = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
+  const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   if (hubItem && hubItem.ref === d.ref) { paintDetailChrome(); return; }
   renderList();
@@ -472,7 +479,7 @@ async function installFrom(d: DiscoverRow, btn: HTMLButtonElement): Promise<void
 async function toggle(id: string, on: boolean): Promise<void> {
   const r = await api().skillSetEnabled(id, on) as Env<SkillRow>;
   if (!r.ok) { fail(r.error || "Couldn't change that."); return; }
-  const list = await api().skillsList(cfg.kind) as Env<SkillRow[]>;
+  const list = await api().skillsList(KINDS) as Env<SkillRow[]>;
   if (list.ok) skills = list.data ?? [];
   if (current && current.id === id) { current.enabled = on; const box = el<HTMLInputElement>("skill-enabled"); if (box) box.checked = on; }
   renderList();
@@ -540,7 +547,7 @@ function editWith(loop: LoopRow): void {
 /** A Discover item: the same detail page, read from the hub, with Add in place
  *  of Share. Back returns to Discover exactly where the user left it. */
 async function openHubDetail(d: DiscoverRow): Promise<void> {
-  const r = await api().skillHubFiles(d.ref, cfg.kind) as Env<Record<string, string>>;
+  const r = await api().skillHubFiles(d.ref, d.type ?? cfg.kind) as Env<Record<string, string>>;
   if (!r.ok || !r.data) { fail(r.error || `Couldn't open that ${cfg.noun}.`); return; }
   const files = r.data;
   const { frontmatter, body } = parseFrontmatter(files["SKILL.md"] || "");
@@ -564,6 +571,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
   paintDetailChrome();
+  paintDetailTabs(typeOf(current));
   collapsedDirs = new Set();
   const sel = el<HTMLSelectElement>("skill-version");
   if (sel) { sel.innerHTML = `<option value="${d.version ?? 1}">${escapeHtml(d.name)} · v${d.version ?? 1}</option>`; sel.disabled = true; sel.title = "The version on the hub"; }
@@ -589,32 +597,25 @@ function paintDetailChrome(): void {
   }
   add.classList.toggle("hidden", !hub);
   if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
-  if (cfg.kind === "task") {
-    let run = el<HTMLButtonElement>("skill-run-now");
-    if (!run) {
-      run = document.createElement("button");
-      run.id = cfg.id("skill-run-now");
-      run.type = "button";
-      run.className = "action-btn primary";
-      run.textContent = "Run now";
-      run.addEventListener("click", () => void runNow(run!));
-      el("skill-share")?.before(run);
+  // The type's own action. Both buttons are resolved every time, because a
+  // mixed list moves between an app and a skill and a stale Open must go.
+  const type = typeOf(current);
+  const action = (id: string, label: string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement => {
+    let b = el<HTMLButtonElement>(id);
+    if (!b) {
+      b = document.createElement("button");
+      b.id = cfg.id(id);
+      b.type = "button";
+      b.className = "action-btn primary";
+      b.textContent = label;
+      const self = b;
+      b.addEventListener("click", () => onClick(self));
+      el("skill-share")?.before(b);
     }
-    run.classList.toggle("hidden", hub || !current);
-    return;
-  }
-  if (cfg.kind !== "app") return;
-  let open = el<HTMLButtonElement>("skill-open-tab");
-  if (!open) {
-    open = document.createElement("button");
-    open.id = cfg.id("skill-open-tab");
-    open.type = "button";
-    open.className = "action-btn primary";
-    open.textContent = "Open";
-    open.addEventListener("click", () => void openAsTab(open!));
-    el("skill-share")?.before(open);
-  }
-  open.classList.toggle("hidden", hub || !current);
+    return b;
+  };
+  if (type === "app" || el("skill-open-tab")) action("skill-open-tab", "Open", (b) => void openAsTab(b)).classList.toggle("hidden", hub || !current || type !== "app");
+  if (type === "task" || el("skill-run-now")) action("skill-run-now", "Run now", (b) => void runNow(b)).classList.toggle("hidden", hub || !current || type !== "task");
 }
 
 /** TASKS: start a run and land on its story. */
@@ -660,14 +661,15 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   const host = el("skill-overview-extra");
   if (!host) return;
   host.textContent = "";
-  if (cfg.kind === "skill") return;
+  const type = typeOf(s);
+  if (type === "skill") return;
   const read = async (rel: string): Promise<string> => {
     if (hubFiles) return hubFiles[rel] ?? "";
     const r = await api().skillFileRead(s.id, rel) as Env<{ text: string; binary: boolean }>;
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
-  if (cfg.kind === "plugin") { await paintBundleSkills(s, read); return; }
-  if (cfg.kind === "task") {
+  if (type === "plugin") { await paintBundleSkills(s, read); return; }
+  if (type === "task") {
     let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; schedule?: string | null; program?: string } = {};
     try { tm = JSON.parse(await read("task.json") || "{}"); } catch { tm = {}; }
     const meta = document.createElement("div");
@@ -908,6 +910,7 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
   paintDetailChrome();
+  paintDetailTabs(typeOf(s));
   collapsedDirs = new Set();
   paintVersions([]);
   void loadVersions();
@@ -945,7 +948,7 @@ async function chooseVersion(value: string): Promise<void> {
     const fresh = await api().skillGet(current.id) as Env<SkillDetail>;
     if (fresh.ok && fresh.data) current = fresh.data;
   } else {
-    const r = await api().skillVersionFiles(versionItemId, Number(value), cfg.kind) as Env<Record<string, string>>;
+    const r = await api().skillVersionFiles(versionItemId, Number(value), typeOf(current)) as Env<Record<string, string>>;
     if (!r.ok || !r.data) { fail(r.error || "Couldn't load that version."); return; }
     viewedVersion = { itemId: versionItemId, version: Number(value), files: r.data };
   }
@@ -962,7 +965,22 @@ function filesNow(): SkillFile[] {
 }
 
 type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "slots" | "runs";
+/** Which tabs a type earns. Overview and Contents are every bundle's; the rest
+ *  are what that kind of skill actually has. */
+const TABS_FOR: Record<BundleType, DetailTab[]> = {
+  skill: ["overview", "contents"],
+  app: ["overview", "contents", "skills", "tools", "connections"],
+  task: ["overview", "contents", "slots", "runs", "connections"],
+  plugin: ["overview", "contents", "skills"],
+};
+/** Show only the tabs this item earns. */
+function paintDetailTabs(type: BundleType): void {
+  const allowed = TABS_FOR[type];
+  document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`)
+    .forEach((b) => b.classList.toggle("hidden", !allowed.includes(b.dataset.dtab as DetailTab)));
+}
 function selectDetailTab(t: DetailTab): void {
+  if (!TABS_FOR[typeOf(current)].includes(t)) t = "overview";
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
   el("skill-contents")?.classList.toggle("hidden", t !== "contents");
@@ -1235,7 +1253,7 @@ function wire(): void {
     void loadSkillsSettings();
   });
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as DetailTab)));
-  if (cfg.kind === "task") {
+  if (KINDS.includes("task")) {
     (api() as unknown as { onTaskRunsChanged?: (fn: () => void) => void }).onTaskRunsChanged?.(() => {
       if (current && !hubItem && el("skill-runs") && !el("skill-runs")!.classList.contains("hidden")) void paintTaskRuns(current);
     });
@@ -1291,7 +1309,7 @@ async function importFromFile(): Promise<void> {
 }
 
 const SKILLS_PAGE = createLibraryPage({
-  kind: "skill", id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
+  kind: "skill", kinds: ["skill", "app"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
   newPrompt: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
 });
 const APPS_PAGE = createLibraryPage({

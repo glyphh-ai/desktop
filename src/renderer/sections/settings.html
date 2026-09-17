@@ -2007,11 +2007,18 @@
                   <div class="skills-tabs detail">
                     <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
                     <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="skill-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="skills" type="button">Skills <span id="skill-skill-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="tools" type="button">Tools <span id="skill-tool-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="connections" type="button">Connections <span id="skill-conn-count" class="skills-count"></span></button>
                   </div>
+                  <div id="skill-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="skill-skills-list" class="app-bundle-list"></div></div></div>
+                  <div id="skill-tools" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Choose when your AI is allowed to use these tools.</div><div id="skill-tools-list" class="conn2-groups"></div></div></div>
+                  <div id="skill-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this works through. Connect the ones it needs before opening it.</div><div id="skill-connections-list" class="app-bundle-list"></div></div></div>
                   <div id="skill-overview" class="skill-overview">
                     <div class="skill-overview-main">
                       <div class="skill-overview-label">Description</div>
                       <div id="skill-overview-desc" class="skill-overview-desc"></div>
+                      <div id="skill-overview-extra" class="app-overview-extra"></div>
                     </div>
                     <aside class="skill-author-card">
                       <div class="skill-overview-label">Created by</div>

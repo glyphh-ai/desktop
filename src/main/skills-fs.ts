@@ -305,10 +305,15 @@ function syncPluginMarketplace(): void {
   for (const pl of plugins) run(["install", `${pl.name}@glyphh`, "--scope", "user"]);
 }
 
-export function listSkills(kind: HomeKind = "skill"): SkillSummary[] {
+/** The homes a kind reads from. A list of kinds unions them, which is how one
+ *  page lists skills and apps together while both pages still exist. */
+const SOURCES_FOR = (kind: HomeKind): SkillSource[] =>
+  kind === "app" ? ["app"] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
+
+export function listSkills(kind: HomeKind | HomeKind[] = "skill"): SkillSummary[] {
   syncLinks();
   const out: SkillSummary[] = [];
-  const sources: SkillSource[] = kind === "app" ? ["app"] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
+  const sources = [...new Set((Array.isArray(kind) ? kind : [kind]).flatMap(SOURCES_FOR))];
   for (const source of sources) {
     out.push(...listIn(ROOTS[source](), source, true));
     out.push(...listIn(path.join(DISABLED_ROOT(), source), source, false));
@@ -536,13 +541,16 @@ function tabBundles(): void {
 export function registerSkillsIpc(): void {
   tabBundles();
   const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
+  const kindsOf = (k: unknown): HomeKind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
   ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
   ipcMain.handle("skill-import", async (e, kind?: string) => {
     const k = kindOf(kind);
     const win = BrowserWindow.fromWebContents(e.sender);
     const picked = await dialog.showOpenDialog(win ?? undefined as never, {
       title: k === "app" ? "Import an app" : k === "plugin" ? "Import a plugin" : k === "task" ? "Import a task" : "Import a skill", properties: ["openFile", "openDirectory"],
-      filters: [{ name: k === "app" ? "App (.glyphh, zip or folder)" : k === "plugin" ? "Plugin (zip or folder)" : "Skill (zip or folder)", extensions: k === "app" ? ["glyphh", "zip"] : ["zip"] }],
+      // A picked bundle lands by WHAT IT IS (app.json/task.json inside), so the
+      // skills picker takes .glyphh app exports too.
+      filters: [{ name: k === "app" ? "App (.glyphh, zip or folder)" : k === "plugin" ? "Plugin (zip or folder)" : k === "task" ? "Task (zip or folder)" : "Skill or app (.glyphh, zip or folder)", extensions: k === "plugin" || k === "task" ? ["zip"] : ["glyphh", "zip"] }],
     });
     if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };
     try { return { ok: true, data: importSkill(picked.filePaths[0], k) }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -552,11 +560,17 @@ export function registerSkillsIpc(): void {
   const env = <T>(fn: () => T): { ok: boolean; data?: T; error?: string } => {
     try { return { ok: true, data: fn() }; } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   };
-  ipcMain.handle("skills-list", (_e, kind?: string) => env(() => { if (kind === "app") tabBundles(); return listSkills(kindOf(kind)); }));
+  ipcMain.handle("skills-list", (_e, kind?: string | string[]) => env(() => {
+    const kinds = kindsOf(kind);
+    if (kinds.includes("app")) tabBundles();
+    return listSkills(kinds);
+  }));
   ipcMain.handle("skill-tab", async (_e, id: string, opts?: { name?: string; slug?: string }) => {
     try {
-      const { source, dir } = dirOf(String(id));
-      if (source !== "app") return { ok: false, error: "only an app opens as a tab" };
+      const { dir } = dirOf(String(id));
+      // The TYPE opens the tab, not the home it sits in: an app is an app
+      // wherever its app.json is (his ruling, 2026-09-17).
+      if (bundleType(dir) !== "app") return { ok: false, error: "only an app opens as a tab" };
       const r = await registerBundleApp(dir, { name: opts?.name, slug: opts?.slug });
       return r.ok ? { ok: true, data: { slug: r.slug, name: r.name, tool: r.tool } } : { ok: false, error: r.error };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }

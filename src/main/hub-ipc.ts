@@ -55,22 +55,30 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
 
 type Kind = "skill" | "app" | "plugin" | "task";
 const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
-/** The hub kind behind a local id: the apps home publishes as kind app. */
-const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : id.startsWith("plugin:") ? "plugin" : id.startsWith("task:") ? "task" : "skill");
+const kindsOf = (k: unknown): Kind[] => (Array.isArray(k) ? [...new Set(k.map(kindOf))] : [kindOf(k)]);
+/** The hub kind behind a local bundle: what the folder IS (its manifest), and
+ *  only if it can't be read, the home its id names. */
+const kindOfId = (id: string): Kind => {
+  try { return getSkill(id).type; } catch { /* unreadable or gone — fall back */ }
+  return id.startsWith("app:") ? "app" : id.startsWith("plugin:") ? "plugin" : id.startsWith("task:") ? "task" : "skill";
+};
 
-async function discover(kind: Kind): Promise<DiscoverRow[]> {
+async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
   const client = getClient();
-  const [org, pub] = await Promise.all([
-    client.http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]),
+  // The org list is per kind; the public catalog is one list for all of them.
+  const [orgLists, pub] = await Promise.all([
+    Promise.all(kinds.map(async (k) => [k, await client.http.get<OrgItem[]>(`/api/library/${k}`).catch(() => [] as OrgItem[])] as const)),
     client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
   ]);
   const rows: DiscoverRow[] = [];
-  for (const it of Array.isArray(org) ? org : []) {
-    if (!it.headVersion) continue;
-    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
+  for (const [kind, org] of orgLists) {
+    for (const it of Array.isArray(org) ? org : []) {
+      if (!it.headVersion) continue;
+      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
+    }
   }
-  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === kind)) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: kind });
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind))) {
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
@@ -166,7 +174,7 @@ export function registerHubIpc(): void {
   ipcMain.handle("skill-versions", (_e, id: string) => env(() => versionsFor(String(id))));
   ipcMain.handle("skill-version-files", (_e, itemId: string, version: number, kind?: string) => env(() => versionFiles(String(itemId), Number(version), kindOf(kind))));
   ipcMain.handle("platform-url", (_e, next?: string) => env(async () => ({ url: await platformUrl(typeof next === "string" && next.startsWith("/ui/") ? next : "/ui/") })));
-  ipcMain.handle("skills-discover", (_e, kind?: string) => env(() => discover(kindOf(kind))));
+  ipcMain.handle("skills-discover", (_e, kind?: string | string[]) => env(() => discover(kindsOf(kind))));
   ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
   ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
 }
