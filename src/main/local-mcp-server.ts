@@ -25,9 +25,9 @@ import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
 import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
-import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule } from "./local-library.js";
+import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule, scheduleForTask } from "./local-library.js";
 import { openSettingsPage } from "./app-resolver.js";
-import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest } from "../shared/bundle-shape.js";
+import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest, normalizeConnDeps } from "../shared/bundle-shape.js";
 import { listCliAgents } from "./cli-agents.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -173,7 +173,7 @@ function buildMcpServer(): McpServer {
    *  agent needing code no longer has to reach for an app bundle. */
   function saveBundle(input: {
     type: BundleType; slug?: string; name: string; description?: string; prompt?: string;
-    files?: Record<string, string>; program?: string;
+    files?: Record<string, string>; program?: string; connections?: string[]; schedule?: string;
     slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string }>;
   }): Record<string, unknown> {
     const name = String(input.name ?? "").trim();
@@ -188,14 +188,22 @@ function buildMcpServer(): McpServer {
 
     // A TASK IS A PROGRAM: the task lane owns task.json, run.js and the slots.
     if (type === "task") {
-      saveTaskSpec({ slug, name, description: input.description, program: input.program, slots: input.slots });
+      const spec = saveTaskSpec({ slug, name, description: input.description, program: input.program, slots: input.slots, connections: input.connections, schedule: input.schedule });
       const id = idFor(slug, "task");
       if (input.prompt) {
         const sk = getSkill(id);
         writeSkillFile(id, "SKILL.md", `---\nname: ${slug}\ndescription: ${(input.description ?? sk.description ?? name).replace(/\r?\n/g, " ").trim()}\ntype: task\n---\n\n${String(input.prompt).trim()}\n`);
       }
       for (const [rel, body] of Object.entries(extra)) writeSkillFile(id, rel, body);
-      return describeBundle(id, input.program ? undefined : "no program was given, so run.js is whatever it already was");
+      const onClock = scheduleForTask(slug);
+      return {
+        ...describeBundle(id, input.program ? undefined : "no program was given, so run.js is whatever it already was"),
+        connections: spec.connections,
+        schedule: onClock ? { id: onClock.id, cron: onClock.cron, enabled: onClock.enabled } : null,
+        // A run refuses an account the manifest does not declare, so an empty
+        // list beside code that calls ctx.connections is the bug to report.
+        ...(spec.connections.length ? {} : { connectionsNote: "this task declares no connections; pass `connections` if its program calls ctx.connections.<app>" }),
+      };
     }
 
     // AN APP HAS A FACE. Without one it is a task (headless, on a clock) or a
@@ -213,7 +221,7 @@ function buildMcpServer(): McpServer {
     if (type === "app" && !existing && !files["app.json"]) {
       files["app.json"] = JSON.stringify({
         name: slug, ui: Object.keys(extra).find((r) => /\.html?$/i.test(r)) || "ui/index.html",
-        tools: "tools/manifest.json", dependencies: { connections: [] }, screenshots: [],
+        tools: "tools/manifest.json", dependencies: { connections: normalizeConnDeps(input.connections) }, screenshots: [],
       }, null, 2) + "\n";
     }
     if (existing) for (const [rel, text] of Object.entries(files)) writeSkillFile(id, rel, text);
@@ -347,6 +355,8 @@ function buildMcpServer(): McpServer {
       prompt: z.string().optional().describe("SKILL.md body — the instructions (every type has one)"),
       files: z.record(z.string(), z.string()).optional().describe("Extra files by relative path, e.g. { \"scripts/report.js\": \"…\", \"ui/index.html\": \"…\" }"),
       program: z.string().optional().describe('type:"task" only — run.js: module.exports = async function run(ctx, input) { … }'),
+      schedule: z.string().optional().describe('type:"task" only — a five-field cron in the machine\'s local time ("0 8 * * 1-5" is weekdays at 8am). Setting it puts the task on the clock and it shows on Settings → Customize → Schedules; change it there afterwards, not here.'),
+      connections: z.array(z.string()).optional().describe('The connected accounts it needs, by app slug (e.g. ["gmail","google_calendar"]). REQUIRED whenever the code calls ctx.connections.<app> or the app declares connector tools: a run refuses any account the manifest does not declare.'),
       slots: z.array(z.object({
         name: z.string().optional(),
         label: z.string().optional(),

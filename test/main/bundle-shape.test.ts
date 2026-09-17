@@ -15,7 +15,7 @@ import path from "path";
 import {
   normalizeConnDeps, appCardManifest, appCardSkillMd, GENERATED_MARK,
   rowOwnedByBundle, payloadDirOf, hasAppFace, NO_FACE_ERROR, checkBundlePath,
-  WHERE_TO_SEE, checkNoForeignManifest, type AppCardInput,
+  WHERE_TO_SEE, checkNoForeignManifest, isGeneratedCard, connDepNames, type AppCardInput,
 } from "../../src/shared/bundle-shape";
 
 const card = (over: Partial<AppCardInput> = {}): AppCardInput => ({
@@ -106,6 +106,34 @@ describe("an installed app's library card", () => {
 
   it("says so plainly when an app needs no account", () => {
     expect(appCardSkillMd(card({ connectors: [] }))).toContain("It needs no connected account.");
+  });
+});
+
+describe("a card never overwrites a bundle's own manifest", () => {
+  it("marks its own cards", () => {
+    expect(isGeneratedCard(appCardManifest(card()))).toBe(true);
+  });
+
+  it("does not claim a real bundle manifest", () => {
+    const real = { name: "Design", ui: "ui/index.html", tool: "gdesign", tools: "tools/manifest.json" };
+    expect(isGeneratedCard(real)).toBe(false);
+  });
+
+  it("does not claim nothing, or a manifest that failed to parse", () => {
+    expect(isGeneratedCard(null)).toBe(false);
+    expect(isGeneratedCard(undefined)).toBe(false);
+    expect(isGeneratedCard("{}")).toBe(false);
+  });
+});
+
+describe("the connections a manifest declares, by name", () => {
+  it("reads either shape, which is what a run checks a call against", () => {
+    expect(connDepNames([{ app: "gmail", as: "org" }, "google_calendar"])).toEqual(["gmail", "google_calendar"]);
+  });
+
+  it("answers nothing for nothing, never [undefined]", () => {
+    expect(connDepNames(undefined)).toEqual([]);
+    expect(connDepNames([{ as: "member" }] as never)).toEqual([]);
   });
 });
 

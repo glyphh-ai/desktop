@@ -23,7 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
-import { appCardManifest, appCardSkillMd, GENERATED_MARK, type AppCardInput } from "../shared/bundle-shape.js";
+import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
@@ -547,7 +547,17 @@ export function writeAppCard(card: AppCard): void {
   fs.mkdirSync(dir, { recursive: true });
   if (card.iconSvg && card.iconSvg.includes("<svg")) fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
   const input: AppCardInput = { ...card, hasIcon: fs.existsSync(path.join(dir, "icon.svg")) };
-  fs.writeFileSync(path.join(dir, "app.json"), JSON.stringify(appCardManifest(input), null, 2) + "\n", "utf-8");
+  // THE BUNDLE'S OWN MANIFEST IS NEVER OURS TO REWRITE. A real app.json says
+  // what the app IS — its ui entry, its tools file, the built-in panel it is —
+  // and a card written over it silently took Design's `tool` away, so Open
+  // rendered a placeholder page (his report, 2026-09-17). We only write the
+  // file when it is absent or when we wrote it ourselves.
+  const manifestPath = path.join(dir, "app.json");
+  let ownManifest = true;
+  if (fs.existsSync(manifestPath)) {
+    try { ownManifest = isGeneratedCard(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))); } catch { ownManifest = false; }
+  }
+  if (ownManifest) fs.writeFileSync(manifestPath, JSON.stringify(appCardManifest(input), null, 2) + "\n", "utf-8");
   const md = path.join(dir, "SKILL.md");
   if (fs.existsSync(md)) {
     let ours = false;

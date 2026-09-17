@@ -250,6 +250,31 @@ export function saveSchedule(input: { id?: string; name?: string; kind?: string;
   return { id };
 }
 
+/**
+ * A BUNDLE'S SCHEDULE IS AN INTENT (his report, 2026-09-17: "I don't see the
+ * schedule for this task either").
+ *
+ * A task saved with `schedule` in its manifest never fired and appeared on no
+ * page, because the clock is `loop_schedules` and nothing mirrored the
+ * manifest into it. The row stays the truth: this creates the first one and
+ * then leaves it alone, so a schedule the user edits or deletes is never
+ * resurrected behind their back.
+ */
+export function ensureTaskSchedule(slug: string, cron: string | null, name?: string): { id: string; cron: string } | null {
+  const target = String(slug || "").trim();
+  if (!target || !cron) return null;
+  const have = listSchedulesView().find((s) => s.kind === "task" && s.target === target);
+  if (have) return { id: have.id, cron: have.cron };
+  const { id } = saveSchedule({ kind: "task", target, cron, name: name || target });
+  return { id, cron };
+}
+
+/** What this task is on the clock for, if anything. */
+export const scheduleForTask = (slug: string): { id: string; cron: string; enabled: boolean } | null => {
+  const row = listSchedulesView().find((s) => s.kind === "task" && s.target === String(slug || "").trim());
+  return row ? { id: row.id, cron: row.cron, enabled: row.enabled } : null;
+};
+
 /** Take it off the clock. Its run history stays. */
 export function deleteSchedule(id: string): { deleted: boolean } {
   liveJobs.get(String(id))?.stop();

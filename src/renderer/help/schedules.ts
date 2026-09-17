@@ -190,7 +190,7 @@ function paintOverview(): void {
   if (count) count.textContent = rows.length ? String(rows.length) : "";
   list.textContent = "";
   if (!shown.length) {
-    list.innerHTML = `<div class="crud-empty">${query ? "No schedules match." : "Nothing on the clock yet. Add one, or turn on a task's own schedule from its Tasks page."}</div>`;
+    list.innerHTML = `<div class="crud-empty">${query ? "No schedules match." : "Nothing on the clock yet. Add one here, or give a task a schedule and it shows up on this page."}</div>`;
   }
   for (const { r, next } of shown) {
     const card = document.createElement("div");
@@ -224,7 +224,7 @@ function paintOverview(): void {
 function paintRecents(): void {
   const host = el("schedules-recent"); if (!host) return;
   host.textContent = "";
-  if (!recents.length) { host.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
+  if (!recents.length) { host.innerHTML = `<div class="crud-empty">No runs yet.</div>`; return; }
   for (const run of recents.slice(0, 15)) {
     const e = document.createElement("div");
     e.className = "ws-task-recent" + (run.status === "ok" ? "" : " failed");
@@ -337,12 +337,12 @@ function closeEditor(): void {
 
 async function paintRuns(id: string): Promise<void> {
   const host = el("schedule-runs"); if (!host) return;
-  host.innerHTML = `<div class="ws-rel-empty">Loading history…</div>`;
+  host.innerHTML = `<div class="crud-empty">Loading history…</div>`;
   const r = await api().scheduleRuns(id);
   if (!host.isConnected || editing?.id !== id) return;
-  if (!r.ok) { host.innerHTML = `<div class="ws-rel-empty">${escapeHtml(r.error || "Couldn't load runs")}</div>`; return; }
+  if (!r.ok) { host.innerHTML = `<div class="crud-empty">${escapeHtml(r.error || "Couldn't load runs")}</div>`; return; }
   const runs = r.data ?? [];
-  if (!runs.length) { host.innerHTML = `<div class="ws-rel-empty">No runs yet.</div>`; return; }
+  if (!runs.length) { host.innerHTML = `<div class="crud-empty">No runs yet.</div>`; return; }
   host.textContent = "";
   for (const run of runs) {
     const e = document.createElement("div");

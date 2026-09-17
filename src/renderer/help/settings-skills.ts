@@ -1061,6 +1061,17 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
   const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] }));
   const have = new Map(mine.connections.map((c) => [c.appSlug, c]));
   for (const dep of deps) {
+    try { paintConnRow(host, dep, have, () => paintBundleConnections(raw)); }
+    // ONE BAD ROW NEVER BLANKS THE PANE (his report, twice): whatever a
+    // manifest carries, every row that can render does.
+    catch (err) { console.warn("[skills] connection row skipped:", err); }
+  }
+}
+
+interface ConnRow { appSlug: string; label?: string | null; appName?: string | null; connected?: boolean; shared?: boolean }
+
+function paintConnRow(host: HTMLElement, dep: ConnDep, have: Map<string, ConnRow>, refresh: () => Promise<void>): void {
+  {
     const c = have.get(dep.app);
     const org = dep.as === "org";
     const ready = !!c && (c.connected || c.shared);
@@ -1085,7 +1096,7 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
         const r = await (window.glyphh.connectorsConnect?.(dep.app) ?? Promise.resolve({ ok: false, error: "Connect is not available here." })).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
         if (!r.ok) { btn.disabled = false; btn.textContent = "Connect"; fail(r.error || "Couldn't connect."); return; }
         let tries = 0;
-        const tick = async (): Promise<void> => { await paintBundleConnections(deps); const fresh = (await window.glyphh.connectionsList().catch(() => ({ connections: [] }))).connections.find((x) => x.appSlug === dep.app); if (!(fresh?.connected || fresh?.shared) && ++tries < 6) setTimeout(() => void tick(), 1500); };
+        const tick = async (): Promise<void> => { await refresh(); const fresh = (await window.glyphh.connectionsList().catch(() => ({ connections: [] }))).connections.find((x) => x.appSlug === dep.app); if (!(fresh?.connected || fresh?.shared) && ++tries < 6) setTimeout(() => void tick(), 1500); };
         setTimeout(() => void tick(), 1500);
       });
       right.appendChild(btn);

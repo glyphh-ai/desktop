@@ -135,25 +135,62 @@ async function install(ref: string, kind: Kind): Promise<{ id: string }> {
 
 const versionOf = (r: { headVersion?: number | null; version?: number | null }): number => Number(r.headVersion ?? r.version ?? 1);
 
-/** Installed bundles the catalog has moved past, by folder id. */
-async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
-  const origins = preferencesByPrefix<InstallOrigin>("bundleSource:");
-  const out: Record<string, { have: number; latest: number; name: string }> = {};
-  const wanted = Object.entries(origins).filter(([, o]) => o && typeof o === "object" && o.itemId);
-  if (!wanted.length) return out;
+/** Every catalog row this member can see, by kind, org rows first. */
+type CatalogRow = { id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null };
+async function catalogRows(kinds: Kind[]): Promise<Array<{ from: "org" | "glyphh"; kind: Kind; row: CatalogRow }>> {
   const client = getClient();
-  const kinds = [...new Set(wanted.map(([, o]) => o.kind))];
   const [orgLists, pub] = await Promise.all([
     Promise.all(kinds.map(async (k) => [k, await client.http.get<OrgItem[]>(`/api/library/${k}`).catch(() => [] as OrgItem[])] as const)),
     client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
   ]);
-  const org = new Map(orgLists.flatMap(([, rows]) => (Array.isArray(rows) ? rows : []).map((r) => [r.id, r] as const)));
-  const glyphh = new Map((Array.isArray(pub) ? pub : []).map((r) => [r.id, r] as const));
-  for (const [key, o] of wanted) {
-    const row = o.from === "org" ? org.get(o.itemId) : glyphh.get(o.itemId);
-    if (!row) continue;
-    const latest = versionOf(row);
-    if (latest > Number(o.version || 1)) out[key] = { have: Number(o.version || 1), latest, name: row.name };
+  const out: Array<{ from: "org" | "glyphh"; kind: Kind; row: CatalogRow }> = [];
+  for (const [kind, rows] of orgLists) for (const row of Array.isArray(rows) ? rows : []) out.push({ from: "org", kind, row: row as CatalogRow });
+  for (const row of Array.isArray(pub) ? pub : []) {
+    const kind = (row as { kind?: string }).kind as Kind | undefined;
+    if (kind && kinds.includes(kind)) out.push({ from: "glyphh", kind, row: row as CatalogRow });
+  }
+  return out;
+}
+
+/**
+ * WHERE A BUNDLE CAME FROM, recorded or not (his report, 2026-09-17: "why am I
+ * not able to apply the update myself?").
+ *
+ * An Update needed a `bundleSource:` preference, so a folder installed before
+ * that bookkeeping — or seeded any other way — could never be updated and
+ * never showed a newer version. The catalog is matched by slug and kind when
+ * no origin is on file, which is the same identity the hub publishes under.
+ */
+async function originFor(skillId: string, kind: Kind, catalog?: Array<{ from: "org" | "glyphh"; kind: Kind; row: CatalogRow }>): Promise<InstallOrigin | null> {
+  const recorded = originOf(skillId);
+  if (recorded) return recorded;
+  const slug = skillId.slice(skillId.indexOf(":") + 1).toLowerCase();
+  const rows = catalog ?? await catalogRows([kind]);
+  const hit = rows.find((c) => c.kind === kind && c.row.slug?.toLowerCase() === slug)
+    ?? rows.find((c) => c.kind === kind && c.row.name?.toLowerCase() === slug);
+  if (!hit) return null;
+  // Version 0: nothing is recorded, so whatever the catalog has is newer and
+  // the user can take it. Writing the origin is left to the update itself.
+  return { from: hit.from, itemId: hit.row.id, kind, slug: hit.row.slug, version: 0, files: [], installedAt: "" };
+}
+
+/** Installed bundles the catalog has moved past, by folder id. */
+async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
+  const out: Record<string, { have: number; latest: number; name: string }> = {};
+  const mine = listSkills(["skill", "app", "task", "plugin"]);
+  if (!mine.length) return out;
+  const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
+  const catalog = await catalogRows(kinds);
+  if (!catalog.length) return out;
+  for (const sk of mine) {
+    const kind = kindOfId(sk.id);
+    const o = await originFor(sk.id, kind, catalog);
+    if (!o) continue;
+    const hit = catalog.find((c) => c.from === o.from && c.kind === kind && c.row.id === o.itemId);
+    if (!hit) continue;
+    const latest = versionOf(hit.row);
+    const have = Number(o.version || 0);
+    if (latest > have) out[sk.id] = { have, latest, name: hit.row.name };
   }
   return out;
 }
@@ -161,8 +198,8 @@ async function updatesAvailable(): Promise<Record<string, { have: number; latest
 /** Take the catalog's current version over this copy: write what the payload
  *  has, take away what it dropped, and keep anything the user added. */
 async function update(skillId: string): Promise<{ version: number }> {
-  const o = originOf(skillId);
-  if (!o) throw new Error("this one didn't come from the hub, so there is nothing to update from");
+  const o = await originFor(skillId, kindOfId(skillId));
+  if (!o) throw new Error("no catalog item matches this one by slug, so there is nothing to update from");
   const client = getClient();
   const rows = o.from === "org"
     ? await client.http.get<OrgItem[]>(`/api/library/${o.kind}`)
@@ -200,12 +237,9 @@ export async function installDefaultHubItems(): Promise<void> {
       // the tool surface an agent reads — so a newer catalog version replaces
       // this copy instead of waiting for a button nobody presses. Everything
       // else keeps the Update button, where the user decides.
-      const origin = originOf(have.id);
-      if (origin && versionOf(hit) <= Number(origin.version || 1)) continue;
-      // No origin recorded means this copy predates the bookkeeping: install
-      // over it, which also writes the origin so later boots just compare.
-      if (origin) await update(have.id);
-      else await install(`glyphh:${hit.id}`, want.kind);
+      const origin = await originFor(have.id, want.kind);
+      if (origin && versionOf(hit) <= Number(origin.version || 0)) continue;
+      await update(have.id);
       console.info(`[hub] refreshed the default ${want.kind} "${want.slug}" to v${versionOf(hit)}`);
     }
   } catch (err) {

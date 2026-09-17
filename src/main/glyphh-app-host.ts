@@ -55,7 +55,7 @@ import {
 import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
 import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 import { writeAppCard } from "./skills-fs.js";
-import { rowOwnedByBundle, payloadDirOf } from "../shared/bundle-shape.js";
+import { rowOwnedByBundle, payloadDirOf, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { onUserChange } from "./user-scope.js";
 
 // ── manifest ────────────────────────────────────────────────
@@ -209,7 +209,7 @@ interface BundleManifest {
   tool?: string;
   tools?: string;
   capabilities?: string[];
-  dependencies?: { connections?: Array<{ app?: string; as?: string }> };
+  dependencies?: { connections?: Array<ConnDep | string> };
 }
 
 /** A disabled app's CONFIG VARS, parked while it has no row to live in.
@@ -247,7 +247,7 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
   const slug = (opts.slug || path.basename(dir)).toLowerCase().trim();
   const name = opts.name || String(m.name || path.basename(dir));
   const capabilities = Array.isArray(m.capabilities) && m.capabilities.length ? m.capabilities.map(String) : BUNDLE_DEFAULT_CAPABILITIES;
-  const connectors = (m.dependencies?.connections || []).map((c) => String(c.app || "")).filter(Boolean);
+  const connectors = connDepNames(m.dependencies?.connections);
   let iconUrl: string | null = null;
   if (typeof m.icon === "string" && m.icon.endsWith(".svg")) {
     const iconPath = path.resolve(dir, m.icon);

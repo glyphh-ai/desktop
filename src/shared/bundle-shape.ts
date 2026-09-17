@@ -40,6 +40,12 @@ export function normalizeConnDeps(raw: ReadonlyArray<ConnDep | string> | undefin
     .map((d) => ({ app: d.app.trim().toLowerCase(), ...(d.as === "org" ? { as: "org" } : { as: "member" }) }));
 }
 
+/** Just the app slugs a manifest depends on, in either shape — what a runner
+ *  checks a call against. A bare-string manifest used to read as [undefined],
+ *  so the task refused its own connections (his report, 2026-09-17). */
+export const connDepNames = (raw: ReadonlyArray<ConnDep | string> | undefined | null): string[] =>
+  normalizeConnDeps(raw).map((c) => c.app);
+
 // ── an installed app's library card ────────────────────────────────────
 
 export interface AppCardInput {
@@ -59,11 +65,19 @@ export interface AppCardInput {
  *  user's own words. */
 export const GENERATED_MARK = "glyphh-bundle";
 
+/** Is this app.json one WE generated as a card, or the bundle's own manifest?
+ *  A real manifest carries the app's shape (ui, tools, the built-in panel it
+ *  is) and must never be overwritten by a card: doing it cost Design its
+ *  `tool` and opened a placeholder page instead of the panel (2026-09-17). */
+export const isGeneratedCard = (manifest: unknown): boolean =>
+  !!manifest && typeof manifest === "object" && (manifest as { generated?: unknown }).generated === GENERATED_MARK;
+
 /** The manifest an installed app's card carries. */
 export function appCardManifest(card: AppCardInput): Record<string, unknown> {
   return {
     name: card.slug,
     kind: "glyphh-app",
+    generated: GENERATED_MARK,
     bundle: card.bundleDir,
     entry: card.entry,
     tools: card.tools.map((t) => t.name),

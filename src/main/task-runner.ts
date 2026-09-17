@@ -24,8 +24,9 @@ import { app, utilityProcess, type UtilityProcess, ipcMain, BrowserWindow } from
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
-import { execHeadless, slotAgentContext, slotAgentRoster, setTaskRunner } from "./local-library.js";
+import { execHeadless, slotAgentContext, slotAgentRoster, setTaskRunner, ensureTaskSchedule } from "./local-library.js";
 import { callConnectionTool, listConnRows } from "./mcp-connections.js";
+import { normalizeConnDeps, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
 import { mcpCreds } from "./gateway-token.js";
@@ -39,7 +40,7 @@ export interface TaskManifest {
   program: string;
   slots?: Record<string, TaskSlot>;
   schedule?: string | null;
-  dependencies?: { connections?: Array<{ app: string; as?: string }> };
+  dependencies?: { connections?: Array<ConnDep | string> };
   input?: unknown;
   result?: unknown;
   timeoutMs?: number;
@@ -81,7 +82,7 @@ function specOf(dir: string, slug: string, enabled: boolean): TaskSpec {
   return {
     slug, name: m.name || slug, description, program: m.program, icon,
     slots: Object.entries(m.slots ?? {}).map(([name, s]) => ({ name, ...(s.label ? { label: s.label } : {}), ...(s.description ? { description: s.description } : {}), agent: s.agent ?? null, ...(s.model ? { model: s.model } : {}) })),
-    connections: (m.dependencies?.connections ?? []).map((c) => c.app),
+    connections: connDepNames(m.dependencies?.connections),
     schedule: m.schedule ?? null, enabled, dir,
   };
 }
@@ -106,7 +107,7 @@ export function getTaskSpec(slug: string): TaskSpec {
 export function saveTaskSpec(input: {
   slug?: string; name: string; description?: string; program?: string;
   slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null }>;
-  connections?: string[]; schedule?: string | null;
+  connections?: Array<ConnDep | string>; schedule?: string | null;
 }): TaskSpec {
   const name = String(input.name ?? "").trim();
   if (!name) throw new Error("a task needs a name");
@@ -123,11 +124,18 @@ export function saveTaskSpec(input: {
   } else {
     slots.main = { label: "Main", description: "The agent this task runs through.", agent: null };
   }
-  const connections = (input.connections ?? existing?.connections ?? []).map((c) => ({ app: String(c) }));
+  // ONE SHAPE ON DISK: the manifest the UI reads and the hub validates is
+  // `{ app, as }`, whoever wrote it (an agent hand-editing task.json wrote bare
+  // slugs, and the task then refused its own connections — his report).
+  const connections = normalizeConnDeps(input.connections ?? existing?.connections ?? []);
   const manifest: TaskManifest = {
     name, program: "run.js", slots, schedule: input.schedule === undefined ? existing?.schedule ?? null : input.schedule,
     dependencies: { connections }, ...(existing ? (() => { try { const m = readManifest(existing.dir); return { ...(m.icon ? { icon: m.icon } : {}), ...(m.input !== undefined ? { input: m.input } : {}), ...(m.result !== undefined ? { result: m.result } : {}) }; } catch { return {}; } })() : {}),
   };
+  // A manifest schedule only means something once it is a row on the clock.
+  // Arm it when the author sets or changes it, never on every save, so a row
+  // the user deleted stays deleted.
+  const armWanted = manifest.schedule && (!existing || (existing.schedule ?? null) !== manifest.schedule);
   const description = String(input.description ?? existing?.description ?? "");
   if (existing) {
     writeManifest(existing.dir, manifest);
@@ -139,6 +147,7 @@ export function saveTaskSpec(input: {
       const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
       fs.writeFileSync(md, `---\nname: ${slug}\ndescription: ${description.replace(/\n/g, " ")}\n---\n\n${body || `# ${name}\n`}`, "utf-8");
     }
+    if (armWanted) ensureTaskSchedule(slug, manifest.schedule ?? null, name);
     return getTaskSpec(slug);
   }
   const program = input.program && /module\.exports|export\s+default|exports\.run/.test(String(input.program))
@@ -149,6 +158,7 @@ export function saveTaskSpec(input: {
     [MANIFEST]: JSON.stringify(manifest, null, 2) + "\n",
     "run.js": program,
   }, "task");
+  if (armWanted) ensureTaskSchedule(slug, manifest.schedule ?? null, name);
   return getTaskSpec(slug);
 }
 
