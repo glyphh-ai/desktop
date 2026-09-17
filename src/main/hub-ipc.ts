@@ -219,15 +219,22 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
 
 /** The hub versions behind a local skill: the org item whose slug is the
  *  folder's name. "current" is the disk; these are the immutable shares. */
-async function versionsFor(skillId: string): Promise<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }> }> {
+async function versionsFor(skillId: string): Promise<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }>; head: number | null; pending: number | null }> {
   const skill = getSkill(skillId);
   const slug = skill.id.slice(skill.id.indexOf(":") + 1);
   const kind = kindOfId(skillId);
   const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
   const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
-  if (!item) return { itemId: null, versions: [] };
+  if (!item) return { itemId: null, versions: [], head: null, pending: null };
   const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => []);
-  return { itemId: item.id, versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })) };
+  return {
+    itemId: item.id,
+    versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })),
+    // What the SHARE actually did: the live version on the org's hub, and the
+    // one still sitting on the review desk.
+    head: item.headVersion ?? null,
+    pending: (item as { pendingVersion?: number | null }).pendingVersion ?? null,
+  };
 }
 
 /** One hub version's files, for read-only viewing beside the disk copy. */

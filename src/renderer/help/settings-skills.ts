@@ -116,6 +116,26 @@ const typeChip = (type: BundleType | undefined): string =>
 const markOf = (s: { icon?: string | null; tool?: string | null } | null | undefined): string =>
   (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
+/** Where this bundle stands with the org's hub, beside its name: waiting on the
+ *  review desk, or live at a version. A share that vanishes into a button label
+ *  is not a confirmation (his report, 2026-09-17). */
+function paintShareChip(): void {
+  const host = el("skill-detail-name");
+  if (!host) return;
+  host.querySelector(".skill-share-chip")?.remove();
+  if (hubItem) return;
+  const { head, pending } = shareState;
+  const label = pending ? `in review · v${pending}` : head ? `shared · v${head}` : "";
+  if (!label) return;
+  const chip = document.createElement("span");
+  chip.className = `skill-type-chip skill-share-chip${pending ? " pending" : ""}`;
+  chip.textContent = label;
+  chip.title = pending
+    ? "Waiting on your organization's review desk. An admin decides; sharing again replaces it."
+    : "Live on your organization's hub. Members install it from Discover.";
+  host.appendChild(chip);
+}
+
 /** The name, with the type beside it (never under it — his order, 2026-09-17). */
 const setDetailName = (name: string, type?: BundleType): void => {
   const host = el("skill-detail-name");
@@ -143,8 +163,21 @@ function when(iso: string): string {
 function fail(msg: string): void {
   const e = el("skills-error");
   if (!e) return;
+  e.classList.remove("ok");
   e.textContent = msg;
   e.classList.remove("hidden");
+}
+
+/** Said, not whispered: what just happened, on the same row failures use. */
+let noticeTimer = 0;
+function notice(msg: string): void {
+  const e = el("skills-error");
+  if (!e) return;
+  e.classList.add("ok");
+  e.textContent = msg;
+  e.classList.remove("hidden");
+  window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => { if (e.classList.contains("ok")) e.classList.add("hidden"); }, 9000);
 }
 
 /** Ask the hub what has moved on. Never blocks the list; repaints if it finds any. */
@@ -737,6 +770,9 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
  *  its files (screenshots as data URLs). */
 /** The graph behind the Flow tab, rebuilt whenever a detail is opened. */
 let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
+/** What the org's hub holds for the open bundle: the live version, and the one
+ *  still on the review desk. Null until loadVersions answers. */
+let shareState: { head: number | null; pending: number | null } = { head: null, pending: null };
 function paintFlow(): void {
   const host = el("skill-flow-host");
   if (!host) return;
@@ -1006,6 +1042,7 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
   (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
+  shareState = { head: null, pending: null };
   paintDetailChrome();
   paintDetailTabs(typeOf(s));
   collapsedDirs = new Set();
@@ -1031,9 +1068,11 @@ let versionItemId: string | null = null;
 async function loadVersions(): Promise<void> {
   if (!current) return;
   const id = current.id;
-  const r = await api().skillVersions(id) as Env<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }> }>;
+  const r = await api().skillVersions(id) as Env<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }>; head?: number | null; pending?: number | null }>;
   if (!current || current.id !== id) return;
   versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
+  shareState = { head: r.ok ? r.data?.head ?? null : null, pending: r.ok ? r.data?.pending ?? null : null };
+  paintShareChip();
   paintVersions(r.ok ? (r.data?.versions ?? []) : []);
 }
 
@@ -1279,7 +1318,14 @@ async function share(): Promise<void> {
   const r = await api().skillPublish(current.id) as Env<{ version: number; status: string }>;
   if (btn) btn.disabled = false;
   if (!r.ok) { fail(r.error || "Couldn't share."); return; }
-  if (btn) btn.textContent = r.data?.status === "approved" ? `Shared · v${r.data.version}` : `Sent for review · v${r.data?.version}`;
+  const v = r.data?.version;
+  const approved = r.data?.status === "approved";
+  shareState = approved ? { head: v ?? null, pending: null } : { head: shareState.head, pending: v ?? null };
+  paintShareChip();
+  notice(approved
+    ? `"${current.name}" is live on your organization's hub as v${v}. Members install it from Discover.`
+    : `"${current.name}" v${v} went to your organization's review desk. An org admin decides; sharing again replaces it.`);
+  void loadVersions();
 }
 
 function authorOf(s: SkillRow): string {

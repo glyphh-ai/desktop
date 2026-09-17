@@ -20876,3 +20876,8 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
    as tall as the panel leaves it. The island needs a measured box to lay out. */
 .skill-flow-pane { display: block; width: 100%; min-width: 0; }
 .skill-flow-host { position: relative; width: 100%; height: calc(100vh - 250px); min-height: 380px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); overflow: hidden; }
+/* The library pages' one message row, in its two moods. */
+.crud-form-error.ok { color: var(--text-2); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* Where a share stands: live on the org's hub, or waiting on its desk. */
+.skill-share-chip { text-transform: none; }
+.skill-share-chip.pending { border-color: color-mix(in srgb, var(--warning, #d9a441) 45%, var(--border-2)); color: var(--warning, #d9a441); }
