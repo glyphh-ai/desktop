@@ -59,10 +59,18 @@ interface SuggestionState { rows: Suggestion[] }
 
 // ── plumbing ─────────────────────────────────────────────────────────────────
 
+// Remembered PER ROOT: the folders belong to the signed-in user, so a switch
+// has to make the new user's before anything writes into them.
+let readyFor: string | null = null;
 let readyPromise: Promise<void> | null = null;
 function ensureDirs(): Promise<void> {
+  const root = ROOT();
+  if (readyFor !== root) {
+    readyFor = root;
+    readyPromise = null;
+  }
   readyPromise ??= (async () => {
-    for (const d of Object.values(DIRS)) await fsp.mkdir(d, { recursive: true });
+    for (const d of Object.values(DIRS())) await fsp.mkdir(d, { recursive: true });
   })();
   return readyPromise;
 }
