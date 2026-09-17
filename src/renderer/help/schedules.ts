@@ -10,7 +10,8 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { closeSettingsModal } from "./navigation.js";
+import { closeSettingsModal, openSettingsModal } from "./navigation.js";
+import { openConnectionOnLoad } from "./settings-connections.js";
 import { toastError, toastOk } from "./toast.js";
 import { renderRunList, type RunRowLite } from "./lib-runs.js";
 let openRunId: string | null = null;
@@ -389,6 +390,7 @@ async function paintRuns(id: string): Promise<void> {
       // The same bridge the library uses to start a session with a prompt.
       (window as unknown as { __glyphhOpenSessionWith?: (o: { prompt: string }) => void }).__glyphhOpenSessionWith?.({ prompt });
     },
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
   });
 }
 

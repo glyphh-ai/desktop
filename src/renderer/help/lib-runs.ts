@@ -32,6 +32,8 @@ export interface RunListOpts {
   onCancel?: (id: string) => void | Promise<void>;
   /** Continue an agent turn in a session, seeded with its own prompt. */
   onOpenAgent?: (prompt: string) => void;
+  /** Open the account's permissions, for a tool an unattended run was refused. */
+  onAllowTool?: (app: string, tool: string) => void;
   /** Which run is expanded; the caller keeps it so a repaint does not collapse. */
   openId?: string | null;
   onToggle?: (id: string | null) => void;
@@ -116,7 +118,20 @@ export function paintStory(host: HTMLElement, run: RunRowLite, opts: RunListOpts
         actions.appendChild(open);
       }
     }
-    else if (ev.kind === "connection") line("connection", `${t} · ${String(ev.app)} · ${String(ev.tool)}${ev.error ? " · failed" : ""}`, `${show(ev.args)}\n\n→ ${ev.error ? show(ev.error) : show(ev.result)}`, ev.error ? "failed" : "");
+    else if (ev.kind === "connection") {
+      const row = line("connection", `${t} · ${String(ev.app)} · ${String(ev.tool)}${ev.error ? " · failed" : ""}`, `${show(ev.args)}\n\n→ ${ev.error ? show(ev.error) : show(ev.result)}`, ev.error ? "failed" : "");
+      // A REFUSAL IS A DOOR (his report, 2026-09-17): an unattended run can
+      // only use tools set to Always allow, and the message said where to go
+      // without taking anyone there. This does.
+      if (typeof ev.error === "string" && /Always allow/i.test(ev.error) && opts.onAllowTool) {
+        const actions = row.querySelector(".task-event-actions") as HTMLElement;
+        const allow = document.createElement("button");
+        allow.type = "button"; allow.className = "task-event-btn"; allow.textContent = "Allow this tool";
+        allow.title = `Open ${String(ev.app)} and allow ${String(ev.tool)} for unattended runs`;
+        allow.addEventListener("click", (e) => { e.stopPropagation(); opts.onAllowTool?.(String(ev.app), String(ev.tool)); });
+        actions.appendChild(allow);
+      }
+    }
     else if (ev.kind === "data") line("data", `${t} · ${String(ev.repo)}${ev.rows != null ? ` · ${String(ev.rows)} rows` : ev.changes != null ? ` · ${String(ev.changes)} changed` : ""}${ev.error ? " · failed" : ""}`, `${show(ev.sql)}${ev.error ? `\n\n→ ${show(ev.error)}` : ""}`, ev.error ? "failed" : "");
     else if (ev.kind === "checkpoint") line("checkpoint", `${t} · ${String(ev.key)}${ev.replayed ? " · replayed" : ""}`);
     else if (ev.kind === "log") line("log", `${t} · ${show(ev.message)}`, ev.detail != null ? show(ev.detail) : undefined);

@@ -77,6 +77,11 @@ let current: { entry?: Entry; app?: CatalogApp } | null = null;
 let wired = false;
 
 // ── loading ─────────────────────────────────────────────────────────────────
+/** An app to open as soon as the page loads, on its permissions — the door a
+ *  refused unattended call offers ("not set to Always allow"). */
+let pendingApp: { app: string } | null = null;
+export function openConnectionOnLoad(appSlug: string): void { pendingApp = { app: String(appSlug || "") }; }
+
 export async function loadSettingsConnections(): Promise<void> {
   const body = el("conn2-body");
   if (!body) return;
@@ -125,6 +130,13 @@ export async function loadSettingsConnections(): Promise<void> {
   ].sort((a, b) => a.name.localeCompare(b.name));
   if (tab === "discover" && !catalog.length) await loadCatalog("");
   render();
+  // A deep link lands on the account's permissions, where the toggles are.
+  if (pendingApp) {
+    const want = pendingApp.app.toLowerCase();
+    pendingApp = null;
+    const hit = entries.find((e) => (e.conn?.appSlug || e.mcp?.slug || "").toLowerCase() === want);
+    if (hit) void openDetail({ entry: hit, page: "permissions" });
+  }
   void primeConnectedIcons(
     entries.filter((x) => x.conn).map((x) => ({ connection: { accountId: x.conn!.accountId, pipedreamSlug: x.conn!.appSlug } })),
     render,

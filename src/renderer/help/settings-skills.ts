@@ -19,7 +19,7 @@ import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { cronToWords, openScheduleOnLoad } from "./schedules.js";
 import { renderRunList } from "./lib-runs.js";
-import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
+import { renderConnectionTable, connDeps, openConnectionOnLoad, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -1284,6 +1284,7 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
       void paintTaskRuns(s);
     },
     onOpenAgent: (prompt) => { closeSettingsModal(); openSessionWith({ cwd: s.dir, prompt }); },
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
   });
 }
 
