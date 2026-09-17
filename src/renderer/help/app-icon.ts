@@ -19,6 +19,10 @@ type IconApp = {
   /** The app's OWN uploaded art (a marketplace listing icon) — wins over every
    *  derived source: an installed Glyphh app's launch URL has no favicon. */
   iconUrl?: string | null;
+  /** The mark to wear when nothing else resolves — the built-in panel this app
+   *  IS. A Glyphh app falls back to the app mark without one; a web or native
+   *  app keeps its monogram, since its own icon may still be resolving. */
+  mark?: string | null;
 };
 
 /** Re-origin a server media URL onto the client's API base (the marketplace's
@@ -48,6 +52,9 @@ const NAV_GLYPH_PATHS: Record<string, string> = {
   models: '<path d="M12 1.6 20.8 6.3 12 11 3.2 6.3z"/><path d="M2.6 8.1l8.3 4.4v9.4l-8.3-4.7z"/><path d="M21.4 8.1l-8.3 4.4v9.4l8.3-4.7z"/>',
   settings: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>',
 };
+
+/** The generic app mark — the launcher's own four-square glyph. */
+export const APP_MARK = `<svg viewBox="0 0 24 24" fill="currentColor">${NAV_GLYPH_PATHS.apps}</svg>`;
 
 /** Inline nav-glyph markup ("" when the app isn't a nav row). */
 function navGlyph(app: IconApp): string {
@@ -170,6 +177,14 @@ export function appIconInner(app: IconApp, name: string, initialClass: string): 
   const glyph = navGlyph(app);
   if (glyph) return glyph;
   const iconUrl = appIconUrl(app);
+  // A GLYPHH app with no art of its own wears its type's mark, the same as on
+  // the Skills page, rather than a letter (his order, 2026-09-17).
+  if (!iconUrl) {
+    // A panel's mark is full-bleed art and fills the plate like an icon would;
+    // the generic app glyph is line work and sits inside it.
+    const mark = app.mark || (app.appArchetype === "glyphh-app" ? APP_MARK : "");
+    if (mark) return `<span class="${initialClass} icon-mark ${app.mark ? "art" : "glyph"}">${mark}</span>`;
+  }
   const initial = (name || "?").charAt(0).toUpperCase();
   // The failure state is a DESIGNED monogram: brand color for the household
   // names, else a deterministic hue from the slug — never a bare letter.

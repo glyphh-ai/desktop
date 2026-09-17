@@ -7,6 +7,7 @@ import {
   formatBytes, relativeTime, buildPaginationBar, cssVar, closeHelp,
 } from "./shared.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { toolViewIcon } from "./layouts.js";
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 
@@ -307,6 +308,8 @@ interface PanelApp {
   /** The listing's uploaded icon — the ONE icon source (same as the command
    *  center): a hosted app's launch URL has no favicon to derive one from. */
   iconUrl?: string | null;
+  /** The built-in panel this app IS, as its mark (see app-icon's IconApp). */
+  mark?: string | null;
   /** The marketplace listing — copy, images, rating, listed state. */
   listing?: {
     title: string; tagline: string | null; category: string | null; body: string | null;
@@ -317,6 +320,13 @@ interface PanelApp {
   commands?: Record<string, { selector: string; action: string; description?: string; text?: string }>;
   connectionIds?: string[];
   mcp?: { transport: "stdio" | "sse" | "streamable-http"; command?: string; args?: string[]; env?: Record<string, string>; url?: string; headers?: Record<string, string>; oauth?: { clientId: string; hasSecret: boolean; tokenUrl: string; scope?: string }; enabled: boolean } | null;
+}
+
+/** A tool-backed app (Design, Slides, Drive, the media panels) IS that panel,
+ *  so the panel's own mark stands in when the bundle ships no icon. */
+function markFor(launchConfig: Record<string, unknown> | null | undefined): string | null {
+  const tool = (launchConfig as { tool?: unknown } | null | undefined)?.tool;
+  return typeof tool === "string" && tool ? toolViewIcon(tool) || null : null;
 }
 
 function toPanelApp(a: {
@@ -335,6 +345,7 @@ function toPanelApp(a: {
     isBrowser: a.isBrowser, execPath: a.execPath,
     appArchetype: a.appArchetype, launchConfig: a.launchConfig, access: a.access,
     iconUrl: a.iconUrl ?? a.listing?.iconUrl ?? null, listing: a.listing,
+    mark: markFor(a.launchConfig),
     owned: a.owned, latestVersion: a.latestVersion, version: a.version, secretNames: a.secretNames, requiredConnections: a.requiredConnections,
     commands: a.commands, connectionIds: a.connectionIds, mcp: a.mcp,
   };
