@@ -123,7 +123,13 @@ export function paintStory(host: HTMLElement, run: RunRowLite, opts: RunListOpts
     else if (ev.kind === "resume") line("resume", `${t} · picked up after a restart`);
   }
   // A schedule that ran a SKILL has no journal — its output is the whole story.
-  if (!(run.journal?.events ?? []).length && run.output) line("output", "what the agent said", run.output);
-  if (run.error) line("failed", run.error, undefined, "failed");
+  const shown = !(run.journal?.events ?? []).length && run.output ? String(run.output) : "";
+  if (shown) line("output", "what the agent said", shown);
+  // NOT TWICE (his report, 2026-09-17): a failed headless run stores the same
+  // text as its output AND its error, which printed the whole stack trace
+  // again under FAILED. The error line is for what the output does not say.
+  const flat = (v: string): string => v.replace(/\s+/g, " ").trim();
+  const already = shown && run.error ? flat(shown).includes(flat(run.error)) : false;
+  if (run.error && !already) line("failed", run.error, undefined, "failed");
   if (run.status === "ok" && run.result !== undefined && run.result !== null) line("result", "what it returned", show(run.result));
 }
