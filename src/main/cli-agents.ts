@@ -78,7 +78,11 @@ export interface CliAgentRow {
 }
 
 /** What renderers get: the row plus the fully composed command to run. */
-export type CliAgentListed = CliAgentRow & { command: string };
+/** A listed loop, plus what it can actually DO. `headless` is the one the
+ *  surfaces need: the agent panel and every scheduled run compose a headless
+ *  turn, and a loop without that wiring can only be used in a terminal tile
+ *  (his report, 2026-09-17: picking Cursor failed every message). */
+export type CliAgentListed = CliAgentRow & { command: string; headless: boolean };
 
 const agentFile = (id: string): string => path.join(AGENTS_DIR(), id, "agent.json");
 const mcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.json");
@@ -431,10 +435,16 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
     permHeadless: {},
   },
   cursor: {
-    headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: true,
+    // cursor-agent HAS a non-interactive mode (-p/--print, --output-format,
+    // --resume <id>, --model): the panel refused it only because this table
+    // said so (his report, 2026-09-17).
+    // Resuming stays off until we capture its session id: --output-format text
+    // prints no id, and --continue would pick up whatever ran last in that
+    // folder, which is somebody else's conversation as often as not.
+    headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
     baseUrlEnv: [],
-    perm: {},
-    permHeadless: {},
+    perm: { safe: " --mode ask", auto: " --force" },
+    permHeadless: { safe: " --mode ask", auto: " --force" },
   },
   custom: {
     headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
@@ -550,8 +560,13 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // Copilot CLI 1.0: -p runs one prompt and exits; the MCP config rides inline (same mcpServers shape as Claude's file).
       core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${rid ? ` --resume '${rid}'` : ""} --no-color -p '${p}'${row.mcp ? ` --additional-mcp-config "$(cat "${mcpFile(row.id)}")"` : ""}`;
       break;
+    case "cursor":
+      // Its MCP seam is ~/.cursor/mcp.json (ensureCursorMcp at open), so there
+      // is nothing to pass on the line; --print writes the answer to stdout.
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm} -p '${p}' --output-format text`;
+      break;
     default:
-      throw new Error(`headless runs aren't wired for the ${row.cli} CLI yet — use claude, codex, gemini or copilot for scheduled loops`);
+      throw new Error(`the ${row.cli} CLI has no headless mode, so it can only be used in a terminal tile. Claude, Codex, Gemini, Copilot and Cursor run in the agent panel and on a schedule.`);
   }
   const line = row.cwd ? `cd "${row.cwd.replace(/"/g, '\\"')}" && ${core}` : core;
   // Source the env file whenever it EXISTS, not only when a BYOK key is set:
@@ -657,7 +672,7 @@ export function listCliAgents(): CliAgentListed[] {
     return [...orgLoops.values()]
       .filter((l) => l.enabled !== false)
       .map((l) => rowFromServer(l))
-      .map((row) => ({ ...row, command: composeCommand(row) }))
+      .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   let ids: string[] = [];
@@ -665,7 +680,7 @@ export function listCliAgents(): CliAgentListed[] {
   const out: CliAgentListed[] = [];
   for (const id of ids) {
     const row = readAgent(id);
-    if (row) out.push({ ...row, command: composeCommand(row) });
+    if (row) out.push({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless });
   }
   // EVERY branded loop exists (his report, 2026-09-14: the picker showed
   // only Claude while the rest were enabled) — an explicit row (even a
@@ -673,7 +688,7 @@ export function listCliAgents(): CliAgentListed[] {
   for (const cli of Object.keys(DEFAULT_LOOP_NAMES)) {
     if (!out.some((r) => r.cli === cli)) {
       const def = defaultRowFor(cli)!;
-      out.push({ ...def, command: composeCommand(def) });
+      out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless });
     }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -1047,7 +1062,7 @@ export function registerCliAgentsIpc(): void {
       }
       writeAgent(row);
       if (row.mcp) ensureMcpConfig(id);
-      return { ok: true, agent: { ...row, command: composeCommand(row) } };
+      return { ok: true, agent: { ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless } };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
