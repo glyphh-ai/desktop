@@ -4229,7 +4229,16 @@ async function init(): Promise<void> {
             const inLayout = openList.some((x) => x.layoutId != null);
             const agentShowing = openList.some((x) => x.card && x.tile.kind === "agent");
             if (inLayout && agentShowing) { (document.getElementById("code-input") as HTMLTextAreaElement | null)?.focus(); return; }
-            void openAgentPanel();
+            // An agent already on the stage is THE agent — the mark re-fronts
+            // it and never doubles it, layout or not.
+            if (agentShowing) { void openAgentPanel(); return; }
+            // THE DEFAULTS ARE THE DEFAULTS (his report, 2026-09-17): the mark
+            // took the view from Settings but opened a loopless panel, so the
+            // configured loop never bound and the model rode whatever the chat
+            // found. Same door the shift-open uses, minus the "again".
+            const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+            if (wanted) openAgentForLoop(wanted.id);
+            else void openAgentPanel();
             return;
           }
           // CC and Close all are permanent slots that go INERT with nothing
