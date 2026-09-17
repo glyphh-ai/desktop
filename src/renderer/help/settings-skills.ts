@@ -17,7 +17,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
-import { cronToWords } from "./schedules.js";
+import { cronToWords, openScheduleOnLoad } from "./schedules.js";
 import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
 
@@ -993,44 +993,38 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
   const host = el("skill-overview-extra");
   if (!host) return;
   const slug = s.id.slice(s.id.indexOf(":") + 1);
-  const r = await api().schedulesList() as Env<Array<{ id: string; kind: string; target: string; cron: string; enabled: boolean; lastStatus?: string | null }>>;
+  const r = await api().schedulesList() as Env<ScheduleRow[]>;
   const row = (r.ok ? r.data ?? [] : []).find((x) => x.kind === "task" && x.target === slug) ?? null;
 
   const block = document.createElement("div");
   block.className = "skill-overview-block";
-  block.innerHTML = `<div class="skill-overview-label">Schedule</div><div class="skill-sched-line"><span class="skill-sched-text"></span><span class="skill-sched-actions"></span></div>`;
-  const text = block.querySelector(".skill-sched-text") as HTMLElement;
+  block.innerHTML = `<div class="skill-overview-label">Schedule</div><div class="skill-sched-line"><span class="skill-sched-actions"></span></div>`;
   const actions = block.querySelector(".skill-sched-actions") as HTMLElement;
 
-  if (row) {
-    text.textContent = row.enabled
-      ? `Runs ${cronToWords(row.cron)}.`
-      : `Paused. Would run ${cronToWords(row.cron)}.`;
-  } else if (manifestCron) {
-    text.textContent = `Asks to run ${cronToWords(manifestCron)}, but nothing is on the clock yet.`;
-  } else {
-    text.textContent = "Not on a clock. Runs when you press Run now, or when an agent runs it.";
-  }
+  // THE SAME CONTROL AS THE AGENTS TAB (his order, 2026-09-17): one button
+  // that reads the schedule and opens the same modal. Clicking the schedule
+  // itself goes to its own page, where the history is.
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "action-btn";
+  const words = row ? cronToWords(row.cron) : manifestCron ? cronToWords(manifestCron) : "";
+  btn.textContent = row
+    ? (row.enabled ? words.charAt(0).toUpperCase() + words.slice(1) : `Paused · ${words}`)
+    : manifestCron ? `Asks for ${words}` : "Schedule";
+  btn.title = row ? "Change when this runs" : "Put this on the clock";
+  const stub: BundleAgentRow = { ref: "", name: s.name, description: "", loop: "", model: "", source: "slot" };
+  btn.addEventListener("click", () => openScheduleModal(s, stub, row));
+  actions.appendChild(btn);
 
-  if (!row && manifestCron) {
-    const b = document.createElement("button");
-    b.type = "button"; b.className = "action-btn primary"; b.textContent = "Put it on the clock";
-    b.addEventListener("click", async () => {
-      b.disabled = true;
-      const save = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> })
-        .scheduleSave({ kind: "task", target: slug, cron: manifestCron, name: s.name })
-        .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
-      b.disabled = false;
-      if (!save.ok) { fail(save.error || "Couldn't put it on the clock."); return; }
-      notice(`${s.name} is on the clock`, { detail: `${manifestCron} · change it under Customize → Schedules` });
-      void paintTaskSchedule(s, manifestCron);
-    });
-    actions.appendChild(b);
+  if (row) {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "skill-sched-open";
+    open.textContent = "Open schedule";
+    open.title = "Its page, with every run";
+    open.addEventListener("click", () => { openScheduleOnLoad(row.id); openSettingsModal("schedules"); });
+    actions.appendChild(open);
   }
-  const open = document.createElement("button");
-  open.type = "button"; open.className = "action-btn"; open.textContent = row ? "Change" : "Schedules";
-  open.addEventListener("click", () => openSettingsModal("schedules"));
-  actions.appendChild(open);
   host.appendChild(block);
 }
 

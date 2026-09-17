@@ -173,6 +173,11 @@ async function runNow(r: ScheduleRow, btn: HTMLButtonElement): Promise<void> {
   void loadSchedulesPage();
 }
 
+/** A schedule to open as soon as the page has loaded — a deep link from a
+ *  bundle's Overview, where clicking the schedule means "show me this one". */
+let pendingOpen: string | null = null;
+export function openScheduleOnLoad(id: string): void { pendingOpen = String(id || "") || null; }
+
 export async function loadSchedulesPage(): Promise<void> {
   wire();
   const [r, rr, t, s, a] = await Promise.all([
@@ -188,6 +193,12 @@ export async function loadSchedulesPage(): Promise<void> {
   skills = s.ok ? (s.data ?? []).filter((x) => x.source === "glyphh") : [];
   agents = a.ok ? a.data ?? [] : [];
   paintOverview();
+  // A deep link lands on the schedule itself, not the list.
+  if (pendingOpen) {
+    const want = rows.find((x) => x.id === pendingOpen);
+    pendingOpen = null;
+    if (want) void openEditor(want);
+  }
 }
 
 function targetName(row: ScheduleRow): string {
