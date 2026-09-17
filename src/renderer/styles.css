@@ -6221,6 +6221,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* A task's clock, on its Overview. (skill-overview-extra hosts these blocks;
    each one gets its own top gap so they read as separate facts.) */
 .skill-overview-block { margin-top: 20px; }
+/* Run, on the schedule card itself. Sits at the end of the head row. */
+.ws-task-run { margin-left: 8px; padding: 3px 10px; font-size: 12px; flex-shrink: 0; }
+.ws-task-run:disabled { opacity: .75; }
+
 /* The agent row's controls: what it runs on, its model, its clock. */
 .skill-model-select { min-width: 150px; max-width: 220px; }
 .skill-tile-icon.own img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }

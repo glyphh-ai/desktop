@@ -11,7 +11,7 @@
 
 import { escapeHtml } from "./shared.js";
 import { confirmAction } from "./shared.js";
-import { toastError } from "./toast.js";
+import { toastError, toastOk } from "./toast.js";
 
 interface Env<T> { ok: boolean; data?: T; error?: string }
 interface ScheduleRow {
@@ -156,6 +156,23 @@ function fail(msg: string): void {
   toastError(msg);
 }
 
+/** Fire a schedule now, from its card. The button IS the progress. */
+async function runNow(r: ScheduleRow, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true;
+  btn.innerHTML = `<span class="btn-spinner"></span>Running`;
+  const res = await api().scheduleRunNow(r.id).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+  if (!res.ok) {
+    btn.disabled = false; btn.textContent = "Run";
+    toastError(`Couldn't run ${r.name}`, res.error ? { detail: res.error } : undefined);
+    return;
+  }
+  toastOk(`${r.name} started`, { detail: "Its run appears under Recent runs." });
+  // The runs lane tells us when it lands (onTaskRunsChanged repaints the page);
+  // until then the button stays honest about what it is doing.
+  window.setTimeout(() => { if (btn.isConnected) { btn.disabled = false; btn.textContent = "Run"; } }, 4000);
+  void loadSchedulesPage();
+}
+
 export async function loadSchedulesPage(): Promise<void> {
   wire();
   const [r, rr, t, s, a] = await Promise.all([
@@ -213,6 +230,15 @@ function paintOverview(): void {
     (card.querySelector(".ws-task-target") as HTMLElement).textContent = targetName(r);
     const ag = card.querySelector(".ws-task-agent") as HTMLElement | null; if (ag) ag.textContent = r.agentName || "";
     const le = card.querySelector(".ws-task-lasterr") as HTMLElement | null; if (le) le.textContent = r.lastError || "";
+    // RUN IT FROM HERE (his order, 2026-09-17): the card is where the user is
+    // looking, and waiting 18 hours to find out whether it works is no test.
+    const run = document.createElement("button");
+    run.type = "button";
+    run.className = "action-btn ws-task-run";
+    run.textContent = "Run";
+    run.title = "Run it now";
+    run.addEventListener("click", (ev) => { ev.stopPropagation(); void runNow(r, run); });
+    (card.querySelector(".ws-task-head") as HTMLElement).appendChild(run);
     card.addEventListener("click", () => openEditor(r));
     list.appendChild(card);
   }
