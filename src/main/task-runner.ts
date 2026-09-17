@@ -31,9 +31,7 @@ import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { onUserChange } from "./user-scope.js";
-import { mcpCreds } from "./gateway-token.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { callGatewayTool, resetGatewayMcp } from "./gateway-mcp.js";
 
 export interface TaskSlot { label?: string; description?: string; model?: string | null; agent?: string | null }
 export interface TaskManifest {
@@ -303,17 +301,6 @@ async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { s
   return { text: r.output, ...(opts.schema ? { json: firstJson(r.output) } : {}), agent: agentName };
 }
 
-let gateway: Client | null = null;
-async function gatewayClient(): Promise<Client> {
-  if (gateway) return gateway;
-  const creds = await mcpCreds();
-  if (!creds) throw new Error("no gateway credential: sign in to reach the org's connections");
-  const client = new Client({ name: "glyphh-task", version: "1.0.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(`${creds.baseUrl.replace(/\/$/, "")}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${creds.token}` } } });
-  await client.connect(transport);
-  gateway = client;
-  return client;
-}
 
 /** A connection call runs unattended: only a tool the user set to Always
  *  allow on the Connections page goes through. Ask and Never both refuse. */
@@ -328,21 +315,9 @@ async function connectionCall(spec: TaskSpec, appSlug: string, tool: string, arg
   }
   const a = args && typeof args === "object" ? args as Record<string, unknown> : {};
   if (listConnRows().some((r) => r.slug === appSlug)) return callConnectionTool(appSlug, tool, a);
-  const client = await gatewayClient();
-  const name = tool.startsWith(`${appSlug}-`) ? tool : `${appSlug}-${tool}`;
-  let res: unknown;
-  try { res = await client.callTool({ name, arguments: a }); }
-  catch (err) { gateway = null; throw err; }
-  // AN ERROR RESULT IS AN ERROR (his report, 2026-09-17): the gateway answers a
-  // refusal as a normal result carrying isError, so the program read "User not
-  // allowed to call this tool" as data and logged "found 0 events". A refusal
-  // has to reach the program as a throw, and the journal as a failure.
-  const r = res as { isError?: boolean; content?: Array<{ type?: string; text?: string }> };
-  if (r && r.isError) {
-    const said = (r.content ?? []).map((c) => c?.text).filter(Boolean).join(" ").trim();
-    throw new Error(said || `"${tool}" on ${appSlug} was refused by the gateway`);
-  }
-  return res;
+  // One client, one refusal rule (gateway-mcp.ts) — the desktop's own connector
+  // lane and this one were two implementations of the same call.
+  return callGatewayTool(appSlug, tool, a);
 }
 
 function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<unknown> {
@@ -546,7 +521,7 @@ export function resumeInterruptedRuns(): void {
 
 export function stopTaskRunner(): void {
   for (const [id, l] of live) { clearTimeout(l.timer); try { l.proc.kill(); } catch { /* down anyway */ } live.delete(id); }
-  if (gateway) { void gateway.close().catch(() => {}); gateway = null; }
+  resetGatewayMcp();
 }
 
 // ── IPC ──────────────────────────────────────────────────────────────────────

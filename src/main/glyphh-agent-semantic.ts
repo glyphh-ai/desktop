@@ -22,6 +22,7 @@ import { resolve, relative, isAbsolute } from "node:path";
 import { llmChunk, vectorUpsert, vectorSearch, graphCypher, listCollections } from "./glyphh-app-ai.js";
 import { getExplicitWorkingDirectory } from "./working-directory.js";
 import { getClient } from "./glyphh-client.js";
+import { callGatewayToolText } from "./gateway-mcp.js";
 
 interface SemanticToolDef {
   name: string;
@@ -147,7 +148,7 @@ export const SEMANTIC_TOOLS: SemanticToolDef[] = [
       const connTool = String(a.tool ?? "").trim();
       if (!connSlug || !connTool) return "ERROR: slug and tool are required (a connection + one of its tools)";
       const props = a.props && typeof a.props === "object" ? (a.props as Record<string, unknown>) : {};
-      const { result } = await getClient().connections.runTool({ slug: connSlug, tool: connTool, props });
+      const result = { ret: await callGatewayToolText(connSlug, connTool, props) };
       const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
       if (!text || text === "null") return "connector returned nothing to index";
       const sourceId = `${connSlug}/${connTool}`;

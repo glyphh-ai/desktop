@@ -14,6 +14,7 @@
  */
 
 import { getClient } from "./glyphh-client.js";
+import { callGatewayToolText } from "./gateway-mcp.js";
 
 /** One invocable connection tool, flattened for the agent surfaces: `slug` is
  *  the CONNECTION, `name` the tool key runTool wants. The resolved catalog
@@ -72,7 +73,8 @@ export async function callConnectorTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  const { result } = await getClient().connections.runTool({ slug, tool: name, props: args });
-  if (result.ret === undefined || result.ret === null) return "";
-  return typeof result.ret === "string" ? result.ret : JSON.stringify(result.ret);
+  // Through the gateway's MCP, the one path that exists on this server
+  // (gateway-mcp.ts). The SDK's connections.runTool posts to a route the fork
+  // never implemented, so this lane answered 404 for every call.
+  return callGatewayToolText(slug, name, args);
 }
