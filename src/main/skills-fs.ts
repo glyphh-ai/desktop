@@ -21,7 +21,7 @@ import path from "path";
 import { homedir } from "os";
 import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { userScopedPath } from "./app-paths.js";
+import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -183,14 +183,32 @@ export function bundleMarks(dir: string, type: BundleType): { icon: string | nul
   } catch { return { icon: null, tool: null }; }
 }
 
-/** Is this path a link Glyphh planted (a symlink whose target sits in Glyphh's skills root)? */
-function isGlyphhLink(p: string): boolean {
+/** The target a CLI-directory symlink points at, or "" when it is not a link. */
+function linkTarget(p: string): string {
   try {
-    if (!fs.lstatSync(p).isSymbolicLink()) return false;
-    const target = path.resolve(path.dirname(p), fs.readlinkSync(p));
-    return target.startsWith(ROOTS.glyphh() + path.sep) || target.startsWith(ROOTS.app() + path.sep);
-  } catch { return false; }
+    if (!fs.lstatSync(p).isSymbolicLink()) return "";
+    return path.resolve(path.dirname(p), fs.readlinkSync(p));
+  } catch { return ""; }
 }
+
+/** Is this a link GLYPHH planted — by anyone on this machine?
+ *
+ *  The CLI skill directories are machine-wide while Glyphh's homes are per
+ *  user, so the links in them may belong to a user who is not signed in. That
+ *  made another user's skills and apps list three times over, once per CLI,
+ *  under "From Claude Code" (his report, 2026-09-17). Ownership is the data
+ *  dir, not this session's homes. */
+const isGlyphhLink = (p: string): boolean => {
+  const target = linkTarget(p);
+  return !!target && target.startsWith(glyphhPath() + path.sep);
+};
+
+/** …and is it THIS session's? Only these are kept; another user's are pruned,
+ *  so the CLIs read the signed-in user's skills and nobody else's. */
+const isOurLink = (p: string): boolean => {
+  const target = linkTarget(p);
+  return !!target && [ROOTS.glyphh(), ROOTS.app(), ROOTS.task(), ROOTS.plugin()].some((r) => target.startsWith(r + path.sep));
+};
 const isApp = (dir: string): boolean => fs.existsSync(path.join(dir, "app.json"));
 const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : kind === "plugin" ? ROOTS.plugin() : kind === "task" ? ROOTS.task() : ROOTS.glyphh());
 
@@ -265,14 +283,15 @@ export function syncLinks(): void {
       fs.mkdirSync(root, { recursive: true });
       for (const e of fs.readdirSync(root, { withFileTypes: true })) {
         const p = path.join(root, e.name);
-        if (isGlyphhLink(p) && !fs.existsSync(path.join(p, "SKILL.md"))) fs.rmSync(p, { force: true });
+        // Ours and dead, or someone else's entirely: either way it goes.
+        if (isGlyphhLink(p) && (!isOurLink(p) || !fs.existsSync(path.join(p, "SKILL.md")))) fs.rmSync(p, { force: true });
       }
       for (const [home, names] of homes) for (const name of names) {
         const dest = path.join(root, name);
         let st: fs.Stats | null = null;
         try { st = fs.lstatSync(dest); } catch { /* absent */ }
         if (st && !st.isSymbolicLink()) continue;
-        if (st && isGlyphhLink(dest)) continue;
+        if (st && isOurLink(dest)) continue;
         if (st) fs.rmSync(dest, { force: true });
         fs.symlinkSync(path.join(home, name), dest, "dir");
       }
