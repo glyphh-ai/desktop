@@ -187,11 +187,26 @@ export async function installDefaultHubItems(): Promise<void> {
   try {
     const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);
     for (const want of DEFAULT_INSTALLS) {
-      if (listSkills(want.kind).some((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`))) continue;
       const hit = pub.find((p) => p.kind === want.kind && p.slug === want.slug);
       if (!hit) continue;
-      await install(`glyphh:${hit.id}`, want.kind);
-      console.info(`[hub] installed the default ${want.kind} "${want.slug}"`);
+      const have = listSkills(want.kind).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
+      if (!have) {
+        await install(`glyphh:${hit.id}`, want.kind);
+        console.info(`[hub] installed the default ${want.kind} "${want.slug}"`);
+        continue;
+      }
+      // THE HOUSE SKILL FOLLOWS THE SERVER (his report, 2026-09-17: "i didn't
+      // update the glyphh skill on me"). These two are Glyphh's own writing —
+      // the tool surface an agent reads — so a newer catalog version replaces
+      // this copy instead of waiting for a button nobody presses. Everything
+      // else keeps the Update button, where the user decides.
+      const origin = originOf(have.id);
+      if (origin && versionOf(hit) <= Number(origin.version || 1)) continue;
+      // No origin recorded means this copy predates the bookkeeping: install
+      // over it, which also writes the origin so later boots just compare.
+      if (origin) await update(have.id);
+      else await install(`glyphh:${hit.id}`, want.kind);
+      console.info(`[hub] refreshed the default ${want.kind} "${want.slug}" to v${versionOf(hit)}`);
     }
   } catch (err) {
     console.warn("[hub] default installs:", err instanceof Error ? err.message : String(err));
