@@ -16862,14 +16862,19 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-dock {
   display: flex; align-items: center;
   gap: 14px;   /* the same in every space (2026-09-16) */
-  max-width: calc(100vw - 32px);
+  /* The CONTENT side is the room it has, never the whole window — the fixed
+     sidebar owns the left, so measuring the viewport let the row run off both
+     edges of a centered dock (his report, 2026-09-17). */
+  max-width: calc(100vw - var(--rail-w, 0px) - 32px);
   margin-top: 10px;               /* and a tad more drop below the dock line */
 }
 /* Slots SHRINK to fit the page: fluid between 46px and 76px squares (the
    glyphs ride along), so the dock always fits the window on one row. */
 .echo-dock-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: var(--echo-icon-size, 76px); height: var(--echo-icon-size, 76px);
+  /* The size preference is the MAXIMUM; the row shrinks from there to fit, and
+     stays square while it does (height follows the width, not the setting). */
+  width: var(--echo-icon-size, 76px); height: auto; aspect-ratio: 1 / 1;
   padding: 0; flex-shrink: 1; min-width: 40px;
   border: none; border-radius: 18px;
   background: var(--surface-3);
