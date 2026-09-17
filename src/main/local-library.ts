@@ -202,6 +202,62 @@ export function startLoopScheduler(): void {
   catch (err) { console.error("[loops] scheduler boot failed:", err instanceof Error ? err.message : err); }
 }
 
+export interface ScheduleView {
+  id: string; name: string; kind: "task" | "skill"; target: string; cron: string; enabled: boolean;
+  agentId: string | null; agentName: string | null; args: string; createdAt: string;
+  lastRunAt: string | null; lastStatus: string | null; lastError: string | null;
+}
+
+/** Everything on a clock, with how its last run went. */
+export function listSchedulesView(): ScheduleView[] {
+  const db = getLocalDb();
+  const roster = agentChoices?.() ?? [];
+  const loops = listCliAgents();
+  return loadSchedules().map((s) => {
+    const last = db.prepare("SELECT started_at, status, error FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 1")
+      .get(s.id) as { started_at: string; status: string; error: string | null } | undefined;
+    const agent = roster.find((a) => a.id === s.agent_id);
+    const loop = loops.find((l) => l.id === s.agent_id);
+    return {
+      id: s.id, name: s.name, kind: s.kind === "skill" ? "skill" : "task", target: s.target || s.loop_slug,
+      cron: s.cron, enabled: s.enabled === 1, agentId: s.agent_id || null,
+      agentName: agent?.name ?? (loop ? `${loop.name} (loop)` : s.agent_id || null),
+      args: s.args || "{}", createdAt: s.created_at,
+      lastRunAt: last?.started_at ?? null, lastStatus: last?.status ?? null, lastError: last?.error ?? null,
+    };
+  });
+}
+
+/** Put a task or a skill on a clock, or change one that is already there. */
+export function saveSchedule(input: { id?: string; name?: string; kind?: string; target: string; agentId?: string | null; cron: string; enabled?: boolean; args?: unknown }): { id: string } {
+  if (!cron.validate(String(input.cron ?? ""))) throw new Error("that cron expression doesn't parse (five fields, e.g. 0 9 * * 1-5)");
+  const kind = input.kind === "skill" ? "skill" : "task";
+  const target = String(input.target || "").trim();
+  if (!target) throw new Error("a schedule needs something to run");
+  if (kind === "skill") getSkillFolder(`glyphh:${target}`);
+  const db = getLocalDb();
+  const id = input.id ? String(input.id) : rid();
+  const name = String(input.name ?? "").trim() || target;
+  const agentId = input.agentId ? String(input.agentId) : (kind === "skill" ? (agentChoices?.()[0]?.id ?? "") : "");
+  if (kind === "skill" && !agentId) throw new Error("a skill needs an agent to run through");
+  db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at, kind, target, args)
+              VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, name = excluded.name, loop_slug = excluded.loop_slug, cron = excluded.cron,
+                enabled = excluded.enabled, kind = excluded.kind, target = excluded.target, args = excluded.args`)
+    .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}));
+  const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(id) as ScheduleRow;
+  armSchedule(row);
+  return { id };
+}
+
+/** Take it off the clock. Its run history stays. */
+export function deleteSchedule(id: string): { deleted: boolean } {
+  liveJobs.get(String(id))?.stop();
+  liveJobs.delete(String(id));
+  getLocalDb().prepare("DELETE FROM loop_schedules WHERE id = ?").run(String(id));
+  return { deleted: true };
+}
+
 export function stopLoopScheduler(): void {
   for (const t of liveJobs.values()) { try { t.stop(); } catch { /* down anyway */ } }
   liveJobs.clear();
@@ -445,43 +501,8 @@ export function registerLocalLibraryIpc(): void {
   // SCHEDULES (Settings → Customize → Schedules): anything on a clock — a
   // task bundle (its program runs itself) or a skill (its text through an
   // agent). One table, one runner, the run feed shared.
-  const lastRunOf = (id: string): { started_at: string; status: string; error: string | null } | undefined =>
-    getLocalDb().prepare("SELECT started_at, status, error FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 1").get(id) as { started_at: string; status: string; error: string | null } | undefined;
-  ipcMain.handle("schedules-list", () => env(() => {
-    const roster = agentChoices?.() ?? [];
-    const loops = listCliAgents();
-    return loadSchedules().map((s) => {
-      const last = lastRunOf(s.id);
-      const agent = roster.find((a) => a.id === s.agent_id);
-      const loop = loops.find((l) => l.id === s.agent_id);
-      return {
-        id: s.id, name: s.name, kind: s.kind, target: s.target || s.loop_slug, cron: s.cron, enabled: s.enabled === 1,
-        agentId: s.agent_id || null, agentName: agent?.name ?? (loop ? `${loop.name} (loop)` : s.agent_id || null),
-        ownerAgentId: s.owner_agent_id, args: s.args || "{}", createdAt: s.created_at,
-        lastRunAt: last?.started_at ?? null, lastStatus: last?.status ?? null, lastError: last?.error ?? null,
-      };
-    });
-  }));
-  ipcMain.handle("schedule-save", (_e, input: { id?: string; name?: string; kind: "task" | "skill"; target: string; agentId?: string | null; cron: string; enabled?: boolean; args?: unknown }) => env(() => {
-    if (!cron.validate(String(input.cron ?? ""))) throw new Error("that cron expression doesn't parse (five fields, e.g. 0 9 * * 1-5)");
-    const kind = input.kind === "skill" ? "skill" : "task";
-    const target = String(input.target || "").trim();
-    if (!target) throw new Error("a schedule needs something to run");
-    if (kind === "skill") getSkillFolder(`glyphh:${target}`);
-    const db = getLocalDb();
-    const id = input.id ? String(input.id) : rid();
-    const name = String(input.name ?? "").trim() || target;
-    const agentId = input.agentId ? String(input.agentId) : (kind === "skill" ? (agentChoices?.()[0]?.id ?? "") : "");
-    if (kind === "skill" && !agentId) throw new Error("a skill needs an agent to run through");
-    db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at, kind, target, args)
-                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, name = excluded.name, loop_slug = excluded.loop_slug, cron = excluded.cron,
-                  enabled = excluded.enabled, kind = excluded.kind, target = excluded.target, args = excluded.args`)
-      .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}));
-    const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(id) as ScheduleRow;
-    armSchedule(row);
-    return { id };
-  }));
+  ipcMain.handle("schedules-list", () => env(listSchedulesView));
+  ipcMain.handle("schedule-save", (_e, input: { id?: string; name?: string; kind: "task" | "skill"; target: string; agentId?: string | null; cron: string; enabled?: boolean; args?: unknown }) => env(() => saveSchedule(input)));
   ipcMain.handle("schedule-set-enabled", (_e, id: string, enabled: boolean) => env(() => {
     const db = getLocalDb();
     db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, String(id));
@@ -489,12 +510,7 @@ export function registerLocalLibraryIpc(): void {
     if (row) armSchedule(row);
     return { updated: !!row };
   }));
-  ipcMain.handle("schedule-delete", (_e, id: string) => env(() => {
-    liveJobs.get(String(id))?.stop();
-    liveJobs.delete(String(id));
-    getLocalDb().prepare("DELETE FROM loop_schedules WHERE id = ?").run(String(id));
-    return { deleted: true };
-  }));
+  ipcMain.handle("schedule-delete", (_e, id: string) => env(() => deleteSchedule(String(id))));
   ipcMain.handle("schedule-run-now", async (_e, id: string) => {
     try { await runSchedule(String(id)); return { ok: true }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }

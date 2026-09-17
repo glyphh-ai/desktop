@@ -116,7 +116,17 @@ async function open(ta: HTMLTextAreaElement, at: number, query = ""): Promise<vo
   anchor = ta;
   slashStart = at;
   try {
-    items = unwrap<SkillSummary[]>(await window.glyphh.librarySkillsList());
+    // The SAME folders Settings → Build → Skills lists (2026-09-17): the slash
+    // menu used to read a JSON store nothing else renders, so a skill an agent
+    // saved was invisible here and there.
+    type Folder = { id: string; name: string; description: string; enabled: boolean };
+    const env = await window.glyphh.skillsList("skill") as { ok: boolean; data?: Folder[] };
+    items = (env.ok ? env.data ?? [] : [])
+      .filter((sk) => sk.enabled)
+      .map((sk): SkillSummary => ({
+        id: sk.id, slug: sk.id.slice(sk.id.indexOf(":") + 1), name: sk.name, description: sk.description,
+        hasCode: false, schedule: null, updatedAt: "",
+      }));
   } catch {
     items = [];
   }

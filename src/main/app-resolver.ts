@@ -62,6 +62,7 @@ type WbCmd =
   | { action: "open-many"; apps: WbAppRef[]; layoutName?: string }
   | { action: "terminal" }
   | { action: "tool"; tool: string }
+  | { action: "settings"; sub: string }
   | { action: "popup"; url: string }
   | { action: "close"; slug: string }
   | { action: "focus"; slug: string }
@@ -224,6 +225,13 @@ export async function openAppByRef(ref: string): Promise<{ slug: string; name: s
   // window management this app no longer does.
   sendWbCmd({ action: "open", app: toWbRef(app) });
   return { slug: app.slug, name: app.name };
+}
+
+/** Open SETTINGS at one of its pages (skills, connections, plugins, tasks,
+ *  schedules, tabs, workspaces…). The agent's door to the same panel a person
+ *  reaches from the dock (his order, 2026-09-17). */
+export function openSettingsPage(sub: string): void {
+  sendWbCmd({ action: "settings", sub });
 }
 
 /** Open the tabbed Browser panel at a specific URL (the agent's preview

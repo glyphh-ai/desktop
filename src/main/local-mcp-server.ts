@@ -23,7 +23,9 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
-import { listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
+import { listSkills, getSkill, installSkill, writeSkillFile } from "./skills-fs.js";
+import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule } from "./local-library.js";
+import { openSettingsPage } from "./app-resolver.js";
 import { listCliAgents } from "./cli-agents.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -116,6 +118,29 @@ function buildMcpServer(): McpServer {
   //    path agents lacked: a pipeline built here lands in Glyphh's registry,
   //    schedulable and visible in the UI, not beside it) ─────────────────
   const text = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v) }] });
+  // ── SKILLS ARE FOLDERS (2026-09-17) ────────────────────────────────────
+  // An agent that saved a skill used to write a JSON row into a store nothing
+  // renders any more, so the skill it just made was nowhere in the app (his
+  // report). These write and read the SAME folders the Skills page lists.
+  const skillId = (slug: string): string => `glyphh:${String(slug).trim()}`;
+  const skillSlug = (name: string): string =>
+    name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+
+  function saveSkillFolder(input: { slug?: string; name: string; description?: string; prompt?: string }): Record<string, unknown> {
+    const name = String(input.name ?? "").trim();
+    if (!name) throw new Error("a skill needs a name");
+    const slug = (input.slug ? String(input.slug) : skillSlug(name)) || "skill";
+    let existing: ReturnType<typeof getSkill> | null = null;
+    try { existing = getSkill(skillId(slug)); } catch { existing = null; }
+    const description = String(input.description ?? existing?.description ?? "").replace(/\r?\n/g, " ").trim();
+    const body = String(input.prompt ?? existing?.body ?? "").trim();
+    const md = `---\nname: ${slug}\ndescription: ${description || name}\n---\n\n${body || `# ${name}\n`}\n`;
+    if (existing) writeSkillFile(existing.id, "SKILL.md", md);
+    else installSkill(slug, { "SKILL.md": md }, "skill");
+    const saved = getSkill(skillId(slug));
+    return { slug, name: saved.name, description: saved.description, prompt: saved.body, dir: saved.dir, updatedAt: saved.updatedAt };
+  }
+
   mcp.tool(
     "agents_list",
     "The user's CLI-agent roster — the ONLY valid values for a task slot's agent binding and for task_run's agent override. Returns [{ id, name, cli, model, cwd }].",
@@ -124,7 +149,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "tasks_list",
-    "List the user's Glyphh TASKS. A task is a PROGRAM — a spec an agent authors and can rewrite; only the slots\u2192agents are fixed. Returns [{ slug, name, description, program, slots: [{ name, label?, agent }] }].",
+    "List the user's Glyphh TASKS. A task is a BUNDLE the desktop runs itself: a program (run.js) plus the slots it calls agents through, the connections it uses and an optional cron. Returns [{ slug, name, description, program, icon, slots, connections, schedule, enabled }].",
     {},
     async () => text(listTaskSpecs()),
   );
@@ -139,12 +164,12 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "task_save",
-    "Create or update a Glyphh task. The program is the SPEC the slotted agent runs — write it freely (steps inside it can carry prompts or reference Glyphh skills via skill_get); the agent building the task owns its shape. slots are the FIXED cast: create ONE SLOT PER STAGE of the pipeline (e.g. plan/review/build), each bound to a real agent id from agents_list (null leaves it for the user to pick in the Tasks UI) — never collapse a multi-model pipeline into a single slot. Saved tasks appear in the Tasks UI, where the user schedules them on a cron or runs them one-off.",
+    "Create or update a Glyphh task. THE PROGRAM IS CODE the desktop runs itself, not a prompt: a CommonJS module exporting `async function run(ctx, input)` that returns the result. It drives its own logic and reaches the world only through ctx — ctx.agents.<slot>.run(prompt, { schema }) for an agent turn, ctx.connections.<app>.call(tool, args) for a connected account, ctx.data(repo).exec(sql, params) for app data, ctx.checkpoint(key, fn) around anything worth not redoing after a restart, and ctx.log. Slots name the agents it calls (agents_list). Put it on a clock with schedule_save.",
     {
       slug: z.string().optional().describe("Existing task slug to update; omit to create"),
       name: z.string().describe("Task name"),
       description: z.string().optional(),
-      program: z.string().optional().describe("The spec the slotted agent runs"),
+      program: z.string().optional().describe("run.js — module.exports = async function run(ctx, input) { … return result }"),
       slots: z.array(z.object({
         name: z.string().optional(),
         label: z.string().optional(),
@@ -160,7 +185,7 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "task_run",
-    "Run a Glyphh task NOW — its program through the slotted agent's headless CLI. Returns { status, output }.",
+    "Run a Glyphh task NOW and wait for it. Returns { status, runId, result, error }; the run's own story is in task_runs.",
     {
       slug: z.string().describe("Task slug from tasks_list"),
       agent: z.string().optional().describe("CLI-agent id override for this run"),
@@ -176,24 +201,81 @@ function buildMcpServer(): McpServer {
     { slug: z.string().describe("Task slug") },
     async ({ slug }) => text(listTaskRuns(slug).map((r) => ({ id: r.id, startedAt: r.startedAt, durationMs: r.durationMs, status: r.status, error: r.error, result: r.result, events: r.journal.events.length }))),
   );
+  // ── SCHEDULES — anything on a clock (2026-09-17). A task's program runs
+  //    itself; a skill's instructions go through an agent. Same rows the
+  //    Settings → Customize → Schedules page shows.
   mcp.tool(
-    "skills_list",
-    "List the user's Glyphh SKILLS — cross-agent instruction sets any CLI can read. Returns summaries; read one with skill_get.",
+    "schedules_list",
+    "Everything the user has on a clock: { id, name, kind (task|skill), target, cron, enabled, agentName, lastRunAt, lastStatus }.",
     {},
-    async () => text(listSkillRows().map(({ prompt: _p, code: _c, manifest: _m, ...sum }) => sum)),
+    async () => text(listSchedulesView()),
   );
   mcp.tool(
-    "skill_get",
-    "Read a Glyphh skill in full — its markdown instructions (prompt) are the payload.",
-    { slug: z.string().describe("Skill slug from skills_list") },
-    async ({ slug }) => {
-      try { return text(getSkillRow(slug)); }
+    "schedule_save",
+    "Put a task or a skill on a clock, or change one already there. A TASK runs its own program; a SKILL's instructions run through an agent, so it needs one. Cron is five fields in the machine's local time (0 8 * * 1-5 = weekdays at 8am).",
+    {
+      id: z.string().optional().describe("Existing schedule id to change; omit to create"),
+      kind: z.enum(["task", "skill"]).describe("What runs: a task bundle, or a skill"),
+      target: z.string().describe("The task or skill slug"),
+      name: z.string().optional().describe("What to call it; defaults to the target"),
+      cron: z.string().describe("Five-field cron, e.g. 0 8 * * 1-5"),
+      agentId: z.string().optional().describe("For a skill: the agent whose loop runs it (agents_list)"),
+      enabled: z.boolean().optional().describe("Armed? Default true"),
+      args: z.record(z.string(), z.unknown()).optional().describe("Input handed to a task's program"),
+    },
+    async (input) => {
+      try { return text(saveSchedule(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
   mcp.tool(
+    "schedule_delete",
+    "Take something off the clock. Its run history stays.",
+    { id: z.string().describe("Schedule id from schedules_list") },
+    async ({ id }) => {
+      try { return text(deleteSchedule(id)); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "schedule_run",
+    "Fire a schedule NOW, outside its clock, to prove it works.",
+    { id: z.string().describe("Schedule id from schedules_list") },
+    async ({ id }) => {
+      try { await runSchedule(id); return text({ id, ran: true }); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "settings_open",
+    "Open the user's Settings on one of its pages so they can see or change something themselves: skills, connections, plugins, tasks, schedules, tabs, workspaces, drips, models, members, billing, general, appearance, mcp.",
+    { page: z.string().describe("Which page: skills | connections | plugins | tasks | schedules | tabs | layouts | drips | general | appearance | mcp | models | members | billing") },
+    async ({ page }) => {
+      try { openSettingsPage(page); return text({ page, opened: true }); }
+      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+
+  mcp.tool(
+    "skills_list",
+    "List the user's Glyphh SKILLS — folders in the Agent Skills standard, the same ones Settings → Build → Skills shows. Returns summaries; read one with skill_get.",
+    {},
+    async () => text(listSkills("skill").map((sk) => ({ slug: sk.id.slice(sk.id.indexOf(":") + 1), name: sk.name, description: sk.description, source: sk.source, enabled: sk.enabled, updatedAt: sk.updatedAt }))),
+  );
+  mcp.tool(
+    "skill_get",
+    "Read a Glyphh skill in full — its SKILL.md frontmatter and the markdown instructions (prompt) under it.",
+    { slug: z.string().describe("Skill slug from skills_list") },
+    async ({ slug }) => {
+      try {
+        const sk = getSkill(skillId(slug));
+        return text({ slug, name: sk.name, description: sk.description, prompt: sk.body, frontmatter: sk.frontmatter, files: sk.files.map((f) => f.path), enabled: sk.enabled });
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
     "skill_save",
-    "Create or update a Glyphh skill (name, description, prompt = its markdown instructions). Saved skills appear in the Skills UI and are readable by EVERY CLI agent through skill_get.",
+    "Create or update a Glyphh skill (name, description, prompt = its markdown instructions). It lands as a FOLDER with a SKILL.md, which is what Settings → Build → Skills lists and what every CLI agent on this machine reads through skill_get.",
     {
       slug: z.string().optional().describe("Existing slug to update; omit to create"),
       name: z.string().describe("Skill name"),
@@ -201,7 +283,7 @@ function buildMcpServer(): McpServer {
       prompt: z.string().optional().describe("The skill's markdown instructions"),
     },
     async (input) => {
-      try { return text(saveSkillRow(input)); }
+      try { return text(saveSkillFolder(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
