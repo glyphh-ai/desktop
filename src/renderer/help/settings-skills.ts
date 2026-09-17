@@ -1186,7 +1186,7 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
   if (count) count.textContent = `· ${agents.length}`;
   host.textContent = "";
   if (!agents.length) {
-    host.innerHTML = `<div class="crud-empty">This ${TYPE_LABEL[typeOf(s)]} ships no agents. Add one as <code>agents/&lt;name&gt;.md</code> in Contents.</div>`;
+    host.innerHTML = `<div class="crud-empty">No agents.</div>`;
     return;
   }
 
@@ -1294,7 +1294,7 @@ async function paintTaskRuns(s: SkillDetail): Promise<void> {
   const runs = r.ok ? r.data ?? [] : [];
   if (count) count.textContent = runs.length ? `· ${runs.length}` : "";
   host.textContent = "";
-  if (!runs.length) { host.innerHTML = `<div class="crud-empty">${r.ok ? "No runs yet. Run now to see the story." : escapeHtml(r.error || "Couldn't load runs.")}</div>`; return; }
+  if (!runs.length) { host.innerHTML = `<div class="crud-empty">${r.ok ? "No runs." : escapeHtml(r.error || "Couldn't load runs.")}</div>`; return; }
   const rel = (ms: number): string => { const a = Math.abs(ms); const u = a < 60_000 ? ["s", 1000] as const : a < 3_600_000 ? ["m", 60_000] as const : a < 86_400_000 ? ["h", 3_600_000] as const : ["d", 86_400_000] as const; return `${Math.round(a / u[1])}${u[0]} ago`; };
   for (const run of runs) {
     const e = document.createElement("div");
@@ -1394,16 +1394,9 @@ async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<voi
   const deps = connDeps(raw);
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
-  // One pane, two meanings: an app opens with them, a task runs unattended.
-  const blurb = el("skill-connections")?.querySelector(".skill-overview-desc");
-  if (blurb) {
-    blurb.textContent = typeOf(current) === "task"
-      ? "Accounts this task works through. Every one is required, and an unattended run only uses the tools you set to Always allow."
-      : "Accounts this app works through. Every one is required; connect them before opening it.";
-  }
   if (count) count.textContent = `· ${deps.length}`;
   host.textContent = "";
-  if (!deps.length) { host.innerHTML = `<div class="crud-empty">This ${TYPE_LABEL[typeOf(current)]} needs no connections.</div>`; return; }
+  if (!deps.length) { host.innerHTML = `<div class="crud-empty">No connections.</div>`; return; }
   await renderConnectionTable(host, deps);
 }
 
