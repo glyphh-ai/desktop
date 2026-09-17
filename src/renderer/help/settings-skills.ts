@@ -55,6 +55,10 @@ export interface PageCfg {
 
 /** What "New …" hands the agent. The ask belongs to the KIND, not the page, so
  *  one page that lists several kinds can offer each of them. */
+/** The mark a bundle wears when it ships none of its own: its TYPE's, not the
+ *  page's — an app among skills looks like an app (his order, 2026-09-17). */
+const TYPE_ICON: Record<BundleType, string> = { skill: SKILL_ICON, app: APP_ICON, task: TASK_ICON, plugin: PLUGIN_ICON };
+
 const NEW_PROMPT: Record<BundleType, string> = {
   skill: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
   app: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
@@ -102,9 +106,15 @@ const typeOf = (s: { type?: BundleType } | null | undefined): BundleType => s?.t
  *  about — a plain skill on Skills says nothing, an app among them says "app". */
 const typeChip = (type: BundleType | undefined): string =>
   type && type !== cfg.kind ? `<span class="skill-type-chip">${escapeHtml(TYPE_LABEL[type])}</span>` : "";
-/** A bundle's own icon.svg when the manifest names one, else the page's mark. */
-const iconOf = (own: string | null | undefined): string => (own && own.includes("<svg") ? own : cfg.icon);
-const setDetailIcon = (own: string | null | undefined): void => { document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = iconOf(own); }); };
+/** A bundle's own icon.svg when its manifest names one, else its type's mark. */
+const iconOf = (own: string | null | undefined, type?: BundleType): string =>
+  (own && own.includes("<svg") ? own : TYPE_ICON[type ?? cfg.kind]);
+const setDetailIcon = (own: string | null | undefined, type?: BundleType): void => {
+  document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
+    n.innerHTML = iconOf(own, type);
+    n.classList.toggle("own", !!(own && own.includes("<svg")));
+  });
+};
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -149,7 +159,7 @@ type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: (
 function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; type?: BundleType }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
-  r.innerHTML = `<div class="skill-tile-icon${opts.icon && opts.icon.includes("<svg") ? " own" : ""}">${iconOf(opts.icon)}</div>
+  r.innerHTML = `<div class="skill-tile-icon${opts.icon && opts.icon.includes("<svg") ? " own" : ""}">${iconOf(opts.icon, opts.type)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"></div>
       <div class="skill-row-sub">${typeChip(opts.type)}<span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
@@ -574,7 +584,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).innerHTML = `${typeChip(d.type)}${escapeHtml(`from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
-  setDetailIcon(d.icon);
+  setDetailIcon(d.icon, d.type);
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
@@ -911,7 +921,7 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
-  setDetailIcon(s.icon);
+  setDetailIcon(s.icon, s.type);
   void paintExtras(s, null);
   const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
   (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
