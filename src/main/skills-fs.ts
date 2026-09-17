@@ -382,18 +382,26 @@ export function writeSkillFile(id: string, rel: string, text: string): void {
 export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   const { source, name, dir, enabled } = dirOf(id);
   if (enabled === on) return summarize(source, name, dir, enabled)!;
+  const type = bundleType(dir);
   const dest = on ? path.join(ROOTS[source](), name) : path.join(DISABLED_ROOT(), source, name);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.renameSync(dir, dest);
   syncLinks();
+  // An app's TAB follows the switch: turned off it leaves the rail and the
+  // wall (its entry just moved out from under them), turned on it comes back.
+  if (type === "app") {
+    if (on) void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
+    else void unregisterBundleApp(dir);
+  }
   return summarize(source, name, dest, on)!;
 }
 
 export function deleteSkill(id: string): void {
-  const { source, dir } = dirOf(id);
+  const { dir } = dirOf(id);
+  const type = bundleType(dir);
   fs.rmSync(dir, { recursive: true, force: true });
   syncLinks();
-  if (source === "app") void unregisterBundleApp(dir);
+  if (type === "app") void unregisterBundleApp(dir);
 }
 
 /** A CLI's own skill folder becomes a Glyphh skill: moved home, linked back. */

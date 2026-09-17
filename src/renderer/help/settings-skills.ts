@@ -51,8 +51,16 @@ export interface PageCfg {
   icon: string;
   /** The back button's label on the detail page. */
   back: string;
-  newPrompt: string;
 }
+
+/** What "New …" hands the agent. The ask belongs to the KIND, not the page, so
+ *  one page that lists several kinds can offer each of them. */
+const NEW_PROMPT: Record<BundleType, string> = {
+  skill: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
+  app: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
+  plugin: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
+  task: "Create a new Glyphh task in this folder: a new subfolder named after the task with a SKILL.md (frontmatter name + description, then what the task does and when to run it), a task.json (name, program: run.js, slots the program calls agents through, dependencies on connections, an optional five-field cron schedule) and run.js exporting async function run(ctx, input) that returns the result. The program is the process: it drives the logic itself and uses ctx.agents.<slot>.run(prompt, {schema}) only where an agent is needed, ctx.connections.<app>.call(tool, args) for connections, ctx.data(repo).exec(sql, params) for app data, and ctx.checkpoint(key, fn) around anything worth not redoing after a restart. The task should ",
+};
 
 export function createLibraryPage(cfg: PageCfg) {
 let wired = false;
@@ -1238,7 +1246,7 @@ function wire(): void {
   el("skills-filter")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, filterMenu()));
   el("skills-sort")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, sortMenu()));
   el("skills-add")?.addEventListener("click", (e) => openMenu(e.currentTarget as HTMLElement, [
-    { label: `New ${cfg.noun}`, onClick: () => void createNew() },
+    ...KINDS.map((k) => ({ label: `New ${TYPE_LABEL[k]}`, onClick: () => void createNew(k) })),
     { label: "Import from file…", onClick: () => void importFromFile() },
     { label: "Install from Discover", onClick: async () => { tab = "discover"; await loadDiscover(); renderList(); } },
   ]));
@@ -1287,12 +1295,12 @@ function wire(): void {
 
 /** New skill = a session in the default loop, rooted at Glyphh's skills home,
  *  with the ask started in the composer and the cursor waiting for the rest. */
-async function createNew(): Promise<void> {
-  const r = await api().skillsHome(cfg.kind) as Env<string>;
-  if (!r.ok || !r.data) { fail(r.error || `Couldn't find the ${cfg.nouns} folder.`); return; }
+async function createNew(kind: BundleType): Promise<void> {
+  const r = await api().skillsHome(kind) as Env<string>;
+  if (!r.ok || !r.data) { fail(r.error || `Couldn't find the ${TYPE_LABEL[kind]} folder.`); return; }
   openSessionWith({
     cwd: r.data,
-    prompt: cfg.newPrompt,
+    prompt: NEW_PROMPT[kind],
   });
 }
 
@@ -1310,19 +1318,15 @@ async function importFromFile(): Promise<void> {
 
 const SKILLS_PAGE = createLibraryPage({
   kind: "skill", kinds: ["skill", "app"], id: (x) => x, panel: '.settings-panel[data-sub="skills"]', noun: "skill", nouns: "skills", icon: SKILL_ICON, back: "Skills",
-  newPrompt: "Create a new Agent Skill in this folder: a new subfolder named after the skill with a SKILL.md (frontmatter name + description, then the instructions) and any scripts or references it needs. The skill should ",
 });
 const APPS_PAGE = createLibraryPage({
   kind: "app", id: (x) => x.replace(/^skills-/, "gapps-").replace(/^skill-/, "gapp-"), panel: '.settings-panel[data-sub="apps"]', noun: "app", nouns: "apps", icon: APP_ICON, back: "Apps",
-  newPrompt: "Create a new Glyphh app in this folder: a new subfolder named after the app with a SKILL.md (frontmatter name + description, then how an agent works the app), an app.json (name, ui entry, tools manifest, data schema, dependencies on connections, screenshots), ui/index.html as the face, tools/manifest.json for the tools it exposes, and data/schema.sql if it keeps data. The app should ",
 });
 const PLUGINS_PAGE = createLibraryPage({
   kind: "plugin", id: (x) => x.replace(/^skills-/, "gplugs-").replace(/^skill-/, "gplug-"), panel: '.settings-panel[data-sub="plugins"]', noun: "plugin", nouns: "plugins", icon: PLUGIN_ICON, back: "Plugins",
-  newPrompt: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
 });
 const TASKS_PAGE = createLibraryPage({
   kind: "task", id: (x) => x.replace(/^skills-/, "gtasks-").replace(/^skill-/, "gtask-"), panel: '.settings-panel[data-sub="tasks"]', noun: "task", nouns: "tasks", icon: TASK_ICON, back: "Tasks",
-  newPrompt: "Create a new Glyphh task in this folder: a new subfolder named after the task with a SKILL.md (frontmatter name + description, then what the task does and when to run it), a task.json (name, program: run.js, slots the program calls agents through, dependencies on connections, an optional five-field cron schedule) and run.js exporting async function run(ctx, input) that returns the result. The program is the process: it drives the logic itself and uses ctx.agents.<slot>.run(prompt, {schema}) only where an agent is needed, ctx.connections.<app>.call(tool, args) for connections, ctx.data(repo).exec(sql, params) for app data, and ctx.checkpoint(key, fn) around anything worth not redoing after a restart. The task should ",
 });
 export const loadSkillsSettings = SKILLS_PAGE.load;
 export const loadTasksSettings = TASKS_PAGE.load;

@@ -813,6 +813,9 @@ const SETTINGS_SUB_ALIAS: Record<string, string> = {
   // Drips left Settings for the workpanel dock (2026-08-25); a stale deep
   // link lands on General rather than a tab that no longer exists.
   drips: "general",
+  // Apps are skills with a type now (2026-09-17) — the Apps tab is hidden and
+  // every link to it lands on Skills, which lists them.
+  apps: "skills",
 };
 
 /** Retired top-level sections, redirected to the Settings sub-panel that
