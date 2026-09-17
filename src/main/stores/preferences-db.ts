@@ -75,13 +75,16 @@ export function preferencesByPrefix<T = unknown>(prefix: string): Record<string,
   return out;
 }
 
+/** Keys whose VALUE never reaches a log line. */
+const SECRET_KEY_RE = /secret|password|token/i;
+
 export function setPreference(key: string, value: unknown): void {
   if (!prefs) prefs = {};
   if (value === null || value === undefined) delete prefs[key];
   else prefs[key] = value;
   void getClient()
     .profile.setPrefs({ [key]: value ?? null })
-    .then(() => { console.log(`[prefs] persisted "${key}" =`, value); })
+    .then(() => { console.log(`[prefs] persisted "${key}" =`, SECRET_KEY_RE.test(key) ? "<redacted>" : value); })
     .catch((e: unknown) => {
       console.error(`[prefs] persist failed for "${key}":`, (e as Error).message);
     });

@@ -43,7 +43,7 @@ import { pathToFileURL, fileURLToPath } from "url";
 import { userScopedPath, glyphhPath, appsRoot, appDir } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
-import { getPreference } from "./stores/preferences-db.js";
+import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { grantAppCaps, revokeAppCaps, getAppGrant } from "./glyphh-app-grants.js";
 import { AppWorkerSpec, ensureAppWorker, invokeAppWorkerHandler, stopAppWorker } from "./glyphh-app-worker.js";
 import { webFetch, webRead } from "./web-capability.js";
@@ -209,6 +209,21 @@ interface BundleManifest {
   dependencies?: { connections?: Array<{ app?: string; as?: string }> };
 }
 
+/** A disabled app's CONFIG VARS, parked while it has no row to live in.
+ *
+ *  Turning an app off removes its row, and the row is where the secrets sit
+ *  (app-secrets.ts: launchConfig.secrets, safeStorage ciphertext). Deleting a
+ *  key the user typed because they flicked a switch is the wrong trade, so the
+ *  ciphertext is parked under their prefs, unchanged and still unreadable by
+ *  anything but this machine's keychain, and folded back in when the app
+ *  returns. A real delete clears it. */
+const STASH_KEY = (slug: string): string => `appSecretsStash:${slug}`;
+
+function readSecretsStash(slug: string): Record<string, unknown> | null {
+  const v = getPreference<unknown>(STASH_KEY(slug), null);
+  return v && typeof v === "object" && Object.keys(v).length ? (v as Record<string, unknown>) : null;
+}
+
 /** A Glyphh app BUNDLE (SKILL.md + app.json + ui/) in the apps home becomes a
  *  tab: a glyphh-app row whose entry is the bundle's ui, granted the caps it
  *  declares (or the bundle defaults) and its connection dependencies. Idempotent:
@@ -240,12 +255,17 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
   const config = { capabilities, connectors, tools, bundleDir: dir, ...(m.tool ? { tool: String(m.tool) } : {}), ...(iconUrl ? { iconUrl } : {}) };
   try {
     const existing = await fetchOrgApps().then((apps) => apps.find((a) => a.slug === slug)).catch(() => undefined);
+    // The app's config vars survive: from its own row when it has one, else
+    // from the stash a disable parked (an app coming back from OFF).
+    const stashed = existing ? null : readSecretsStash(slug);
+    const secrets = existing ? (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets : stashed;
+    const withSecrets = secrets && typeof secrets === "object" ? { ...config, secrets } : config;
     if (existing) {
-      const secrets = (existing.launchConfig as { secrets?: unknown } | null | undefined)?.secrets;
-      await appsStore.updateEntry(slug, { name, kind: "glyphh", nativeRef: entryPath, config: secrets && typeof secrets === "object" ? { ...config, secrets } : config });
+      await appsStore.updateEntry(slug, { name, kind: "glyphh", nativeRef: entryPath, config: withSecrets });
     } else {
-      await appsStore.createEntry({ kind: "glyphh", slug, name, nativeRef: entryPath, config });
+      await appsStore.createEntry({ kind: "glyphh", slug, name, nativeRef: entryPath, config: withSecrets });
     }
+    if (stashed) setPreference(STASH_KEY(slug), null);
     invalidateOrgApps();
     for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
   } catch (e) {
@@ -255,11 +275,19 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
 }
 
 /** The bundle is gone: drop every tab that pointed into its folder. */
-export async function unregisterBundleApp(dir: string): Promise<void> {
+export async function unregisterBundleApp(dir: string, opts: { keepSecrets?: boolean } = {}): Promise<void> {
   const rows = await appsStore.mine();
   for (const r of rows) {
-    if ((r.config as { bundleDir?: string } | null)?.bundleDir === dir) await appsStore.removeEntry(r.slug);
+    if ((r.config as { bundleDir?: string } | null)?.bundleDir !== dir) continue;
+    const secrets = (r.config as { secrets?: unknown } | null)?.secrets;
+    // Turned OFF: park the config vars for when it comes back. Deleted: the
+    // stash goes too, so a later app of the same name starts clean.
+    setPreference(STASH_KEY(r.slug), opts.keepSecrets && secrets && typeof secrets === "object" && Object.keys(secrets).length ? secrets : null);
+    await appsStore.removeEntry(r.slug);
   }
+  // A delete while the app was already OFF has no row left to match, so the
+  // parked vars are cleared by name too — nothing outlives the bundle.
+  if (!opts.keepSecrets) setPreference(STASH_KEY(path.basename(dir).toLowerCase().trim()), null);
   invalidateOrgApps();
   for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
 }

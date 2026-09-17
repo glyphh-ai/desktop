@@ -391,7 +391,7 @@ export function setSkillEnabled(id: string, on: boolean): SkillSummary {
   // wall (its entry just moved out from under them), turned on it comes back.
   if (type === "app") {
     if (on) void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
-    else void unregisterBundleApp(dir);
+    else void unregisterBundleApp(dir, { keepSecrets: true });
   }
   return summarize(source, name, dest, on)!;
 }
