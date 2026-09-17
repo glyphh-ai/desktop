@@ -205,15 +205,22 @@ function paintShareChip(): void {
   if (!host) return;
   host.querySelector(".skill-share-chip")?.remove();
   if (hubItem) return;
-  const { head, pending } = shareState;
-  const label = pending ? `in review · v${pending}` : head ? `shared · v${head}` : "";
-  if (!label) return;
+  const { head, pending, declined } = shareState;
+  // THE THREE ANSWERS A REVIEW CAN GIVE (his order, 2026-09-17). Waiting and
+  // never-shared used to look identical, and a decline looked like neither.
+  const state = pending ? "pending" : declined ? "declined" : head ? "live" : "";
+  if (!state) return;
+  const label = state === "pending" ? `in review · v${pending}`
+    : state === "declined" ? `changes requested · v${declined!.version}`
+    : `shared · v${head}`;
   const chip = document.createElement("span");
-  chip.className = `skill-type-chip skill-share-chip${pending ? " pending" : ""}`;
+  chip.className = `skill-type-chip skill-share-chip ${state}`;
   chip.textContent = label;
-  chip.title = pending
+  chip.title = state === "pending"
     ? "Waiting on your organization's review desk. An admin decides; sharing again replaces it."
-    : "Live on your organization's hub. Members install it from Discover.";
+    : state === "declined"
+      ? `${declined!.summary || "An admin declined this version."} Share again to send a new one.`
+      : "Live on your organization's hub. Members install it from Discover.";
   host.appendChild(chip);
 }
 
@@ -916,7 +923,7 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, string>; 
 let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
 /** What the org's hub holds for the open bundle: the live version, and the one
  *  still on the review desk. Null until loadVersions answers. */
-let shareState: { head: number | null; pending: number | null } = { head: null, pending: null };
+let shareState: { head: number | null; pending: number | null; declined: { version: number; summary: string } | null } = { head: null, pending: null, declined: null };
 /** The shared item behind the open bundle: what it is on the org's hub, and
  *  the shelves it sits on. Promote guesses the shelves from the payload, so
  *  this is where a person corrects the guess (his report, 2026-09-17). */
@@ -1369,7 +1376,7 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   paintSource(s.id);
   viewedVersion = null;
-  shareState = { head: null, pending: null };
+  shareState = { head: null, pending: null, declined: null };
   shareItem = null;
   paintCategories();
   paintDetailChrome();
@@ -1397,10 +1404,14 @@ let versionItemId: string | null = null;
 async function loadVersions(): Promise<void> {
   if (!current) return;
   const id = current.id;
-  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string }>; head?: number | null; pending?: number | null; categories?: string[] }>;
+  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string; status?: string }>; head?: number | null; pending?: number | null; declined?: { version: number; summary: string } | null; categories?: string[] }>;
   if (!current || current.id !== id) return;
   versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
-  shareState = { head: r.ok ? r.data?.head ?? null : null, pending: r.ok ? r.data?.pending ?? null : null };
+  shareState = {
+    head: r.ok ? r.data?.head ?? null : null,
+    pending: r.ok ? r.data?.pending ?? null : null,
+    declined: r.ok ? r.data?.declined ?? null : null,
+  };
   shareItem = r.ok && r.data?.itemId
     ? { id: r.data.itemId, kind: r.data.kind ?? typeOf(current), categories: r.data.categories ?? [] }
     : null;
@@ -1656,7 +1667,10 @@ async function share(): Promise<void> {
   if (!r.ok) { fail(r.error || "Couldn't share."); return; }
   const v = r.data?.version;
   const approved = r.data?.status === "approved";
-  shareState = approved ? { head: v ?? null, pending: null } : { head: shareState.head, pending: v ?? null };
+  // A fresh share clears any earlier decline: this version has not been judged.
+  shareState = approved
+    ? { head: v ?? null, pending: null, declined: null }
+    : { head: shareState.head, pending: v ?? null, declined: null };
   paintShareChip();
   paintCategories();
   notice(approved

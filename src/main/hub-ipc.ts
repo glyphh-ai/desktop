@@ -285,18 +285,34 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
 
 /** The hub versions behind a local skill: the org item whose slug is the
  *  folder's name. "current" is the disk; these are the immutable shares. */
-async function versionsFor(skillId: string): Promise<{ itemId: string | null; kind: Kind; versions: Array<{ version: number; notes: string; createdAt: string }>; head: number | null; pending: number | null; categories: string[] }> {
+interface VersionRow { version: number; notes: string; createdAt: string; status: string; reviewSummary: string }
+
+async function versionsFor(skillId: string): Promise<{ itemId: string | null; kind: Kind; versions: VersionRow[]; head: number | null; pending: number | null; declined: { version: number; summary: string } | null; categories: string[] }> {
   const skill = getSkill(skillId);
   const slug = skill.id.slice(skill.id.indexOf(":") + 1);
   const kind = kindOfId(skillId);
   const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
   const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
-  if (!item) return { itemId: null, kind, versions: [], head: null, pending: null, categories: [] };
-  const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => []);
+  if (!item) return { itemId: null, kind, versions: [], head: null, pending: null, declined: null, categories: [] };
+  type Raw = { version: number; notes: string; created_at: string; status?: string; review_summary?: string | null };
+  const rows = await getClient().http.get<Raw[]>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => [] as Raw[]);
+  const list: VersionRow[] = (Array.isArray(rows) ? rows : []).map((r) => ({
+    version: r.version, notes: r.notes || "", createdAt: r.created_at,
+    status: r.status || "approved", reviewSummary: r.review_summary || "",
+  }));
+  // A DECLINE IS NEWS (his order, 2026-09-17): the author could see a pending
+  // share but never a rejected one, so a declined skill looked like one nobody
+  // had opened yet. The newest rejected version counts only while nothing
+  // newer was approved or is still waiting.
+  const newest = list[0];
+  const declined = newest && newest.status === "rejected"
+    ? { version: newest.version, summary: newest.reviewSummary }
+    : null;
   return {
     itemId: item.id,
     kind,
-    versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })),
+    versions: list,
+    declined,
     // What the SHARE actually did: the live version on the org's hub, and the
     // one still sitting on the review desk.
     head: item.headVersion ?? null,

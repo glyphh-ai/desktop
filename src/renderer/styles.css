@@ -6285,6 +6285,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
    like that should flip, so one rule covers all of them. */
 img[src*="github.com"], img[src*="githubassets"] { filter: invert(var(--mark-invert, 0)); }
 
+/* A share's verdict, on the bundle: waiting, declined, live. */
+.skill-share-chip.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.skill-share-chip.declined { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+
 /* A model the catalog no longer carries: named, and marked. */
 .code-chip.warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 
