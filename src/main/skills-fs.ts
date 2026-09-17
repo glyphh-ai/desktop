@@ -24,9 +24,11 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath } from "./app-paths.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 
-export type SkillSource = "glyphh" | "app" | "plugin" | "claude" | "codex" | "gemini";
+export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
-export type HomeKind = "skill" | "app" | "plugin";
+export type HomeKind = "skill" | "app" | "plugin" | "task";
+/** The tasks home: bundles the desktop runs itself (task-runner.ts). */
+export const TASKS_HOME = (): string => userScopedPath("tasks");
 
 export interface SkillSummary {
   id: string;
@@ -38,6 +40,8 @@ export interface SkillSummary {
   dir: string;
   fileCount: number;
   updatedAt: string;
+  /** App and task bundles: the manifest's icon.svg markup. */
+  icon?: string | null;
 }
 export interface SkillFile { path: string; size: number }
 export interface SkillDetail extends SkillSummary {
@@ -53,6 +57,7 @@ const ROOTS: Record<SkillSource, () => string> = {
   glyphh: () => userScopedPath("skills"),
   app: () => userScopedPath("apps"),
   plugin: () => userScopedPath("plugins"),
+  task: () => TASKS_HOME(),
   claude: () => path.join(homedir(), ".claude", "skills"),
   codex: () => path.join(homedir(), ".codex", "skills"),
   gemini: () => path.join(homedir(), ".gemini", "skills"),
@@ -138,7 +143,19 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   return {
     id: idOf(source, name), source, name: frontmatter.name || name, description: frontmatter.description || "",
     author: frontmatter.author || frontmatter.from || "", enabled, dir, fileCount: walk(dir).length, updatedAt,
+    icon: bundleIcon(dir, source),
   };
+}
+
+/** The icon an app or task manifest names (an .svg in the bundle), as markup. */
+export function bundleIcon(dir: string, source: SkillSource): string | null {
+  if (source !== "app" && source !== "task") return null;
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, `${source}.json`), "utf-8")) as { icon?: unknown };
+    if (typeof m.icon !== "string" || !m.icon.endsWith(".svg")) return null;
+    const svg = fs.readFileSync(safeJoin(dir, m.icon), "utf-8");
+    return svg.includes("<svg") && svg.length < 64_000 ? svg : null;
+  } catch { return null; }
 }
 
 /** Is this path a link Glyphh planted (a symlink whose target sits in Glyphh's skills root)? */
@@ -150,7 +167,7 @@ function isGlyphhLink(p: string): boolean {
   } catch { return false; }
 }
 const isApp = (dir: string): boolean => fs.existsSync(path.join(dir, "app.json"));
-const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : kind === "plugin" ? ROOTS.plugin() : ROOTS.glyphh());
+const homeFor = (kind: HomeKind): string => (kind === "app" ? ROOTS.app() : kind === "plugin" ? ROOTS.plugin() : kind === "task" ? ROOTS.task() : ROOTS.glyphh());
 
 function listIn(root: string, source: SkillSource, enabled: boolean): SkillSummary[] {
   let names: string[] = [];
@@ -272,7 +289,7 @@ function syncPluginMarketplace(): void {
 export function listSkills(kind: HomeKind = "skill"): SkillSummary[] {
   syncLinks();
   const out: SkillSummary[] = [];
-  const sources: SkillSource[] = kind === "app" ? ["app"] : kind === "plugin" ? ["plugin"] : ["glyphh", "claude", "codex", "gemini"];
+  const sources: SkillSource[] = kind === "app" ? ["app"] : kind === "plugin" ? ["plugin"] : kind === "task" ? ["task"] : ["glyphh", "claude", "codex", "gemini"];
   for (const source of sources) {
     out.push(...listIn(ROOTS[source](), source, true));
     out.push(...listIn(path.join(DISABLED_ROOT(), source), source, false));
@@ -401,7 +418,7 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   const plugin = kind === "plugin" || (!files["SKILL.md"] && !!files[".claude-plugin/plugin.json"]);
   if (!files["SKILL.md"] && !plugin) throw new Error("a skill needs a SKILL.md");
   if (plugin && !files[".claude-plugin/plugin.json"]) throw new Error("a plugin needs .claude-plugin/plugin.json");
-  const source: SkillSource = plugin ? "plugin" : kind === "app" || files["app.json"] ? "app" : "glyphh";
+  const source: SkillSource = plugin ? "plugin" : kind === "task" || files["task.json"] ? "task" : kind === "app" || files["app.json"] ? "app" : "glyphh";
   const dir = path.join(ROOTS[source](), name);
   fs.mkdirSync(dir, { recursive: true });
   for (const [rel, text] of Object.entries(files)) {
@@ -440,6 +457,11 @@ export function createSkill(rawName: string, kind: HomeKind = "skill"): SkillSum
     const readme = `# ${name}\n\nA Claude Code plugin: skills/, commands/, agents/, hooks/ and .mcp.json travel together.\n`;
     return installSkill(name, { ".claude-plugin/plugin.json": pj, "README.md": readme, [`skills/${name}/SKILL.md`]: md }, "plugin");
   }
+  if (kind === "task") {
+    const tj = JSON.stringify({ name, program: "run.js", slots: { main: { label: "Main", description: "The agent this task runs through.", agent: null } }, schedule: null, dependencies: { connections: [] } }, null, 2) + "\n";
+    const js = `// A Glyphh task: the desktop runs this program itself. Agents only where it slots them.\nmodule.exports = async function run(ctx, input) {\n  const turn = await ctx.checkpoint("turn", () => ctx.agents.main.run("Say what this task should do."));\n  return { output: turn.text };\n};\n`;
+    return installSkill(name, { "SKILL.md": md, "task.json": tj, "run.js": js }, "task");
+  }
   const manifest = JSON.stringify({ name, ui: "ui/index.html", tools: "tools/manifest.json", data: "data/schema.sql", dependencies: { connections: [] }, screenshots: [] }, null, 2) + "\n";
   const ui = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8" /><title>${name}</title></head>\n<body><h1>${name}</h1><p>The app's face. The agent drives it through the tools in tools/manifest.json.</p></body></html>\n`;
   return installSkill(name, { "SKILL.md": md, "app.json": manifest, "ui/index.html": ui, "tools/manifest.json": JSON.stringify({ tools: [] }, null, 2) + "\n" }, "app");
@@ -469,7 +491,7 @@ export function importSkill(picked: string, kind: HomeKind = "skill"): SkillSumm
   if (!src) throw new Error(kind === "plugin" ? "no .claude-plugin/plugin.json inside that" : "no SKILL.md inside that");
   const given = kind === "plugin" ? (pluginManifest(src).name || "") : parseSkillMd(fs.readFileSync(path.join(src, "SKILL.md"), "utf-8")).frontmatter.name;
   const base = (given || path.basename(src === tmp ? picked.replace(/\.(zip|glyphh)$/i, "") : src)).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || kind;
-  const target: SkillSource = kind === "plugin" ? "plugin" : kind === "app" || isApp(src) ? "app" : "glyphh";
+  const target: SkillSource = kind === "plugin" ? "plugin" : kind === "task" || fs.existsSync(path.join(src, "task.json")) ? "task" : kind === "app" || isApp(src) ? "app" : "glyphh";
   let name = base;
   for (let i = 2; fs.existsSync(path.join(ROOTS[target](), name)); i++) name = `${base}-${i}`;
   const dest = path.join(ROOTS[target](), name);
@@ -494,13 +516,13 @@ function tabBundles(): void {
 
 export function registerSkillsIpc(): void {
   tabBundles();
-  const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "plugin" ? "plugin" : "skill");
+  const kindOf = (k: unknown): HomeKind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
   ipcMain.handle("skills-home", (_e, kind?: string) => { const d = homeFor(kindOf(kind)); fs.mkdirSync(d, { recursive: true }); return { ok: true, data: d }; });
   ipcMain.handle("skill-import", async (e, kind?: string) => {
     const k = kindOf(kind);
     const win = BrowserWindow.fromWebContents(e.sender);
     const picked = await dialog.showOpenDialog(win ?? undefined as never, {
-      title: k === "app" ? "Import an app" : k === "plugin" ? "Import a plugin" : "Import a skill", properties: ["openFile", "openDirectory"],
+      title: k === "app" ? "Import an app" : k === "plugin" ? "Import a plugin" : k === "task" ? "Import a task" : "Import a skill", properties: ["openFile", "openDirectory"],
       filters: [{ name: k === "app" ? "App (.glyphh, zip or folder)" : k === "plugin" ? "Plugin (zip or folder)" : "Skill (zip or folder)", extensions: k === "app" ? ["glyphh", "zip"] : ["zip"] }],
     });
     if (picked.canceled || !picked.filePaths[0]) return { ok: true, data: null };

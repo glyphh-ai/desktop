@@ -13,25 +13,27 @@ import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal } from "./navigation.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
+import { cronToWords } from "./schedules.js";
 
-type Source = "glyphh" | "app" | "claude" | "codex" | "gemini";
-interface SkillRow { id: string; source: Source; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string }
+type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
+interface SkillRow { id: string; source: Source; name: string; description: string; author: string; enabled: boolean; dir: string; fileCount: number; updatedAt: string; icon?: string | null }
 interface SkillFile { path: string; size: number }
 interface SkillDetail extends SkillRow { frontmatter: Record<string, string>; body: string; files: SkillFile[] }
-interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[] }
+interface DiscoverRow { ref: string; from: "org" | "glyphh"; id: string; slug: string; name: string; description: string; author: string; version: number | null; installed: boolean; installs: number; updatedAt: string; createdAt: string; categories: string[]; icon?: string | null }
 type Env<T> = { ok: boolean; data?: T; error?: string };
 
-const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
-const SOURCE_ORDER: Source[] = ["glyphh", "app", "claude", "codex", "gemini"];
+const SOURCE_LABEL: Record<Source, string> = { glyphh: "Created by you", app: "Created by you", plugin: "Created by you", task: "Created by you", claude: "From Claude Code", codex: "From Codex", gemini: "From Gemini" };
+const SOURCE_ORDER: Source[] = ["glyphh", "app", "plugin", "task", "claude", "codex", "gemini"];
 const SKILL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>`;
 const CONN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg>`;
 const PLUGIN_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg>`;
+const TASK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg>`;
 const APP_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>`;
 
 /** ONE page, TWO homes (his ruling, 2026-09-16): Skills and Apps share the
  *  page; an app is a skill folder plus app.json, its own home, its own hub kind. */
 export interface PageCfg {
-  kind: "skill" | "app" | "plugin";
+  kind: "skill" | "app" | "plugin" | "task";
   /** The panel's ids: skills-* / skill-* for Skills, gapps-* / gapp-* for Apps (app-* belongs to Tabs). */
   id: (skillsId: string) => string;
   panel: string;
@@ -74,6 +76,9 @@ let editor: { getValue(): string; setValue(v: string): void; updateOptions(o: Re
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(cfg.id(id)) as T | null;
 const api = () => window.glyphh;
+/** A bundle's own icon.svg when the manifest names one, else the page's mark. */
+const iconOf = (own: string | null | undefined): string => (own && own.includes("<svg") ? own : cfg.icon);
+const setDetailIcon = (own: string | null | undefined): void => { document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => { n.innerHTML = iconOf(own); }); };
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -115,10 +120,10 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null }): HTMLElement {
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
-  r.innerHTML = `<div class="skill-tile-icon">${cfg.icon}</div>
+  r.innerHTML = `<div class="skill-tile-icon${opts.icon && opts.icon.includes("<svg") ? " own" : ""}">${iconOf(opts.icon)}</div>
     <div class="skill-row-main">
       <div class="skill-row-name"></div>
       <div class="skill-row-sub"><span class="skill-row-by"></span><span class="skill-row-dot">·</span><span class="skill-row-desc"></span></div>
@@ -244,7 +249,7 @@ function renderList(): void {
       for (const s of rows) {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
-          desc: s.description, right: when(s.updatedAt),
+          desc: s.description, right: when(s.updatedAt), icon: s.icon,
           onOpen: () => void openDetail(s.id),
           menu: [
             { label: s.enabled ? "Turn off" : "Turn on", onClick: () => void toggle(s.id, !s.enabled) },
@@ -313,7 +318,7 @@ function addButton(d: DiscoverRow, wide = false): HTMLButtonElement {
 function discoverCard(d: DiscoverRow): HTMLElement {
   const c = document.createElement("div");
   c.className = "disc-card";
-  c.innerHTML = `<div class="skill-tile-icon">${glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta"></div></div>`;
+  c.innerHTML = `<div class="skill-tile-icon${d.icon && d.icon.includes("<svg") ? " own" : ""}">${d.icon && d.icon.includes("<svg") ? d.icon : glyph(d.categories[0] || "productivity", 18)}</div><div class="disc-card-main"><div class="disc-card-name"></div><div class="disc-card-desc"></div><div class="disc-card-meta"></div></div>`;
   (c.querySelector(".disc-card-name") as HTMLElement).textContent = d.name;
   (c.querySelector(".disc-card-desc") as HTMLElement).textContent = d.description || "No description";
   (c.querySelector(".disc-card-meta") as HTMLElement).textContent = `from ${d.author || "your org"} · ${d.installs ? `${fmtInstalls(d.installs)} installs` : isNew(d) ? `added ${when(d.createdAt)}` : `v${d.version ?? 1}`}`;
@@ -542,6 +547,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
+  setDetailIcon(d.icon);
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
@@ -571,6 +577,20 @@ function paintDetailChrome(): void {
   }
   add.classList.toggle("hidden", !hub);
   if (hub) { add.textContent = hubItem!.installed ? "Added" : "Add"; add.disabled = hubItem!.installed; }
+  if (cfg.kind === "task") {
+    let run = el<HTMLButtonElement>("skill-run-now");
+    if (!run) {
+      run = document.createElement("button");
+      run.id = cfg.id("skill-run-now");
+      run.type = "button";
+      run.className = "action-btn primary";
+      run.textContent = "Run now";
+      run.addEventListener("click", () => void runNow(run!));
+      el("skill-share")?.before(run);
+    }
+    run.classList.toggle("hidden", hub || !current);
+    return;
+  }
   if (cfg.kind !== "app") return;
   let open = el<HTMLButtonElement>("skill-open-tab");
   if (!open) {
@@ -583,6 +603,18 @@ function paintDetailChrome(): void {
     el("skill-share")?.before(open);
   }
   open.classList.toggle("hidden", hub || !current);
+}
+
+/** TASKS: start a run and land on its story. */
+async function runNow(btn: HTMLButtonElement): Promise<void> {
+  if (!current) return;
+  btn.disabled = true;
+  const slug = current.id.replace(/^task:/, "");
+  const r = await (api() as unknown as { taskRun: (slug: string, input?: unknown) => Promise<Env<{ id: string }>> }).taskRun(slug, {}).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) })) as Env<{ id: string }>;
+  btn.disabled = false;
+  if (!r.ok) { fail(r.error || "Couldn't start the run."); return; }
+  openRunId = r.data?.id ?? null;
+  selectDetailTab("runs");
 }
 
 /** The app opens as a tab beside the agent: registered on first open, then the workbench door. */
@@ -623,6 +655,19 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     return r.ok && r.data && !r.data.binary ? r.data.text : "";
   };
   if (cfg.kind === "plugin") { await paintBundleSkills(s, read); return; }
+  if (cfg.kind === "task") {
+    let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; schedule?: string | null; program?: string } = {};
+    try { tm = JSON.parse(await read("task.json") || "{}"); } catch { tm = {}; }
+    const meta = document.createElement("div");
+    meta.className = "task-overview-meta";
+    meta.innerHTML = `<div class="skill-overview-label">Program</div><div class="task-meta-line"><code></code></div><div class="skill-overview-label">Schedule</div><div class="task-meta-line task-schedule"></div>`;
+    (meta.querySelector("code") as HTMLElement).textContent = tm.program || "run.js";
+    (meta.querySelector(".task-schedule") as HTMLElement).textContent = tm.schedule ? `${cronToWords(tm.schedule)} (${tm.schedule}) · turn it on under Customize → Schedules` : "None. Run it now, or put it on a clock under Customize → Schedules.";
+    host.appendChild(meta);
+    await Promise.all([paintTaskSlots(s, tm.slots ?? {}), paintBundleConnections(tm.dependencies?.connections ?? [])]);
+    if (!hubItem) void paintTaskRuns(s);
+    return;
+  }
   let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string; tools?: string } = {};
   try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
   const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
@@ -647,6 +692,106 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   }
   await Promise.all([paintBundleSkills(s, read), paintBundleTools(s, read, manifest.tools || "tools/manifest.json"), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
 }
+
+/** TASKS: each slot the program calls an agent through, with the agent picker.
+ *  The pick is written into task.json (the install-time fill) and holds for every run. */
+async function paintTaskSlots(s: SkillDetail, slots: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>): Promise<void> {
+  const host = el("skill-slots-list"); const count = el("skill-slot-count");
+  if (!host) return;
+  const names = Object.keys(slots);
+  if (count) count.textContent = `· ${names.length}`;
+  host.textContent = "";
+  if (!names.length) { host.innerHTML = `<div class="crud-empty">This program calls no agents. It runs on connections and data alone.</div>`; return; }
+  const agents = (await (api() as unknown as { libraryAgentsList: () => Promise<{ ok: boolean; data?: Array<{ id: string; name: string }> }> }).libraryAgentsList().catch(() => ({ ok: false }))) as { ok: boolean; data?: Array<{ id: string; name: string }> };
+  const roster = agents.ok ? agents.data ?? [] : [];
+  for (const name of names) {
+    const sl = slots[name]!;
+    const r = document.createElement("div");
+    r.className = "skill-row";
+    r.innerHTML = `<div class="skill-tile-icon">${AGENT_ICON}</div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
+    (r.querySelector(".skill-row-name") as HTMLElement).textContent = sl.label || name;
+    (r.querySelector(".skill-row-desc") as HTMLElement).textContent = `${sl.description || `ctx.agents.${name}`}${sl.model ? ` · ${sl.model}` : ""}`;
+    const right = r.querySelector(".skill-row-right") as HTMLElement;
+    if (hubItem) {
+      const chip = document.createElement("span"); chip.className = "app-conn-state"; chip.textContent = "Filled after Add"; right.appendChild(chip);
+    } else {
+      const sel = document.createElement("select");
+      sel.className = "settings-input settings-input-sm";
+      sel.innerHTML = `<option value="">First agent</option>` + roster.map((a) => `<option value="${escapeHtml(a.id)}"${a.id === sl.agent ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+      sel.addEventListener("change", async () => {
+        const slug = s.id.replace(/^task:/, "");
+        const res = await (api() as unknown as { taskSlotSet: (slug: string, slot: string, agent: string | null) => Promise<Env<unknown>> }).taskSlotSet(slug, name, sel.value || null);
+        if (!res.ok) fail(res.error || "Couldn't set the slot.");
+      });
+      right.appendChild(sel);
+    }
+    host.appendChild(r);
+  }
+}
+
+interface TaskRunRow { id: string; trigger: string; startedAt: string; durationMs: number | null; status: string; error: string | null; input: unknown; result: unknown; journal: { checkpoints: Record<string, unknown>; events: Array<Record<string, unknown> & { t: string; kind: string }> } }
+let openRunId: string | null = null;
+/** TASKS: the run list; a run opens as its story (every agent turn, connection call, checkpoint and log, then the result). */
+async function paintTaskRuns(s: SkillDetail): Promise<void> {
+  const host = el("skill-runs-list"); const count = el("skill-run-count");
+  if (!host) return;
+  const slug = s.id.replace(/^task:/, "");
+  const r = (await (api() as unknown as { taskRuns: (slug: string) => Promise<Env<TaskRunRow[]>> }).taskRuns(slug).catch(() => ({ ok: false }))) as Env<TaskRunRow[]>;
+  if (!host.isConnected || current?.id !== s.id) return;
+  const runs = r.ok ? r.data ?? [] : [];
+  if (count) count.textContent = runs.length ? `· ${runs.length}` : "";
+  host.textContent = "";
+  if (!runs.length) { host.innerHTML = `<div class="crud-empty">${r.ok ? "No runs yet. Run now to see the story." : escapeHtml(r.error || "Couldn't load runs.")}</div>`; return; }
+  const rel = (ms: number): string => { const a = Math.abs(ms); const u = a < 60_000 ? ["s", 1000] as const : a < 3_600_000 ? ["m", 60_000] as const : a < 86_400_000 ? ["h", 3_600_000] as const : ["d", 86_400_000] as const; return `${Math.round(a / u[1])}${u[0]} ago`; };
+  for (const run of runs) {
+    const e = document.createElement("div");
+    e.className = "ws-task-run" + (run.status === "ok" ? "" : run.status === "running" ? " running" : " failed") + (openRunId === run.id ? " open" : "");
+    const when = new Date(run.startedAt);
+    e.innerHTML = `<div class="ws-task-run-head"><span class="ws-task-chip ${run.status === "ok" ? "ok" : run.status === "running" ? "" : "err"}">${escapeHtml(run.status)}</span><span class="ws-task-run-trigger">${escapeHtml(run.trigger)}</span><span class="ws-task-run-when" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(rel(when.getTime() - Date.now()))}</span>${run.durationMs != null ? `<span class="ws-task-run-dur">${(run.durationMs / 1000).toFixed(1)}s</span>` : ""}<span class="ws-task-run-count">${run.journal.events.length} events</span>${run.status === "running" ? `<button class="action-btn ws-task-cancel" type="button">Cancel</button>` : ""}</div><div class="task-story hidden"></div>`;
+    const head = e.querySelector(".ws-task-run-head") as HTMLElement;
+    const story = e.querySelector(".task-story") as HTMLElement;
+    head.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest(".ws-task-cancel")) return;
+      openRunId = openRunId === run.id ? null : run.id;
+      e.classList.toggle("open", openRunId === run.id);
+      story.classList.toggle("hidden", openRunId !== run.id);
+      if (openRunId === run.id && !story.childElementCount) paintStory(story, run);
+    });
+    e.querySelector(".ws-task-cancel")?.addEventListener("click", async () => {
+      await (api() as unknown as { taskRunCancel: (id: string) => Promise<Env<unknown>> }).taskRunCancel(run.id);
+      void paintTaskRuns(s);
+    });
+    if (openRunId === run.id) paintStory(story, run);
+    host.appendChild(e);
+  }
+}
+
+function paintStory(host: HTMLElement, run: TaskRunRow): void {
+  host.textContent = "";
+  const line = (kind: string, title: string, body?: string, cls = ""): void => {
+    const d = document.createElement("div");
+    d.className = `task-event task-event-${kind}${cls ? ` ${cls}` : ""}`;
+    d.innerHTML = `<div class="task-event-head"><span class="task-event-kind">${escapeHtml(kind)}</span><span class="task-event-title"></span></div>${body ? `<pre class="task-event-body"></pre>` : ""}`;
+    (d.querySelector(".task-event-title") as HTMLElement).textContent = title;
+    const pre = d.querySelector(".task-event-body") as HTMLElement | null; if (pre) pre.textContent = body || "";
+    host.appendChild(d);
+  };
+  const show = (v: unknown): string => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
+  if (run.input && Object.keys(run.input as object).length) line("input", "what it got", show(run.input));
+  for (const ev of run.journal.events) {
+    const t = new Date(ev.t).toLocaleTimeString();
+    if (ev.kind === "agent") line("agent", `${t} · ${ev.agent || ev.slot} took the ${ev.slot} slot${ev.error ? " · failed" : ""}`, `${show(ev.prompt)}\n\n→ ${ev.error ? show(ev.error) : show(ev.json ?? ev.output)}`, ev.error ? "failed" : "");
+    else if (ev.kind === "connection") line("connection", `${t} · ${ev.app} · ${ev.tool}${ev.error ? " · failed" : ""}`, `${show(ev.args)}\n\n→ ${ev.error ? show(ev.error) : show(ev.result)}`, ev.error ? "failed" : "");
+    else if (ev.kind === "data") line("data", `${t} · ${ev.repo}${ev.rows != null ? ` · ${ev.rows} rows` : ev.changes != null ? ` · ${ev.changes} changed` : ""}${ev.error ? " · failed" : ""}`, `${show(ev.sql)}${ev.error ? `\n\n→ ${show(ev.error)}` : ""}`, ev.error ? "failed" : "");
+    else if (ev.kind === "checkpoint") line("checkpoint", `${t} · ${ev.key}${ev.replayed ? " · replayed" : ""}`);
+    else if (ev.kind === "log") line("log", `${t} · ${show(ev.message)}`, ev.detail != null ? show(ev.detail) : undefined);
+    else if (ev.kind === "resume") line("resume", `${t} · picked up after a restart`);
+  }
+  if (run.error) line("failed", run.error, undefined, "failed");
+  if (run.status === "ok") line("result", "what it returned", show(run.result));
+}
+
+const AGENT_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4M9 12h.01M15 12h.01M9 16h6"/></svg>`;
 
 /** The app's tools (tools/manifest.json) with the same permission grammar as a connection's. */
 async function paintBundleTools(s: SkillDetail, read: (rel: string) => Promise<string>, rel: string): Promise<void> {
@@ -744,9 +889,11 @@ async function openDetail(id: string): Promise<void> {
   const share = el<HTMLButtonElement>("skill-share"); if (share) { share.textContent = "Share"; share.disabled = false; }
   (el("skill-file-count") as HTMLElement).textContent = `· ${s.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = s.description || "No description in the frontmatter.";
+  setDetailIcon(s.icon);
   void paintExtras(s, null);
-  (el("skill-author") as HTMLElement).textContent = s.author || (s.source === "glyphh" || s.source === "app" ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
-  (el("skill-author-meta") as HTMLElement).textContent = s.source === "glyphh" || s.source === "app" ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
+  const local = s.source === "glyphh" || s.source === "app" || s.source === "plugin" || s.source === "task";
+  (el("skill-author") as HTMLElement).textContent = s.author || (local ? "You" : SOURCE_LABEL[s.source].replace("From ", ""));
+  (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
   paintDetailChrome();
   collapsedDirs = new Set();
@@ -802,7 +949,7 @@ function filesNow(): SkillFile[] {
   return current?.files ?? [];
 }
 
-type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections";
+type DetailTab = "overview" | "contents" | "skills" | "tools" | "connections" | "slots" | "runs";
 function selectDetailTab(t: DetailTab): void {
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.classList.toggle("active", b.dataset.dtab === t));
   el("skill-overview")?.classList.toggle("hidden", t !== "overview");
@@ -810,6 +957,9 @@ function selectDetailTab(t: DetailTab): void {
   el("skill-skills")?.classList.toggle("hidden", t !== "skills");
   el("skill-tools")?.classList.toggle("hidden", t !== "tools");
   el("skill-connections")?.classList.toggle("hidden", t !== "connections");
+  el("skill-slots")?.classList.toggle("hidden", t !== "slots");
+  el("skill-runs")?.classList.toggle("hidden", t !== "runs");
+  if (t === "runs" && current && !hubItem) void paintTaskRuns(current);
   if (t === "contents" && current && !currentFile) void openFile(filesNow().some((f) => f.path === "SKILL.md") ? "SKILL.md" : (filesNow()[0]?.path ?? ""));
   if (t === "contents") editor?.layout();
 }
@@ -1068,6 +1218,15 @@ function wire(): void {
     void loadSkillsSettings();
   });
   document.querySelectorAll<HTMLButtonElement>(`${cfg.panel} .skills-tab[data-dtab]`).forEach((b) => b.addEventListener("click", () => selectDetailTab(b.dataset.dtab as DetailTab)));
+  if (cfg.kind === "task") {
+    (api() as unknown as { onTaskRunsChanged?: (fn: () => void) => void }).onTaskRunsChanged?.(() => {
+      if (current && !hubItem && el("skill-runs") && !el("skill-runs")!.classList.contains("hidden")) void paintTaskRuns(current);
+    });
+    (window as unknown as { __glyphhOpenTaskRun?: (slug: string, runId: string) => void }).__glyphhOpenTaskRun = (slug, runId) => {
+      openRunId = runId;
+      void openDetail(`task:${slug}`).then(() => selectDetailTab("runs"));
+    };
+  }
   el<HTMLInputElement>("skill-enabled")?.addEventListener("change", (e) => { if (current) void toggle(current.id, (e.target as HTMLInputElement).checked); });
   el("skill-share")?.addEventListener("click", () => void share());
   el("skill-kebab")?.addEventListener("click", async (e) => {
@@ -1126,6 +1285,11 @@ const PLUGINS_PAGE = createLibraryPage({
   kind: "plugin", id: (x) => x.replace(/^skills-/, "gplugs-").replace(/^skill-/, "gplug-"), panel: '.settings-panel[data-sub="plugins"]', noun: "plugin", nouns: "plugins", icon: PLUGIN_ICON, back: "Plugins",
   newPrompt: "Create a new Claude Code plugin in this folder: a new subfolder named after the plugin with .claude-plugin/plugin.json (name, description, version), a README.md, and any skills/<name>/SKILL.md, commands/, agents/, hooks/ or .mcp.json it needs. The plugin should ",
 });
+const TASKS_PAGE = createLibraryPage({
+  kind: "task", id: (x) => x.replace(/^skills-/, "gtasks-").replace(/^skill-/, "gtask-"), panel: '.settings-panel[data-sub="tasks"]', noun: "task", nouns: "tasks", icon: TASK_ICON, back: "Tasks",
+  newPrompt: "Create a new Glyphh task in this folder: a new subfolder named after the task with a SKILL.md (frontmatter name + description, then what the task does and when to run it), a task.json (name, program: run.js, slots the program calls agents through, dependencies on connections, an optional five-field cron schedule) and run.js exporting async function run(ctx, input) that returns the result. The program is the process: it drives the logic itself and uses ctx.agents.<slot>.run(prompt, {schema}) only where an agent is needed, ctx.connections.<app>.call(tool, args) for connections, ctx.data(repo).exec(sql, params) for app data, and ctx.checkpoint(key, fn) around anything worth not redoing after a restart. The task should ",
+});
 export const loadSkillsSettings = SKILLS_PAGE.load;
+export const loadTasksSettings = TASKS_PAGE.load;
 export const loadAppsSettings = APPS_PAGE.load;
 export const loadPluginsSettings = PLUGINS_PAGE.load;

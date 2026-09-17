@@ -14,7 +14,8 @@ import { clearUiState, loadUiState, uiStateGet, uiStateSet } from "./ui-state.js
 import { loadApps, initApps } from "./apps.js";
 import { loadDrips, initDripsEvents } from "./drips.js";
 import { loadSettingsLoops, loadOrgLoops } from "./settings-loops.js";
-import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings } from "./settings-skills.js";
+import { loadSkillsSettings, loadAppsSettings, loadPluginsSettings, loadTasksSettings } from "./settings-skills.js";
+import { loadSchedulesPage, initSchedulesEvents } from "./schedules.js";
 import { loadOrgLibrary } from "./org-library.js";
 import { loadSettingsConnections } from "./settings-connections.js";
 import { loadConnections, initConnections } from "./connections.js";
@@ -439,7 +440,7 @@ export function openSettingsModal(sub?: string): void {
       if (buildGroup) {
         anchor.after(buildGroup);
         anchor = buildGroup;
-        for (const sub of ["skills", "apps", "connections-cfg", "plugins"]) {
+        for (const sub of ["skills", "apps", "connections-cfg", "plugins", "tasks"]) {
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -449,7 +450,7 @@ export function openSettingsModal(sub?: string): void {
       if (customizeGroup) {
         anchor.after(customizeGroup);
         anchor = customizeGroup;
-        for (const sub of ["tabs", "layouts", "drips"]) {
+        for (const sub of ["tabs", "layouts", "drips", "schedules"]) {
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
@@ -855,6 +856,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "skills") void loadSkillsSettings();
   else if (sub === "apps") void loadAppsSettings();
   else if (sub === "plugins") void loadPluginsSettings();
+  else if (sub === "tasks") void loadTasksSettings();
+  else if (sub === "schedules") { mountSettingsSection("schedules"); void loadSchedulesPage(); }
   else if (sub === "gateway") void loadGatewayMetrics();
   else if (sub === "gateway-keys") void loadGatewayKeys();
   else if (sub === "oauth") { initOAuth(); void loadOAuth(); }
@@ -930,6 +933,7 @@ const SETTINGS_SECTIONS: Record<string, { host: string; section?: string }> = {
   tabs: { host: "settings-tabs-host", section: "apps" },
   layouts: { host: "settings-layouts-host" },
   drips: { host: "settings-drips-host" },
+  schedules: { host: "settings-schedules-host" },
   files: { host: "settings-files-host" },
   connections: { host: "settings-connections-host" },
 };
@@ -1186,6 +1190,7 @@ export function initHelp() {
   // A4 settings panels — wire their controls once at boot (idempotent).
   boot("support", initSupportPanel);
   boot("drips", initDripsEvents);
+  boot("schedules", initSchedulesEvents);
   boot("connections", initConnections);
   boot("code", initCode);
   boot("dot-commands", wireGlobalDotCommands);

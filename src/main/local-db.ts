@@ -252,6 +252,21 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_loop_schedules_owner ON loop_schedules (owner_agent_id);
     `,
   },
+  {
+    // TASKS as bundles (2026-09-17): a run is the story. task_slug names the
+    // bundle, trigger says who started it (manual, schedule, agent), input is
+    // what it got, journal holds every ctx answer and checkpoint as it lands
+    // (the resume cursor), result is what the program returned.
+    version: 11,
+    sql: `
+      ALTER TABLE loop_runs ADD COLUMN task_slug TEXT;
+      ALTER TABLE loop_runs ADD COLUMN trigger TEXT;
+      ALTER TABLE loop_runs ADD COLUMN input TEXT;
+      ALTER TABLE loop_runs ADD COLUMN journal TEXT;
+      ALTER TABLE loop_runs ADD COLUMN result TEXT;
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_task ON loop_runs (task_slug, started_at);
+    `,
+  },
 ];
 
 function runMigrations(database: Database.Database): void {

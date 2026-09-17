@@ -20818,3 +20818,32 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .lib-loading { display: flex; align-items: center; gap: 10px; padding: 28px 8px; color: var(--text-3); font-size: 13px; }
 .lib-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent); animation: lib-spin 0.8s linear infinite; flex: none; }
 @keyframes lib-spin { to { transform: rotate(360deg); } }
+
+/* ── Tasks + Schedules (Settings → Build → Tasks, Customize → Schedules; 2026-09-17) ── */
+.skill-tile-icon.own { background: transparent; border-color: transparent; }
+.skill-tile-icon.own svg { width: 26px; height: 26px; }
+.skill-tile-icon.lg.own svg { width: 34px; height: 34px; }
+.task-overview-meta { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.task-meta-line { font-size: 12.5px; color: var(--text-2); }
+.task-meta-line code { font-family: ui-monospace, monospace; font-size: 12px; }
+.ws-task-run.running { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2)); }
+.ws-task-run + .ws-task-run { margin-top: 6px; }
+.ws-task-run-head { cursor: pointer; user-select: none; }
+.ws-task-run-trigger, .ws-task-run-count { opacity: .8; }
+.ws-task-cancel, .ws-task-story-btn { margin-left: 6px; padding: 2px 8px; font-size: 11px; }
+.task-story { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.task-event { border-left: 2px solid var(--border-2); padding: 2px 0 2px 10px; }
+.task-event-agent { border-left-color: var(--accent); }
+.task-event-connection { border-left-color: #38bdf8; }
+.task-event-data { border-left-color: #10b981; }
+.task-event-checkpoint { border-left-color: #f59e0b; }
+.task-event-result { border-left-color: #10b981; }
+.task-event.failed, .task-event-failed { border-left-color: var(--danger, #e5534b); }
+.task-event-head { display: flex; gap: 8px; align-items: baseline; font-size: 12px; color: var(--text-2); }
+.task-event-kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-3); min-width: 74px; }
+.task-event-body { margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; color: var(--text); max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.help-section[data-section="schedules"] .ws-tasks-chartwrap { height: 180px; margin: 6px 0 14px; }
+.help-section[data-section="schedules"] .ws-tasks-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+.help-section[data-section="schedules"] .ws-task-card { cursor: pointer; }
+.help-section[data-section="schedules"] .ws-task-card + .ws-task-card { margin-top: 6px; }
+@media (max-width: 900px) { .help-section[data-section="schedules"] .ws-tasks-cols { grid-template-columns: 1fr; } }

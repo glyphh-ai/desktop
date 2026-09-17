@@ -34,6 +34,7 @@ import { ipcMain } from "electron";
 import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
+import { getSkill as getSkillFolder } from "./skills-fs.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
 const SKILLS_DIR = (): string => userScopedPath("skills");
@@ -171,6 +172,12 @@ export function setAgentProviders(
   agentContext = ctx;
   agentChoices = list;
 }
+export const slotAgentContext = (agentId: string): ScheduleContext | null => agentContext?.(agentId) ?? null;
+export const slotAgentRoster = (): SlotAgent[] => agentChoices?.() ?? [];
+
+/** The task runner (task-runner.ts) — late-bound, since it imports this module. */
+let taskRunner: ((slug: string, scheduleId: string, input: unknown) => void) | null = null;
+export function setTaskRunner(fn: (slug: string, scheduleId: string, input: unknown) => void): void { taskRunner = fn; }
 interface RunRow { id: string; schedule_id: string; started_at: string; duration_ms: number | null; status: string; error: string | null; output: string | null }
 
 const rid = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -205,6 +212,8 @@ export function stopLoopScheduler(): void {
 function promptForSchedule(sched: ScheduleRow): { text: string; slotModel?: string } {
   const ref = sched.target || sched.loop_slug;
   if (sched.kind === "skill") {
+    // A skill is a folder now (skills-fs); the JSON row is the pre-folder shape.
+    try { const folder = getSkillFolder(`glyphh:${ref}`); return { text: folder.body.trim() || folder.description || folder.name }; } catch { /* legacy row below */ }
     const skill = getSkill(ref);
     const text = skill.prompt || skill.description || skill.name;
     return { text, ...(skill.manifest.model ? { slotModel: skill.manifest.model } : {}) };
@@ -227,6 +236,15 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   const db = getLocalDb();
   const sched = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(scheduleId) as ScheduleRow | undefined;
   if (!sched) throw new Error("schedule not found");
+  // A TASK on a clock: the bundle's program runs in its own process and
+  // journals its own run (task-runner.ts). Nothing here composes a prompt.
+  if (sched.kind === "task") {
+    if (!taskRunner) throw new Error("the task runner is not up");
+    let input: unknown = {};
+    try { input = JSON.parse(sched.args || "{}"); } catch { input = {}; }
+    taskRunner(sched.target || sched.loop_slug, sched.id, input);
+    return;
+  }
   const who = sched.owner_agent_id || sched.agent_id;
   const ctx = who ? agentContext?.(who) ?? null : null;
   const loopId = ctx?.loopId || sched.agent_id;
@@ -255,7 +273,7 @@ export async function runSchedule(scheduleId: string): Promise<void> {
   finish(r.code === 0 ? "ok" : "failed", r.code === 0 ? null : r.error ?? `exit ${r.code}`, r.output || null);
 }
 
-function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
+export function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
   return new Promise((resolve) => {
     const child = spawn("/bin/sh", ["-lc", line], { env: process.env });
     let out = "";
@@ -266,88 +284,6 @@ function execHeadless(line: string): Promise<{ code: number; output: string; err
     child.on("close", (codeNum) => { clearTimeout(timer); resolve({ code: codeNum ?? 1, output: out.trim() }); });
     child.on("error", (err) => { clearTimeout(timer); resolve({ code: 1, output: out.trim(), error: err.message }); });
   });
-}
-
-// ── Task-spec surface — the MCP authoring lanes ride the SAME loop store; a
-//    task IS a loop row renamed: program = code, slots = manifest.roles ──────
-
-export interface TaskSpec {
-  slug: string; name: string; description: string; program: string;
-  slots: Array<{ name: string; label?: string; description?: string; agent: string | null; model?: string }>;
-}
-
-const specOf = (row: LoopRow): TaskSpec => ({
-  slug: row.slug, name: row.name, description: row.description, program: row.code,
-  slots: (row.manifest.roles ?? []).map((r) => ({
-    name: r.name, ...(r.label ? { label: r.label } : {}), ...(r.description ? { description: r.description } : {}),
-    agent: r.default ?? null, ...(r.model ? { model: r.model } : {}),
-  })),
-});
-
-export function listTaskSpecs(): TaskSpec[] {
-  return listRows<LoopRow>(TASKS_DIR()).filter((r) => !r.builtIn).map(specOf)
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export function getTaskSpec(ref: string): TaskSpec {
-  return specOf(getLoop(ref));
-}
-
-export function saveTaskSpec(input: {
-  slug?: string; name: string; description?: string; program?: string;
-  slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string | null }>;
-}): TaskSpec {
-  const name = String(input.name ?? "").trim();
-  if (!name) throw new Error("a task needs a name");
-  const slug = input.slug ? String(input.slug) : slugify(name);
-  const existing = readRow<LoopRow>(TASKS_DIR(), slug);
-  const roles: LoopRole[] = Array.isArray(input.slots) && input.slots.length
-    ? input.slots.map((sl, i) => ({
-        name: String(sl.name ?? `slot-${i + 1}`),
-        label: String(sl.label ?? sl.name ?? `Slot ${i + 1}`),
-        ...(sl.description ? { description: String(sl.description) } : {}),
-        default: sl.agent ? String(sl.agent) : null,
-        ...(sl.model ? { model: String(sl.model) } : {}),
-      }))
-    : existing?.manifest.roles ?? [{ name: "main", label: "Main", description: "The agent this task runs on.", default: null }];
-  const row: LoopRow = {
-    id: slug, slug, scope: "personal", ownerUserId: null, name,
-    description: String(input.description ?? existing?.description ?? ""),
-    builtIn: false, updatedAt: new Date().toISOString(),
-    manifest: { ...(existing?.manifest ?? { version: 1, type: "turn" }), roles },
-    code: String(input.program ?? existing?.code ?? ""),
-  };
-  writeRow(TASKS_DIR(), slug, row);
-  return specOf(row);
-}
-
-/** Run a task NOW, outside any schedule — the program through the slotted
- *  (or given) agent's headless CLI; the transcript goes back to the caller. */
-export async function runTaskNow(ref: string, agentId?: string): Promise<{ status: string; output: string }> {
-  const row = getLoop(ref);
-  // WHO does it: the given agent, else the first slot's agent, else the only
-  // agent there is. No agent = nothing to run it — say so rather than
-  // silently borrowing some CLI.
-  const roster = agentChoices?.() ?? [];
-  const wanted = agentId || row.manifest.roles?.[0]?.default || "";
-  const who = roster.find((a) => a.id === wanted) ?? roster[0];
-  const ctx = who ? agentContext?.(who.id) ?? null : null;
-  // Pre-agent rows slotted a LOOP id directly; fall back to reading it that way.
-  const loopId = ctx?.loopId || wanted;
-  const loop = listCliAgents().find((a) => a.id === loopId) as CliAgentListed | undefined;
-  if (!loop) throw new Error(who ? `agent "${who.name}" has no loop to run on` : "no agents exist to run this task");
-  const slot = (row.manifest.roles ?? []).find((r) => r.default === who?.id) ?? row.manifest.roles?.[0];
-  const program = row.code || row.description || row.name;
-  const line = composeHeadless(loop, ctx?.prompt ? `${ctx.prompt}\n\n${program}` : program, ctx?.model ?? slot?.model ?? undefined);
-  const r = await execHeadless(line);
-  return { status: r.code === 0 ? "ok" : "failed", output: r.error ? `${r.output}\n${r.error}`.trim() : r.output };
-}
-
-export function listTaskRunsFor(ref: string): Array<{ id: string; startedAt: string; durationMs: number | null; status: string; error: string | null; output: string | null }> {
-  const rows = getLocalDb().prepare(
-    `SELECT r.* FROM loop_runs r JOIN loop_schedules s ON r.schedule_id = s.id
-     WHERE s.loop_slug = ? ORDER BY r.started_at DESC LIMIT 30`).all(String(ref)) as RunRow[];
-  return rows.map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output }));
 }
 
 // ── IPC — the exact lanes the main-era UX rides ──────────────────────────────
@@ -506,28 +442,67 @@ export function registerLocalLibraryIpc(): void {
     return { updated: true };
   }));
 
-  // Schedule CRUD — the loop detail's Schedule block writes here.
-  ipcMain.handle("loop-schedules-list", (_e, loopSlug: string) => env(() =>
-    loadSchedules().filter((s) => s.loop_slug === String(loopSlug))
-      .map((s) => ({ id: s.id, agentId: s.agent_id, name: s.name, cron: s.cron, enabled: s.enabled === 1 }))));
-  ipcMain.handle("loop-schedule-save", (_e, input: { loopSlug: string; agentId: string; cron: string; name?: string; id?: string }) => env(() => {
-    const loop = getLoop(String(input.loopSlug));
+  // SCHEDULES (Settings → Customize → Schedules): anything on a clock — a
+  // task bundle (its program runs itself) or a skill (its text through an
+  // agent). One table, one runner, the run feed shared.
+  const lastRunOf = (id: string): { started_at: string; status: string; error: string | null } | undefined =>
+    getLocalDb().prepare("SELECT started_at, status, error FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 1").get(id) as { started_at: string; status: string; error: string | null } | undefined;
+  ipcMain.handle("schedules-list", () => env(() => {
+    const roster = agentChoices?.() ?? [];
+    const loops = listCliAgents();
+    return loadSchedules().map((s) => {
+      const last = lastRunOf(s.id);
+      const agent = roster.find((a) => a.id === s.agent_id);
+      const loop = loops.find((l) => l.id === s.agent_id);
+      return {
+        id: s.id, name: s.name, kind: s.kind, target: s.target || s.loop_slug, cron: s.cron, enabled: s.enabled === 1,
+        agentId: s.agent_id || null, agentName: agent?.name ?? (loop ? `${loop.name} (loop)` : s.agent_id || null),
+        ownerAgentId: s.owner_agent_id, args: s.args || "{}", createdAt: s.created_at,
+        lastRunAt: last?.started_at ?? null, lastStatus: last?.status ?? null, lastError: last?.error ?? null,
+      };
+    });
+  }));
+  ipcMain.handle("schedule-save", (_e, input: { id?: string; name?: string; kind: "task" | "skill"; target: string; agentId?: string | null; cron: string; enabled?: boolean; args?: unknown }) => env(() => {
     if (!cron.validate(String(input.cron ?? ""))) throw new Error("that cron expression doesn't parse (five fields, e.g. 0 9 * * 1-5)");
+    const kind = input.kind === "skill" ? "skill" : "task";
+    const target = String(input.target || "").trim();
+    if (!target) throw new Error("a schedule needs something to run");
+    if (kind === "skill") getSkillFolder(`glyphh:${target}`);
     const db = getLocalDb();
     const id = input.id ? String(input.id) : rid();
-    const name = String(input.name ?? loop.name).trim() || loop.name;
-    db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, datetime('now'))
-                ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, name = excluded.name, cron = excluded.cron`)
-      .run(id, String(input.agentId), name, loop.slug, String(input.cron));
+    const name = String(input.name ?? "").trim() || target;
+    const agentId = input.agentId ? String(input.agentId) : (kind === "skill" ? (agentChoices?.()[0]?.id ?? "") : "");
+    if (kind === "skill" && !agentId) throw new Error("a skill needs an agent to run through");
+    db.prepare(`INSERT INTO loop_schedules (id, agent_id, name, loop_slug, cron, enabled, created_at, kind, target, args)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, name = excluded.name, loop_slug = excluded.loop_slug, cron = excluded.cron,
+                  enabled = excluded.enabled, kind = excluded.kind, target = excluded.target, args = excluded.args`)
+      .run(id, agentId, name, target, String(input.cron), input.enabled === false ? 0 : 1, kind, target, JSON.stringify(input.args ?? {}));
     const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(id) as ScheduleRow;
     armSchedule(row);
     return { id };
   }));
-  ipcMain.handle("loop-schedule-delete", (_e, id: string) => env(() => {
+  ipcMain.handle("schedule-set-enabled", (_e, id: string, enabled: boolean) => env(() => {
+    const db = getLocalDb();
+    db.prepare("UPDATE loop_schedules SET enabled = ? WHERE id = ?").run(enabled ? 1 : 0, String(id));
+    const row = db.prepare("SELECT * FROM loop_schedules WHERE id = ?").get(String(id)) as ScheduleRow | undefined;
+    if (row) armSchedule(row);
+    return { updated: !!row };
+  }));
+  ipcMain.handle("schedule-delete", (_e, id: string) => env(() => {
     liveJobs.get(String(id))?.stop();
     liveJobs.delete(String(id));
     getLocalDb().prepare("DELETE FROM loop_schedules WHERE id = ?").run(String(id));
     return { deleted: true };
   }));
+  ipcMain.handle("schedule-run-now", async (_e, id: string) => {
+    try { await runSchedule(String(id)); return { ok: true }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("schedule-runs", (_e, id: string) => env(() =>
+    (getLocalDb().prepare("SELECT * FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 30").all(String(id)) as Array<RunRow & { task_slug?: string | null }>)
+      .map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output, taskSlug: r.task_slug ?? null }))));
+  ipcMain.handle("schedule-recent-runs", () => env(() =>
+    (getLocalDb().prepare(`SELECT r.*, s.name AS schedule_name FROM loop_runs r LEFT JOIN loop_schedules s ON s.id = r.schedule_id ORDER BY r.started_at DESC LIMIT 60`).all() as Array<RunRow & { schedule_name: string | null; task_slug?: string | null; trigger?: string | null }>)
+      .map((r) => ({ id: r.id, scheduleId: r.schedule_id || null, scheduleName: r.schedule_name, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error }))));
 }

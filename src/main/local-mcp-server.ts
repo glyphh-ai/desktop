@@ -22,7 +22,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
-import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskNow, listTaskRunsFor, listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
+import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
+import { listSkillRows, getSkillRow, saveSkillRow } from "./local-library.js";
 import { listCliAgents } from "./cli-agents.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -165,7 +166,7 @@ function buildMcpServer(): McpServer {
       agent: z.string().optional().describe("CLI-agent id override for this run"),
     },
     async ({ slug, agent }) => {
-      try { return text(await runTaskNow(slug, agent)); }
+      try { void agent; const r = await runTaskAndWait(slug, {}); return text({ status: r.status, runId: r.id, result: r.result, error: r.error }); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
@@ -173,7 +174,7 @@ function buildMcpServer(): McpServer {
     "task_runs",
     "A Glyphh task's recent scheduled runs (newest first): { id, startedAt, durationMs, status, error, output }.",
     { slug: z.string().describe("Task slug") },
-    async ({ slug }) => text(listTaskRunsFor(slug)),
+    async ({ slug }) => text(listTaskRuns(slug).map((r) => ({ id: r.id, startedAt: r.startedAt, durationMs: r.durationMs, status: r.status, error: r.error, result: r.result, events: r.journal.events.length }))),
   );
   mcp.tool(
     "skills_list",

@@ -103,6 +103,7 @@ import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { registerHubIpc } from "./hub-ipc";
+import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
 import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
 import { registerGitIpc } from "./git-ipc";
 import { registerGlyphhAppHost } from "./glyphh-app-host";
@@ -998,6 +999,7 @@ async function boot() {
   registerLocalLibraryIpc();
   registerLocalAgentsIpc();
   registerHubIpc();
+  registerTaskRunnerIpc();
   registerMcpConnectionsIpc();
   // Pipedream Connect (RESTORED 2026-09-11): catalog + OAuth connect windows.
   connectorManager = new ConnectorManager();
@@ -1303,6 +1305,7 @@ function cleanupAll(backstopMs = 4000) {
     ["schedules", () => stopAllSchedules()],
     ["drips", () => dripManager?.cleanup()],
     ["loopScheduler", () => stopLoopScheduler()],
+    ["taskRunner", () => stopTaskRunner()],
     ["mcpConnections", () => closeMcpConnections()],
     ["localDb", () => closeLocalDb()],
     ["dataStoreDb", () => closeDataStoreDb()],

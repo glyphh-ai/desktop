@@ -17,8 +17,8 @@ import { ipcMain } from "electron";
 import { getClient, PLATFORM_URL } from "./glyphh-client.js";
 import { getSkill, installSkill, filesFromHubPayload, readSkillFile, parseSkillMd, listSkills } from "./skills-fs.js";
 
-interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[] }
-interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[] }
+interface OrgItem { id: string; slug: string; name: string; description: string; author?: string; installed: boolean; installs?: number; headVersion: number | null; updatedAt: string; createdAt?: string; visibility?: string; categories?: string[]; icon?: string | null }
+interface PublicItem { id: string; slug: string; name: string; description: string; sourceOrg: string; installed: boolean; installs?: number; version: number; updatedAt: string; createdAt?: string; kind: string; categories?: string[]; icon?: string | null }
 
 export interface DiscoverRow {
   ref: string;
@@ -34,6 +34,8 @@ export interface DiscoverRow {
   updatedAt: string;
   createdAt: string;
   categories: string[];
+  /** App and task items: the manifest's icon.svg, from the catalog row. */
+  icon?: string | null;
 }
 
 const env = async <T>(fn: () => Promise<T>): Promise<{ ok: boolean; data?: T; error?: string }> => {
@@ -49,10 +51,10 @@ export async function platformUrl(next = "/ui/"): Promise<string> {
   return `${PLATFORM_URL}/ui/login?handoff=${encodeURIComponent(token)}&next=${encodeURIComponent(next)}`;
 }
 
-type Kind = "skill" | "app" | "plugin";
-const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : "skill");
+type Kind = "skill" | "app" | "plugin" | "task";
+const kindOf = (k: unknown): Kind => (k === "app" ? "app" : k === "plugin" ? "plugin" : k === "task" ? "task" : "skill");
 /** The hub kind behind a local id: the apps home publishes as kind app. */
-const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : id.startsWith("plugin:") ? "plugin" : "skill");
+const kindOfId = (id: string): Kind => (id.startsWith("app:") ? "app" : id.startsWith("plugin:") ? "plugin" : id.startsWith("task:") ? "task" : "skill");
 
 async function discover(kind: Kind): Promise<DiscoverRow[]> {
   const client = getClient();
@@ -63,10 +65,10 @@ async function discover(kind: Kind): Promise<DiscoverRow[]> {
   const rows: DiscoverRow[] = [];
   for (const it of Array.isArray(org) ? org : []) {
     if (!it.headVersion) continue;
-    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [] });
+    rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null });
   }
   for (const p of (Array.isArray(pub) ? pub : []).filter((x) => x.kind === kind)) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [] });
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
