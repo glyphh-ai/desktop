@@ -101,6 +101,7 @@ import { registerLoopModelsIpc } from "./loop-models";
 import { registerSkillsIpc } from "./skills-fs";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
+import { registerConnToolModesIpc } from "./conn-tool-modes.js";
 import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
 import { registerHubIpc } from "./hub-ipc";
 import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
@@ -997,6 +998,7 @@ async function boot() {
   registerSkillsIpc();
   registerEmbeddingsIpc();
   registerLocalLibraryIpc();
+  registerConnToolModesIpc();
   registerLocalAgentsIpc();
   registerHubIpc();
   registerTaskRunnerIpc();

@@ -29,6 +29,8 @@ import { callConnectionTool, listConnRows } from "./mcp-connections.js";
 import { normalizeConnDeps, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
 import { dbExec } from "./glyphh-app-services.js";
 import { preferencesByPrefix } from "./stores/preferences-db.js";
+import { effectiveToolMode } from "./conn-tool-modes.js";
+import { onUserChange } from "./user-scope.js";
 import { mcpCreds } from "./gateway-token.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -315,9 +317,13 @@ async function gatewayClient(): Promise<Client> {
  *  allow on the Connections page goes through. Ask and Never both refuse. */
 async function connectionCall(spec: TaskSpec, appSlug: string, tool: string, args: unknown): Promise<unknown> {
   if (!spec.connections.includes(appSlug)) throw new Error(`task "${spec.slug}" does not declare the connection "${appSlug}"`);
-  const modes = preferencesByPrefix<Record<string, string>>("connToolModes:");
-  const mode = modes[appSlug]?.[tool] ?? modes[appSlug]?.[`${appSlug}-${tool}`];
-  if (mode !== "allow") throw new Error(`"${tool}" on ${appSlug} is not set to Always allow — unattended runs only use tools you allowed on the Connections page`);
+  // ONE RULE (conn-tool-modes.ts): the same answer the Connections page shows,
+  // defaults included. Reading the raw preference refused a read-only tool the
+  // page displayed as Always allow, because that default was never written.
+  const mode = effectiveToolMode(appSlug, tool);
+  if (mode !== "allow") {
+    throw new Error(`"${tool}" on ${appSlug} is set to ${mode === "never" ? "Never" : "Needs approval"} — an unattended run only uses tools set to Always allow on the Connections page`);
+  }
   const a = args && typeof args === "object" ? args as Record<string, unknown> : {};
   if (listConnRows().some((r) => r.slug === appSlug)) return callConnectionTool(appSlug, tool, a);
   const client = await gatewayClient();
@@ -469,12 +475,29 @@ export function cancelTaskRun(id: string): boolean {
 }
 
 /** Boot: a run left in `running` picks up where its journal ends. */
+/**
+ * NOTHING STAYS "RUNNING" (his report, 2026-09-17: still running after a
+ * restart). A process cannot outlive the app, so every row still marked
+ * running when we come back is either resumed from its last checkpoint or
+ * told the truth: it was interrupted.
+ *
+ * Two holes did this. The sweep only looked at TASK rows, so a schedule that
+ * ran a skill left a row nothing ever resolved; and it ran at app-ready, when
+ * the per-user database may not be open yet, so for a signed-in user it swept
+ * the wrong store and found nothing. It runs again on every sign-in.
+ */
 export function resumeInterruptedRuns(): void {
   let rows: RunRow[] = [];
-  try { rows = getLocalDb().prepare("SELECT * FROM loop_runs WHERE status = 'running' AND task_slug IS NOT NULL").all() as RunRow[]; }
+  try { rows = getLocalDb().prepare("SELECT * FROM loop_runs WHERE status = 'running'").all() as RunRow[]; }
   catch { return; }
   for (const r of rows) {
+    if (live.has(r.id)) continue;   // this session's own, still going
     const run = rowToRun(r);
+    if (!run.taskSlug) {
+      // A skill run is a shell process: it died with the app and cannot resume.
+      finish(run.id, run.startedAt, "failed", "interrupted by a restart", null);
+      continue;
+    }
     try {
       const spec = getTaskSpec(run.taskSlug);
       if (!spec.enabled) { finish(run.id, run.startedAt, "failed", "the task was turned off before the run finished", null); continue; }
@@ -506,4 +529,7 @@ export function registerTaskRunnerIpc(): void {
   ipcMain.handle("task-run-get", (_e, id: string) => env(() => getTaskRun(String(id))));
   ipcMain.handle("task-run-cancel", (_e, id: string) => env(() => cancelTaskRun(String(id))));
   app.whenReady().then(() => { migrateLegacyTasks(); resumeInterruptedRuns(); }).catch(() => {});
+  // …and again once a user is known, since the runs live in that user's own
+  // database and app-ready can land before anyone has signed in.
+  onUserChange(() => { migrateLegacyTasks(); resumeInterruptedRuns(); });
 }

@@ -28,6 +28,7 @@ import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
@@ -464,8 +465,10 @@ function claudeToolFlags(): string {
   const deny: string[] = [];
   for (const [key, byTool] of Object.entries(modes)) {
     if (key.startsWith("app:") || !byTool || typeof byTool !== "object") continue;
-    for (const [tool, mode] of Object.entries(byTool)) {
+    for (const tool of Object.keys(byTool)) {
       const id = `mcp__glyphh_gateway__${tool.replace(/["'\s]/g, "")}`;
+      // The page's rule, not the raw preference (conn-tool-modes.ts).
+      const mode = effectiveToolMode(key, tool, modes);
       if (mode === "allow") allow.push(id);
       else if (mode === "never") deny.push(id);
     }

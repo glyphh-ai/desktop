@@ -673,6 +673,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("connections-list") as Promise<{ ok: boolean; error?: string; connections: Connection[] }>,
   connectionRename: (id: string, label: string) =>
     ipcRenderer.invoke("connection-rename", id, label) as Promise<{ ok: boolean; connection?: Connection; error?: string }>,
+  /** What each tool may actually do — the one rule the runner uses too. */
+  connToolModes: (appSlug: string, tools: string[]) =>
+    ipcRenderer.invoke("conn-tool-modes", appSlug, tools) as Promise<{ ok: boolean; data?: Record<string, "allow" | "ask" | "never">; error?: string }>,
   connectionToolsList: (id: string) =>
     ipcRenderer.invoke("connection-tools-list", id) as Promise<{ ok: boolean; error?: string; tools: Array<{ name: string; description: string; hidden: boolean }> }>,
   connectionToolsSet: (id: string, hiddenTools: string[]) =>

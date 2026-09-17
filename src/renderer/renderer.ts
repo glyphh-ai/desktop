@@ -424,6 +424,7 @@ declare global {
       skillGet: (id: string) => Promise<LibEnvelope>;
       skillFileRead: (id: string, rel: string) => Promise<LibEnvelope>;
       skillFileWrite: (id: string, rel: string, text: string) => Promise<LibEnvelope>;
+      connToolModes?: (appSlug: string, tools: string[]) => Promise<{ ok: boolean; data?: Record<string, "allow" | "ask" | "never">; error?: string }>;
       skillAgents: (id: string) => Promise<LibEnvelope>;
       skillAgentSet: (id: string, ref: string, patch: { loop?: string; model?: string }) => Promise<LibEnvelope>;
       skillSetEnabled: (id: string, on: boolean) => Promise<LibEnvelope>;

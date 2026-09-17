@@ -886,7 +886,12 @@ export async function renderToolGroups(groupsHost: HTMLElement, o: ToolPermissio
   const readOnly = !!o.readOnly;
   const hidden = new Set(tools.filter((t) => t.hidden).map((t) => t.name));
   const prefs = await readModes(o.key);
-  const modeOf = (t: { name: string }): ToolMode => hidden.has(t.name) ? "never" : (prefs[t.name] ?? (isReadTool(t.name, appName) ? "allow" : "ask"));
+  // THE RULE COMES FROM MAIN (conn-tool-modes.ts): this page used to apply its
+  // own default — read-only means allowed — and never write it down, so an
+  // unattended run was refused a tool shown here as Always allow.
+  const eff = await window.glyphh.connToolModes?.(o.key, tools.map((t) => t.name)).catch(() => null);
+  const defaults = eff?.ok ? eff.data ?? {} : {};
+  const modeOf = (t: { name: string }): ToolMode => hidden.has(t.name) ? "never" : (prefs[t.name] ?? defaults[t.name] ?? "ask");
   const persist = async (): Promise<void> => {
     try {
       await o.persistHidden(Array.from(hidden));
@@ -894,7 +899,7 @@ export async function renderToolGroups(groupsHost: HTMLElement, o: ToolPermissio
     } catch (err) { fail(err instanceof Error ? err.message : String(err)); }
   };
   const setMode = (t: { name: string }, m: ToolMode): void => {
-    if (m === "never") { hidden.add(t.name); delete prefs[t.name]; }
+    if (m === "never") { hidden.add(t.name); prefs[t.name] = "never"; }
     else { hidden.delete(t.name); prefs[t.name] = m; }
   };
 
