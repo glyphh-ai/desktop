@@ -15,6 +15,7 @@ import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
+import { normalizeConnDeps, type ConnDep } from "../../shared/bundle-shape.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -1043,14 +1044,8 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
  *  mid-loop, which left the pane blank under a count of 2 (his report,
  *  2026-09-17). Normalize first, drop what has no app slug, and count what
  *  actually renders. */
-type ConnDep = { app: string; as?: string };
-const normalizeDeps = (raw: Array<ConnDep | string> | undefined): ConnDep[] =>
-  (raw ?? [])
-    .map((d) => (typeof d === "string" ? { app: d } : d))
-    .filter((d): d is ConnDep => !!d && typeof d.app === "string" && !!d.app.trim());
-
 async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<void> {
-  const deps = normalizeDeps(raw);
+  const deps = normalizeConnDeps(raw);
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
   // One pane, two meanings: an app opens with them, a task runs unattended.

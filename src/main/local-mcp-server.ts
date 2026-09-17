@@ -15,6 +15,7 @@
  */
 
 import http from "node:http";
+import path from "node:path";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -23,9 +24,10 @@ import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { dispatchRelayMethod } from "./relay-client.js";
 import { listConnectionTools, callConnectionTool } from "./mcp-connections.js";
 import { listTaskSpecs, getTaskSpec, saveTaskSpec, runTaskAndWait, listTaskRuns } from "./task-runner.js";
-import { listSkills, getSkill, installSkill, writeSkillFile } from "./skills-fs.js";
+import { listSkills, getSkill, installSkill, writeSkillFile, deleteSkill, setSkillEnabled, retypeBundle, type BundleType } from "./skills-fs.js";
 import { listSchedulesView, saveSchedule, deleteSchedule, runSchedule } from "./local-library.js";
 import { openSettingsPage } from "./app-resolver.js";
+import { WHERE_TO_SEE, hasAppFace, NO_FACE_ERROR, checkBundlePath, checkNoForeignManifest } from "../shared/bundle-shape.js";
 import { listCliAgents } from "./cli-agents.js";
 import { SEMANTIC_TOOLS } from "./glyphh-agent-semantic.js";
 import { refreshConnectorCatalog, getConnectorCatalog, getCatalogAge, callConnectorTool } from "./connector-tools-client.js";
@@ -126,19 +128,97 @@ function buildMcpServer(): McpServer {
   const skillSlug = (name: string): string =>
     name.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
 
-  function saveSkillFolder(input: { slug?: string; name: string; description?: string; prompt?: string }): Record<string, unknown> {
+  /** ONE ID PER SHAPE: the homes differ, so a slug alone is ambiguous. */
+  const idFor = (slug: string, type: BundleType): string =>
+    `${type === "app" ? "app" : type === "task" ? "task" : type === "plugin" ? "plugin" : "glyphh"}:${String(slug).trim()}`;
+
+  /** Find a bundle by slug across every home, whatever its type. */
+  function findBundle(slug: string): { id: string; type: BundleType } | null {
+    const want = String(slug).trim().toLowerCase();
+    for (const sk of listSkills(["skill", "app", "task", "plugin"])) {
+      if (sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase() === want) return { id: sk.id, type: sk.type };
+    }
+    return null;
+  }
+
+  /** WHAT WAS ACTUALLY MADE (his report, 2026-09-17): an agent said "installed
+   *  successfully" about an app the user could find on no page. Every write
+   *  answers with the shape, the folder and where to look. */
+  const WHERE = WHERE_TO_SEE;
+  function describeBundle(id: string, note?: string): Record<string, unknown> {
+    const sk = getSkill(id);
+    return {
+      slug: id.slice(id.indexOf(":") + 1), type: sk.type, name: sk.name, description: sk.description,
+      folder: sk.dir, enabled: sk.enabled, files: sk.files.map((f) => f.path),
+      where: WHERE[sk.type], mirroredToEveryCli: sk.enabled,
+      ...(note ? { note } : {}),
+    };
+  }
+
+  const MAX_BUNDLE_FILE = 512 * 1024;
+  function checkFiles(files: Record<string, string> | undefined): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [rel, body] of Object.entries(files ?? {})) {
+      const clean = checkBundlePath(rel);
+      if (typeof body !== "string") throw new Error(`file "${clean}" must be text`);
+      if (Buffer.byteLength(body) > MAX_BUNDLE_FILE) throw new Error(`file "${clean}" is larger than 512 KB`);
+      out[clean] = body;
+    }
+    return out;
+  }
+
+  /** THE ONE AUTHORING DOOR (his order, 2026-09-17). Type is required, so no
+   *  agent can drift from the shape the user asked for, and each shape carries
+   *  what it actually needs — a skill can ship files now, which is why an
+   *  agent needing code no longer has to reach for an app bundle. */
+  function saveBundle(input: {
+    type: BundleType; slug?: string; name: string; description?: string; prompt?: string;
+    files?: Record<string, string>; program?: string;
+    slots?: Array<{ name?: string; label?: string; description?: string; agent?: string | null; model?: string }>;
+  }): Record<string, unknown> {
     const name = String(input.name ?? "").trim();
-    if (!name) throw new Error("a skill needs a name");
+    if (!name) throw new Error("a bundle needs a name");
+    const type = input.type;
+    if (type === "plugin") {
+      throw new Error("a plugin is Claude Code's own format — import one with skill_import in the app, or build a skill (type \"skill\"), an app (type \"app\") or a task (type \"task\")");
+    }
     const slug = (input.slug ? String(input.slug) : skillSlug(name)) || "skill";
+    const extra = checkFiles(input.files);
+    checkNoForeignManifest(type, Object.keys(extra));
+
+    // A TASK IS A PROGRAM: the task lane owns task.json, run.js and the slots.
+    if (type === "task") {
+      saveTaskSpec({ slug, name, description: input.description, program: input.program, slots: input.slots });
+      const id = idFor(slug, "task");
+      if (input.prompt) {
+        const sk = getSkill(id);
+        writeSkillFile(id, "SKILL.md", `---\nname: ${slug}\ndescription: ${(input.description ?? sk.description ?? name).replace(/\r?\n/g, " ").trim()}\ntype: task\n---\n\n${String(input.prompt).trim()}\n`);
+      }
+      for (const [rel, body] of Object.entries(extra)) writeSkillFile(id, rel, body);
+      return describeBundle(id, input.program ? undefined : "no program was given, so run.js is whatever it already was");
+    }
+
+    // AN APP HAS A FACE. Without one it is a task (headless, on a clock) or a
+    // skill (instructions) — name the alternatives rather than accept a lie.
+    const existingApp = (() => { try { return getSkill(idFor(slug, "app")); } catch { return null; } })();
+    if (type === "app" && !hasAppFace(Object.keys(extra)) && !existingApp) throw new Error(NO_FACE_ERROR);
+
+    const id = idFor(slug, type);
     let existing: ReturnType<typeof getSkill> | null = null;
-    try { existing = getSkill(skillId(slug)); } catch { existing = null; }
+    try { existing = getSkill(id); } catch { existing = null; }
     const description = String(input.description ?? existing?.description ?? "").replace(/\r?\n/g, " ").trim();
     const body = String(input.prompt ?? existing?.body ?? "").trim();
-    const md = `---\nname: ${slug}\ndescription: ${description || name}\n---\n\n${body || `# ${name}\n`}\n`;
-    if (existing) writeSkillFile(existing.id, "SKILL.md", md);
-    else installSkill(slug, { "SKILL.md": md }, "skill");
-    const saved = getSkill(skillId(slug));
-    return { slug, name: saved.name, description: saved.description, prompt: saved.body, dir: saved.dir, updatedAt: saved.updatedAt };
+    const md = `---\nname: ${slug}\ndescription: ${description || name}\n${type === "app" ? "type: app\n" : ""}---\n\n${body || `# ${name}\n`}\n`;
+    const files: Record<string, string> = { "SKILL.md": md, ...extra };
+    if (type === "app" && !existing && !files["app.json"]) {
+      files["app.json"] = JSON.stringify({
+        name: slug, ui: Object.keys(extra).find((r) => /\.html?$/i.test(r)) || "ui/index.html",
+        tools: "tools/manifest.json", dependencies: { connections: [] }, screenshots: [],
+      }, null, 2) + "\n";
+    }
+    if (existing) for (const [rel, text] of Object.entries(files)) writeSkillFile(id, rel, text);
+    else installSkill(slug, files, type);
+    return describeBundle(id);
   }
 
   mcp.tool(
@@ -159,27 +239,6 @@ function buildMcpServer(): McpServer {
     { slug: z.string().describe("Task slug from tasks_list") },
     async ({ slug }) => {
       try { return text(getTaskSpec(slug)); }
-      catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
-    },
-  );
-  mcp.tool(
-    "task_save",
-    "Create or update a Glyphh task. THE PROGRAM IS CODE the desktop runs itself, not a prompt: a CommonJS module exporting `async function run(ctx, input)` that returns the result. It drives its own logic and reaches the world only through ctx — ctx.agents.<slot>.run(prompt, { schema }) for an agent turn, ctx.connections.<app>.call(tool, args) for a connected account, ctx.data(repo).exec(sql, params) for app data, ctx.checkpoint(key, fn) around anything worth not redoing after a restart, and ctx.log. Slots name the agents it calls (agents_list). Put it on a clock with schedule_save.",
-    {
-      slug: z.string().optional().describe("Existing task slug to update; omit to create"),
-      name: z.string().describe("Task name"),
-      description: z.string().optional(),
-      program: z.string().optional().describe("run.js — module.exports = async function run(ctx, input) { … return result }"),
-      slots: z.array(z.object({
-        name: z.string().optional(),
-        label: z.string().optional(),
-        description: z.string().optional().describe("What this slot is for"),
-        agent: z.string().nullable().optional().describe("CLI-agent id bound to this slot (null = first agent)"),
-        model: z.string().optional().describe("Model override for this slot (omit = the agent's own model)"),
-      })).optional().describe("The fixed slots\u2192agents; omit to keep existing (default: one Main slot)"),
-    },
-    async (input) => {
-      try { return text(saveTaskSpec(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
@@ -275,16 +334,76 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "skill_save",
-    "Create or update a Glyphh skill (name, description, prompt = its markdown instructions). It lands as a FOLDER with a SKILL.md, which is what Settings → Build → Skills lists and what every CLI agent on this machine reads through skill_get.",
+    "THE ONE DOOR for making anything in the user's library. Everything there is a SKILL and `type` says which kind, so use the user's own word: "
+    + '`type:"skill"` = markdown instructions an agent follows, and it may ship files (scripts, references) — this is the default answer to "make me a skill"; '
+    + '`type:"task"` = a PROGRAM the desktop runs itself (pass `program` = run.js exporting async run(ctx, input), `slots` for the agents it calls), for headless or scheduled work; '
+    + '`type:"app"` = a work panel with a face (pass `files` including ui/index.html) and its own tools. '
+    + "Never build an app because you need code: a skill carries files and a task carries a program. The answer says what was made, its folder, and where the user sees it.",
     {
+      type: z.enum(["skill", "app", "task"]).describe('The shape — use the user\'s word: "skill", "task" or "app"'),
       slug: z.string().optional().describe("Existing slug to update; omit to create"),
-      name: z.string().describe("Skill name"),
-      description: z.string().optional(),
-      prompt: z.string().optional().describe("The skill's markdown instructions"),
+      name: z.string().describe("Name"),
+      description: z.string().optional().describe("One line: when an agent should reach for this"),
+      prompt: z.string().optional().describe("SKILL.md body — the instructions (every type has one)"),
+      files: z.record(z.string(), z.string()).optional().describe("Extra files by relative path, e.g. { \"scripts/report.js\": \"…\", \"ui/index.html\": \"…\" }"),
+      program: z.string().optional().describe('type:"task" only — run.js: module.exports = async function run(ctx, input) { … }'),
+      slots: z.array(z.object({
+        name: z.string().optional(),
+        label: z.string().optional(),
+        description: z.string().optional(),
+        agent: z.string().nullable().optional().describe("CLI-agent id from agents_list (null = first agent)"),
+        model: z.string().optional(),
+      })).optional().describe('type:"task" only — the fixed slots the program calls agents through'),
     },
     async (input) => {
-      try { return text(saveSkillFolder(input)); }
+      try { return text(saveBundle(input)); }
       catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "skill_retype",
+    "Change what KIND of skill something is, keeping its folder and files: app → task, task → skill, and so on. Use it the moment a bundle turns out to be the wrong shape (an app with no face is a task) instead of deleting and rebuilding. Plugins keep Claude Code's format and cannot be converted.",
+    {
+      slug: z.string().describe("Slug from skills_list / tasks_list"),
+      to: z.enum(["skill", "app", "task"]).describe("The shape it should be"),
+    },
+    async ({ slug, to }) => {
+      try {
+        const found = findBundle(slug);
+        if (!found) return text(`Error: no skill, app or task named "${slug}"`);
+        const s2 = retypeBundle(found.id, to);
+        return text(describeBundle(s2.id, `was a ${found.type}, now a ${to}`));
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "skill_enable",
+    "Turn a skill, app or task ON or OFF without deleting it. Off means it leaves every CLI's skill directory and an app's tab leaves the dock and the wall; the folder and its files stay, and turning it back on restores them. Prefer this over skill_delete whenever the user says stop using it, hide it, or turn it off.",
+    {
+      slug: z.string().describe("Slug from skills_list / tasks_list"),
+      enabled: z.boolean().describe("true = on, false = off"),
+    },
+    async ({ slug, enabled }) => {
+      try {
+        const found = findBundle(slug);
+        if (!found) return text(`Error: no skill, app or task named "${slug}"`);
+        const s2 = setSkillEnabled(found.id, enabled);
+        return text(describeBundle(s2.id, enabled ? "on" : "off — the folder is still there"));
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
+  );
+  mcp.tool(
+    "skill_delete",
+    "Delete a skill, app or task FOR GOOD: the folder, its files, an app's tab and its installed payload all go. This cannot be undone, so when the user means stop using it rather than destroy it, call skill_enable with enabled:false instead. Say plainly which one you did.",
+    { slug: z.string().describe("Slug from skills_list / tasks_list") },
+    async ({ slug }) => {
+      try {
+        const found = findBundle(slug);
+        if (!found) return text(`Error: no skill, app or task named "${slug}"`);
+        const was = describeBundle(found.id);
+        deleteSkill(found.id);
+        return text({ deleted: true, slug, type: found.type, folder: was.folder, note: "gone for good; disable with skill_enable next time if the user only wanted it off" });
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
     },
   );
 
@@ -409,9 +528,20 @@ function buildMcpServer(): McpServer {
   );
   mcp.tool(
     "app_install",
-    "Install (or update) a Glyphh app on the user's machine from a .glyphh bundle so its tools become available. Pass the bundle as base64. Re-installing the same slug updates it in place. To show the app afterwards, call panels_open with its slug — NEVER open its index.html via a file:// URL in the browser panel: the glyphh bridge (glyphh.call, db.exec, its tools) only exists when the app opens through its slug.",
-    { bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string") },
-    async ({ bundleBase64 }) => via("apps.install", { bundleBase64 }),
+    "IMPORT an existing .glyphh bundle (a zip you were handed or built) as an APP on the user's machine, so its tools become available. This is not the way to author something new: use skill_save with the type the user asked for. `intent` must be the literal \"app\", which is your statement that the user asked for a work panel with a face — if they asked for a skill or a task, stop and use skill_save. Re-installing the same slug updates it in place. To show it, call panels_open with its slug; NEVER open its index.html as a file:// URL, because the glyphh bridge only exists when the app opens through its slug.",
+    {
+      bundleBase64: z.string().describe("The .glyphh bundle (a zip) as a base64 string"),
+      intent: z.literal("app").describe('Confirm this is meant to be an APP. A skill or a task goes through skill_save.'),
+    },
+    async ({ bundleBase64, intent }) => {
+      void intent;
+      try {
+        // The install answers with the app's own name; say where it landed too,
+        // so no agent can report success and point at an empty page.
+        const installed = await dispatchRelayMethod("apps.install", { bundleBase64 });
+        return text({ installed, where: WHERE.app, convert: 'wrong shape? skill_retype { slug, to: "task" | "skill" }' });
+      } catch (err) { return text(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+    },
   );
 
   // ── The SEMANTIC STACK — every app's own vector store + knowledge graph

@@ -23,6 +23,7 @@ import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
+import { appCardManifest, appCardSkillMd, GENERATED_MARK, type AppCardInput } from "../shared/bundle-shape.js";
 
 export type SkillSource = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** The two homes: skills and APPS (a skill folder plus app.json — his ruling, 2026-09-16). */
@@ -506,6 +507,11 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
     if (m && /\.(png|jpe?g|gif|webp|svg)$/i.test(rel)) fs.writeFileSync(full, Buffer.from(m[2], "base64"));
     else fs.writeFileSync(full, text, "utf-8");
   }
+  // THE MARKER IS THE CONTRACT: the library lists a folder only when it finds
+  // SKILL.md or a plugin manifest. A lane that writes a home folder without one
+  // makes something the user cannot see anywhere (his report, 2026-09-17), so
+  // the two writers verify their own work rather than trust it.
+  if (!markerOf(dir)) throw new Error(`"${name}" was written without a SKILL.md, so nothing would list it`);
   syncLinks();
   if (source === "app") void registerBundleApp(dir).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
   return summarize(source, name, dir, true)!;
@@ -539,66 +545,107 @@ export function writeAppCard(card: AppCard): void {
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(card.slug)) throw new Error(`bad app slug: ${card.slug}`);
   const dir = path.join(ROOTS.app(), card.slug);
   fs.mkdirSync(dir, { recursive: true });
-  const manifest: Record<string, unknown> = {
-    name: card.slug,
-    kind: "glyphh-app",
-    bundle: card.bundleDir,
-    entry: card.entry,
-    tools: card.tools.map((t) => t.name),
-    // The manifest shape the UI reads and the hub validates: an app slug plus
-    // who it acts as. Bare strings here blanked the Connections pane and would
-    // have failed validate_app_manifest on a share (his report, 2026-09-17).
-    dependencies: { connections: card.connectors.map((app) => ({ app, as: "member" })) },
-  };
-  if (card.iconSvg && card.iconSvg.includes("<svg")) {
-    fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
-    manifest.icon = "icon.svg";
-  } else if (fs.existsSync(path.join(dir, "icon.svg"))) {
-    // A later rewrite from a row carries no bundle icon; keep the one we have.
-    manifest.icon = "icon.svg";
-  }
-  fs.writeFileSync(path.join(dir, "app.json"), JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+  if (card.iconSvg && card.iconSvg.includes("<svg")) fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
+  const input: AppCardInput = { ...card, hasIcon: fs.existsSync(path.join(dir, "icon.svg")) };
+  fs.writeFileSync(path.join(dir, "app.json"), JSON.stringify(appCardManifest(input), null, 2) + "\n", "utf-8");
   const md = path.join(dir, "SKILL.md");
   if (fs.existsSync(md)) {
-    let mine = false;
-    try { mine = parseSkillMd(fs.readFileSync(md, "utf-8")).frontmatter.generated === "glyphh-bundle"; } catch { mine = false; }
-    if (!mine) { syncLinks(); return; }
+    let ours = false;
+    try { ours = parseSkillMd(fs.readFileSync(md, "utf-8")).frontmatter.generated === GENERATED_MARK; } catch { ours = false; }
+    if (!ours) { syncLinks(); return; }
   }
-  const tools = card.tools.length
-    ? card.tools.map((t) => `- \`${t.name}\`${t.description ? ` — ${t.description}` : ""}`).join("\n")
-    : "- This app declares no tools. Open it and the user works it by hand.";
-  const connections = card.connectors.length
-    ? card.connectors.map((c) => `- \`${c}\` — the user connects it on Settings → Customize → Connections.`).join("\n")
-    : "- None. It needs no connected account.";
-  const oneLine = (card.description || `The ${card.name} app.`).replace(/\s+/g, " ").trim();
-  fs.writeFileSync(md, [
-    "---",
-    `name: ${card.slug}`,
-    `description: ${oneLine}`,
-    "type: app",
-    "generated: glyphh-bundle",
-    "---",
-    "",
-    `# ${card.name}`,
-    "",
-    "A Glyphh app installed from a bundle. Its face opens in the Apps work panel,",
-    "and the agent drives it through the tools below.",
-    "",
-    "## Tools",
-    "",
-    tools,
-    "",
-    "## Connections",
-    "",
-    connections,
-    "",
-    "## Notes",
-    "",
-    `The runnable bundle lives at \`${card.bundleDir}\`. Reinstalling the app rewrites`,
-    "this file; delete the `generated:` line to keep your own text.",
-    "",
-  ].join("\n"), "utf-8");
+  fs.writeFileSync(md, appCardSkillMd(input), "utf-8");
+  if (!markerOf(dir)) throw new Error(`the card for "${card.slug}" has no SKILL.md, so nothing would list it`);
   syncLinks();
+}
+
+/** Copy a folder's files in, never overwriting what the bundle already has. */
+function copyDirInto(src: string, dest: string, skip: (rel: string) => boolean = () => false): number {
+  let copied = 0;
+  for (const f of walk(src)) {
+    if (skip(f.path)) continue;
+    const to = safeJoin(dest, f.path);
+    if (fs.existsSync(to)) continue;
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    try { fs.copyFileSync(path.join(src, f.path), to); copied++; } catch { /* skip unreadable */ }
+  }
+  return copied;
+}
+
+/** Rewrite (or drop) the `type:` line in a SKILL.md's frontmatter. */
+function setFrontmatterType(file: string, type: BundleType | null): void {
+  let text = "";
+  try { text = fs.readFileSync(file, "utf-8"); } catch { return; }
+  const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
+  if (!m) return;
+  const lines = m[1].split(/\r?\n/).filter((l) => !/^type:\s/i.test(l));
+  if (type) lines.push(`type: ${type}`);
+  fs.writeFileSync(file, `---\n${lines.join("\n")}\n---\n${text.slice(m[0].length)}`, "utf-8");
+}
+
+/** MOVE A BUNDLE BETWEEN SHAPES (his order, 2026-09-17).
+ *
+ *  A wrong first guess used to be a dead end: nothing turned an app into the
+ *  task or the plain skill the user actually asked for, so the only way out
+ *  was delete and rebuild. The folder moves to the target home, the manifest
+ *  beside SKILL.md is swapped, and an app's extracted payload is copied in
+ *  first so no file is left behind. Nothing the bundle carries is deleted.
+ *
+ *  Plugins stay out: a plugin is Claude Code's own format, imported whole. */
+export function retypeBundle(id: string, to: BundleType): SkillSummary {
+  const { source, name, dir, enabled } = dirOf(id);
+  const from = bundleType(dir);
+  if (from === to) return summarize(source, name, dir, enabled)!;
+  if (from === "plugin" || to === "plugin") {
+    throw new Error("a plugin keeps Claude Code's own shape — export it and import it as a plugin instead");
+  }
+  const target: SkillSource = to === "app" ? "app" : to === "task" ? "task" : "glyphh";
+  const dest = enabled ? path.join(ROOTS[target](), name) : path.join(DISABLED_ROOT(), target, name);
+  if (fs.existsSync(dest)) throw new Error(`a ${to} named "${name}" is already here — rename one of them first`);
+
+  // Leaving app: the tab goes, and the bundle's own files come home.
+  if (from === "app") {
+    let payload = "";
+    try { payload = String((JSON.parse(fs.readFileSync(path.join(dir, "app.json"), "utf-8") || "{}") as { bundle?: unknown }).bundle || ""); } catch { payload = ""; }
+    if (payload && fs.existsSync(payload)) copyDirInto(payload, dir, (rel) => rel.startsWith(".glyphh-"));
+    void unregisterBundleApp(dir, { keepSecrets: true });
+  }
+
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.renameSync(dir, dest);
+  fs.rmSync(path.join(dest, from === "app" ? "app.json" : "task.json"), { force: true });
+
+  if (to === "task" && !fs.existsSync(path.join(dest, "task.json"))) {
+    fs.writeFileSync(path.join(dest, "task.json"), JSON.stringify({
+      name, program: "run.js",
+      slots: { main: { label: "Main", description: "The agent this task runs through.", agent: null } },
+      schedule: null, dependencies: { connections: [] },
+    }, null, 2) + "\n", "utf-8");
+    if (!fs.existsSync(path.join(dest, "run.js"))) {
+      fs.writeFileSync(path.join(dest, "run.js"),
+        "// The desktop runs this program itself. Port the logic here: reach the\n" +
+        "// world only through ctx (ctx.agents.<slot>.run, ctx.connections.<app>.call,\n" +
+        "// ctx.data(repo).exec, ctx.checkpoint, ctx.log) and return the result.\n" +
+        "module.exports = async function run(ctx, input) {\n  void input;\n  ctx.log(\"this task has no program yet\");\n  return { ok: false, error: \"write run.js\" };\n};\n",
+        "utf-8");
+    }
+  }
+  if (to === "app" && !fs.existsSync(path.join(dest, "app.json"))) {
+    fs.writeFileSync(path.join(dest, "app.json"), JSON.stringify({
+      name, ui: "ui/index.html", tools: "tools/manifest.json", dependencies: { connections: [] }, screenshots: [],
+    }, null, 2) + "\n", "utf-8");
+    if (!fs.existsSync(path.join(dest, "ui", "index.html"))) {
+      fs.mkdirSync(path.join(dest, "ui"), { recursive: true });
+      fs.writeFileSync(path.join(dest, "ui", "index.html"),
+        `<!doctype html>\n<html lang="en"><head><meta charset="utf-8" /><title>${name}</title></head>\n<body><h1>${name}</h1><p>This app has no face yet.</p></body></html>\n`, "utf-8");
+    }
+  }
+  setFrontmatterType(path.join(dest, "SKILL.md"), to === "skill" ? null : to);
+  syncLinks();
+  if (to === "app" && enabled) {
+    void registerBundleApp(dest).then((r) => { if (!r.ok) console.warn(`[skills] app "${name}" has no tab: ${r.error}`); });
+  }
+  return summarize(target, name, dest, enabled)!;
 }
 
 /** The hub payload shape today ({manifest, prompt, code}) as folder files. */

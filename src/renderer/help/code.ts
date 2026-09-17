@@ -11,7 +11,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
-import { showDropDetail, confirmAction, placeDropup } from "./shared.js";
+import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
@@ -1263,6 +1263,8 @@ function ensureCodeSection(): void {
 /** The app-standard confirm modal, exposed for the workbench bundle (it
  *  can't import help modules; #confirm-modal lives in this document). */
 (window as unknown as { __appConfirm?: unknown }).__appConfirm = confirmAction;
+/** …and the three-way one (delete / the softer thing / nothing). */
+(window as unknown as { __appChoice?: unknown }).__appChoice = confirmChoice;
 
 (window as unknown as { __agentSessions?: unknown }).__agentSessions = {
   list: (): Array<{ id: string; title: string; createdAt: number; mode: "chat" | "cowork" | "code" }> =>

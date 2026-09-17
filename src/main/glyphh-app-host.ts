@@ -55,6 +55,7 @@ import {
 import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
 import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
 import { writeAppCard } from "./skills-fs.js";
+import { rowOwnedByBundle, payloadDirOf } from "../shared/bundle-shape.js";
 import { onUserChange } from "./user-scope.js";
 
 // ── manifest ────────────────────────────────────────────────
@@ -277,15 +278,27 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
 }
 
 /** The bundle is gone: drop every tab that pointed into its folder. */
+/** A DELETE takes the extracted payload with it (best-effort). */
+function removeAppPayload(nativeRef: string | null): void {
+  const payload = payloadDirOf(nativeRef, appsRoot(), customAppsDir());
+  if (!payload) return;
+  try { fs.rmSync(payload, { recursive: true, force: true }); }
+  catch (err) { console.warn("[glyphh-app] payload not removed:", err instanceof Error ? err.message : err); }
+}
+
 export async function unregisterBundleApp(dir: string, opts: { keepSecrets?: boolean } = {}): Promise<void> {
   const rows = await appsStore.mine();
   for (const r of rows) {
-    if ((r.config as { bundleDir?: string } | null)?.bundleDir !== dir) continue;
+    if (!rowOwnedByBundle(r, dir)) continue;
     const secrets = (r.config as { secrets?: unknown } | null)?.secrets;
     // Turned OFF: park the config vars for when it comes back. Deleted: the
     // stash goes too, so a later app of the same name starts clean.
     setPreference(STASH_KEY(r.slug), opts.keepSecrets && secrets && typeof secrets === "object" && Object.keys(secrets).length ? secrets : null);
     await appsStore.removeEntry(r.slug);
+    // A DELETE takes the extracted payload too. It sits outside the bundle
+    // folder (the sandbox root), so without this the bytes outlive the app and
+    // a later install of the same slug starts on top of stale files.
+    if (!opts.keepSecrets) removeAppPayload(r.nativeRef);
   }
   // A delete while the app was already OFF has no row left to match, so the
   // parked vars are cleared by name too — nothing outlives the bundle.

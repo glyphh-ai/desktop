@@ -1225,6 +1225,12 @@ async function init(): Promise<void> {
     const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
     return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
   }
+  /** The same modal with a middle answer ("alt"). Bridge absent → "yes",
+   *  matching appConfirm's proceed-anyway behavior. */
+  function appChoice(opts: { title: string; body?: string; confirmLabel?: string; altLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<"yes" | "alt" | "no"> {
+    const fn = (window as unknown as { __appChoice?: (o: unknown) => Promise<"yes" | "alt" | "no"> }).__appChoice;
+    return typeof fn === "function" ? fn(opts) : Promise.resolve("yes");
+  }
 
   // ── Smart file router — the ONE open-a-file entry point (Files tree,
   //    agent file cards, anything else). Routes by what can actually render
@@ -2530,12 +2536,47 @@ async function init(): Promise<void> {
       if (ev.key === "Escape" && iconEditMode) { ev.stopPropagation(); setIconEdit(false); }
     }, true);
     const removableTile = (t: EchoTile): boolean => (t.kind === "app" && !!t.appId && !t.navApp) || t.houseDefault === true || (t.kind === "layout" && !!t.layoutName);
+    /** The library bundle an app tile stands for, by slug, or null when the
+     *  tile is a layout, a house default or a plain saved app. */
+    const bundleBehindTile = async (t: EchoTile): Promise<string | null> => {
+      if (t.kind !== "app" || t.houseDefault || !t.slug) return null;
+      const lib = (window as unknown as { glyphh?: { skillsList?: (k?: string | string[]) => Promise<{ ok: boolean; data?: Array<{ id: string; name: string }> }> } }).glyphh;
+      const env = await lib?.skillsList?.(["app", "task", "skill"]).catch(() => null);
+      if (!env?.ok) return null;
+      const want = t.slug.toLowerCase();
+      return (env.data || []).find((s) => s.id.slice(s.id.indexOf(":") + 1).toLowerCase() === want)?.id ?? null;
+    };
+
     /** Delete what an icon stands for — the app or the layout — after the
      *  standard confirm, then drop it off the launcher (and the saved order). */
     const deleteTileEntry = (e: TileEntry): void => {
       const t = e.tile;
       if (!removableTile(t)) return;
       void (async () => {
+        // A TILE BACKED BY A BUNDLE ASKS (his order, 2026-09-17): a skill typed
+        // app can be deleted, which takes its files, or disabled, which turns
+        // it off and leaves it in Settings → Build → Skills. Deleting the row
+        // alone used to leave the bundle behind, so the tile came back.
+        const bundleId = await bundleBehindTile(t);
+        if (bundleId) {
+          const choice = await appChoice({
+            title: `Remove "${t.name}"?`,
+            body: "Delete removes the skill and its files for good. Disable turns it off and keeps it in Settings, Build, Skills.",
+            confirmLabel: "Delete",
+            altLabel: "Disable",
+            danger: true,
+          });
+          if (choice === "no") return;
+          const lib = (window as unknown as { glyphh?: { skillDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>; skillSetEnabled?: (id: string, on: boolean) => Promise<{ ok: boolean; error?: string }> } }).glyphh;
+          const res = choice === "yes" ? await lib?.skillDelete?.(bundleId) : await lib?.skillSetEnabled?.(bundleId, false);
+          if (res && res.ok === false) { console.warn(`[echo] ${choice === "yes" ? "delete" : "disable"} "${t.name}" failed: ${res.error || "unknown error"}`); return; }
+          const bk = keyOf(t);
+          if (bk) dockKeys = dockKeys.filter((x) => x !== bk);
+          dropTileEntry(e);
+          persistPages();
+          persistDock();
+          return;
+        }
         const ok = await appConfirm({
           title: `Delete "${t.name}"?`,
           body: t.kind === "layout"

@@ -148,6 +148,13 @@ export interface ConfirmOptions {
  * Enter confirms, Escape or clicking the backdrop cancels.
  */
 export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
+  return confirmChoice(opts).then((c) => c === "yes");
+}
+
+/** THREE WAYS OUT (his order, 2026-09-17): delete, the softer thing, or
+ *  nothing. Pass `altLabel` and the modal grows a middle button that answers
+ *  "alt" — a delete that could have been a disable asks instead of guessing. */
+export function confirmChoice(opts: ConfirmOptions & { altLabel?: string }): Promise<"yes" | "alt" | "no"> {
   return new Promise((resolve) => {
     const overlay = document.getElementById("confirm-modal")!;
     // PORTAL: the overlay is authored inside #help-overlay, whose ancestor
@@ -168,6 +175,14 @@ export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
     yesBtn.textContent = opts.confirmLabel || "Confirm";
     noBtn.textContent = opts.cancelLabel || "Cancel";
     yesBtn.classList.toggle("danger", !!opts.danger);
+    let altBtn: HTMLButtonElement | null = null;
+    if (opts.altLabel) {
+      altBtn = document.createElement("button");
+      altBtn.type = "button";
+      altBtn.className = "action-btn";
+      altBtn.textContent = opts.altLabel;
+      yesBtn.parentElement?.insertBefore(altBtn, yesBtn);
+    }
     overlay.classList.remove("hidden");
     guardWebviewsForModal(true);
     yesBtn.focus();
@@ -177,11 +192,14 @@ export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
       guardWebviewsForModal(false);
       yesBtn.removeEventListener("click", onYes);
       noBtn.removeEventListener("click", onNo);
+      altBtn?.removeEventListener("click", onAlt);
+      altBtn?.remove();
       overlay.removeEventListener("mousedown", onOverlay);
       document.removeEventListener("keydown", onKey);
     }
-    function onYes() { cleanup(); resolve(true); }
-    function onNo() { cleanup(); resolve(false); }
+    function onYes() { cleanup(); resolve("yes"); }
+    function onAlt() { cleanup(); resolve("alt"); }
+    function onNo() { cleanup(); resolve("no"); }
     function onOverlay(e: MouseEvent) { if (e.target === overlay) onNo(); }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") { e.preventDefault(); onNo(); }
@@ -189,6 +207,7 @@ export function confirmAction(opts: ConfirmOptions): Promise<boolean> {
     }
 
     yesBtn.addEventListener("click", onYes);
+    altBtn?.addEventListener("click", onAlt);
     noBtn.addEventListener("click", onNo);
     overlay.addEventListener("mousedown", onOverlay);
     document.addEventListener("keydown", onKey);
