@@ -3065,8 +3065,18 @@ async function init(): Promise<void> {
       const issues = (a.requiredConnections || []).filter((c) => !c.connected).length;
       // A TOOL-BACKED app (Design, Slides, Images, Video, Audio from the hub): its tile IS the built-in panel.
       const toolOf = (a.launchConfig as { tool?: unknown } | null | undefined)?.tool;
-      if (typeof toolOf === "string" && toolOf) {
-        return { name: a.name, slug, appId: a.id, kind: "tool", toolView: toolOf as Exclude<ViewKind, "app">, iconUrl: appIconUrl(icon) || undefined, orderKey: `app:${slug}` };
+      const tool = typeof toolOf === "string" && toolOf ? toolOf : "";
+      // The mark, in his order (2026-09-17): the manifest's icon, then the
+      // favicon, then what the SKILLS page would show — the panel this app IS,
+      // else the app mark. Only for GLYPHH apps: a web or native app keeps its
+      // designed monogram while its own icon is still resolving.
+      const iconUrl = appIconUrl(icon) || "";
+      const svgOf = (markup: string): string | undefined => markup.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
+      const glyphSvg = iconUrl || !(tool || a.appArchetype === "glyphh-app")
+        ? undefined
+        : svgOf((tool && VIEW_META[tool]?.icon) || VIEW_META.app.icon);
+      if (tool) {
+        return { name: a.name, slug, appId: a.id, kind: "tool", toolView: tool as Exclude<ViewKind, "app">, iconUrl: iconUrl || undefined, glyphSvg, orderKey: `app:${slug}` };
       }
       return {
         name: a.name, slug, appId: a.id, url: a.url || undefined,
@@ -3078,7 +3088,7 @@ async function init(): Promise<void> {
         // the installer gets a panel, never the hosted URL in their face.
         workbench: (a.launchConfig as { workbench?: unknown } | null | undefined)?.workbench === true
           || (a.appArchetype === "glyphh-app" && a.owned === false) || undefined,
-        iconUrl: appIconUrl(icon) || undefined, kind: "app",
+        iconUrl: iconUrl || undefined, glyphSvg, kind: "app",
         issues: issues || undefined,
         orderKey: `app:${slug}`,
       };
