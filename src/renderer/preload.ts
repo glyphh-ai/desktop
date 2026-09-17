@@ -1134,6 +1134,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   skillDownload: (id: string) => ipcRenderer.invoke("skill-download", id) as Promise<LibEnvelope>,
   skillsDiscover: (kind?: SkillKind | SkillKind[]) => ipcRenderer.invoke("skills-discover", kind) as Promise<LibEnvelope>,
   skillUpdates: () => ipcRenderer.invoke("skill-updates") as Promise<LibEnvelope>,
+  skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => ipcRenderer.invoke("skill-categories-set", itemId, kind, ids) as Promise<LibEnvelope>,
   skillUpdate: (id: string) => ipcRenderer.invoke("skill-update", id) as Promise<LibEnvelope>,
   skillInstall: (ref: string, kind?: "skill" | "app" | "plugin" | "task") => ipcRenderer.invoke("skill-install", ref, kind) as Promise<LibEnvelope>,
   skillPublish: (id: string, notes?: string) => ipcRenderer.invoke("skill-publish", id, notes) as Promise<LibEnvelope>,

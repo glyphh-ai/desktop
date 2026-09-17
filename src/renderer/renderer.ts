@@ -433,6 +433,7 @@ declare global {
       skillDownload: (id: string) => Promise<LibEnvelope>;
       skillsDiscover: (kind?: SkillKind | SkillKind[]) => Promise<LibEnvelope>;
       skillUpdates: () => Promise<LibEnvelope>;
+      skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => Promise<LibEnvelope>;
       skillUpdate: (id: string) => Promise<LibEnvelope>;
       tasksSpecs: () => Promise<LibEnvelope>;
       taskSpec: (slug: string) => Promise<LibEnvelope>;

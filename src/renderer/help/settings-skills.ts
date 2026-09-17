@@ -116,6 +116,66 @@ const typeChip = (type: BundleType | undefined): string =>
 const markOf = (s: { icon?: string | null; tool?: string | null } | null | undefined): string =>
   (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
+/** The shelves a shared bundle sits on, and the door to change them. Nothing
+ *  to show until it has been shared — an unshared folder is on no shelf. */
+function paintCategories(): void {
+  const block = el("skill-cats-block"); const host = el("skill-cats");
+  if (!block || !host) return;
+  block.classList.toggle("hidden", !shareItem || !!hubItem);
+  if (!shareItem || hubItem) return;
+  host.textContent = "";
+  const chosen = shareItem.categories;
+  for (const id of chosen) {
+    const c = document.createElement("span");
+    c.className = "skill-cat-chip";
+    c.textContent = catLabel(id);
+    host.appendChild(c);
+  }
+  if (!chosen.length) {
+    const none = document.createElement("span");
+    none.className = "skill-cat-none";
+    none.textContent = "On no shelf yet";
+    host.appendChild(none);
+  }
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "skill-cat-edit";
+  edit.textContent = "Edit";
+  edit.addEventListener("click", () => {
+    if (!hubCategories.length) { void api().hubCategories().then((c) => { const e = c as Env<Array<{ id: string; label: string }>>; if (e.ok) hubCategories = e.data ?? []; openCategoryMenu(edit); }); return; }
+    openCategoryMenu(edit);
+  });
+  host.appendChild(edit);
+}
+
+function openCategoryMenu(anchor: HTMLElement): void {
+  if (!shareItem) return;
+  const chosen = new Set(shareItem.categories);
+  openMenu(anchor, [
+    { heading: "On these shelves" },
+    ...hubCategories.map((c) => ({
+      label: c.label,
+      checked: chosen.has(c.id),
+      onClick: () => {
+        const next = chosen.has(c.id) ? shareItem!.categories.filter((x) => x !== c.id) : [...shareItem!.categories, c.id];
+        void saveCategories(next);
+      },
+    })),
+  ]);
+}
+
+async function saveCategories(ids: string[]): Promise<void> {
+  if (!shareItem) return;
+  const item = shareItem;
+  const r = await (api() as unknown as { skillCategoriesSet: (id: string, kind: string, ids: string[]) => Promise<Env<string[]>> })
+    .skillCategoriesSet(item.id, item.kind, ids)
+    .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<string[]>);
+  if (!r.ok) { fail(r.error || "Couldn't change the categories. An org admin can."); return; }
+  shareItem = { ...item, categories: r.data ?? ids };
+  paintCategories();
+  discoverRows = [];
+}
+
 /** Where this bundle stands with the org's hub, beside its name: waiting on the
  *  review desk, or live at a version. A share that vanishes into a button label
  *  is not a confirmation (his report, 2026-09-17). */
@@ -773,6 +833,10 @@ let flowGraph: Parameters<typeof renderFlow>[1] | null = null;
 /** What the org's hub holds for the open bundle: the live version, and the one
  *  still on the review desk. Null until loadVersions answers. */
 let shareState: { head: number | null; pending: number | null } = { head: null, pending: null };
+/** The shared item behind the open bundle: what it is on the org's hub, and
+ *  the shelves it sits on. Promote guesses the shelves from the payload, so
+ *  this is where a person corrects the guess (his report, 2026-09-17). */
+let shareItem: { id: string; kind: BundleType; categories: string[] } | null = null;
 function paintFlow(): void {
   const host = el("skill-flow-host");
   if (!host) return;
@@ -1043,6 +1107,8 @@ async function openDetail(id: string): Promise<void> {
   (el("skill-author-meta") as HTMLElement).textContent = local ? "On this machine" : `Loaded by ${SOURCE_LABEL[s.source].replace("From ", "")}`;
   viewedVersion = null;
   shareState = { head: null, pending: null };
+  shareItem = null;
+  paintCategories();
   paintDetailChrome();
   paintDetailTabs(typeOf(s));
   collapsedDirs = new Set();
@@ -1068,11 +1134,15 @@ let versionItemId: string | null = null;
 async function loadVersions(): Promise<void> {
   if (!current) return;
   const id = current.id;
-  const r = await api().skillVersions(id) as Env<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }>; head?: number | null; pending?: number | null }>;
+  const r = await api().skillVersions(id) as Env<{ itemId: string | null; kind?: BundleType; versions: Array<{ version: number; notes: string; createdAt: string }>; head?: number | null; pending?: number | null; categories?: string[] }>;
   if (!current || current.id !== id) return;
   versionItemId = r.ok ? (r.data?.itemId ?? null) : null;
   shareState = { head: r.ok ? r.data?.head ?? null : null, pending: r.ok ? r.data?.pending ?? null : null };
+  shareItem = r.ok && r.data?.itemId
+    ? { id: r.data.itemId, kind: r.data.kind ?? typeOf(current), categories: r.data.categories ?? [] }
+    : null;
   paintShareChip();
+  paintCategories();
   paintVersions(r.ok ? (r.data?.versions ?? []) : []);
 }
 
@@ -1322,6 +1392,7 @@ async function share(): Promise<void> {
   const approved = r.data?.status === "approved";
   shareState = approved ? { head: v ?? null, pending: null } : { head: shareState.head, pending: v ?? null };
   paintShareChip();
+  paintCategories();
   notice(approved
     ? `"${current.name}" is live on your organization's hub as v${v}. Members install it from Discover.`
     : `"${current.name}" v${v} went to your organization's review desk. An org admin decides; sharing again replaces it.`);

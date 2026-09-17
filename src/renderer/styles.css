@@ -20881,3 +20881,10 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 /* Where a share stands: live on the org's hub, or waiting on its desk. */
 .skill-share-chip { text-transform: none; }
 .skill-share-chip.pending { border-color: color-mix(in srgb, var(--warning, #d9a441) 45%, var(--border-2)); color: var(--warning, #d9a441); }
+/* The shelves a shared bundle sits on, on its detail (2026-09-17). */
+.skill-cats-block { margin-top: 14px; }
+.skill-cats { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.skill-cat-chip { padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2); font-size: 11px; }
+.skill-cat-none { font-size: 12px; color: var(--text-3); }
+.skill-cat-edit { background: none; border: none; padding: 1px 4px; color: var(--accent); font-size: 11.5px; cursor: pointer; }
+.skill-cat-edit:hover { text-decoration: underline; }

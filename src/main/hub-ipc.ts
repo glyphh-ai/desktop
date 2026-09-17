@@ -219,21 +219,23 @@ async function publish(skillId: string, notes: string): Promise<{ version: numbe
 
 /** The hub versions behind a local skill: the org item whose slug is the
  *  folder's name. "current" is the disk; these are the immutable shares. */
-async function versionsFor(skillId: string): Promise<{ itemId: string | null; versions: Array<{ version: number; notes: string; createdAt: string }>; head: number | null; pending: number | null }> {
+async function versionsFor(skillId: string): Promise<{ itemId: string | null; kind: Kind; versions: Array<{ version: number; notes: string; createdAt: string }>; head: number | null; pending: number | null; categories: string[] }> {
   const skill = getSkill(skillId);
   const slug = skill.id.slice(skill.id.indexOf(":") + 1);
   const kind = kindOfId(skillId);
   const items = await getClient().http.get<OrgItem[]>(`/api/library/${kind}`).catch(() => [] as OrgItem[]);
   const item = (Array.isArray(items) ? items : []).find((it) => it.slug === slug || it.name === skill.name);
-  if (!item) return { itemId: null, versions: [], head: null, pending: null };
+  if (!item) return { itemId: null, kind, versions: [], head: null, pending: null, categories: [] };
   const rows = await getClient().http.get<Array<{ version: number; notes: string; created_at: string }>>(`/api/library/${kind}/${encodeURIComponent(item.id)}/versions`).catch(() => []);
   return {
     itemId: item.id,
+    kind,
     versions: (Array.isArray(rows) ? rows : []).map((r) => ({ version: r.version, notes: r.notes || "", createdAt: r.created_at })),
     // What the SHARE actually did: the live version on the org's hub, and the
     // one still sitting on the review desk.
     head: item.headVersion ?? null,
     pending: (item as { pendingVersion?: number | null }).pendingVersion ?? null,
+    categories: Array.isArray((item as { categories?: unknown }).categories) ? ((item as { categories: string[] }).categories) : [],
   };
 }
 
@@ -269,6 +271,13 @@ export function registerHubIpc(): void {
   ipcMain.handle("skills-discover", (_e, kind?: string | string[]) => env(() => discover(kindsOf(kind))));
   ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
   ipcMain.handle("skill-updates", () => env(updatesAvailable));
+  // The shelves a shared bundle sits on. Promote guesses them from the payload;
+  // this is how a person corrects the guess without leaving the app.
+  ipcMain.handle("skill-categories-set", (_e, itemId: string, kind: string, ids: unknown) => env(async () => {
+    const categories = Array.isArray(ids) ? ids.map(String).filter(Boolean) : [];
+    await getClient().http.post(`/api/library/${kindOf(kind)}/${encodeURIComponent(String(itemId))}/categories`, { categories });
+    return categories;
+  }));
   ipcMain.handle("skill-update", (_e, id: string) => env(() => update(String(id))));
   ipcMain.handle("skill-publish", (_e, id: string, notes?: string) => env(() => publish(String(id), String(notes ?? ""))));
 }
