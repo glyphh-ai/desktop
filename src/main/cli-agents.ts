@@ -27,7 +27,7 @@ import path from "path";
 import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
 import { ipcMain } from "electron";
-import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
@@ -232,7 +232,9 @@ function ensureMcpConfig(id: string): void {
     };
     token = /^Bearer (.+)$/.exec(existing.mcpServers?.glyphh?.headers?.Authorization ?? "")?.[1];
   } catch { /* first write */ }
-  if (!token) token = localMcpGenToken(`agent:${id}`, 365).token;
+  // Same rule as the panel's file: a token the server no longer honors is
+  // replaced rather than handed to the CLI again.
+  if (!token || !localMcpTokenValid(token)) token = localMcpGenToken(`agent:${id}`, 365).token;
   fs.mkdirSync(path.join(AGENTS_DIR(), id), { recursive: true });
   upsertMcpServer(mcpFile(id), "glyphh", {
     type: "http",

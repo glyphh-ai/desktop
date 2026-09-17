@@ -21,7 +21,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
-import { startLocalMcpServer, localMcpStatus, localMcpGenToken } from "./local-mcp-server.js";
+import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
@@ -209,7 +209,8 @@ function bridgeMcpFile(): string | null {
       const existing = JSON.parse(readFileSync(file, "utf-8")) as { mcpServers?: { glyphh?: { headers?: { Authorization?: string } } } };
       token = /^Bearer (.+)$/.exec(existing.mcpServers?.glyphh?.headers?.Authorization ?? "")?.[1];
     } catch { /* first write */ }
-    if (!token) token = localMcpGenToken("glyphh-panel", 365).token;
+    // Reuse only a token the server still honors; otherwise mint a fresh one.
+    if (!token || !localMcpTokenValid(token)) token = localMcpGenToken("glyphh-panel", 365).token;
     const cfg = { mcpServers: { glyphh: { type: "http", url: `http://127.0.0.1:${port}/mcp`, headers: { Authorization: `Bearer ${token}` } } } };
     mkdirSync(STORE_DIR(), { recursive: true });
     writeFileSync(file, JSON.stringify(cfg, null, 2), "utf-8");

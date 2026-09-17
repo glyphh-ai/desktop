@@ -15,7 +15,9 @@
  */
 
 import http from "node:http";
+import fs from "node:fs";
 import path from "node:path";
+import { userScopedPath } from "./app-paths.js";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -58,13 +60,52 @@ function sha256(s: string): string {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
+/**
+ * WHERE A LOOPBACK SECRET LIVES (his order, 2026-09-17: "super durable and
+ * can't fail on the user but also secure").
+ *
+ * These tokens guard http://127.0.0.1 — this machine's own tool surface — and
+ * they were kept ONLY in preferences, which are fetched from the server. Until
+ * that fetch lands, or if it fails, the map is empty and every token the app
+ * itself wrote reads as expired, which is what the agent reported. A local
+ * capability must not need the network to authenticate.
+ *
+ * So the hashes are mirrored beside the config files that already carry the
+ * raw tokens, in the user's own directory, 0600. Preferences stay the roaming
+ * copy; the file is the one that answers when the server has not. Verification
+ * reads BOTH, so it never fails open (a token still has to match a hash we
+ * minted) and never fails shut because a fetch is in flight.
+ */
+const tokenFile = (): string => userScopedPath("mcp-tokens.json");
+
+function readTokenFile(): StoredToken[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(tokenFile(), "utf-8")) as StoredToken[];
+    return Array.isArray(raw) ? raw : [];
+  } catch { return []; }
+}
+
+function writeTokenFile(tokens: StoredToken[]): void {
+  try {
+    fs.mkdirSync(path.dirname(tokenFile()), { recursive: true });
+    fs.writeFileSync(tokenFile(), JSON.stringify(tokens, null, 2), { encoding: "utf-8", mode: 0o600 });
+  } catch (err) {
+    console.warn("[mcp] could not mirror the token store locally:", err instanceof Error ? err.message : err);
+  }
+}
+
 function loadTokens(): StoredToken[] {
-  const raw = getPreference<StoredToken[]>("localMcpTokens", []);
-  return Array.isArray(raw) ? raw : [];
+  const fromPrefs = getPreference<StoredToken[]>("localMcpTokens", []);
+  const prefs = Array.isArray(fromPrefs) ? fromPrefs : [];
+  const local = readTokenFile();
+  const byHash = new Map<string, StoredToken>();
+  for (const t of [...local, ...prefs]) if (t?.hash) byHash.set(t.hash, t);
+  return [...byHash.values()];
 }
 
 function saveTokens(tokens: StoredToken[]): void {
   setPreference("localMcpTokens", tokens);
+  writeTokenFile(tokens);
 }
 
 /** Generate a token. The raw value is returned ONCE — only its hash is stored. */
@@ -94,6 +135,13 @@ export function localMcpListTokens(): LocalMcpTokenInfo[] {
 export function localMcpRevokeToken(id: string): void {
   saveTokens(loadTokens().filter((t) => t.id !== id));
 }
+
+/** Is a token we handed out earlier still good? A config file keeps its token
+ *  forever, so the writer has to ask before reusing one — a token minted under
+ *  another account, or lost when the preference store could not be read, stays
+ *  in that file and every call fails with "the token has expired" (his report,
+ *  2026-09-17). */
+export const localMcpTokenValid = (raw: string | undefined): boolean => isValidBearer(raw);
 
 function isValidBearer(raw: string | undefined): boolean {
   if (!raw) return false;
