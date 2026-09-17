@@ -205,6 +205,34 @@ async function standings(): Promise<Record<string, BundleStanding>> {
   return out;
 }
 
+/**
+ * WHERE EVERY SHARE STANDS, on the LIST (his report, 2026-09-17: "you didn't
+ * add anything to the app indicating that an item is shared and pending or
+ * rejected"). The detail page asks per bundle; the list would need one call
+ * each, so this is the same answer for all of them in one read per kind.
+ */
+export interface ShareState { head: number | null; pending: number | null; rejected: number | null }
+async function shareStates(): Promise<Record<string, ShareState>> {
+  const out: Record<string, ShareState> = {};
+  const mine = listSkills(["skill", "app", "task", "plugin"]);
+  if (!mine.length) return out;
+  const kinds = [...new Set(mine.map((s) => kindOfId(s.id)))];
+  const client = getClient();
+  const lists = await Promise.all(kinds.map(async (k) =>
+    [k, await client.http.get<OrgItem[]>(`/api/library/${k}`).catch(() => [] as OrgItem[])] as const));
+  const byKind = new Map(lists.map(([k, rows]) => [k, Array.isArray(rows) ? rows : []]));
+  for (const sk of mine) {
+    const kind = kindOfId(sk.id);
+    const slug = sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase();
+    const hit = (byKind.get(kind) ?? []).find((it) => it.slug?.toLowerCase() === slug || it.name === sk.name);
+    if (!hit) continue;
+    const raw = hit as OrgItem & { pendingVersion?: number | null; rejectedVersion?: number | null };
+    const state: ShareState = { head: raw.headVersion ?? null, pending: raw.pendingVersion ?? null, rejected: raw.rejectedVersion ?? null };
+    if (state.head || state.pending || state.rejected) out[sk.id] = state;
+  }
+  return out;
+}
+
 /** Installed bundles the catalog has moved past, by folder id. */
 async function updatesAvailable(): Promise<Record<string, { have: number; latest: number; name: string }>> {
   const out: Record<string, { have: number; latest: number; name: string }> = {};
@@ -354,6 +382,7 @@ export function registerHubIpc(): void {
   ipcMain.handle("skill-install", (_e, ref: string, kind?: string) => env(() => install(String(ref), kindOf(kind))));
   ipcMain.handle("skill-updates", () => env(updatesAvailable));
   ipcMain.handle("skill-standings", () => env(standings));
+  ipcMain.handle("skill-shares", () => env(shareStates));
   // The shelves a shared bundle sits on. Promote guesses them from the payload;
   // this is how a person corrects the guess without leaving the app.
   ipcMain.handle("skill-categories-set", (_e, itemId: string, kind: string, ids: unknown) => env(async () => {

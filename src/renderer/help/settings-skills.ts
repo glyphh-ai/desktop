@@ -197,31 +197,35 @@ async function saveCategories(ids: string[]): Promise<void> {
   discoverRows = [];
 }
 
-/** Where this bundle stands with the org's hub, beside its name: waiting on the
- *  review desk, or live at a version. A share that vanishes into a button label
- *  is not a confirmation (his report, 2026-09-17). */
+/** THE THREE ANSWERS A REVIEW CAN GIVE (his order, 2026-09-17): waiting and
+ *  never-shared used to look identical, and a decline looked like neither.
+ *  One chip, used by the detail title AND by every list row — a share that
+ *  only shows on the page you already opened is not a status. */
+function shareChip(s: { head: number | null; pending: number | null; declined?: { version: number; summary: string } | null; rejected?: number | null }): HTMLElement | null {
+  const declinedVersion = s.declined?.version ?? s.rejected ?? null;
+  const state = s.pending ? "pending" : declinedVersion ? "declined" : s.head ? "live" : "";
+  if (!state) return null;
+  const chip = document.createElement("span");
+  chip.className = `skill-type-chip skill-share-chip ${state}`;
+  chip.textContent = state === "pending" ? `in review · v${s.pending}`
+    : state === "declined" ? `changes requested · v${declinedVersion}`
+    : `shared · v${s.head}`;
+  chip.title = state === "pending"
+    ? "Waiting on your organization's review desk. An admin decides; sharing again replaces it."
+    : state === "declined"
+      ? `${s.declined?.summary || "An admin declined this version."} Share again to send a new one.`
+      : "Live on your organization's hub. Members install it from Discover.";
+  return chip;
+}
+
+/** Where this bundle stands with the org's hub, beside its name. */
 function paintShareChip(): void {
   const host = el("skill-detail-name");
   if (!host) return;
   host.querySelector(".skill-share-chip")?.remove();
   if (hubItem) return;
-  const { head, pending, declined } = shareState;
-  // THE THREE ANSWERS A REVIEW CAN GIVE (his order, 2026-09-17). Waiting and
-  // never-shared used to look identical, and a decline looked like neither.
-  const state = pending ? "pending" : declined ? "declined" : head ? "live" : "";
-  if (!state) return;
-  const label = state === "pending" ? `in review · v${pending}`
-    : state === "declined" ? `changes requested · v${declined!.version}`
-    : `shared · v${head}`;
-  const chip = document.createElement("span");
-  chip.className = `skill-type-chip skill-share-chip ${state}`;
-  chip.textContent = label;
-  chip.title = state === "pending"
-    ? "Waiting on your organization's review desk. An admin decides; sharing again replaces it."
-    : state === "declined"
-      ? `${declined!.summary || "An admin declined this version."} Share again to send a new one.`
-      : "Live on your organization's hub. Members install it from Discover.";
-  host.appendChild(chip);
+  const chip = shareChip(shareState);
+  if (chip) host.appendChild(chip);
 }
 
 /** The name, with the type beside it (never under it — his order, 2026-09-17). */
@@ -266,6 +270,19 @@ function notice(msg: string, opts?: { detail?: string }): void {
 interface Standing { from: "org" | "glyphh"; sourceName: string; name: string; have: number; latest: number }
 let standings: Record<string, Standing> = {};
 
+/** Every bundle's share state by folder id, for the list rows. */
+interface ListShare { head: number | null; pending: number | null; rejected: number | null }
+let shares: Record<string, ListShare> = {};
+
+async function refreshShares(): Promise<void> {
+  const r = await (api() as unknown as { skillShares: () => Promise<Env<Record<string, ListShare>>> }).skillShares()
+    .catch(() => ({ ok: false } as Env<Record<string, ListShare>>));
+  const next = r.ok ? r.data ?? {} : {};
+  const changed = JSON.stringify(next) !== JSON.stringify(shares);
+  shares = next;
+  if (changed && el("skills-groups")) renderList();
+}
+
 async function refreshStandings(): Promise<void> {
   const r = await (api() as unknown as { skillStandings: () => Promise<Env<Record<string, Standing>>> }).skillStandings()
     .catch(() => ({ ok: false } as Env<Record<string, Standing>>));
@@ -289,6 +306,7 @@ async function refreshUpdates(): Promise<void> {
   const changed = Object.keys(next).join() !== Object.keys(updates).join();
   updates = next;
   void refreshStandings();
+  void refreshShares();
   if (changed && el("skills-groups")) renderList();
   if (changed && current) paintDetailChrome();
 }
@@ -369,7 +387,7 @@ async function loadDiscover(): Promise<void> {
 }
 
 type MenuItem = { label: string; danger?: boolean; checked?: boolean; onClick: () => void } | { sep: true } | { heading: string } | { label: string; children: MenuItem[] };
-function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType }): HTMLElement {
+function row(opts: { name: string; by: string; desc: string; right: string; onOpen?: () => void; menu?: MenuItem[]; action?: HTMLElement; icon?: string | null; tool?: string | null; type?: BundleType; share?: ListShare }): HTMLElement {
   const mark = markOf(opts);
   const r = document.createElement("div");
   r.className = "skill-row" + (opts.onOpen ? " openable" : "");
@@ -380,6 +398,10 @@ function row(opts: { name: string; by: string; desc: string; right: string; onOp
     </div>
     <div class="skill-row-right"></div>`;
   (r.querySelector(".skill-row-title") as HTMLElement).textContent = opts.name;
+  if (opts.share) {
+    const chip = shareChip(opts.share);
+    if (chip) (r.querySelector(".skill-row-name") as HTMLElement).appendChild(chip);
+  }
   (r.querySelector(".skill-row-by") as HTMLElement).textContent = opts.by;
   (r.querySelector(".skill-row-desc") as HTMLElement).textContent = opts.desc || "No description";
   const right = r.querySelector(".skill-row-right") as HTMLElement;
@@ -502,6 +524,7 @@ function renderList(): void {
         g.appendChild(row({
           name: s.name, by: s.author ? `by ${s.author}` : "by you",
           desc: s.description, right: when(s.updatedAt), icon: s.icon, tool: s.tool, type: s.type,
+          share: shares[s.id],
           onOpen: () => void openDetail(s.id),
           action: up ? updateButton(s.id, up.latest) : undefined,
           menu: [
