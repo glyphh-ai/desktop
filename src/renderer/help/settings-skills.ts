@@ -620,8 +620,10 @@ function renderDiscoverHome(host: HTMLElement, rows: DiscoverRow[]): void {
     f.addEventListener("click", () => void openHubDetail(featured));
     host.appendChild(f);
   }
+  // The featured pick is already the biggest thing on the page; showing it
+  // again two inches below made a two-item catalog look like three.
   const byInstalls = [...rows].sort((a, b) => b.installs - a.installs || b.createdAt.localeCompare(a.createdAt));
-  shelf(host, "For you", byInstalls.filter((d) => !d.installed), () => { discoverView = { kind: "shelf", id: "all" }; renderList(); }, 6);
+  shelf(host, "For you", byInstalls.filter((d) => !d.installed && d.ref !== featured?.ref), () => { discoverView = { kind: "shelf", id: "all" }; renderList(); }, 6);
 
   // BROWSE BY CATEGORY — counts over what this member can see; "Show all" opens the rest.
   const counts = new Map<string, number>();

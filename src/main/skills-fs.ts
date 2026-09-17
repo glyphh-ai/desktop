@@ -754,7 +754,13 @@ export function retypeBundle(id: string, to: BundleType): SkillSummary {
 /** The hub payload shape today ({manifest, prompt, code}) as folder files. */
 export function filesFromHubPayload(name: string, description: string, p: Record<string, unknown>): Record<string, string> {
   const files = (p.files && typeof p.files === "object" ? p.files : null) as Record<string, string> | null;
-  if (files && typeof files["SKILL.md"] === "string") return files;
+  // WHATEVER THE PAYLOAD CARRIES, INSTALL IT (his report, 2026-09-17: "a
+  // plugin needs .claude-plugin/plugin.json" when adding one from Discover).
+  // This only recognised a root SKILL.md, so a PLUGIN's real files — its
+  // manifest, its README, its skills/ — were thrown away and replaced with a
+  // synthesized SKILL.md, and the install then refused the result for missing
+  // the manifest it had just discarded.
+  if (files && Object.keys(files).length) return files;
   const body = typeof p.prompt === "string" ? p.prompt : "";
   const fm = `---\nname: ${name}\ndescription: ${description.replace(/\n/g, " ")}\n---\n\n`;
   const out: Record<string, string> = { "SKILL.md": fm + body };

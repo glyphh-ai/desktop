@@ -260,7 +260,7 @@ function saveJournal(runId: string, journal: RunJournal): void {
 
 // ── the ctx verbs main answers ───────────────────────────────────────────────
 
-interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout }
+interface Live { proc: UtilityProcess; journal: RunJournal; slug: string; spec: TaskSpec; timer: NodeJS.Timeout; startedAt: string }
 const live = new Map<string, Live>();
 
 const summarize = (v: unknown, max = 4000): unknown => {
@@ -391,10 +391,17 @@ function broadcast(): void {
 }
 
 function finish(runId: string, startedAt: string, status: "ok" | "failed", error: string | null, result: unknown): void {
-  getLocalDb().prepare("UPDATE loop_runs SET duration_ms = ?, status = ?, error = ?, result = ?, output = ? WHERE id = ?")
-    .run(Date.now() - Date.parse(startedAt), status, error, result === undefined ? null : JSON.stringify(result), error ? error.slice(0, 20_000) : JSON.stringify(result ?? null).slice(0, 20_000), runId);
+  // THE LIVE ENTRY GOES FIRST (his report, 2026-09-17: "already running" for a
+  // run that had died). A failing write must never leave the slot held, or the
+  // task can never be started again for the life of the session.
   const l = live.get(runId);
   if (l) { clearTimeout(l.timer); live.delete(runId); }
+  try {
+    getLocalDb().prepare("UPDATE loop_runs SET duration_ms = ?, status = ?, error = ?, result = ?, output = ? WHERE id = ?")
+      .run(Date.now() - Date.parse(startedAt), status, error, result === undefined ? null : JSON.stringify(result), error ? error.slice(0, 20_000) : JSON.stringify(result ?? null).slice(0, 20_000), runId);
+  } catch (err) {
+    console.error("[tasks] could not record the end of a run:", err instanceof Error ? err.message : err);
+  }
   broadcast();
 }
 
@@ -411,7 +418,7 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
     try { proc.kill(); } catch { /* gone */ }
     finish(run.id, run.startedAt, "failed", `timed out after ${Math.round((manifest.timeoutMs || DEFAULT_TIMEOUT_MS) / 60000)} min`, null);
   }, manifest.timeoutMs || DEFAULT_TIMEOUT_MS);
-  const l: Live = { proc, journal, slug: spec.slug, spec, timer };
+  const l: Live = { proc, journal, slug: spec.slug, spec, timer, startedAt: run.startedAt };
   live.set(run.id, l);
   proc.on("message", (msg: { type: string; id?: number; kind?: string; args?: unknown[]; result?: unknown; error?: string }) => {
     if (msg.type === "call" && typeof msg.id === "number") {
@@ -440,7 +447,15 @@ function launch(run: TaskRun, spec: TaskSpec, resumed: boolean): void {
 export function runTask(slug: string, input: unknown = {}, trigger: { kind: "manual" | "schedule" | "agent"; scheduleId?: string } = { kind: "manual" }): TaskRun {
   const spec = getTaskSpec(slug);
   if (!spec.enabled) throw new Error(`task "${slug}" is turned off`);
-  if ([...live.values()].some((l) => l.slug === slug)) throw new Error(`task "${slug}" is already running`);
+  // A HELD SLOT MUST BE A LIVING PROCESS. One whose process is gone is swept
+  // here rather than blocking every future run.
+  for (const [id, l] of [...live.entries()]) {
+    if (l.slug !== slug) continue;
+    const alive = typeof (l.proc as { pid?: number }).pid === "number";
+    if (alive) throw new Error(`task "${slug}" is already running`);
+    try { l.proc.kill(); } catch { /* already gone */ }
+    finish(id, l.startedAt, "failed", "the run's process died", null);
+  }
   const id = rid();
   const startedAt = now();
   const journal: RunJournal = { checkpoints: {}, events: [] };
