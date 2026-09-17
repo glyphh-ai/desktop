@@ -511,6 +511,90 @@ export function installSkill(name: string, files: Record<string, string>, kind: 
   return summarize(source, name, dir, true)!;
 }
 
+/** THE CARD AN INSTALLED BUNDLE LEAVES (his report, 2026-09-17).
+ *
+ *  A `.glyphh` bundle installs its runnable payload into the app host's
+ *  sandbox root and its tab row into the apps home, and the library reads
+ *  SKILL.md + the manifest beside it. So an app an agent installed was on no
+ *  page at all: "I don't see the skill anywhere". The installer writes the
+ *  card beside the tab row, which makes the app a skill of type app like
+ *  every other bundle, gives it the CLI mirror, and tells any agent reading
+ *  that mirror which tools the app answers to.
+ *
+ *  A card we generated carries `generated: glyphh-bundle` and is rewritten on
+ *  every reinstall. Drop that line and the file is the user's: left alone. */
+export interface AppCard {
+  slug: string;
+  name: string;
+  description: string;
+  /** Where the runnable payload actually sits (custom-apps/…), for the reader. */
+  bundleDir: string;
+  entry: string;
+  connectors: string[];
+  tools: Array<{ name: string; description?: string }>;
+  iconSvg?: string | null;
+}
+
+export function writeAppCard(card: AppCard): void {
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(card.slug)) throw new Error(`bad app slug: ${card.slug}`);
+  const dir = path.join(ROOTS.app(), card.slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const manifest: Record<string, unknown> = {
+    name: card.slug,
+    kind: "glyphh-app",
+    bundle: card.bundleDir,
+    entry: card.entry,
+    tools: card.tools.map((t) => t.name),
+    dependencies: { connections: card.connectors },
+  };
+  if (card.iconSvg && card.iconSvg.includes("<svg")) {
+    fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
+    manifest.icon = "icon.svg";
+  }
+  fs.writeFileSync(path.join(dir, "app.json"), JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+  const md = path.join(dir, "SKILL.md");
+  if (fs.existsSync(md)) {
+    let mine = false;
+    try { mine = parseSkillMd(fs.readFileSync(md, "utf-8")).frontmatter.generated === "glyphh-bundle"; } catch { mine = false; }
+    if (!mine) { syncLinks(); return; }
+  }
+  const tools = card.tools.length
+    ? card.tools.map((t) => `- \`${t.name}\`${t.description ? ` — ${t.description}` : ""}`).join("\n")
+    : "- This app declares no tools. Open it and the user works it by hand.";
+  const connections = card.connectors.length
+    ? card.connectors.map((c) => `- \`${c}\` — the user connects it on Settings → Customize → Connections.`).join("\n")
+    : "- None. It needs no connected account.";
+  const oneLine = (card.description || `The ${card.name} app.`).replace(/\s+/g, " ").trim();
+  fs.writeFileSync(md, [
+    "---",
+    `name: ${card.slug}`,
+    `description: ${oneLine}`,
+    "type: app",
+    "generated: glyphh-bundle",
+    "---",
+    "",
+    `# ${card.name}`,
+    "",
+    "A Glyphh app installed from a bundle. Its face opens in the Apps work panel,",
+    "and the agent drives it through the tools below.",
+    "",
+    "## Tools",
+    "",
+    tools,
+    "",
+    "## Connections",
+    "",
+    connections,
+    "",
+    "## Notes",
+    "",
+    `The runnable bundle lives at \`${card.bundleDir}\`. Reinstalling the app rewrites`,
+    "this file; delete the `generated:` line to keep your own text.",
+    "",
+  ].join("\n"), "utf-8");
+  syncLinks();
+}
+
 /** The hub payload shape today ({manifest, prompt, code}) as folder files. */
 export function filesFromHubPayload(name: string, description: string, p: Record<string, unknown>): Record<string, string> {
   const files = (p.files && typeof p.files === "object" ? p.files : null) as Record<string, string> | null;

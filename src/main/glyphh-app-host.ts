@@ -40,7 +40,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
-import { userScopedPath, glyphhPath, appsRoot, appDir } from "./app-paths.js";
+import { userScopedPath, glyphhPath, appsRoot, appDir, getActiveUserId } from "./app-paths.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
@@ -54,6 +54,8 @@ import {
 } from "./glyphh-app-services.js";
 import { secretValueFromRow, secretKeysFromRow, isHostOnlySecret, isSecretAppReadable } from "./app-secrets.js";
 import { fsPick, fsRead, fsWrite } from "./glyphh-app-fs.js";
+import { writeAppCard } from "./skills-fs.js";
+import { onUserChange } from "./user-scope.js";
 
 // ── manifest ────────────────────────────────────────────────
 
@@ -332,6 +334,13 @@ export function isGlyphhAppBundle(zipPath: string): boolean {
 
 // ── install ─────────────────────────────────────────────────
 
+/** The bundle's own icon.svg, when it ships one, for the library card. */
+function bundleIconSvg(zip: AdmZip): string | null {
+  const e = zip.getEntry("icon.svg");
+  if (!e || e.header.size > 64_000) return null;
+  try { return e.getData().toString("utf8"); } catch { return null; }
+}
+
 /**
  * Install a .glyphh glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
@@ -461,6 +470,25 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  // THE LIBRARY CARD (his report, 2026-09-17): an installed app is a skill of
+  // type app, so it belongs on Settings → Build → Skills and in every CLI
+  // mirror. Without the card the install was invisible: the agent reported
+  // success and the user found the app on no page.
+  try {
+    writeAppCard({
+      slug: manifest.slug,
+      name: manifest.name,
+      description: manifest.description || "",
+      bundleDir: dir,
+      entry: manifest.entry,
+      connectors: manifest.connectors ?? [],
+      tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description })),
+      iconSvg: bundleIconSvg(zip),
+    });
+  } catch (err) {
+    console.warn(`[glyphh-app] "${manifest.slug}" installed without a library card:`, err instanceof Error ? err.message : err);
   }
 
   // (Re)install: kill any running worker so the next invoke runs the new
@@ -818,6 +846,42 @@ const APP_UI_CSP = [
  * CSP-covered). Runs post-auth from registerGlyphhAppHost; a pre-auth boot just
  * migrates on the next launch. `_libs` and non-glyphh rows are skipped.
  */
+/**
+ * Cards for apps installed before the installer wrote them (his report,
+ * 2026-09-17: an agent installed an app and it appeared nowhere). Every
+ * glyphh-app row whose folder in the apps home has no SKILL.md gets one,
+ * built from the row's own config. Idempotent, and a card the user edited is
+ * left alone by writeAppCard itself.
+ */
+async function repairAppCards(): Promise<void> {
+  try {
+    // Pre-auth the scoped homes fall back to the machine-wide dir, and cards
+    // written there would be every user's (his data-bleed report, 2026-09-17).
+    if (!getActiveUserId()) return;
+    for (const row of await appsStore.mine()) {
+      if (row.kind !== "glyphh" || !row.slug) continue;
+      if (fs.existsSync(path.join(appsStore.APPS_DIR(), row.slug, "SKILL.md"))) continue;
+      const cfg = (row.config ?? {}) as { connectors?: unknown; tools?: unknown };
+      const entryPath = String(row.nativeRef || "");
+      writeAppCard({
+        slug: row.slug,
+        name: row.name || row.slug,
+        description: row.description || "",
+        bundleDir: entryPath ? path.dirname(entryPath) : "",
+        entry: entryPath ? path.basename(entryPath) : "index.html",
+        connectors: Array.isArray(cfg.connectors) ? cfg.connectors.map(String) : [],
+        tools: Array.isArray(cfg.tools)
+          ? (cfg.tools as Array<{ name?: unknown; description?: unknown }>)
+              .filter((t) => typeof t?.name === "string")
+              .map((t) => ({ name: String(t.name), description: typeof t.description === "string" ? t.description : undefined }))
+          : [],
+      });
+    }
+  } catch (err) {
+    console.warn("[glyphh-app] card repair skipped:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function migrateCustomAppsToOrgScoped(): Promise<void> {
   try {
     const legacyRoot = customAppsDir();
@@ -924,6 +988,10 @@ export function registerGlyphhAppHost(): void {
   // Relocate any legacy flat installs into the org-scoped layout (best-effort,
   // post-auth). Legacy apps keep working either way — custom-apps stays covered.
   void migrateCustomAppsToOrgScoped();
+  // Cards for apps installed before the installer wrote them. Boot may be
+  // pre-auth, so this also runs the moment a user signs in.
+  void repairAppCards();
+  onUserChange(() => { void repairAppCards(); });
 
   initAppServices({
     resolveApp: async (slug) => {
