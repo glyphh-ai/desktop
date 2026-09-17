@@ -218,7 +218,8 @@ async function update(skillId: string): Promise<{ version: number }> {
 }
 
 /** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
- *  skill and its plugin from the public catalog, installed once when absent. */
+ *  skill and its plugin from the public catalog, installed once when absent.
+ *  Keeping them CURRENT is the Update button's job, not this function's. */
 const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }];
 export async function installDefaultHubItems(): Promise<void> {
   try {
@@ -227,20 +228,15 @@ export async function installDefaultHubItems(): Promise<void> {
       const hit = pub.find((p) => p.kind === want.kind && p.slug === want.slug);
       if (!hit) continue;
       const have = listSkills(want.kind).find((s) => s.name === want.slug || s.id.endsWith(`:${want.slug}`));
-      if (!have) {
-        await install(`glyphh:${hit.id}`, want.kind);
-        console.info(`[hub] installed the default ${want.kind} "${want.slug}"`);
-        continue;
-      }
-      // THE HOUSE SKILL FOLLOWS THE SERVER (his report, 2026-09-17: "i didn't
-      // update the glyphh skill on me"). These two are Glyphh's own writing —
-      // the tool surface an agent reads — so a newer catalog version replaces
-      // this copy instead of waiting for a button nobody presses. Everything
-      // else keeps the Update button, where the user decides.
-      const origin = await originFor(have.id, want.kind);
-      if (origin && versionOf(hit) <= Number(origin.version || 0)) continue;
-      await update(have.id);
-      console.info(`[hub] refreshed the default ${want.kind} "${want.slug}" to v${versionOf(hit)}`);
+      if (have) continue;
+      // NOTHING REWRITES A FOLDER BEHIND THE USER (his report, 2026-09-17:
+      // "it showed as having an update once but it isn't showing anymore").
+      // A sign-in refresh of the house skill applied the update before he
+      // could, so the badge appeared and vanished. The update is VISIBLE
+      // instead: the catalog moves, the badge shows, the user presses Update.
+      // This only installs what is missing.
+      await install(`glyphh:${hit.id}`, want.kind);
+      console.info(`[hub] installed the default ${want.kind} "${want.slug}"`);
     }
   } catch (err) {
     console.warn("[hub] default installs:", err instanceof Error ? err.message : String(err));
