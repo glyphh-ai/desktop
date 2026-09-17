@@ -39,7 +39,7 @@ async function connect(): Promise<Client> {
 export function resetGatewayMcp(): void {
   const c = client;
   client = null;
-  toolNames = null;
+  knownTools = null;
   if (c) void c.close().catch(() => {});
 }
 
@@ -60,16 +60,32 @@ export function resetGatewayMcp(): void {
  * against real names. The answer is cached per connection and refreshed when
  * a name misses, since a connection added today must not need a restart.
  */
-let toolNames: string[] | null = null;
+interface KnownTool { name: string; inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }
+let knownTools: KnownTool[] | null = null;
 
-async function knownToolNames(force = false): Promise<string[]> {
-  if (toolNames && !force) return toolNames;
+async function knownToolList(force = false): Promise<KnownTool[]> {
+  if (knownTools && !force) return knownTools;
   try {
     const c = await connect();
     const listed = await c.listTools();
-    toolNames = (listed?.tools ?? []).map((t) => String(t.name));
-  } catch { toolNames = toolNames ?? []; }
-  return toolNames;
+    knownTools = (listed?.tools ?? []).map((t) => ({ name: String(t.name), inputSchema: t.inputSchema as KnownTool["inputSchema"] }));
+  } catch { knownTools = knownTools ?? []; }
+  return knownTools;
+}
+
+const knownToolNames = async (force = false): Promise<string[]> => (await knownToolList(force)).map((t) => t.name);
+
+/** The arguments a tool takes, in one line. A failed call carries this so the
+ *  next attempt is informed rather than another guess (his report,
+ *  2026-09-17: "it found the way through but it had to figure it out"). */
+function signatureOf(tool: KnownTool | undefined): string {
+  const props = tool?.inputSchema?.properties;
+  if (!props || typeof props !== "object") return "";
+  const required = new Set(tool?.inputSchema?.required ?? []);
+  const names = Object.keys(props);
+  if (!names.length) return "";
+  const shown = names.slice(0, 20).map((n) => (required.has(n) ? `${n}*` : n));
+  return `takes ${shown.join(", ")}${names.length > 20 ? ", …" : ""} (* required)`;
 }
 
 /** The gateway's own name for one app's tool, or null when it has no such
@@ -106,7 +122,10 @@ export async function callGatewayTool(appSlug: string, tool: string, args: Recor
   const r = res as { isError?: boolean; content?: Array<{ type?: string; text?: string }> };
   if (r?.isError) {
     const said = (r.content ?? []).map((x) => x?.text).filter(Boolean).join(" ").trim();
-    throw new Error(said || `"${tool}" on ${appSlug} was refused by the gateway`);
+    // The tool's own signature rides the failure: a wrong argument name is the
+    // commonest one, and the caller should not have to go and ask.
+    const sig = signatureOf((await knownToolList()).find((t) => t.name === name));
+    throw new Error(`${said || `"${tool}" on ${appSlug} was refused by the gateway`}${sig ? ` — ${tool} ${sig}` : ""}`);
   }
   return res;
 }
