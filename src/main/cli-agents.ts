@@ -82,7 +82,7 @@ export interface CliAgentRow {
  *  surfaces need: the agent panel and every scheduled run compose a headless
  *  turn, and a loop without that wiring can only be used in a terminal tile
  *  (his report, 2026-09-17: picking Cursor failed every message). */
-export type CliAgentListed = CliAgentRow & { command: string; headless: boolean };
+export type CliAgentListed = CliAgentRow & { command: string; headless: boolean; modes: SessionPermission[] };
 
 const agentFile = (id: string): string => path.join(AGENTS_DIR(), id, "agent.json");
 const mcpFile = (id: string): string => path.join(AGENTS_DIR(), id, "mcp.json");
@@ -444,7 +444,7 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
     headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
     baseUrlEnv: [],
     perm: { safe: " --mode ask", auto: " --force" },
-    permHeadless: { safe: " --mode ask", auto: " --force" },
+    permHeadless: { safe: " --mode ask", auto: " --force --approve-mcps" },
   },
   custom: {
     headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
@@ -524,8 +524,24 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
   claude: { plan: " --permission-mode plan", acceptEdits: " --permission-mode acceptEdits", auto: " --dangerously-skip-permissions" },
   codex: { plan: " --sandbox read-only", acceptEdits: " --full-auto", auto: " --dangerously-bypass-approvals-and-sandbox" },
   gemini: { acceptEdits: " --approval-mode auto_edit", auto: " --yolo" },
-  copilot: { acceptEdits: " --allow-all-tools", auto: " --allow-all" }, cursor: {}, custom: {},
+  copilot: { acceptEdits: " --allow-all-tools", auto: " --allow-all" },
+  // cursor-agent's own words: --mode plan is read-only, --auto-review lets a
+  // classifier run the safe calls and ask about the rest, --force runs
+  // everything (his report, 2026-09-17: nothing was wired here at all).
+  cursor: { plan: " --mode plan", acceptEdits: " --auto-review", auto: " --force" },
+  custom: {},
 };
+
+/** Which session modes a loop can actually honor. "ask" is every CLI's own
+ *  default, so it needs no flag and is always offered; the rest are the ones
+ *  that CLI has a switch for. A surface shows THIS, not a fixed four (his
+ *  report, 2026-09-17: four chips where the CLI has three). */
+export function modesFor(cli: CliAgentRow["cli"]): SessionPermission[] {
+  const table = SESSION_PERM_HEADLESS[cli] ?? {};
+  return ["ask", "plan", "acceptEdits", "auto"].filter(
+    (m) => m === "ask" || !!table[m as SessionPermission],
+  ) as SessionPermission[];
+}
 
 /** A HEADLESS one-shot: the CLI's print/exec mode with `prompt`, riding the
  *  same env file / model / MCP wiring an interactive open gets. The loop
@@ -563,7 +579,10 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
     case "cursor":
       // Its MCP seam is ~/.cursor/mcp.json (ensureCursorMcp at open), so there
       // is nothing to pass on the line; --print writes the answer to stdout.
-      core = `${row.cmd}${modelFlag(row.cli, m)}${perm} -p '${p}' --output-format text`;
+      // A headless run has no one to answer a prompt: without --approve-mcps
+      // every call to our own MCP servers comes back "rejected on your side"
+      // (his report, 2026-09-17), and an untrusted folder stops it dead.
+      core = `${row.cmd}${modelFlag(row.cli, m)}${perm} --approve-mcps --trust -p '${p}' --output-format text`;
       break;
     default:
       throw new Error(`the ${row.cli} CLI has no headless mode, so it can only be used in a terminal tile. Claude, Codex, Gemini, Copilot and Cursor run in the agent panel and on a schedule.`);
@@ -672,7 +691,7 @@ export function listCliAgents(): CliAgentListed[] {
     return [...orgLoops.values()]
       .filter((l) => l.enabled !== false)
       .map((l) => rowFromServer(l))
-      .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless }))
+      .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   let ids: string[] = [];
@@ -680,7 +699,7 @@ export function listCliAgents(): CliAgentListed[] {
   const out: CliAgentListed[] = [];
   for (const id of ids) {
     const row = readAgent(id);
-    if (row) out.push({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless });
+    if (row) out.push({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) });
   }
   // EVERY branded loop exists (his report, 2026-09-14: the picker showed
   // only Claude while the rest were enabled) — an explicit row (even a
@@ -688,7 +707,7 @@ export function listCliAgents(): CliAgentListed[] {
   for (const cli of Object.keys(DEFAULT_LOOP_NAMES)) {
     if (!out.some((r) => r.cli === cli)) {
       const def = defaultRowFor(cli)!;
-      out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless });
+      out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless, modes: modesFor(def.cli) });
     }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -1062,7 +1081,7 @@ export function registerCliAgentsIpc(): void {
       }
       writeAgent(row);
       if (row.mcp) ensureMcpConfig(id);
-      return { ok: true, agent: { ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless } };
+      return { ok: true, agent: { ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli) } };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

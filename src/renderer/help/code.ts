@@ -118,7 +118,7 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
 // Loop: which agent loop runs the session. This chip replaced the old effort
 // dial; the dial's turn/token tiers are gone with it — an attended session is
 // governed by its human, budgets by the resolved model's own limits.
-let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean; cli?: string }> = [
+let loops: Array<{ id: string; name: string; description: string; builtIn?: boolean; ownKey?: boolean; cli?: string; modes?: string[] | null }> = [
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
@@ -179,6 +179,9 @@ function paintChips(): void {
     // Mirror the on-screen mode to the current session before painting, so the
     // chip always reflects the session in view (not the last one touched).
     glyphhMode = currentMode();
+    // A mode this loop cannot honor is not a mode: fall back to asking, which
+    // every CLI does by default, rather than showing a gate that is not there.
+    if (!modesForLoop().some((m) => m.id === glyphhMode)) glyphhMode = "ask";
     const m = MODES.find((x) => x.id === glyphhMode) ?? MODES[0];
     mc.textContent = m.label;
     mc.title = `${m.hint} — Shift+Tab cycles`;
@@ -400,6 +403,12 @@ function renderModelMenu(): void {
 }
 
 // ── Mode drop-up ──
+/** The modes the active loop can actually run. */
+function modesForLoop(): typeof MODES[number][] {
+  const set = loops.find((l) => l.id === activeLoop())?.modes ?? null;
+  return set ? MODES.filter((m) => set.includes(m.id)) : [...MODES];
+}
+
 function renderModeMenu(): void {
   const menu = el("code-mode-menu");
   if (!menu) return;
@@ -422,7 +431,10 @@ function renderModeMenu(): void {
   head.append(headLabel, info);
   menu.appendChild(head);
 
-  for (const m of MODES) {
+  // ONLY WHAT THIS LOOP HONORS (his report, 2026-09-17: four chips where the
+  // CLI has three). Each loop publishes its own set; an unknown loop keeps all
+  // four rather than hiding a mode we simply have not asked about.
+  for (const m of modesForLoop()) {
     const item = document.createElement("button");
     item.className = "code-drop-item";
     item.type = "button";
@@ -503,12 +515,12 @@ async function refreshLoops(): Promise<void> {
   // the loop) — the same roster the wall's agent tiles ride. description
   // carries the cli name; the model chip filters by it.
   try {
-    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean }> }> }).cliAgentsList?.();
+    const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean; modes?: string[] }> }> }).cliAgentsList?.();
     const rows = r?.ok ? r.agents.filter((a) => a.enabled !== false) : [];
     if (rows.length) {
       // ownKey (a personal BYOK key on the loop) keeps its picker on the
       // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
-      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey, cli: a.cli ?? "claude" }));
+      loops = rows.map((a) => ({ id: a.id, name: a.name, description: a.cli ?? "", ownKey: !!a.apiKey, cli: a.cli ?? "claude", modes: a.modes ?? null }));
       loopsCanBuild = false;
     }
     // THE DEFAULT (his ruling, 2026-09-12): Settings → General's default
