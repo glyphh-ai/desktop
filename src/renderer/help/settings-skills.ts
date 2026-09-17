@@ -17,6 +17,7 @@ import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
+import { cronToWords } from "./schedules.js";
 import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
 
@@ -1003,10 +1004,10 @@ async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): P
 
   if (row) {
     text.textContent = row.enabled
-      ? `On the clock · ${row.cron} · Settings → Customize → Schedules`
-      : `Off the clock · ${row.cron} · turn it on under Customize → Schedules`;
+      ? `Runs ${cronToWords(row.cron)}.`
+      : `Paused. Would run ${cronToWords(row.cron)}.`;
   } else if (manifestCron) {
-    text.textContent = `This task asks for ${manifestCron}, but nothing is on the clock yet.`;
+    text.textContent = `Asks to run ${cronToWords(manifestCron)}, but nothing is on the clock yet.`;
   } else {
     text.textContent = "Not on a clock. Runs when you press Run now, or when an agent runs it.";
   }
@@ -1057,24 +1058,6 @@ const loopMark = (id: string): string => {
   return url ? `<img src="${url}" alt="" />` : AGENT_ICON;
 };
 
-/** A cron in the words a person uses. */
-function cronLabel(cron: string): string {
-  const [min, hour, dom, mon, dow] = String(cron || "").trim().split(/\s+/);
-  if (!min || !hour) return cron || "Off";
-  const at = (h: string, m: string): string => {
-    const hh = Number(h), mm = Number(m);
-    if (Number.isNaN(hh) || Number.isNaN(mm)) return `${h}:${m}`;
-    const ampm = hh < 12 ? "am" : "pm";
-    const h12 = hh % 12 === 0 ? 12 : hh % 12;
-    return mm ? `${h12}:${String(mm).padStart(2, "0")}${ampm}` : `${h12}${ampm}`;
-  };
-  if (hour === "*") return min.startsWith("*/") ? `Every ${min.slice(2)} min` : "Hourly";
-  if (dom === "*" && mon === "*" && dow === "*") return `Daily ${at(hour, min)}`;
-  if (dow === "1-5") return `Weekdays ${at(hour, min)}`;
-  if (dom === "*" && mon === "*" && /^[0-6]$/.test(dow ?? "")) return `${DAYS[Number(dow)]} ${at(hour, min)}`;
-  if (/^\d+$/.test(dom ?? "")) return `Monthly on the ${dom} ${at(hour, min)}`;
-  return cron;
-}
 const DAYS = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 
 /**
@@ -1136,7 +1119,9 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
   const sync = (): void => {
     q('[data-day]').classList.toggle("hidden", everySel.value !== "week");
     q<HTMLElement>('[data-k="hour"]').closest(".skill-sched-field")!.classList.toggle("hidden", everySel.value === "hour");
-    q(".skill-sched-preview").textContent = `Runs ${cronLabel(cronOf()).toLowerCase()} · ${cronOf()}`;
+    const preview = q(".skill-sched-preview");
+    preview.textContent = `Runs ${cronToWords(cronOf())}.`;
+    preview.title = cronOf();
   };
   [everySel, hourSel, minSel, dowSel].forEach((el2) => el2.addEventListener("change", sync));
   sync();
@@ -1163,7 +1148,7 @@ function openScheduleModal(s: SkillDetail, a: BundleAgentRow, existing: Schedule
     const r = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> }).scheduleSave(input)
       .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
     if (!r.ok) { fail(r.error || "Couldn't save the schedule."); return; }
-    notice(`${s.name} runs ${cronLabel(cron).toLowerCase()}`, { detail: "Change or remove it here, or under Customize → Schedules." });
+    notice(`${s.name} runs ${cronToWords(cron)}`, { detail: "Change or remove it here, or under Customize → Schedules." });
     close();
     void paintBundleAgents(s);
   });
@@ -1234,7 +1219,8 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
     const schedBtn = document.createElement("button");
     schedBtn.type = "button";
     schedBtn.className = "action-btn";
-    schedBtn.textContent = sched ? (sched.enabled ? cronLabel(sched.cron) : `Off · ${cronLabel(sched.cron)}`) : "Schedule";
+    const words = sched ? cronToWords(sched.cron) : "";
+    schedBtn.textContent = sched ? (sched.enabled ? words.charAt(0).toUpperCase() + words.slice(1) : `Paused · ${words}`) : "Schedule";
     schedBtn.addEventListener("click", () => openScheduleModal(s, a, sched));
     right.appendChild(schedBtn);
 
