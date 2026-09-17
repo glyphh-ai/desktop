@@ -13,7 +13,7 @@
     "build:app-libs": "node scripts/build-app-libs.mjs",
     "pack:apps": "node scripts/pack-apps.mjs",
     "build:skill-flow": "esbuild src/renderer/skill-flow.tsx --bundle --outfile=dist/renderer/skill-flow.js --platform=browser --format=iife --jsx=automatic --loader:.css=css",
-    "build:renderer": "tsc -p src/renderer/tsconfig.json && shx cp src/renderer/styles.css src/renderer/browser.html src/renderer/thinking.html node_modules/@xterm/xterm/css/xterm.css dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && node scripts/assemble-home.mjs",
+    "build:renderer": "tsc -p src/renderer/tsconfig.json && node scripts/check-renderer-emit.mjs && shx cp src/renderer/styles.css src/renderer/browser.html src/renderer/thinking.html node_modules/@xterm/xterm/css/xterm.css dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && node scripts/assemble-home.mjs",
     "build:monaco": "shx cp -r node_modules/monaco-editor/min/vs dist/renderer/monaco",
     "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
     "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",

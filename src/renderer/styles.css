@@ -6218,6 +6218,14 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   position: relative;
 }
 
+/* A task's clock, on its Overview. (skill-overview-extra hosts these blocks;
+   each one gets its own top gap so they read as separate facts.) */
+.skill-overview-block { margin-top: 20px; }
+/* A task's clock, on its Overview. */
+.skill-sched-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.skill-sched-text { font-size: 13px; color: var(--text-2); }
+.skill-sched-actions { display: flex; align-items: center; gap: 8px; }
+
 /* Art inside a library tile — the Glyphh bundle's brand mark comes through
    the app resolver, so it arrives as an <img> with a monogram fallback. */
 .skill-tile-icon img { width: 68%; height: 68%; object-fit: contain; display: block; }

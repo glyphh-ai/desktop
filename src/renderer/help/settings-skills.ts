@@ -10,14 +10,14 @@
  */
 
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
-import { closeSettingsModal } from "./navigation.js";
+import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
-import { renderToolGroups, renderConnectionTable } from "./settings-connections.js";
+import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
-import { normalizeConnDeps, WHERE_TO_SEE, type ConnDep } from "../../shared/bundle-shape.js";
+import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -120,6 +120,13 @@ const typeChip = (type: BundleType | undefined): string =>
  *  same resolver every app row uses — `appIconInner` answers the brand mark
  *  for slug "glyphh", so the skill and the app are one identity and nothing
  *  here hand-rolls a second path to that image. */
+/** Where the user finds each kind — the line a toast reads back after a write. */
+const WHERE_TO_SEE: Record<BundleType, string> = {
+  skill: "Settings → Build → Skills (type Skill)",
+  app: "Settings → Build → Skills (type App) and the Apps work panel",
+  task: "Settings → Build → Skills (type Task); put it on a clock under Customize → Schedules",
+  plugin: "Settings → Build → Plugins",
+};
 const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
   return slug === "glyphh";
@@ -942,7 +949,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
       if (!el("skill-flow")?.classList.contains("hidden")) paintFlow();
     });
     await Promise.all([paintTaskSlots(s, tm.slots ?? {}), paintBundleConnections(tm.dependencies?.connections ?? [])]);
-    if (!hubItem) void paintTaskRuns(s);
+    if (!hubItem) { void paintTaskRuns(s); void paintTaskSchedule(s, tm.schedule ?? null); }
     return;
   }
   let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<ConnDep | string> }; ui?: string; tools?: string } = {};
@@ -968,6 +975,61 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     if (first >= 0) { show(first); host.appendChild(g); }
   }
   await Promise.all([paintBundleSkills(s, read), paintBundleTools(s, read, manifest.tools || "tools/manifest.json"), paintBundleConnections(manifest.dependencies?.connections ?? [])]);
+}
+
+/**
+ * TASKS: the clock, on the task itself (his question, 2026-09-17: "where is it
+ * supposed to live? Where can the user change it?").
+ *
+ * A schedule lives in ONE place — Settings → Customize → Schedules — and that
+ * page is the only thing that fires. What a task's manifest carries is an
+ * INTENT, which means nothing until it is a row there, so the Overview says
+ * which of the two it is and hands over the door: put it on the clock, or open
+ * the page that owns it.
+ */
+async function paintTaskSchedule(s: SkillDetail, manifestCron: string | null): Promise<void> {
+  const host = el("skill-overview-extra");
+  if (!host) return;
+  const slug = s.id.slice(s.id.indexOf(":") + 1);
+  const r = await api().schedulesList() as Env<Array<{ id: string; kind: string; target: string; cron: string; enabled: boolean; lastStatus?: string | null }>>;
+  const row = (r.ok ? r.data ?? [] : []).find((x) => x.kind === "task" && x.target === slug) ?? null;
+
+  const block = document.createElement("div");
+  block.className = "skill-overview-block";
+  block.innerHTML = `<div class="skill-overview-label">Schedule</div><div class="skill-sched-line"><span class="skill-sched-text"></span><span class="skill-sched-actions"></span></div>`;
+  const text = block.querySelector(".skill-sched-text") as HTMLElement;
+  const actions = block.querySelector(".skill-sched-actions") as HTMLElement;
+
+  if (row) {
+    text.textContent = row.enabled
+      ? `On the clock · ${row.cron} · Settings → Customize → Schedules`
+      : `Off the clock · ${row.cron} · turn it on under Customize → Schedules`;
+  } else if (manifestCron) {
+    text.textContent = `This task asks for ${manifestCron}, but nothing is on the clock yet.`;
+  } else {
+    text.textContent = "Not on a clock. Runs when you press Run now, or when an agent runs it.";
+  }
+
+  if (!row && manifestCron) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "action-btn primary"; b.textContent = "Put it on the clock";
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      const save = await (api() as unknown as { scheduleSave: (i: unknown) => Promise<Env<{ id: string }>> })
+        .scheduleSave({ kind: "task", target: slug, cron: manifestCron, name: s.name })
+        .catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }) as Env<{ id: string }>);
+      b.disabled = false;
+      if (!save.ok) { fail(save.error || "Couldn't put it on the clock."); return; }
+      notice(`${s.name} is on the clock`, { detail: `${manifestCron} · change it under Customize → Schedules` });
+      void paintTaskSchedule(s, manifestCron);
+    });
+    actions.appendChild(b);
+  }
+  const open = document.createElement("button");
+  open.type = "button"; open.className = "action-btn"; open.textContent = row ? "Change" : "Schedules";
+  open.addEventListener("click", () => openSettingsModal("schedules"));
+  actions.appendChild(open);
+  host.appendChild(block);
 }
 
 /** TASKS: each slot the program calls an agent through, with the agent picker.
@@ -1115,7 +1177,7 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
  *  rendered by that page so the two tables cannot drift. Either manifest
  *  shape is accepted, since a hand-written one carries bare slugs. */
 async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<void> {
-  const deps = normalizeConnDeps(raw);
+  const deps = connDeps(raw);
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
   // One pane, two meanings: an app opens with them, a task runs unattended.

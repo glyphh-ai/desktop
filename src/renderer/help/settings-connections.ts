@@ -295,17 +295,35 @@ function render(): void {
  * `deps` are what a manifest declares. Every one is REQUIRED: an unconnected
  * account gets the page's own Connect button, which runs the same flow.
  */
+export interface ConnDep { app: string; as?: string }
+
+/** A manifest carries either `["gmail"]` or `[{ app: "gmail", as: "member" }]`.
+ *  Reading both is the RENDERER's job here: nothing in src/renderer may import
+ *  src/shared — one such import moves tsc's inferred rootDir and every
+ *  renderer file emits to a directory the app never loads (2026-09-17). */
+export const connDeps = (raw: ReadonlyArray<ConnDep | string> | undefined | null): ConnDep[] =>
+  (raw ?? [])
+    .map((d) => (typeof d === "string" ? { app: d } : d))
+    .filter((d): d is ConnDep => !!d && typeof d.app === "string" && !!d.app.trim())
+    .map((d) => ({ app: d.app.trim().toLowerCase(), as: d.as === "org" ? "org" : "member" }));
+
 export async function renderConnectionTable(
   host: HTMLElement,
-  deps: ReadonlyArray<{ app: string; as?: string }>,
+  raw: ReadonlyArray<ConnDep | string>,
   opts: { onChanged?: () => void } = {},
 ): Promise<void> {
+  const deps = connDeps(raw);
   host.textContent = "";
   if (!deps.length) return;
+  // THE LOADING LINE THE PAGE ITSELF USES (his order, 2026-09-17), so the pane
+  // never sits blank while the member's accounts come back.
+  host.innerHTML = loadingHtml("Loading connections…");
+  const settle = (): void => { host.textContent = ""; };
   const mine = await window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] }));
   const have = new Map((mine.connections ?? []).map((c) => [c.appSlug, c]));
   const pretty = (slug: string): string => slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 
+  settle();
   const table = document.createElement("div");
   table.className = "conn2-table";
   table.innerHTML = `<div class="conn2-tr head"><span class="conn2-head-connector">Connector</span><span>Type</span><span class="conn2-head-status">Status</span></div>`;
