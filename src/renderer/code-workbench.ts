@@ -3184,10 +3184,11 @@ async function init(): Promise<void> {
         ? (cliAgentsRes as { agents: CliAgentRowLite[] }).agents : []);
       const agentTiles = cliAgentRows.map(cliAgentTileOf);
       const canonical = [...toolTiles, ...agentTiles, ...ordered.filter((x) => !x.layout).map(keyed), ...ordered.filter((x) => x.layout).map(keyed)];
-      // THE DOCK IS FIXED (his order, 2026-09-16): Glyphh, New tab, one slot per
-      // agent loop, Command center, Close all. No traded icons, no saved order.
+      // THE DOCK IS FIXED (his order, 2026-09-16, Settings back 2026-09-17):
+      // Glyphh, New tab, one slot per agent loop, Command center, Settings,
+      // Close all. No traded icons, no saved order.
       void dockPref; void legacyKey;
-      dockKeys = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "cc", "closeall"];
+      dockKeys = ["glyphh", "newtab", ...agentTiles.map((t) => t.orderKey!), "cc", "settings", "closeall"];
       // …and ccIconOrder decides the PAGE order across every keyed tile,
       // materializing nav slots that were traded onto the pages (dock:*).
       const byK = new Map<string, EchoTile>();
