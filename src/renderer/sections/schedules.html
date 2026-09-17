@@ -54,16 +54,16 @@
 
             <label class="settings-label" style="display:flex;align-items:center;gap:10px;margin-top:8px;"><input type="checkbox" id="schedule-enabled" checked /> Armed</label>
 
-            <div id="schedule-runs-block" class="hidden">
-              <label class="settings-label" style="margin-top:16px;">Runs</label>
-              <div id="schedule-runs" class="ws-task-runs"></div>
-            </div>
-
             <div class="settings-actions" style="margin-top:28px;">
               <button id="schedule-delete-btn" class="action-btn danger">Delete</button>
               <div style="flex:1;"></div>
               <button id="schedule-cancel-btn" class="action-btn">Cancel</button>
               <button id="schedule-save-btn" class="action-btn primary">Save</button>
+            </div>
+
+            <div id="schedule-runs-block" class="hidden schedule-runs-section">
+              <div class="skill-overview-label">Run history</div>
+              <div id="schedule-runs" class="ws-task-runs"></div>
             </div>
           </div>
         </div>

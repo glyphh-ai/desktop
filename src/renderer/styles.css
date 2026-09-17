@@ -6221,6 +6221,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* A task's clock, on its Overview. (skill-overview-extra hosts these blocks;
    each one gets its own top gap so they read as separate facts.) */
 .skill-overview-block { margin-top: 20px; }
+/* The run history, its own section at the bottom of a schedule's detail. */
+.schedule-runs-section { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); }
+.schedule-runs-section .ws-task-runs { max-height: 420px; overflow-y: auto; }
+
 /* Run, on the schedule card itself. Sits at the end of the head row. */
 .ws-task-run { margin-left: 8px; padding: 3px 10px; font-size: 12px; flex-shrink: 0; }
 .ws-task-run:disabled { opacity: .75; }
@@ -17671,7 +17675,6 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 .ws-task-sub > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-task-kind { flex: 0 0 auto; text-transform: capitalize; }
 .ws-task-cron { margin-left: auto; flex: 0 0 auto; }
-.ws-task-lasterr { margin-top: 6px; font-size: 11px; color: var(--danger, #e5534b); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-task-detail-head { display: flex; align-items: center; gap: 10px; padding: 2px 2px 8px; }
 .ws-task-detail-head .ws-task-name { flex: 1 1 auto; }
 .ws-task-runs { display: flex; flex-direction: column; gap: 8px; }

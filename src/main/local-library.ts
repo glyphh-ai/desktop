@@ -541,7 +541,10 @@ export function registerLocalLibraryIpc(): void {
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("schedule-runs", (_e, id: string) => env(() =>
-    (getLocalDb().prepare("SELECT * FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 30").all(String(id)) as Array<RunRow & { task_slug?: string | null }>)
+    // ALL OF IT (his order, 2026-09-17): the schedule's own page is where the
+    // whole history lives, so this is the deep read; the card and the recents
+    // lane are the shallow ones.
+    (getLocalDb().prepare("SELECT * FROM loop_runs WHERE schedule_id = ? ORDER BY started_at DESC LIMIT 500").all(String(id)) as Array<RunRow & { task_slug?: string | null }>)
       .map((r) => ({ id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error, output: r.output, taskSlug: r.task_slug ?? null }))));
   ipcMain.handle("schedule-recent-runs", () => env(() =>
     (getLocalDb().prepare(`SELECT r.*, s.name AS schedule_name FROM loop_runs r LEFT JOIN loop_schedules s ON s.id = r.schedule_id ORDER BY r.started_at DESC LIMIT 60`).all() as Array<RunRow & { schedule_name: string | null; task_slug?: string | null; trigger?: string | null }>)

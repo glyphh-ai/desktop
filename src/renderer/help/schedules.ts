@@ -211,9 +211,11 @@ function paintOverview(): void {
   for (const { r, next } of shown) {
     const card = document.createElement("div");
     card.className = "ws-task-card" + (r.enabled ? "" : " off");
-    const status = r.lastStatus
-      ? `<span class="ws-task-chip ${r.lastStatus === "ok" ? "ok" : r.lastStatus === "running" ? "" : "err"}">${escapeHtml(r.lastStatus)}</span>`
-      : `<span class="ws-task-chip">never run</span>`;
+    // WHAT FIRES NEXT, NOT WHAT WENT WRONG (his order, 2026-09-17): a run's
+    // outcome and its error are Recent runs' business, and the schedule's own
+    // detail carries the whole history. The card says running when one is in
+    // flight, because that is the schedule's state right now.
+    const status = r.lastStatus === "running" ? `<span class="ws-task-chip">running</span>` : "";
     const when = r.enabled
       ? (next ? `<span class="ws-task-next" title="${escapeHtml(next.toLocaleString())}">${escapeHtml(relSpan(next.getTime() - now))}</span>` : `<span class="ws-task-next">—</span>`)
       : `<span class="ws-task-next">paused</span>`;
@@ -224,12 +226,10 @@ function paintOverview(): void {
         <span class="ws-task-target"></span>
         ${r.kind === "skill" ? `<span class="ws-task-agent"></span>` : ""}
         <span class="ws-task-cron" title="${escapeHtml(r.cron)}">${escapeHtml(cronToWords(r.cron))}</span>
-      </div>
-      ${r.lastError ? `<div class="ws-task-lasterr"></div>` : ""}`;
+      </div>`;
     (card.querySelector(".ws-task-name") as HTMLElement).textContent = r.name;
     (card.querySelector(".ws-task-target") as HTMLElement).textContent = targetName(r);
     const ag = card.querySelector(".ws-task-agent") as HTMLElement | null; if (ag) ag.textContent = r.agentName || "";
-    const le = card.querySelector(".ws-task-lasterr") as HTMLElement | null; if (le) le.textContent = r.lastError || "";
     // RUN IT FROM HERE (his order, 2026-09-17): the card is where the user is
     // looking, and waiting 18 hours to find out whether it works is no test.
     const run = document.createElement("button");
