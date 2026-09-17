@@ -18,6 +18,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { mcpCreds } from "./gateway-token.js";
+import { pickToolName, toolsOfApp } from "./gateway-tool-name.js";
 
 let client: Client | null = null;
 
@@ -71,18 +72,11 @@ async function knownToolNames(force = false): Promise<string[]> {
   return toolNames;
 }
 
-/** The gateway's own name for one app's tool, or null when it has no such tool. */
+/** The gateway's own name for one app's tool, or null when it has no such
+ *  tool. The matching itself is pure and tested (gateway-tool-name.ts); this
+ *  only decides when to re-read the list. */
 async function resolveToolName(appSlug: string, tool: string, force = false): Promise<string | null> {
-  const names = await knownToolNames(force);
-  const bare = tool.includes("-") ? tool.slice(tool.lastIndexOf("-") + 1) : tool;
-  const app = appSlug.toLowerCase();
-  const exact = names.find((n) => n === tool);
-  if (exact) return exact;
-  const byApp = names.filter((n) => n.toLowerCase().includes(app));
-  const hit = byApp.find((n) => n === `${appSlug}-${tool}`)
-    ?? byApp.find((n) => n.endsWith(`-${tool}`))
-    ?? byApp.find((n) => n.endsWith(`-${bare}`))
-    ?? byApp.find((n) => n.toLowerCase().endsWith(bare.toLowerCase()));
+  const hit = pickToolName(await knownToolNames(force), appSlug, tool);
   if (hit) return hit;
   return force ? null : resolveToolName(appSlug, tool, true);
 }
@@ -95,7 +89,7 @@ async function resolveToolName(appSlug: string, tool: string, force = false): Pr
 export async function callGatewayTool(appSlug: string, tool: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const resolved = await resolveToolName(appSlug, tool);
   if (!resolved) {
-    const names = (await knownToolNames()).filter((n) => n.toLowerCase().includes(appSlug.toLowerCase())).slice(0, 12);
+    const names = toolsOfApp(await knownToolNames(), appSlug).slice(0, 12);
     throw new Error(names.length
       ? `"${tool}" is not a tool on ${appSlug}. It has: ${names.join(", ")}`
       : `${appSlug} has no tools on the gateway — connect it, or ask your admin to authorize the shared account`);
