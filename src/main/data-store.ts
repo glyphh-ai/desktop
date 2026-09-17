@@ -15,15 +15,18 @@ import fs from "fs";
 import Database from "better-sqlite3";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
 
-const SUBSTRATE_DIR = userScopedPath("substrate");
-const DB_PATH = path.join(SUBSTRATE_DIR, "memory.sqlite");
+// PER CALL, not at load: main boots before anyone is signed in, so a path
+// captured here pins itself to the pre-auth machine-wide folder and every
+// account shares it (the office-store bleed, 2026-09-17).
+const SUBSTRATE_DIR = (): string => userScopedPath("substrate");
+const DB_PATH = (): string => path.join(SUBSTRATE_DIR(), "memory.sqlite");
 
 let db: Database.Database | null = null;
 
 function ensureDb(): Database.Database {
   if (db) return db;
-  fs.mkdirSync(SUBSTRATE_DIR, { recursive: true });
-  db = new Database(DB_PATH);
+  fs.mkdirSync(SUBSTRATE_DIR(), { recursive: true });
+  db = new Database(DB_PATH());
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS kv (

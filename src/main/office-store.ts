@@ -22,11 +22,18 @@ import { randomUUID } from "node:crypto";
 import { userScopedPath } from "./app-paths.js";
 
 const ROOT = (): string => userScopedPath("office");
-const DIRS = { docs: join(ROOT(), "docs"), sheets: join(ROOT(), "sheets"), slides: join(ROOT(), "slides"), design: join(ROOT(), "design") } as const;
+// EVERY path resolves PER CALL. These were computed once at module load, when
+// main boots and nobody is signed in yet, so they pinned themselves to the
+// pre-auth machine-wide folder and every account then read and wrote the same
+// documents (his report, 2026-09-17: a fresh user opened Design and saw
+// someone else's work).
+const DIRS = (): { docs: string; sheets: string; slides: string; design: string } => ({
+  docs: join(ROOT(), "docs"), sheets: join(ROOT(), "sheets"), slides: join(ROOT(), "slides"), design: join(ROOT(), "design"),
+});
 /** Asset bytes live beside the documents: design/assets/<stem>/<assetId>. */
-const DESIGN_ASSETS = join(DIRS.design, "assets");
-const DRIVE_FILE = join(ROOT(), "drive.json");
-const SUGGESTIONS_FILE = join(ROOT(), "suggestions.json");
+const DESIGN_ASSETS = (): string => join(DIRS().design, "assets");
+const DRIVE_FILE = (): string => join(ROOT(), "drive.json");
+const SUGGESTIONS_FILE = (): string => join(ROOT(), "suggestions.json");
 
 // ── wire shapes (what the server used to return) ─────────────────────────────
 
@@ -76,8 +83,8 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await fsp.rename(tmp, path);
 }
 
-const loadDrive = (): Promise<DriveState> => readJson<DriveState>(DRIVE_FILE, { folders: [], pointers: {} });
-const loadSuggestions = (): Promise<SuggestionState> => readJson<SuggestionState>(SUGGESTIONS_FILE, { rows: [] });
+const loadDrive = (): Promise<DriveState> => readJson<DriveState>(DRIVE_FILE(), { folders: [], pointers: {} });
+const loadSuggestions = (): Promise<SuggestionState> => readJson<SuggestionState>(SUGGESTIONS_FILE(), { rows: [] });
 
 const pointerKey = (kind: string, file: string): string => `${kind}:${file}`;
 
@@ -86,7 +93,7 @@ async function setPointer(kind: string, file: string, folderId: string | null): 
   const key = pointerKey(kind, file);
   if (folderId && drive.folders.some((f) => f.id === folderId)) drive.pointers[key] = folderId;
   else delete drive.pointers[key];
-  await writeJson(DRIVE_FILE, drive);
+  await writeJson(DRIVE_FILE(), drive);
 }
 
 async function pointerOf(kind: string, file: string): Promise<string | null> {
@@ -137,8 +144,8 @@ export async function listDocs(): Promise<DocMeta[]> {
   await ensureDirs();
   const drive = await loadDrive();
   const out: DocMeta[] = [];
-  for (const file of await listFiles(DIRS.docs, ".md")) {
-    const path = join(DIRS.docs, file);
+  for (const file of await listFiles(DIRS().docs, ".md")) {
+    const path = join(DIRS().docs, file);
     const st = await statOf(path);
     if (!st) continue;
     let markdown = "";
@@ -150,7 +157,7 @@ export async function listDocs(): Promise<DocMeta[]> {
 
 export async function readDoc(file: string): Promise<DocMeta & { markdown: string }> {
   await ensureDirs();
-  const path = join(DIRS.docs, file);
+  const path = join(DIRS().docs, file);
   const markdown = await fsp.readFile(path, "utf8");
   const st = await statOf(path);
   return { file, title: docTitle(file, markdown), markdown, sizeBytes: st?.sizeBytes ?? markdown.length, updatedAt: st?.updatedAt ?? new Date().toISOString(), folderId: await pointerOf("docs", file) };
@@ -160,19 +167,19 @@ export async function readDoc(file: string): Promise<DocMeta & { markdown: strin
  *  never re-files a document (the old server's rule). */
 export async function writeDoc(file: string, markdown: string, folderId?: string | null): Promise<DocMeta> {
   await ensureDirs();
-  await fsp.writeFile(join(DIRS.docs, file), markdown, "utf8");
+  await fsp.writeFile(join(DIRS().docs, file), markdown, "utf8");
   if (folderId !== undefined) await setPointer("docs", file, folderId);
-  const st = await statOf(join(DIRS.docs, file));
+  const st = await statOf(join(DIRS().docs, file));
   return { file, title: docTitle(file, markdown), sizeBytes: st?.sizeBytes ?? markdown.length, updatedAt: st?.updatedAt ?? new Date().toISOString(), folderId: await pointerOf("docs", file) };
 }
 
 export async function deleteDoc(file: string): Promise<void> {
   await ensureDirs();
-  await fsp.rm(join(DIRS.docs, file), { force: true });
+  await fsp.rm(join(DIRS().docs, file), { force: true });
   await setPointer("docs", file, null);
   const sugs = await loadSuggestions();
   const rows = sugs.rows.filter((r) => r.file !== file);
-  if (rows.length !== sugs.rows.length) await writeJson(SUGGESTIONS_FILE, { rows });
+  if (rows.length !== sugs.rows.length) await writeJson(SUGGESTIONS_FILE(), { rows });
 }
 
 // ── DOC SUGGESTIONS (review-and-approve) ─────────────────────────────────────
@@ -196,7 +203,7 @@ export async function createDocSuggestion(
   };
   const sugs = await loadSuggestions();
   sugs.rows.push(row);
-  await writeJson(SUGGESTIONS_FILE, sugs);
+  await writeJson(SUGGESTIONS_FILE(), sugs);
   return row;
 }
 
@@ -222,7 +229,7 @@ export async function resolveDocSuggestion(id: string, approve: boolean): Promis
   }
   row.status = status;
   row.resolvedAt = new Date().toISOString();
-  await writeJson(SUGGESTIONS_FILE, sugs);
+  await writeJson(SUGGESTIONS_FILE(), sugs);
   return row;
 }
 
@@ -231,7 +238,7 @@ export async function resolveDocSuggestion(id: string, approve: boolean): Promis
 interface SheetFile { title: string; workbook: WorkbookLike }
 
 async function readSheetFile(file: string): Promise<SheetFile> {
-  const raw = JSON.parse(await fsp.readFile(join(DIRS.sheets, file), "utf8")) as SheetFile;
+  const raw = JSON.parse(await fsp.readFile(join(DIRS().sheets, file), "utf8")) as SheetFile;
   return { title: String(raw.title ?? file.replace(/\.json$/i, "")), workbook: raw.workbook ?? {} };
 }
 
@@ -239,8 +246,8 @@ export async function listSheets(): Promise<SheetMeta[]> {
   await ensureDirs();
   const drive = await loadDrive();
   const out: SheetMeta[] = [];
-  for (const file of await listFiles(DIRS.sheets, ".json")) {
-    const st = await statOf(join(DIRS.sheets, file));
+  for (const file of await listFiles(DIRS().sheets, ".json")) {
+    const st = await statOf(join(DIRS().sheets, file));
     if (!st) continue;
     try {
       const s = await readSheetFile(file);
@@ -253,21 +260,21 @@ export async function listSheets(): Promise<SheetMeta[]> {
 export async function readSheet(file: string): Promise<SheetMeta & { workbook: unknown }> {
   await ensureDirs();
   const s = await readSheetFile(file);
-  const st = await statOf(join(DIRS.sheets, file));
+  const st = await statOf(join(DIRS().sheets, file));
   return { file, title: s.title, workbook: s.workbook, ...sheetCounts(s.workbook), sizeBytes: st?.sizeBytes ?? 0, updatedAt: st?.updatedAt ?? new Date().toISOString(), folderId: await pointerOf("sheets", file) };
 }
 
 export async function writeSheet(file: string, title: string, workbook: WorkbookLike, folderId?: string | null): Promise<SheetMeta> {
   await ensureDirs();
-  await fsp.writeFile(join(DIRS.sheets, file), JSON.stringify({ title, workbook }, null, 2), "utf8");
+  await fsp.writeFile(join(DIRS().sheets, file), JSON.stringify({ title, workbook }, null, 2), "utf8");
   if (folderId !== undefined) await setPointer("sheets", file, folderId);
-  const st = await statOf(join(DIRS.sheets, file));
+  const st = await statOf(join(DIRS().sheets, file));
   return { file, title, ...sheetCounts(workbook), sizeBytes: st?.sizeBytes ?? 0, updatedAt: st?.updatedAt ?? new Date().toISOString(), folderId: await pointerOf("sheets", file) };
 }
 
 export async function deleteSheet(file: string): Promise<void> {
   await ensureDirs();
-  await fsp.rm(join(DIRS.sheets, file), { force: true });
+  await fsp.rm(join(DIRS().sheets, file), { force: true });
   await setPointer("sheets", file, null);
 }
 
@@ -276,8 +283,8 @@ export async function deleteSheet(file: string): Promise<void> {
 export async function listSlides(): Promise<SlideMeta[]> {
   await ensureDirs();
   const out: SlideMeta[] = [];
-  for (const file of await listFiles(DIRS.slides, ".html")) {
-    const path = join(DIRS.slides, file);
+  for (const file of await listFiles(DIRS().slides, ".html")) {
+    const path = join(DIRS().slides, file);
     const st = await statOf(path);
     if (!st) continue;
     let html = "";
@@ -289,7 +296,7 @@ export async function listSlides(): Promise<SlideMeta[]> {
 
 export async function readSlide(file: string): Promise<SlideMeta & { html: string }> {
   await ensureDirs();
-  const path = join(DIRS.slides, file);
+  const path = join(DIRS().slides, file);
   const html = await fsp.readFile(path, "utf8");
   const st = await statOf(path);
   return { file, title: slideTitle(file, html), slides: slideCount(html), html, sizeBytes: st?.sizeBytes ?? html.length, updatedAt: st?.updatedAt ?? new Date().toISOString() };
@@ -297,14 +304,14 @@ export async function readSlide(file: string): Promise<SlideMeta & { html: strin
 
 export async function writeSlide(file: string, html: string): Promise<SlideMeta> {
   await ensureDirs();
-  await fsp.writeFile(join(DIRS.slides, file), html, "utf8");
-  const st = await statOf(join(DIRS.slides, file));
+  await fsp.writeFile(join(DIRS().slides, file), html, "utf8");
+  const st = await statOf(join(DIRS().slides, file));
   return { file, title: slideTitle(file, html), slides: slideCount(html), sizeBytes: st?.sizeBytes ?? html.length, updatedAt: st?.updatedAt ?? new Date().toISOString() };
 }
 
 export async function deleteSlide(file: string): Promise<void> {
   await ensureDirs();
-  await fsp.rm(join(DIRS.slides, file), { force: true });
+  await fsp.rm(join(DIRS().slides, file), { force: true });
   await setPointer("slides", file, null);
 }
 
@@ -319,11 +326,11 @@ const designTitle = (file: string, doc: DesignDocLike): string => (typeof doc.na
 export async function listDesigns(): Promise<DesignMeta[]> {
   await ensureDirs();
   const out: DesignMeta[] = [];
-  for (const file of await listFiles(DIRS.design, ".json")) {
-    const st = await statOf(join(DIRS.design, file));
+  for (const file of await listFiles(DIRS().design, ".json")) {
+    const st = await statOf(join(DIRS().design, file));
     if (!st) continue;
     try {
-      const doc = JSON.parse(await fsp.readFile(join(DIRS.design, file), "utf8")) as DesignDocLike;
+      const doc = JSON.parse(await fsp.readFile(join(DIRS().design, file), "utf8")) as DesignDocLike;
       out.push({ file, title: designTitle(file, doc), ...st });
     } catch { /* unreadable system — skip, never kill the list */ }
   }
@@ -332,36 +339,36 @@ export async function listDesigns(): Promise<DesignMeta[]> {
 
 export async function readDesign(file: string): Promise<DesignMeta & { document: DesignDocLike }> {
   await ensureDirs();
-  const document = JSON.parse(await fsp.readFile(join(DIRS.design, file), "utf8")) as DesignDocLike;
-  const st = await statOf(join(DIRS.design, file));
+  const document = JSON.parse(await fsp.readFile(join(DIRS().design, file), "utf8")) as DesignDocLike;
+  const st = await statOf(join(DIRS().design, file));
   return { file, title: designTitle(file, document), document, sizeBytes: st?.sizeBytes ?? 0, updatedAt: st?.updatedAt ?? new Date().toISOString() };
 }
 
 export async function writeDesign(file: string, document: DesignDocLike): Promise<DesignMeta> {
   await ensureDirs();
-  await fsp.writeFile(join(DIRS.design, file), JSON.stringify(document, null, 2), "utf8");
-  const st = await statOf(join(DIRS.design, file));
+  await fsp.writeFile(join(DIRS().design, file), JSON.stringify(document, null, 2), "utf8");
+  const st = await statOf(join(DIRS().design, file));
   return { file, title: designTitle(file, document), sizeBytes: st?.sizeBytes ?? 0, updatedAt: st?.updatedAt ?? new Date().toISOString() };
 }
 
 export async function deleteDesign(file: string): Promise<void> {
   await ensureDirs();
-  await fsp.rm(join(DIRS.design, file), { force: true });
-  await fsp.rm(join(DESIGN_ASSETS, designStem(file)), { recursive: true, force: true });
+  await fsp.rm(join(DIRS().design, file), { force: true });
+  await fsp.rm(join(DESIGN_ASSETS(), designStem(file)), { recursive: true, force: true });
   await setPointer("design", file, null);
 }
 
 export async function writeDesignAssetBytes(file: string, assetId: string, bytes: Buffer): Promise<void> {
-  const dir = join(DESIGN_ASSETS, designStem(file));
+  const dir = join(DESIGN_ASSETS(), designStem(file));
   await fsp.mkdir(dir, { recursive: true });
   await fsp.writeFile(join(dir, assetId), bytes);
 }
 
 export const readDesignAssetBytes = (file: string, assetId: string): Promise<Buffer> =>
-  fsp.readFile(join(DESIGN_ASSETS, designStem(file), assetId));
+  fsp.readFile(join(DESIGN_ASSETS(), designStem(file), assetId));
 
 export const deleteDesignAssetBytes = (file: string, assetId: string): Promise<void> =>
-  fsp.rm(join(DESIGN_ASSETS, designStem(file), assetId), { force: true });
+  fsp.rm(join(DESIGN_ASSETS(), designStem(file), assetId), { force: true });
 
 // ── DRIVE — folders + the pointer view over every Office file ────────────────
 
@@ -388,7 +395,7 @@ export async function createFolder(name: string, parentId?: string | null): Prom
   const parent = parentId && drive.folders.some((f) => f.id === parentId) ? parentId : null;
   const folder: DriveFolder = { id: randomUUID(), name: clean, parentId: parent };
   drive.folders.push(folder);
-  await writeJson(DRIVE_FILE, drive);
+  await writeJson(DRIVE_FILE(), drive);
   return folder;
 }
 
@@ -410,7 +417,7 @@ export async function updateFolder(id: string, fields: { name?: string; parentId
     }
     folder.parentId = fields.parentId && drive.folders.some((f) => f.id === fields.parentId) ? fields.parentId : null;
   }
-  await writeJson(DRIVE_FILE, drive);
+  await writeJson(DRIVE_FILE(), drive);
   return folder;
 }
 
@@ -426,7 +433,7 @@ export async function deleteFolder(id: string): Promise<void> {
     if (folder.parentId) drive.pointers[key] = folder.parentId;
     else delete drive.pointers[key];
   }
-  await writeJson(DRIVE_FILE, drive);
+  await writeJson(DRIVE_FILE(), drive);
 }
 
 export async function moveToFolder(kind: string, ref: string, folderId: string | null): Promise<void> {
