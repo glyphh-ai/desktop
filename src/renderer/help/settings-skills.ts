@@ -18,7 +18,6 @@ import { toolViewIcon } from "./layouts.js";
 import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { renderConnectionTable, connDeps, type ConnDep } from "./settings-connections.js";
-import { refreshRoles } from "./model-picker.js";
 import { toastOk, toastError } from "./toast.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
@@ -1211,15 +1210,19 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
     }
 
     // WHAT IT RUNS ON.
+    const modelSel = document.createElement("select");
     const loopSel = document.createElement("select");
     loopSel.className = "settings-input skill-slot-select";
     loopSel.title = "What this agent runs on";
     loopSel.innerHTML = `<option value="">Default</option>` + loopRows.map((l) => `<option value="${escapeHtml(l.id)}"${l.id === a.loop ? " selected" : ""}>${escapeHtml(l.name)}</option>`).join("");
-    loopSel.addEventListener("change", () => void setAgent(s, a, { loop: loopSel.value }, `${a.name} runs on ${loopRows.find((l) => l.id === loopSel.value)?.name ?? "the default"}`));
+    loopSel.addEventListener("change", () => {
+      // The models follow immediately; the write and the repaint come after.
+      void fillModelChoices(modelSel, loopSel.value, a.model);
+      void setAgent(s, a, { loop: loopSel.value }, `${a.name} runs on ${loopRows.find((l) => l.id === loopSel.value)?.name ?? "the default"}`);
+    });
     right.appendChild(loopSel);
 
     // WHICH MODEL — the loop's own choices, so nothing offers a model it can't run.
-    const modelSel = document.createElement("select");
     modelSel.className = "settings-input skill-model-select";
     modelSel.title = "Model for this agent";
     modelSel.innerHTML = `<option value="">Model: default</option>${a.model ? `<option value="${escapeHtml(a.model)}" selected>${escapeHtml(a.model)}</option>` : ""}`;
@@ -1239,15 +1242,37 @@ async function paintBundleAgents(s: SkillDetail): Promise<void> {
   }
 }
 
-/** The models the chosen loop actually offers (the model picker's own source). */
+/** Which provider a loop can actually run. A CLI speaks its own vendor's
+ *  models; anything else (a custom loop) gets the whole catalog. */
+const LOOP_PROVIDER: Record<string, string> = {
+  claude: "anthropic", codex: "openai", gemini: "google", copilot: "openai", cursor: "anthropic",
+};
+interface CatalogModel { id: string; name: string; providerSlug: string; active: boolean }
+let modelCatalog: CatalogModel[] | null = null;
+
+/**
+ * THE MODEL LIST FOLLOWS THE LOOP (his report, 2026-09-17: "the model dropdown
+ * never changes"). It was asking loop-roles, whose choices are AGENTS, not
+ * models, so it always came back with nothing and kept the one default entry.
+ * The org's model catalog is the list, narrowed to what the chosen loop runs.
+ */
 async function fillModelChoices(sel: HTMLSelectElement, loop: string, chosen: string): Promise<void> {
-  if (!loop) return;
-  const roles = await refreshRoles(loop).catch(() => []);
-  const seen = new Set<string>();
-  const choices: Array<{ id: string; name: string }> = [];
-  for (const role of roles) for (const c of role.choices) { if (!seen.has(c.id)) { seen.add(c.id); choices.push({ id: c.id, name: c.name }); } }
-  if (!choices.length) return;
-  sel.innerHTML = `<option value="">Model: default</option>` + choices.map((c) => `<option value="${escapeHtml(c.id)}"${c.id === chosen ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+  if (!modelCatalog) {
+    const all = await (window.glyphh as unknown as { catalogModels?: () => Promise<CatalogModel[]> }).catalogModels?.().catch(() => []);
+    modelCatalog = Array.isArray(all) ? all : [];
+  }
+  const provider = LOOP_PROVIDER[String(loop || "").toLowerCase()];
+  const models = modelCatalog
+    .filter((m) => m.active !== false)
+    .filter((m) => !provider || m.providerSlug === provider)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const options = [`<option value="">Model: default</option>`];
+  // A model the agent already names survives even when the catalog moved on.
+  if (chosen && !models.some((m) => m.id === chosen)) options.push(`<option value="${escapeHtml(chosen)}" selected>${escapeHtml(chosen)}</option>`);
+  for (const m of models) options.push(`<option value="${escapeHtml(m.id)}"${m.id === chosen ? " selected" : ""}>${escapeHtml(m.name)}</option>`);
+  sel.innerHTML = options.join("");
+  sel.disabled = models.length === 0 && !chosen;
+  sel.title = provider ? `Models ${loop} can run` : "Model for this agent";
 }
 
 interface TaskRunRow { id: string; trigger: string; startedAt: string; durationMs: number | null; status: string; error: string | null; input: unknown; result: unknown; journal: { checkpoints: Record<string, unknown>; events: Array<Record<string, unknown> & { t: string; kind: string }> } }
