@@ -6218,8 +6218,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
   position: relative;
 }
 
-/* The Glyphh bundle's brand mark inside a library tile. */
-.skill-brand-mark { width: 68%; height: 68%; object-fit: contain; display: block; }
+/* Art inside a library tile — the Glyphh bundle's brand mark comes through
+   the app resolver, so it arrives as an <img> with a monogram fallback. */
+.skill-tile-icon img { width: 68%; height: 68%; object-fit: contain; display: block; }
+.skill-tile-icon .skill-icon-initial { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; border-radius: 7px; }
 
 /* ── TOASTS — the app's notifications (his order, 2026-09-17) ──────────
    One stack, top right, ABOVE the settings overlay and every modal (the

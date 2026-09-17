@@ -15,6 +15,7 @@ import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
 import { renderToolGroups, renderConnectionTable } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
+import { appIconInner } from "./app-icon.js";
 import { taskGraph, renderFlow, unmountFlow } from "./lib-flow.js";
 import { normalizeConnDeps, WHERE_TO_SEE, type ConnDep } from "../../shared/bundle-shape.js";
 import { toastOk, toastError } from "./toast.js";
@@ -115,16 +116,17 @@ const typeChip = (type: BundleType | undefined): string =>
  *  IS, else its type's. The middle step matters for the work-panel apps —
  *  Design, Slides, Drive and the media panels are those panels, and the ones
  *  installed before the catalog shipped icons carry no icon.svg at all. */
-/** The Glyphh bundle wears the brand mark (his order, 2026-09-17), the same
- *  image the Glyphh app row wears everywhere else — it is Glyphh's own skill,
- *  not a generic one. */
-const GLYPHH_MARK = `<img src="brand/glyphh-mark.png" alt="" class="skill-brand-mark" />`;
+/** THE GLYPHH BUNDLE WEARS THE MASCOT (his order, 2026-09-17), through the
+ *  same resolver every app row uses — `appIconInner` answers the brand mark
+ *  for slug "glyphh", so the skill and the app are one identity and nothing
+ *  here hand-rolls a second path to that image. */
 const isGlyphhBundle = (s: { id?: string; slug?: string; name?: string } | null | undefined): boolean => {
   const slug = (s?.slug || (s?.id ? s.id.slice(s.id.indexOf(":") + 1) : "") || s?.name || "").toLowerCase().trim();
   return slug === "glyphh";
 };
 const markOf = (s: { icon?: string | null; tool?: string | null; id?: string; slug?: string; name?: string } | null | undefined): string =>
-  isGlyphhBundle(s) ? GLYPHH_MARK : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
+  isGlyphhBundle(s) ? appIconInner({ slug: "glyphh" }, s?.name || "Glyphh", "skill-icon-initial")
+    : (s?.icon && s.icon.includes("<svg") ? s.icon : (s?.tool ? toolViewIcon(s.tool) : ""));
 const iconOf = (mark: string, type?: BundleType): string => mark || TYPE_ICON[type ?? cfg.kind];
 /** The shelves a shared bundle sits on, and the door to change them. Nothing
  *  to show until it has been shared — an unshared folder is on no shelf. */
@@ -213,7 +215,7 @@ const setDetailName = (name: string, type?: BundleType): void => {
   host.innerHTML = `<span class="skill-detail-title"></span>${typeChip(type)}`;
   (host.querySelector(".skill-detail-title") as HTMLElement).textContent = name;
 };
-const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType } | null | undefined): void => {
+const setDetailIcon = (row: { icon?: string | null; tool?: string | null; type?: BundleType; id?: string; slug?: string; name?: string } | null | undefined): void => {
   const mark = markOf(row);
   document.querySelectorAll<HTMLElement>(`${cfg.panel} .skill-tile-icon.lg`).forEach((n) => {
     n.innerHTML = iconOf(mark, row?.type);
@@ -801,7 +803,7 @@ async function openHubDetail(d: DiscoverRow): Promise<void> {
   (el("skill-detail-sub") as HTMLElement).textContent = `from ${d.author || "your organization"} · ${d.installs ? `${fmtInstalls(d.installs)} installs · ` : ""}added ${when(d.createdAt)}`;
   (el("skill-file-count") as HTMLElement).textContent = `· ${current.files.length}`;
   (el("skill-overview-desc") as HTMLElement).textContent = current.description || "No description in the frontmatter.";
-  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type });
+  setDetailIcon({ icon: d.icon, tool: d.tool, type: d.type, slug: d.slug, name: d.name });
   void paintExtras(current, files);
   (el("skill-author") as HTMLElement).textContent = d.author || "Your organization";
   (el("skill-author-meta") as HTMLElement).textContent = d.from === "glyphh" ? "On the Glyphh catalog" : "On your organization's hub";
