@@ -30,6 +30,9 @@ export interface ServerLayout {
   target: "glyphh" | "desktop";
   /** The loop this layout activates on open. Absent → no opinion. */
   loop?: string;
+  /** The face its agents open with (2026-09-17): the app default holds when
+   *  absent, and an agent cell of its own overrides this. */
+  view?: "glyphh" | "cli";
   /** role → catalog model id for that loop's slots. */
   modelSelections?: Record<string, string>;
   /** Session behavior on open: keep (default) | new | last. */
@@ -80,6 +83,8 @@ export interface GridLayout {
   folderMode?: LayoutFolderMode;
   /** Where the layout opens: "glyphh" (default) or "desktop". */
   target?: "glyphh" | "desktop";
+  /** The face its agents open with; absent leaves the app default in force. */
+  view?: "glyphh" | "cli";
   loop?: string;
   modelSelections?: Record<string, string>;
   sessionMode?: "keep" | "new" | "last";
@@ -106,6 +111,7 @@ export async function fetchServerLayouts(): Promise<ServerLayout[]> {
         folderMode: grid.folderMode === "multi" ? "multi" : "single",
         target: grid.target === "desktop" ? "desktop" : "glyphh",
         ...(grid.loop ? { loop: grid.loop } : {}),
+        ...(grid.view === "glyphh" || grid.view === "cli" ? { view: grid.view } : {}),
         ...(grid.sessionMode === "new" || grid.sessionMode === "last" ? { sessionMode: grid.sessionMode } : {}),
         ...(grid.folder ? { folder: grid.folder } : {}),
         ...(grid.space === "chat" || grid.space === "cowork" || grid.space === "code" ? { space: grid.space } : {}),

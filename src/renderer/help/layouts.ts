@@ -266,10 +266,13 @@ layoutFolderClearBtn?.addEventListener("click", () => {
 // contract), history riding along on "last".
 const layoutAgentRows = document.getElementById("layout-agent-rows");
 const layoutLoopSelect = document.getElementById("layout-loop-select") as HTMLSelectElement | null;
+const layoutViewSelect = document.getElementById("layout-view-select") as HTMLSelectElement | null;
 const layoutSessionSelect = document.getElementById("layout-session-mode") as HTMLSelectElement | null;
 const layoutLoopModels = document.getElementById("layout-loop-models");
 /** The layout's loop ("" = leave the active loop as-is) + its model picks. */
 let builderLoop = "";
+/** The workspace's own face for its agents: "" leaves the app default in force. */
+let builderView = "";
 let builderModelSelections: Record<string, string> = {};
 let builderLoopRows: Array<{ id: string; name: string; cli: string; ownKey: boolean }> = [];
 /** The Loop/Session rows exist only for a workspace hosting the agent. */
@@ -671,7 +674,7 @@ function renderAgentCellConfig(c: BuilderCell, i: number): HTMLElement {
   void paintModels(cfg.loop || builderLoop);
   const folder = document.createElement("label");
   folder.className = "layout-cell-field";
-  folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
+  folder.innerHTML = `<span class="layout-cell-field-label">Folder</span><span class="layout-folder-row"><input class="settings-input" placeholder="Workspace folder" spellcheck="false" readonly /><button type="button" class="layout-folder-icon pick" title="Choose folder"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button type="button" class="layout-folder-icon clear" title="Clear"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button></span>`;
   const fin = folder.querySelector("input") as HTMLInputElement;
   fin.value = cfg.folder ?? "";
   const [pick, clear] = Array.from(folder.querySelectorAll("button"));
@@ -1161,6 +1164,7 @@ async function editLayout(name: string) {
   if (layoutFolderInput) layoutFolderInput.value = (layout as { folder?: string | null })?.folder ?? "";
   // Loop + model + session this layout activates on open.
   builderLoop = (layout as { loop?: string })?.loop ?? "";
+  builderView = (layout as { view?: string })?.view ?? "";
   builderModelSelections = { ...((layout as { modelSelections?: Record<string, string> })?.modelSelections ?? {}) };
   if (layoutSessionSelect) {
     const sm = (layout as { sessionMode?: string })?.sessionMode;
@@ -1168,6 +1172,7 @@ async function editLayout(name: string) {
   }
   await ensureLoopOptions();
   if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
+  if (layoutViewSelect) layoutViewSelect.value = builderView;
   void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";
@@ -1194,6 +1199,7 @@ async function newLayout() {
   if (folderModeSelect) folderModeSelect.value = "single";
   if (layoutFolderInput) layoutFolderInput.value = "";
   builderLoop = "";
+  builderView = "";
   builderModelSelections = {};
   if (layoutSessionSelect) layoutSessionSelect.value = "keep";
   void ensureLoopOptions().then(() => { if (layoutLoopSelect) layoutLoopSelect.value = ""; void renderLoopModels(); });
@@ -1304,6 +1310,7 @@ async function saveLayout() {
     cells: assignedCells,
     folderMode,
     ...(savedLoop ? { loop: savedLoop } : {}),
+    ...(hasAgentSeat && builderView ? { view: builderView as "glyphh" | "cli" } : {}),
     ...(Object.keys(selections).length ? { modelSelections: selections } : {}),
     sessionMode: (hasAgentSeat && (layoutSessionSelect?.value === "new" || layoutSessionSelect?.value === "last")
       ? layoutSessionSelect.value : "keep") as "keep" | "new" | "last",
@@ -1368,6 +1375,7 @@ export function initLayoutsEvents() {
 
   // Loop picker: switching loops clears the old loop's model picks (they
   // don't apply to the new program) and re-renders the model dropdown.
+  layoutViewSelect?.addEventListener("change", () => { builderView = layoutViewSelect.value; });
   layoutLoopSelect?.addEventListener("change", () => {
     builderLoop = layoutLoopSelect.value;
     builderModelSelections = {};

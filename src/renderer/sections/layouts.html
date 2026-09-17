@@ -50,6 +50,14 @@
               <div class="settings-hint" style="margin:-2px 0 8px;">What every agent on this page opens with unless its own cell says otherwise. &ldquo;Leave as-is&rdquo; keeps whatever loop you&rsquo;re on.</div>
               <div id="layout-loop-row" class="layout-loop-row">
                 <select id="layout-loop-select" class="settings-input"></select>
+                <!-- The workspace's own face for its agents (2026-09-17): the
+                     app default holds unless this says otherwise, and a cell
+                     of its own overrides both. -->
+                <select id="layout-view-select" class="settings-input" title="What face an agent on this page opens with">
+                  <option value="">App default view</option>
+                  <option value="glyphh">Glyphh</option>
+                  <option value="cli">CLI</option>
+                </select>
                 <div id="layout-loop-models" class="layout-loop-models"></div>
               </div>
 

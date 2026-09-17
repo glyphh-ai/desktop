@@ -405,9 +405,15 @@ let defaultLoopView: "glyphh" | "cli" | "last" = "glyphh";
 /** THE VIEW AN AGENT OPENS IN (his order, 2026-09-16), in this precedence:
  *  the app setting when it names a view; else the workspace cell's own view;
  *  else the last view used before the restart. */
-function resolveAgentView(cellView?: string): "glyphh" | "cli" {
-  if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
+/** WHICH FACE AN AGENT OPENS WITH. The most specific setting wins (his
+ *  report, 2026-09-17: a workspace set to Glyphh opened as CLI because the app
+ *  default short-circuited it): the agent's own cell, then the workspace it
+ *  sits in, then the app default, and only if that says "last" the last face
+ *  the user left an agent on. */
+function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "cli" {
   if (cellView === "glyphh" || cellView === "cli") return cellView;
+  if (layoutView === "glyphh" || layoutView === "cli") return layoutView;
+  if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
   return uiStateGet("agentLastView") === "chat" ? "glyphh" : "cli";
 }
 let defaultLoopPref = "";
@@ -5182,7 +5188,7 @@ async function init(): Promise<void> {
         const surfaceOf = (c: { panelId?: string; config?: CellConfig }): { id: string; loop: string } => {
           const pid = (c.panelId || "").trim().toLowerCase();
           const cf = (c.config || {}) as CellConfig;
-          const view = resolveAgentView(cf.view);
+          const view = resolveAgentView(cf.view, (layout as { view?: string }).view);
           if (pid === "tool:coding") {
             const lp = [cf.loop, layout.loop, appDefaultLoop()].find((x) => loopIdKnown(x || "")) || "";
             return view === "cli" && lp ? { id: `agent:${lp}`, loop: lp } : { id: pid, loop: lp };

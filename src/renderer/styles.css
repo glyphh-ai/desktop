@@ -5262,8 +5262,8 @@ ol.docs-list li::before {
   border: none; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer;
 }
 .layout-folder-icon:hover { background: var(--surface-3); color: var(--text); }
-#layout-folder-pick { right: 34px; }
-#layout-folder-clear { right: 6px; }
+#layout-folder-pick, .layout-folder-icon.pick { right: 34px; }
+#layout-folder-clear, .layout-folder-icon.clear { right: 6px; }
 .layout-loop-row > #layout-loop-select { max-width: 340px; }
 .layout-loop-models { display: flex; flex-direction: column; gap: 8px; }
 .layout-loop-model { display: flex; align-items: center; gap: 10px; }
