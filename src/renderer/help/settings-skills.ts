@@ -860,7 +860,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
   };
   if (type === "plugin") { await paintBundleSkills(s, read); return; }
   if (type === "task") {
-    let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; schedule?: string | null; program?: string; result?: unknown } = {};
+    let tm: { slots?: Record<string, { label?: string; description?: string; agent?: string | null; model?: string | null }>; dependencies?: { connections?: Array<ConnDep | string> }; schedule?: string | null; program?: string; result?: unknown } = {};
     try { tm = JSON.parse(await read("task.json") || "{}"); } catch { tm = {}; }
     // The FLOW tab's picture is built from the same read: the manifest, plus
     // the program itself (lib-flow scans it for the seams it reaches through ctx).
@@ -872,7 +872,7 @@ async function paintExtras(s: SkillDetail, hubFiles: Record<string, string> | nu
     if (!hubItem) void paintTaskRuns(s);
     return;
   }
-  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<{ app: string; as?: string }> }; ui?: string; tools?: string } = {};
+  let manifest: { screenshots?: Array<string | { path: string; caption?: string }>; dependencies?: { connections?: Array<ConnDep | string> }; ui?: string; tools?: string } = {};
   try { manifest = JSON.parse(await read("app.json") || "{}"); } catch { manifest = {}; }
   const shots = (manifest.screenshots ?? []).map((x) => (typeof x === "string" ? { path: x, caption: "" } : { path: x.path, caption: x.caption || "" }));
   const fromFolder = s.files.filter((f) => /^screenshots\/.*\.(png|jpe?g|gif|webp|svg)$/i.test(f.path)).map((f) => ({ path: f.path, caption: "" }));
@@ -1036,8 +1036,21 @@ async function paintBundleSkills(s: SkillDetail, read: (rel: string) => Promise<
   }
 }
 
-/** The app's connection dependencies against what this member has connected. */
-async function paintBundleConnections(deps: Array<{ app: string; as?: string }>): Promise<void> {
+/** The app's connection dependencies against what this member has connected.
+ *
+ *  A manifest in the wild carries either shape — `["gmail"]` or
+ *  `[{ app: "gmail", as: "member" }]` — and a bare string used to throw
+ *  mid-loop, which left the pane blank under a count of 2 (his report,
+ *  2026-09-17). Normalize first, drop what has no app slug, and count what
+ *  actually renders. */
+type ConnDep = { app: string; as?: string };
+const normalizeDeps = (raw: Array<ConnDep | string> | undefined): ConnDep[] =>
+  (raw ?? [])
+    .map((d) => (typeof d === "string" ? { app: d } : d))
+    .filter((d): d is ConnDep => !!d && typeof d.app === "string" && !!d.app.trim());
+
+async function paintBundleConnections(raw: Array<ConnDep | string>): Promise<void> {
+  const deps = normalizeDeps(raw);
   const host = el("skill-connections-list"); const count = el("skill-conn-count");
   if (!host) return;
   // One pane, two meanings: an app opens with them, a task runs unattended.
@@ -1061,7 +1074,9 @@ async function paintBundleConnections(deps: Array<{ app: string; as?: string }>)
     row.innerHTML = `<div class="skill-tile-icon"></div><div class="skill-row-main"><div class="skill-row-name"></div><div class="skill-row-sub"><span class="skill-row-desc"></span></div></div><div class="skill-row-right"></div>`;
     (row.querySelector(".skill-tile-icon") as HTMLElement).innerHTML = CONN_ICON;
     (row.querySelector(".skill-row-name") as HTMLElement).textContent = c?.label || c?.appName || dep.app.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
-    (row.querySelector(".skill-row-desc") as HTMLElement).textContent = org ? "Org account, shared by your admin" : "Your account";
+    // Every declared dependency is required — say so, so a missing one reads as
+    // something to fix rather than a suggestion.
+    (row.querySelector(".skill-row-desc") as HTMLElement).textContent = org ? "Required · Org account, shared by your admin" : "Required · Your account";
     const right = row.querySelector(".skill-row-right") as HTMLElement;
     const chip = document.createElement("span");
     chip.className = ready ? "app-conn-state on" : "app-conn-state";

@@ -848,9 +848,11 @@ const APP_UI_CSP = [
  */
 /**
  * Cards for apps installed before the installer wrote them (his report,
- * 2026-09-17: an agent installed an app and it appeared nowhere). Every
- * glyphh-app row whose folder in the apps home has no SKILL.md gets one,
- * built from the row's own config. Idempotent, and a card the user edited is
+ * 2026-09-17: an agent installed an app and it appeared nowhere), and cards
+ * an older build wrote wrong (his second report: connections listed as bare
+ * strings, which the Connections pane cannot read). Every glyphh-app row's
+ * card is rewritten from the row's own config, so the manifest beside it is
+ * always the shape the UI and the hub expect. A SKILL.md the user edited is
  * left alone by writeAppCard itself.
  */
 async function repairAppCards(): Promise<void> {
@@ -860,7 +862,6 @@ async function repairAppCards(): Promise<void> {
     if (!getActiveUserId()) return;
     for (const row of await appsStore.mine()) {
       if (row.kind !== "glyphh" || !row.slug) continue;
-      if (fs.existsSync(path.join(appsStore.APPS_DIR(), row.slug, "SKILL.md"))) continue;
       const cfg = (row.config ?? {}) as { connectors?: unknown; tools?: unknown };
       const entryPath = String(row.nativeRef || "");
       writeAppCard({

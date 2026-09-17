@@ -545,10 +545,16 @@ export function writeAppCard(card: AppCard): void {
     bundle: card.bundleDir,
     entry: card.entry,
     tools: card.tools.map((t) => t.name),
-    dependencies: { connections: card.connectors },
+    // The manifest shape the UI reads and the hub validates: an app slug plus
+    // who it acts as. Bare strings here blanked the Connections pane and would
+    // have failed validate_app_manifest on a share (his report, 2026-09-17).
+    dependencies: { connections: card.connectors.map((app) => ({ app, as: "member" })) },
   };
   if (card.iconSvg && card.iconSvg.includes("<svg")) {
     fs.writeFileSync(path.join(dir, "icon.svg"), card.iconSvg, "utf-8");
+    manifest.icon = "icon.svg";
+  } else if (fs.existsSync(path.join(dir, "icon.svg"))) {
+    // A later rewrite from a row carries no bundle icon; keep the one we have.
     manifest.icon = "icon.svg";
   }
   fs.writeFileSync(path.join(dir, "app.json"), JSON.stringify(manifest, null, 2) + "\n", "utf-8");
