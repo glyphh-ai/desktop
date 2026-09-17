@@ -1054,15 +1054,30 @@ async function paintTaskSlots(s: SkillDetail, slots: Record<string, { label?: st
     if (hubItem) {
       const chip = document.createElement("span"); chip.className = "app-conn-state"; chip.textContent = "Filled after Add"; right.appendChild(chip);
     } else {
-      const sel = document.createElement("select");
-      sel.className = "settings-input settings-input-sm";
-      sel.innerHTML = `<option value="">First agent</option>` + roster.map((a) => `<option value="${escapeHtml(a.id)}"${a.id === sl.agent ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
-      sel.addEventListener("change", async () => {
-        const slug = s.id.replace(/^task:/, "");
-        const res = await (api() as unknown as { taskSlotSet: (slug: string, slot: string, agent: string | null) => Promise<Env<unknown>> }).taskSlotSet(slug, name, sel.value || null);
-        if (!res.ok) fail(res.error || "Couldn't set the slot.");
-      });
-      right.appendChild(sel);
+      // NO ROSTER, NO PICKER (his report, 2026-09-17: "this dropdown is not
+      // working / rendering properly"). It was 80px wide, so every name was
+      // clipped to "First ag…", and with no agents saved the only choice was
+      // that placeholder — a control that looked broken because it was empty.
+      if (!roster.length) {
+        const chip = document.createElement("span");
+        chip.className = "app-conn-state";
+        chip.textContent = "First agent";
+        chip.title = "No saved agents yet, so this slot runs on the first agent that exists.";
+        right.appendChild(chip);
+      } else {
+        const sel = document.createElement("select");
+        sel.className = "settings-input skill-slot-select";
+        sel.innerHTML = `<option value="">First agent</option>` + roster.map((a) => `<option value="${escapeHtml(a.id)}"${a.id === sl.agent ? " selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+        sel.title = "Which agent this slot runs on, for every run";
+        sel.addEventListener("change", async () => {
+          const slug = s.id.replace(/^task:/, "");
+          const chosen = roster.find((a) => a.id === sel.value);
+          const res = await (api() as unknown as { taskSlotSet: (slug: string, slot: string, agent: string | null) => Promise<Env<unknown>> }).taskSlotSet(slug, name, sel.value || null);
+          if (!res.ok) { fail(res.error || "Couldn't set the slot."); return; }
+          notice(`${sl.label || name} runs on ${chosen?.name ?? "the first agent"}`);
+        });
+        right.appendChild(sel);
+      }
     }
     host.appendChild(r);
   }

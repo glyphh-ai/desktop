@@ -6221,6 +6221,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 /* A task's clock, on its Overview. (skill-overview-extra hosts these blocks;
    each one gets its own top gap so they read as separate facts.) */
 .skill-overview-block { margin-top: 20px; }
+/* A slot's agent picker: wide enough for a real agent name (it was 80px, so
+   every option read "First ag…"), and it never outgrows the row. */
+.skill-slot-select { min-width: 180px; max-width: 260px; }
+
 /* A task's clock, on its Overview. */
 .skill-sched-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .skill-sched-text { font-size: 13px; color: var(--text-2); }
