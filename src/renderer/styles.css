@@ -16748,6 +16748,9 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .echo-app-ic svg.dev-glyph { width: 46%; height: 46%; }
 .echo-dock-btn svg.dev-glyph { width: 46%; height: 46%; }
 .echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
+/* The SKILLS fallback mark (an app with no icon of its own): same weight as
+   an app icon, not the larger tool-glyph size. */
+.echo-app-ic svg.skill-mark { width: 54%; height: 54%; }
 .echo-app-fallback { font: 600 20px var(--font-sans); color: var(--text-2); }
 .echo-app-name {
   max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

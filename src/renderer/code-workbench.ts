@@ -3071,7 +3071,10 @@ async function init(): Promise<void> {
       // else the app mark. Only for GLYPHH apps: a web or native app keeps its
       // designed monogram while its own icon is still resolving.
       const iconUrl = appIconUrl(icon) || "";
-      const svgOf = (markup: string): string | undefined => markup.match(/<svg[\s\S]*<\/svg>/)?.[0] || undefined;
+      // .skill-mark sizes it to the weight of an app's own icon — the panel
+      // marks are drawn full-bleed and render large at the tile's svg size.
+      const svgOf = (markup: string): string | undefined =>
+        markup.match(/<svg[\s\S]*<\/svg>/)?.[0]?.replace('class="icon"', 'class="icon skill-mark"') || undefined;
       const glyphSvg = iconUrl || !(tool || a.appArchetype === "glyphh-app")
         ? undefined
         : svgOf((tool && VIEW_META[tool]?.icon) || VIEW_META.app.icon);
