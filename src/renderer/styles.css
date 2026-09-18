@@ -6255,7 +6255,7 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 
 /* The agent row's controls: what it runs on, its model, its clock. */
 .skill-model-select { min-width: 150px; max-width: 220px; }
-.skill-tile-icon.own img { width: 20px; height: 20px; border-radius: 5px; object-fit: contain; }
+.skill-tile-icon.own img { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; }
 
 /* The schedule modal: three dropdowns, never a cron field. Compact, and ABOVE
    the settings overlay — at .conn-modal's own z-index it opened behind it and
@@ -20700,14 +20700,14 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .skill-group { margin-bottom: 18px; }
 .skill-group-head { display: flex; align-items: baseline; gap: 6px; padding: 6px 4px; font-size: 13px; font-weight: 600; color: var(--text); }
 .skill-group-count { font-weight: 400; color: var(--text-3); font-size: 12px; }
-.skill-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-top: 1px solid var(--border); }
+.skill-row { display: flex; align-items: center; gap: 14px; padding: 14px 8px; border-top: 1px solid var(--border); }
 .skill-row.openable { cursor: pointer; }
 .skill-row.openable:hover { background: var(--hover); border-radius: 8px; }
 .skill-row.disabled .skill-row-main { opacity: .5; }
-.skill-tile-icon { width: 34px; height: 34px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
-.skill-tile-icon svg { width: 18px; height: 18px; }
-.skill-tile-icon.lg { width: 44px; height: 44px; border-radius: 10px; }
-.skill-tile-icon.lg svg { width: 22px; height: 22px; }
+.skill-tile-icon { width: 40px; height: 40px; border-radius: 9px; background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-2); flex-shrink: 0; }
+.skill-tile-icon svg { width: 21px; height: 21px; }
+.skill-tile-icon.lg { width: 52px; height: 52px; border-radius: 12px; }
+.skill-tile-icon.lg svg { width: 26px; height: 26px; }
 .skill-row-main { flex: 1; min-width: 0; }
 .skill-row-name { font-size: 13.5px; font-weight: 500; color: var(--text); }
 .skill-row-sub { display: flex; gap: 6px; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
