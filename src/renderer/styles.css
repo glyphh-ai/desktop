@@ -20477,10 +20477,11 @@ body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
    while the dock is tucked, so it never steals clicks otherwise. */
 .echo-dock-hotstrip { display: none; }
 body.echo-dock-tucked .echo-dock-hotstrip {
-  /* A 16px band under a 38px drag strip was a target nobody could find (his
-     report, 2026-09-18). Deep enough to fall into, still shallow enough that
-     it never eats a click meant for the page. */
-  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 34px;
+  /* BACK TO A SLIVER (his report, 2026-09-18: at 34px it swallowed the agent
+     panel's own header buttons). The strip exists only for WEBVIEWS, which eat
+     host mouse events; everywhere else a document-level mousemove watches a
+     much deeper band without capturing a single click. */
+  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 12px;
   z-index: 98999; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }

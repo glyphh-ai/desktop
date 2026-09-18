@@ -3637,6 +3637,15 @@ async function init(): Promise<void> {
       };
       strip.addEventListener("mouseenter", () => peek(true));
       strip.addEventListener("mouseleave", () => window.clearTimeout(revealTimer));
+      // The deep band, without taking a click from anyone: the host DOM sees
+      // the pointer here, and only a webview under the cursor does not - which
+      // is exactly what the sliver above is for.
+      document.addEventListener("mousemove", (ev) => {
+        if (!document.body.classList.contains("echo-dock-tucked")) return;
+        const top = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--wb-top-inset") || "0", 10) || 0;
+        if (ev.clientY <= top + 40 && ev.clientX >= (document.getElementById("echo-dock-layer")?.getBoundingClientRect().left ?? 0)) peek(true);
+        else if (!document.body.classList.contains("echo-dock-peek")) window.clearTimeout(revealTimer);
+      });
       // Leaving the BAR re-tucks: the strip is hidden while peeked, so the
       // dock itself owns the exit.
       document.addEventListener("mouseover", (ev) => {
