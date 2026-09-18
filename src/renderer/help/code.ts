@@ -320,7 +320,15 @@ const bareModelId = (id: string | null | undefined): string | null => {
  *  the session's own pick only, while a turn falls back to Settings' default
  *  model — so a chat with no pick of its own displayed one thing and ran
  *  another. Both resolve here. */
+/** AUTO MEANS AUTO (his order, 2026-09-18). When the org runs Auto only, its
+ *  auto-router is the whole list, so it IS the selection: "Default — the loop
+ *  decides" is not a choice anyone has, and offering it sends a turn with no
+ *  model at all. The server marks the row; the renderer never guesses. */
+const autoModel = (): AvailModel | null => availModels.find((m) => m.providerSlug === "auto") ?? null;
+const autoOnly = (): boolean => availModels.length === 1 && !!autoModel();
+
 function effectiveModelId(): string | null {
+  if (autoOnly()) return autoModel()!.id;
   const picked = bareModelId(current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref);
   if (!picked) return null;
   // A default the ACTIVE loop cannot run is not this loop's model. Saying so
@@ -404,12 +412,14 @@ function renderModelMenu(): void {
     list.textContent = "";
     const q = search.value.trim().toLowerCase();
     const rows = modelsForLoop().filter((m) => !q || m.name.toLowerCase().includes(q) || m.providerSlug.includes(q));
-    const def = document.createElement("button");
-    def.type = "button";
-    def.className = "code-drop-item" + (selectedModel() ? "" : " selected");
-    def.textContent = "Default — the loop decides";
-    def.addEventListener("click", () => choose(null));
-    list.appendChild(def);
+    if (!autoOnly()) {
+      const def = document.createElement("button");
+      def.type = "button";
+      def.className = "code-drop-item" + (selectedModel() ? "" : " selected");
+      def.textContent = "Default — the loop decides";
+      def.addEventListener("click", () => choose(null));
+      list.appendChild(def);
+    }
     if (!rows.length) {
       const empty = document.createElement("div");
       empty.className = "drop-empty";
@@ -3359,6 +3369,7 @@ function syncThinking(): void {
  *  chose one still opens on the configured default rather than "whatever
  *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
+  if (autoOnly()) return autoModel()!.id;
   return bareModelId(c?.models?.["default"] ?? defaultModelPref);
 }
 
