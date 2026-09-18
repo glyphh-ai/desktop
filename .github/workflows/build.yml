@@ -21,6 +21,13 @@ jobs:
           node-version: 20
           cache: npm
 
+      # The lockfile is written by npm 11; node 20 ships npm 10, which
+      # resolves the file:../sdk link differently and then rejects its own
+      # lockfile ("Missing: esbuild@0.28.2 from lock file" — tsup, a devDep of
+      # the SDK that npm 10 pulls into the app tree and npm 11 does not).
+      - name: Match the npm the lockfile was written with
+        run: npm i -g npm@11
+
       # Pin Python to 3.11 + ensure setuptools is available. macos-latest
       # ships Python 3.12+, which removed `distutils` from stdlib. node-gyp
       # still imports it during electron-rebuild for native deps that don't
@@ -107,6 +114,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      # The lockfile is written by npm 11; node 20 ships npm 10, which
+      # resolves the file:../sdk link differently and then rejects its own
+      # lockfile ("Missing: esbuild@0.28.2 from lock file" — tsup, a devDep of
+      # the SDK that npm 10 pulls into the app tree and npm 11 does not).
+      - name: Match the npm the lockfile was written with
+        run: npm i -g npm@11
 
       # ── Vendor the SDK ──────────────────────────────────────────────
       # package.json depends on `@glyphh/sdk: file:../sdk` — a sibling
@@ -213,6 +227,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      # The lockfile is written by npm 11; node 20 ships npm 10, which
+      # resolves the file:../sdk link differently and then rejects its own
+      # lockfile ("Missing: esbuild@0.28.2 from lock file" — tsup, a devDep of
+      # the SDK that npm 10 pulls into the app tree and npm 11 does not).
+      - name: Match the npm the lockfile was written with
+        run: npm i -g npm@11
 
       # ── Vendor the SDK ── same self-heal as the other jobs: package.json
       # depends on `@glyphh/sdk: file:../sdk`, a sibling checkout CI lacks.
