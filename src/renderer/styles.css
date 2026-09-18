@@ -16431,7 +16431,9 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 
 
 /* User dropdown (opens upward; reuses .code-menu) */
-.app-rail-user-menu { min-width: 168px; }
+/* Wider (his order, 2026-09-18): it sat narrower than the rail row it opens
+   from, so it read as a stray popover rather than that row's menu. */
+.app-rail-user-menu { min-width: 216px; }
 
 .app-rail-user-menu .code-menu-item {
   display: flex;
