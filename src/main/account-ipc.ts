@@ -88,6 +88,10 @@ export function registerAccountIpc(): void {
       return { ok: true as const, url: out.url, clientSecret: out.clientSecret };
     } catch (err) { return fail(err); }
   });
+  ipcMain.handle("billing-upcoming", async () => {
+    try { return { ok: true as const, upcoming: await getClient().billing.upcoming() }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("billing-config", async () => {
     try { return { ok: true as const, publishableKey: (await getClient().billing.config()).publishableKey }; }
     catch (err) { return fail(err); }

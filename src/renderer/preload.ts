@@ -869,6 +869,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   orgInviteRevoke: (id: string) => ipcRenderer.invoke("org-invite-revoke", id) as Promise<{ ok: boolean; error?: string }>,
   billingConfig: () =>
     ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
+  billingUpcoming: () =>
+    ipcRenderer.invoke("billing-upcoming") as Promise<{ ok: boolean; upcoming?: { hasUpcoming: boolean; amountDue?: number; currency?: string; dueAt?: number; prorations?: number }; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,
   releasesList: () =>
     ipcRenderer.invoke("releases-list") as Promise<{ ok: boolean; releases?: Array<{ tag: string; publishedAt: string | null; prerelease: boolean; assets: Array<{ name: string; size: number }> }>; error?: string }>,

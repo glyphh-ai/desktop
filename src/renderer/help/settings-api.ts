@@ -35,6 +35,14 @@ export interface BillingPlan {
   bespoke?: boolean;
 }
 
+export interface UpcomingInvoice {
+  hasUpcoming: boolean;
+  amountDue?: number;
+  currency?: string;
+  dueAt?: number;
+  prorations?: number;
+}
+
 export interface Subscription {
   tier: string;
   billingStatus: string;
@@ -132,6 +140,7 @@ interface SdkAccountHandle {
   billing?: {
     plans?: () => Promise<BillingPlan[]>;
     status?: () => Promise<Subscription>;
+    upcoming?: () => Promise<UpcomingInvoice>;
     reconcile?: () => Promise<Subscription>;
     credits?: () => Promise<CreditsBreakdown>;
     invoices?: () => Promise<Invoice[]>;
@@ -182,6 +191,7 @@ export interface OrgDomain {
 interface DesktopAccountIpc {
   billingPlans?: () => Promise<BillingPlan[]>;
   billingStatus?: () => Promise<Subscription>;
+  billingUpcoming?: () => Promise<{ ok: boolean; upcoming?: UpcomingInvoice; error?: string }>;
   billingReconcile?: () => Promise<Subscription>;
   billingCredits?: () => Promise<CreditsBreakdown>;
   billingInvoices?: () => Promise<Invoice[]>;
@@ -215,6 +225,8 @@ interface DesktopAccountIpc {
 export interface AccountApi {
   plans(): Promise<BillingPlan[]>;
   status(): Promise<Subscription>;
+  /** The next invoice: the amount and the day it lands. */
+  upcoming(): Promise<UpcomingInvoice>;
   /** Stripe's records applied now: plan, allowance, paid top-ups. Falls back to a plain status read. */
   reconcile(): Promise<Subscription>;
   credits(): Promise<CreditsBreakdown>;
@@ -305,6 +317,7 @@ export function accountApi(): AccountApi {
     return {
       plans: () => need(b.plans, b),
       status: () => need(b.status, b),
+      upcoming: () => (b.upcoming ? need(b.upcoming, b) : Promise.resolve({ hasUpcoming: false })),
       reconcile: () => (b.reconcile ? b.reconcile() : need(b.status, b)),
       credits: () => need(b.credits, b),
       invoices: () => need(b.invoices, b),
@@ -363,6 +376,10 @@ export function accountApi(): AccountApi {
   return {
     plans: () => need(g?.billingPlans, g),
     status: () => need(g?.billingStatus, g),
+    upcoming: async () => {
+      try { const r = await g?.billingUpcoming?.(); return r?.ok && r.upcoming ? r.upcoming : { hasUpcoming: false }; }
+      catch { return { hasUpcoming: false }; }
+    },
     reconcile: () => (g?.billingReconcile ? g.billingReconcile() : need(g?.billingStatus, g)),
     credits: () => need(g?.billingCredits, g),
     invoices: () => need(g?.billingInvoices, g),

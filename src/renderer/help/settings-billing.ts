@@ -27,7 +27,7 @@ import {
   accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, openHostedPage,
   USD_PER_CREDIT,
   TOPUP_CREDIT_BUCKETS, topupDiscount, usdForCredits, creditsForUsdTiered,
-  type Autotopup, type BillingPlan, type CreditsBreakdown, type Invoice, type Subscription,
+  type Autotopup, type BillingPlan, type CreditsBreakdown, type Invoice, type Subscription, type UpcomingInvoice,
 } from "./settings-api.js";
 
 // ── State ────────────────────────────────────────────────────────────────
@@ -39,6 +39,7 @@ let credits: CreditsBreakdown | null = null;
  *  form. Converted back to micro-credits on save. */
 let autoTopup = { enabled: false, thresholdCredits: 100, packUsd: 24, monthlyCapUsd: 200 };
 let invoices: Invoice[] | null = null;
+let upcoming: UpcomingInvoice | null = null;
 /** Role gate for the money moves (subscribe / change-plan are org_admin-only
  *  on the server). `null` = unknown — leave controls live and let the server's
  *  403 speak; `false` = a KNOWN member, disable with an honest note. */
@@ -238,6 +239,12 @@ function paintPlan(): void {
   setText("billing-plan-name", current?.displayName || sub?.tier || "—");
   const bits: string[] = [];
   if (current?.monthlyCredits) bits.push(`${fmtInt(current.monthlyCredits)} credits / month`);
+  // What they owe next and when (his order, 2026-09-18). A seat added mid
+  // month shows up here as the part-month charge before the date arrives.
+  if (upcoming?.hasUpcoming && upcoming.dueAt) {
+    const day = new Date(upcoming.dueAt * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    bits.push(`Next invoice ${fmtMoney(upcoming.amountDue || 0, upcoming.currency)} on ${day}`);
+  }
   if (sub?.billingStatus && sub.billingStatus !== "active") bits.push(sub.billingStatus);
   setText("billing-plan-sub", bits.join(" · ") || "No monthly allowance");
 }
@@ -1078,11 +1085,12 @@ export async function loadBilling(): Promise<void> {
   const api = accountApi();
   const problems: string[] = [];
 
-  const [plansRes, statusRes, creditsRes, atRes, invRes, roleRes] = await Promise.allSettled([
+  const [plansRes, statusRes, creditsRes, atRes, invRes, roleRes, upcomingRes] = await Promise.allSettled([
     api.plans(), api.status(), api.credits(), api.autotopup(), api.invoices(),
     // Role gates the plan-change buttons (subscribe/change-plan are org_admin
     // on the server). Same source Members/Organization use.
     Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => info?.role || ""),
+    api.upcoming(),
   ]);
 
   if (plansRes.status === "fulfilled") plans = plansRes.value || [];
@@ -1090,6 +1098,9 @@ export async function loadBilling(): Promise<void> {
 
   if (statusRes.status === "fulfilled") sub = statusRes.value;
   else problems.push("subscription");
+
+  // Admin-only, like the credit pool: a member's 403 just leaves the line off.
+  upcoming = upcomingRes.status === "fulfilled" ? upcomingRes.value : null;
 
   // The org credit pool is ADMIN-ONLY — a member's 403 is not an error to
   // shout about, it just leaves the cards blank.
