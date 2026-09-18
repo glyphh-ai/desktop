@@ -346,6 +346,17 @@ function paintModelChip(): void {
   mc.className = "code-chip" + (!sel && id ? " warn" : "");
 }
 
+/** THE ORG'S LIST CAN CHANGE WHILE THE APP IS OPEN (his report, 2026-09-18:
+ *  an admin limiting models did not reach the agent). The picker already
+ *  forces past the cache when it opens; this catches the other half, coming
+ *  back to the app after changing something in the console. */
+let lastFocusRefresh = 0;
+window.addEventListener("focus", () => {
+  if (Date.now() - lastFocusRefresh < 15_000) return;
+  lastFocusRefresh = Date.now();
+  void refreshModelList(true);
+});
+
 async function refreshModelList(force?: boolean): Promise<void> {
   const loop = activeLoop();
   try {

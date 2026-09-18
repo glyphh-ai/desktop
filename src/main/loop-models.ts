@@ -87,20 +87,23 @@ const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai
 /**
  * GATEWAY MODE: THE ORG ADMIN OWNS THE LIST (his order, 2026-09-18).
  *
- * When the org runs on the gateway, the models on offer are the ones the org
- * admin added on their own key, and nothing else: not the shared catalog we
- * seed, not the vendor's own list, not the CLI's login. The same list is
- * offered for every loop, so switching loops never changes what can be picked,
- * and an org that has added none offers none.
+ * The one honest source is the member's own key asked of the gateway: LiteLLM
+ * answers with the team's allow-list (what the org admin turned on of ours)
+ * plus the org's own deployments, and nothing else. That means the list moves
+ * the moment an admin changes it, an org that allows none offers none, and the
+ * allowance handover needs no separate wiring here.
  *
- * A model added by the org is team-scoped on the gateway, which is exactly
- * what `hasByokKey` reports on the catalog row.
+ * Asked ONCE, not per loop: every loop offers the same list, so switching
+ * loops never changes what can be picked.
  */
-async function orgOwnModels(): Promise<LoopModel[]> {
-  const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; hasByokKey?: boolean }>;
-  return rows
-    .filter((m) => m.modality === "chat" && m.hasByokKey === true)
-    .map((m) => ({ id: m.name, name: m.name, providerSlug: m.providerSlug }));
+const GATEWAY_KEY = "\u0000gateway";
+
+async function orgGatewayModels(): Promise<{ models: LoopModel[]; baseUrl: string | null }> {
+  const creds = await gatewayCreds().catch(() => null);
+  if (!creds) return { models: [], baseUrl: null };
+  // "claude" only picks the dialect; the gateway speaks OpenAI's for everyone,
+  // and the answer is the member's whole allowed set whatever loop asked.
+  return { models: await listAt("claude", creds.baseUrl, creds.token, true), baseUrl: creds.baseUrl };
 }
 
 async function gatewayMode(): Promise<boolean> {
@@ -125,9 +128,11 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
     // Gateway mode short-circuits every other lane: one list, org-controlled,
     // the same for a loop with its own key and a loop on a vendor login.
     if (await gatewayMode()) {
-      const creds = await gatewayCreds().catch(() => null);
-      value = { ok: true, source: "gateway", baseUrl: creds?.baseUrl ?? null, models: await orgOwnModels() };
-      cache.set(loopId, { at: Date.now(), value });
+      const hitAll = cache.get(GATEWAY_KEY);
+      if (!force && hitAll && Date.now() - hitAll.at < TTL_MS) return hitAll.value;
+      const { models, baseUrl } = await orgGatewayModels();
+      value = { ok: true, source: "gateway", baseUrl, models };
+      cache.set(GATEWAY_KEY, { at: Date.now(), value });
       return value;
     }
     // The gateway lane (paid, on): the list is what the org's gateway serves this member.
@@ -144,6 +149,9 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
 }
 
 export function invalidateLoopModels(loopId?: string): void {
+  // The gateway's answer is shared by every loop, so one loop's invalidation
+  // must drop it too — otherwise an org admin's change waits out the TTL.
+  cache.delete(GATEWAY_KEY);
   if (loopId) cache.delete(loopId); else cache.clear();
 }
 
