@@ -122,6 +122,8 @@ let loops: Array<{ id: string; name: string; description: string; builtIn?: bool
   { id: "default", name: "Default", description: "The standard Glyphh agent loop.", builtIn: true },
 ];
 let loopsCanBuild = false;
+/** The org has enabled no loop this app can run. Not the same as offline. */
+let noLoopAllowed = false;
 let glyphhLoop = "default";
 /** A loop a LAYOUT asked for while no session existed — applied to the session
  *  the next send creates (the pendingWorkdir contract). */
@@ -567,6 +569,12 @@ async function refreshLoops(): Promise<void> {
   try {
     const r = await (window.glyphh as unknown as { cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<{ id: string; name: string; cli?: string; apiKey?: { name: string } | null; enabled?: boolean; modes?: string[] }> }> }).cliAgentsList?.();
     const rows = r?.ok ? r.agents.filter((a) => a.enabled !== false) : [];
+    // NO LOOP IS AN ANSWER (his report, 2026-09-18: the picker offered
+    // "Default" while the org had enabled nothing the gateway can govern).
+    // An ok answer with no rows means the org allows none; a FAILED call means
+    // offline, and the built-in default rightly stands there.
+    noLoopAllowed = !!r?.ok && rows.length === 0;
+    if (noLoopAllowed) loops = [];
     if (rows.length) {
       // ownKey (a personal BYOK key on the loop) keeps its picker on the
       // HOME provider; keyless loops ride the gateway lane (modelsForLoop).
@@ -579,6 +587,7 @@ async function refreshLoops(): Promise<void> {
     // then does first-in-the-list apply.
     if (!loops.some((l) => l.id === glyphhLoop)) glyphhLoop = await defaultLoopId() || loops[0]?.id || "default";
     paintChips();
+    paintComposerGate();
   } catch { /* offline — the built-in default stands */ }
 }
 
@@ -628,7 +637,9 @@ function renderLoopMenu(): void {
     if (!shown.length) {
       const empty = document.createElement("div");
       empty.className = "drop-empty";
-      empty.textContent = `No loops matching "${q}"`;
+      empty.textContent = q ? `No loops matching "${q}"`
+        : noLoop() ? "Your organization hasn't enabled a loop this app can run. An org admin turns one on in the console."
+        : "No loops configured.";
       list.appendChild(empty);
       return;
     }
@@ -2600,16 +2611,23 @@ function noModelAllowed(): boolean {
   return modelSource === "gateway" && availModels.length === 0;
 }
 
+/** Nothing to run WITH: the org has enabled no loop this app can drive. */
+function noLoop(): boolean {
+  return noLoopAllowed;
+}
+
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
-  const open = workdirReady && !noModelAllowed();
+  const open = workdirReady && !noModelAllowed() && !noLoop();
   ta.disabled = !open;
   ta.placeholder = open
     ? readyPlaceholder()
-    : noModelAllowed()
-      ? "Your organization hasn't allowed any model yet"
-      : "Pick a working folder to start — click here to choose";
+    : noLoop()
+      ? "Your organization hasn't enabled a loop this app can run"
+      : noModelAllowed()
+        ? "Your organization hasn't allowed any model yet"
+        : "Pick a working folder to start — click here to choose";
   el("code-send")?.toggleAttribute("disabled", !open);
   const wrap = document.querySelector(".code-input-wrap");
   wrap?.classList.toggle("gated", !open);
