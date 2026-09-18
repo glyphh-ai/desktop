@@ -11,7 +11,6 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename, extname } from "node:path";
 import { dialog, ipcMain } from "electron";
-import { getClient } from "./glyphh-client";
 import * as local from "./media-local.js";
 import type { MediaKind } from "@glyphh/sdk";
 
@@ -43,22 +42,10 @@ export async function uploadMediaFile(path: string, opts: { title?: string; kind
   return { id: done.id, kind: done.kind as MediaKind, title: done.title };
 }
 
-/** A URL the renderer can play directly: presigned when the store can, else a
- *  tmp-cached file:// (cache-keyed by asset id + mime — assets are immutable). */
-export async function mediaFileUrl(id: string): Promise<string> {
-  const media = getClient().media;
-  const { url } = await media.playbackUrl(id);
-  if (url) return url;
-  const asset = await media.get(id);
-  const dir = join(tmpdir(), "glyphh-media-cache");
-  mkdirSync(dir, { recursive: true });
-  const name = `${createHash("sha1").update(id).digest("hex").slice(0, 16)}${EXT_BY_MIME[asset.mime] ?? ".bin"}`;
-  const dest = join(dir, name);
-  if (!existsSync(dest)) {
-    const bytes = await media.bytes(id);
-    writeFileSync(dest, Buffer.from(bytes));
-  }
-  return `file://${dest}`;
+/** A URL the renderer can play directly: the file itself. No presign, no tmp
+ *  cache, no download - the library is on this disk (his ruling, 2026-09-18). */
+export function mediaFileUrl(id: string): string {
+  return local.fileUrl(id);
 }
 
 export function registerMediaPanelIpc(): void {
@@ -105,21 +92,18 @@ export function registerMediaPanelIpc(): void {
       return { ok: false, error: errText(err) };
     }
   });
-  ipcMain.handle("media-generate", async (_e, input: unknown) => {
-    try {
-      const started = await getClient().media.generate(input as Parameters<ReturnType<typeof getClient>["media"]["generate"]>[0]);
-      return { ok: true, job: started.job, outputKind: started.outputKind };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
-  ipcMain.handle("media-job", async (_e, id: unknown) => {
-    try {
-      return { ok: true, job: await getClient().media.job(String(id)) };
-    } catch (err) {
-      return { ok: false, error: errText(err) };
-    }
-  });
+  // GLYPHH MAKES NO MODEL CALLS (his ruling, 2026-09-18, and the same rule
+  // that retired llm.complete and agent.run in the app runtime): the driving
+  // agent generates, and writes what it made into the app's own folder with
+  // media.save. There is no server job to start and none to poll.
+  ipcMain.handle("media-generate", () => ({
+    ok: false,
+    error: "Ask the agent to make it — it generates and saves into this app's library. Glyphh itself makes no model calls.",
+  }));
+  ipcMain.handle("media-job", () => ({
+    ok: false,
+    error: "Generation runs in the agent, not on a server, so there is no job to poll.",
+  }));
   ipcMain.handle("media-save", async (_e, id: unknown) => {
     try {
       const asset = local.get(String(id));

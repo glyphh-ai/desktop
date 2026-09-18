@@ -41,6 +41,7 @@ import os from "os";
 import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
 import { userScopedPath, glyphhPath, appsRoot, appDir, getActiveUserId } from "./app-paths.js";
+import * as mediaLocal from "./media-local.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
@@ -99,6 +100,42 @@ export interface GlyphhAppManifest {
   description?: string;
 }
 
+
+/**
+ * AN APP'S OWN FILES (his ruling, 2026-09-18). The agent generates; the app
+ * holds what it made. Both capabilities are scoped to the calling app's own
+ * folder, so one app can never read or write another's library.
+ */
+function mediaList(slug: string, args: Record<string, unknown>): { files: Array<{ id: string; title: string; mime: string; sizeBytes: number; updatedAt: string }> } {
+  const kind = String(args.kind || "");
+  const only = kind === "image" || kind === "audio" || kind === "video" ? kind : undefined;
+  const mine = mediaOfApp(slug);
+  const rows = mediaLocal.list(only, args.q ? String(args.q) : undefined)
+    .filter((a) => !mine || a.kind === mine);
+  return { files: rows.map((a) => ({ id: a.id, title: a.title, mime: a.mime, sizeBytes: a.sizeBytes, updatedAt: a.updatedAt })) };
+}
+
+/** Which library this app owns, or null for one that owns none. */
+function mediaOfApp(slug: string): "image" | "audio" | "video" | null {
+  const found = (Object.entries(mediaLocal.APP_OF) as Array<["image" | "audio" | "video", string]>)
+    .find(([, s]) => s === slug);
+  return found ? found[0] : null;
+}
+
+function mediaSave(slug: string, args: Record<string, unknown>): { id: string; title: string } {
+  const mine = mediaOfApp(slug);
+  const kind = String(args.kind || mine || "");
+  if (kind !== "image" && kind !== "audio" && kind !== "video") throw new Error("kind must be image, audio or video");
+  if (mine && kind !== mine) throw new Error(`this app keeps ${mine} files, not ${kind}`);
+  const name = String(args.name || "untitled");
+  const b64 = String(args.base64 || "");
+  const fromPath = String(args.path || "");
+  const bytes = b64 ? Buffer.from(b64, "base64") : fromPath ? fs.readFileSync(fromPath) : null;
+  if (!bytes || !bytes.byteLength) throw new Error("pass the file as base64, or a path to read it from");
+  const saved = mediaLocal.save(kind, name, bytes);
+  return { id: saved.id, title: saved.title };
+}
+
 const KNOWN_CAPABILITIES = new Set([
   "contacts.search",
   "messages.send",
@@ -120,6 +157,8 @@ const KNOWN_CAPABILITIES = new Set([
   "graph.cypher",
   "secrets.get",
   "secrets.list",
+  "media.list",
+  "media.save",
   "fs.read",
   "fs.write",
   "fs.pick",
@@ -656,6 +695,11 @@ async function runCapability(
     case "connector.status": return connectorStatus(connectors);
     case "connector.tools":  return connectorTools(connectors, args);
     case "connector.call":   return connectorCall(connectors, args);
+    // AN APP OWNS ITS OWN FILES (his ruling, 2026-09-18: apps keep their media
+    // in app-data/<slug>/files, and the agent that made something writes it
+    // there). Glyphh does not generate; it holds what was generated.
+    case "media.list":       return mediaList(slug, args);
+    case "media.save":       return mediaSave(slug, args);
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
     case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
