@@ -67,11 +67,17 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
 
-  --bg:          #f5f5f5;
-  --bg-raised:   #ffffff;
-  --surface:     #ffffff;
-  --surface-2:   #fafafa;
-  --surface-3:   #f0f0f0;
+  /* THE CONSOLE'S NEUTRALS, verbatim (his order, 2026-09-18: align the colors
+     pervasively, nothing else). Every value below is a token from the server
+     console's globals.css, so the rail and the pages read the same in both
+     apps. --sidebar is its own ground there, which is what the rail takes. */
+  --bg:          oklch(1 0 0);
+  --bg-raised:   oklch(1 0 0);
+  --surface:     oklch(1 0 0);
+  --surface-2:   oklch(0.967 0.003 264.542);
+  --surface-3:   oklch(0.967 0.003 264.542);
+  --sidebar:     oklch(1 0 0);
+  --sidebar-border: oklch(0.928 0.006 264.531);
   /* --bg-2 is used across the app (streamed panels, skill explorer, attach
      rows) but was never DEFINED by any theme, so every use computed to
      transparent — which is how the Browser panel went white: the streamed
@@ -79,17 +85,17 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
      through. One alias here serves every theme (var() resolves against the
      active theme's --surface-2 at use time). */
   --bg-2:        var(--surface-2);
-  --border:      #e5e5e5;
-  --border-2:    #d4d4d4;
-  --border-3:    #c4c4c4;
-  --text:        #1f2937;
-  --text-bright: #111111;
-  --text-2:      #4b5563;
-  --text-3:      #6b7280;
-  --text-muted:  #6b7280;
-  --text-faint:  #9ca3af;
-  --white:       #111111;
-  --hover:       #f0f0f0;
+  --border:      oklch(0.928 0.006 264.531);
+  --border-2:    oklch(0.872 0.006 264.531);
+  --border-3:    oklch(0.808 0.006 264.531);
+  --text:        oklch(0.13 0.028 261.692);
+  --text-bright: oklch(0.13 0.028 261.692);
+  --text-2:      oklch(0.446 0.027 264.364);
+  --text-3:      oklch(0.551 0.027 264.364);
+  --text-muted:  oklch(0.551 0.027 264.364);
+  --text-faint:  oklch(0.707 0.022 261.325);
+  --white:       oklch(0.13 0.028 261.692);
+  --hover:       oklch(0.967 0.003 264.542);
   --active-bg:   rgba(33, 41, 57, 0.06);
   /* The console's --primary / --primary-foreground, verbatim. Neutral wins and
      the app adopts it (his ruling, 2026-09-18); the other themes keep their
@@ -122,22 +128,26 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
 [data-theme="dark"] {
   color-scheme: dark;
   --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
-  --bg:          #1a1a1c;
-  --bg-raised:   #202023;
-  --surface:     #252528;
-  --surface-2:   #2e2e32;
-  --surface-3:   #29292c;
-  --border:      #3f3f46;
-  --border-2:    #4a4a52;
-  --border-3:    #57575e;
-  --text:        #f1f1f1;
-  --text-bright: #ffffff;
-  --text-2:      #c4c4c4;
-  --text-3:      #a7a7a7;
-  --text-muted:  #828282;
-  --text-faint:  #808080;
-  --white:       #ffffff;
-  --hover:       #303035;
+  /* The console's dark neutrals, verbatim. --sidebar is darker than the page
+     there, which is what gives the rail its own ground. */
+  --bg:          oklch(0.248 0 0);
+  --bg-raised:   oklch(0.286 0 0);
+  --surface:     oklch(0.248 0 0);
+  --surface-2:   oklch(0.286 0 0);
+  --surface-3:   oklch(0.209 0 0);
+  --sidebar:     oklch(0.187 0 0);
+  --sidebar-border: oklch(0.187 0 0);
+  --border:      oklch(0.309 0 0);
+  --border-2:    oklch(0.356 0 0);
+  --border-3:    oklch(0.56 0 0);
+  --text:        oklch(0.964 0 0);
+  --text-bright: oklch(1 0 0);
+  --text-2:      oklch(0.754 0 0);
+  --text-3:      oklch(0.754 0 0);
+  --text-muted:  oklch(0.65 0 0);
+  --text-faint:  oklch(0.65 0 0);
+  --white:       oklch(1 0 0);
+  --hover:       oklch(0.309 0 0);
   --active-bg:   rgba(255, 255, 255, 0.08);
   /* The console's dark --primary / --primary-foreground. */
   --accent:      oklch(0.928 0 0);
@@ -16132,8 +16142,10 @@ body.wb-mouse-drag .ws-app-holder { pointer-events: none !important; }
   min-width: 264px;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
-  background: var(--surface-2);
+  /* The console gives its sidebar its own ground; the themes that declare no
+     --sidebar keep the surface they always had. */
+  border-right: 1px solid var(--sidebar-border, var(--border));
+  background: var(--sidebar, var(--surface-2));
   overflow: hidden;
   transition: width 0.16s ease, min-width 0.16s ease;
 }
@@ -16360,7 +16372,8 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
   flex: 0 0 auto;
   display: flex; align-items: center; gap: 4px;
   padding: 8px;
-  border-top: 1px solid var(--border);
+  /* The rail's own divider, on the rail's own ground. */
+  border-top: 1px solid var(--sidebar-border, var(--border));
 }
 .app-rail-user .app-rail-user-btn { flex: 1 1 auto; min-width: 0; }
 #app-rail.rail-icons .app-rail-user { flex-direction: column; }
