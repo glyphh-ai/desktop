@@ -411,6 +411,9 @@ let defaultLoopView: "glyphh" | "cli" | "last" = "glyphh";
  *  sits in, then the app default, and only if that says "last" the last face
  *  the user left an agent on. */
 function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "cli" {
+  // A closed terminal door outranks every preference: a workspace cell saved
+  // as "cli" must not reopen it.
+  if (!cliAllowed) return "glyphh";
   if (cellView === "glyphh" || cellView === "cli") return cellView;
   if (layoutView === "glyphh" || layoutView === "cli") return layoutView;
   if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
@@ -423,6 +426,20 @@ function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "c
  *  nothing, so the compiler never said a word. */
 interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
 let cliAgentRows: CliAgentRowLite[] = [];
+
+/** THE ORG CAN CLOSE THE TERMINAL DOOR (his order, 2026-09-18): restricting
+ *  loops and models is meaningless while a member can hop into the CLI and
+ *  run whatever they like. Open by default, and only the server enforces. */
+let cliAllowed = true;
+async function refreshCliAllowed(): Promise<void> {
+  try {
+    const g = await (window as unknown as { glyphh?: { planGates?: () => Promise<{ cliAllowed?: boolean }> } }).glyphh?.planGates?.();
+    cliAllowed = g?.cliAllowed !== false;
+  } catch { /* offline — whatever we last knew stands */ }
+  if (!cliAllowed) document.getElementById("code-term-toggle")?.remove();
+}
+void refreshCliAllowed();
+window.addEventListener("glyphh:plan-gates-changed", () => void refreshCliAllowed());
 
 let defaultLoopPref = "";
 const refreshLoopPrefs = (): void => {
@@ -5058,6 +5075,7 @@ async function init(): Promise<void> {
      *  mark, a workspace cell, or the boot (his report, 2026-09-16: it vanished
      *  when the card opened without a loop in hand). */
     function ensureTermToggle(): void {
+      if (!cliAllowed) { document.getElementById("code-term-toggle")?.remove(); return; }
       const headActions = document.querySelector<HTMLElement>(".session-head-actions");
       if (headActions && !document.getElementById("code-term-toggle")) {
         const termBtn = document.createElement("button");

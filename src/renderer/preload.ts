@@ -1084,7 +1084,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   loopsAvailable: () => ipcRenderer.invoke("loops-available") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopsList: () => ipcRenderer.invoke("org-loops-list") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopSet: (cli: string, enabled: boolean) => ipcRenderer.invoke("org-loop-set", cli, enabled) as Promise<{ ok: boolean; error?: string }>,
-  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>,
+  planGates: () => ipcRenderer.invoke("plan-gates") as Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number; cliAllowed?: boolean; autoOnly?: boolean }>,
   libraryAgentsList: () => ipcRenderer.invoke("library-agents-list") as Promise<LibEnvelope>,
   libraryAgentTasks: (ref: string) => ipcRenderer.invoke("library-agent-tasks", ref) as Promise<LibEnvelope>,
   libraryAgentTaskUpdate: (ref: string, taskId: string, patch: unknown) => ipcRenderer.invoke("library-agent-task-update", ref, taskId, patch) as Promise<LibEnvelope>,

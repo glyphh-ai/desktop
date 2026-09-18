@@ -129,6 +129,10 @@ let models: Array<{ id: string; name: string; providerSlug?: string }> = [];
 /** Whether the org's plan carries the gateway — keyless loops then ride it
  *  and their model list is the whole gateway-enabled set. */
 let gatewayOn = false;
+/** The org's terminal door. Closed = a loop only ever opens as Glyphh's chat,
+ *  so the control that chooses a view is shown set to Glyphh and disabled
+ *  (his order, 2026-09-18). */
+let cliAllowed = true;
 
 export async function loadSettingsLoops(): Promise<void> {
   const host = el("loops-accordion");
@@ -144,6 +148,7 @@ export async function loadSettingsLoops(): Promise<void> {
   ]);
   models = catalog?.ok ? catalog.data ?? [] : [];
   gatewayOn = !!gates?.gatewayAllowed;
+  cliAllowed = gates?.cliAllowed !== false;
   const allowed = availRes?.ok ? availRes.data ?? [] : [];
   const configs = new Map((cfgRes?.ok ? cfgRes.agents : []).map((c) => [c.cli, c]));
 
@@ -486,7 +491,9 @@ export async function loadAgentDefaults(): Promise<void> {
   const viewSel = el<HTMLSelectElement>("set-default-loop-view");
   if (viewSel) {
     const saved = String((await prefs.getPreference?.("defaultLoopView", "glyphh")) ?? "glyphh");
-    viewSel.value = saved === "cli" || saved === "last" ? saved : "glyphh";
+    viewSel.value = !cliAllowed ? "glyphh" : saved === "cli" || saved === "last" ? saved : "glyphh";
+    viewSel.disabled = !cliAllowed;
+    viewSel.title = cliAllowed ? "" : "Your organization has closed the terminal; loops open as Glyphh's chat.";
     viewSel.addEventListener("change", () => { prefs.setPreference?.("defaultLoopView", viewSel.value); window.dispatchEvent(new CustomEvent("glyphh:pref-changed")); });
   }
 }

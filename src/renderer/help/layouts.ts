@@ -7,6 +7,7 @@ import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.
 import { gotoSection, closeSettingsModal } from "./navigation.js";
 import { showWorkspaceSurface } from "./code.js";
 import { loadUiState, uiStateRemovePrefix } from "./ui-state.js";
+import { planGates } from "./plan-gate.js";
 
 /** Rewrite a workspace's launcher/dock tile key across the persisted order
  *  prefs (the command center owns these: ccIconOrder = page order,
@@ -1172,7 +1173,15 @@ async function editLayout(name: string) {
   }
   await ensureLoopOptions();
   if (layoutLoopSelect) layoutLoopSelect.value = builderLoop;
-  if (layoutViewSelect) layoutViewSelect.value = builderView;
+  if (layoutViewSelect) {
+    // A closed terminal door settles this for every workspace (his order,
+    // 2026-09-18): the control reads Glyphh and takes no other answer.
+    const open = (await planGates().catch(() => null))?.cliAllowed !== false;
+    layoutViewSelect.value = open ? builderView : "glyphh";
+    layoutViewSelect.disabled = !open;
+    layoutViewSelect.title = open ? "" : "Your organization has closed the terminal; agents open as Glyphh's chat.";
+    if (!open) builderView = "glyphh";
+  }
   void renderLoopModels();
   layoutNameInput.value = name;
   layoutDeleteBtn.style.display = "";

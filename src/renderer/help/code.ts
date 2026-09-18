@@ -302,17 +302,34 @@ function modelsForLoop(): AvailModel[] {
   return availModels;
 }
 
+/** THE CATALOG'S ID IS NOT THE MODEL'S NAME (his report, 2026-09-18: the chip
+ *  read "anthropic::claude-haiku-4-5" and never changed with the loop).
+ *  Settings stores the catalog id, `provider::name`; a loop's list and every
+ *  CLI's --model flag take the bare name. Main strips the same prefix before
+ *  it spawns (bareModel in cli-agents.ts); the renderer must never import from
+ *  src/shared, so the one rule lives on both sides of the wire. */
+const bareModelId = (id: string | null | undefined): string | null => {
+  const s = String(id ?? "").trim();
+  if (!s) return null;
+  const cut = s.lastIndexOf("::");
+  return cut >= 0 ? s.slice(cut + 2) : s;
+};
+
 /** WHAT THE CHIP SHOWS IS WHAT THE TURN SENDS (his report, 2026-09-17: the
  *  composer said one model while another was asked for). The chip used to read
  *  the session's own pick only, while a turn falls back to Settings' default
  *  model — so a chat with no pick of its own displayed one thing and ran
  *  another. Both resolve here. */
 function effectiveModelId(): string | null {
-  return current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref ?? null;
+  const picked = bareModelId(current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref);
+  if (!picked) return null;
+  // A default the ACTIVE loop cannot run is not this loop's model. Saying so
+  // (null = the loop's own default) beats naming a model the turn won't use.
+  return availModels.length && !availModels.some((m) => bareModelId(m.id) === picked) ? null : picked;
 }
 function selectedModel(): AvailModel | null {
   const id = effectiveModelId();
-  return availModels.find((m) => m.id === id) ?? null;
+  return availModels.find((m) => bareModelId(m.id) === id) ?? null;
 }
 
 function paintModelChip(): void {
@@ -3315,7 +3332,7 @@ function syncThinking(): void {
  *  chose one still opens on the configured default rather than "whatever
  *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
-  return c?.models?.["default"] ?? defaultModelPref ?? null;
+  return bareModelId(c?.models?.["default"] ?? defaultModelPref);
 }
 
 /** Settings → General's default model, memoised for the session. Empty

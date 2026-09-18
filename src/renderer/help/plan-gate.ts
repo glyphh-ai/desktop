@@ -23,12 +23,20 @@ export interface PlanGates {
   governance: boolean;
   sso: boolean;
   rpm: number;
+  /** The org lets members drop into the loop's own CLI. Off = the terminal
+   *  door is closed, so restricted loops and models cannot be walked around
+   *  (his order, 2026-09-18). */
+  cliAllowed: boolean;
+  /** The org picks nothing: every turn goes to its auto-router. */
+  autoOnly: boolean;
 }
 
 /** Locked-down defaults: what a failed read answers, so an offline client
  *  shows paid surfaces as locked rather than as usable. */
 const CLOSED: PlanGates = {
-  gatewayAllowed: false, trialEndsAt: null, governance: false, sso: false, rpm: 0,
+  // cliAllowed defaults OPEN: a failed read must not lock a member out of a
+  // door their org never closed, and the server is the enforcement anyway.
+  gatewayAllowed: false, trialEndsAt: null, governance: false, sso: false, rpm: 0, cliAllowed: true, autoOnly: false,
 };
 
 let cached: Promise<PlanGates> | null = null;
