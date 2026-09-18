@@ -20439,7 +20439,11 @@ body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
   /* Hug the chrome (his report, 2026-09-14: "drops down way too far") —
      just under the drag strip, wall margins zeroed on the parked bar. */
   /* Centered over the CONTENT side, never the whole window: the fixed sidebar owns the left (2026-09-16). */
-  position: fixed; top: calc(var(--wb-top-inset, 0px) + 2px); left: calc(var(--rail-w, 0px) + (100vw - var(--rail-w, 0px)) / 2);
+  /* ABSOLUTE INSIDE THE LAYER, not the viewport (his report, 2026-09-18: the
+     dock's left end sat under the sidebar). The layer already starts after
+     the rail, so centering within it cannot spill back over the rail however
+     wide the bar gets. */
+  position: absolute; top: calc(var(--wb-top-inset, 0px) + 2px); left: 50%;
   margin: 0;
   transform: translate(-50%, 0);
   transition: transform 0.22s ease;
@@ -20452,7 +20456,7 @@ body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
      content area overflows both sides and clips at the right, which reads as
      left-aligned. Capped to the space it actually has, so it centers while it
      fits and slides within itself when it does not. */
-  max-width: calc(100vw - var(--rail-w, 0px) - 24px);
+  max-width: calc(100% - 24px);
   overflow-x: auto; scrollbar-width: none;
 }
 #echo-dock-layer .echo-topbar::-webkit-scrollbar { display: none; }
