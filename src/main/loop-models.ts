@@ -100,10 +100,18 @@ const GATEWAY_KEY = "\u0000gateway";
 
 async function orgGatewayModels(): Promise<{ models: LoopModel[]; baseUrl: string | null }> {
   const creds = await gatewayCreds().catch(() => null);
-  if (!creds) return { models: [], baseUrl: null };
-  // "claude" only picks the dialect; the gateway speaks OpenAI's for everyone,
-  // and the answer is the member's whole allowed set whatever loop asked.
-  return { models: await listAt("claude", creds.baseUrl, creds.token, true), baseUrl: creds.baseUrl };
+  // The SERVER answers this, not the gateway's own /v1/models: a team-scoped
+  // deployment is renamed internally there (model_name_<team>_<uuid>), and an
+  // auto-router has no business being offered as a model name at all. Our own
+  // endpoint publishes the public name, applies the org's allow-list, and
+  // collapses to the auto-router under Auto only (his report, 2026-09-18).
+  const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean }>;
+  return {
+    baseUrl: creds?.baseUrl ?? null,
+    models: rows
+      .filter((m) => m.modality === "chat")
+      .map((m) => ({ id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug })),
+  };
 }
 
 async function gatewayMode(): Promise<boolean> {

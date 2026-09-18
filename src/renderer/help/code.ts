@@ -339,11 +339,17 @@ function paintModelChip(): void {
   const id = effectiveModelId();
   // A model the catalog no longer carries still RUNS, so name it rather than
   // calling it the default: a stale pick is a thing to notice, not to hide.
-  mc.textContent = `Model: ${sel?.name ?? (id ? id : "Default")}`;
-  mc.title = sel ? `${sel.name} — ${sel.providerSlug}`
+  // NO MODELS IS ITS OWN ANSWER (his order, 2026-09-18): an org that allows
+  // none leaves nothing to run, and naming some leftover pick would invite a
+  // turn that can only be refused.
+  const none = modelSource === "gateway" && availModels.length === 0;
+  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : "Default")}`;
+  mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
+    : sel ? `${sel.name} — ${sel.providerSlug}`
     : id ? `${id} — not in your model list; the loop may refuse it`
     : "The loop's own default model";
-  mc.className = "code-chip" + (!sel && id ? " warn" : "");
+  mc.className = "code-chip" + (none || (!sel && id) ? " warn" : "");
+  paintComposerGate();
 }
 
 /** THE ORG'S LIST CAN CHANGE WHILE THE APP IS OPEN (his report, 2026-09-18:
@@ -2577,16 +2583,26 @@ function readyPlaceholder(): string {
   return "Describe what to build or fix…";
 }
 
+/** Nothing to run with: the org allows no model on the gateway lane. Kept
+ *  narrow on purpose — a login or BYOK loop asks its own endpoint and an empty
+ *  answer there means offline, not forbidden. */
+function noModelAllowed(): boolean {
+  return modelSource === "gateway" && availModels.length === 0;
+}
+
 function paintComposerGate(): void {
   const ta = input();
   if (!ta) return;
-  ta.disabled = !workdirReady;
-  ta.placeholder = workdirReady
+  const open = workdirReady && !noModelAllowed();
+  ta.disabled = !open;
+  ta.placeholder = open
     ? readyPlaceholder()
-    : "Pick a working folder to start — click here to choose";
-  el("code-send")?.toggleAttribute("disabled", !workdirReady);
+    : noModelAllowed()
+      ? "Your organization hasn't allowed any model yet"
+      : "Pick a working folder to start — click here to choose";
+  el("code-send")?.toggleAttribute("disabled", !open);
   const wrap = document.querySelector(".code-input-wrap");
-  wrap?.classList.toggle("gated", !workdirReady);
+  wrap?.classList.toggle("gated", !open);
   // With TEXT in the composer (a seeded prompt) the placeholder is
   // invisible — the gate needs its own voice, or the chat just looks dead.
   let note = wrap?.querySelector<HTMLElement>(".code-gate-note") ?? null;
