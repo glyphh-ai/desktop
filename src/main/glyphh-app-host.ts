@@ -102,16 +102,19 @@ export interface GlyphhAppManifest {
 
 
 /**
- * AN APP'S OWN FILES (his ruling, 2026-09-18). The agent generates; the app
- * holds what it made. Both capabilities are scoped to the calling app's own
- * folder, so one app can never read or write another's library.
+ * AN APP'S OWN FILES (his ruling, 2026-09-18). Media is NOT a capability every
+ * app is handed: the app that owns a library owns its files, and exposes
+ * saving and listing as its own TOOLS. Another app reaches them the way it
+ * reaches any app's tools, through the framework's MCP door
+ * (`app_call_tool { app: "images", tool: "save_image" }`), so one app's files
+ * are never in another's reach except through the door that app opened.
+ *
+ * These back the media apps' own handlers, keyed by the calling app's slug.
  */
-function mediaList(slug: string, args: Record<string, unknown>): { files: Array<{ id: string; title: string; mime: string; sizeBytes: number; updatedAt: string }> } {
-  const kind = String(args.kind || "");
-  const only = kind === "image" || kind === "audio" || kind === "video" ? kind : undefined;
+export function appMediaList(slug: string, args: Record<string, unknown>): { files: Array<{ id: string; title: string; mime: string; sizeBytes: number; updatedAt: string }> } {
   const mine = mediaOfApp(slug);
-  const rows = mediaLocal.list(only, args.q ? String(args.q) : undefined)
-    .filter((a) => !mine || a.kind === mine);
+  if (!mine) throw new Error(`${slug} owns no media library`);
+  const rows = mediaLocal.list(mine, args.q ? String(args.q) : undefined);
   return { files: rows.map((a) => ({ id: a.id, title: a.title, mime: a.mime, sizeBytes: a.sizeBytes, updatedAt: a.updatedAt })) };
 }
 
@@ -122,17 +125,15 @@ function mediaOfApp(slug: string): "image" | "audio" | "video" | null {
   return found ? found[0] : null;
 }
 
-function mediaSave(slug: string, args: Record<string, unknown>): { id: string; title: string } {
+export function appMediaSave(slug: string, args: Record<string, unknown>): { id: string; title: string } {
   const mine = mediaOfApp(slug);
-  const kind = String(args.kind || mine || "");
-  if (kind !== "image" && kind !== "audio" && kind !== "video") throw new Error("kind must be image, audio or video");
-  if (mine && kind !== mine) throw new Error(`this app keeps ${mine} files, not ${kind}`);
+  if (!mine) throw new Error(`${slug} owns no media library`);
   const name = String(args.name || "untitled");
   const b64 = String(args.base64 || "");
   const fromPath = String(args.path || "");
   const bytes = b64 ? Buffer.from(b64, "base64") : fromPath ? fs.readFileSync(fromPath) : null;
   if (!bytes || !bytes.byteLength) throw new Error("pass the file as base64, or a path to read it from");
-  const saved = mediaLocal.save(kind, name, bytes);
+  const saved = mediaLocal.save(mine, name, bytes);
   return { id: saved.id, title: saved.title };
 }
 
@@ -157,8 +158,7 @@ const KNOWN_CAPABILITIES = new Set([
   "graph.cypher",
   "secrets.get",
   "secrets.list",
-  "media.list",
-  "media.save",
+  "app.call",
   "fs.read",
   "fs.write",
   "fs.pick",
@@ -397,7 +397,7 @@ function bundleIconSvg(zip: AdmZip): string | null {
  * Install a .glyphh glyphh-app bundle: extract it locally and create the
  * server app row. Returns { ok, name } or { ok:false, error }.
  */
-export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] }> {
+export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[]; slug?: string; tools?: Array<{ name: string; description: string }> }> {
   let zip: AdmZip;
   try { zip = new AdmZip(zipPath); } catch { return { ok: false, error: "Not a readable .glyphh bundle" }; }
   const entry = zip.getEntry("manifest.json");
@@ -558,7 +558,14 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
       connectors: manifest.connectors ?? [],
     }).catch((err) => console.error(`[glyphh-app] worker warm-start "${manifest.slug}" failed:`, err instanceof Error ? err.message : err));
   }
-  return { ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [] };
+  // "HERE IS WHAT I ADD TO THE TOOLBOX" (his ruling, 2026-09-18): an install
+  // announces itself, so the agent that just installed an app knows what it
+  // can now do without going back to discover.
+  return {
+    ok: true, name: manifest.name, updated: updated || undefined, connectors: manifest.connectors ?? [],
+    slug: manifest.slug,
+    tools: (manifest.tools ?? []).map((t) => ({ name: t.name, description: t.description ?? "" })),
+  };
 }
 
 // ── run ─────────────────────────────────────────────────────
@@ -695,11 +702,18 @@ async function runCapability(
     case "connector.status": return connectorStatus(connectors);
     case "connector.tools":  return connectorTools(connectors, args);
     case "connector.call":   return connectorCall(connectors, args);
-    // AN APP OWNS ITS OWN FILES (his ruling, 2026-09-18: apps keep their media
-    // in app-data/<slug>/files, and the agent that made something writes it
-    // there). Glyphh does not generate; it holds what was generated.
-    case "media.list":       return mediaList(slug, args);
-    case "media.save":       return mediaSave(slug, args);
+    // ONE APP USES ANOTHER'S TOOLS (his ruling, 2026-09-18): the app that owns
+    // a thing publishes tools for it, and everyone else goes through the
+    // framework's own door rather than reaching into its files. The target
+    // app's tool approvals still apply, so this grants nothing the user has
+    // not already allowed that app to do.
+    case "app.call": {
+      const target = String(args.app || "").trim();
+      const tool = String(args.tool || "").trim();
+      if (!target || !tool) throw new Error("app and tool are required");
+      if (target === slug) throw new Error("an app calls its own handlers directly, not through app.call");
+      return callAppTool(target, tool, (args.args as Record<string, unknown>) ?? {});
+    }
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
     case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
@@ -747,7 +761,7 @@ async function runCapability(
 // ── Install from a base64 bundle (MCP app_install / apps.install) ────────────
 
 /** Install a .glyphh handed over as base64 (Claude deploying an app it built). */
-export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[] }> {
+export async function installGlyphhAppBundleFromBase64(bundleBase64: string): Promise<{ ok: boolean; name?: string; updated?: boolean; error?: string; connectors?: string[]; slug?: string; tools?: Array<{ name: string; description: string }> }> {
   const b64 = String(bundleBase64 || "").replace(/^data:[^,]*,/, "");
   if (!b64) return { ok: false, error: "bundleBase64 is required" };
   const tmp = path.join(os.tmpdir(), `glyphh-app-${process.pid}-${Buffer.from(b64).length}.glyphh`);
