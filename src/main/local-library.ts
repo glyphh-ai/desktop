@@ -565,6 +565,19 @@ export function registerLocalLibraryIpc(): void {
         output: r.output, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null,
         input: jsonOr(r.input, null), result: jsonOr(r.result, null), journal: jsonOr(r.journal, { checkpoints: {}, events: [] }),
       }))));
+  // ONE RUN, WHOLE (his report, 2026-09-18: a run in Recent runs would not
+  // open). The recent lanes are deliberately shallow - a journal per row, 60
+  // rows deep, is megabytes nobody asked for - so a row expands by reading
+  // its own story here, once.
+  ipcMain.handle("run-get", (_e, id: string) => env(() => {
+    const r = getLocalDb().prepare("SELECT * FROM loop_runs WHERE id = ?").get(String(id)) as (RunRow & { task_slug?: string | null }) | undefined;
+    if (!r) throw new Error("that run is no longer on this machine");
+    return {
+      id: r.id, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error,
+      output: r.output, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null,
+      input: jsonOr(r.input, null), result: jsonOr(r.result, null), journal: jsonOr(r.journal, { checkpoints: {}, events: [] }),
+    };
+  }));
   ipcMain.handle("schedule-recent-runs", () => env(() =>
     (getLocalDb().prepare(`SELECT r.*, s.name AS schedule_name FROM loop_runs r LEFT JOIN loop_schedules s ON s.id = r.schedule_id ORDER BY r.started_at DESC LIMIT 60`).all() as Array<RunRow & { schedule_name: string | null; task_slug?: string | null; trigger?: string | null }>)
       .map((r) => ({ id: r.id, scheduleId: r.schedule_id || null, scheduleName: r.schedule_name, taskSlug: r.task_slug ?? null, trigger: r.trigger ?? null, startedAt: r.started_at, durationMs: r.duration_ms, status: r.status, error: r.error }))));

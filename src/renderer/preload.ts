@@ -1145,6 +1145,7 @@ contextBridge.exposeInMainWorld("glyphh", {
    *  detail page's source line and its "Check for updates". */
   skillStandings: () => ipcRenderer.invoke("skill-standings") as Promise<LibEnvelope>,
   skillShares: () => ipcRenderer.invoke("skill-shares") as Promise<LibEnvelope>,
+  runGet: (id: string) => ipcRenderer.invoke("run-get", id) as Promise<LibEnvelope>,
   /** Open a terminal on the command that signs a vendor CLI back in. */
   cliLogin: (cli: string) => ipcRenderer.invoke("cli-login", cli) as Promise<LibEnvelope>,
   skillWithdraw: (id: string) => ipcRenderer.invoke("skill-withdraw", id) as Promise<LibEnvelope>,

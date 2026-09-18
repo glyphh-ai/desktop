@@ -71,12 +71,28 @@ export function renderRunList(host: HTMLElement, runs: RunRowLite[], opts: RunLi
       opts.onToggle?.(openId);
       e.classList.toggle("open", openId === run.id);
       story.classList.toggle("hidden", openId !== run.id);
-      if (openId === run.id && !story.childElementCount) paintStory(story, run, opts);
+      if (openId === run.id && !story.childElementCount) void openStory(story, run, opts);
     });
     e.querySelector(".ws-task-cancel")?.addEventListener("click", () => { void opts.onCancel?.(run.id); });
-    if (openId === run.id) paintStory(story, run, opts);
+    if (openId === run.id) void openStory(story, run, opts);
     host.appendChild(e);
   }
+}
+
+
+/**
+ * A ROW OPENS EVEN WHEN THE LIST WAS SHALLOW (his report, 2026-09-18: runs in
+ * Recent runs would not open). The recents lanes carry a summary only, so a
+ * run with no story reads its own once, on the first expand, rather than
+ * rendering an empty box that looks like a dead click.
+ */
+async function openStory(host: HTMLElement, run: RunRowLite, opts: RunListOpts): Promise<void> {
+  const thin = !(run.journal?.events ?? []).length && !run.output && run.input == null && run.result == null;
+  if (!thin) { paintStory(host, run, opts); return; }
+  host.innerHTML = `<div class="task-event"><div class="task-event-head"><span class="task-event-title">Loading…</span></div></div>`;
+  const api = (window as unknown as { glyphh?: { runGet?: (id: string) => Promise<{ ok: boolean; data?: RunRowLite; error?: string }> } }).glyphh;
+  const r = await api?.runGet?.(run.id).catch(() => null);
+  paintStory(host, r?.ok && r.data ? { ...run, ...r.data } : run, opts);
 }
 
 /** The run, whole. An agent turn carries the prompt it was given and the
