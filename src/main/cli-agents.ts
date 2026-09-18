@@ -31,7 +31,7 @@ import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
-import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, type GatewayCreds } from "./gateway-token.js";
+import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, LOOP_VENDOR, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient } from "./glyphh-client.js";
 
@@ -1204,7 +1204,9 @@ export function registerCliAgentsIpc(): void {
           const creds = await gatewayCreds();
           // No creds is a NORMAL answer (no plan, closed trial, offline) —
           // the loop then runs on whatever the CLI is already logged into.
-          if (creds) {
+          // And while this vendor's own credits last, the turn goes STRAIGHT
+          // at the vendor: the gateway takes over only when they run out.
+          if (creds && await loopGoesToGateway(row.cli, false)) {
             const wrapped = row.cli === "claude" ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
             writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
           } else if (bridged) {

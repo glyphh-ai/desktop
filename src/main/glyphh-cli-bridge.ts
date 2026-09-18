@@ -23,6 +23,8 @@ import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { authFix } from "./cli-auth.js";
+import { loopGoesToGateway, LOOP_VENDOR } from "./gateway-token.js";
+import { getClient } from "./glyphh-client.js";
 import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
@@ -81,6 +83,28 @@ interface LiveChat {
 }
 
 const live = new Map<string, LiveChat>();
+
+/**
+ * A TURN WE CANNOT METER ANY OTHER WAY (his order, 2026-09-18).
+ *
+ * While a vendor's own credits last, the CLI talks straight to the vendor and
+ * nothing reaches our gateway, so the only record of what was spent is the
+ * CLI's own token count. Report it so the burn-down can end and the gateway
+ * take over. A gateway turn is metered server-side and must NOT be counted
+ * twice, so this reports only the direct lane.
+ */
+async function reportDirectUsage(chat: LiveChat, model?: string): Promise<void> {
+  const provider = LOOP_VENDOR[chat.cli];
+  const { inTokens, outTokens } = chat.usage;
+  if (!provider || (!inTokens && !outTokens)) return;
+  try {
+    if (await loopGoesToGateway(chat.cli, false)) return;
+    await getClient().http.post("/api/gateway/vendor-usage", {
+      provider, model: bareModel(model ?? "") || "", inTokens, outTokens,
+    });
+  } catch { /* the burn-down reads low rather than failing a finished turn */ }
+}
+
 /** chatId → the CLI session to resume when the chat's process is cold. */
 // PER-CLI bindings (his ruling, 2026-09-14: "some way to map sessions
 // across loops" WITHOUT the spider web) — the glyphh thread is the session
@@ -317,6 +341,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
   proc.on("exit", (code) => {
     live.delete(p.chatId);
+    void reportDirectUsage(chat, p.model);
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
     if (code !== 0 && code !== null) {
       const said = errTail.trim() || `${agent.cli} exited ${code}`;

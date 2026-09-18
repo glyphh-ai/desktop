@@ -95,16 +95,52 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
  * Best-effort and silent: no creds (no plan, closed trial, offline) simply
  * leaves every loop on whatever the CLI is already logged into.
  */
+/**
+ * THE BURN-DOWN DECIDES PER VENDOR (his order, 2026-09-18).
+ *
+ * An org spends the credits its vendor granted it FIRST: the CLI talks
+ * straight to Anthropic or OpenAI on the org's own key, which never touches
+ * our gateway and costs us nothing. Only when those credits are gone does that
+ * vendor's loop get pointed at the gateway, and on the next interval it goes
+ * back. A vendor with no allowance is in no burn-down and follows the org's
+ * gateway switch the way it always has.
+ */
+export const LOOP_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+
+let routing: Record<string, string> = {};
+let routingAt = 0;
+const ROUTING_TTL_MS = 60_000;
+
+async function vendorRouting(force = false): Promise<Record<string, string>> {
+  if (!force && Date.now() - routingAt < ROUTING_TTL_MS) return routing;
+  try {
+    const gates = await getClient().plans.gates() as unknown as { vendorRouting?: Record<string, string> };
+    routing = gates?.vendorRouting ?? {};
+    routingAt = Date.now();
+  } catch { /* offline — the last answer stands, and absence means no burn-down */ }
+  return routing;
+}
+
+/** Where this loop's turns go: the burn-down's answer when its vendor is in
+ *  one, else whether the org's gateway minted us a credential. */
+export async function loopGoesToGateway(cli: string, hasOwnKey: boolean): Promise<boolean> {
+  const lane = (await vendorRouting())[LOOP_VENDOR[cli] ?? ""];
+  if (lane === "direct") return false;
+  if (lane === "gateway") return true;
+  return !hasOwnKey && !!(await gatewayCreds());
+}
+
 export async function primeGatewayEnv(
   loops: Array<{ id: string; cli: string; hasOwnKey: boolean }>,
   baseUrlVarsFor: (cli: string) => string[],
 ): Promise<void> {
   const creds = await gatewayCreds();
+  await vendorRouting(true);
   for (const l of loops) {
     const vars = baseUrlVarsFor(l.cli);
     if (!vars.length) continue; // copilot / cursor have no base-URL seam
     try {
-      if (creds && !l.hasOwnKey) writeGatewayEnv(l.id, l.cli, vars, creds);
+      if (creds && await loopGoesToGateway(l.cli, l.hasOwnKey)) writeGatewayEnv(l.id, l.cli, vars, creds);
       else clearGatewayEnv(l.id, l.cli, vars);
     } catch { /* one unreadable loop must not stop the rest */ }
   }
