@@ -35,7 +35,7 @@ import { greeting } from "./dashboard.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
-interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect"; attachments?: AttachRef[]; decline?: { kind: string; url: string }; connect?: ConnectCard }
+interface CodeMsg { role: "user" | "assistant"; text: string; at: number; kind?: "tool" | "decline" | "connect"; attachments?: AttachRef[]; decline?: { kind: string; url: string; cli?: string; command?: string }; connect?: ConnectCard }
 interface CodeChat {
   id: string; title: string; createdAt: number; messages: CodeMsg[];
   /** The folder THIS session works in — stamped by its layout or by the pick
@@ -2032,11 +2032,12 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
 /** A styled card for a gateway decline (out of credits / role / rate) — replaces
  *  the raw "API Error: 400 …" text with a title, explanation, and one-click
  *  actions (buy credits / manage plan). */
-function declineCardEl(d: { kind: string; url: string }): HTMLElement {
+function declineCardEl(d: { kind: string; url: string; cli?: string; command?: string }): HTMLElement {
   const COPY: Record<string, { title: string; body: string; cta: string }> = {
     credits: { title: "Out of credits", body: "The model you picked needs gateway credits to run. Buy more to keep going.", cta: "Buy more credits" },
     role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
     rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
+    signin: { title: "The CLI's login expired", body: `${d.cli || "The agent"} can't refresh its session, so no turn can run. Sign in again, then send this message once more.`, cta: `Sign in to ${d.cli || "the CLI"}` },
     generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or pick a different one.", cta: "Open account" },
   };
   const c = COPY[d.kind] || COPY.generic;
@@ -2048,8 +2049,8 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
       <div class="decline-card-title"></div>
       <div class="decline-card-body"></div>
       <div class="decline-card-actions">
-        ${d.url ? `<button class="decline-card-cta" type="button"></button>` : ""}
-        <button class="decline-card-alt" type="button">Pick another model</button>
+        ${d.url || d.kind === "signin" ? `<button class="decline-card-cta" type="button"></button>` : ""}
+        ${d.kind === "signin" ? "" : `<button class="decline-card-alt" type="button">Pick another model</button>`}
       </div>
     </div>`;
   (card.querySelector(".decline-card-title") as HTMLElement).textContent = c.title;
@@ -2060,7 +2061,8 @@ function declineCardEl(d: { kind: string; url: string }): HTMLElement {
     cta.addEventListener("click", () => {
       // Credits → the in-app buy-credits dialog (ad-hoc top-up + auto-top-up,
       // redirects to Stripe). Everything else → the in-app account browser.
-      if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openBuyCreditsModal());
+      if (d.kind === "signin") void (window.glyphh as unknown as { cliLogin?: (c: string) => Promise<unknown> }).cliLogin?.(d.cli || "claude");
+      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openBuyCreditsModal());
       else openUrlInWorkbench("Account", d.url);
     });
   }
@@ -4309,6 +4311,14 @@ function initGlyphhAgentEvents(): void {
       const chat = chats.find((ch) => ch.id === runChatId);
       if (chat) chat.messages.push({ role: "assistant", kind: "decline", text: "", decline: { kind: marker[1], url: marker[2].trim() }, at: Date.now() });
       finishRun(runChatId, "");
+      return;
+    }
+    // A LOGIN THAT RAN OUT IS NOT A CHAT MESSAGE (his report, 2026-09-17): the
+    // bridge says which CLI and what command fixes it, and the card runs it.
+    if (d.fix?.kind === "signin") {
+      const chat = chats.find((ch) => ch.id === runChatId);
+      if (chat) chat.messages.push({ role: "assistant", kind: "decline", text: "", decline: { kind: "signin", url: "", cli: d.fix.cli, command: d.fix.command }, at: Date.now() });
+      finishRun(runChatId, run.text || "");
       return;
     }
     finishRun(runChatId, run.text ? `${run.text}\n\n⚠ ${d.error}` : `⚠ ${d.error}`);

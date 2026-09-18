@@ -22,10 +22,11 @@
  */
 
 import fs from "fs";
-import { execFileSync } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import path from "path";
 import { userScopedPath } from "./app-paths.js";
 import { homedir } from "os";
+import { LOGIN_CMD } from "./cli-auth.js";
 import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
@@ -1051,6 +1052,25 @@ export function registerCliAgentsIpc(): void {
         if (cu) { fs.rmSync(path.dirname(cu.file), { recursive: true, force: true }); return { ok: true }; }
       }
       throw new Error("session not found");
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  // SIGNING A CLI BACK IN (his report, 2026-09-17: every turn answered
+  // "OAuth session expired" and the app offered nothing to do about it). We
+  // cannot refresh someone else's session, so we open a terminal on the
+  // command that can.
+  ipcMain.handle("cli-login", (_e, cli: string) => {
+    const command = LOGIN_CMD[String(cli)] ?? String(cli || "claude");
+    try {
+      if (process.platform === "darwin") {
+        const script = ['tell application "Terminal"', "activate", `do script "${command.replace(/["\\]/g, "\\$&")}"`, "end tell"]
+          .flatMap((l) => ["-e", l]);
+        execFileSync("osascript", script);
+        return { ok: true, data: { command } };
+      }
+      spawn(process.env.SHELL || "/bin/bash", ["-lc", command], { detached: true, stdio: "ignore" }).unref();
+      return { ok: true, data: { command } };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

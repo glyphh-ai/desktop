@@ -416,6 +416,14 @@ function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "c
   if (defaultLoopView === "glyphh" || defaultLoopView === "cli") return defaultLoopView;
   return uiStateGet("agentLastView") === "chat" ? "glyphh" : "cli";
 }
+/** THE CLI AGENTS, module-wide. The wall renderer owned this list as a local,
+ *  so every sibling that reads it (the terminal head, the session adopter)
+ *  threw "cliAgentRows is not defined" the moment it ran (his report,
+ *  2026-09-17). code-workbench.ts is bundled by esbuild and typechecked by
+ *  nothing, so the compiler never said a word. */
+interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
+let cliAgentRows: CliAgentRowLite[] = [];
+
 let defaultLoopPref = "";
 const refreshLoopPrefs = (): void => {
   void prefsYo().getPreference?.("defaultLoopView", "glyphh").then((v) => { defaultLoopView = v === "cli" || v === "last" ? v : "glyphh"; }).catch(() => {});
@@ -2307,8 +2315,6 @@ async function init(): Promise<void> {
     // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
     // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
     // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
-    let cliAgentRows: CliAgentRowLite[] = [];
     const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
     const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
       name: a.name,

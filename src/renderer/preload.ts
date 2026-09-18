@@ -1145,6 +1145,8 @@ contextBridge.exposeInMainWorld("glyphh", {
    *  detail page's source line and its "Check for updates". */
   skillStandings: () => ipcRenderer.invoke("skill-standings") as Promise<LibEnvelope>,
   skillShares: () => ipcRenderer.invoke("skill-shares") as Promise<LibEnvelope>,
+  /** Open a terminal on the command that signs a vendor CLI back in. */
+  cliLogin: (cli: string) => ipcRenderer.invoke("cli-login", cli) as Promise<LibEnvelope>,
   skillWithdraw: (id: string) => ipcRenderer.invoke("skill-withdraw", id) as Promise<LibEnvelope>,
   skillCategoriesSet: (itemId: string, kind: string, ids: string[]) => ipcRenderer.invoke("skill-categories-set", itemId, kind, ids) as Promise<LibEnvelope>,
   skillUpdate: (id: string) => ipcRenderer.invoke("skill-update", id) as Promise<LibEnvelope>,
@@ -1184,7 +1186,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGlyphhAgentDone: (callback: (d: { runId: string; stopped: boolean }) => void) => {
     ipcRenderer.on("glyphh-agent:done", (_event, d) => callback(d));
   },
-  onGlyphhAgentError: (callback: (d: { runId: string; error: string }) => void) => {
+  onGlyphhAgentError: (callback: (d: { runId: string; error: string; fix?: { kind: string; cli: string; command: string; message: string } }) => void) => {
     ipcRenderer.on("glyphh-agent:error", (_event, d) => callback(d));
   },
   onGlyphhAgentSetup: (callback: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => {

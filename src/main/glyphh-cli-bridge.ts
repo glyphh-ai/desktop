@@ -22,6 +22,7 @@ import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
+import { authFix } from "./cli-auth.js";
 import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
@@ -70,6 +71,8 @@ interface LiveChat {
   /** The CLI's own session id — resume + the Terminal view key off it. */
   cliSessionId: string | null;
   permission: "ask" | "plan" | "acceptEdits" | "auto";
+  /** Which vendor CLI is running, so a failure can name its own sign-in. */
+  cli: string;
   buf: string;
   usage: { inTokens: number; outTokens: number };
   nextControl: number;
@@ -182,7 +185,11 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
     if (typeof u.input_tokens === "number") c.usage.inTokens = u.input_tokens;
     if (typeof u.output_tokens === "number") c.usage.outTokens = u.output_tokens;
     emit(c, "glyphh-agent:progress", { runId: c.runId, inTokens: c.usage.inTokens, outTokens: c.usage.outTokens });
-    if (ev.is_error) emit(c, "glyphh-agent:error", { runId: c.runId, error: String(ev.result ?? "the run failed") });
+    if (ev.is_error) {
+      const said = String(ev.result ?? "the run failed");
+      const fix = authFix(said, c.cli || "claude");
+      emit(c, "glyphh-agent:error", { runId: c.runId, error: fix ? fix.message : said, fix: fix ?? undefined });
+    }
     emit(c, "glyphh-agent:done", { runId: c.runId, stopped: ev.subtype === "error_during_execution" ? false : ev.subtype === "success" ? false : true });
     return;
   }
@@ -265,6 +272,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     runId, sender,
     cliSessionId: null,
     permission: p.permission ?? "ask",
+    cli: agent.cli || "claude",
     buf: "",
     usage: { inTokens: 0, outTokens: 0 },
     nextControl: 1,
@@ -310,7 +318,11 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   proc.on("exit", (code) => {
     live.delete(p.chatId);
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
-    if (code !== 0 && code !== null) emit(chat, "glyphh-agent:error", { runId, error: errTail.trim() || `${agent.cli} exited ${code}` });
+    if (code !== 0 && code !== null) {
+      const said = errTail.trim() || `${agent.cli} exited ${code}`;
+      const fix = authFix(`${said}\n${chat.buf}`, agent.cli || "claude");
+      emit(chat, "glyphh-agent:error", { runId, error: fix ? fix.message : said, fix: fix ?? undefined });
+    }
     emit(chat, "glyphh-agent:done", { runId, stopped: false });
   });
   return { runId };
@@ -352,6 +364,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     runId: `${p.chatId}:${Date.now()}`,
     cliSessionId: resume ?? null,
     permission,
+    cli: "claude",
     buf: "",
     usage: { inTokens: 0, outTokens: 0 },
     nextControl: 1,
@@ -373,7 +386,9 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   proc.on("exit", (code) => {
     live.delete(p.chatId);
     if (code !== 0 && code !== null) {
-      emit(chat, "glyphh-agent:error", { runId: chat.runId, error: errTail.trim() || `claude exited ${code}` });
+      const said = errTail.trim() || `claude exited ${code}`;
+      const fix = authFix(`${said}\n${chat.buf}`, "claude");
+      emit(chat, "glyphh-agent:error", { runId: chat.runId, error: fix ? fix.message : said, fix: fix ?? undefined });
       emit(chat, "glyphh-agent:done", { runId: chat.runId, stopped: true });
     }
   });

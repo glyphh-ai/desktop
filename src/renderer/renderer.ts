@@ -531,7 +531,7 @@ declare global {
       glyphhSetPermission: (chatId: string, permission: "ask" | "plan" | "acceptEdits" | "auto") => Promise<{ updated: boolean }>;
       onGlyphhAgentDelta: (cb: (d: { runId: string; delta: string }) => void) => void;
       onGlyphhAgentDone: (cb: (d: { runId: string; stopped: boolean }) => void) => void;
-      onGlyphhAgentError: (cb: (d: { runId: string; error: string }) => void) => void;
+      onGlyphhAgentError: (cb: (d: { runId: string; error: string; fix?: { kind: string; cli: string; command: string; message: string } }) => void) => void;
       onGlyphhAgentSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;
       onGlyphhAgentPermission: (cb: (d: { runId: string; permission: "ask" | "plan" | "acceptEdits" | "auto" }) => void) => void;
       onGlyphhAgentCredits: (cb: (d: { runId: string; creditsMicro: number }) => void) => void;
