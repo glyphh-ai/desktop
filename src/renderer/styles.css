@@ -20448,7 +20448,14 @@ body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
      exactly as they do on the wall, at their stylesheet size (padding here
      would shift them). */
   background: transparent; border: none; padding: 0;
+  /* CENTERED MEANS CENTERED (his report, 2026-09-18). A bar wider than the
+     content area overflows both sides and clips at the right, which reads as
+     left-aligned. Capped to the space it actually has, so it centers while it
+     fits and slides within itself when it does not. */
+  max-width: calc(100vw - var(--rail-w, 0px) - 24px);
+  overflow-x: auto; scrollbar-width: none;
 }
+#echo-dock-layer .echo-topbar::-webkit-scrollbar { display: none; }
 body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
 }
@@ -20462,7 +20469,10 @@ body.echo-dock-tucked:not(.echo-dock-peek)::after { display: none; }
    while the dock is tucked, so it never steals clicks otherwise. */
 .echo-dock-hotstrip { display: none; }
 body.echo-dock-tucked .echo-dock-hotstrip {
-  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 16px;
+  /* A 16px band under a 38px drag strip was a target nobody could find (his
+     report, 2026-09-18). Deep enough to fall into, still shallow enough that
+     it never eats a click meant for the page. */
+  display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 34px;
   z-index: 131; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
