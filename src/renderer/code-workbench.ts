@@ -4096,12 +4096,13 @@ async function init(): Promise<void> {
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
       const cols: TileEntry[][] = [];
       for (const e of cards) {
-        // An agent card that took a terminal's SEAT keeps that terminal's place
-        // in the flow (his rule, 2026-09-16); only a fresh agent is solo.
-        const solo = (e.tile.kind === "agent" && !e.seated) || e.flowSolo === true;
+        // AN AGENT TAKES A PARTNER (his report, 2026-09-18: a panel opened
+        // beside the agent always landed to its right instead of under it).
+        // Only a card that ASKED to be solo still is.
+        const solo = e.flowSolo === true;
         const target = solo
           ? undefined
-          : cols.find((col) => col.length < 2 && !col.some((c) => (c.tile.kind === "agent" && !c.seated) || c.flowSolo === true));
+          : cols.find((col) => col.length < 2 && !col.some((c) => c.flowSolo === true));
         if (target) target.push(e);
         else cols.push([e]);
       }
@@ -5046,17 +5047,17 @@ async function init(): Promise<void> {
         // new card joins the layout beside the definition, following the
         // SAME fill flow as the loose-card pattern (flowColumns): a fresh
         // column opens full height, the next open stacks UNDER it, and only
-        // then does another column spawn. THE AGENT IS THE EXCEPTION — its
-        // column never takes a partner (flow parity: agents are solo), so
-        // an agent-only stage always opens the next column full height.
+        // then does another column spawn. The agent USED to be exempt, so a
+        // panel opened beside an agent always spawned a column to its right
+        // (his report, 2026-09-18: "the next available slot is always not the
+        // slot under it but +1"). It takes a partner like any other card now.
         // The definition is untouched; closes collapse the freed space
         // right back (compactGrid).
         const defCols = Math.min(echoGrid.defCols ?? echoGrid.colWidths.length, echoGrid.colWidths.length);
         let placed = false;
         for (let col = defCols; col < echoGrid.colWidths.length && !placed; col++) {
           const inCol = echoGrid.cells.filter((c) => c.col === col && c.colSpan === 1);
-          if (inCol.length === 1 && inCol[0].row === 0 && inCol[0].rowSpan === 1
-              && inCol[0].entry.tile.kind !== "agent") {
+          if (inCol.length === 1 && inCol[0].row === 0 && inCol[0].rowSpan === 1) {
             echoGrid.rowFracs[col] = [1, 1];
             echoGrid.cells.push({ entry: e, col, row: 1, colSpan: 1, rowSpan: 1 });
             placed = true;
