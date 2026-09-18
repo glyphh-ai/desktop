@@ -71,22 +71,23 @@ async function discover(kinds: Kind[]): Promise<DiscoverRow[]> {
     Promise.all(kinds.map(async (k) => [k, await client.http.get<OrgItem[]>(`/api/library/${k}`).catch(() => [] as OrgItem[])] as const)),
     client.http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]),
   ]);
-  // DISCOVER IS WHAT YOU DO NOT HAVE (his report, 2026-09-18: a skill the user
-  // wrote and published was offered back to them as something to add). The
-  // hub's `installed` only knows about installs, and an author never installed
-  // their own work, so the folder on disk is the honest answer.
+  // ALREADY YOURS IS NOT THE SAME AS ADDABLE (his report, 2026-09-18: a skill
+  // the user wrote and published was offered back to them with an Add button).
+  // The hub's `installed` only knows about installs, and an author never
+  // installed their own work, so the folder on disk is the honest answer. The
+  // row STAYS and says it is already here.
   const mine = new Set(listSkills(["skill", "app", "task", "plugin"])
     .map((sk) => `${kindOfId(sk.id)}:${sk.id.slice(sk.id.indexOf(":") + 1).toLowerCase()}`));
   const have = (kind: Kind, slug: string): boolean => mine.has(`${kind}:${(slug || "").toLowerCase()}`);
   const rows: DiscoverRow[] = [];
   for (const [kind, org] of orgLists) {
     for (const it of Array.isArray(org) ? org : []) {
-      if (!it.headVersion || have(kind, it.slug)) continue;
-      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed, installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
+      if (!it.headVersion) continue;
+      rows.push({ ref: `org:${it.id}`, from: "org", id: it.id, slug: it.slug, name: it.name, description: it.description, author: it.author || "", version: it.headVersion, installed: it.installed || have(kind, it.slug), installs: it.installs ?? 0, updatedAt: it.updatedAt, createdAt: it.createdAt || it.updatedAt, categories: it.categories ?? [], icon: it.icon ?? null, type: kind });
     }
   }
-  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind) && !have(x.kind as Kind, x.slug))) {
-    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed, installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
+  for (const p of (Array.isArray(pub) ? pub : []).filter((x) => kinds.includes(x.kind as Kind))) {
+    rows.push({ ref: `glyphh:${p.id}`, from: "glyphh", id: p.id, slug: p.slug, name: p.name, description: p.description, author: p.sourceOrg, version: p.version, installed: p.installed || have(p.kind as Kind, p.slug), installs: p.installs ?? 0, updatedAt: p.updatedAt, createdAt: p.createdAt || p.updatedAt, categories: p.categories ?? [], icon: p.icon ?? null, type: p.kind as Kind });
   }
   return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
