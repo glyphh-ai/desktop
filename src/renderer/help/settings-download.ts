@@ -1,17 +1,31 @@
 /**
  * settings-download.ts — the platform's Download page (his spec, 2026-08-27):
  * the latest desktop build front and center, a table of previous releases
- * beneath it. Pulls straight from the PUBLIC glyphh-releases repo — the same
- * source the marketing site's /api/download proxies — no server seam needed:
- * the repo is public and every asset carries a public browser_download_url.
+ * beneath it. The releases repo is PRIVATE (his order, 2026-09-18), so this
+ * asks the server, which reads GitHub with the token and signs each download.
+ * Those URLs expire, which is why one is fetched on the click rather than
+ * rendered into a page somebody may leave open.
  */
 
 import { escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 
-const RELEASES_API = "https://api.github.com/repos/glyphh-ai/glyphh-releases/releases?per_page=100";
+interface GhAsset { name: string; size: number }
+interface GhRelease { tag_name: string; published_at: string | null; assets: GhAsset[] }
 
-interface GhAsset { name: string; browser_download_url: string; size: number }
-interface GhRelease { tag_name: string; published_at: string | null; body?: string | null; assets: GhAsset[] }
+type Bridge = {
+  releasesList?: () => Promise<{ ok: boolean; releases?: Array<{ tag: string; publishedAt: string | null; assets: GhAsset[] }>; error?: string }>;
+  releasesAssetUrl?: (tag: string, name: string) => Promise<{ ok: boolean; url?: string; error?: string }>;
+};
+
+function bridge(): Bridge {
+  return (window as unknown as { glyphh?: Bridge }).glyphh ?? {};
+}
+
+async function startDownload(tag: string, asset: string): Promise<void> {
+  const r = await bridge().releasesAssetUrl?.(tag, asset);
+  if (!r?.ok || !r.url) throw new Error(r?.error || "could not start that download");
+  window.open(r.url, "_blank");
+}
 
 /** The download targets, in display order. `asset` is the exact CI artifact name. */
 const TARGETS: ReadonlyArray<{ key: string; label: string; asset: string }> = [
@@ -60,20 +74,11 @@ export async function loadDownload(): Promise<void> {
   errEl?.classList.add("hidden");
   if (!releases.length) latestEl.innerHTML = `<div class="crud-empty">Loading releases…</div>`;
   try {
-    // FULL history: page until a short page (100/page; the cap is a runaway
-    // guard, not a truncation anyone should ever hit).
-    const all: GhRelease[] = [];
-    for (let pg = 1; pg <= 10; pg++) {
-      const res = await fetch(`${RELEASES_API}&page=${pg}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-      const batch = (await res.json()) as GhRelease[];
-      all.push(...batch);
-      if (batch.length < 100) break;
-    }
-    releases = all;
-    // GitHub orders by row-creation, and mirror-released rows can be created
-    // out of publish order (v1.1.0-beta.16 sat below beta.2 in the raw list).
-    releases.sort((a, b) => (b.published_at || "").localeCompare(a.published_at || ""));
+    const r = await bridge().releasesList?.();
+    if (!r?.ok || !r.releases) throw new Error(r?.error || "the server could not read the release list");
+    // The server already orders by publish date, which row-creation order does
+    // not match (v1.1.0-beta.16 once sat below beta.2 in GitHub's raw list).
+    releases = r.releases.map((x) => ({ tag_name: x.tag, published_at: x.publishedAt, assets: x.assets }));
   } catch (e) {
     if (errEl) { errEl.textContent = `Couldn't load releases — ${(e as Error).message}`; errEl.classList.remove("hidden"); }
     if (!releases.length) latestEl.innerHTML = "";
@@ -105,10 +110,15 @@ function render(): void {
     </div>`;
   const btns = latestEl.querySelector(".dl-hero-btns")!;
   for (const { t, a } of rows) {
-    const link = document.createElement("a");
+    const link = document.createElement("button");
     link.className = "action-btn" + (t.key === mine ? " primary" : "");
-    link.href = a!.browser_download_url;
     link.textContent = `${t.label}${a!.size ? ` · ${fmtSize(a!.size)}` : ""}`;
+    link.addEventListener("click", () => {
+      void startDownload(latest.tag_name, t.asset).catch((err: Error) => {
+        const errEl = document.getElementById("dl-error");
+        if (errEl) { errEl.textContent = err.message; errEl.classList.remove("hidden"); }
+      });
+    });
     btns.appendChild(link);
   }
 
@@ -128,7 +138,7 @@ function render(): void {
   for (const r of items) {
     const tr = document.createElement("tr");
     const links = TARGETS.map((t) => ({ t, a: assetFor(r, t.asset) })).filter((x) => x.a)
-      .map(({ t, a }) => `<a class="dl-asset-link" href="${escapeHtml(a!.browser_download_url)}">${escapeHtml(t.label.split(" — ")[0]! + (t.key === "mac-x64" ? " Intel" : t.key === "mac-arm64" ? " Silicon" : ""))}</a>`)
+      .map(({ t }) => `<button class="dl-asset-link" data-tag="${escapeHtml(r.tag_name)}" data-asset="${escapeHtml(t.asset)}">${escapeHtml(t.label.split(" — ")[0]! + (t.key === "mac-x64" ? " Intel" : t.key === "mac-arm64" ? " Silicon" : ""))}</button>`)
       .join(" · ");
     tr.innerHTML = `
       <td class="lib-table-name">${escapeHtml(r.tag_name)}</td>
@@ -137,6 +147,14 @@ function render(): void {
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
+  for (const el of Array.from(tbody.querySelectorAll<HTMLButtonElement>(".dl-asset-link"))) {
+    el.addEventListener("click", () => {
+      void startDownload(el.dataset.tag || "", el.dataset.asset || "").catch((err: Error) => {
+        const errEl = document.getElementById("dl-error");
+        if (errEl) { errEl.textContent = err.message; errEl.classList.remove("hidden"); }
+      });
+    });
+  }
   listEl.appendChild(table);
   listEl.appendChild(renderPaginationBar(state, (p) => { page = p; render(); }));
 }

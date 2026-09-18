@@ -870,6 +870,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingConfig: () =>
     ipcRenderer.invoke("billing-config") as Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>,
   billingPortal: () => ipcRenderer.invoke("billing-portal") as Promise<{ ok: boolean; url?: string; error?: string }>,
+  releasesList: () =>
+    ipcRenderer.invoke("releases-list") as Promise<{ ok: boolean; releases?: Array<{ tag: string; publishedAt: string | null; prerelease: boolean; assets: Array<{ name: string; size: number }> }>; error?: string }>,
+  releasesAssetUrl: (tag: string, name: string) =>
+    ipcRenderer.invoke("releases-asset-url", tag, name) as Promise<{ ok: boolean; url?: string; error?: string }>,
   accountOrgGet: () => ipcRenderer.invoke("account-org-get") as Promise<AccountOrg>,
   orgAppBlocks: () =>
     ipcRenderer.invoke("org-app-blocks") as Promise<{ blocks: Array<{ appId: string; slug: string; name: string; createdAt: string }> }>,

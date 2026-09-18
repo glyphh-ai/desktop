@@ -614,7 +614,8 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
 }
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
-  const model = (ov?.model ?? row.model ?? "").trim();
+  // Governed and unset means the org's own answer, not the CLI's saved one.
+  const model = (ov?.model ?? row.model ?? "").trim() || (gatewayOn ? requiredModel : "");
   const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
   // RESUME: the CLI's own continue-last affordance. claude takes a flag;
   // codex resumes via a subcommand; CLIs without one just start fresh.
@@ -717,9 +718,22 @@ function defaultRowFor(id: string): CliAgentRow | null {
 export const GATEWAY_CLIS: ReadonlySet<string> = new Set(["claude", "codex"]);
 
 let gatewayOn = false;
+/** THE MODEL THE ORG REQUIRES (his order, 2026-09-18: "when the user switches
+ *  to cli in proxy mode the model needs to be set"). A terminal opened with no
+ *  --model falls back to the CLI's own settings.json, which under governance
+ *  is a model the org never allowed, and the turn dies on a 403 the user can
+ *  do nothing about. */
+let requiredModel = "";
 export async function refreshGatewayMode(): Promise<void> {
-  try { gatewayOn = !!(await getClient().plans.gates()).gatewayAllowed; }
-  catch { /* offline — the last answer stands */ }
+  try {
+    const client = getClient();
+    const [gates, models] = await Promise.all([
+      client.plans.gates(),
+      client.models.available().catch(() => [] as Array<{ name: string; modality: string }>),
+    ]);
+    gatewayOn = !!gates.gatewayAllowed;
+    requiredModel = gatewayOn ? (models.find((m) => m.modality === "chat")?.name ?? "") : "";
+  } catch { /* offline — the last answer stands */ }
 }
 
 export function listCliAgents(): CliAgentListed[] {

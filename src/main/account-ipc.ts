@@ -92,6 +92,16 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, publishableKey: (await getClient().billing.config()).publishableKey }; }
     catch (err) { return fail(err); }
   });
+  // Desktop builds: the releases repo is private, so the server reads it with
+  // the token and signs each download (his order, 2026-09-18).
+  ipcMain.handle("releases-list", async () => {
+    try { return { ok: true as const, releases: await getClient().releases.list() }; }
+    catch (err) { return fail(err); }
+  });
+  ipcMain.handle("releases-asset-url", async (_e, tag: string, name: string) => {
+    try { return { ok: true as const, url: (await getClient().releases.assetUrl(String(tag || ""), String(name || ""))).url }; }
+    catch (err) { return fail(err); }
+  });
   ipcMain.handle("billing-portal", async () => {
     try { return { ok: true as const, url: (await getClient().billing.portal()).url }; }
     catch (err) { return fail(err); }
