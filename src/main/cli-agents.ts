@@ -703,10 +703,30 @@ function defaultRowFor(id: string): CliAgentRow | null {
   };
 }
 
+/**
+ * ONLY TWO LOOPS CAN CARRY A GOVERNED ORG (his order, 2026-09-18).
+ *
+ * Claude Code speaks Anthropic's dialect and Codex speaks OpenAI's, and the
+ * gateway translates both to every vendor, so for either of them a model name
+ * is just a string: the org's allow-list, its aliases and its auto-routers all
+ * work. Gemini validates the name's shape against Google's own catalogue and
+ * refuses anything else, and Cursor and Copilot have no base-URL seam at all,
+ * so nothing the org decides can reach them. In gateway mode they are not
+ * offered, whatever the org's roster says.
+ */
+export const GATEWAY_CLIS: ReadonlySet<string> = new Set(["claude", "codex"]);
+
+let gatewayOn = false;
+export async function refreshGatewayMode(): Promise<void> {
+  try { gatewayOn = !!(await getClient().plans.gates()).gatewayAllowed; }
+  catch { /* offline — the last answer stands */ }
+}
+
 export function listCliAgents(): CliAgentListed[] {
   if (orgLoops) {
     return [...orgLoops.values()]
       .filter((l) => l.enabled !== false)
+      .filter((l) => !gatewayOn || GATEWAY_CLIS.has(l.cli))
       .map((l) => rowFromServer(l))
       .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli, "panel") }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -1080,7 +1100,7 @@ export function registerCliAgentsIpc(): void {
     catch (err) { return { ok: false, sessions: [], error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("cli-agents-list", async () => {
-    await ensureOrgLoops();
+    await Promise.all([ensureOrgLoops(), refreshGatewayMode()]);
     try { return { ok: true, agents: listCliAgents() }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), agents: [] }; }
   });
