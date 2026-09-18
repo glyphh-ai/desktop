@@ -94,61 +94,69 @@ function paintCredits(): void {
 //    into itself and the breadcrumb reads ← Usage / ← Billing accordingly.
 let buyFormWired = false;
 let buySelectedCredits = 0;
+/** The buckets, in dollars: each is the exact cost of a discount tier, so
+ *  picking one lands the tier instead of missing it by a dollar. Same four the
+ *  console offers. */
+const TOPUP_USD_BUCKETS = [20, 45, 80, 140];
+
+function buyAmountUsd(): number {
+  return Math.max(0, Number(($("ua-buy-custom") as HTMLInputElement | null)?.value) || 0);
+}
 
 function buySummary(): void {
   const sum = $("ua-buy-summary");
+  const hint = $("ua-buy-custom-hint");
   const go = $("ua-buy-go") as HTMLButtonElement | null;
-  const price = usdForCredits(buySelectedCredits);
+  const usd = buyAmountUsd();
+  buySelectedCredits = creditsForUsdTiered(usd);
   const save = topupDiscount(buySelectedCredits);
-  if (sum) sum.textContent = price >= 5
-    ? `${fmtInt(buySelectedCredits)} credits · $${price.toLocaleString()}${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
-    : "";
-  if (go) go.disabled = price < 5;
-}
-
-function buyCustomCredits(): number {
-  return creditsForUsdTiered(Math.max(0, Number(($("ua-buy-custom") as HTMLInputElement | null)?.value) || 0));
+  if (hint) {
+    hint.textContent = buySelectedCredits > 0
+      ? `Buys ${fmtInt(buySelectedCredits)} credits${save > 0 ? ` · ${Math.round(save * 100)}% off` : ""}`
+      : "";
+  }
+  if (sum) {
+    sum.textContent = `Credits cost 2¢ each. $${usdForCredits(2500)} and up gets 10% more, `
+      + `$${usdForCredits(5000)} gets 20% more, $${usdForCredits(10000)} gets 30% more. `
+      + "Purchased credits never expire.";
+  }
+  if (go) {
+    go.disabled = usd < 5;
+    go.textContent = usd >= 5 ? `Pay $${usd.toFixed(2)}` : "Pay";
+  }
 }
 
 function buildBuyGrid(): void {
   const grid = $("ua-buy-grid");
-  if (!grid || grid.childElementCount) return;   // presets are static — build once
-  const pick = (btn: HTMLElement, credits: number, other: boolean) => {
+  const amount = $("ua-buy-custom") as HTMLInputElement | null;
+  if (!grid || grid.childElementCount) { buySummary(); return; }   // presets are static — build once
+  const pick = (usd: number) => {
+    if (amount) amount.value = String(usd);
     grid.querySelectorAll(".billing-topup-card").forEach((c) => c.classList.remove("selected"));
-    btn.classList.add("selected");
-    $("ua-buy-custom-row")?.classList.toggle("hidden", !other);
-    buySelectedCredits = credits;
+    grid.querySelector(`.billing-topup-card[data-usd="${usd}"]`)?.classList.add("selected");
     buySummary();
-    if (other) ($("ua-buy-custom") as HTMLInputElement | null)?.focus();
   };
-  for (const credits of TOPUP_CREDIT_BUCKETS) {
+  for (const usd of TOPUP_USD_BUCKETS) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "billing-topup-card";
+    btn.dataset.usd = String(usd);
+    const credits = creditsForUsdTiered(usd);
     const save = topupDiscount(credits);
     btn.innerHTML =
-      `<span class="billing-topup-price">$${usdForCredits(credits)}</span>` +
+      `<span class="billing-topup-price">$${usd}.00</span>` +
       `<span class="billing-topup-credits">${escapeHtml(fmtInt(credits))}</span>` +
       `<span class="billing-topup-unit">credits</span>` +
       (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
-    btn.addEventListener("click", () => pick(btn, credits, false));
+    btn.addEventListener("click", () => pick(usd));
     grid.appendChild(btn);
   }
-  const other = document.createElement("button");
-  other.type = "button";
-  other.className = "billing-topup-card";
-  other.innerHTML = `<span class="billing-topup-price">&nbsp;</span><span class="billing-topup-credits">Other</span><span class="billing-topup-unit">custom amount</span>`;
-  other.addEventListener("click", () => pick(other, buyCustomCredits(), true));
-  grid.appendChild(other);
-  $("ua-buy-custom")?.addEventListener("input", () => {
-    buySelectedCredits = buyCustomCredits();
-    const hint = $("ua-buy-custom-hint");
-    const save = topupDiscount(buySelectedCredits);
-    if (hint) hint.textContent = buySelectedCredits > 0
-      ? `≈ ${fmtInt(buySelectedCredits)} credits${save > 0 ? ` · Save ${Math.round(save * 100)}%` : ""}`
-      : "";
+  amount?.addEventListener("input", () => {
+    grid.querySelectorAll(".billing-topup-card").forEach((c) =>
+      c.classList.toggle("selected", (c as HTMLElement).dataset.usd === String(buyAmountUsd())));
     buySummary();
   });
+  pick(45);
 }
 
 export function openBuyForm(from: "usage" | "billing"): void {
