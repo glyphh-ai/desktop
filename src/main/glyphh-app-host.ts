@@ -159,6 +159,8 @@ const KNOWN_CAPABILITIES = new Set([
   "secrets.get",
   "secrets.list",
   "app.call",
+  "media.save",
+  "media.list",
   "fs.read",
   "fs.write",
   "fs.pick",
@@ -714,6 +716,11 @@ async function runCapability(
       if (target === slug) throw new Error("an app calls its own handlers directly, not through app.call");
       return callAppTool(target, tool, (args.args as Record<string, unknown>) ?? {});
     }
+    // Only the app that OWNS a library can reach these; for anyone else they
+    // throw, which is what makes media the owning app's tools rather than a
+    // capability every app is handed (his ruling, 2026-09-18).
+    case "media.save":       return appMediaSave(slug, args);
+    case "media.list":       return appMediaList(slug, args);
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
     case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");
