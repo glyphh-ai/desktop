@@ -468,6 +468,21 @@ function initSettings() {
     });
   }
 
+  // Dock reveal delay (his order, 2026-09-18): how long the pointer rests on
+  // the top edge before a tucked dock drops down. 0 = the moment it arrives.
+  {
+    const d = document.getElementById("settings-dock-reveal") as HTMLInputElement | null;
+    const dv = document.getElementById("settings-dock-reveal-val");
+    const paint = (): void => { if (d && dv) dv.textContent = Number(d.value) <= 0 ? "Instant" : `${(Number(d.value) / 1000).toFixed(2).replace(/0$/, "")}s`; };
+    d?.addEventListener("input", paint);
+    d?.addEventListener("change", () => {
+      paint();
+      void Promise.resolve(window.glyphh.setPreference("echoDockRevealMs", Number(d.value))).then(() => {
+        document.dispatchEvent(new CustomEvent("glyphh:echo-autohide-changed"));
+      });
+    });
+  }
+
   // Dock zoom (magnification strength; 1 = off) — same live re-read event.
   {
     const z = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
@@ -653,6 +668,15 @@ async function loadSettings() {
   }
   const zoom = document.getElementById("settings-dock-zoom") as HTMLInputElement | null;
   if (zoom) {
+  {
+    const d = document.getElementById("settings-dock-reveal") as HTMLInputElement | null;
+    const dv = document.getElementById("settings-dock-reveal-val");
+    const raw = Number(await window.glyphh.getPreference("echoDockRevealMs", 350));
+    if (d) {
+      d.value = String(Number.isFinite(raw) ? Math.max(0, Math.min(1500, raw)) : 350);
+      if (dv) dv.textContent = Number(d.value) <= 0 ? "Instant" : `${(Number(d.value) / 1000).toFixed(2).replace(/0$/, "")}s`;
+    }
+  }
     const zRaw = Number(await window.glyphh.getPreference("echoDockZoom", 1.2));
     zoom.value = String(Number.isFinite(zRaw) ? Math.max(1, Math.min(1.5, zRaw)) : 1.2);
     const zv = document.getElementById("settings-dock-zoom-val");

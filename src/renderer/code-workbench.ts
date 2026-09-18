@@ -427,6 +427,10 @@ function resolveAgentView(cellView?: string, layoutView?: string): "glyphh" | "c
 interface CliAgentRowLite { id: string; name: string; cli?: string; icon: string; cmd: string; mcp: boolean; cwd?: string; session?: "keep" | "new" | "last"; command: string }
 let cliAgentRows: CliAgentRowLite[] = [];
 
+/** How long the pointer rests on the top edge before a tucked dock drops
+ *  down. Settings owns it; 0 is the moment it arrives. */
+let dockRevealMs = 350;
+
 /** THE ORG CAN CLOSE THE TERMINAL DOOR (his order, 2026-09-18): restricting
  *  loops and models is meaningless while a member can hop into the CLI and
  *  run whatever they like. Open by default, and only the server enforces. */
@@ -3618,16 +3622,41 @@ async function init(): Promise<void> {
       // Desktop's window drag strip owns the top ~38px and eats mouse events;
       // the hover zone (and the peeked dock) start below it. Web has no strip.
       if (!IS_WEB_TARGET) document.body.classList.add("wb-has-dragstrip");
-      // A hidden dock stays hidden (his order, 2026-09-16): no hover peek. The
-      // wall opens from the sidebar's Echo icon. The strip stays for its class hooks.
-      void strip;
+      // THE DOCK DROPS DOWN AGAIN (his order, 2026-09-18). Resting on the top
+      // edge peeks a tucked dock back over the panels; the delay is the
+      // member's own setting, so a pointer crossing the edge on its way
+      // somewhere else never drags it down.
+      let revealTimer = 0;
+      const peek = (on: boolean): void => {
+        window.clearTimeout(revealTimer);
+        if (!on) { document.body.classList.remove("echo-dock-peek"); return; }
+        if (!document.body.classList.contains("echo-dock-tucked")) return;
+        revealTimer = window.setTimeout(() => {
+          if (document.body.classList.contains("echo-dock-tucked")) document.body.classList.add("echo-dock-peek");
+        }, dockRevealMs);
+      };
+      strip.addEventListener("mouseenter", () => peek(true));
+      strip.addEventListener("mouseleave", () => window.clearTimeout(revealTimer));
+      // Leaving the BAR re-tucks: the strip is hidden while peeked, so the
+      // dock itself owns the exit.
+      document.addEventListener("mouseover", (ev) => {
+        if (!document.body.classList.contains("echo-dock-peek")) return;
+        const t = ev.target as HTMLElement | null;
+        if (t?.closest(".echo-topbar") || t?.closest("#echo-dock-layer")) return;
+        const y = (ev as MouseEvent).clientY;
+        const bar = document.querySelector<HTMLElement>(".echo-topbar")?.getBoundingClientRect();
+        if (!bar || y > bar.bottom + 24) peek(false);
+      });
     }
     const readAutoHide = (): void => {
       void Promise.all([
         yoApi?.getPreference?.("echoAutoHideDock", true) ?? true,
         yoApi?.getPreference?.("echoDockZoom", 1.2) ?? 1.2,
         yoApi?.getPreference?.("echoIconsPerPage", 56) ?? 56,
-      ]).then(([d, z, pp]) => {
+        yoApi?.getPreference?.("echoDockRevealMs", 350) ?? 350,
+      ]).then(([d, z, pp, rv]) => {
+        const rvn = Number(rv);
+        dockRevealMs = Number.isFinite(rvn) ? Math.max(0, Math.min(1500, rvn)) : 350;
         document.body.classList.toggle("echo-dock-autohide", d !== false);
         document.body.classList.remove("echo-dock-peek");
         const zn = Number(z);
