@@ -90,12 +90,16 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --text-faint:  #9ca3af;
   --white:       #111111;
   --hover:       #f0f0f0;
-  --active-bg:   rgba(175, 95, 255, 0.06);
-  --accent:      #af5fff;
-  --accent-hover:#c184ff;
-  --accent-text: #cda2ff;
-  --accent-dark: #7e22ce;
-  --accent-bg:   #f5ecfd;
+  --active-bg:   rgba(33, 41, 57, 0.06);
+  /* The console's --primary / --primary-foreground, verbatim. Neutral wins and
+     the app adopts it (his ruling, 2026-09-18); the other themes keep their
+     own accents, only this base default moves. */
+  --accent:      oklch(0.21 0.034 264.665);
+  --accent-fg:   oklch(0.985 0.002 247.839);
+  --accent-hover:oklch(0.28 0.034 264.665);
+  --accent-text: oklch(0.21 0.034 264.665);
+  --accent-dark: oklch(0.16 0.034 264.665);
+  --accent-bg:   oklch(0.967 0.003 264.542);
   --danger:      #ef4444;
   --danger-soft: #f87171;
   --danger-bg:   #fef2f2;
@@ -105,14 +109,14 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --purple:      #af5fff;
   --overlay-bg:  rgba(0, 0, 0, 0.3);
   --shadow:      rgba(0, 0, 0, 0.12);
-  --selection:   rgba(175, 95, 255, 0.2);
+  --selection:   rgba(33, 41, 57, 0.16);
   --scrollbar:   #d4d4d4;
-  --scrollbar-hover: #af5fff;
+  --scrollbar-hover: #9ca3af;
   --toast-bg:    #ffffff;
   --code-inline: #9333ea;
   --input-bg:    var(--surface-2);
   --card-bg:     var(--surface);
-  --grad-accent: linear-gradient(to top right, #af5fff, #ec4899);
+  --grad-accent: var(--accent);
 }
 
 [data-theme="dark"] {
@@ -134,12 +138,14 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --text-faint:  #808080;
   --white:       #ffffff;
   --hover:       #303035;
-  --active-bg:   rgba(175, 95, 255, 0.08);
-  --accent:      #af5fff;
-  --accent-hover:#c184ff;
-  --accent-text: #cda2ff;
-  --accent-dark: #7e22ce;
-  --accent-bg:   #241a2e;
+  --active-bg:   rgba(255, 255, 255, 0.08);
+  /* The console's dark --primary / --primary-foreground. */
+  --accent:      oklch(0.928 0 0);
+  --accent-fg:   oklch(0.209 0 0);
+  --accent-hover:oklch(0.86 0 0);
+  --accent-text: oklch(0.928 0 0);
+  --accent-dark: oklch(0.75 0 0);
+  --accent-bg:   oklch(0.309 0 0);
   --danger:      #ff7a70;
   --danger-soft:  #ff958d;
   --danger-bg:   #2a1515;
@@ -149,7 +155,7 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --purple:      #af5fff;
   --overlay-bg:  rgba(0, 0, 0, 0.6);
   --shadow:      rgba(0, 0, 0, 0.4);
-  --selection:   rgba(175, 95, 255, 0.3);
+  --selection:   rgba(255, 255, 255, 0.22);
   --scrollbar:   #333;
   --scrollbar-hover: #555;
   --toast-bg:    #1a1a2e;
@@ -1125,10 +1131,7 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   letter-spacing: -0.015em;
   text-align: center;
   /* The web's --grad-text, verbatim. */
-  background: linear-gradient(to top right, #c084fc, #f0abfc);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--text);
 }
 
 /* Web login (web-login.js) appends the legal line INSIDE .auth-shell-form,
@@ -1178,20 +1181,18 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: #ffffff;
-  color: #000;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
   border: none;
-  transition: color 220ms ease, opacity var(--transition);
+  transition: background-color 220ms ease, opacity var(--transition);
 }
 #onboarding-overlay .btn-primary::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  /* Match the platform login button: white resting, purple→pink gradient
-     wipes in on hover. --grad-accent is light-theme-only, so fall back to
-     the platform's gradient value since the auth screens run dark. */
-  background: var(--grad-accent, linear-gradient(to top right, #af5fff, #ec4899));
+  /* The hover shade of the same accent, wiping across as before. */
+  background: var(--accent-hover);
   transform: translateX(-100%);
   transition: none;
 }
@@ -1205,14 +1206,12 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   transform: translateX(0);
   transition: none;
 }
-/* Once the purple→pink gradient wipes in (hover / active / focus, and the
-   disabled state that also shows it), the resting black text is unreadable on
-   it — switch to white. Resting (white button) keeps black. */
+/* The wipe is the same accent, so the label colour no longer flips. */
 #onboarding-overlay .btn-primary:hover:not(:disabled),
 #onboarding-overlay .btn-primary:active:not(:disabled),
 #onboarding-overlay .btn-primary:focus-visible:not(:disabled),
 #onboarding-overlay .btn-primary:disabled {
-  color: #fff;
+  color: var(--accent-fg, #fff);
 }
 
 #onboarding-overlay .btn-secondary {
@@ -1421,20 +1420,18 @@ body.account-locked #dl-btn-wrap {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  background: #ffffff;
-  color: #000;
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
   border: none;
-  transition: color 220ms ease, opacity var(--transition);
+  transition: background-color 220ms ease, opacity var(--transition);
 }
 .btn-primary::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  /* --grad-accent is only defined in the light theme; the auth screens run
-     dark by default, so fall back to the platform's gradient value so the
-     wipe resolves in every theme. */
-  background: var(--grad-accent, linear-gradient(to top right, #af5fff, #ec4899));
+  /* The hover shade of the same accent, wiping across as before. */
+  background: var(--accent-hover);
   transform: translateX(-100%);
   transition: none;
 }
@@ -5183,10 +5180,12 @@ ol.docs-list li::before {
 .action-btn.primary {
   background: var(--grad-accent);
   border: none;
-  color: #fff;
+  /* --accent-fg is the base themes' own contrast colour; the themed accents
+     stay bright-on-colour, which is what white gave them. */
+  color: var(--accent-fg, #fff);
 }
-.action-btn.primary:hover:not(:disabled) { color: #fff; background: var(--grad-accent); filter: brightness(1.12); border-color: transparent; }
-.action-btn.primary:disabled { color: #fff; opacity: 0.45; }
+.action-btn.primary:hover:not(:disabled) { color: var(--accent-fg, #fff); background: var(--accent-hover); border-color: transparent; }
+.action-btn.primary:disabled { color: var(--accent-fg, #fff); opacity: 0.45; }
 
 .inline-empty {
   padding: 32px 16px;
