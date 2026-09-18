@@ -4249,14 +4249,69 @@ ol.docs-list li::before {
   border-color: var(--border-2);
 }
 
-/* ── Files — the artifacts gallery (A5) ───────────────────────────────────── */
-/* A responsive grid of artifact cards: kind icon + name + edited-time. */
-.files-gallery {
+/* ── Artifacts — grid of previews, or the library table (his order, 2026-09-18) */
+.files-gallery { display: block; }
+.artifact-view-toggle {
+  display: inline-flex; align-items: center; gap: 2px; padding: 2px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
+}
+.artifact-view-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 26px; border: none; border-radius: 7px;
+  background: none; color: var(--text-3); cursor: pointer;
+}
+.artifact-view-btn svg { width: 15px; height: 15px; }
+.artifact-view-btn:hover { color: var(--text); background: var(--hover); }
+.artifact-view-btn.active { background: var(--surface); color: var(--text-bright); border: 1px solid var(--border); }
+.artifact-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  gap: 14px;
   align-content: start;
 }
+.artifact-card {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-3); overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+.artifact-card:hover { border-color: var(--border-2); background: var(--surface-2); }
+/* The tile IS the preview: the picture itself, or the opening lines of the
+   text, because a wall of identical file icons says nothing about which
+   artifact is which. */
+.artifact-tile {
+  position: relative; height: 132px; cursor: pointer; overflow: hidden;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+}
+.artifact-tile-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artifact-tile-pre {
+  margin: 0; padding: 10px 12px; width: 100%; height: 100%;
+  font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5;
+  color: var(--text-2); white-space: pre-wrap; word-break: break-word;
+  overflow: hidden;
+  /* The text fades out rather than being cut mid-glyph. */
+  mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+}
+.artifact-tile-glyph { color: var(--text-3); }
+.artifact-tile-glyph svg { width: 34px; height: 34px; }
+.artifact-card-foot {
+  display: flex; align-items: center; gap: 9px; padding: 9px 10px; cursor: pointer; min-width: 0;
+}
+.artifact-card-icon { display: flex; flex: 0 0 auto; color: var(--text-3); }
+.artifact-card-icon svg { width: 15px; height: 15px; }
+.artifact-card-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; flex: 1 1 auto; }
+.artifact-card-name {
+  font-size: 12.5px; font-weight: 500; color: var(--text-bright);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.artifact-card-meta {
+  font-size: 10.5px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.artifact-row-icon { display: inline-flex; vertical-align: -3px; margin-right: 8px; color: var(--text-3); }
+.artifact-row-icon svg { width: 14px; height: 14px; }
 .file-card {
   display: flex;
   align-items: center;
@@ -4677,7 +4732,10 @@ ol.docs-list li::before {
 .dash-modal-body { padding: 16px 18px; overflow-y: auto; flex: 1 1 auto; }
 
 /* yo-modal — theme-aware confirm dialog (replaces native confirm()). */
-.yo-modal { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; }
+/* Above the Echo dock layer (99000). The dock floats over the page, never over
+   a modal: it was sitting on top of the Settings dialog (his report,
+   2026-09-18), covering the tab strip and its close button. */
+.yo-modal { position: fixed; inset: 0; z-index: 99500; display: flex; align-items: center; justify-content: center; }
 .yo-modal-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(2px); }
 .yo-modal-panel {
   position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: 14px;

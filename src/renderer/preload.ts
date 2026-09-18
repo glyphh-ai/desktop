@@ -272,13 +272,14 @@ export interface FileArtifactRow {
   sessionId: string | null;
   sizeBytes: number;
   createdAt: string;
+  /** Absolute path on this machine - artifacts are local files (2026-09-18). */
+  path?: string;
   downloadUrl?: string;
 }
 export interface FileCreateInputRow {
   name: string;
-  mime?: string;
-  contentBase64: string;
-  sessionId?: string | null;
+  /** The starting text. Artifacts are local files now, not base64 uploads. */
+  content?: string;
 }
 
 // A4 settings panels (API Keys, Support, Runtime, Guardrails). Structural
@@ -1001,6 +1002,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   filesContent: (id: string) => ipcRenderer.invoke("files-content", id) as Promise<{ ok: boolean; content?: string; error?: string }>,
   filesCreate: (input: FileCreateInputRow) =>
     ipcRenderer.invoke("files-create", input) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
+  filesPeek: (id: string) => ipcRenderer.invoke("files-peek", id) as Promise<string>,
+  filesSave: (id: string, content: string) =>
+    ipcRenderer.invoke("files-save", id, content) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
+  filesRename: (id: string, name: string) =>
+    ipcRenderer.invoke("files-rename", id, name) as Promise<{ ok: boolean; file?: FileArtifactRow; error?: string }>,
   // ── A4 settings transports (API Keys, Support, Runtime region, Guardrails).
   // MAIN-process SDK client executes these; reads REJECT, writes answer
   // { ok, …, error }. help/settings-*.ts mirror these + own the web SDK path. ──

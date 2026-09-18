@@ -1,30 +1,21 @@
 /**
- * Files — the ARTIFACTS gallery.
+ * Files — the ARTIFACTS library.
  *
- * A first-class object browser over the user's stored artifacts (R2-backed).
- * Read-first: a grid of cards; opening one mounts it in the WORKBENCH by kind
- * (Monaco for code/text/markdown, a preview panel for image/pdf) via the
- * workbench's `__wbOpenArtifact` bridge. "New artifact" → files.create.
+ * His ruling, 2026-09-18: artifacts are LOCAL files, in `app-data/artifacts/
+ * files/` like every other library the app shows. The old R2 transport asked a
+ * route the fork never implemented, so the page only ever showed
+ * "Couldn't load artifacts: ApiError: HTTP 404".
  *
- * Transport — the ONE files transport for BOTH surfaces, per settings-api.ts's
- * law that the renderer never holds an SDK client:
- *   • web     — window.glyphhSdk.files (the raw @glyphh/sdk client the web
- *               bridge exposes). Checked FIRST: on web `window.glyphh` is a
- *               Proxy that fabricates a function for ANY name, so the SDK handle
- *               must win (thread-store.ts's trap, mirrored by settings-api.ts).
- *   • desktop — window.glyphh.filesList / filesGet / filesCreate → the
- *               MAIN-process SDK client (files-ipc.ts → getClient().files).
- * Neither present (an old build) → an honest empty + a clear message.
+ * The page reads like Skills and the other library pages, with one addition he
+ * asked for: a grid/table toggle. Grid tiles render an actual preview, the
+ * opening lines for text and code and the image itself for a picture, because a
+ * wall of identical file icons tells you nothing about which artifact is which.
  *
- * The SDK's shapes are mirrored structurally (the renderer can't import
- * @glyphh/sdk across the preload boundary) and match sdk contract/files.ts:
- * FileArtifact carries `mime`/`kind`/`sizeBytes`/`createdAt`; `downloadUrl` is
- * present only on get(id); create takes base64 bytes.
+ * Opening one mounts it in the WORKBENCH by kind through `__wbOpenArtifact`.
  */
 
-import { escapeHtml, relativeTime, promptAction } from "./shared.js";
-
-// ── SDK shape mirror (matches @glyphh/sdk contract/files.ts) ─────────────────
+import { escapeHtml, relativeTime, promptAction, confirmAction } from "./shared.js";
+import { ROW_MENU_ICONS, openRowMenu, type RowMenuItem } from "./lib-editor.js";
 
 export type FileArtifactKind = "code" | "text" | "markdown" | "image" | "pdf" | "other";
 
@@ -35,76 +26,27 @@ export interface FileArtifact {
   kind: FileArtifactKind;
   sessionId: string | null;
   sizeBytes: number;
-  /** ISO-8601. */
   createdAt: string;
-  /** Short-lived, browser-ready view/download URL — present only on get(id). */
+  /** Absolute path on this machine. */
+  path?: string;
+  /** file:// — an image or PDF the viewer renders directly. */
   downloadUrl?: string;
 }
 
-export interface FileCreateInput {
-  name: string;
-  mime?: string;
-  /** Artifact bytes, base64-encoded. */
-  contentBase64: string;
-  sessionId?: string | null;
-}
-
-// ── Transport (web SDK handle vs desktop IPC bridge) ─────────────────────────
-
-interface FilesTransport {
-  list(): Promise<FileArtifact[]>;
-  get(id: string): Promise<FileArtifact>;
-  create(input: FileCreateInput): Promise<FileArtifact>;
-}
-
-/** The web SDK handle's files resource. */
-interface SdkFilesHandle {
-  list?: (query?: { sessionId?: string }) => Promise<FileArtifact[]>;
-  get?: (id: string) => Promise<FileArtifact>;
-  create?: (input: FileCreateInput) => Promise<FileArtifact>;
-}
-interface SdkWithFiles { files?: SdkFilesHandle }
-
-/** The desktop preload bridge's file methods. */
-interface DesktopFilesIpc {
+interface FilesBridge {
   filesList?: () => Promise<FileArtifact[]>;
   filesGet?: (id: string) => Promise<FileArtifact>;
-  filesCreate?: (input: FileCreateInput) => Promise<{ ok: boolean; file?: FileArtifact; error?: string }>;
+  filesPeek?: (id: string) => Promise<string>;
+  filesCreate?: (input: { name: string; content?: string }) => Promise<{ ok: boolean; file?: FileArtifact; error?: string }>;
+  filesRename?: (id: string, name: string) => Promise<{ ok: boolean; file?: FileArtifact; error?: string }>;
+  filesDelete?: (id: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
-const NO_TRANSPORT = "Artifacts aren't available on this build — the files service isn't reachable here.";
+const NO_TRANSPORT = "Artifacts need the desktop app.";
 
-/**
- * The files transport for THIS surface, or null if neither is present.
- *
- * On WEB the SDK handle is the only transport — `window.glyphh` there is a Proxy
- * that fabricates a function for ANY name, so the desktop IPC branch must never
- * be reached on web (it would look present and then fail oddly). We gate on the
- * `__GLYPHH_WEB__` flag the web bridge sets, exactly as settings-api.ts does.
- */
-function filesTransport(): FilesTransport | null {
-  const isWeb = !!(window as unknown as { __GLYPHH_WEB__?: boolean }).__GLYPHH_WEB__;
-  if (isWeb) {
-    const f = (window as unknown as { glyphhSdk?: SdkWithFiles }).glyphhSdk?.files;
-    if (!f?.list || !f.get || !f.create) return null;
-    return {
-      list: () => f.list!(),
-      get: (id) => f.get!(id),
-      create: (input) => f.create!(input),
-    };
-  }
-  // Desktop — the main-process SDK client via the preload IPC bridge.
-  const g = (window as unknown as { glyphh?: DesktopFilesIpc }).glyphh;
-  if (!g?.filesList || !g.filesGet || !g.filesCreate) return null;
-  return {
-    list: () => g.filesList!(),
-    get: (id) => g.filesGet!(id),
-    create: async (input) => {
-      const res = await g.filesCreate!(input);
-      if (!res?.ok || !res.file) throw new Error(res?.error || "Couldn't create artifact");
-      return res.file;
-    },
-  };
+function bridge(): FilesBridge | null {
+  const g = (window as unknown as { glyphh?: FilesBridge }).glyphh;
+  return g?.filesList ? g : null;
 }
 
 /** The workbench bridge that mounts an artifact by kind (code-workbench.ts). */
@@ -113,7 +55,7 @@ function openArtifactInWorkbench(a: FileArtifact): void {
   if (open) open(a);
 }
 
-// ── Kind → icon (matches the settings-nav icon idiom: 24-box line SVGs) ──────
+// ── Kind → icon (the settings-nav idiom: 24-box line SVGs) ───────────────────
 
 const KIND_ICON: Record<FileArtifactKind, string> = {
   code: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
@@ -131,64 +73,25 @@ const KIND_LABEL: Record<FileArtifactKind, string> = {
 const normalizeKind = (k?: string): FileArtifactKind =>
   (["code", "text", "markdown", "image", "pdf"].includes(String(k)) ? k : "other") as FileArtifactKind;
 
-/** Best-effort MIME for a new artifact, keyed off its name. */
-function mimeForName(name: string): string {
-  const lower = name.toLowerCase();
-  if (/\.(md|markdown)$/.test(lower)) return "text/markdown";
-  if (/\.png$/.test(lower)) return "image/png";
-  if (/\.jpe?g$/.test(lower)) return "image/jpeg";
-  if (/\.gif$/.test(lower)) return "image/gif";
-  if (/\.webp$/.test(lower)) return "image/webp";
-  if (/\.svg$/.test(lower)) return "image/svg+xml";
-  if (/\.pdf$/.test(lower)) return "application/pdf";
-  if (/\.(txt|log)$/.test(lower)) return "text/plain";
-  if (/\.csv$/.test(lower)) return "text/csv";
-  if (/\.json$/.test(lower)) return "application/json";
-  if (/\.[a-z0-9]+$/.test(lower)) return "text/plain";
-  return "text/markdown";
+function fmtSize(bytes: number): string {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  return kb < 1024 ? `${Math.round(kb)} KB` : `${(kb / 1024).toFixed(1)} MB`;
 }
 
-// ── Rendering ────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 
 const $ = (id: string) => document.getElementById(id);
 
 let allArtifacts: FileArtifact[] = [];
+let view: "grid" | "table" = "grid";
+/** Preview text per id, fetched once and kept for the session. */
+const peeks = new Map<string, string>();
 
 function timeOf(a: FileArtifact): number {
   const t = Date.parse(a.createdAt || "");
   return Number.isNaN(t) ? 0 : t;
-}
-
-function renderGallery(list: FileArtifact[]): void {
-  const gallery = $("files-gallery");
-  const empty = $("files-empty");
-  if (!gallery) return;
-  gallery.innerHTML = "";
-  empty?.classList.toggle("hidden", list.length > 0);
-  for (const a of list) {
-    const kind = normalizeKind(a.kind);
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "file-card";
-    card.dataset.id = a.id;
-    const when = timeOf(a);
-    card.innerHTML = `
-      <span class="file-card-icon file-card-icon-${kind}">${KIND_ICON[kind]}</span>
-      <span class="file-card-body">
-        <span class="file-card-name">${escapeHtml(a.name || "Untitled")}</span>
-        <span class="file-card-meta">${KIND_LABEL[kind]}${when ? ` · ${escapeHtml(relativeTime(when))}` : ""}</span>
-      </span>`;
-    card.addEventListener("click", () => { void openArtifact(a.id); });
-    gallery.appendChild(card);
-  }
-}
-
-function applySearch(): void {
-  const q = ($("file-search") as HTMLInputElement | null)?.value.trim().toLowerCase() || "";
-  const list = q
-    ? allArtifacts.filter((a) => (a.name || "").toLowerCase().includes(q))
-    : allArtifacts;
-  renderGallery(list);
 }
 
 function showError(msg: string | null): void {
@@ -198,70 +101,221 @@ function showError(msg: string | null): void {
   el.classList.toggle("hidden", !msg);
 }
 
+/** The ⋯ button both views hang off, same menu in each. */
+function menuFor(a: FileArtifact): HTMLElement {
+  const items = (): RowMenuItem[] => [
+    { icon: ROW_MENU_ICONS.view, label: "Open", onClick: () => { void openArtifact(a.id); } },
+    { icon: ROW_MENU_ICONS.edit, label: "Rename", onClick: () => { void renameArtifact(a); } },
+    { icon: ROW_MENU_ICONS.delete, label: "Delete", danger: true, onClick: () => { void deleteArtifact(a); } },
+  ];
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "lib-row-kebab";
+  btn.title = "More";
+  btn.textContent = "⋮";
+  btn.addEventListener("click", (e) => { e.stopPropagation(); openRowMenu(btn, items()); });
+  return btn;
+}
+
+/** A tile's preview: the picture itself, or the opening lines of the text. */
+function previewInto(tile: HTMLElement, a: FileArtifact): void {
+  if (a.kind === "image" && a.downloadUrl) {
+    const img = document.createElement("img");
+    img.className = "artifact-tile-img";
+    img.src = a.downloadUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    tile.appendChild(img);
+    return;
+  }
+  if (a.kind === "pdf" || a.kind === "other") {
+    tile.innerHTML = `<span class="artifact-tile-glyph">${KIND_ICON[a.kind]}</span>`;
+    return;
+  }
+  const pre = document.createElement("pre");
+  pre.className = "artifact-tile-pre";
+  const cached = peeks.get(a.id);
+  pre.textContent = cached ?? "";
+  tile.appendChild(pre);
+  if (cached !== undefined) return;
+  void bridge()?.filesPeek?.(a.id).then((text) => {
+    peeks.set(a.id, text || "");
+    pre.textContent = text || "";
+  }).catch(() => { peeks.set(a.id, ""); });
+}
+
+function renderGrid(host: HTMLElement, list: FileArtifact[]): void {
+  const grid = document.createElement("div");
+  grid.className = "artifact-grid";
+  for (const a of list) {
+    const card = document.createElement("div");
+    card.className = "artifact-card";
+    card.dataset.id = a.id;
+
+    const tile = document.createElement("div");
+    tile.className = `artifact-tile artifact-tile-${a.kind}`;
+    previewInto(tile, a);
+    tile.addEventListener("click", () => { void openArtifact(a.id); });
+    card.appendChild(tile);
+
+    const foot = document.createElement("div");
+    foot.className = "artifact-card-foot";
+    foot.innerHTML = `
+      <span class="artifact-card-icon">${KIND_ICON[a.kind]}</span>
+      <span class="artifact-card-text">
+        <span class="artifact-card-name">${escapeHtml(a.name)}</span>
+        <span class="artifact-card-meta">${KIND_LABEL[a.kind]} · ${escapeHtml(fmtSize(a.sizeBytes))}${timeOf(a) ? ` · ${escapeHtml(relativeTime(timeOf(a)))}` : ""}</span>
+      </span>`;
+    foot.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".lib-row-kebab")) return;
+      void openArtifact(a.id);
+    });
+    foot.appendChild(menuFor(a));
+    card.appendChild(foot);
+    grid.appendChild(card);
+  }
+  host.appendChild(grid);
+}
+
+function renderTable(host: HTMLElement, list: FileArtifact[]): void {
+  const table = document.createElement("table");
+  table.className = "lib-table";
+  table.innerHTML = `<thead><tr><th>Name</th><th>Kind</th><th>Size</th><th>Modified</th><th class="lib-row-kebab-cell"></th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  for (const a of list) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="lib-table-name"><span class="artifact-row-icon">${KIND_ICON[a.kind]}</span>${escapeHtml(a.name)}</td>
+      <td class="lib-table-dim">${KIND_LABEL[a.kind]}</td>
+      <td class="lib-table-dim">${escapeHtml(fmtSize(a.sizeBytes))}</td>
+      <td class="lib-table-dim">${timeOf(a) ? escapeHtml(relativeTime(timeOf(a))) : "—"}</td>`;
+    tr.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".lib-row-kebab")) return;
+      void openArtifact(a.id);
+    });
+    const cell = document.createElement("td");
+    cell.className = "lib-row-kebab-cell";
+    cell.appendChild(menuFor(a));
+    tr.appendChild(cell);
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  host.appendChild(table);
+}
+
+function paint(): void {
+  const host = $("files-gallery");
+  const empty = $("files-empty");
+  if (!host) return;
+  const q = ($("file-search") as HTMLInputElement | null)?.value.trim().toLowerCase() || "";
+  const list = q ? allArtifacts.filter((a) => a.name.toLowerCase().includes(q)) : allArtifacts;
+  host.innerHTML = "";
+  if (empty) {
+    empty.textContent = q ? "No artifacts match your search." : "No artifacts yet — create one, or ask the agent to.";
+    empty.classList.toggle("hidden", list.length > 0);
+  }
+  if (!list.length) return;
+  if (view === "grid") renderGrid(host, list);
+  else renderTable(host, list);
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+
 async function openArtifact(id: string): Promise<void> {
-  const t = filesTransport();
-  // Always fetch a fresh get — it carries the short-lived downloadUrl the viewer
-  // needs. Fall back to the list row (no downloadUrl) so a card still opens.
+  const b = bridge();
   let art = allArtifacts.find((a) => a.id === id);
-  if (t) {
-    try { art = await t.get(id); }
+  if (b?.filesGet) {
+    try { art = await b.filesGet(id); }
     catch (e) { showError(`Couldn't open that artifact: ${(e as Error).message}`); }
   }
   if (art) openArtifactInWorkbench({ ...art, kind: normalizeKind(art.kind) });
 }
 
+async function renameArtifact(a: FileArtifact): Promise<void> {
+  const b = bridge();
+  if (!b?.filesRename) return;
+  const name = await promptAction("Rename artifact", a.name, "e.g. notes.md", "Rename");
+  if (!name || name === a.name) return;
+  const r = await b.filesRename(a.id, name);
+  if (!r.ok) { showError(r.error || "Couldn't rename that artifact"); return; }
+  peeks.delete(a.id);
+  await loadFiles();
+}
+
+async function deleteArtifact(a: FileArtifact): Promise<void> {
+  const b = bridge();
+  if (!b?.filesDelete) return;
+  const ok = await confirmAction({
+    title: "Delete this artifact?",
+    body: `${a.name} is deleted from this machine. That cannot be undone.`,
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
+  const r = await b.filesDelete(a.id);
+  if (!r.ok) { showError(r.error || "Couldn't delete that artifact"); return; }
+  peeks.delete(a.id);
+  await loadFiles();
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
-/** Load + render the artifacts gallery. Called by loadActiveSection("files"). */
+/** Load + render the artifacts library. Called by loadActiveSection("files"). */
 export async function loadFiles(): Promise<void> {
   showError(null);
-  const t = filesTransport();
-  if (!t) {
+  const b = bridge();
+  if (!b?.filesList) {
     allArtifacts = [];
-    renderGallery([]);
+    paint();
     showError(NO_TRANSPORT);
     return;
   }
   try {
-    const items = await t.list();
+    const items = await b.filesList();
     allArtifacts = (items || [])
       .map((a) => ({ ...a, kind: normalizeKind(a.kind) }))
-      .sort((a, b) => timeOf(b) - timeOf(a));
-    applySearch();
+      .sort((x, y) => timeOf(y) - timeOf(x));
+    paint();
   } catch (e) {
     allArtifacts = [];
-    renderGallery([]);
+    paint();
     showError(`Couldn't load artifacts: ${(e as Error).message}`);
   }
 }
 
 let filesWired = false;
 
-/** Wire the search + "New artifact" controls once, at boot. */
+/** Wire search, the view toggle and "New artifact" once, at boot. */
 export function initFiles(): void {
   if (filesWired) return;
   filesWired = true;
 
-  ($("file-search") as HTMLInputElement | null)?.addEventListener("input", applySearch);
+  ($("file-search") as HTMLInputElement | null)?.addEventListener("input", paint);
+
+  const setView = (next: "grid" | "table") => {
+    view = next;
+    $("file-view-grid")?.classList.toggle("active", next === "grid");
+    $("file-view-table")?.classList.toggle("active", next === "table");
+    void (window as unknown as { glyphh?: { setPreference?: (k: string, v: unknown) => Promise<void> } })
+      .glyphh?.setPreference?.("artifactsView", next);
+    paint();
+  };
+  $("file-view-grid")?.addEventListener("click", () => setView("grid"));
+  $("file-view-table")?.addEventListener("click", () => setView("table"));
+  void (window as unknown as { glyphh?: { getPreference?: (k: string, d: unknown) => Promise<unknown> } })
+    .glyphh?.getPreference?.("artifactsView", "grid")
+    .then((v) => { if (v === "table") setView("table"); })
+    .catch(() => {});
 
   $("file-new-btn")?.addEventListener("click", async () => {
-    const t = filesTransport();
-    if (!t) { showError(NO_TRANSPORT); return; }
-    // The app forbids native window.prompt (Electron BrowserViews swallow it) —
-    // use the themed prompt modal instead.
+    const b = bridge();
+    if (!b?.filesCreate) { showError(NO_TRANSPORT); return; }
+    // Native window.prompt is forbidden (Electron BrowserViews swallow it).
     const name = await promptAction("New artifact name", "untitled.md", "e.g. notes.md", "Create");
     if (!name) return;
-    try {
-      // A new artifact starts empty; the server derives kind from the mime.
-      // btoa handles the empty/ASCII body; encodeURIComponent→escape keeps it
-      // correct if a default body ever carries non-ASCII.
-      const contentBase64 = btoa(unescape(encodeURIComponent("")));
-      const created = await t.create({ name, mime: mimeForName(name), contentBase64 });
-      await loadFiles();
-      // Re-get so the freshly-created artifact opens with a downloadUrl.
-      void openArtifact(created.id);
-    } catch (e) {
-      showError(`Couldn't create that artifact: ${(e as Error).message}`);
-    }
+    const r = await b.filesCreate({ name, content: "" });
+    if (!r.ok || !r.file) { showError(r.error || "Couldn't create that artifact"); return; }
+    await loadFiles();
+    void openArtifact(r.file.id);
   });
 }
