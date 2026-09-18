@@ -25,6 +25,12 @@ export const AUTH_SERVER = SERVER_URL;
 export const PLATFORM_URL = PLATFORM;
 
 const ACCOUNT_POLL_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours (the old heartbeat cadence)
+/** How soon an ORG-ADMIN change reaches this machine (his report, 2026-09-18:
+ *  "the app doesn't update right away"). The account poll is a four-hour
+ *  heartbeat, so flipping the gateway, the plan or governance in the console
+ *  used to mean a restart. This asks the cheap gates route on the minute and
+ *  only does work when the answer actually moved. */
+const ORG_POLL_INTERVAL = 60 * 1000;
 // New-server session tokens are opaque (no JWT sub to decode), so the last
 // authenticated identity is mirrored to a sidecar file for OFFLINE boot: it
 // only scopes local per-user state, never authorization.
@@ -70,6 +76,7 @@ let cachedAccount: AccountInfo | null = null;
 let cachedHeartbeat: HeartbeatResult | null = null;
 let heartbeatObserver: ((result: HeartbeatResult) => void) | null = null;
 let accountTimer: ReturnType<typeof setInterval> | null = null;
+let orgTimer: ReturnType<typeof setInterval> | null = null;
 
 // ── Re-auth gate ─────────────────────────────────────────────
 // Fired when the SDK gives up on the session (refresh rejected) so the UI can
@@ -214,11 +221,57 @@ export async function initAuth(): Promise<void> {
   accountTimer = setInterval(() => {
     if (isAuthenticated()) void refreshAccountState();
   }, ACCOUNT_POLL_INTERVAL);
+  if (orgTimer) clearInterval(orgTimer);
+  orgTimer = setInterval(() => {
+    if (isAuthenticated()) void pollOrgConfig();
+  }, ORG_POLL_INTERVAL);
+}
+
+/**
+ * Watch the org's own switches and react when one moves.
+ *
+ * A change made in the console reached the desktop only on a restart: the
+ * gateway credential is memoised for the life of the process and every loop's
+ * env file is written once at sign-in. So when the answer changes here, the
+ * credential is dropped, the env files are rewritten (or stripped, when the
+ * lane went off), the account state is refreshed and the renderer is told, so
+ * the rail and every other surface repaint with it.
+ *
+ * Already-RUNNING CLI sessions keep the environment they were spawned with.
+ * That is not something a poll can fix; it takes a new session.
+ */
+let lastOrgSignature: string | null = null;
+
+async function pollOrgConfig(): Promise<void> {
+  try {
+    const gates = (await getClient().plans.gates()) as unknown as Record<string, unknown>;
+    const signature = JSON.stringify([
+      gates.gatewayAllowed, gates.tier, gates.plan, gates.governance,
+      gates.autoOnly, gates.cliAllowed, gates.vendorRouting,
+    ]);
+    if (lastOrgSignature === null) { lastOrgSignature = signature; return; }
+    if (signature === lastOrgSignature) return;
+    lastOrgSignature = signature;
+    clearGatewayCreds();
+    await primeAllLoopEnv().catch(() => undefined);
+    await refreshAccountState().catch(() => null);
+    orgChangeObserver?.();
+  } catch {
+    // Offline, or the route is unavailable: the last answer stands.
+  }
+}
+
+let orgChangeObserver: (() => void) | null = null;
+
+/** Told when the org's config moved, so the shell can repaint. */
+export function setOrgChangeObserver(cb: (() => void) | null): void {
+  orgChangeObserver = cb;
 }
 
 /** Clean up timers — call on app shutdown. */
 export function cleanupAuthTimers(): void {
   if (accountTimer) { clearInterval(accountTimer); accountTimer = null; }
+  if (orgTimer) { clearInterval(orgTimer); orgTimer = null; }
 }
 
 /** Log out — LOCAL-FIRST, then a best-effort server revoke.

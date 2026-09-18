@@ -4250,7 +4250,9 @@ ol.docs-list li::before {
 }
 
 /* ── Artifacts — grid of previews, or the library table (his order, 2026-09-18) */
-.files-gallery { display: block; }
+.files-gallery { display: block; margin-top: 4px; }
+/* The toggle sits in the tab strip, beside the count. */
+.skills-tabs .artifact-view-toggle { margin-left: 10px; }
 .artifact-view-toggle {
   display: inline-flex; align-items: center; gap: 2px; padding: 2px;
   border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
@@ -21060,9 +21062,15 @@ body.rail-collapsed #app-rail-resize { display: none; }
 
 /* The sidebar scrolls as ONE column (his order, 2026-09-16): Recents has no
    scroll of its own and runs to the bottom; the account row stays pinned. */
-#app-rail .code-history { flex: 1 1 auto; min-height: 0; max-height: none !important; overflow: visible; }
-#app-rail #rail-recents-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-#app-rail .app-rail-scroll { overflow-y: auto; }
+/* ONE scroll, and it is .app-rail-scroll (his report, 2026-09-18: the rail
+   stopped scrolling). Inside a scrolling flex column a `flex: 1 1 auto` child
+   SHRINKS to fit instead of overflowing, so the sections have to take their
+   natural height or the scroller has nothing to scroll and the list is simply
+   clipped. Nothing between the scroller and the rows may hide overflow either. */
+#app-rail .code-history { flex: 0 0 auto; min-height: 0; max-height: none !important; overflow: visible; }
+#app-rail #rail-recents-body { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; overflow: visible; }
+#app-rail .app-rail-section-body { flex: 0 0 auto; min-height: 0; overflow: visible; }
+#app-rail .app-rail-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
 #echo-dock-layer { left: var(--rail-w); }
 #drag-overlay, #grid-handles { left: var(--rail-w); }
 .wb-session-search { display: flex; align-items: center; gap: 6px; }

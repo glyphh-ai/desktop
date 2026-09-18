@@ -5193,6 +5193,27 @@ async function init(): Promise<void> {
       return entry;
     };
     (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat = (id) => { openAgentForLoop(id); };
+    /** Open the default agent with text already in the composer, UNSENT (his
+     *  order, 2026-09-18: "+ New artifact" starts a conversation, not a file).
+     *  The composer lives in the agent's own document, which mounts async, so
+     *  this retries briefly rather than typing into nothing. */
+    (window as unknown as { __wbComposeToAgent?: (text: string) => void }).__wbComposeToAgent = (text: string) => {
+      const wanted = cliAgentRows.find((x) => x.id === defaultLoopPref) ?? cliAgentRows[0];
+      if (wanted) openAgentForLoop(wanted.id);
+      else void openAgentPanel();
+      let tries = 0;
+      const fill = (): void => {
+        const ta = document.getElementById("code-input") as HTMLTextAreaElement | null;
+        if (!ta) { if (tries++ < 40) window.setTimeout(fill, 100); return; }
+        ta.value = text;
+        // The composer grows from an input event; without one it stays one row
+        // tall with the text scrolled out of sight.
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+        ta.focus();
+        ta.setSelectionRange(text.length, text.length);
+      };
+      window.setTimeout(fill, 120);
+    };
     // The terminal ⇄ chat SWITCH on a card: same seat, same loop, in place — never the door that could open a second panel.
     (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat = (id) => {
       // THE SLOT IS THE THING (his rule, 2026-09-16): the conversion lands in the

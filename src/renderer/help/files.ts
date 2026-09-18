@@ -16,6 +16,7 @@
 
 import { escapeHtml, relativeTime, promptAction, confirmAction } from "./shared.js";
 import { ROW_MENU_ICONS, openRowMenu, type RowMenuItem } from "./lib-editor.js";
+import { closeSettingsModal } from "./navigation.js";
 
 export type FileArtifactKind = "code" | "text" | "markdown" | "image" | "pdf" | "other";
 
@@ -43,6 +44,17 @@ interface FilesBridge {
 }
 
 const NO_TRANSPORT = "Artifacts need the desktop app.";
+
+/** What "+ New artifact" types into the agent. Left UNSENT on purpose. */
+const NEW_ARTIFACT_PROMPT =
+  "I want to make an artifact: a web page published with the Artifact tool. " +
+  "Ask me a few questions about what it should show, then build it and publish it.";
+
+/** The settings dialog is a modal over the workbench, so it has to get out of
+ *  the way before the composer can take the text. */
+function closeSettingsOverlay(): void {
+  closeSettingsModal();
+}
 
 function bridge(): FilesBridge | null {
   const g = (window as unknown as { glyphh?: FilesBridge }).glyphh;
@@ -214,6 +226,8 @@ function paint(): void {
     empty.textContent = q ? "No artifacts match your search." : "No artifacts yet — create one, or ask the agent to.";
     empty.classList.toggle("hidden", list.length > 0);
   }
+  const count = $("files-count");
+  if (count) count.textContent = allArtifacts.length ? `${allArtifacts.length} artifact${allArtifacts.length === 1 ? "" : "s"}` : "";
   if (!list.length) return;
   if (view === "grid") renderGrid(host, list);
   else renderTable(host, list);
@@ -307,15 +321,14 @@ export function initFiles(): void {
     .then((v) => { if (v === "table") setView("table"); })
     .catch(() => {});
 
-  $("file-new-btn")?.addEventListener("click", async () => {
-    const b = bridge();
-    if (!b?.filesCreate) { showError(NO_TRANSPORT); return; }
-    // Native window.prompt is forbidden (Electron BrowserViews swallow it).
-    const name = await promptAction("New artifact name", "untitled.md", "e.g. notes.md", "Create");
-    if (!name) return;
-    const r = await b.filesCreate({ name, content: "" });
-    if (!r.ok || !r.file) { showError(r.error || "Couldn't create that artifact"); return; }
-    await loadFiles();
-    void openArtifact(r.file.id);
+  // NEW ARTIFACT IS A CONVERSATION (his order, 2026-09-18): the button opens
+  // the default agent with the ask already typed and NOT sent, so the first
+  // thing that happens is the agent asking what it should show, rather than an
+  // empty file appearing with a name nobody chose.
+  $("file-new-btn")?.addEventListener("click", () => {
+    const compose = (window as unknown as { __wbComposeToAgent?: (text: string) => void }).__wbComposeToAgent;
+    if (!compose) { showError("Open the workbench to start an artifact."); return; }
+    closeSettingsOverlay();
+    compose(NEW_ARTIFACT_PROMPT);
   });
 }

@@ -41,7 +41,7 @@ import { userScopedPath, glyphhPath } from "./app-paths.js";
 import { HomeView } from "./home-view";
 import { CommandParser } from "./command-parser";
 import { registerHotkey } from "./hotkey";
-import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setReauthHandler, PLATFORM_URL } from "./auth";
+import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat, setHeartbeatObserver, setOrgChangeObserver, setReauthHandler, PLATFORM_URL } from "./auth";
 import { LayoutManager } from "./layout-manager";
 import { canSaveLayout, canUseCustomMcp } from "./entitlements";
 import { clearPreferences, getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
@@ -480,6 +480,16 @@ async function boot() {
   // Registered BEFORE initAuth so the first heartbeat (fired fire-and-forget
   // inside initAuth) can never slip past us.
   let accountLocked = false;
+  // An org-admin change (the gateway lane, the plan, governance) lands within
+  // the minute now, and every surface that reads account state repaints with
+  // it — the rail included (his report, 2026-09-18).
+  setOrgChangeObserver(() => {
+    mainWindow?.webContents.send("account-updated", getAccountInfo());
+    const home = homeView.webContents;
+    if (home && !home.isDestroyed()) {
+      try { home.send("account-updated", getAccountInfo()); } catch { /* view swapping */ }
+    }
+  });
   setHeartbeatObserver((hb) => {
     // The rail's identity chip repaints from this — without it, logging out
     // and back in as a DIFFERENT account kept showing the previous user's
