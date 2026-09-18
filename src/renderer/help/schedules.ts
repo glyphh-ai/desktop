@@ -260,20 +260,29 @@ function paintOverview(): void {
   paintChart();
 }
 
+let openRecentId: string | null = null;
+
+/** THE SAME ROWS EVERYWHERE (his report, 2026-09-18: a run in Recent runs
+ *  would not open). These used to be hand-built and clickable only when their
+ *  schedule was still listed, and the click opened the SCHEDULE, not the run.
+ *  The shared renderer expands a run into its own story, reading the journal
+ *  on demand since this lane carries a summary only. */
 function paintRecents(): void {
   const host = el("schedules-recent"); if (!host) return;
-  host.textContent = "";
-  if (!recents.length) { host.innerHTML = `<div class="crud-empty">No runs yet.</div>`; return; }
-  for (const run of recents.slice(0, 15)) {
-    const e = document.createElement("div");
-    e.className = "ws-task-recent" + (run.status === "ok" ? "" : " failed");
-    const when = new Date(run.startedAt);
-    e.innerHTML = `<span class="ws-task-chip ${run.status === "ok" ? "ok" : run.status === "running" ? "" : "err"}">${escapeHtml(run.status)}</span><span class="ws-task-recent-name"></span><span class="ws-task-run-when" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(relSpan(when.getTime() - Date.now()))}</span>`;
-    (e.querySelector(".ws-task-recent-name") as HTMLElement).textContent = run.scheduleName || (run.taskSlug ? `${tasks.find((t) => t.slug === run.taskSlug)?.name || run.taskSlug} (${run.trigger || "manual"})` : "run");
-    const owner = run.scheduleId ? rows.find((r) => r.id === run.scheduleId) : null;
-    if (owner) e.addEventListener("click", () => openEditor(owner));
-    host.appendChild(e);
-  }
+  const named = recents.slice(0, 15).map((run) => ({
+    ...run,
+    label: run.scheduleName || (run.taskSlug ? (tasks.find((t) => t.slug === run.taskSlug)?.name || run.taskSlug) : "run"),
+  })) as unknown as RunRowLite[];
+  renderRunList(host, named, {
+    empty: "No runs yet.",
+    openId: openRecentId,
+    onToggle: (rid) => { openRecentId = rid; },
+    onOpenAgent: (prompt) => {
+      closeSettingsModal();
+      (window as unknown as { __glyphhOpenSessionWith?: (o: { prompt: string }) => void }).__glyphhOpenSessionWith?.({ prompt });
+    },
+    onAllowTool: (app) => { openConnectionOnLoad(app); openSettingsModal("connections"); },
+  });
 }
 
 function paintChart(): void {

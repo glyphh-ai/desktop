@@ -19,6 +19,9 @@ export interface RunRowLite {
   status: string;
   error: string | null;
   trigger?: string | null;
+  /** What this run WAS, when the list mixes several (the schedule's name, the
+   *  task's). Rendered ahead of the trigger. */
+  label?: string | null;
   input?: unknown;
   result?: unknown;
   output?: string | null;
@@ -57,6 +60,7 @@ export function renderRunList(host: HTMLElement, runs: RunRowLite[], opts: RunLi
     const when = new Date(run.startedAt);
     e.innerHTML = `<div class="ws-task-run-head">`
       + `<span class="ws-task-chip ${run.status === "ok" ? "ok" : run.status === "running" ? "" : "err"}">${escapeHtml(run.status)}</span>`
+      + (run.label ? `<span class="ws-task-recent-name">${escapeHtml(run.label)}</span>` : "")
       + (run.trigger ? `<span class="ws-task-run-trigger">${escapeHtml(run.trigger)}</span>` : "")
       + `<span class="ws-task-run-when" title="${escapeHtml(when.toLocaleString())}">${escapeHtml(rel(when.getTime() - Date.now()))}</span>`
       + (run.durationMs != null ? `<span class="ws-task-run-dur">${(run.durationMs / 1000).toFixed(1)}s</span>` : "")
