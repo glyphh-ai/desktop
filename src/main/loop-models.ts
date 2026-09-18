@@ -84,6 +84,29 @@ async function listAt(cli: string, base: string, token: string, viaGateway: bool
  *  with the gateway on gets the gateway's list instead). */
 const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github" };
 
+/**
+ * GATEWAY MODE: THE ORG ADMIN OWNS THE LIST (his order, 2026-09-18).
+ *
+ * When the org runs on the gateway, the models on offer are the ones the org
+ * admin added on their own key, and nothing else: not the shared catalog we
+ * seed, not the vendor's own list, not the CLI's login. The same list is
+ * offered for every loop, so switching loops never changes what can be picked,
+ * and an org that has added none offers none.
+ *
+ * A model added by the org is team-scoped on the gateway, which is exactly
+ * what `hasByokKey` reports on the catalog row.
+ */
+async function orgOwnModels(): Promise<LoopModel[]> {
+  const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; hasByokKey?: boolean }>;
+  return rows
+    .filter((m) => m.modality === "chat" && m.hasByokKey === true)
+    .map((m) => ({ id: m.name, name: m.name, providerSlug: m.providerSlug }));
+}
+
+async function gatewayMode(): Promise<boolean> {
+  try { return !!(await getClient().plans.gates()).gatewayAllowed; } catch { return false; }
+}
+
 async function orgModels(cli: string): Promise<LoopModel[]> {
   const vendor = CLI_VENDOR[cli];
   const rows = await getClient().models.available();
@@ -99,6 +122,14 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
   if (!row) return { ok: false, source: "none", baseUrl: null, models: [], error: "loop not found" };
   let value: LoopModelsResult;
   try {
+    // Gateway mode short-circuits every other lane: one list, org-controlled,
+    // the same for a loop with its own key and a loop on a vendor login.
+    if (await gatewayMode()) {
+      const creds = await gatewayCreds().catch(() => null);
+      value = { ok: true, source: "gateway", baseUrl: creds?.baseUrl ?? null, models: await orgOwnModels() };
+      cache.set(loopId, { at: Date.now(), value });
+      return value;
+    }
     // The gateway lane (paid, on): the list is what the org's gateway serves this member.
     const creds = CLI_PROFILES[row.cli]?.baseUrlEnv.length && !row.apiKey ? await gatewayCreds() : null;
     value = creds
