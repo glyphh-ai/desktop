@@ -4096,13 +4096,18 @@ async function init(): Promise<void> {
     const flowColumns = (cards: TileEntry[]): TileEntry[][] => {
       const cols: TileEntry[][] = [];
       for (const e of cards) {
-        // AN AGENT TAKES A PARTNER (his report, 2026-09-18: a panel opened
-        // beside the agent always landed to its right instead of under it).
-        // Only a card that ASKED to be solo still is.
-        const solo = e.flowSolo === true;
+        // THE AGENT OWNS ITS COLUMN (his rule, said many times, most recently
+        // 2026-09-18): nothing ever stacks UNDER the glyphh agent. The next
+        // panel opens to its right, or in the next open column beyond that.
+        // An earlier change had it the other way round and paired them.
+        const solo = e.flowSolo === true || e.tile.kind === "agent";
         const target = solo
           ? undefined
-          : cols.find((col) => col.length < 2 && !col.some((c) => c.flowSolo === true));
+          : cols.find(
+              (col) =>
+                col.length < 2 &&
+                !col.some((c) => c.flowSolo === true || c.tile.kind === "agent"),
+            );
         if (target) target.push(e);
         else cols.push([e]);
       }
