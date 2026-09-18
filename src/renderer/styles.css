@@ -16303,15 +16303,6 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
   border-top: 1px solid var(--border);
 }
 .app-rail-user .app-rail-user-btn { flex: 1 1 auto; min-width: 0; }
-.app-rail-settings-btn {
-  flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px;
-  border: none; border-radius: 8px; background: none;
-  color: var(--text-3); cursor: pointer;
-}
-.app-rail-settings-btn svg { width: 16px; height: 16px; }
-.app-rail-settings-btn:hover { background: var(--hover); color: var(--text); }
 #app-rail.rail-icons .app-rail-user { flex-direction: column; }
 
 /* "Relaunch to update" — an accent CTA that sits just above the account button,
@@ -16520,7 +16511,11 @@ body.code-vdragging { cursor: row-resize; user-select: none; }
 
 /* Below ~620px of rail there isn't room for two lists AND recents — let the
    rail itself scroll rather than crushing the lists to nothing. */
-#app-rail { overflow-y: auto; overscroll-behavior: contain; }
+/* The rail itself must NOT scroll: .app-rail-scroll is the scrolling body and
+   the account row is pinned under it. With a scroller on the rail as well, the
+   whole column scrolled and the account row left the viewport (his report,
+   2026-09-18). */
+#app-rail { overflow: hidden; overscroll-behavior: contain; }
 
 .rail-label-btn {
   display: inline-flex;
