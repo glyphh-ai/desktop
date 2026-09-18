@@ -20460,10 +20460,14 @@ body.echo-dock-tucked.echo-dock-peek #echo-dock-layer::before { opacity: 1; }
      content area overflows both sides and clips at the right, which reads as
      left-aligned. Capped to the space it actually has, so it centers while it
      fits and slides within itself when it does not. */
+  /* NEVER a scroll container (his report, 2026-09-18: the dock looked like it
+     was behind something). overflow makes the bar clip anything drawn outside
+     it, and a tile's hover ring and tooltip are both outside it, so the first
+     icon came back sliced. The bar pages its own icons, so it does not need to
+     scroll. */
   max-width: calc(100% - 24px);
-  overflow-x: auto; scrollbar-width: none;
+  overflow: visible;
 }
-#echo-dock-layer .echo-topbar::-webkit-scrollbar { display: none; }
 body.echo-dock-tucked:not(.echo-dock-peek) #echo-dock-layer .echo-topbar {
   transform: translate(-50%, calc(-100% - 24px));
 }
