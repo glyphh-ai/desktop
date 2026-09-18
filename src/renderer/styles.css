@@ -20416,7 +20416,11 @@ body:not(.echo-has-panels) .echo-dock-btn[data-dock="closeall"]:hover:not([style
    panels are up). Same icon sizing variables as at rest — the bar must look
    IDENTICAL to its wall seat (his rule: no spread, no zoom change) — plus a
    real backdrop so it reads as a bar over the panels. */
-#echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 2000; }
+/* ABOVE EVERY PANEL (his report, 2026-09-18: the dock still drew under the
+   agent panel). 2000 cleared the workbench's own layers but not the cards and
+   overlays that climb past it; this sits under the settings modal (999000) and
+   the toast stack (1000000) and above everything else. */
+#echo-dock-layer { position: fixed; inset: 0; pointer-events: none; z-index: 99000; }
 /* The peek SCRIM (his order, 2026-09-14): a theme gradient behind the
    dropped dock — the page's own surface color, darkest at the very top,
    gone within the dock's band — so the bar reads as descending from the
@@ -20477,7 +20481,7 @@ body.echo-dock-tucked .echo-dock-hotstrip {
      report, 2026-09-18). Deep enough to fall into, still shallow enough that
      it never eats a click meant for the page. */
   display: block; position: fixed; top: var(--wb-top-inset, 0px); left: var(--rail-w, 0px); right: 0; height: 34px;
-  z-index: 131; background: transparent;
+  z-index: 98999; background: transparent;
 }
 body.echo-dock-tucked.echo-dock-peek .echo-dock-hotstrip { display: none; }
 
