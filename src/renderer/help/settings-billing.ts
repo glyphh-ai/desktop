@@ -931,8 +931,10 @@ async function saveAutotopup(): Promise<void> {
 
 /** The fold's one-line summary, so the rule is readable while shut. */
 function paintAutotopupSummary(): void {
+  // Dollars, not credits (his order, 2026-09-18): a threshold in credits means
+  // nothing to somebody deciding how much to spend.
   setText("billing-at-summary", autoTopup.enabled
-    ? `On — buy $${autoTopup.packUsd} below ${fmtInt(autoTopup.thresholdCredits)} credits`
+    ? `On — buy $${autoTopup.packUsd} (${fmtInt(creditsForUsdTiered(autoTopup.packUsd))} credits) when the balance falls below $${(autoTopup.thresholdCredits * USD_PER_CREDIT).toFixed(2)}`
     : "Off");
 }
 
