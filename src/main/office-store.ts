@@ -18,6 +18,7 @@
 import { promises as fsp } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { list as listMedia } from "./media-local.js";
 import { randomUUID } from "node:crypto";
 import { userScopedPath } from "./app-paths.js";
 
@@ -42,7 +43,7 @@ export interface SheetMeta { file: string; title: string; sheets: number; totalR
 export interface SlideMeta { file: string; title: string; slides: number; sizeBytes: number; updatedAt: string }
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
-  kind: "slides" | "docs" | "sheets" | "design";
+  kind: "slides" | "docs" | "sheets" | "design" | "image" | "audio" | "video";
   ref: string; file: string; title: string;
   sizeBytes: number; folderId: string | null; updatedAt: string;
   /** sheets carry their counts so Drive cards can label them */
@@ -387,6 +388,11 @@ export async function listDrive(q?: string): Promise<{ folders: DriveFolder[]; f
     ...(await listDocs()).map((m): DriveEntry => ({ kind: "docs", ref: m.file, file: m.file, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, folderId: m.folderId })),
     ...(await listSheets()).map((m): DriveEntry => ({ kind: "sheets", ref: m.file, file: m.file, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, sheets: m.sheets, totalRows: m.totalRows, folderId: m.folderId })),
     ...(await listDesigns()).map((m): DriveEntry => ({ kind: "design", ref: m.file, file: m.file, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, folderId: drive.pointers[pointerKey("design", m.file)] ?? null })),
+    // EVERYTHING THE APPS MAKE (his ruling, 2026-09-18: "the drive looks for
+    // those apps media folders"). Images, Audio and Video keep their files in
+    // their own app-data folder like every other app, and Drive is the view
+    // across all of them.
+    ...listMedia().map((m): DriveEntry => ({ kind: m.kind, ref: m.id, file: m.id, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, folderId: drive.pointers[pointerKey(m.kind, m.id)] ?? null })),
   ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   if (!q) return { folders: drive.folders, files };
   const needle = q.toLowerCase();
