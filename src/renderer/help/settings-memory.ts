@@ -44,6 +44,7 @@ export async function loadMemorySettings(): Promise<void> {
     };
   }
 
+  el("memory-accept-note")?.classList.toggle("hidden", accepted);
   const note = el("memory-org-note");
   const forced = (Object.entries(policy) as Array<[keyof typeof PREFS, Rule]>).filter(([, r]) => r === "on" || r === "off");
   if (note) {

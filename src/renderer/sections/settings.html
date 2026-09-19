@@ -64,6 +64,7 @@
               <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
               <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
               <button class="settings-nav-item" data-sub="memory"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg><span>Memory</span></button>
+              <button class="settings-nav-item" data-sub="privacy"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.6 20 6v6c0 5-3.4 8.2-8 9.4C7.4 20.2 4 17 4 12V6z"/><path d="m9 12 2 2 4-4"/></svg><span>Privacy</span></button>
               <button class="settings-nav-item not-on-platform hidden" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg><span>Loops</span></button>
               <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
@@ -189,14 +190,11 @@
                    The program/payout SDK surface ships separately;
                    settings-developer.ts renders a "coming online" state until
                    it lands. -->
-              <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the
-                   user accepts before it remembers anything, and the org's overrides. -->
-              <div class="settings-panel" data-sub="memory">
-                <h2>Memory</h2>
-                <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
-
-                <h3 class="settings-subheading" style="margin-top:0;">Privacy</h3>
-                <p class="set-pref-desc">Glyphh keeps your memory on this machine. Read how it is protected and used, then accept the policy to turn memory on.</p>
+              <!-- PRIVACY (his order, 2026-09-19): its own tab — how Glyphh protects
+                   and uses your data, and the memory policy you accept. -->
+              <div class="settings-panel" data-sub="privacy">
+                <h2>Privacy</h2>
+                <p class="section-desc">How Glyphh protects your data, how it uses it, and the policy you accept before it remembers anything.</p>
                 <details class="memory-disclosure">
                   <summary>How we protect your data</summary>
                   <ul class="docs-list">
@@ -224,7 +222,16 @@
                   <span class="toggle-switch"></span>
                 </label>
 
-                <h3 class="settings-subheading">Preferences</h3>
+              </div>
+
+              <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the
+                   user accepts before it remembers anything, and the org's overrides. -->
+              <div class="settings-panel" data-sub="memory">
+                <h2>Memory</h2>
+                <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
+
+                <p class="set-pref-desc hidden" id="memory-accept-note">Memory is off until you accept the memory policy under <strong>Privacy</strong>.</p>
+                <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
                 <p class="set-pref-desc hidden" id="memory-org-note"></p>
                 <label class="settings-toggle set-pref-row">
                   <div class="set-pref-text">
