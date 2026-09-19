@@ -1,0 +1,44 @@
+# Security gates (his order, 2026-09-18: the pen test, and the checks that keep
+# it from rotting). Every push and PR: secrets in history, shipped dependency
+# CVEs, static analysis. Dev-only tooling is audited separately and never
+# blocks a release on its own.
+name: Security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+permissions:
+  contents: read
+jobs:
+  secrets:
+    name: Leaked secrets (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  deps:
+    name: Shipped dependency CVEs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+      - run: npm ci --ignore-scripts
+      # What ships blocks; dev tooling is reported, not blocking.
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --audit-level=critical || true
+  semgrep:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep@sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823 # latest, pinned 2026-09-18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: semgrep ci --config p/owasp-top-ten --config p/typescript --config p/javascript --config p/secrets --metrics=off

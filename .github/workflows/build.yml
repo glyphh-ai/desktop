@@ -14,9 +14,9 @@ jobs:
     # macos-15 is the image family the last green build (v1.5.2, 2026-09-04) used.
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -33,7 +33,7 @@ jobs:
       # still imports it during electron-rebuild for native deps that don't
       # have prebuilt x64-darwin binaries (node-pty in particular). Without
       # this the multi-arch build fails on the x64 rebuild pass.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
@@ -45,7 +45,7 @@ jobs:
       # checkout that exists locally but not in CI. Same self-heal as the
       # platform's deploy workflow: check out sdk@main, build it, and place
       # package.json + dist at ../sdk so the lockfile's link resolves.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
@@ -93,7 +93,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: yo-mac
           path: |
@@ -108,9 +108,9 @@ jobs:
     # windows-2022 has the VS2022 C++ toolchain node-gyp finds out of the box.
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -127,7 +127,7 @@ jobs:
       # checkout that exists locally but not in CI. Same self-heal as the
       # platform's deploy workflow: check out sdk@main, build it, and place
       # package.json + dist at ../sdk so the lockfile's link resolves.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
@@ -171,7 +171,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Sign Windows exe with SSL.com
-        uses: sslcom/esigner-codesign@main
+        uses: sslcom/esigner-codesign@cf5f6c1d38ad10f47e3ed9aca873f429b1a8d85b # main, pinned 2026-09-18
         with:
           command: sign
           username: ${{ secrets.ES_USERNAME }}
@@ -206,7 +206,7 @@ jobs:
           Write-Host "Patched latest.yml: size=$size sha512=$hash"
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: yo-win
           path: |
@@ -221,9 +221,9 @@ jobs:
     # electron-builder.yml.)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           cache: npm
@@ -237,7 +237,7 @@ jobs:
 
       # ── Vendor the SDK ── same self-heal as the other jobs: package.json
       # depends on `@glyphh/sdk: file:../sdk`, a sibling checkout CI lacks.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: glyphh-ai/sdk
           token: ${{ secrets.SDK_REPO_TOKEN || secrets.CLIENT_RELEASE_TOKEN }}
@@ -278,7 +278,7 @@ jobs:
         run: npx electron-builder --linux --publish never
 
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: yo-linux
           path: |
@@ -293,12 +293,12 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           draft: true
           files: |
@@ -315,7 +315,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
 
