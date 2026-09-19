@@ -561,18 +561,28 @@ function languageForFile(name: string): string {
   };
   return map[ext] || "plaintext";
 }
+/** Luminance of a CSS colour token, resolved by the BROWSER. The tokens are
+ *  oklch() since the console alignment (2026-09-18); a hex/rgb regex read
+ *  them as "not a colour", fell through to white, and Monaco went light in a
+ *  dark app (his report). Painting the value on a probe element and reading
+ *  the computed colour back always yields rgb(). */
+function tokenLuminance(name: string, fallback: number): number {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!raw) return fallback;
+  const probe = document.createElement("span");
+  probe.style.color = raw;
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(getComputedStyle(probe).color);
+  probe.remove();
+  if (!rgb) return fallback;
+  return 0.2126 * +rgb[1]! + 0.7152 * +rgb[2]! + 0.0722 * +rgb[3]!;
+}
 function monacoTheme(): string {
   // Decide by the theme's ACTUAL surface, not its name — "dark" was the only
   // name that mapped to vs-dark, so every other dark scheme (high-vis,
   // matrix, …) got a white editor in a black app.
-  const raw = getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()
-    || getComputedStyle(document.body).backgroundColor;
-  let r = 255, g = 255, b = 255;
-  const hex = /^#([0-9a-f]{6})$/i.exec(raw);
-  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(raw);
-  if (hex) { const n = parseInt(hex[1]!, 16); r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255; }
-  else if (rgb) { r = +rgb[1]!; g = +rgb[2]!; b = +rgb[3]!; }
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128 ? "vs-dark" : "vs";
+  return tokenLuminance("--surface", 255) < 128 ? "vs-dark" : "vs";
 }
 function isMarkdown(name: string): boolean {
   return /\.(md|mdx|markdown)$/i.test(name);
@@ -581,14 +591,7 @@ function isMarkdown(name: string): boolean {
  *  GitHub blue), black on bright ones (Matrix green, amber, high-vis
  *  yellow). Exposed as --accent-ink for CSS (the space tabs' active pill). */
 function applyAccentInk(): void {
-  const raw = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-  let r = 128, g = 128, b = 128;
-  const hex = /^#([0-9a-f]{6})$/i.exec(raw);
-  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(raw);
-  if (hex) { const n = parseInt(hex[1]!, 16); r = (n >> 16) & 255; g = (n >> 8) & 255; b = n & 255; }
-  else if (rgb) { r = +rgb[1]!; g = +rgb[2]!; b = +rgb[3]!; }
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  document.documentElement.style.setProperty("--accent-ink", lum < 140 ? "#fff" : "#000");
+  document.documentElement.style.setProperty("--accent-ink", tokenLuminance("--accent", 128) < 140 ? "#fff" : "#000");
 }
 applyAccentInk();
 // Monaco's theme is GLOBAL and only read at editor creation — re-apply it
@@ -3536,6 +3539,11 @@ async function init(): Promise<void> {
       }).catch(() => { /* next visit refetches */ });
     };
     document.addEventListener("glyphh:apps-changed", onCatalogChanged);
+    // An app installed from Discover (or over MCP) registers its tab in main,
+    // which announces panel-apps-changed. The wall only heard the Tabs page's
+    // relay of that, so a fresh install never appeared here until the Tabs
+    // page had been visited (his report, 2026-09-18). Listen to main directly.
+    (window as unknown as { glyphh?: { onPanelAppsChanged?: (cb: () => void) => void } }).glyphh?.onPanelAppsChanged?.(onCatalogChanged);
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
     // tile's spot into a slot row anchored high, so the wall stays visible
@@ -9431,7 +9439,7 @@ async function init(): Promise<void> {
   // downloadUrl); image/pdf/other open in a preview panel at that url. The
   // artifact id stands in for a path so Monaco tabs dedupe per artifact.
   // Shape mirrors @glyphh/sdk FileArtifact (downloadUrl present on files.get).
-  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; downloadUrl?: string; mime?: string }
+  interface WbArtifact { id: string; name: string; kind: "code" | "text" | "markdown" | "image" | "pdf" | "other"; downloadUrl?: string; mime?: string; path?: string }
   (window as unknown as { __wbOpenArtifact?: (a: WbArtifact) => void }).__wbOpenArtifact = (a) => {
     if (!a) return;
     const textual = a.kind === "code" || a.kind === "text" || a.kind === "markdown";
@@ -9447,7 +9455,19 @@ async function init(): Promise<void> {
       openFileInMonaco(node, "");
       return;
     }
-    // image / pdf / other — a preview panel at the short-lived download url.
+    // AN IMAGE OPENS IN THE IMAGES APP (his report, 2026-09-18: "an artifact
+    // that was an image does not open in the image app"). The artifact is a
+    // local file; it joins the Images library and the panel opens on it.
+    if (a.kind === "image" && a.path) {
+      const g = (window as unknown as { glyphh?: { mediaUploadFile?: (p: string, o: { title?: string; kind?: "image" }) => Promise<{ ok: boolean; id?: string; error?: string }> } }).glyphh;
+      void g?.mediaUploadFile?.(a.path, { title: a.name, kind: "image" }).then((r) => {
+        if (r?.ok && r.id) {
+          (window as unknown as { __wbOpenMedia?: (v: MediaView, assetId?: string) => void }).__wbOpenMedia?.("gimage", r.id);
+        } else if (a.downloadUrl) openPreviewUrl(a.downloadUrl);
+      });
+      return;
+    }
+    // pdf / other — a preview panel at the short-lived download url.
     if (a.downloadUrl) { openPreviewUrl(a.downloadUrl); return; }
   };
 

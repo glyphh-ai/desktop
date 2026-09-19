@@ -55,8 +55,14 @@ export function registerMediaPanelIpc(): void {
   // implemented, so every panel opened on "Couldn't load the library".
   ipcMain.handle("media-list", (_e, kind?: unknown, q?: unknown) => {
     try {
+      // A kind the library does not have ("avatar", "recording", "voice" are
+      // the panels' legacy sub-kinds) answers EMPTY. It used to fall through to
+      // "every kind", so the Images panel, which asks for image AND avatar, got
+      // the whole library twice and every picture showed up double (his
+      // report, 2026-09-18).
       const k = kind ? String(kind) : "";
-      const only = k === "image" || k === "audio" || k === "video" ? (k as local.MediaKind) : undefined;
+      if (k && k !== "image" && k !== "audio" && k !== "video") return { ok: true, assets: [] };
+      const only = k ? (k as local.MediaKind) : undefined;
       return { ok: true, assets: local.list(only, q ? String(q) : undefined) };
     } catch (err) {
       return { ok: false, error: errText(err), assets: [] };

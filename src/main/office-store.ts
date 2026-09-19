@@ -43,7 +43,10 @@ export interface SheetMeta { file: string; title: string; sheets: number; totalR
 export interface SlideMeta { file: string; title: string; slides: number; sizeBytes: number; updatedAt: string }
 export interface DriveFolder { id: string; name: string; parentId: string | null }
 export interface DriveEntry {
-  kind: "slides" | "docs" | "sheets" | "design" | "image" | "audio" | "video";
+  kind: "slides" | "docs" | "sheets" | "design" | "media";
+  /** media only: image | audio | video — the Drive panel picks its icon and app by this. */
+  subkind?: "image" | "audio" | "video";
+  mime?: string;
   ref: string; file: string; title: string;
   sizeBytes: number; folderId: string | null; updatedAt: string;
   /** sheets carry their counts so Drive cards can label them */
@@ -392,7 +395,11 @@ export async function listDrive(q?: string): Promise<{ folders: DriveFolder[]; f
     // those apps media folders"). Images, Audio and Video keep their files in
     // their own app-data folder like every other app, and Drive is the view
     // across all of them.
-    ...listMedia().map((m): DriveEntry => ({ kind: m.kind, ref: m.id, file: m.id, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, folderId: drive.pointers[pointerKey(m.kind, m.id)] ?? null })),
+    // The Drive panel knows ONE media kind, "media", with the image/audio/video
+    // distinction as a subkind (wb-drive.ts DriveKind). Emitting m.kind here
+    // sent "image" rows the panel had no case for, so every picture the Images
+    // app saved was missing from Drive (his report, 2026-09-18).
+    ...listMedia().map((m): DriveEntry => ({ kind: "media", subkind: m.kind, mime: m.mime, ref: m.id, file: m.id, title: m.title, sizeBytes: m.sizeBytes, updatedAt: m.updatedAt, folderId: drive.pointers[pointerKey(m.kind, m.id)] ?? null })),
   ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   if (!q) return { folders: drive.folders, files };
   const needle = q.toLowerCase();

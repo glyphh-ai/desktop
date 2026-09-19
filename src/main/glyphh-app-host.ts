@@ -42,6 +42,9 @@ import path from "path";
 import { pathToFileURL, fileURLToPath } from "url";
 import { userScopedPath, glyphhPath, appsRoot, appDir, getActiveUserId } from "./app-paths.js";
 import * as mediaLocal from "./media-local.js";
+import * as office from "./office-store.js";
+import { listGPoints, readGPoint, writeGPoint, deleteGPoint, buildDeckDocument } from "./gpoints.js";
+import { designFileName } from "./design.js";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps.js";
 import * as appsStore from "./apps-store.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
@@ -118,6 +121,14 @@ export function appMediaList(slug: string, args: Record<string, unknown>): { fil
   return { files: rows.map((a) => ({ id: a.id, title: a.title, mime: a.mime, sizeBytes: a.sizeBytes, updatedAt: a.updatedAt })) };
 }
 
+export function appMediaDelete(slug: string, args: Record<string, unknown>): { deleted: true } {
+  const mine = mediaOfApp(slug);
+  if (!mine) throw new Error(`${slug} owns no media library`);
+  const id = String(args.id || "");
+  if (!id.startsWith(`${mine}/`)) throw new Error(`"${id}" is not in the ${slug} library`);
+  mediaLocal.remove(id);
+  return { deleted: true };
+}
 /** Which library this app owns, or null for one that owns none. */
 function mediaOfApp(slug: string): "image" | "audio" | "video" | null {
   const found = (Object.entries(mediaLocal.APP_OF) as Array<["image" | "audio" | "video", string]>)
@@ -161,6 +172,14 @@ const KNOWN_CAPABILITIES = new Set([
   "app.call",
   "media.save",
   "media.list",
+  "media.delete",
+  // THE HOUSE PANELS' OWN SURFACES (his report, 2026-09-18: "how does the
+  // drive app not offer any tools?"). Each work panel is an app; the tools
+  // it publishes are the same store calls its panel runs on, so the agent can
+  // do through app.call exactly what the user does by hand.
+  "drive.list", "drive.mkdir", "drive.move", "drive.folder.rename", "drive.folder.delete",
+  "design.list", "design.read", "design.write", "design.delete",
+  "slides.list", "slides.new", "slides.read", "slides.write", "slides.delete",
   "fs.read",
   "fs.write",
   "fs.pick",
@@ -721,6 +740,26 @@ async function runCapability(
     // capability every app is handed (his ruling, 2026-09-18).
     case "media.save":       return appMediaSave(slug, args);
     case "media.list":       return appMediaList(slug, args);
+    case "media.delete":     return appMediaDelete(slug, args);
+    case "drive.list":       return office.listDrive(args.q ? String(args.q) : undefined);
+    case "drive.mkdir":      return office.createFolder(String(args.name || ""), args.parentId ? String(args.parentId) : null);
+    case "drive.move":       await office.moveToFolder(String(args.kind || ""), String(args.ref || args.file || ""), args.folderId ? String(args.folderId) : null); return { moved: true };
+    case "drive.folder.rename": return office.updateFolder(String(args.id || ""), { name: String(args.name || "") });
+    case "drive.folder.delete": await office.deleteFolder(String(args.id || "")); return { deleted: true };
+    case "design.list":      return { designs: await office.listDesigns() };
+    case "design.read":      return office.readDesign(designFileName(args.name));
+    case "design.write":     return office.writeDesign(designFileName(args.name), args.document as Parameters<typeof office.writeDesign>[1]);
+    case "design.delete":    await office.deleteDesign(designFileName(args.name)); return { deleted: true };
+    case "slides.list":      return { decks: await listGPoints() };
+    case "slides.new": {
+      const t = String(args.title ?? args.name ?? "Untitled").trim() || "Untitled";
+      const esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const starter = `<section class="slide on" id="s1"><div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;text-align:center"><div style="font:700 96px/1.1 Inter,-apple-system,system-ui,sans-serif;letter-spacing:-.02em">${esc}</div></div></section>`;
+      return writeGPoint(args.name ?? t, buildDeckDocument(t, starter));
+    }
+    case "slides.read":      return { html: await readGPoint(args.name) };
+    case "slides.write":     return writeGPoint(args.name, String(args.html ?? ""));
+    case "slides.delete":    await deleteGPoint(args.name); return { deleted: true };
     case "web.fetch":        return webFetch(args);
     case "web.read":         return webRead(args);
     case "llm.embed":        throw new Error("this capability is retired — Glyphh makes no model calls; the driving agent (your CLI) does this itself");

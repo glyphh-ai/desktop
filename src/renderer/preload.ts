@@ -1421,6 +1421,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   mediaGenerate: (input: unknown) => ipcRenderer.invoke("media-generate", input) as Promise<{ ok: boolean; job?: unknown; outputKind?: string; error?: string }>,
   mediaJob: (id: string) => ipcRenderer.invoke("media-job", id) as Promise<{ ok: boolean; job?: unknown; error?: string }>,
   mediaUploadPick: (kind?: string) => ipcRenderer.invoke("media-upload-pick", kind) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
+  /** A file already on this machine joins a library (an image artifact → Images). */
+  mediaUploadFile: (path: string, opts?: { title?: string; kind?: string }) => ipcRenderer.invoke("media-upload-file", path, opts) as Promise<{ ok: boolean; id?: string; title?: string; error?: string }>,
   mediaSave: (id: string) => ipcRenderer.invoke("media-save", id) as Promise<{ ok: boolean; path?: string; error?: string }>,
   musicArtists: () => ipcRenderer.invoke("music-artists") as Promise<{ ok: boolean; artists: unknown[]; error?: string }>,
   musicArtistSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-artist-save", id, input) as Promise<{ ok: boolean; artist?: unknown; error?: string }>,
