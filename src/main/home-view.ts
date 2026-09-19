@@ -235,10 +235,24 @@ export class HomeView {
     (wc as any).on("will-attach-webview", (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
       // A second Glyphh agent PANEL is the shell itself in a webview (his order,
       // 2026-09-16: no cap on open agents): it needs the shell preload, not the app bridge.
+      // EXACT, not `includes` (review finding, 2026-09-18): a user-typed tab
+      // URL containing "home.html?solo=tool:coding" anywhere was handed the
+      // full shell preload, i.e. every IPC lane, to a remote page. Only our
+      // own file, from disk, is the shell.
       const src = String(params?.src || "");
-      webPreferences.preload = src.includes("home.html?solo=tool:coding")
+      let ours = false;
+      try {
+        const u = new URL(src);
+        ours = u.protocol === "file:" && u.pathname.endsWith("/renderer/home.html") && u.searchParams.get("solo") === "tool:coding";
+      } catch { ours = false; }
+      webPreferences.preload = ours
         ? path.join(__dirname, "..", "renderer", "preload.js")
         : path.join(__dirname, "glyphh-app-preload.js");
+      // Whatever the tag asked for, a guest page never gets Node.
+      webPreferences.nodeIntegration = false;
+      webPreferences.nodeIntegrationInSubFrames = false;
+      webPreferences.contextIsolation = true;
+      webPreferences.webSecurity = true;
     });
 
     (wc as any).on("did-attach-webview", (_event: unknown, guest: WebContents) => {

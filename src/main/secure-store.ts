@@ -44,7 +44,8 @@ export function decryptJson<T>(buf: Buffer): T | null {
       const iv = body.subarray(0, 12);
       const tag = body.subarray(12, 28);
       const ciphertext = body.subarray(28);
-      const decipher = crypto.createDecipheriv("aes-256-gcm", fallbackKey(), iv);
+      // A pinned tag length refuses a truncated tag on a tampered file.
+      const decipher = crypto.createDecipheriv("aes-256-gcm", fallbackKey(), iv, { authTagLength: 16 });
       decipher.setAuthTag(tag);
       const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf-8");
       return JSON.parse(plain) as T;

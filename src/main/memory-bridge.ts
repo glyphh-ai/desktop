@@ -38,6 +38,14 @@ const FACTS_K = 5;
 
 let server: http.Server | null = null;
 let port = 0;
+/** A per-launch secret in every bridged URL (review finding, 2026-09-18): the
+ *  bridge is loopback-only and opt-in, but without this any local process or
+ *  panel page could use it as an open forwarder. It rides in the path, which
+ *  is the one place every CLI's base-URL variable carries through untouched. */
+const LAUNCH_SECRET = (() => {
+  const { randomBytes } = require("node:crypto") as typeof import("node:crypto");
+  return randomBytes(18).toString("base64url");
+})();
 
 export function memoryBridgeEnabled(): boolean {
   return getPreference<boolean>("memoryBridgeEnabled", false) === true;
@@ -50,7 +58,7 @@ export async function bridgeWrap(upstream: string): Promise<string | null> {
   const p = await startMemoryBridge();
   if (!p) return null;
   const b64 = Buffer.from(upstream, "utf-8").toString("base64url");
-  return `http://127.0.0.1:${p}/fwd/${b64}`;
+  return `http://127.0.0.1:${p}/fwd/${LAUNCH_SECRET}/${b64}`;
 }
 
 export function startMemoryBridge(): Promise<number | null> {
@@ -97,7 +105,9 @@ function isMessagesCall(method: string | undefined, rest: string): boolean {
 }
 
 async function handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  const up = upstreamOf(req.url || "");
+  const prefix = `/fwd/${LAUNCH_SECRET}/`;
+  if (!(req.url || "").startsWith(prefix)) { res.statusCode = 404; res.end("unknown lane"); return; }
+  const up = upstreamOf("/fwd/" + (req.url || "").slice(prefix.length));
   if (!up) { res.statusCode = 404; res.end("unknown lane"); return; }
   const target = new URL(up.base + up.rest);
 

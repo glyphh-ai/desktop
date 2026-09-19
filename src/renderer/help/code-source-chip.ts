@@ -1,3 +1,4 @@
+import { escapeHtml } from "./shared.js";
 /**
  * code-source-chip.ts — the WORKSPACE-SOURCE chip (ported from the platform's
  * RuntimeLocationChip), reimplemented in vanilla TS. It sits ABOVE the Code and
@@ -495,7 +496,7 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
   const close = (): void => menu.remove();
   const src = opts.getSource();
   const parent = src.kind === "local" && src.path ? src.path : undefined;
-  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>New folder${parent ? ` in ${lastSeg(parent)}` : " in Home"}</span></div>`);
+  menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>New folder${parent ? ` in ${escapeHtml(lastSeg(parent))}` : " in Home"}</span></div>`);
   const nf = document.createElement("div");
   nf.className = "ws-fs-newfolder";
   nf.innerHTML = `<input class="loop-drop-search repo-drop-search" placeholder="Folder name…" spellcheck="false" autocomplete="off"><button type="button" class="action-btn primary">Create</button><span class="ws-fs-newfolder-err"></span>`;
