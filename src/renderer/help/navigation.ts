@@ -411,7 +411,9 @@ export function openSettingsModal(sub?: string): void {
       let anchor: Element = settingsGroup;
       const pick = (sub: string): Element | null =>
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
-      for (const sub of ["general", "appearance", "account"]) {
+      // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
+      // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
+      for (const sub of ["general", "memory", "appearance", "account", "artifacts", "usage", "mcp"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -424,20 +426,16 @@ export function openSettingsModal(sub?: string): void {
       }
       anchor.after(orgGroup);
       anchor = orgGroup;
-      for (const sub of ["usage", "billing"]) {
+      for (const sub of ["billing"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
-      // MCP is its OWN group at the end (his spec, 2026-08-25): the cloud/
-      // local General panel plus the API keys that authorize it.
-      const mcpItem = pick("mcp");
-      if (mcpItem) { anchor.after(mcpItem); anchor = mcpItem; }
       // BUILD follows Organization (his order, 2026-09-16): Skills, Connections, Plugins.
       const buildGroup = nav.querySelector("#nav-group-build");
       if (buildGroup) {
         anchor.after(buildGroup);
         anchor = buildGroup;
-        for (const sub of ["skills", "apps", "connections-cfg", "plugins", "tasks"]) {
+        for (const sub of ["skills", "apps", "connections-cfg", "plugins", "tasks"]) {   // artifacts moved to Settings
           const item = pick(sub);
           if (item) { anchor.after(item); anchor = item; }
         }
