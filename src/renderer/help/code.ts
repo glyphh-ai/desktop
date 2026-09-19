@@ -5585,10 +5585,14 @@ export function initCode(): void {
   void window.glyphh.getPreference?.("railCollapsed", false).then((v) => setRailCollapsed(v === true, false)).catch(() => {});
   // The content shell sits to the right of the sidebar; inline and !important because the template's own inset rule is !important too.
   { const shellEl = document.getElementById("help-overlay"); if (shellEl) { shellEl.style.setProperty("right", "0px", "important"); shellEl.style.removeProperty("width"); } }
-  el("rail-echo-btn")?.addEventListener("click", () => {
+  const openEcho = (): void => {
     const w = window as unknown as { __wbEchoShadowPin?: () => void };
     if (w.__wbEchoShadowPin) w.__wbEchoShadowPin(); else openCommandCenter();
-  });
+  };
+  el("rail-echo-btn")?.addEventListener("click", openEcho);
+  // The sidebar's Echo button leaves with the sidebar; the collapsed strip
+  // carries its own (his report, 2026-09-19).
+  el("rail-echo-btn-strip")?.addEventListener("click", openEcho);
   void window.glyphh.getPreference?.(LOOP_FILTER_PREF, []).then((v) => { if (Array.isArray(v)) { loopFilter = v.map(String); el("recent-sessions-filter")?.classList.toggle("active", loopFilter.length > 0); renderRailSessions(); renderHistory(); } }).catch(() => {});
   initRailApps();
   /** NEW creates NOTHING — the record is born on the first send. Clears the
