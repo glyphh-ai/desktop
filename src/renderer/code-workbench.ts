@@ -623,7 +623,7 @@ function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
   if (!collapsed && !headsMarked) return;
   headsMarked = collapsed;
-  const heads = Array.from(document.querySelectorAll<HTMLElement>(".ws-rail-slot-header, .code-agent-head"));
+  const heads = Array.from(document.querySelectorAll<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head"));
   if (!collapsed) { heads.forEach((h) => h.classList.remove("clears-strip")); return; }
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
@@ -637,7 +637,7 @@ function markHeadsUnderStrip(): void {
   }
   for (const [x, y] of [[12, Math.round(topH / 2)], [Math.round(stripW - 8), Math.round(topH / 2)]]) {
     for (const el of document.elementsFromPoint(x, y)) {
-      const h = (el as HTMLElement).closest?.<HTMLElement>(".ws-rail-slot-header, .code-agent-head");
+      const h = (el as HTMLElement).closest?.<HTMLElement>(".echo-card-head, .ws-rail-slot-header, .code-agent-head");
       if (h) { under.add(h); break; }
     }
   }
@@ -4614,6 +4614,8 @@ async function init(): Promise<void> {
       // hides its placeholder — every reflow re-arms it so the rail returns
       // the moment the placeholder is visible again.
       scheduleRailSync();
+      // Cards just moved: re-mark the head under the strip (an Echo card head, the usual case).
+      markHeadsUnderStrip();
     }
     /** DIVIDERS — draggable seams between grid columns/rows (the old rail
      *  handles): dragging one reshapes the layout by shifting the fraction

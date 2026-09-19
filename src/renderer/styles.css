@@ -20922,6 +20922,7 @@ body { --rail-strip-w: 148px; }
 #rail-collapsed-strip { position: fixed; top: 0; left: 0; height: var(--rail-top-h); width: var(--rail-strip-w); display: flex; align-items: center; justify-content: flex-start; gap: 2px; padding-left: 84px; z-index: 210; }
 /* Whatever head lands under the strip is marked by the workbench (it reads
    the rects, since the agent rides a fixed overlay and the rails may nest). */
+body.rail-collapsed .echo-card-head.clears-strip,
 body.rail-collapsed .ws-rail-slot-header.clears-strip,
 body.rail-collapsed .code-agent-head.clears-strip { padding-left: var(--rail-strip-w) !important; }
 #rail-collapsed-strip.hidden { display: none; }
