@@ -618,6 +618,12 @@ new MutationObserver(() => {
  *  selector finds "the head at the top-left": read the rects instead and mark
  *  every head whose corner is under the strip. Re-run on collapse, layout
  *  and resize; cheap, a handful of rects. */
+/** A TERMINAL THAT JUST OPENED GETS THE KEYBOARD (his report, 2026-09-19: the
+ *  agent opened or swapped in CLI mode and the user had to click into it).
+ *  The mount focuses xterm, and the composer's focus guard used to hand that
+ *  focus straight back, since no pointer had touched the terminal. A short
+ *  grant after a mount tells the guard the terminal took the caret on purpose. */
+let termFocusGrantUntil = 0;
 let headsMarked = false;
 function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
@@ -895,7 +901,8 @@ async function init(): Promise<void> {
     // Surrender ONLY to a deliberate press on a real keyboard target. Clicking
     // Send, a chip, or a tool card used to hand the caret away and leave the
     // guard disarmed for the rest of the turn — that was the hole.
-    const surrender = deliberate && wantsKeyboard(t);
+    const granted = Date.now() < termFocusGrantUntil && !!t.closest?.(".xterm");
+    const surrender = (deliberate || granted) && wantsKeyboard(t);
     if (composerHeld && !surrender && restoreComposer()) return;
     if (surrender) composerHeld = false;
 
@@ -9229,7 +9236,11 @@ async function init(): Promise<void> {
       });
       wbt.ro.observe(hostEl);
     }
+    termFocusGrantUntil = Date.now() + 2000;
     wbt.term.focus();
+    // The card may still be settling (open animation, a layout pass); land the
+    // caret again once it has, while the grant still holds.
+    window.setTimeout(() => { if (Date.now() < termFocusGrantUntil && wbt.term && hostEl.isConnected) wbt.term.focus(); }, 300);
   }
   function killTerminal(t: WbTerminal): void {
     t.detach?.();
