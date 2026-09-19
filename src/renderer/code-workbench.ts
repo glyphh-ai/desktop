@@ -618,8 +618,11 @@ new MutationObserver(() => {
  *  selector finds "the head at the top-left": read the rects instead and mark
  *  every head whose corner is under the strip. Re-run on collapse, layout
  *  and resize; cheap, a handful of rects. */
+let headsMarked = false;
 function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
+  if (!collapsed && !headsMarked) return;
+  headsMarked = collapsed;
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
   document.querySelectorAll<HTMLElement>(".ws-rail-slot-header, .code-agent-head").forEach((h) => {
@@ -633,11 +636,15 @@ function markHeadsUnderStrip(): void {
   const schedule = (): void => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; markHeadsUnderStrip(); }); };
   new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ["class"] });
   window.addEventListener("resize", schedule);
-  const rails = document.getElementById("code-wb-rails");
-  if (rails) {
+  // The rails may not exist yet when this module runs; attach when they do.
+  const watchRails = (): boolean => {
+    const rails = document.getElementById("code-wb-rails");
+    if (!rails) return false;
     new MutationObserver(schedule).observe(rails, { childList: true, subtree: true });
     new ResizeObserver(schedule).observe(rails);
-  }
+    return true;
+  };
+  if (!watchRails()) document.addEventListener("DOMContentLoaded", () => { watchRails(); schedule(); });
   document.addEventListener("transitionend", (e) => { if ((e.target as HTMLElement)?.id === "app-rail") schedule(); });
   schedule();
 }
@@ -6870,6 +6877,9 @@ async function init(): Promise<void> {
       agentHolder.style.top = `${Math.round(rect.top)}px`;
       agentHolder.style.width = `${Math.round(rect.width)}px`;
       agentHolder.style.height = `${Math.round(rect.height)}px`;
+      // The agent's head is the one most often under the collapsed strip;
+      // mark it here, where its position is decided, not from an observer.
+      markHeadsUnderStrip();
       agentSyncRaf = requestAnimationFrame(syncAgentView);
     } else {
       if (agentHolder) agentHolder.style.display = "none";
