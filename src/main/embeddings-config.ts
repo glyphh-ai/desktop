@@ -11,6 +11,7 @@ import { ipcMain } from "electron";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { getClient } from "./glyphh-client.js";
 import { gatewayCreds } from "./gateway-token.js";
+import { registerMemoryIpc } from "./memory-bridge.js";
 
 export interface EmbedModel { id: string; name: string; providerSlug: string }
 
@@ -69,6 +70,7 @@ export async function gatewayEmbed(texts: string[], model: string): Promise<numb
 }
 
 export function registerEmbeddingsIpc(): void {
+  registerMemoryIpc();
   ipcMain.handle("embeddings-config-get", async () => {
     const models = await orgEmbedModels();
     return { ok: true, model: selectedEmbedModel(), models };

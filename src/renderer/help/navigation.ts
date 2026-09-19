@@ -23,6 +23,7 @@ import { loadSettings, initSettings, loadBilling, loadProfile, loadMembers, load
 import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
+import { loadMemorySettings } from "./settings-memory.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
@@ -873,6 +874,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-usage") loadAdminUsage();
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
+  else if (sub === "memory") void loadMemorySettings();
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
   else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }

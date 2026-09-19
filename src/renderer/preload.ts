@@ -454,6 +454,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
   // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
   // BYOK — key write-only, calls direct from this machine, never proxied.
+  memoryStats: () => ipcRenderer.invoke("memory-stats") as Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>,
+  memoryClear: () => ipcRenderer.invoke("memory-clear") as Promise<{ ok: boolean; deleted?: number; error?: string }>,
   embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,
   embeddingsConfigSet: (input: { model?: string }) => ipcRenderer.invoke("embeddings-config-set", input) as Promise<{ ok: boolean; model?: string; error?: string }>,
   cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,

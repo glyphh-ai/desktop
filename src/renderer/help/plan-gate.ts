@@ -29,6 +29,8 @@ export interface PlanGates {
   cliAllowed: boolean;
   /** The org picks nothing: every turn goes to its auto-router. */
   autoOnly: boolean;
+  /** Memory overrides (his order, 2026-09-19): member = the user's choice, on / off = forced. */
+  memoryPolicy?: { inject?: "member" | "on" | "off"; capture?: "member" | "on" | "off"; sensitive?: "member" | "on" | "off" };
 }
 
 /** Locked-down defaults: what a failed read answers, so an offline client

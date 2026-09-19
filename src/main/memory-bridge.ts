@@ -26,7 +26,9 @@
 
 import http from "node:http";
 import { getPreference } from "./stores/preferences-db.js";
-import { llmChunk, vectorUpsert, vectorSearch } from "./glyphh-app-ai.js";
+import { llmChunk, vectorUpsert, vectorSearch, vectorDelete } from "./glyphh-app-ai.js";
+import { getClient } from "./glyphh-client.js";
+import { ipcMain } from "electron";
 
 export const MEMORY_APP_SLUG = "glyphh-memory";
 export const MEMORY_COLLECTION = "turns";
@@ -49,6 +51,49 @@ const LAUNCH_SECRET = (() => {
 
 export function memoryBridgeEnabled(): boolean {
   return getPreference<boolean>("memoryBridgeEnabled", false) === true;
+}
+
+/** THE POLICY (his order, 2026-09-19). Nothing is remembered until the user
+ *  accepts the memory policy on Settings → Memory; then each lane follows the
+ *  org's rule when it forces one, else the user's own toggle. */
+type Rule = "member" | "on" | "off";
+interface MemoryPolicy { inject?: Rule; capture?: Rule; sensitive?: Rule }
+let policyCache: { at: number; policy: MemoryPolicy } | null = null;
+async function orgPolicy(): Promise<MemoryPolicy> {
+  if (policyCache && Date.now() - policyCache.at < 60_000) return policyCache.policy;
+  try {
+    const gates = await getClient().plans.gates() as unknown as { memoryPolicy?: MemoryPolicy };
+    policyCache = { at: Date.now(), policy: gates?.memoryPolicy ?? {} };
+  } catch { policyCache = policyCache ?? { at: Date.now(), policy: {} }; }
+  return policyCache.policy;
+}
+const DEFAULTS = { inject: true, capture: true, sensitive: false } as const;
+const PREF = { inject: "memoryInject", capture: "memoryCapture", sensitive: "memorySensitive" } as const;
+async function lane(key: keyof typeof PREF): Promise<boolean> {
+  if (!getPreference<string>("memoryPolicyAcceptedAt", "")) return false;
+  const rule = (await orgPolicy())[key] ?? "member";
+  if (rule === "on") return true;
+  if (rule === "off") return false;
+  const own = getPreference<boolean>(PREF[key], DEFAULTS[key]);
+  return own === true || (own !== false && DEFAULTS[key]);
+}
+/** Turns that touch health, faith, politics, sexuality or money stay out of
+ *  memory unless the user (or the org) said they may go in. A plain word
+ *  list, on purpose: a classifier would be a model call, and Glyphh makes none. */
+const SENSITIVE = /\b(diagnos|therap|medication|prescri|pregnan|cancer|depress|anxiety|hiv|disabilit|religio|church|mosque|synagogue|prayer|atheis|politic|democrat|republican|election|vote|sexual|gay|lesbian|transgender|abortion|salary|bank account|credit card|ssn|social security|passport|immigration|arrest|lawsuit)\w*/i;
+
+export function registerMemoryIpc(): void {
+  ipcMain.handle("memory-stats", async () => {
+    try {
+      const r = await vectorSearch(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, query: "session", k: 500 });
+      const sources = new Set(r.matches.map((m) => String((m.metadata as { source?: string } | undefined)?.source ?? m.id.split("#")[0])));
+      return { ok: true, turns: sources.size, chunks: r.matches.length };
+    } catch { return { ok: true, turns: 0, chunks: 0 }; }
+  });
+  ipcMain.handle("memory-clear", () => {
+    try { return { ok: true, ...vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION }) }; }
+    catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
 }
 
 /** Wrap an upstream base URL through the bridge (starts it on first use).
@@ -128,7 +173,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     try {
       const parsed = JSON.parse(body.toString("utf-8")) as Record<string, unknown>;
       userText = lastUserText(parsed);
-      const facts = await factBlock(userText);
+      const facts = (await lane("inject")) ? await factBlock(userText) : "";
       if (facts) {
         appendSystem(parsed, facts);
         body = Buffer.from(JSON.stringify(parsed), "utf-8");
@@ -232,7 +277,9 @@ async function factBlock(userText: string): Promise<string> {
 
 async function captureTurn(userText: string, assistantText: string): Promise<void> {
   try {
+    if (!(await lane("capture"))) return;
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;
+    if (!(await lane("sensitive")) && SENSITIVE.test(text)) return;
     const { chunks } = llmChunk({ text, maxChars: 1_200 });
     if (!chunks.length) return;
     const sourceId = `turn-${Date.now().toString(36)}`;

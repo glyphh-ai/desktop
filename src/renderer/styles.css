@@ -21056,3 +21056,11 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .skill-cat-none { font-size: 12px; color: var(--text-3); }
 .skill-cat-edit { background: none; border: none; padding: 1px 4px; color: var(--accent); font-size: 11.5px; cursor: pointer; }
 .skill-cat-edit:hover { text-decoration: underline; }
+
+/* Settings → Memory: the two privacy disclosures (his order, 2026-09-19). */
+.memory-disclosure { border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; background: var(--surface-2); }
+.memory-disclosure summary { cursor: pointer; padding: 10px 14px; font-size: 13.5px; color: var(--text); list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.memory-disclosure summary::after { content: "›"; color: var(--text-3); transform: rotate(90deg); }
+.memory-disclosure[open] summary::after { transform: rotate(-90deg); }
+.memory-disclosure ul { margin: 0; padding: 0 14px 12px 32px; }
+.memory-disclosure li { font-size: 13px; color: var(--text-2); line-height: 1.55; margin: 4px 0; }
