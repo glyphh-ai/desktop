@@ -20920,7 +20920,10 @@ body.rail-collapsed.rail-peek #app-rail { transform: translateX(0); box-shadow: 
    2026-09-19: "New session" sat under the traffic lights). */
 body { --rail-strip-w: 148px; }
 #rail-collapsed-strip { position: fixed; top: 0; left: 0; height: var(--rail-top-h); width: var(--rail-strip-w); display: flex; align-items: center; justify-content: flex-start; gap: 2px; padding-left: 84px; z-index: 210; }
-body.rail-collapsed .ws-rails-row > .ws-rail-holder:first-child > .ws-rail-slot:nth-child(1 of .ws-rail-slot) > .ws-rail-slot-header { padding-left: var(--rail-strip-w); }
+/* Whatever head lands under the strip is marked by the workbench (it reads
+   the rects, since the agent rides a fixed overlay and the rails may nest). */
+body.rail-collapsed .ws-rail-slot-header.clears-strip,
+body.rail-collapsed .code-agent-head.clears-strip { padding-left: var(--rail-strip-w) !important; }
 #rail-collapsed-strip.hidden { display: none; }
 #rail-collapsed-strip .app-rail-drag { display: none; }
 body.rail-collapsed.rail-peek #rail-collapsed-strip { display: none; }

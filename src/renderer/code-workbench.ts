@@ -612,6 +612,36 @@ new MutationObserver(() => {
   try { w.monaco?.editor?.setTheme?.(monacoTheme()); } catch { /* monaco not loaded yet */ }
 }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
+/** THE STRIP MUST NOT COVER A TITLE (his report, 2026-09-19: with the sidebar
+ *  closed, the top-left panel head sat under the traffic lights). The agent
+ *  rides a fixed overlay and the rails nest under banners, so no static
+ *  selector finds "the head at the top-left": read the rects instead and mark
+ *  every head whose corner is under the strip. Re-run on collapse, layout
+ *  and resize; cheap, a handful of rects. */
+function markHeadsUnderStrip(): void {
+  const collapsed = document.body.classList.contains("rail-collapsed");
+  const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
+  const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
+  document.querySelectorAll<HTMLElement>(".ws-rail-slot-header, .code-agent-head").forEach((h) => {
+    if (!collapsed) { h.classList.remove("clears-strip"); return; }
+    const r = h.getBoundingClientRect();
+    h.classList.toggle("clears-strip", r.width > 0 && r.top < topH && r.left < stripW);
+  });
+}
+{
+  let raf = 0;
+  const schedule = (): void => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; markHeadsUnderStrip(); }); };
+  new MutationObserver(schedule).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  window.addEventListener("resize", schedule);
+  const rails = document.getElementById("code-wb-rails");
+  if (rails) {
+    new MutationObserver(schedule).observe(rails, { childList: true, subtree: true });
+    new ResizeObserver(schedule).observe(rails);
+  }
+  document.addEventListener("transitionend", (e) => { if ((e.target as HTMLElement)?.id === "app-rail") schedule(); });
+  schedule();
+}
+
 /** Resolved when init's synchronous wiring is COMPLETE. The wall's boot
  *  promise must not run its .then before this: with warm (microtask-fast)
  *  preference reads the callback fired inside one of init's await gaps and
