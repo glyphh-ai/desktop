@@ -1075,6 +1075,48 @@ function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | nul
   return { id: path.basename(file, ".jsonl"), cli: "claude", title, cwd, mtime };
 }
 
+
+/** THE LOOP'S ENV, ONE WRITER (his report, 2026-09-19: memory on, a prompt
+ *  through Claude, nothing remembered). The bridge wrap used to happen only
+ *  when a loop was OPENED in a terminal; a chat turn sourced the env file
+ *  written at boot, which never wrapped. Every path that launches the CLI
+ *  calls this first, so the gateway lane and the memory bridge both apply to
+ *  the terminal, the chat and a scheduled task alike. */
+export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
+  // THE GATEWAY INJECTION (the last mile): point the CLI at the router
+  // and hand it this member's minted key, so the role's models, rate and
+  // budget bind and the spend lands under their name. BYOK WINS — a loop
+  // the member gave its own key keeps using it; re-routing their traffic
+  // through our meter without asking would be the wrong surprise.
+  const cliProfile = CLI_PROFILES[row.cli];
+  if (cliProfile?.baseUrlEnv.length) {
+    // THE MEMORY BRIDGE (his order, 2026-09-14): when enabled, the
+    // Anthropic-wire lane (claude, v1) routes through the loopback
+    // bridge — capture + fact injection; every other shape stays
+    // untouched. The bridge forwards auth as-is, so it wraps the
+    // gateway lane AND the CLI's own login alike.
+    const bridged = row.cli === "claude" ? await bridgeWrap("https://api.anthropic.com").catch(() => null) : null;
+    if (row.apiKey) {
+      if (bridged) writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
+      else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+    } else {
+      const creds = await gatewayCreds();
+      // No creds is a NORMAL answer (no plan, closed trial, offline) —
+      // the loop then runs on whatever the CLI is already logged into.
+      // And while this vendor's own credits last, the turn goes STRAIGHT
+      // at the vendor: the gateway takes over only when they run out.
+      if (creds && await loopGoesToGateway(row.cli, false)) {
+        const wrapped = row.cli === "claude" ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
+        writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
+      } else if (bridged) {
+        writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
+      } else {
+        clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
+      }
+    }
+  }
+}
+
 export function registerCliAgentsIpc(): void {
   // The roster is server-side; warm it (a pre-sign-in miss just retries later).
   void ensureOrgLoops();
@@ -1235,38 +1277,7 @@ export function registerCliAgentsIpc(): void {
           console.warn("[agents] theme pin failed:", err instanceof Error ? err.message : err);
         }
       }
-      // THE GATEWAY INJECTION (the last mile): point the CLI at the router
-      // and hand it this member's minted key, so the role's models, rate and
-      // budget bind and the spend lands under their name. BYOK WINS — a loop
-      // the member gave its own key keeps using it; re-routing their traffic
-      // through our meter without asking would be the wrong surprise.
-      const cliProfile = CLI_PROFILES[row.cli];
-      if (cliProfile?.baseUrlEnv.length) {
-        // THE MEMORY BRIDGE (his order, 2026-09-14): when enabled, the
-        // Anthropic-wire lane (claude, v1) routes through the loopback
-        // bridge — capture + fact injection; every other shape stays
-        // untouched. The bridge forwards auth as-is, so it wraps the
-        // gateway lane AND the CLI's own login alike.
-        const bridged = row.cli === "claude" ? await bridgeWrap("https://api.anthropic.com").catch(() => null) : null;
-        if (row.apiKey) {
-          if (bridged) writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
-          else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
-        } else {
-          const creds = await gatewayCreds();
-          // No creds is a NORMAL answer (no plan, closed trial, offline) —
-          // the loop then runs on whatever the CLI is already logged into.
-          // And while this vendor's own credits last, the turn goes STRAIGHT
-          // at the vendor: the gateway takes over only when they run out.
-          if (creds && await loopGoesToGateway(row.cli, false)) {
-            const wrapped = row.cli === "claude" ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
-            writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
-          } else if (bridged) {
-            writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
-          } else {
-            clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
-          }
-        }
-      }
+      await ensureLoopEnv(row);
       if (row.mcp) {
         ensureMcpConfig(row.id);   // port may have changed since save
         ensureRemoteMcp(row.id, row.cli, await mcpCreds());

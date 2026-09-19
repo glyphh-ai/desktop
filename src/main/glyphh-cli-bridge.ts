@@ -25,7 +25,7 @@ import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenVal
 import { authFix } from "./cli-auth.js";
 import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
-import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, composeHeadless, ensureLoopEnv, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -480,6 +480,9 @@ export function registerGlyphhCliBridge(): void {
     if (agent && p.cliSessionId && !resumeIds.get(rkey(p.chatId, agent.cli))) {
       resumeIds.set(rkey(p.chatId, agent.cli), p.cliSessionId);
     }
+    // The loop's env (gateway lane, memory bridge) is written here, before
+    // any spawn, so a chat turn gets the same wiring a terminal open does.
+    if (agent) { const row = agentRowFor(agent.id); if (row) await ensureLoopEnv(row).catch(() => undefined); }
     // Non-claude loops: one headless turn per send, on the LOOP'S OWN CLI.
     if (agent && agent.cli !== "claude") {
       const prior = live.get(p.chatId);
