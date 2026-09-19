@@ -6357,9 +6357,15 @@ async function init(): Promise<void> {
     };
     (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
     /** THE agent door (his order, 2026-09-16): every loop, from every tile,
-     *  opens in the view Settings resolve (chat or CLI) — and when the chat
-     *  singleton already holds another loop, this one gets its own panel.
-     *  No cap on open agents. */
+     *  opens in the view Settings resolve (chat or CLI).
+     *
+     *  A LOOP SWAPS INTO THE OPEN AGENT (his order, 2026-09-19: a second loop
+     *  used to get its own panel, "spawning crazy shit in other panels"). With
+     *  an agent seated, picking Claude, Codex or Gemini switches THAT agent's
+     *  loop and keeps everything else it has: the session, the working folder,
+     *  the workspace it is in, its mode. The model follows the loop's own
+     *  resolution (the gateway pins it for Claude and Codex). Only an explicit
+     *  "again" still opens another panel. */
     function openAgentForLoop(id: string, opts: { again?: boolean } = {}): void {
       const row = cliAgentRows.find((x) => x.id === id);
       if (!row) return;
@@ -6367,7 +6373,12 @@ async function init(): Promise<void> {
       const seated = openList.find((x) => x.card && x.tile.kind === "agent");
       const bound = seated?.card?.dataset.boundAgent;
       if (opts.again && seated) { openAppCard(agentInstanceTile(id)); return; }
-      if (seated && bound && bound !== id) { openAppCard(agentInstanceTile(id)); return; }
+      if (seated && bound && bound !== id) {
+        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(id);
+        if (seated.card) seated.card.dataset.boundAgent = id;
+        flash(seated.card);
+        return;
+      }
       openAgentChatCard(id);
     }
     /** Open a CLI agent: dependencies first (the local MCP server), then the
