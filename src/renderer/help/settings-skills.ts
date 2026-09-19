@@ -747,7 +747,9 @@ function renderDiscoverList(host: HTMLElement, rows: DiscoverRow[]): void {
     const titleEl = r.querySelector(".disc-row-title") as HTMLElement;
     // The category being browsed leads the chips; the rest fold into +N.
     const lead = v.kind === "category" && d.categories.includes(v.id) ? v.id : d.categories[0];
-    titleEl.insertAdjacentHTML("beforeend", typeChip(d.type));
+    // typeChip escapes its one value; the rule cannot see through the call.
+  // nosemgrep: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
+  titleEl.insertAdjacentHTML("beforeend", typeChip(d.type));
     const chips: string[] = [];
     if (isNew(d)) chips.push("New");
     if (lead) chips.push(catLabel(lead));

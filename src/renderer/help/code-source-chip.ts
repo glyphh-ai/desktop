@@ -496,6 +496,8 @@ export function openNewFolderDrop(anchor: HTMLElement, opts: {
   const close = (): void => menu.remove();
   const src = opts.getSource();
   const parent = src.kind === "local" && src.path ? src.path : undefined;
+  // The one interpolated value is escaped above; the rule cannot see it.
+  // nosemgrep: typescript.react.security.audit.react-unsanitized-method.react-unsanitized-method
   menu.insertAdjacentHTML("beforeend", `<div class="code-drop-head"><span>New folder${parent ? ` in ${escapeHtml(lastSeg(parent))}` : " in Home"}</span></div>`);
   const nf = document.createElement("div");
   nf.className = "ws-fs-newfolder";

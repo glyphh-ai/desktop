@@ -32,6 +32,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
+      # The lockfile is written by npm 11; node 20's npm 10 cannot read it.
+      # Same step the release build takes.
+      - run: npm i -g npm@11
       - run: npm ci --ignore-scripts
       # What ships blocks; dev tooling is reported, not blocking.
       - run: npm audit --omit=dev --audit-level=high
@@ -43,4 +46,6 @@ jobs:
       image: semgrep/semgrep@sha256:34ab619bf1391a24bfda3f05debd0d8a6ce3093c2d5f9d39cfc00f83c1397823 # latest, pinned 2026-09-18
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - run: semgrep ci --config p/owasp-top-ten --config p/typescript --config p/javascript --config p/secrets --metrics=off
+      # --timeout: code-workbench.ts is ten thousand lines and the default
+      # per-rule budget skips it, which is the one file that most needs a look.
+      - run: semgrep scan --error --timeout 60 --config p/owasp-top-ten --config p/typescript --config p/javascript --config p/secrets --metrics=off src
