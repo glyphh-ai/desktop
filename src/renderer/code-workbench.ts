@@ -623,13 +623,25 @@ function markHeadsUnderStrip(): void {
   const collapsed = document.body.classList.contains("rail-collapsed");
   if (!collapsed && !headsMarked) return;
   headsMarked = collapsed;
+  const heads = Array.from(document.querySelectorAll<HTMLElement>(".ws-rail-slot-header, .code-agent-head"));
+  if (!collapsed) { heads.forEach((h) => h.classList.remove("clears-strip")); return; }
   const stripW = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-strip-w")) || 148;
   const topH = parseFloat(getComputedStyle(document.body).getPropertyValue("--rail-top-h")) || 38;
-  document.querySelectorAll<HTMLElement>(".ws-rail-slot-header, .code-agent-head").forEach((h) => {
-    if (!collapsed) { h.classList.remove("clears-strip"); return; }
+  // Two reads, either is enough: the head whose box starts under the strip,
+  // and the head the browser itself reports under the strip's corner
+  // (elementsFromPoint sees through the strip and the lights, which sit on top).
+  const under = new Set<HTMLElement>();
+  for (const h of heads) {
     const r = h.getBoundingClientRect();
-    h.classList.toggle("clears-strip", r.width > 0 && r.top < topH && r.left < stripW);
-  });
+    if (r.width > 0 && r.top < topH && r.left < stripW) under.add(h);
+  }
+  for (const [x, y] of [[12, Math.round(topH / 2)], [Math.round(stripW - 8), Math.round(topH / 2)]]) {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const h = (el as HTMLElement).closest?.<HTMLElement>(".ws-rail-slot-header, .code-agent-head");
+      if (h) { under.add(h); break; }
+    }
+  }
+  heads.forEach((h) => h.classList.toggle("clears-strip", under.has(h)));
 }
 {
   let raf = 0;
@@ -644,7 +656,10 @@ function markHeadsUnderStrip(): void {
     new ResizeObserver(schedule).observe(rails);
     return true;
   };
-  if (!watchRails()) document.addEventListener("DOMContentLoaded", () => { watchRails(); schedule(); });
+  if (!watchRails()) {
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { watchRails(); schedule(); });
+    else { const t = setInterval(() => { if (watchRails()) { clearInterval(t); schedule(); } }, 250); }
+  }
   document.addEventListener("transitionend", (e) => { if ((e.target as HTMLElement)?.id === "app-rail") schedule(); });
   schedule();
 }
@@ -1876,6 +1891,8 @@ async function init(): Promise<void> {
     // placeholder (follow it) or removed one (park the agent home).
     scheduleAgentSync();
     scheduleRailSync();
+    // Fresh headers after every render: re-mark the one under the strip.
+    markHeadsUnderStrip();
   }
 
   /** Vertical drop zone between rails (or at the far ends). Dropping a slot
