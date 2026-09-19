@@ -5705,21 +5705,29 @@ async function init(): Promise<void> {
             sess.startNew();
             stampLayoutModels();
           } else if (sess && mode === "last" && layout.name) {
-            let last: string | null = null;
-            try {
-              last = uiStateGet(layoutSessionKey(layout.name, space))
-                ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
-            } catch { last = null; }
-            // resume ONLY a session that belongs to THIS space — the same
-            // layout opened from another tab rode a different conversation
-            const target = last ? sess.list().find((c) => c.id === last) : undefined;
-            const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
-            if (target && spaceOfMode((target as { mode?: string }).mode) === space) {
-              if (sess.currentId() !== target.id) sess.switch(target.id);
-            } else {
-              sess.startNew();
-              stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
-            }
+            // ACROSS RESTARTS TOO (his report, 2026-09-19): at boot the wall
+            // reopens the riding workspace before the state file and the
+            // session store have loaded, so the binding read as empty and a
+            // fresh session started. Wait for both, then decide.
+            void (async () => {
+              try { await loadUiState(); } catch { /* falls through to a fresh session */ }
+              try { await (sess as unknown as { ready?: () => Promise<void> }).ready?.(); } catch { /* same */ }
+              let last: string | null = null;
+              try {
+                last = uiStateGet(layoutSessionKey(layout.name, space))
+                  ?? uiStateGet(layoutSessionKeyLegacy(layout.name));
+              } catch { last = null; }
+              // resume ONLY a session that belongs to THIS space — the same
+              // layout opened from another tab rode a different conversation
+              const target = last ? sess.list().find((c) => c.id === last) : undefined;
+              const spaceOfMode = (m?: string): string => (m === "code" ? "code" : m === "chat" ? "chat" : "cowork");
+              if (target && spaceOfMode((target as { mode?: string }).mode) === space) {
+                if (sess.currentId() !== target.id) sess.switch(target.id);
+              } else {
+                sess.startNew();
+                stampLayoutModels();   // no remembered session — the fresh one takes the layout's config
+              }
+            })();
           }
           // the cell's folder is a hard bind; the layout's rides weak, same as standard mode
           if (sess && codingFolder) sess.stampWorkdir?.(codingFolder);

@@ -1353,6 +1353,9 @@ function ensureCodeSection(): void {
 (window as unknown as { __appChoice?: unknown }).__appChoice = confirmChoice;
 
 (window as unknown as { __agentSessions?: unknown }).__agentSessions = {
+  /** Resolves once the persisted sessions are in memory (boot races the
+   *  workspace reopen; a "last" resume must not read an empty list). */
+  ready: (): Promise<void> => loadStore(),
   list: (): Array<{ id: string; title: string; createdAt: number; mode: "chat" | "cowork" | "code" }> =>
     chats.map((c) => ({ id: c.id, title: c.title, createdAt: c.createdAt, mode: modeOf(c) })),
   currentId: (): string | null => currentId,

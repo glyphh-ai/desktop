@@ -98,8 +98,12 @@ export function registerMemoryIpc(): void {
 
 /** Wrap an upstream base URL through the bridge (starts it on first use).
  *  Returns null when the bridge is disabled or failed to start. */
+/** THE BRIDGE IS ALWAYS IN THE PATH (his rule, 2026-09-14, restored
+ *  2026-09-19: "we can't run a loop without our bridge"). It used to be an
+ *  opt-in toggle; now every loop with a base-URL seam rides through it, and
+ *  the Memory settings decide what it does with the traffic, never whether
+ *  it is there. A wire the bridge cannot parse is forwarded untouched. */
 export async function bridgeWrap(upstream: string): Promise<string | null> {
-  if (!memoryBridgeEnabled()) return null;
   const p = await startMemoryBridge();
   if (!p) return null;
   const b64 = Buffer.from(upstream, "utf-8").toString("base64url");

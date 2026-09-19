@@ -1090,12 +1090,14 @@ export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
   // through our meter without asking would be the wrong surprise.
   const cliProfile = CLI_PROFILES[row.cli];
   if (cliProfile?.baseUrlEnv.length) {
-    // THE MEMORY BRIDGE (his order, 2026-09-14): when enabled, the
-    // Anthropic-wire lane (claude, v1) routes through the loopback
-    // bridge — capture + fact injection; every other shape stays
-    // untouched. The bridge forwards auth as-is, so it wraps the
-    // gateway lane AND the CLI's own login alike.
-    const bridged = row.cli === "claude" ? await bridgeWrap("https://api.anthropic.com").catch(() => null) : null;
+    // THE BRIDGE IS THE SEAM (his rule, 2026-09-14, restored 2026-09-19):
+    // every loop with a base-URL seam rides through the loopback bridge, the
+    // gateway lane and the CLI's own login alike. The bridge forwards auth
+    // as-is; the Anthropic wire is remembered, the others pass through until
+    // their wires land.
+    const VENDOR_BASE: Record<string, string> = { claude: "https://api.anthropic.com", codex: "https://api.openai.com/v1", gemini: "https://generativelanguage.googleapis.com" };
+    const vendorBase = VENDOR_BASE[row.cli];
+    const bridged = vendorBase ? await bridgeWrap(vendorBase).catch(() => null) : null;
     if (row.apiKey) {
       if (bridged) writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
       else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
@@ -1106,7 +1108,7 @@ export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
       // And while this vendor's own credits last, the turn goes STRAIGHT
       // at the vendor: the gateway takes over only when they run out.
       if (creds && await loopGoesToGateway(row.cli, false)) {
-        const wrapped = row.cli === "claude" ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
+        const wrapped = vendorBase ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
         writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
       } else if (bridged) {
         writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);

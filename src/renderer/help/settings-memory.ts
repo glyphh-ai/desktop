@@ -62,8 +62,6 @@ export async function loadMemorySettings(): Promise<void> {
     box.disabled = !accepted || rule !== "member";
     box.onchange = () => { g.setPreference?.(PREFS[key], box.checked); };
   }
-  const bridgeBox = el<HTMLInputElement>("toggle-memory-bridge");
-  if (bridgeBox) bridgeBox.disabled = !accepted;
 
   await loadEmbeddingsSettings();
 
