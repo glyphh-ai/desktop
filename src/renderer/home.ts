@@ -207,6 +207,7 @@ void (async () => {
           b.setAttribute("role", "menuitem");
           b.addEventListener("click", () => {
             menu.classList.add("hidden");
+            if (sub === "docs") { void window.glyphh.openExternal("https://glyphh.ai/docs"); return; }
             document.querySelector<HTMLElement>(`#settings-modal .settings-nav-item[data-sub="${sub}"]`)?.click();
           });
           menu.appendChild(b);

@@ -1,24 +1,7 @@
 /**
- * Docs section — loadDocs, legal constants, support, about.
+ * Legal constants, support, about. (Docs live at glyphh.ai/docs.)
  */
 
-
-let docsLinksWired = false;
-
-function loadDocs() {
-  // Docs sub-nav is handled above (docsSubNav click handlers). Content is
-  // static HTML; the one live piece is external links — <a class="docs-ext"
-  // data-href> opens in the system browser, never inside the shell.
-  if (docsLinksWired) return;
-  docsLinksWired = true;
-  document.querySelector(".docs-panels")?.addEventListener("click", (e) => {
-    const a = (e.target as HTMLElement).closest?.(".docs-ext") as HTMLElement | null;
-    if (!a) return;
-    e.preventDefault();
-    const href = a.dataset.href;
-    if (href) void window.glyphh.openExternal(href);
-  });
-}
 
 // ── Support ───────────────────────────────────────────────
 // Configurable via the GLYPHH_DISCORD_INVITE env var (exposed through preload),
@@ -308,4 +291,4 @@ const REFUND_POLICY = `
 <p>For billing or refund questions, contact us at support@glyphh.ai.</p>
 `;
 
-export { loadDocs, loadSupport, loadAbout, TERMS_OF_USE, PRIVACY_POLICY, REFUND_POLICY };
+export { loadSupport, loadAbout, TERMS_OF_USE, PRIVACY_POLICY, REFUND_POLICY };
