@@ -569,14 +569,23 @@ function languageForFile(name: string): string {
 function tokenLuminance(name: string, fallback: number): number {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   if (!raw) return fallback;
-  const probe = document.createElement("span");
-  probe.style.color = raw;
-  probe.style.display = "none";
-  document.body.appendChild(probe);
-  const rgb = /rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(getComputedStyle(probe).color);
-  probe.remove();
-  if (!rgb) return fallback;
-  return 0.2126 * +rgb[1]! + 0.7152 * +rgb[2]! + 0.0722 * +rgb[3]!;
+  // Chromium hands an oklch() token back as oklch() from getComputedStyle too
+  // (his report, 2026-09-19: the editor was still white), so the one reader
+  // that always yields bytes is a painted pixel.
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return fallback;
+    ctx.fillStyle = "#000";
+    ctx.fillStyle = raw;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  } catch {
+    return fallback;
+  }
 }
 function monacoTheme(): string {
   // Decide by the theme's ACTUAL surface, not its name — "dark" was the only
@@ -3486,20 +3495,26 @@ async function init(): Promise<void> {
           echoRows = rows;   // .dip / layout-cell resolution sees the fresh set too
           const liveApps = new Map(rows.filter(wallAppRow).map((a) => [(a.slug || a.id).toLowerCase(), a]));
           for (const e of [...entries]) {
-            if (e.tile.kind !== "app" || !e.tile.appId) continue;   // fixed tiles (Home) have no appId
+            // A TOOL-BACKED app (Drive, Images, Design…) wears a tool tile with
+            // the same slug and appId; it counts as seen too, or every refresh
+            // re-added it (his report, 2026-09-19: Drive and Images, over and over).
+            if ((e.tile.kind !== "app" && e.tile.kind !== "tool") || !e.tile.appId) continue;   // fixed tiles (Home) have no appId
             const row = e.tile.slug ? liveApps.get(e.tile.slug) : undefined;
             if (!row) {
-              if (!e.card) { dropTileEntry(e); shifted = true; }
+              if (e.tile.kind === "app" && !e.card) { dropTileEntry(e); shifted = true; }
               continue;
             }
             liveApps.delete(e.tile.slug!);   // seen — the leftovers are NEW
+            if (e.tile.kind === "tool") continue;
             // the row is the truth for name/address (a deploy fills in url)
             if (e.tile.name !== row.name || (e.tile.url || undefined) !== (row.url || undefined)) {
               e.tile = { ...e.tile, ...appTileOf(row), sticky: e.tile.sticky };
               drawTile(e);
             }
           }
+          const shown = new Set(entries.map((e) => e.tile.slug).filter(Boolean));
           for (const a of liveApps.values()) {
+            if (shown.has((a.slug || a.id).toLowerCase())) continue;
             const band = wallBands[wallBands.length - 1];
             if (!band) break;
             // new apps slot in BEFORE the layout tiles, matching the build order
@@ -3543,7 +3558,11 @@ async function init(): Promise<void> {
     // which announces panel-apps-changed. The wall only heard the Tabs page's
     // relay of that, so a fresh install never appeared here until the Tabs
     // page had been visited (his report, 2026-09-18). Listen to main directly.
-    (window as unknown as { glyphh?: { onPanelAppsChanged?: (cb: () => void) => void } }).glyphh?.onPanelAppsChanged?.(onCatalogChanged);
+    let catalogTimer: ReturnType<typeof setTimeout> | null = null;
+    (window as unknown as { glyphh?: { onPanelAppsChanged?: (cb: () => void) => void } }).glyphh?.onPanelAppsChanged?.(() => {
+      if (catalogTimer) clearTimeout(catalogTimer);
+      catalogTimer = setTimeout(onCatalogChanged, 400);
+    });
 
     // ── Open panels: click a tile and its LIVE webview zooms up from the
     // tile's spot into a slot row anchored high, so the wall stays visible

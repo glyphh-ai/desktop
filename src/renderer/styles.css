@@ -5338,6 +5338,10 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
 
 /* Cell panel picker dropdown */
 .cell-panel-picker {
+  /* The workspace editor lives INSIDE the settings modal now; a body-level
+     picker with no stacking order landed under it and took no clicks
+     (his report, 2026-09-19). Above the modal, below the toasts. */
+  z-index: 999999;
   position: fixed;
   background: var(--surface-2);
   border: 1px solid var(--border-3);

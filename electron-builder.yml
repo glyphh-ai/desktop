@@ -87,4 +87,4 @@ asarUnpack:
 publish:
   provider: github
   owner: glyphh-ai
-  repo: glyphh-releases
+  repo: releases
