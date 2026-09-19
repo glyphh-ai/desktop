@@ -23,7 +23,7 @@ import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { authFix } from "./cli-auth.js";
-import { loopGoesToGateway, LOOP_VENDOR } from "./gateway-token.js";
+import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
 import { listCliAgents, composeHeadless, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
@@ -76,7 +76,7 @@ interface LiveChat {
   /** Which vendor CLI is running, so a failure can name its own sign-in. */
   cli: string;
   buf: string;
-  usage: { inTokens: number; outTokens: number };
+  usage: { inTokens: number; outTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
   nextControl: number;
   /** control_request ids we asked the renderer about, by approval id. */
   pending: Map<string, string>;
@@ -95,12 +95,14 @@ const live = new Map<string, LiveChat>();
  */
 async function reportDirectUsage(chat: LiveChat, model?: string): Promise<void> {
   const provider = LOOP_VENDOR[chat.cli];
-  const { inTokens, outTokens } = chat.usage;
-  if (!provider || (!inTokens && !outTokens)) return;
+  const { inTokens, outTokens, cacheReadTokens, cacheWriteTokens } = chat.usage;
+  if (!provider || (!inTokens && !outTokens && !cacheReadTokens && !cacheWriteTokens)) return;
   try {
-    if (await loopGoesToGateway(chat.cli, false)) return;
+    // The lane is per REQUEST now: a heavy model under "reserved" went direct
+    // even though the loop's env carries the credential.
+    if (requestUsesGateway(chat.cli, model ?? "", false)) return;
     await getClient().http.post("/api/gateway/vendor-usage", {
-      provider, model: bareModel(model ?? "") || "", inTokens, outTokens,
+      provider, model: bareModel(model ?? "") || "", inTokens, outTokens, cacheReadTokens, cacheWriteTokens,
     });
   } catch { /* the burn-down reads low rather than failing a finished turn */ }
 }
@@ -205,9 +207,13 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
   }
 
   if (type === "result") {
-    const u = (ev.usage ?? {}) as { input_tokens?: number; output_tokens?: number };
+    const u = (ev.usage ?? {}) as { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
     if (typeof u.input_tokens === "number") c.usage.inTokens = u.input_tokens;
     if (typeof u.output_tokens === "number") c.usage.outTokens = u.output_tokens;
+    // Cached prompt tokens are billed too, at cache rates; the CLI reports
+    // them beside input_tokens, which EXCLUDES them (his question, 2026-09-19).
+    if (typeof u.cache_read_input_tokens === "number") c.usage.cacheReadTokens = u.cache_read_input_tokens;
+    if (typeof u.cache_creation_input_tokens === "number") c.usage.cacheWriteTokens = u.cache_creation_input_tokens;
     emit(c, "glyphh-agent:progress", { runId: c.runId, inTokens: c.usage.inTokens, outTokens: c.usage.outTokens });
     if (ev.is_error) {
       const said = String(ev.result ?? "the run failed");
@@ -285,6 +291,8 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // turns share context and the >_ hop resumes a rollout that exists (his
   // report, 2026-09-14: "No saved session found" — nothing captured the id
   // and every turn ran fresh).
+  // The org's credit strategy decides whether THIS session spends credits:
+  // chat and co-work stay on the member's own login under "reserved".
   const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)));
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
@@ -298,7 +306,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     permission: p.permission ?? "ask",
     cli: agent.cli || "claude",
     buf: "",
-    usage: { inTokens: 0, outTokens: 0 },
+    usage: { inTokens: 0, outTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     nextControl: 1,
     pending: new Map(),
   };
@@ -391,7 +399,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     permission,
     cli: "claude",
     buf: "",
-    usage: { inTokens: 0, outTokens: 0 },
+    usage: { inTokens: 0, outTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     nextControl: 1,
     pending: new Map(),
   };

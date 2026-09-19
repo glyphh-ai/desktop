@@ -28,7 +28,7 @@ import { userScopedPath } from "./app-paths.js";
 export interface GatewayCreds { baseUrl: string; token: string }
 
 /** Which env var each CLI reads its key from, beside its base-URL var. */
-const KEY_ENV: Record<string, string> = {
+export const KEY_ENV: Record<string, string> = {
   claude: "ANTHROPIC_AUTH_TOKEN",
   codex: "OPENAI_API_KEY",
   gemini: "GEMINI_API_KEY",
@@ -110,24 +110,53 @@ export const LOOP_VENDOR: Record<string, string> = { claude: "anthropic", codex:
 let routing: Record<string, string> = {};
 let routingAt = 0;
 const ROUTING_TTL_MS = 60_000;
+/** HOW THE ORG SPENDS (his order, 2026-09-19). burn_down: a vendor stays
+ *  direct while its own allowance lasts, then moves onto the proxy. reserved:
+ *  the vendor's HEAVY models (Opus, Fable — the top price tier, named by the
+ *  server) stay direct on the subscription while the allowance lasts and
+ *  everything lighter rides the proxy on the org's credits. */
+export type CreditStrategy = "burn_down" | "reserved";
+let strategy: CreditStrategy = "burn_down";
+let heavy: Record<string, string[]> = {};
 
 async function vendorRouting(force = false): Promise<Record<string, string>> {
   if (!force && Date.now() - routingAt < ROUTING_TTL_MS) return routing;
   try {
-    const gates = await getClient().plans.gates() as unknown as { vendorRouting?: Record<string, string> };
+    const gates = await getClient().plans.gates() as unknown as { vendorRouting?: Record<string, string>; creditStrategy?: string; heavyModels?: Record<string, string[]> };
     routing = gates?.vendorRouting ?? {};
+    strategy = gates?.creditStrategy === "reserved" ? "reserved" : "burn_down";
+    heavy = gates?.heavyModels ?? {};
     routingAt = Date.now();
   } catch { /* offline — the last answer stands, and absence means no burn-down */ }
   return routing;
 }
 
-/** Where this loop's turns go: the burn-down's answer when its vendor is in
- *  one, else whether the org's gateway minted us a credential. */
+const bare = (model: string): string => model.trim().toLowerCase().replace(/^[a-z0-9_-]+\//, "");
+function isHeavy(vendor: string, model: string): boolean {
+  const m = bare(model);
+  return !!m && (heavy[vendor] ?? []).some((h) => bare(h) === m);
+}
+
+/** WHERE ONE REQUEST GOES, decided by the model it names. Synchronous on the
+ *  cached gates so the command composers can ask at launch. */
+export function requestUsesGateway(cli: string, model: string, hasOwnKey: boolean): boolean {
+  if (hasOwnKey) return false;
+  const vendor = LOOP_VENDOR[cli] ?? "";
+  const lane = routing[vendor];
+  if (lane === "gateway") return !!cached;
+  if (lane === "direct") return strategy === "reserved" && !!cached && !isHeavy(vendor, model);
+  return !!cached;
+}
+
+/** Whether ANY of this loop's turns may go to the gateway — what decides if
+ *  its env file carries the credential. A heavy request under "reserved"
+ *  strips the vars at launch instead. */
 export async function loopGoesToGateway(cli: string, hasOwnKey: boolean): Promise<boolean> {
+  if (hasOwnKey) return false;
   const lane = (await vendorRouting())[LOOP_VENDOR[cli] ?? ""];
-  if (lane === "direct") return false;
+  if (lane === "direct") return strategy === "reserved" && !!(await gatewayCreds());
   if (lane === "gateway") return true;
-  return !hasOwnKey && !!(await gatewayCreds());
+  return !!(await gatewayCreds());
 }
 
 export async function primeGatewayEnv(

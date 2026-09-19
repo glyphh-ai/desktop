@@ -31,7 +31,7 @@ import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
-import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, LOOP_VENDOR, type GatewayCreds } from "./gateway-token.js";
+import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, requestUsesGateway, LOOP_VENDOR, KEY_ENV, type GatewayCreds } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient } from "./glyphh-client.js";
 
@@ -568,6 +568,9 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
   const m = (model ?? row.model ?? "").trim();
+  // The model this turn names decides its lane (reserved keeps the heavy
+  // ones on the member's own subscription); off the gateway, its vars go.
+  const strip = requestUsesGateway(row.cli, m || requiredModel, !!row.apiKey) ? "" : stripGatewayVars(row);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
   const rid = (resumeId ?? "").replace(/'/g, "");
   let core: string;
@@ -608,14 +611,20 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   // Source the env file whenever it EXISTS, not only when a BYOK key is set:
   // the gateway injection writes the same file (base URL + minted key), and
   // gating on row.apiKey would have made the whole last mile a silent no-op.
+  // A session the strategy keeps OFF the gateway sources it and then drops
+  // the gateway's own vars, so the CLI rides the member's login.
   return fs.existsSync(envFile(row.id))
-    ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
+    ? `set -a; . "${envFile(row.id)}"; set +a;${strip} ${line}`
     : line;
 }
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
-  const model = (ov?.model ?? row.model ?? "").trim() || (gatewayOn ? requiredModel : "");
+  // The model decides the lane; an unset model is the org's proxy model.
+  const picked = (ov?.model ?? row.model ?? "").trim();
+  const viaGateway = requestUsesGateway(row.cli, picked || requiredModel, !!row.apiKey);
+  const strip = viaGateway ? "" : stripGatewayVars(row);
+  const model = picked || (gatewayOn && viaGateway ? requiredModel : "");
   const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
   // RESUME: the CLI's own continue-last affordance. claude takes a flag;
   // codex resumes via a subcommand; CLIs without one just start fresh.
@@ -662,7 +671,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // the gateway injection writes the same file (base URL + minted key), and
   // gating on row.apiKey would have made the whole last mile a silent no-op.
   return fs.existsSync(envFile(row.id))
-    ? `set -a; . "${envFile(row.id)}"; set +a; ${line}`
+    ? `set -a; . "${envFile(row.id)}"; set +a;${strip} ${line}`
     : line;
 }
 
@@ -718,6 +727,14 @@ function defaultRowFor(id: string): CliAgentRow | null {
 export const GATEWAY_CLIS: ReadonlySet<string> = new Set(["claude", "codex"]);
 
 let gatewayOn = false;
+/** `unset` for the vars the gateway owns on this CLI, so a request that
+ *  stays on the member's own login does not inherit the loop's env file.
+ *  A loop with its own key never carries those vars, so nothing to strip. */
+function stripGatewayVars(row: CliAgentRow): string {
+  if (row.apiKey) return "";
+  const vars = [...(CLI_PROFILES[row.cli]?.baseUrlEnv ?? []), ...(KEY_ENV[row.cli] ? [KEY_ENV[row.cli]] : [])];
+  return vars.length ? ` unset ${vars.join(" ")};` : "";
+}
 /** THE MODEL THE ORG REQUIRES (his order, 2026-09-18: "when the user switches
  *  to cli in proxy mode the model needs to be set"). A terminal opened with no
  *  --model falls back to the CLI's own settings.json, which under governance
