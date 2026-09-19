@@ -470,13 +470,37 @@ function buildMcpServer(): McpServer {
   // The org/personal connector reach (Gmail, Slack, 3,500 more) — governed
   // and METERED server-side; this lane just carries the call. Distinct from
   // connections_* below, which are the user's own LOCAL custom MCP servers.
+  // NEVER THE WHOLE CATALOG (his report, 2026-09-19: "the tool list is
+  // massive for the agents"). Bare, this answers the connected APPS and a
+  // count; `app` answers one app's tools; `query` searches names and
+  // descriptions across every app. The gateway's own key hands the CLIs two
+  // search tools for the same reason; this is the local door's version.
   mcp.tool(
     "connector_tools",
-    "The user's CONNECTED APPS (Gmail, Slack, Google Drive — 3,500+ via the org's connections) and each app's callable tools with input schemas. Governed server-side: this lists exactly what YOU may call. Invoke with connector_call.",
-    {},
-    async () => {
+    "The user's CONNECTED APPS (Gmail, Slack, Google Drive — 3,500+ via the org's connections). With no arguments: the apps and how many tools each has. `app`: that app's tools with input schemas. `query`: keyword search across every app's tools (top matches). Governed server-side: this is exactly what YOU may call. Invoke with connector_call.",
+    {
+      app: z.string().optional().describe("One connection slug (e.g. gmail) — its tools, with schemas"),
+      query: z.string().optional().describe("Keywords to find tools by name or description across all apps"),
+      top_k: z.number().int().min(1).max(50).optional().describe("Max matches for a query (default 20)"),
+    },
+    async ({ app, query, top_k }) => {
       const tools = getCatalogAge() < 5 * 60 * 1000 ? getConnectorCatalog() : await refreshConnectorCatalog();
-      return text(tools.map((t) => ({ app: t.slug, tool: t.name, description: t.description, inputSchema: t.inputSchema })));
+      const shape = (t: typeof tools[number]) => ({ app: t.slug, tool: t.name, description: t.description, inputSchema: t.inputSchema });
+      if (app) {
+        const slug = app.trim().toLowerCase();
+        return text(tools.filter((t) => t.slug.toLowerCase() === slug).map(shape));
+      }
+      if (query && query.trim()) {
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        const score = (t: typeof tools[number]): number => {
+          const hay = `${t.slug} ${t.name} ${t.description ?? ""}`.toLowerCase();
+          return words.reduce((n, w) => n + (t.name.toLowerCase().includes(w) ? 3 : t.slug.toLowerCase().includes(w) ? 2 : hay.includes(w) ? 1 : 0), 0);
+        };
+        return text(tools.map((t) => ({ t, s: score(t) })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, top_k ?? 20).map((x) => shape(x.t)));
+      }
+      const byApp = new Map<string, number>();
+      for (const t of tools) byApp.set(t.slug, (byApp.get(t.slug) ?? 0) + 1);
+      return text([...byApp.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([slug, count]) => ({ app: slug, tools: count, hint: `connector_tools { app: "${slug}" }` })));
     },
   );
   mcp.tool(
