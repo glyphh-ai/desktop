@@ -18,7 +18,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { mcpCreds } from "./gateway-token.js";
-import { pickToolName, toolsOfApp } from "./gateway-tool-name.js";
+import { pickToolName } from "./gateway-tool-name.js";
 
 let client: Client | null = null;
 
@@ -40,6 +40,7 @@ export function resetGatewayMcp(): void {
   const c = client;
   client = null;
   knownTools = null;
+  searchCache.clear();
   if (c) void c.close().catch(() => {});
 }
 
@@ -60,20 +61,68 @@ export function resetGatewayMcp(): void {
  * against real names. The answer is cached per connection and refreshed when
  * a name misses, since a connection added today must not need a restart.
  */
-interface KnownTool { name: string; inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }
+interface KnownTool { name: string; description?: string; inputSchema?: { properties?: Record<string, unknown>; required?: string[] } }
 let knownTools: KnownTool[] | null = null;
+
+/** THE KEY LISTS TWO TOOLS, NOT THE CATALOG (server aab24df70e, 2026-09-18:
+ *  a member key is minted with tool search on, so `tools/list` answers with
+ *  `mcp_tool_search` and `mcp_tool_call` and nothing else). This caller was
+ *  still matching app names against that list, found none, and every
+ *  connection read "has no tools on the gateway" while the CLIs, which search
+ *  first, kept working (his report, 2026-09-19). With the virtual pair
+ *  present, a tool is found by SEARCH and run through CALL. */
+const SEARCH_TOOL = "mcp_tool_search";
+const CALL_TOOL = "mcp_tool_call";
 
 async function knownToolList(force = false): Promise<KnownTool[]> {
   if (knownTools && !force) return knownTools;
   try {
     const c = await connect();
     const listed = await c.listTools();
-    knownTools = (listed?.tools ?? []).map((t) => ({ name: String(t.name), inputSchema: t.inputSchema as KnownTool["inputSchema"] }));
+    knownTools = (listed?.tools ?? []).map((t) => ({ name: String(t.name), description: t.description, inputSchema: t.inputSchema as KnownTool["inputSchema"] }));
   } catch { knownTools = knownTools ?? []; }
   return knownTools;
 }
 
 const knownToolNames = async (force = false): Promise<string[]> => (await knownToolList(force)).map((t) => t.name);
+
+async function searchEnabled(): Promise<boolean> {
+  const names = await knownToolNames();
+  return names.includes(SEARCH_TOOL) && names.includes(CALL_TOOL);
+}
+
+/** What the gateway finds for a query, through its own search tool. */
+const searchCache = new Map<string, { at: number; tools: KnownTool[] }>();
+const SEARCH_TTL_MS = 60_000;
+async function searchTools(query: string, topK = 25, force = false): Promise<KnownTool[]> {
+  const key = `${query}|${topK}`;
+  const hit = searchCache.get(key);
+  if (hit && !force && Date.now() - hit.at < SEARCH_TTL_MS) return hit.tools;
+  let tools: KnownTool[] = [];
+  try {
+    const c = await connect();
+    const res = await c.callTool({ name: SEARCH_TOOL, arguments: { query, top_k: topK } }) as { isError?: boolean; content?: Array<{ type?: string; text?: string }> };
+    const text = (res?.content ?? []).map((x) => x?.text).filter(Boolean).join("").trim();
+    const parsed = text ? JSON.parse(text) as unknown : [];
+    if (Array.isArray(parsed)) {
+      tools = parsed
+        .filter((t): t is { name: string; description?: string; inputSchema?: KnownTool["inputSchema"] } => !!t && typeof (t as { name?: unknown }).name === "string")
+        .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+    }
+  } catch { tools = hit?.tools ?? []; }
+  searchCache.set(key, { at: Date.now(), tools });
+  return tools;
+}
+
+/** Every tool the gateway has for one app: the search, asked for the app. */
+async function toolsForApp(appSlug: string, force = false): Promise<KnownTool[]> {
+  if (!(await searchEnabled())) {
+    const all = await knownToolList(force);
+    return all.filter((t) => t.name.toLowerCase().includes(appSlug.toLowerCase()));
+  }
+  const found = await searchTools(appSlug, 40, force);
+  return found.filter((t) => t.name.toLowerCase().includes(appSlug.toLowerCase()));
+}
 
 /** The arguments a tool takes, in one line. A failed call carries this so the
  *  next attempt is informed rather than another guess (his report,
@@ -90,11 +139,14 @@ function signatureOf(tool: KnownTool | undefined): string {
 
 /** The gateway's own name for one app's tool, or null when it has no such
  *  tool. The matching itself is pure and tested (gateway-tool-name.ts); this
- *  only decides when to re-read the list. */
-async function resolveToolName(appSlug: string, tool: string, force = false): Promise<string | null> {
-  const hit = pickToolName(await knownToolNames(force), appSlug, tool);
-  if (hit) return hit;
-  return force ? null : resolveToolName(appSlug, tool, true);
+ *  only decides where the candidate names come from and when to re-read. */
+async function resolveTool(appSlug: string, tool: string, force = false): Promise<KnownTool | null> {
+  const candidates = (await searchEnabled())
+    ? [...await searchTools(`${appSlug} ${tool}`, 25, force), ...await toolsForApp(appSlug, force)]
+    : await knownToolList(force);
+  const hit = pickToolName(candidates.map((t) => t.name), appSlug, tool);
+  if (hit) return candidates.find((t) => t.name === hit) ?? { name: hit };
+  return force ? null : resolveTool(appSlug, tool, true);
 }
 
 /**
@@ -103,18 +155,20 @@ async function resolveToolName(appSlug: string, tool: string, force = false): Pr
  * content, which a caller that only checks for throws would read as data.
  */
 export async function callGatewayTool(appSlug: string, tool: string, args: Record<string, unknown> = {}): Promise<unknown> {
-  const resolved = await resolveToolName(appSlug, tool);
+  const resolved = await resolveTool(appSlug, tool);
   if (!resolved) {
-    const names = toolsOfApp(await knownToolNames(), appSlug).slice(0, 12);
+    const names = (await toolsForApp(appSlug)).map((t) => t.name).slice(0, 12);
     throw new Error(names.length
       ? `"${tool}" is not a tool on ${appSlug}. It has: ${names.join(", ")}`
       : `${appSlug} has no tools on the gateway — connect it, or ask your admin to authorize the shared account`);
   }
-  const name = resolved;
+  const name = resolved.name;
   let res: unknown;
   try {
     const c = await connect();
-    res = await c.callTool({ name, arguments: args });
+    res = (await searchEnabled())
+      ? await c.callTool({ name: CALL_TOOL, arguments: { tool_name: name, arguments: args } })
+      : await c.callTool({ name, arguments: args });
   } catch (err) {
     resetGatewayMcp();
     throw err;
@@ -124,7 +178,7 @@ export async function callGatewayTool(appSlug: string, tool: string, args: Recor
     const said = (r.content ?? []).map((x) => x?.text).filter(Boolean).join(" ").trim();
     // The tool's own signature rides the failure: a wrong argument name is the
     // commonest one, and the caller should not have to go and ask.
-    const sig = signatureOf((await knownToolList()).find((t) => t.name === name));
+    const sig = signatureOf(resolved.inputSchema ? resolved : (await knownToolList()).find((t) => t.name === name));
     throw new Error(`${said || `"${tool}" on ${appSlug} was refused by the gateway`}${sig ? ` — ${tool} ${sig}` : ""}`);
   }
   return res;
