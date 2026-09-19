@@ -454,6 +454,11 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
   // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
   // BYOK — key write-only, calls direct from this machine, never proxied.
+  /** The CLI Installer (his order, 2026-09-19): the command that runs it in a terminal panel, and its answer. */
+  cliSetupCommand: () => ipcRenderer.invoke("cli-setup-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
+  onCliSetupDone: (callback: (r: { loop: string; model: string; view: string }) => void) => {
+    ipcRenderer.on("cli-setup-done", (_e, r) => callback(r));
+  },
   memoryStats: () => ipcRenderer.invoke("memory-stats") as Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>,
   memoryClear: () => ipcRenderer.invoke("memory-clear") as Promise<{ ok: boolean; deleted?: number; error?: string }>,
   embeddingsConfigGet: () => ipcRenderer.invoke("embeddings-config-get") as Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>,

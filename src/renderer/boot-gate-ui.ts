@@ -338,6 +338,14 @@ export function initBootGate(cb: BootGateCallbacks): void {
       cb.onBootReady(data);
       return;
     }
+    // THE CLI INSTALLER, ONCE (his order, 2026-09-19): after the first
+    // sign-in on this machine, the installer opens in a terminal panel.
+    if (data.authenticated) {
+      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => {
+        if (v) return;
+        window.setTimeout(() => { void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.(); }, 2500);
+      }).catch(() => {});
+    }
 
     // FIRST RUN IS THE WALL TOUR, ON EVERY SURFACE (his report, 2026-08-29:
     // "the old flow showed up again on desktop — are there two flows?"). Yes,

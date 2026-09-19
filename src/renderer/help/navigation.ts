@@ -413,7 +413,7 @@ export function openSettingsModal(sub?: string): void {
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
       // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
-      for (const sub of ["general", "memory", "privacy", "appearance", "account", "artifacts", "usage", "mcp"]) {
+      for (const sub of ["general", "memory", "privacy", "appearance", "account", "artifacts", "usage", "mcp", "cli-installer"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -873,6 +873,8 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
+  // The installer is a terminal panel, not a settings page: open it and step aside.
+  else if (sub === "cli-installer") { closeSettingsModal(); void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
   else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }

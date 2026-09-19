@@ -6373,6 +6373,34 @@ async function init(): Promise<void> {
       return { name: "Glyphh", slug: `agent-panel:${agentInstances}`, kind: "app", url, workbench: true };
     };
     (window as unknown as { __wbOpenAgentInstance?: (loop?: string) => void }).__wbOpenAgentInstance = (loop) => { openAppCard(agentInstanceTile(loop)); };
+    /** THE CLI INSTALLER (his order, 2026-09-19): a terminal panel running the
+     *  installer TUI. Opens after the first sign-in and from Settings. */
+    (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller = async () => {
+      const g = window.glyphh as unknown as { cliSetupCommand?: () => Promise<{ ok: boolean; command?: string; error?: string }> };
+      const r = await g.cliSetupCommand?.().catch(() => null);
+      if (!r?.ok || !r.command) return;
+      const cmd = r.command;
+      openToolWithPayload("terminal", (slot) => {
+        const t = (slot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> }).terminals?.[0];
+        if (!t) return;
+        if (t.spawned && t.ptyId) setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 300);
+        else t.initCmd = cmd;
+      });
+    };
+    // Finish in the installer: the loop's model is written through the loop's
+    // own save, the one way a row is ever written.
+    (window.glyphh as unknown as { onCliSetupDone?: (cb: (r: { loop: string; model: string; view: string }) => void) => void }).onCliSetupDone?.((r) => {
+      if (!r.loop) return;
+      const api = window.glyphh as unknown as {
+        cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<Record<string, unknown> & { id: string }> }>;
+        cliAgentsSave?: (input: Record<string, unknown>) => Promise<unknown>;
+      };
+      void api.cliAgentsList?.().then((res) => {
+        const row = res?.ok ? res.agents.find((a) => a.id === r.loop) : undefined;
+        if (row && r.model) void api.cliAgentsSave?.({ ...row, model: r.model });
+        window.dispatchEvent(new CustomEvent("glyphh:pref-changed"));
+      });
+    });
     /** THE agent door (his order, 2026-09-16): every loop, from every tile,
      *  opens in the view Settings resolve (chat or CLI).
      *
