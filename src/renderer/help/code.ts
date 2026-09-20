@@ -11,6 +11,7 @@
  * center header carries its workdir controls and view toggles.
  */
 
+import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
 import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
@@ -526,12 +527,26 @@ function renderModelMenu(): void {
   pane.append(search, list);
   menu.appendChild(pane);
   const check = `<svg class="drop-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
-  const choose = (id: string | null): void => {
+  const choose = async (id: string | null): Promise<void> => {
     const c = current();
+    menu.classList.add("hidden");
+    // SWITCHING MID-CHAT COSTS (his order, 2026-09-20, as Claude's app warns):
+    // the new model has none of this conversation in its cache, so the whole
+    // context is sent again on the next turn. Ask before a live chat moves.
+    const before = effectiveModelId() || "";
+    const after = bareModelId(id || "") || "";
+    if (c && c.messages.length && before !== after) {
+      const ok = await yoConfirm({
+        title: "Switch models?",
+        message: "Switching models mid-conversation re-sends the whole conversation to the new model, which can increase token usage. New chats start fresh.",
+        confirmText: "Switch",
+        cancelText: "Keep current",
+      });
+      if (!ok) return;
+    }
     if (c) { c.models = id ? { default: id } : {}; void saveStore(); }
     else pendingModels = id ? { default: id } : null;
     paintModelChip();
-    menu.classList.add("hidden");
   };
   const paint = (): void => {
     list.textContent = "";
@@ -542,7 +557,7 @@ function renderModelMenu(): void {
       def.type = "button";
       def.className = "code-drop-item" + (selectedModel() ? "" : " selected");
       def.textContent = "Default — the loop decides";
-      def.addEventListener("click", () => choose(null));
+      def.addEventListener("click", () => { void choose(null); });
       list.appendChild(def);
     }
     if (!rows.length) {
@@ -568,7 +583,7 @@ function renderModelMenu(): void {
       sub.className = "drop-sub";
       sub.textContent = m.providerSlug;
       item.append(main, sub);
-      item.addEventListener("click", () => choose(m.id));
+      item.addEventListener("click", () => { void choose(m.id); });
       list.appendChild(item);
     }
   };
