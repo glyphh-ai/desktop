@@ -1,4 +1,5 @@
 import { gateSurface, planGates } from "./plan-gate.js";
+import { priceLine } from "./models-admin.js";
 /**
  * settings-loops.ts — LOOPS AS SETTINGS (his ruling, 2026-09-12: "they are
  * fixed settings -> loops").
@@ -63,7 +64,7 @@ const api = () => window.glyphh as unknown as {
 interface OrgModelLite {
   id: string; name: string; providerSlug: string;
   supported: boolean;
-  inputCreditsPerMTok?: number; outputCreditsPerMTok?: number;
+  inputUsdPerMTok?: number; outputUsdPerMTok?: number;
 }
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
@@ -372,7 +373,7 @@ export async function loadOrgLoops(): Promise<void> {
           text.innerHTML = `<div class="set-pref-title"></div><div class="set-pref-desc"></div>`;
           (text.querySelector(".set-pref-title") as HTMLElement).textContent = m.name || m.id;
           (text.querySelector(".set-pref-desc") as HTMLElement).textContent =
-            m.inputCreditsPerMTok != null ? `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok` : m.id;
+            m.inputUsdPerMTok != null ? priceLine(m) : m.id;
           const sw = document.createElement("label");
           sw.className = "settings-toggle ws-model-allow";
           sw.title = "Supported — members can pick this model";

@@ -5,8 +5,8 @@
 import { confirmAction } from "./shared.js";
 import { loadAgentDefaults } from "./settings-loops.js";
 import { initWorkspaces, loadWorkspacesPanel } from "./settings-workspaces.js";
-import { initBilling, loadBilling, closeBuyForm, openBuyForm } from "./settings-billing.js";
-import { accountApi } from "./settings-api.js";
+import { initBilling, loadBilling, closeBuyForm, openBuyForm, autoReloadLine, setAutoReloadEnabled } from "./settings-billing.js";
+import { accountApi, fmtUsd } from "./settings-api.js";
 import { initProfile, loadProfile } from "./settings-profile.js";
 import { initMembers, loadMembers } from "./settings-members.js";
 
@@ -690,8 +690,9 @@ export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };
 
-/** The APP's Usage view (plan-limits look) — monthly allowance bar + reset,
- *  purchased credits, refresh, auto-top-up toggle. Platform skips it. */
+/** The APP's Usage view (plan-limits look) — the Pipedream budget in dollars:
+ *  a period bar + reset, plan pool, added funds, remaining, Add funds, refresh,
+ *  the auto-reload toggle. Platform skips it. */
 let uaWired = false;
 
 export async function loadUsageAppView(): Promise<void> {
@@ -707,8 +708,8 @@ export async function loadUsageAppView(): Promise<void> {
   if (!uaWired) {
     uaWired = true;
     el("ua-refresh")?.addEventListener("click", () => void loadUsageAppView());
-    // Buy usage credits → the shared Need-more-usage form (settings-billing
-    // owns it; Billing opens the same one breadcrumbed ← Billing).
+    // Add funds → the shared Add-funds form (settings-billing owns it;
+    // Billing opens the same one breadcrumbed ← Billing).
     el("ua-buy")?.addEventListener("click", () => openBuyForm("usage"));
     // Adjust limit → the in-tab spend-limit form (← Usage brings the page back).
     const showLimitForm = (on: boolean) => {
@@ -739,13 +740,11 @@ export async function loadUsageAppView(): Promise<void> {
     const toggle = el("ua-autotopup") as HTMLInputElement | null;
     toggle?.addEventListener("change", () => {
       void (async () => {
-        const api = accountApi();
-        try {
-          const cfg = await api.autotopup();
-          await api.setAutotopup({ ...cfg, enabled: toggle.checked });
-        } catch { toggle.checked = !toggle.checked; }
-        const st = el("ua-reload-state");
-        if (st) st.textContent = toggle.checked ? "On" : "Off";
+        // Dollar defaults ride the first enable (settings-billing owns them).
+        const res = await setAutoReloadEnabled(toggle.checked).catch(() => ({ ok: false }));
+        if (!res.ok) toggle.checked = !toggle.checked;
+        const line = el("ua-autotopup-line");
+        if (line) line.textContent = autoReloadLine(await accountApi().autotopup().catch(() => null));
       })();
     });
   }
@@ -753,21 +752,19 @@ export async function loadUsageAppView(): Promise<void> {
   // identical on both surfaces by construction.
   const api = accountApi();
   // MEMBERS see their own usage and nothing org-financial (his scoping order,
-  // 2026-08-24): no org balance, no buying, no auto top-up. The server 403s
+  // 2026-08-24): no org budget, no buying, no auto-reload. The server 403s
   // the billing reads/writes for them regardless — this hides the controls.
   void Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => {
     const admin = !!info?.role && ["org_admin", "admin", "super_admin"].includes(info.role);
-    document.querySelector(".ua-credits-toggle")?.classList.toggle("hidden", !admin);
+    document.querySelector(".ua-budget-toggle")?.classList.toggle("hidden", !admin);
     el("ua-balance-row")?.classList.toggle("hidden", !admin);
   }).catch(() => { /* signed out — the page renders read-only anyway */ });
   try {
-    // dashboardData is the LEDGER truth on both surfaces (desktop home-ipc /
-    // the web contract): month-to-date spend from usage.summary, the plan's
-    // name + allowance off the catalog, the org balance. The old derivation
-    // (allowance − remaining grant credits) INVENTED spend after any
-    // mid-cycle plan change — a fresh Basic upgrade read as "1,800 spent".
+    // dashboardData is the SPEND-LOG truth on both surfaces (desktop home-ipc /
+    // the web contract): the Pipedream budget off billing.balance, the plan's
+    // name + monthly pool off the catalog. Dollars end to end.
     const [data, topup] = await Promise.all([
-      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; credits?: number; allowance?: number; spendCredits?: number } | undefined>,
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null } | undefined>,
       api.autotopup().catch(() => null),
     ]);
     const planEl = el("ua-plan");
@@ -775,27 +772,34 @@ export async function loadUsageAppView(): Promise<void> {
       planEl.textContent = data.plan.includes(" ") ? data.plan
         : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
     }
-    const allowance = Math.max(0, data?.allowance ?? 0);      // whole credits
-    const used = Math.max(0, Math.round(data?.spendCredits ?? 0));
-    const pct = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
+    const pool = Math.max(0, data?.poolUsdPerMonth ?? 0);
+    const funds = Math.max(0, data?.fundsUsd ?? 0);
+    const spent = Math.max(0, data?.budgetSpentUsd ?? 0);
+    const total = pool + funds;
+    const pct = total > 0 ? Math.min(100, Math.round((spent / total) * 100)) : 0;
     const fill = el("ua-month-fill");
     if (fill) fill.style.width = `${pct}%`;
     const pctEl = el("ua-month-pct");
-    if (pctEl) pctEl.textContent = allowance > 0 ? `${pct}% used` : "—";
-    const reset = new Date();
-    reset.setMonth(reset.getMonth() + 1, 1);
+    if (pctEl) pctEl.textContent = total > 0 ? `${pct}% used` : "—";
+    // The server names the period's end; fall back to the calendar month.
+    const reset = data?.periodEnd ? new Date(data.periodEnd) : new Date();
+    if (!data?.periodEnd || Number.isNaN(reset.getTime())) reset.setMonth(reset.getMonth() + 1, 1);
     const resetEl = el("ua-month-reset");
     if (resetEl) resetEl.textContent = `Resets ${reset.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
     const spentEl = el("ua-spent");
-    if (spentEl) spentEl.textContent = `${used.toLocaleString()} credits`;
+    if (spentEl) spentEl.textContent = fmtUsd(spent);
     const spentReset = el("ua-spent-reset");
     if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
+    const poolEl = el("ua-pool");
+    if (poolEl) poolEl.textContent = `${fmtUsd(pool)} / month`;
+    const fundsEl = el("ua-funds");
+    if (fundsEl) fundsEl.textContent = fmtUsd(funds);
     const balEl = el("ua-balance");
-    if (balEl) balEl.textContent = Math.max(0, data?.credits ?? 0).toLocaleString();
+    if (balEl) balEl.textContent = fmtUsd(Math.max(0, data?.remainingUsd ?? 0));
     const t = el("ua-autotopup") as HTMLInputElement | null;
     if (t && topup) t.checked = !!topup.enabled;
-    const reload = el("ua-reload-state");
-    if (reload) reload.textContent = topup?.enabled ? "On" : "Off";
+    const line = el("ua-autotopup-line");
+    if (line) line.textContent = autoReloadLine(topup);
     const cap = Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", 0)) || 0;
     const capEl = el("ua-cap");
     if (capEl) capEl.textContent = cap > 0 ? `$${cap.toLocaleString()}` : "Unlimited";

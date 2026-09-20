@@ -579,11 +579,10 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
   const picked = (model ?? row.model ?? "").trim();
-  // The model this turn names decides its lane (reserved keeps the heavy
-  // ones on the member's own subscription); off the gateway, its vars go.
+  // The org's lane decides where the turn goes; off the gateway, its vars go.
   // A turn that named none runs on the org's default with the gateway on
   // (his order, 2026-09-20): left to the CLI it picks one the org never allowed.
-  const viaGateway = requestUsesGateway(row.cli, picked || requiredModel, !!row.apiKey);
+  const viaGateway = requestUsesGateway(!!row.apiKey);
   const m = picked || (gatewayOn && viaGateway ? requiredModel : "");
   const strip = viaGateway ? "" : stripGatewayVars(row);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
@@ -676,9 +675,9 @@ const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
-  // The model decides the lane; an unset model is the org's proxy model.
+  // The org's lane decides; an unset model is the org's proxy model.
   const picked = (ov?.model ?? row.model ?? "").trim();
-  const viaGateway = requestUsesGateway(row.cli, picked || requiredModel, !!row.apiKey);
+  const viaGateway = requestUsesGateway(!!row.apiKey);
   const strip = viaGateway ? "" : stripGatewayVars(row);
   const model = picked || (gatewayOn && viaGateway ? requiredModel : "");
   const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
@@ -793,9 +792,9 @@ let gatewayOn = false;
  *  the gateway key and point the base URL back at the bridge. The chat
  *  process used to spawn without it (his report, 2026-09-20: memory captured
  *  nothing in chat), so the bridge never saw a chat turn. */
-export function loopEnvPrefix(row: CliAgentRow, model: string): string {
+export function loopEnvPrefix(row: CliAgentRow): string {
   if (!fs.existsSync(envFile(row.id))) return "";
-  const strip = requestUsesGateway(row.cli, model || requiredModel, !!row.apiKey) ? "" : stripGatewayVars(row);
+  const strip = requestUsesGateway(!!row.apiKey) ? "" : stripGatewayVars(row);
   return `set -a; . "${envFile(row.id)}"; set +a;${strip} `;
 }
 
@@ -1192,9 +1191,7 @@ export async function ensureLoopEnv(row: CliAgentRow, scope?: { folder?: string;
       const creds = await gatewayCreds();
       // No creds is a NORMAL answer (no plan, closed trial, offline) —
       // the loop then runs on whatever the CLI is already logged into.
-      // And while this vendor's own credits last, the turn goes STRAIGHT
-      // at the vendor: the gateway takes over only when they run out.
-      if (creds && await loopGoesToGateway(row.cli, false)) {
+      if (creds && await loopGoesToGateway(false)) {
         const wrapped = vendorBase ? await bridgeWrap(creds.baseUrl, where).catch(() => null) : null;
         writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
       } else if (bridged) {

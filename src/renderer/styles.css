@@ -3686,7 +3686,7 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 /* Spaces are gone — every session is the Code agent, so the rail nav no
    longer scopes items by space (the Chat/Work/Code tabs were removed). */
 
-/* Settings › Usage: the Add credits action above the metric cards */
+/* Settings › Usage: the Add funds action above the metric cards */
 .dash-usage-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .dash-greeting {
   font-family: var(--font-sans);
@@ -3744,7 +3744,7 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 }
 /* The usage chart's filter row: range, stack-by, and narrowing dropdowns. */
 .dash-usage-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: 1 1 auto; min-width: 0; }
-/* The KPI column ("34 credits · 10 calls") holds its line — the wide member
+/* The KPI column ("$3.40 · 10 calls") holds its line — the wide member
    filter was crushing it to a one-word-per-line stack on web. */
 .dash-card-head > div:first-child { flex: 0 0 auto; }
 .dash-card-head .dash-card-value { white-space: nowrap; }
@@ -4506,21 +4506,6 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 .dash-tab.active { background: var(--surface); color: var(--text); }
 .dash-pane { display: none; }
 .dash-pane.active { display: block; }
-
-.dash-credits-card {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 24px;
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 20px 22px; margin-bottom: 16px;
-}
-.dash-credits-main { display: flex; align-items: baseline; gap: 8px; }
-.dash-credits-num { font-size: 34px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
-.dash-credits-unit { font-size: 14px; color: var(--text-3); }
-.dash-credits-meta { display: flex; align-items: center; gap: 24px; margin-left: auto; flex-wrap: wrap; }
-.dash-credits-meta > div { display: flex; flex-direction: column; gap: 2px; }
-.dash-credits-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); }
-.dash-credits-val { font-size: 16px; font-weight: 600; color: var(--text); }
-.btn-credits-manage { border: none; background: var(--accent); color: var(--accent-fg); font: inherit; font-weight: 600; font-size: 13px; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
-.btn-credits-manage:hover { background: var(--accent-hover, var(--accent)); }
 
 .dash-cowork-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
 .dash-cowork-card { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; cursor: pointer; transition: border-color 160ms ease, transform 160ms ease; }
@@ -7575,7 +7560,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 }
 
 /* ── Billing ────────────────────────────────────────────── */
-/* Everything here reuses the app's existing surfaces (dash-card for the credit
+/* Everything here reuses the app's existing surfaces (dash-card for the budget
    split, lib-table for invoices, action-btn for every control); only the three
    layouts below — top-up presets, the seat meter, and the plan grid — have no
    existing equivalent. */
@@ -7600,15 +7585,15 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   gap: 10px;
   margin-top: 12px;
 }
-/* The compact 402 "Add credits" dialog — reuses the topup-card grid + toggle. */
-.buy-credits-box { max-width: 480px; width: min(480px, 92vw); }
+/* The compact 402 "Pipedream budget used up" dialog — reuses the Add-funds card grid + toggle. */
+.add-funds-box { max-width: 480px; width: min(480px, 92vw); }
 /* Embedded Stripe checkout mounted inside the modal: give the iframe room and
    its own scroll — the modal must never grow past the viewport. */
 .bc-checkout-stage { min-height: 480px; max-height: min(72vh, 700px); overflow-y: auto; border-radius: 10px; }
 .bc-confirming { display: flex; align-items: center; gap: 10px; justify-content: center; min-height: 120px; color: var(--text-2); font-size: 14px; text-align: center; padding: 20px; }
 .bc-confirming.bc-done { color: var(--text); font-weight: 600; }
 .bc-back { margin-top: 10px; align-self: flex-start; }
-.buy-credits-box .bc-balance { margin: 0 0 4px; color: var(--text-2); font-size: 13px; }
+.add-funds-box .bc-balance { margin: 0 0 4px; color: var(--text-2); font-size: 13px; }
 /* Super-admin org detail (Orgs → Manage): stat cards + key/value grid. */
 .pa-org-stats { display: flex; gap: 12px; margin: 12px 0 10px; }
 .pa-stat { flex: 1; border: 1px solid var(--border-1, #2a2a2a); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
@@ -7634,10 +7619,8 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
 }
 .billing-topup-card:hover:not(:disabled) { border-color: var(--accent); background: var(--hover); }
 .billing-topup-card:disabled { opacity: 0.5; cursor: default; }
-.billing-topup-credits { font-size: 20px; font-weight: 600; color: var(--text-bright); }
+.billing-topup-amount { font-size: 20px; font-weight: 600; color: var(--text-bright); }
 .billing-topup-unit { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; }
-.billing-topup-price { margin-bottom: 6px; font-size: 13px; color: var(--text-2); }
-.billing-topup-save { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--accent, #af5fff); }
 
 /* The plan picker — the old platform pricing page's grid, folded under the
    Plan bar. Cards share the top-up cards' surface grammar; the current plan
@@ -13743,7 +13726,7 @@ select:focus {
   word-break: break-word;
   color: var(--text);
 }
-/* Gateway-decline card (out of credits / role / rate) — replaces raw error text. */
+/* Gateway-decline card (budget used up / role / rate) — replaces raw error text. */
 .code-decline-wrap { align-self: stretch; max-width: 720px; }
 .decline-card {
   display: flex;
@@ -19893,8 +19876,8 @@ body.platform-shell #settings-nav-search-wrap { display: none; }
 #ua-buy-grid { grid-template-columns: repeat(5, 1fr); }
 #ua-buy-custom-row { display: block; }
 #ua-buy-custom-row .settings-input { width: 100%; }
-.ua-row.ua-credits-row { border-bottom: 1px solid var(--border); }
-.ua-row.ua-credits-row:last-child { border-bottom: none; }
+.ua-row.ua-budget-row { border-bottom: 1px solid var(--border); }
+.ua-row.ua-budget-row:last-child { border-bottom: none; }
 .bil-label-wide { width: auto; flex-shrink: 1; min-width: 0; }
 
 /* ── Billing plan header (the Claude billing look) ── */

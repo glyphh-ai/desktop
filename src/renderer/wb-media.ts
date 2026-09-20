@@ -26,7 +26,7 @@ export interface MediaAssetLite {
   meta: Record<string, unknown>;
   updatedAt: string;
 }
-interface MediaJobLite { id: string; status: string; model: string; assetId: string | null; error: string | null; creditsCharged: number }
+interface MediaJobLite { id: string; status: string; model: string; assetId: string | null; error: string | null; usdCharged: number }
 
 export type MediaView = "gimage" | "gvideo" | "gsound";
 

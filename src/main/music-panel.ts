@@ -30,22 +30,22 @@ export async function addLookToInstrumentLibrary(name: string, tweak: string, as
   }
 }
 
-export async function genImageAsset(prompt: string, title: string): Promise<{ id: string; credits: number }> {
+export async function genImageAsset(prompt: string, title: string): Promise<{ id: string; usd: number }> {
   const models = await getClient().models.available();
   const model = models.find((m) => String((m as { modality?: string }).modality ?? "") === "image");
   if (!model) throw new Error("this org has no enabled image model");
   const started = await getClient().media.generate({ model: model.id, prompt, title, options: { size: "1024x1536" } });
   const job = await getClient().media.waitForJob(started.job.id);
   if (job.status === "failed" || !job.assetId) throw new Error(job.error ?? "image generation failed");
-  return { id: job.assetId, credits: job.creditsCharged };
+  return { id: job.assetId, usd: job.usdCharged };
 }
 
 /** A member look: FRONT + BACK of the same person, photoreal, stage-ready. */
-export async function genLook(name: string, description: string, bandType: string): Promise<{ front: string; back: string; credits: number }> {
+export async function genLook(name: string, description: string, bandType: string): Promise<{ front: string; back: string; usd: number }> {
   const base = `Photorealistic full-body studio photograph of ${description || name}, member of a ${bandType || "rock"} band, stage outfit, neutral dark backdrop, cinematic lighting, lifelike skin texture, 85mm`;
   const front = await genImageAsset(`${base}. FRONT view, facing the camera.`, `${name} — look (front)`);
   const back = await genImageAsset(`${base}. BACK view — the SAME person and outfit seen from behind.`, `${name} — look (back)`);
-  return { front: front.id, back: back.id, credits: front.credits + back.credits };
+  return { front: front.id, back: back.id, usd: front.usd + back.usd };
 }
 
 export function registerMusicPanelIpc(): void {
@@ -98,7 +98,7 @@ export function registerMusicPanelIpc(): void {
       if (idx >= 0 && idx < looks.length) { looks[idx] = { assetId: img.id }; active = idx; }
       else { looks.push({ assetId: img.id }); active = looks.length - 1; }
       const updated = await music.updateInstrument(inst.id, { meta: { ...inst.meta, looks, activeLook: active } });
-      return { ok: true, instrument: updated, credits: img.credits };
+      return { ok: true, instrument: updated, usd: img.usd };
     } catch (err) { return { ok: false, error: errText(err) }; }
   });
   ipcMain.handle("music-songs", async () => {
@@ -147,7 +147,7 @@ export function registerMusicPanelIpc(): void {
         avatarAssetId: looks[active]!.front,
         meta: { ...artist.meta, looks, activeLook: active },
       });
-      return { ok: true, artist: updated, credits: look.credits };
+      return { ok: true, artist: updated, usd: look.usd };
     } catch (err) { return { ok: false, error: errText(err) }; }
   });
 

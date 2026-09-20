@@ -178,9 +178,9 @@ export interface OrgPendingReleaseRow {
 
 // ── Account surfaces (Settings › Billing / Organization / Account) ──────────
 // The wire shapes of the SDK's billing/org/profile resources, mirrored here so
-// the desktop contract is self-describing. Money is USD cents, credits are
-// MICRO-credits (1 credit = 1e6) exactly as the server reports them — the
-// renderer's settings-api.ts is the one place that converts for display.
+// the desktop contract is self-describing. Stripe money is USD cents; the
+// Pipedream budget is DOLLARS exactly as the server reports them — the
+// renderer's settings-api.ts is the one place that formats for display.
 
 /** A plan in the server-driven catalog (super-admin plans + their pricing). */
 export interface AccountBillingPlan {
@@ -189,7 +189,8 @@ export interface AccountBillingPlan {
   monthlyUsdCents: number;
   /** The TRUE active Stripe price, when resolvable — prefer this for display. */
   activeUsdCents?: number;
-  monthlyCredits: number;
+  /** The monthly Pipedream budget the plan funds, in dollars (its price, dollar for dollar). */
+  poolUsdPerMonth: number;
   maxSeats: number;
   sso: boolean;
   /** Role governance — which tier carries it (help/plan-gate.ts names the
@@ -206,19 +207,21 @@ export interface AccountSubscription {
   maxSeats: number;
 }
 
-/** The org's credit balance by lot kind, in MICRO-credits. */
-export interface AccountCredits {
-  balance: number;
-  allowance: number;
-  grants: number;
-  purchases: number;
+/** The org's Pipedream budget this period, in dollars. */
+export interface AccountBalance {
+  planUsd: number;
+  fundsUsd: number;
+  spentUsd: number;
+  remainingUsd: number;
+  periodStart: string;
+  periodEnd: string;
 }
 
-/** The org's auto-top-up rule (MICRO-credits). */
+/** The org's auto-reload rule (dollars). */
 export interface AccountAutotopup {
   enabled: boolean;
-  thresholdCredits: number;
-  topupCredits: number;
+  thresholdUsd: number;
+  topupUsd: number;
 }
 
 /** One normalized Stripe invoice (USD cents; `created` in unix seconds). */
@@ -345,8 +348,8 @@ interface LoopRoleView {
     modality?: string;
     contextWindow: number | null;
     maxOutputTokens: number | null;
-    inputCreditsPerMTok: number;
-    outputCreditsPerMTok: number;
+    inputUsdPerMTok: number;
+    outputUsdPerMTok: number;
     isPlatformDefault: boolean;
   }>;
 }
@@ -851,9 +854,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   // panel can show an honest error; writes answer with { ok, error }. ──
   billingPlans: () => ipcRenderer.invoke("billing-plans") as Promise<AccountBillingPlan[]>,
   billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
-  /** Pull the org's plan, allowance, and top-ups from Stripe's records (the embedded checkout's settle). */
+  /** Pull the org's plan and funds from Stripe's records (the embedded checkout's settle). */
   billingReconcile: () => ipcRenderer.invoke("billing-reconcile") as Promise<AccountSubscription>,
-  billingCredits: () => ipcRenderer.invoke("billing-credits") as Promise<AccountCredits>,
+  /** The Pipedream budget this period — plan pool, funds, spent, remaining (dollars). */
+  billingBalance: () => ipcRenderer.invoke("billing-balance") as Promise<AccountBalance>,
   billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
   billingPaymentMethod: () => ipcRenderer.invoke("billing-payment-method") as Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>,
   // ── voice settings ──
@@ -870,8 +874,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("billing-subscribe", tier, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
   billingChangePlan: (tier: string) =>
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
-  billingTopup: (credits: number, embedded?: boolean) =>
-    ipcRenderer.invoke("billing-topup", credits, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
+  /** Add funds to the Pipedream budget — whole dollars, minimum 5. */
+  billingTopup: (usd: number, embedded?: boolean) =>
+    ipcRenderer.invoke("billing-topup", usd, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
   cloudFsBrowse: (scope: string, dir?: string) =>
     ipcRenderer.invoke("cloud-fs-browse", scope, dir) as Promise<{ root: string; path: string; entries: Array<{ name: string; path: string; kind: string }> } | null>,
   /** The API origin this desktop talks to — clients pin media URLs to it. */
@@ -951,8 +956,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("account-members-update-profile", userId, patch) as Promise<{ ok: boolean; error?: string }>,
   // ── Settings › Platform (super_admin console) — the MAIN-process SDK client
   // executes these (admin-ipc.ts). The server enforces super_admin on every
-  // route. Reads REJECT on failure; writes answer { ok, …, error }. All rates/
-  // credits keep WIRE units (micro-credits, USD cents); the renderer
+  // route. Reads REJECT on failure; writes answer { ok, …, error }. Money keeps
+  // WIRE units (dollars for budgets, USD cents for plan prices); the renderer
   // (help/settings-admin.ts) owns display conversion + the web SDK path. ──
   adminModels: () => ipcRenderer.invoke("admin-models") as Promise<{ models: unknown[] }>,
   adminModelUpdate: (provider: string, model: string, patch: Record<string, unknown>) =>
@@ -995,8 +1000,9 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-org-create", input) as Promise<{ ok: boolean; org?: unknown; error?: string }>,
   adminOrgUpdate: (id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     ipcRenderer.invoke("admin-org-update", id, patch) as Promise<unknown>,
-  adminOrgGrantCredits: (id: string, credits: number, note?: string) =>
-    ipcRenderer.invoke("admin-org-grant-credits", id, credits, note) as Promise<{ ok: boolean; balance?: number; error?: string }>,
+  /** Add dollars to an org's Pipedream budget (admin grant). */
+  adminOrgGrantFunds: (id: string, usd: number, note?: string) =>
+    ipcRenderer.invoke("admin-org-grant-funds", id, usd, note) as Promise<{ ok: boolean; remainingUsd?: number; error?: string }>,
   // Members on behalf + org impersonation (the super-admin Members tab).
   adminOrgMemberInvite: (id: string, email: string, role?: "org_admin" | "admin" | "user") =>
     ipcRenderer.invoke("admin-org-member-invite", id, email, role) as Promise<{ ok: boolean; acceptUrl?: string; error?: string }>,
@@ -1222,7 +1228,8 @@ contextBridge.exposeInMainWorld("glyphh", {
   onGlyphhAgentPermission: (callback: (d: { runId: string; permission: "ask" | "plan" | "acceptEdits" | "auto" }) => void) => {
     ipcRenderer.on("glyphh-agent:permission", (_event, d) => callback(d));
   },
-  onGlyphhAgentCredits: (callback: (d: { runId: string; creditsMicro: number }) => void) => {
+  /** A run's running Pipedream spend, in dollars. */
+  onGlyphhAgentCredits: (callback: (d: { runId: string; usd: number }) => void) => {
     ipcRenderer.on("glyphh-agent:credits", (_event, d) => callback(d));
   },
   onGlyphhAgentProgress: (callback: (d: { runId: string; inTokens: number; outTokens: number }) => void) => {
@@ -1443,12 +1450,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   musicInstruments: () => ipcRenderer.invoke("music-instruments") as Promise<{ ok: boolean; instruments: unknown[]; error?: string }>,
   musicInstrumentSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-instrument-save", id, input) as Promise<{ ok: boolean; instrument?: unknown; error?: string }>,
   musicInstrumentDelete: (id: string) => ipcRenderer.invoke("music-instrument-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  musicInstrumentGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-instrument-genlook", id, description, replaceLook) as Promise<{ ok: boolean; instrument?: unknown; credits?: number; error?: string }>,
+  musicInstrumentGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-instrument-genlook", id, description, replaceLook) as Promise<{ ok: boolean; instrument?: unknown; usd?: number; error?: string }>,
   musicSongs: () => ipcRenderer.invoke("music-songs") as Promise<{ ok: boolean; songs: unknown[]; error?: string }>,
   musicSongSave: (id: string | null, input: unknown) => ipcRenderer.invoke("music-song-save", id, input) as Promise<{ ok: boolean; song?: unknown; error?: string }>,
   musicSongDelete: (id: string) => ipcRenderer.invoke("music-song-delete", id) as Promise<{ ok: boolean; error?: string }>,
   musicSongRegenerate: (id: string, input?: unknown) => ipcRenderer.invoke("music-song-regenerate", id, input) as Promise<{ ok: boolean; song?: unknown; job?: unknown; error?: string }>,
-  musicArtistGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-artist-genlook", id, description, replaceLook) as Promise<{ ok: boolean; artist?: unknown; credits?: number; error?: string }>,
+  musicArtistGenlook: (id: string, description?: string, replaceLook?: number) => ipcRenderer.invoke("music-artist-genlook", id, description, replaceLook) as Promise<{ ok: boolean; artist?: unknown; usd?: number; error?: string }>,
   mediaProjects: () => ipcRenderer.invoke("media-projects") as Promise<{ ok: boolean; projects: unknown[]; error?: string }>,
   mediaProjectSave: (id: string | null, input: unknown) => ipcRenderer.invoke("media-project-save", id, input) as Promise<{ ok: boolean; project?: unknown; error?: string }>,
   mediaProjectDelete: (id: string) => ipcRenderer.invoke("media-project-delete", id) as Promise<{ ok: boolean; error?: string }>,

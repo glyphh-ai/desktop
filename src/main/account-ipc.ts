@@ -1,6 +1,6 @@
 /**
  * account-ipc.ts — the desktop renderer's transport to the ACCOUNT SURFACES:
- * billing (plans, credits, top-ups, invoices, Stripe hand-offs), the org
+ * billing (plans, the Pipedream budget, Add funds, invoices, Stripe hand-offs), the org
  * record, the caller's own profile, and the member roster.
  *
  * The renderer has no SDK handle (preload boundary), so these thin IPC methods
@@ -24,10 +24,10 @@ import { refreshHeartbeat } from "./auth";
 interface OrgInfraChoiceInput { region: string; tier: string }
 
 // The SDK's index re-exports `OrgUpdate` and `MemberRole` but not the
-// auto-top-up / self-profile inputs, nor the member-write shapes, so those are
+// auto-reload / self-profile inputs, nor the member-write shapes, so those are
 // mirrored structurally here (threads-ipc.ts's discipline) rather than
-// reaching into the package's internal paths.
-interface AutotopupInput { enabled: boolean; thresholdCredits: number; topupCredits: number }
+// reaching into the package's internal paths. Money is dollars.
+interface AutotopupInput { enabled: boolean; thresholdUsd: number; topupUsd: number }
 interface SelfProfileUpdate { firstName?: string; lastName?: string; timezone?: string; imageUrl?: string | null }
 type MemberSystemRole = "org_admin" | "admin" | "user";
 interface MemberProfileUpdate { firstName?: string; lastName?: string }
@@ -44,7 +44,8 @@ export function registerAccountIpc(): void {
   ipcMain.handle("plan-gates", () => getClient().plans.gates());
   ipcMain.handle("billing-plans", () => getClient().billing.plans());
   ipcMain.handle("billing-status", () => getClient().billing.status());
-  ipcMain.handle("billing-credits", () => getClient().billing.credits());
+  // The org's Pipedream budget this period (plan pool, funds, spent, remaining — dollars).
+  ipcMain.handle("billing-balance", () => getClient().billing.balance());
   ipcMain.handle("billing-invoices", () => getClient().billing.invoices());
   ipcMain.handle("billing-payment-method", () => getClient().billing.paymentMethod());
 
@@ -82,9 +83,10 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, change: await getClient().billing.changePlan(String(tier || "")) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("billing-topup", async (_e, credits: number, embedded?: boolean) => {
+  // Add funds to the Pipedream budget — whole dollars, minimum 5.
+  ipcMain.handle("billing-topup", async (_e, usd: number, embedded?: boolean) => {
     try {
-      const out = await getClient().billing.topup({ credits: Number(credits) || 0, ...(embedded ? { embedded: true } : {}) });
+      const out = await getClient().billing.topup({ usd: Number(usd) || 0, ...(embedded ? { embedded: true } : {}) });
       return { ok: true as const, url: out.url, clientSecret: out.clientSecret };
     } catch (err) { return fail(err); }
   });

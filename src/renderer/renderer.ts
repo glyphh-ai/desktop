@@ -242,7 +242,7 @@ declare global {
       glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
       appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; plan: string; credits: number; allowance: number; spendCredits: number; requests: number; appsCount: number }>;
+      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
       // `userId` narrows to one member (org_admin only); "" = the caller's scope.
       usageSeries: (days: number, groupBy: string, userId?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
@@ -534,7 +534,7 @@ declare global {
       onGlyphhAgentError: (cb: (d: { runId: string; error: string; fix?: { kind: string; cli: string; command: string; message: string } }) => void) => void;
       onGlyphhAgentSetup: (cb: (d: { phase: string; pct?: number; model?: string; receivedGB?: number; totalGB?: number; text?: string; html?: string; label?: string }) => void) => void;
       onGlyphhAgentPermission: (cb: (d: { runId: string; permission: "ask" | "plan" | "acceptEdits" | "auto" }) => void) => void;
-      onGlyphhAgentCredits: (cb: (d: { runId: string; creditsMicro: number }) => void) => void;
+      onGlyphhAgentCredits: (cb: (d: { runId: string; usd: number }) => void) => void;
       onGlyphhAgentProgress: (cb: (d: { runId: string; inTokens: number; outTokens: number }) => void) => void;
       onGlyphhAgentTool: (cb: (d: { runId: string; phase: string; name?: string; title?: string; thought?: string; denied?: boolean; failed?: boolean; preview?: string }) => void) => void;
       glyphhApprovalRespond: (id: string, allow: boolean) => Promise<boolean>;

@@ -4,7 +4,7 @@
  * Mirrors the platform's Configure → Workspaces surface. A workspace IS the
  * governance layer: which providers and models a member may reach, which shared
  * and personal connections (down to individual tools), which apps and hosting,
- * whether they may add custom MCP, plus a rate limit and a credit cap.
+ * whether they may add custom MCP, plus a rate limit and a dollar budget.
  *
  * Every handler is a thin, guarded pass through the SDK — the server enforces
  * org_admin on all writes, and the base workspace's undeletability, so a

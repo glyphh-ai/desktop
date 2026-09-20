@@ -5,7 +5,7 @@
  * (platform/app/lib/workspaces/hooks.js). A workspace IS the governance layer:
  * which models a member may reach, which shared and personal connections (down
  * to individual tools), whether they may add custom MCP, a rate limit, and a
- * credit cap. A workspace only ever NARROWS what the org already allows.
+ * dollar budget. A workspace only ever NARROWS what the org already allows.
  *
  * The `limit<X>` flags map to a null-means-all convention exactly as the
  * platform's `toEdit` does: `limitModels === false` → `models: null` (every org
@@ -34,10 +34,6 @@ import { formModal } from "./settings-list-page.js";
 import { primeConnectedIcons, connectedIconCache } from "./app-icon.js";
 import { hidePanelsForModal, restorePanelsForModal } from "../yo-modal.js";
 
-const MICRO = 1_000_000;
-/** Calendar-aligned periods — the interval defines the reset, no arbitrary dates. */
-const PERIODS: Array<[number, string]> = [[1, "Daily"], [7, "Weekly"], [30, "Monthly"]];
-
 interface Workspace {
   id: string;
   name: string;
@@ -55,8 +51,6 @@ interface Workspace {
   allowedPersonalConnections: string[];
   allowedPersonalConnectionTools: Record<string, string[]>;
   allowCustomMcp: boolean;
-  creditsCap: number | null;
-  capPeriodDays: number | null;
   rateLimitCalls: number | null;
   rateLimitWindowSeconds: number | null;
   budgetUsd: number | null;
@@ -76,7 +70,7 @@ interface GatewayKeyLite {
   createdAt: string;
 }
 
-interface CatalogModel { key: string; kind: string; displayName: string; provider: string; inCr: number; outCr: number }
+interface CatalogModel { key: string; kind: string; displayName: string; provider: string; inUsd: number; outUsd: number }
 interface ConnMeta { name: string; icon: string | null }
 interface Tool { name: string; description?: string }
 
@@ -154,7 +148,7 @@ interface SdkWorkspaces {
     keys?: () => Promise<GatewayKeyLite[]>;
     metrics?: (opts: { days?: number }) => Promise<{ byRole?: Array<{ key: string; spendUsd: number }> }>;
   };
-  orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>> };
+  orgModels?: { list?: () => Promise<Array<{ id: string; name: string; providerSlug: string; kind: string; inputUsdPerMTok: number; outputUsdPerMTok: number; supported: boolean; providerEnabled?: boolean }>> };
   connections?: {
     pipedreamList?: () => Promise<Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>>;
     orgMcpList?: () => Promise<Array<{ slug: string; name: string; enabled?: boolean }>>;
@@ -256,13 +250,10 @@ async function saveGeneral(): Promise<boolean> {
   if (!editing) return false;
   const name = ($<HTMLInputElement>("ws-name")?.value || "").trim();
   if (!name) { setError("A role needs a name."); setStatus("", ""); return false; }
-  const cap = num($<HTMLInputElement>("ws-cap")?.value || "");
   return patch({
     name,
     rateLimitCalls: num($<HTMLInputElement>("ws-rate-calls")?.value || ""),
     rateLimitWindowSeconds: num($<HTMLInputElement>("ws-rate-window")?.value || ""),
-    creditsCap: cap == null ? null : cap * MICRO,
-    capPeriodDays: Number($<HTMLSelectElement>("ws-cap-period")?.value) || 30,
     budgetUsd: num($<HTMLInputElement>("ws-budget")?.value || ""),
     budgetHard: !!$<HTMLInputElement>("ws-budget-hard")?.checked,
     budgetPeriodDays: Number($<HTMLSelectElement>("ws-budget-period")?.value) || 30,
@@ -282,12 +273,6 @@ function commitConn(list: string[] | null, tools: Record<string, string[]>, msg?
 
 const rateSummary = (w: Workspace): string =>
   w.rateLimitCalls == null ? "—" : `${w.rateLimitCalls}/${w.rateLimitWindowSeconds ?? 0}s`;
-
-function capSummary(w: Workspace): string {
-  if (w.creditsCap == null) return "—";
-  const period = PERIODS.find(([d]) => d === w.capPeriodDays)?.[1]?.toLowerCase() || "monthly";
-  return `${Math.round(Number(w.creditsCap) / MICRO).toLocaleString()} cr ${period}`;
-}
 
 function connSummary(w: Workspace): string {
   const personal = w.limitPersonalConnections ? (w.allowedPersonalConnections?.length ?? 0) : "All";
@@ -374,7 +359,7 @@ function paintList(): void {
     if (cells[1]) cells[1].textContent = String(w.memberCount ?? 0);
     if (cells[2]) cells[2].textContent = modelSummary(w);
     if (cells[3]) cells[3].textContent = keysSummary(w);
-    if (cells[4]) cells[4].textContent = `${rateSummary(w)} · ${capSummary(w)}`;
+    if (cells[4]) cells[4].textContent = rateSummary(w);
     tr.appendChild(budgetCell(w));
     tr.addEventListener("click", () => { void openEditor(w); });
     tr.appendChild(kebabCell(() => [
@@ -455,9 +440,6 @@ async function openEditor(w: Workspace): Promise<void> {
   set("ws-name", w.name);
   set("ws-rate-calls", w.rateLimitCalls == null ? "" : String(w.rateLimitCalls));
   set("ws-rate-window", w.rateLimitWindowSeconds == null ? "" : String(w.rateLimitWindowSeconds));
-  set("ws-cap", w.creditsCap == null ? "" : String(Math.round(Number(w.creditsCap) / MICRO)));
-  const period = $<HTMLSelectElement>("ws-cap-period");
-  if (period) period.value = String([1, 7, 30].includes(w.capPeriodDays ?? 30) ? w.capPeriodDays : 30);
   set("ws-budget", w.budgetUsd == null ? "" : String(w.budgetUsd));
   set("ws-tpm", w.tpmLimit == null ? "" : String(w.tpmLimit));
   const bperiod = $<HTMLSelectElement>("ws-budget-period");
@@ -1341,7 +1323,7 @@ export async function loadWorkspacesPanel(): Promise<void> {
   const [models, connectors, cap, provs] = await Promise.all([
     // The MODELS PAGE's own list (rates included) — the role tab mirrors it,
     // active (supported) models only.
-    via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputCreditsPerMTok: number; outputCreditsPerMTok: number; supported: boolean; providerEnabled?: boolean }>>(
+    via<Array<{ id: string; name: string; providerSlug: string; kind: string; inputUsdPerMTok: number; outputUsdPerMTok: number; supported: boolean; providerEnabled?: boolean }>>(
       (c) => c.orgModels?.list?.(), "orgModelsList"),
     via<{ pipedream?: Array<{ appSlug: string; name?: string; appName?: string; icon?: string }>; mcp?: Array<{ slug: string; name: string; enabled?: boolean }> }>(
       // The two shared-connector lists are one read on the desktop; on web they
@@ -1364,7 +1346,7 @@ export async function loadWorkspacesPanel(): Promise<void> {
   // 2026-09-11): enabled provider AND supported model — never the raw catalog.
   catalog = (models || []).filter((m) => m.supported !== false && m.providerEnabled !== false).map((m) => ({
     key: m.id, kind: m.kind, displayName: m.name, provider: m.providerSlug,
-    inCr: m.inputCreditsPerMTok ?? 0, outCr: m.outputCreditsPerMTok ?? 0,
+    inUsd: m.inputUsdPerMTok ?? 0, outUsd: m.outputUsdPerMTok ?? 0,
   }));
   const byId = new Map<string, { id: string; name: string; icon: string | null; kind: string }>();
   // Several accounts for one Pipedream app collapse to a single connector.

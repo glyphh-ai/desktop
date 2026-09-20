@@ -2,7 +2,7 @@
  * admin-ipc.ts — the desktop renderer's transport to the SUPER-ADMIN console
  * surfaces (Settings › Platform): the global model catalog, plan pricing +
  * the Stripe price history, platform usage rollups, and the org list with
- * credit grants.
+ * admin fund grants (dollars into an org's Pipedream budget).
  *
  * Same shape as account-ipc.ts: the renderer has no SDK handle (preload
  * boundary), so these thin IPC methods call the MAIN-process @glyphh/sdk
@@ -18,15 +18,13 @@ import { getClient } from "./glyphh-client";
 import { refreshHeartbeat } from "./auth";
 
 // The SDK's index doesn't re-export the admin console input shapes, so they
-// are mirrored structurally here (account-ipc.ts's discipline). All rates and
-// credit fields keep the WIRE units (micro-credits / USD cents) end to end;
+// are mirrored structurally here (account-ipc.ts's discipline). Money keeps
+// the WIRE units (dollars for budgets, USD cents for plan prices) end to end;
 // the renderer owns display conversion.
 interface AdminModelPatch {
   display_name?: string;
   alias?: string | null;
   active?: boolean;
-  input_credits_per_mtok?: number | null;
-  output_credits_per_mtok?: number | null;
   context_window?: number | null;
   max_output_tokens?: number | null;
   long_context_threshold?: number | null;
@@ -36,7 +34,6 @@ interface AdminModelPatch {
 interface AdminPlanPatch {
   display_name?: string;
   monthly_usd_cents?: number;
-  included_credits?: number;
   max_seats?: number;
   active?: boolean;
   rate_limit_rpm?: number | null;
@@ -65,7 +62,7 @@ export function registerAdminIpc(): void {
     try { return { ok: true as const, provider: await getClient().admin.createProvider(input) }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("admin-model-create", async (_e, input: { id: string; providerSlug: string; name: string; kind: "proxied"; alias?: string | null; contextWindow?: number | null; maxOutputTokens?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => {
+  ipcMain.handle("admin-model-create", async (_e, input: { id: string; providerSlug: string; name: string; kind: "proxied"; alias?: string | null; contextWindow?: number | null; maxOutputTokens?: number | null }) => {
     try { return { ok: true as const, model: await getClient().admin.createModel(input) }; }
     catch (err) { return fail(err); }
   });
@@ -76,7 +73,7 @@ export function registerAdminIpc(): void {
     try { return { ok: true as const, plan: (await getClient().admin.updatePlan(String(tier), patch)).plan }; }
     catch (err) { return fail(err); }
   });
-  ipcMain.handle("admin-plan-create", async (_e, input: { tier: string; display_name: string; monthly_usd_cents: number; included_credits: number; max_seats: number; rate_limit_rpm?: number | null; active?: boolean }) => {
+  ipcMain.handle("admin-plan-create", async (_e, input: { tier: string; display_name: string; monthly_usd_cents: number; max_seats: number; rate_limit_rpm?: number | null; active?: boolean }) => {
     try { return { ok: true as const, plan: (await getClient().admin.createPlan(input)).plan }; }
     catch (err) { return fail(err); }
   });
@@ -126,7 +123,7 @@ export function registerAdminIpc(): void {
   ipcMain.handle("admin-revenue", (_e, q: { from: string; to: string; orgId?: string }) =>
     getClient().admin.revenue({ from: String(q?.from || ""), to: String(q?.to || ""), ...(q?.orgId ? { orgId: q.orgId } : {}) }));
 
-  // ── orgs + credit grants ────────────────────────────────────────────────
+  // ── orgs + fund grants ──────────────────────────────────────────────────
   ipcMain.handle("admin-orgs", (_e, q: { q?: string; page?: number; limit?: number }) =>
     getClient().admin.orgs({ q: q?.q, page: q?.page, limit: q?.limit }));
   ipcMain.handle("admin-org-create", async (_e, input: { name: string; tier?: string }) => {
@@ -136,8 +133,9 @@ export function registerAdminIpc(): void {
   ipcMain.handle("admin-org", (_e, id: string) => getClient().admin.org(String(id)));
   ipcMain.handle("admin-org-update", (_e, id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     getClient().admin.updateOrg(String(id), patch));
-  ipcMain.handle("admin-org-grant-credits", async (_e, id: string, credits: number, note?: string) => {
-    try { return { ok: true as const, balance: (await getClient().admin.grantCredits(String(id), Number(credits) || 0, note)).balance }; }
+  // Add dollars to an org's Pipedream budget; answers the budget's new remaining dollars.
+  ipcMain.handle("admin-org-grant-funds", async (_e, id: string, usd: number, note?: string) => {
+    try { return { ok: true as const, remainingUsd: (await getClient().admin.grantFunds(String(id), Number(usd) || 0, note)).remainingUsd }; }
     catch (err) { return fail(err); }
   });
 

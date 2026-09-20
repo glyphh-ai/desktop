@@ -247,7 +247,7 @@ async function pollOrgConfig(): Promise<void> {
     const gates = (await getClient().plans.gates()) as unknown as Record<string, unknown>;
     const signature = JSON.stringify([
       gates.gatewayAllowed, gates.tier, gates.plan, gates.governance,
-      gates.autoOnly, gates.cliAllowed, gates.vendorRouting,
+      gates.autoOnly, gates.cliAllowed,
       // The org's default model (2026-09-20): a change must reach the loops
       // and the chip without a restart, like every other org switch.
       gates.defaultModel,

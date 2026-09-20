@@ -147,13 +147,6 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
   // touches the OS window (size, position, fullscreen) or the rail — a layout
   // is workspace state, not window state.
 
-  // Per-user usage + credit balance, straight from the server (the proxy meters
-  // this org/user). Replaces the old local UsageTracker numbers on the dashboard.
-
-  // Per-CHAT credit usage — server returns { byChat: { <chatId>: { credits,
-  // requests } } } with credits in MICRO-credits. Drives the per-chat credit
-  // labels on the dashboard HOME landing.
-
   ipcMain.handle("get-auth-status", () => getAuthStatus());
   ipcMain.handle("refresh-auth", async () => {
     const hb = await refreshHeartbeat();

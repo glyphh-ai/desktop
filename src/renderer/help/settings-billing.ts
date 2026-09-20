@@ -2,20 +2,21 @@
  * settings-billing.ts — Settings › Billing.
  *
  * Ported from the platform's /billing page and its shared data layer
- * (platform/app/lib/billing/hooks.js): the credit balance and its plan-
- * allowance / purchased split, one-time top-ups, the auto-top-up rule, seat
- * usage, the invoice table, and the Stripe customer-portal hand-off.
+ * (platform/app/lib/billing/hooks.js): the Pipedream budget (plan pool +
+ * funds − spent, in DOLLARS — his ruling, 2026-09-20: credits are dead),
+ * Add funds, the auto-reload rule, seat usage, the invoice table, and the
+ * Stripe customer-portal hand-off.
  *
  * The plan picker lives HERE now — there is no external pricing page to send
  * anyone to anymore. The catalog is pure server DATA (api.plans(): price,
- * credits, seats, SSO per tier), so nothing static can drift; only the
+ * monthly pool, seats, SSO per tier), so nothing static can drift; only the
  * upgrade/downgrade semantics are code, ported from the platform's
  * lib/billing/hooks.js changePlan(): no subscription → hosted checkout;
  * live subscription → confirm, then an in-app change-plan (Stripe prorates),
  * except cancel-to-free which lives in the Stripe portal. Every call goes
  * through settings-api.ts — SDK on web, main-process SDK over IPC on desktop.
  *
- * Everything Stripe does is asynchronous on its side: crediting and card
+ * Everything Stripe does is asynchronous on its side: funding and card
  * capture land on a webhook that can lag several seconds. Coming back from a
  * hosted page therefore re-polls a couple of times rather than claiming a
  * result it hasn't seen.
@@ -24,20 +25,20 @@
 import { confirmAction, escapeHtml, paginate, renderPaginationBar } from "./shared.js";
 import { openUrlInWorkbench } from "./code.js";
 import {
-  accountApi, creditsForUsd, fmtDate, fmtInt, fmtMoney, openHostedPage,
-  USD_PER_CREDIT,
-  TOPUP_CREDIT_BUCKETS, topupDiscount, usdForCredits, creditsForUsdTiered,
-  type Autotopup, type BillingPlan, type CreditsBreakdown, type Invoice, type Subscription, type UpcomingInvoice,
+  accountApi, fmtDate, fmtInt, fmtMoney, fmtUsd, openHostedPage,
+  TOPUP_USD_BUCKETS, TOPUP_MIN_USD,
+  type Autotopup, type BillingPlan, type Balance, type Invoice, type Subscription, type UpcomingInvoice,
 } from "./settings-api.js";
 
 // ── State ────────────────────────────────────────────────────────────────
 
 let plans: BillingPlan[] = [];
 let sub: Subscription | null = null;
-let credits: CreditsBreakdown | null = null;
-/** Auto-top-up in DISPLAY units (whole credits + USD), mirroring the platform
- *  form. Converted back to micro-credits on save. */
-let autoTopup = { enabled: false, thresholdCredits: 100, packUsd: 24, monthlyCapUsd: 200 };
+/** The Pipedream budget this period, in dollars — null until read (a member's
+ *  403 leaves it null: the budget is the org admin's). */
+let balance: Balance | null = null;
+/** The auto-reload rule, in dollars. Defaults are what a first enable writes. */
+let autoTopup: Autotopup = { enabled: false, thresholdUsd: 5, topupUsd: 20 };
 let invoices: Invoice[] | null = null;
 let upcoming: UpcomingInvoice | null = null;
 /** Role gate for the money moves (subscribe / change-plan are org_admin-only
@@ -48,7 +49,6 @@ let isAdmin: boolean | null = null;
 let busy = "";
 let wired = false;
 let toastTimer = 0;
-/** Debounce for the auto-top-up numbers (no Save button any more). */
 
 const $ = (id: string): HTMLElement | null => document.getElementById(id);
 
@@ -78,29 +78,25 @@ function fail(msg: string): void {
 
 // ── Painters ─────────────────────────────────────────────────────────────
 
-function paintCredits(): void {
-  setText("billing-balance", credits ? fmtInt(credits.balance) : "—");
-  // "Plan allowance" = what the CURRENT PLAN allocates each month, from the
-  // plan catalog — NOT credits.grants, which the server computes as the sum of
-  // REMAINING expiring grant credits (a burn-down that read like the balance).
-  // Painted after plans + status settle in loadBilling; "—" until both known.
-  const plan = plans.find((p) => p.tier === (sub?.tier || "free"));
-  setText("billing-grants", plan ? fmtInt(plan.monthlyCredits || 0) : "—");
-  setText("billing-purchases", credits ? fmtInt(credits.purchases) : "—");
+/** The budget card (Settings › Usage) — the SAME elements settings.ts paints
+ *  from dashboardData, repainted here from the fresh balance after Stripe
+ *  confirms a purchase, so the numbers move without a tab change. */
+function paintBudget(): void {
+  if (!balance) return;
+  setText("ua-balance", fmtUsd(balance.remainingUsd));
+  setText("ua-spent", fmtUsd(balance.spentUsd));
+  setText("ua-funds", fmtUsd(balance.fundsUsd));
+  setText("ua-pool", `${fmtUsd(balance.planUsd)} / month`);
 }
 
-// ── The Need-more-usage form (ua-buy-form) — ONE node serving Usage AND
-//    Billing (his spec, 2026-08-24): whichever tab opens it re-homes the form
-//    into itself and the breadcrumb reads ← Usage / ← Billing accordingly.
+// ── The Add-funds form (ua-buy-form) — ONE node serving Usage AND Billing
+//    (his spec, 2026-08-24): whichever tab opens it re-homes the form into
+//    itself and the breadcrumb reads ← Usage / ← Billing accordingly.
 let buyFormWired = false;
-let buySelectedCredits = 0;
-/** The buckets, in dollars: each is the exact cost of a discount tier, so
- *  picking one lands the tier instead of missing it by a dollar. Same four the
- *  console offers. */
-const TOPUP_USD_BUCKETS = [20, 45, 80, 140];
+let buySelectedUsd = 0;
 
 function buyAmountUsd(): number {
-  return Math.max(0, Number(($("ua-buy-custom") as HTMLInputElement | null)?.value) || 0);
+  return Math.max(0, Math.floor(Number(($("ua-buy-custom") as HTMLInputElement | null)?.value) || 0));
 }
 
 function buySummary(): void {
@@ -108,21 +104,20 @@ function buySummary(): void {
   const hint = $("ua-buy-custom-hint");
   const go = $("ua-buy-go") as HTMLButtonElement | null;
   const usd = buyAmountUsd();
-  buySelectedCredits = creditsForUsdTiered(usd);
-  const save = topupDiscount(buySelectedCredits);
+  buySelectedUsd = usd;
   if (hint) {
-    hint.textContent = buySelectedCredits > 0
-      ? `Buys ${fmtInt(buySelectedCredits)} credits${save > 0 ? ` · ${Math.round(save * 100)}% off` : ""}`
-      : "";
+    hint.textContent = usd >= TOPUP_MIN_USD ? `Adds ${fmtUsd(usd)} to your Pipedream budget`
+      : usd > 0 ? `Minimum ${fmtUsd(TOPUP_MIN_USD)}` : "";
   }
   if (sum) {
-    sum.textContent = `Credits cost 2¢ each. $${usdForCredits(2500)} and up gets 10% more, `
-      + `$${usdForCredits(5000)} gets 20% more, $${usdForCredits(10000)} gets 30% more. `
-      + "Purchased credits never expire.";
+    // Dollar for dollar (his ruling, 2026-09-20): no unit, no rate, no tiers.
+    sum.textContent = "Funds go dollar for dollar into your Pipedream budget — the connector calls "
+      + "your agents make through the org's connections. They sit on top of the plan's monthly "
+      + "budget and never expire. Model calls never draw on it.";
   }
   if (go) {
-    go.disabled = usd < 5;
-    go.textContent = usd >= 5 ? `Pay $${usd.toFixed(2)}` : "Pay";
+    go.disabled = usd < TOPUP_MIN_USD;
+    go.textContent = usd >= TOPUP_MIN_USD ? `Pay ${fmtUsd(usd)}` : "Pay";
   }
 }
 
@@ -141,13 +136,9 @@ function buildBuyGrid(): void {
     btn.type = "button";
     btn.className = "billing-topup-card";
     btn.dataset.usd = String(usd);
-    const credits = creditsForUsdTiered(usd);
-    const save = topupDiscount(credits);
     btn.innerHTML =
-      `<span class="billing-topup-price">$${usd}.00</span>` +
-      `<span class="billing-topup-credits">${escapeHtml(fmtInt(credits))}</span>` +
-      `<span class="billing-topup-unit">credits</span>` +
-      (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
+      `<span class="billing-topup-amount">${escapeHtml(fmtUsd(usd))}</span>` +
+      `<span class="billing-topup-unit">added to budget</span>`;
     btn.addEventListener("click", () => pick(usd));
     grid.appendChild(btn);
   }
@@ -167,7 +158,7 @@ export function openBuyForm(from: "usage" | "billing"): void {
     $("ua-buy-back")?.addEventListener("click", closeBuyForm);
     $("ua-buy-cancel")?.addEventListener("click", closeBuyForm);
     $("ua-buy-go")?.addEventListener("click", (e) => {
-      void buyTopup(buySelectedCredits, e.currentTarget as HTMLButtonElement);
+      void buyTopup(buySelectedUsd, e.currentTarget as HTMLButtonElement);
     });
   }
   const crumb = $("ua-buy-back");
@@ -189,38 +180,27 @@ export function closeBuyForm(): void {
   $("billing-main")?.classList.remove("hidden");
 }
 
-// ── Auto-reload — same in-tab form pattern. Edits stage locally and write on
-//    Save; Cancel/← restores the snapshot taken when the form opened.
-let atSnapshot: typeof autoTopup | null = null;
-
-function openAtForm(): void {
-  atSnapshot = { ...autoTopup };
-  paintAutotopup();
-  $("billing-main")?.classList.add("hidden");
-  $("billing-at-form")?.classList.remove("hidden");
+// ── Auto-reload — the rule in dollars. `autoReloadLine` is the one sentence
+//    every surface uses to describe it (the Usage card's sub-line, the 402
+//    dialog).
+export function autoReloadLine(a: Autotopup | null): string {
+  if (!a?.enabled) return "Auto-reload off";
+  return `Auto-reload on — adds ${fmtUsd(a.topupUsd)} when the budget falls below ${fmtUsd(a.thresholdUsd)}`;
 }
 
-function closeAtForm(discard: boolean): void {
-  if (discard && atSnapshot) { Object.assign(autoTopup, atSnapshot); paintAutotopup(); }
-  atSnapshot = null;
-  const statusEl = $("billing-at-status");
-  if (statusEl) statusEl.textContent = "";
-  $("billing-at-form")?.classList.add("hidden");
-  $("billing-main")?.classList.remove("hidden");
-}
-
-function paintAutotopup(): void {
-  const on = $("billing-at-enabled") as HTMLInputElement | null;
-  const threshold = $("billing-at-threshold") as HTMLInputElement | null;
-  const pack = $("billing-at-pack") as HTMLInputElement | null;
-  const cap = $("billing-at-cap") as HTMLInputElement | null;
-  if (on) on.checked = autoTopup.enabled;
-  // Never stomp a field the user is typing in.
-  if (threshold && document.activeElement !== threshold) threshold.value = String(autoTopup.thresholdCredits);
-  if (pack && document.activeElement !== pack) pack.value = String(autoTopup.packUsd);
-  if (cap && document.activeElement !== cap) cap.value = String(autoTopup.monthlyCapUsd);
-  setText("billing-at-pack-hint", `≈ ${fmtInt(creditsForUsd(autoTopup.packUsd))} credits`);
-  paintAutotopupSummary();
+/** Flip the rule on/off, writing the dollar defaults when the org has never
+ *  set amounts (a server-side zero would reload nothing). */
+export async function setAutoReloadEnabled(enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+  const api = accountApi();
+  const cfg = await api.autotopup().catch(() => autoTopup);
+  const next: Autotopup = {
+    enabled,
+    thresholdUsd: cfg.thresholdUsd > 0 ? cfg.thresholdUsd : 5,
+    topupUsd: cfg.topupUsd > 0 ? cfg.topupUsd : 20,
+  };
+  const res = await api.setAutotopup(next);
+  if (res.ok) autoTopup = res.data;
+  return res.ok ? { ok: true } : { ok: false, error: res.error };
 }
 
 /** Seats: the meter plus ONE line. The three-way explanation that used to sit
@@ -246,7 +226,8 @@ function paintPlan(): void {
   const current = plans.find((p) => p.tier === (sub?.tier || "free"));
   setText("billing-plan-name", current?.displayName || sub?.tier || "—");
   const bits: string[] = [];
-  if (current?.monthlyCredits) bits.push(`${fmtInt(current.monthlyCredits)} credits / month`);
+  // The plan's Pipedream budget — its price, dollar for dollar.
+  if (current) bits.push(`${fmtUsd(current.poolUsdPerMonth || 0)} / month Pipedream budget`);
   // What they owe next and when (his order, 2026-09-18). A seat added mid
   // month shows up here as the part-month charge before the date arrives.
   if (upcoming?.hasUpcoming && upcoming.dueAt) {
@@ -254,7 +235,7 @@ function paintPlan(): void {
     bits.push(`Next invoice ${fmtMoney(upcoming.amountDue || 0, upcoming.currency)} on ${day}`);
   }
   if (sub?.billingStatus && sub.billingStatus !== "active") bits.push(sub.billingStatus);
-  setText("billing-plan-sub", bits.join(" · ") || "No monthly allowance");
+  setText("billing-plan-sub", bits.join(" · ") || "No plan");
 }
 
 // ── The plan picker ──────────────────────────────────────────────────────
@@ -369,7 +350,7 @@ function paintPlans(): void {
           : p.bespoke ? `<span class="acct-chip">Custom deal</span>` : "") +
       `</div>` +
       `<div class="billing-plan-price"><span class="billing-plan-amount">${escapeHtml(amount)}</span> <span class="billing-plan-period">${escapeHtml(period)}</span></div>` +
-      `<div class="billing-plan-line">${generic ? "Volume credits" : `${escapeHtml(fmtInt(p.monthlyCredits || 0))} credits / month`}</div>` +
+      `<div class="billing-plan-line">${generic ? "Custom Pipedream budget" : `${escapeHtml(fmtUsd(p.poolUsdPerMonth || 0))} / month Pipedream budget`}</div>` +
       `<div class="billing-plan-line">${escapeHtml(seatsLine)}${p.sso ? ` <span class="billing-plan-sso">SSO</span>` : ""}</div>`;
     const btn = planActionButton(p, { isCurrent, generic, subscribed, currentIsBespoke, currentTier });
     if (btn) card.appendChild(btn);
@@ -439,10 +420,10 @@ function paintInvoices(): void {
 
 // ── Actions ──────────────────────────────────────────────────────────────
 
-// Stripe credits/updates the org on a WEBHOOK, so the numbers lag the redirect
-// by seconds-to-a-minute. After ANY hosted hand-off (top-up, checkout, plan
-// change, portal) poll credits+status every few seconds for up to two minutes,
-// stopping the moment the balance or tier actually moves — never assert a
+// Stripe funds/updates the org on a WEBHOOK, so the numbers lag the redirect
+// by seconds-to-a-minute. After ANY hosted hand-off (Add funds, checkout, plan
+// change, portal) poll balance+status every few seconds for up to two minutes,
+// stopping the moment the budget or tier actually moves — never assert a
 // number the server hasn't confirmed. The poll pauses while the tab is hidden
 // (Stripe checkout has the focus) and resumes on visibility; it dies with the
 // panel.
@@ -451,7 +432,7 @@ const POLL_WINDOW_MS = 120_000;
 let pollTimer = 0;
 let pollUntil = 0;
 let pollPaused = false;
-let pollBaseline: { balance: number; tier: string } | null = null;
+let pollBaseline: { remainingUsd: number; tier: string } | null = null;
 
 /** The Billing panel only lives inside the settings modal — gone means stop. */
 function billingPanelVisible(): boolean {
@@ -467,7 +448,7 @@ function stopStripePoll(): void {
 }
 
 function repollAfterStripe(): void {
-  pollBaseline = { balance: credits?.balance ?? -1, tier: sub?.tier || "" };
+  pollBaseline = { remainingUsd: balance?.remainingUsd ?? -1, tier: sub?.tier || "" };
   pollUntil = Date.now() + POLL_WINDOW_MS;
   pollPaused = false;
   window.clearTimeout(pollTimer);
@@ -479,53 +460,47 @@ async function stripePollTick(): Promise<void> {
   if (document.hidden) { pollPaused = true; return; }   // resumes on visibilitychange
   try {
     const api = accountApi();
-    // Reads are independent: a member's 403 on the credit pool must not stop
+    // Reads are independent: a member's 403 on the budget must not stop
     // the tier watch (that is exactly the post-subscribe case).
-    const [c, s] = await Promise.all([api.credits().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
+    const [b, s] = await Promise.all([api.balance().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
     let changed = false;
     if (s) { changed = changed || s.tier !== pollBaseline.tier; sub = s; }
-    if (c) { changed = changed || c.balance !== pollBaseline.balance; credits = c; }
-    if (c || s) { paintCredits(); paintPlan(); paintSeats(); paintPlans(); }
+    if (b) { changed = changed || b.remainingUsd !== pollBaseline.remainingUsd; balance = b; }
+    if (b || s) { paintBudget(); paintPlan(); paintSeats(); paintPlans(); }
     if (changed) { stopStripePoll(); toast("Updated — Stripe confirmed your change."); return; }
   } catch { /* transient — keep trying inside the window */ }
   pollTimer = window.setTimeout(() => { void stripePollTick(); }, POLL_EVERY_MS);
 }
 
-/** The manual refresh next to the Credits header — same on-demand re-pull the
- *  Account plan chip offers, for when the webhook outruns the poll window. */
-async function refreshCredits(): Promise<void> {
-  const btn = $("billing-credits-refresh");
-  btn?.classList.add("spinning");
-  try {
-    const api = accountApi();
-    const [c, s] = await Promise.all([api.credits().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
-    if (c) credits = c;
-    if (s) sub = s;
-    paintCredits();
-    paintPlan();
-    paintSeats();
-    paintPlans();
-    void paintCardOnFile();
-    invoices = await api.invoices().catch(() => invoices);
-    paintInvoices();
-  } finally {
-    window.setTimeout(() => btn?.classList.remove("spinning"), 400);
-  }
+/** An on-demand re-pull after a purchase settles, for when the webhook
+ *  outruns the poll window. */
+async function refreshBudget(): Promise<void> {
+  const api = accountApi();
+  const [b, s] = await Promise.all([api.balance().catch(() => null), api.reconcile().catch(() => api.status().catch(() => null))]);
+  if (b) balance = b;
+  if (s) sub = s;
+  paintBudget();
+  paintPlan();
+  paintSeats();
+  paintPlans();
+  void paintCardOnFile();
+  invoices = await api.invoices().catch(() => invoices);
+  paintInvoices();
 }
 
 /** A dedicated little overlay holding ONLY the embedded checkout — the
  *  Settings page's topup cards use this so the purchase happens in place.
  *  Resolves true when it handled the purchase (mounted), false → hosted. */
-async function embeddedTopupOverlay(credits: number): Promise<boolean> {
+async function embeddedTopupOverlay(usd: number): Promise<boolean> {
   // PRE-CHECK before any DOM shows: an overlay that appears and instantly
   // vanishes into the hosted fallback reads as a glitch ("an odd popup shows
   // then jumps"). No key or no Stripe.js → never build the overlay at all.
   if (!(await embeddedReady())) return false;
   const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay buy-credits-overlay";
+  overlay.className = "confirm-overlay add-funds-overlay";
   overlay.innerHTML = `
-    <div class="confirm-box buy-credits-box">
-      <div class="confirm-head"><h3>Add ${escapeHtml(fmtInt(credits))} credits — $${usdForCredits(credits)}</h3></div>
+    <div class="confirm-box add-funds-box">
+      <div class="confirm-head"><h3>Add ${escapeHtml(fmtUsd(usd))} to your Pipedream budget</h3></div>
       <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
       <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
     </div>`;
@@ -534,32 +509,31 @@ async function embeddedTopupOverlay(credits: number): Promise<boolean> {
   overlay.addEventListener("mousedown", (e) => { if (e.target === overlay) closeIt(); });
   document.body.appendChild(overlay);
   const stage = overlay.querySelector<HTMLElement>(".bc-checkout-stage")!;
-  const mounted = await tryEmbeddedTopup(credits, stage, (grantSeen) => {
+  const mounted = await tryEmbeddedTopup(usd, stage, (fundsSeen) => {
     if (!overlay.isConnected) return;
-    stage.innerHTML = grantSeen
-      ? `<div class="bc-confirming bc-done">✓ Credits added.</div>`
-      : `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
-    void refreshCredits();
+    stage.innerHTML = fundsSeen
+      ? `<div class="bc-confirming bc-done">✓ Funds added.</div>`
+      : `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your funds will appear shortly.</div>`;
+    void refreshBudget();
     window.setTimeout(() => { if (overlay.isConnected) closeIt(); }, 1600);
   }).catch((e: unknown) => { embeddedFailure = e instanceof Error ? e.message : String(e); return false; });
   if (!mounted) closeIt();
   return mounted;
 }
 
-export async function buyTopup(credits: number, btn?: HTMLButtonElement): Promise<void> {
-  const usd = usdForCredits(credits);
-  if (!credits || usd < 5) { toast("Minimum top-up is $5."); return; }
+export async function buyTopup(usd: number, btn?: HTMLButtonElement): Promise<void> {
+  if (!(usd >= TOPUP_MIN_USD)) { toast(`Minimum is ${fmtUsd(TOPUP_MIN_USD)}.`); return; }
   if (busy) return;
-  busy = `topup-${credits}`;
+  busy = `topup-${usd}`;
   // Progress shows as a disabled control + a toast: the preset cards are built
   // from spans, so rewriting their text would eat the markup.
   if (btn) btn.disabled = true;
   try {
     // The purchase completes in an in-app overlay; nothing leaves the app.
-    if (await embeddedTopupOverlay(credits)) { repollAfterStripe(); return; }
-    toast(`Could not start the top-up — ${embeddedFailure || "checkout didn't open"}`);
+    if (await embeddedTopupOverlay(usd)) { repollAfterStripe(); return; }
+    toast(`Could not start the purchase — ${embeddedFailure || "checkout didn't open"}`);
   } catch (err) {
-    toast(`Could not start the top-up — ${err instanceof Error ? err.message : String(err)}`);
+    toast(`Could not start the purchase — ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     busy = "";
     if (btn) btn.disabled = false;
@@ -612,34 +586,34 @@ async function embeddedReady(): Promise<boolean> {
 
 /**
  * Try the whole purchase inside `host`: mount Stripe's embedded checkout, and
- * on completion poll the balance until the webhook grant lands (or the window
- * closes). Returns false when embedded isn't available — the caller falls
- * back to the hosted page, the pre-existing path.
+ * on completion poll the budget until the webhook lands the funds (or the
+ * window closes). Returns false when embedded isn't available — the caller
+ * reports why; every purchase stays in the app.
  */
 async function tryEmbeddedTopup(
-  credits: number,
+  usd: number,
   host: HTMLElement,
-  onSettled: (grantSeen: boolean) => void,
+  onSettled: (fundsSeen: boolean) => void,
 ): Promise<boolean> {
   const key = await publishableKey();
   const Stripe = await loadStripeJs();
   if (!key || !Stripe) return false;
-  const res = await accountApi().topupEmbedded(Math.round(credits));
+  const res = await accountApi().topupEmbedded(Math.round(usd));
   if (!res.ok) { embeddedFailure = res.error || "the server refused the checkout"; return false; }
 
   const api = accountApi();
-  const before = await api.credits().then((c) => c.balance).catch(() => -1);
+  const before = await api.balance().then((b) => b.fundsUsd).catch(() => -1);
   const checkout = await Stripe(key).initEmbeddedCheckout({
     clientSecret: res.data,
     onComplete: () => {
-      // Paid. The credits land on the checkout.session.completed webhook —
-      // swap to a confirming state and poll until the balance moves.
+      // Paid. The funds land on the checkout.session.completed webhook —
+      // swap to a confirming state and poll until the budget moves.
       checkout.destroy();
-      host.innerHTML = `<div class="bc-confirming"><span class="spinner"></span> Payment received — confirming your credits…</div>`;
+      host.innerHTML = `<div class="bc-confirming"><span class="spinner"></span> Payment received — confirming your funds…</div>`;
       const until = Date.now() + POLL_WINDOW_MS;
       const tick = async (): Promise<void> => {
-        const bal = await api.credits().then((c) => c.balance).catch(() => -1);
-        if (bal >= 0 && bal !== before) { onSettled(true); return; }
+        const funds = await api.balance().then((b) => b.fundsUsd).catch(() => -1);
+        if (funds >= 0 && funds !== before) { onSettled(true); return; }
         if (Date.now() > until || !host.isConnected) { onSettled(false); return; }
         window.setTimeout(() => { void tick(); }, POLL_EVERY_MS);
       };
@@ -652,27 +626,26 @@ async function tryEmbeddedTopup(
 }
 
 /**
- * The COMPACT "out of credits" dialog — the 402 hand-off. Buy ad-hoc credits
+ * The COMPACT "Pipedream budget used up" dialog — the 402 hand-off. Add funds
  * without leaving the agent: Stripe's Embedded Checkout mounts INSIDE this
- * modal (card details go to Stripe's iframe, never our DOM), completion is
- * confirmed in place, and the hosted page remains the fallback when the
- * server has no publishable key.
+ * modal (card details go to Stripe's iframe, never our DOM) and completion is
+ * confirmed in place.
  */
-export async function openBuyCreditsModal(): Promise<void> {
-  if (document.querySelector(".buy-credits-overlay")) return;   // never stack two
+export async function openAddFundsModal(): Promise<void> {
+  if (document.querySelector(".add-funds-overlay")) return;   // never stack two
   const api = accountApi();
   const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay buy-credits-overlay";
+  overlay.className = "confirm-overlay add-funds-overlay";
   overlay.innerHTML = `
-    <div class="confirm-box buy-credits-box">
-      <div class="confirm-head"><h3>Add credits</h3></div>
+    <div class="confirm-box add-funds-box">
+      <div class="confirm-head"><h3>Pipedream budget used up</h3></div>
       <div class="confirm-body">
-        <p class="bc-balance">Balance: <strong id="bc-balance">—</strong> credits · one-time purchases never expire.</p>
+        <p class="bc-balance">Connector calls through your org's connections draw on this budget. <strong id="bc-balance">—</strong> left this period · funds you add never expire.</p>
         <div class="billing-topup-grid bc-grid" id="bc-grid"></div>
         <label class="settings-toggle" style="margin-top:18px;">
           <input type="checkbox" id="bc-autotopup" />
           <span class="toggle-switch"></span>
-          Auto-top-up when I run low (keeps generations from stopping)
+          <span id="bc-autotopup-line">Auto-reload when the budget runs low</span>
         </label>
         <div class="settings-error hidden" id="bc-error" style="margin-top:10px;"></div>
       </div>
@@ -688,38 +661,38 @@ export async function openBuyCreditsModal(): Promise<void> {
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
 
-  // Live balance.
-  void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(c.balance); }).catch(() => { /* leave the dash */ });
+  // Live budget.
+  const paintLeft = (): void => {
+    void api.balance().then((b) => { const el = overlay.querySelector("#bc-balance"); if (el && b) el.textContent = fmtUsd(b.remainingUsd); }).catch(() => { /* leave the dash */ });
+  };
+  paintLeft();
 
-  // One-time top-up cards → the SAME Stripe checkout the Billing page uses.
+  // The Add-funds buckets → the SAME Stripe checkout the Usage page uses.
   const grid = overlay.querySelector<HTMLElement>("#bc-grid")!;
-  for (const credits of TOPUP_CREDIT_BUCKETS) {
+  for (const usd of TOPUP_USD_BUCKETS) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "billing-topup-card";
-    const save = topupDiscount(credits);
     card.innerHTML =
-      `<span class="billing-topup-price">$${usdForCredits(credits)}</span>` +
-      `<span class="billing-topup-credits">${fmtInt(credits)}</span>` +
-      `<span class="billing-topup-unit">credits</span>` +
-      (save > 0 ? `<span class="billing-topup-save">Save ${Math.round(save * 100)}%</span>` : "");
+      `<span class="billing-topup-amount">${escapeHtml(fmtUsd(usd))}</span>` +
+      `<span class="billing-topup-unit">added to budget</span>`;
     card.addEventListener("click", async () => {
       if (busy) return;
-      busy = `bc-${credits}`; card.disabled = true; setErr("");
+      busy = `bc-${usd}`; card.disabled = true; setErr("");
       try {
         // Embedded first: the purchase completes INSIDE this modal.
         const body = overlay.querySelector<HTMLElement>(".confirm-body")!;
         const stage = document.createElement("div");
         stage.className = "bc-checkout-stage";
         if (!(await embeddedReady())) { setErr(`Could not start checkout — ${embeddedFailure}`); return; }
-        const mounted = await tryEmbeddedTopup(credits, stage, (grantSeen) => {
+        const mounted = await tryEmbeddedTopup(usd, stage, (fundsSeen) => {
           if (!overlay.isConnected) return;
-          if (grantSeen) {
-            stage.innerHTML = `<div class="bc-confirming bc-done">✓ Credits added — you're good to go.</div>`;
-            void api.credits().then((c) => { const b = overlay.querySelector("#bc-balance"); if (b && c) b.textContent = fmtInt(c.balance); }).catch(() => {});
+          if (fundsSeen) {
+            stage.innerHTML = `<div class="bc-confirming bc-done">✓ Funds added — you're good to go.</div>`;
+            paintLeft();
             window.setTimeout(() => { if (overlay.isConnected) close(); }, 1600);
           } else {
-            stage.innerHTML = `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your credits will appear shortly.</div>`;
+            stage.innerHTML = `<div class="bc-confirming">Payment received. Stripe is taking longer than usual — your funds will appear shortly.</div>`;
           }
         });
         if (mounted) {
@@ -744,25 +717,22 @@ export async function openBuyCreditsModal(): Promise<void> {
     grid.appendChild(card);
   }
 
-  // Auto-top-up: reflect the current state, save immediately on toggle.
+  // Auto-reload: reflect the current rule (in dollars), save immediately on toggle.
   const at = overlay.querySelector<HTMLInputElement>("#bc-autotopup")!;
-  void api.autotopup().then((a) => { if (a) at.checked = !!a.enabled; }).catch(() => { /* default off */ });
+  const atLine = overlay.querySelector<HTMLElement>("#bc-autotopup-line")!;
+  void api.autotopup().then((a) => { if (a) { autoTopup = a; at.checked = !!a.enabled; atLine.textContent = autoReloadLine(a); } }).catch(() => { /* default off */ });
   at.addEventListener("change", async () => {
     setErr("");
-    const res = await api.setAutotopup({
-      enabled: at.checked,
-      thresholdCredits: Math.round(autoTopup.thresholdCredits || 100),
-      topupCredits: creditsForUsd(autoTopup.packUsd || 24),
-    }).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
-    if (!res.ok) { setErr(res.error || "Could not save auto-top-up."); at.checked = !at.checked; }
-    else autoTopup.enabled = at.checked;
+    const res = await setAutoReloadEnabled(at.checked).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    if (!res.ok) { setErr(res.error || "Could not save auto-reload."); at.checked = !at.checked; }
+    else atLine.textContent = autoReloadLine(autoTopup);
   });
 
   overlay.querySelector("#bc-close")!.addEventListener("click", close);
   overlay.querySelector("#bc-manage")!.addEventListener("click", () => { close(); openUrlInWorkbench("Billing", ""); });
 }
 
-/** Mount the plan checkout INSIDE our own modal — the exact top-up flow (his
+/** Mount the plan checkout INSIDE our own modal — the exact Add-funds flow (his
  *  ask, 2026-09-13: one Stripe surface). Resolves true when embedded handled
  *  it; false → the caller falls back to the hosted page. */
 async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
@@ -778,9 +748,9 @@ async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
     return true;
   }
   const overlay = document.createElement("div");
-  overlay.className = "confirm-overlay buy-credits-overlay";
+  overlay.className = "confirm-overlay add-funds-overlay";
   overlay.innerHTML = `
-    <div class="confirm-box buy-credits-box">
+    <div class="confirm-box add-funds-box">
       <div class="confirm-head"><h3>Subscribe — ${escapeHtml(p.displayName || p.tier)}</h3></div>
       <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
       <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
@@ -807,7 +777,7 @@ async function embeddedSubscribeOverlay(p: BillingPlan): Promise<boolean> {
   return true;
 }
 
-/** No subscription yet → EMBEDDED first (in-app modal, the top-up flow); the
+/** No subscription yet → EMBEDDED first (in-app modal, the Add-funds flow); the
  *  hosted Stripe Checkout stays as the fallback. */
 async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void> {
   if (busy) return;
@@ -829,7 +799,7 @@ async function doSubscribe(p: BillingPlan, btn: HTMLButtonElement): Promise<void
 
 /**
  * Live subscription → change it in place, the platform's semantics verbatim:
- * confirm first (price, credits, seats, and what proration does); paid → paid
+ * confirm first (price, budget, seats, and what proration does); paid → paid
  * goes through changePlan (a `url` in the answer means Stripe still needs a
  * hosted page — redirect; otherwise it applied immediately); target Free is a
  * scheduled CANCEL and lives in the Stripe portal, not in-app change-plan.
@@ -854,10 +824,10 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
   if (p.tier === "free") {
     // Cancel-to-free is scheduled at period end (so seats stay valid until
     // then) and is executed in the Stripe portal — the platform's exact path.
-    const freeCredits = plans.find((x) => x.tier === "free")?.monthlyCredits || 0;
+    const freePool = plans.find((x) => x.tier === "free")?.poolUsdPerMonth || 0;
     const ok = await confirmAction({
       title: "Cancel your subscription?",
-      body: `You keep ${current?.displayName || "your plan"} until the period ends, then drop to Free — ${fmtInt(freeCredits)} credits a month, single seat. Cancelling happens in the Stripe portal that opens next.`,
+      body: `You keep ${current?.displayName || "your plan"} until the period ends, then drop to Free — a ${fmtUsd(freePool)} / month Pipedream budget, single seat. Cancelling happens in the Stripe portal that opens next.`,
       confirmLabel: "Open Stripe portal",
       danger: true,
     });
@@ -865,11 +835,11 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
     return;
   }
 
-  const details = `${amount} ${period} · ${fmtInt(p.monthlyCredits || 0)} credits / month · up to ${fmtInt(p.maxSeats || 1)} seats`;
+  const details = `${amount} ${period} · ${fmtUsd(p.poolUsdPerMonth || 0)} / month Pipedream budget · up to ${fmtInt(p.maxSeats || 1)} seats`;
   const ok = await confirmAction(up
     ? {
         title: `Upgrade to ${p.displayName}?`,
-        body: `${details}. Stripe prorates the difference on your next invoice; seats and credits update right away.`,
+        body: `${details}. Stripe prorates the difference on your next invoice; seats and the budget update right away.`,
         confirmLabel: "Upgrade",
       }
     : {
@@ -905,45 +875,6 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
     btn.disabled = false;
     btn.textContent = was;
   }
-}
-
-async function saveAutotopup(): Promise<void> {
-  if (busy) return;
-  busy = "autotopup";
-  const statusEl = $("billing-at-status");
-  if (statusEl) { statusEl.textContent = "Saving…"; statusEl.className = "set-save-state"; }
-  try {
-    // Whole credits on the wire (the server's units); the USD pack converts
-    // through the display rate. The 30-day cap is NOT persisted by the server
-    // yet — see the field's hint.
-    const res = await accountApi().setAutotopup({
-      enabled: autoTopup.enabled,
-      thresholdCredits: Math.round(autoTopup.thresholdCredits || 0),
-      topupCredits: creditsForUsd(autoTopup.packUsd),
-    });
-    if (statusEl) {
-      statusEl.textContent = res.ok ? "Saved" : res.error;
-      statusEl.className = `set-save-state ${res.ok ? "success" : "error"}`;
-    }
-    if (res.ok) window.setTimeout(() => { closeAtForm(false); }, 600);
-  } catch (err) {
-    if (statusEl) {
-      statusEl.textContent = err instanceof Error ? err.message : String(err);
-      statusEl.className = "set-save-state error";
-    }
-  } finally {
-    busy = "";
-    paintAutotopupSummary();
-  }
-}
-
-/** The fold's one-line summary, so the rule is readable while shut. */
-function paintAutotopupSummary(): void {
-  // Dollars, not credits (his order, 2026-09-18): a threshold in credits means
-  // nothing to somebody deciding how much to spend.
-  setText("billing-at-summary", autoTopup.enabled
-    ? `On — buy $${autoTopup.packUsd} (${fmtInt(creditsForUsdTiered(autoTopup.packUsd))} credits) when the balance falls below $${(autoTopup.thresholdCredits * USD_PER_CREDIT).toFixed(2)}`
-    : "Off");
 }
 
 async function openPortal(): Promise<void> {
@@ -989,9 +920,6 @@ export function initBilling(): void {
     }
   });
 
-  // Buy more → the shared Need-more-usage form, breadcrumbed ← Billing.
-  $("billing-buy-toggle")?.addEventListener("click", () => openBuyForm("billing"));
-
   // Adjust plan → its own in-tab form; the plan cards act on their own, so
   // the footer is just Cancel.
   const closePlansForm = (): void => {
@@ -1005,35 +933,7 @@ export function initBilling(): void {
   $("billing-plans-back")?.addEventListener("click", closePlansForm);
   $("billing-plans-cancel")?.addEventListener("click", closePlansForm);
 
-  // Auto-reload → its own in-tab form. Edits stage into state and write ONCE
-  // on Save; Cancel/← discards them back to the snapshot.
-  $("billing-at-toggle")?.addEventListener("click", openAtForm);
-  $("billing-at-back")?.addEventListener("click", () => closeAtForm(true));
-  $("billing-at-cancel")?.addEventListener("click", () => closeAtForm(true));
-  $("billing-at-save")?.addEventListener("click", () => {
-    void (async () => {
-      // The 30-day cap is a local preference until the server persists it.
-      await window.glyphh.setPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd);
-      await saveAutotopup();
-      atSnapshot = null;
-    })();
-  });
-  ($("billing-at-enabled") as HTMLInputElement | null)?.addEventListener("change", (e) => {
-    autoTopup.enabled = (e.currentTarget as HTMLInputElement).checked;
-  });
-  ($("billing-at-threshold") as HTMLInputElement | null)?.addEventListener("input", (e) => {
-    autoTopup.thresholdCredits = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
-  });
-  ($("billing-at-pack") as HTMLInputElement | null)?.addEventListener("input", (e) => {
-    autoTopup.packUsd = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
-    setText("billing-at-pack-hint", `≈ ${fmtInt(creditsForUsd(autoTopup.packUsd))} credits`);
-  });
-  ($("billing-at-cap") as HTMLInputElement | null)?.addEventListener("input", (e) => {
-    autoTopup.monthlyCapUsd = Math.max(0, Number((e.currentTarget as HTMLInputElement).value) || 0);
-  });
-
   $("billing-portal-btn")?.addEventListener("click", () => { void openPortal(); });
-  $("billing-credits-refresh")?.addEventListener("click", () => { void refreshCredits(); });
 
   // A hidden tab pauses the post-Stripe poll (the checkout has the focus);
   // coming back resumes it if its two-minute window is still open.
@@ -1045,7 +945,7 @@ export function initBilling(): void {
   });
 
   // The plan picker + the folded Organization group (the retired Organization
-  // tab) share the same disclosure wiring as Auto top-up / Invoices.
+  // tab) share the same disclosure wiring as Invoices.
   for (const [btn, body] of [
     ["billing-inv-toggle", "billing-invoices-wrap"],
   ]) {
@@ -1059,7 +959,7 @@ export function initBilling(): void {
 
 /**
  * Load every billing surface. Each read stands alone: a member without billing
- * visibility (403 on the org pool) still gets their plan catalog and seats, and
+ * visibility (403 on the budget) still gets their plan catalog and seats, and
  * anything that genuinely failed says so instead of showing zeros.
  */
 /** The card on file — brand + last4 from Stripe, best-effort. */
@@ -1088,15 +988,14 @@ async function paintCardOnFile(): Promise<void> {
 export async function loadBilling(): Promise<void> {
   // Entering the tab always lands on the page, not a form left open.
   closeBuyForm();
-  closeAtForm(true);
   $("billing-plans-form")?.classList.add("hidden");
   initBilling();
   void paintCardOnFile();
   const api = accountApi();
   const problems: string[] = [];
 
-  const [plansRes, statusRes, creditsRes, atRes, invRes, roleRes, upcomingRes] = await Promise.allSettled([
-    api.plans(), api.status(), api.credits(), api.autotopup(), api.invoices(),
+  const [plansRes, statusRes, balanceRes, atRes, invRes, roleRes, upcomingRes] = await Promise.allSettled([
+    api.plans(), api.status(), api.balance(), api.autotopup(), api.invoices(),
     // Role gates the plan-change buttons (subscribe/change-plan are org_admin
     // on the server). Same source Members/Organization use.
     Promise.resolve(window.glyphh.getAccountInfo?.()).then((info) => info?.role || ""),
@@ -1109,24 +1008,14 @@ export async function loadBilling(): Promise<void> {
   if (statusRes.status === "fulfilled") sub = statusRes.value;
   else problems.push("subscription");
 
-  // Admin-only, like the credit pool: a member's 403 just leaves the line off.
+  // Admin-only, like the budget: a member's 403 just leaves the line off.
   upcoming = upcomingRes.status === "fulfilled" ? upcomingRes.value : null;
 
-  // The org credit pool is ADMIN-ONLY — a member's 403 is not an error to
-  // shout about, it just leaves the cards blank.
-  credits = creditsRes.status === "fulfilled" ? creditsRes.value : null;
+  // The Pipedream budget is ADMIN-ONLY — a member's 403 is not an error to
+  // shout about, it just leaves the card blank.
+  balance = balanceRes.status === "fulfilled" ? balanceRes.value : null;
 
-  if (atRes.status === "fulfilled") {
-    const a: Autotopup = atRes.value;
-    autoTopup = {
-      enabled: !!a.enabled,
-      thresholdCredits: Math.round(a.thresholdCredits || 0),
-      packUsd: Math.round((a.topupCredits || 0) * USD_PER_CREDIT),
-      // The server does not persist a 30-day cap yet — a LOCAL preference
-      // (billingMonthlyCapUsd) shared with the Usage page's spend-limit form.
-      monthlyCapUsd: Number(await window.glyphh.getPreference?.("billingMonthlyCapUsd", autoTopup.monthlyCapUsd)) || autoTopup.monthlyCapUsd,
-    };
-  }
+  if (atRes.status === "fulfilled") autoTopup = atRes.value;
 
   invoices = invRes.status === "fulfilled" ? (invRes.value || []) : [];
   if (invRes.status === "rejected") problems.push("invoices");
@@ -1137,8 +1026,7 @@ export async function loadBilling(): Promise<void> {
   isAdmin = role ? ["org_admin", "super_admin"].includes(role) : null;
 
   fail(problems.length ? `Couldn't load ${problems.join(", ")} — check your connection and try again.` : "");
-  paintCredits();
-  paintAutotopup();
+  paintBudget();
   paintSeats();
   paintPlan();
   paintPlans();

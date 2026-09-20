@@ -28,12 +28,10 @@ interface HomeIpcDeps {
 export function registerHomeIpc(deps: HomeIpcDeps): void {
 
   // ── Home dashboard ──────────────────────────────────────────────────────
-  // Credits, month spend, apps deployed, and a per-day usage series (credits
-  // + calls). LLM tokens are deliberately NOT a client concept — the client
-  // never meters models; usage here is compute. Mirrors the platform's
-  // billing/usage endpoints; each call degrades to null so one failure
-  // doesn't blank the whole card set. Credit amounts arrive in micro-credits
-  // (1 credit = 1e6) → /1e6.
+  // The Pipedream budget, month spend, apps deployed, and a per-day usage
+  // series (dollars + calls). Money is dollars end to end — LiteLLM's spend
+  // log is the ledger. Each call degrades to null so one failure doesn't
+  // blank the whole card set.
   // The SHELL (boot gate / tutorial) steering the home panel's section —
   // e.g. "land on Home after the first-run walkthrough".
   ipcMain.handle("home-goto-section", (_e, section: string) => {
@@ -77,10 +75,9 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
   });
 
   // The stacked usage chart's feed: day × (model | source) cells over the last
-  // N days. Credits leave here as WHOLE credits — the renderer never sees micro.
+  // N days, in dollars.
   ipcMain.handle("usage-series", async (_e, days: number, groupBy: string, userId?: string) => {
     try {
-      const MICRO = 1_000_000;
       const ymd = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const now = new Date();
@@ -95,31 +92,23 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
         tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...member,
       });
-      return {
-        ok: true,
-        data: {
-          from: ymd(start), to: ymd(now),
-          points: points.map((pt) => ({ ...pt, credits: pt.credits / MICRO })),
-        },
-      };
+      return { ok: true, data: { from: ymd(start), to: ymd(now), points } };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
   ipcMain.handle("dashboard-data", async () => {
-    const MICRO = 1_000_000;
     const ymd = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const now = new Date();
 
     const client = getClient();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [credits, me, usage, apps, plans, sub] = await Promise.all([
-      // Org pool — admins only; members get a 403 (→ null) and the personal
-      // allocation card below renders from the caller's allocation instead.
-      client.billing.credits().catch(() => null),
-      client.usage.allocation().catch(() => null),
+    const [balance, usage, apps, plans, sub] = await Promise.all([
+      // The org's Pipedream budget — admins only; a member's 403 → null and
+      // the card reads as pooled.
+      client.billing.balance().catch(() => null),
       // The caller's month-to-date spend; the SERVER owns the month boundary
       // math so this matches what an org admin sees for the same user.
       // NO upper bound: `to` is EXCLUSIVE and a bare date parses as UTC
@@ -127,9 +116,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // (which zeroed this card). Omitted = "through now".
       client.usage.summary({ from: ymd(monthStart) }).catch(() => null),
       client.apps.deployed().catch(() => null),
-      // The PLAN CATALOG is the authority on the plan's name + monthly
-      // allowance (his law, 2026-08-25) — never a tier string + the credits
-      // endpoint's remaining-grant number.
+      // The PLAN CATALOG is the authority on the plan's name + monthly pool
+      // (his law, 2026-08-25) — never a tier string.
       client.billing.plans().catch(() => []),
       client.billing.status().catch(() => null),
     ]);
@@ -140,31 +128,21 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     return {
       name: (acct?.firstName || "").trim(),
       plan: plan?.displayName || tier,
-      // null credits = the org pool is admin-only for this account — the
-      // renderer swaps in the member card fed by `me`.
-      orgCredits: credits != null,
-      // The renderer's member card was built around the old /api/me/credits
-      // shape; `roleName` maps to the allocation's workspace name.
-      me: me
-        ? {
-            roleName: me.workspaceName || null,
-            uncapped: me.uncapped,
-            capCredits: me.capCredits,
-            spentCredits: me.spentCredits,
-            remainingCredits: me.remainingCredits,
-            windowEnd: me.windowEnd || null,
-          }
-        : null,
-      // NOT floored (his report, 2026-09-11: "down 1 credit but 0 spent" —
-      // balance floored DOWN while spend floored to 0 on the same fraction).
-      // One decimal of truth; the renderer decides the display.
-      credits: Math.round(((credits?.balance || 0) / MICRO) * 10) / 10,
-      // Whole credits already, straight off the plan record.
-      allowance: plan?.monthlyCredits ?? Math.floor((credits?.allowance || 0) / MICRO),
-      // UsageSummary.credits is already WHOLE credits (the summary endpoint
-      // converts from micro server-side) — dividing again zeroed this card.
-      spendCredits: Math.round((usage?.credits || 0) * 10) / 10,
-      // The summary counts ledger events — one per metered request.
+      // null balance = the budget is admin-only for this account — the
+      // renderer paints the member's pooled card instead.
+      orgBudget: balance != null,
+      // The Pipedream budget, in dollars: what is left this period, what the
+      // plan funds each month, what was added on top, what was spent.
+      remainingUsd: balance?.remainingUsd ?? 0,
+      poolUsdPerMonth: plan?.poolUsdPerMonth ?? balance?.planUsd ?? 0,
+      fundsUsd: balance?.fundsUsd ?? 0,
+      budgetSpentUsd: balance?.spentUsd ?? 0,
+      periodEnd: balance?.periodEnd ?? null,
+      // Month-to-date spend in dollars, by source (Pipedream vs provider).
+      spendUsd: usage?.usd || 0,
+      spendPipedreamUsd: usage?.bySource?.pipedream || 0,
+      spendProviderUsd: usage?.bySource?.provider || 0,
+      // The summary counts spend-log events — one per metered request.
       requests: usage?.events || 0,
       // Count live deployments only, exactly like the Apps tab: the seeded
       // system app (system:true) is not a deployed app.

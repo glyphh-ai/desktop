@@ -18,12 +18,19 @@ interface OrgModelRow {
   name: string;
   providerSlug: string;
   kind: string;
-  inputCreditsPerMTok: number;
-  outputCreditsPerMTok: number;
+  inputUsdPerMTok: number;
+  outputUsdPerMTok: number;
   supported: boolean;
   providerEnabled: boolean;
   /** False when the org's PLAN excludes this model (free-tier gate). */
   planAllowed?: boolean;
+}
+
+/** The vendor's list price — "$in / $out per 1M tokens". Informational: model
+ *  calls are the org's own dollars on its gateway keys, never a Glyphh bill. */
+export function priceLine(m: { inputUsdPerMTok?: number | null; outputUsdPerMTok?: number | null }): string {
+  const f = (v: number | null | undefined): string => (v == null ? "—" : `$${Number.isInteger(v) ? v : v.toFixed(2)}`);
+  return `${f(m.inputUsdPerMTok)} in / ${f(m.outputUsdPerMTok)} out per 1M tokens`;
 }
 
 interface ProviderRow {
@@ -834,7 +841,7 @@ function renderList(): void {
         for (const m of list) {
           const gated = m.planAllowed === false;
           body.appendChild(modelLine(m.name,
-            gated ? `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok · paid plans` : `${m.inputCreditsPerMTok}/${m.outputCreditsPerMTok} cr per MTok`, {
+            gated ? `${priceLine(m)} · paid plans` : priceLine(m), {
             on: gated ? false : m.supported,
             disabled: gated,
             disabledTitle: "Upgrade to a paid plan to use this model.",

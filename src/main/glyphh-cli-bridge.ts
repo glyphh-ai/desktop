@@ -23,8 +23,6 @@ import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { cliFix } from "./cli-auth.js";
-import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
-import { getClient } from "./glyphh-client.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
@@ -86,29 +84,6 @@ interface LiveChat {
 }
 
 const live = new Map<string, LiveChat>();
-
-/**
- * A TURN WE CANNOT METER ANY OTHER WAY (his order, 2026-09-18).
- *
- * While a vendor's own credits last, the CLI talks straight to the vendor and
- * nothing reaches our gateway, so the only record of what was spent is the
- * CLI's own token count. Report it so the burn-down can end and the gateway
- * take over. A gateway turn is metered server-side and must NOT be counted
- * twice, so this reports only the direct lane.
- */
-async function reportDirectUsage(chat: LiveChat, model?: string): Promise<void> {
-  const provider = LOOP_VENDOR[chat.cli];
-  const { inTokens, outTokens, cacheReadTokens, cacheWriteTokens } = chat.usage;
-  if (!provider || (!inTokens && !outTokens && !cacheReadTokens && !cacheWriteTokens)) return;
-  try {
-    // The lane is per REQUEST now: a heavy model under "reserved" went direct
-    // even though the loop's env carries the credential.
-    if (requestUsesGateway(chat.cli, model ?? "", false)) return;
-    await getClient().http.post("/api/gateway/vendor-usage", {
-      provider, model: bareModel(model ?? "") || "", inTokens, outTokens, cacheReadTokens, cacheWriteTokens,
-    });
-  } catch { /* the burn-down reads low rather than failing a finished turn */ }
-}
 
 /** chatId → the CLI session to resume when the chat's process is cold. */
 // PER-CLI bindings (his ruling, 2026-09-14: "some way to map sessions
@@ -307,8 +282,6 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // turns share context and the >_ hop resumes a rollout that exists (his
   // report, 2026-09-14: "No saved session found" — nothing captured the id
   // and every turn ran fresh).
-  // The org's credit strategy decides whether THIS session spends credits:
-  // chat and co-work stay on the member's own login under "reserved".
   const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)), p.effort);
   // ONE LINE PER TURN (his report, 2026-09-20: "nothing happens, it just
   // spins") — the command, secrets blanked, so a silent turn can be read.
@@ -383,7 +356,6 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   proc.on("exit", (code) => {
     live.delete(p.chatId);
     console.warn("[cli-bridge] headless turn ended", JSON.stringify({ cli: agent.cli, code, sawJson, stderr: errTail.trim().slice(-300) }));
-    void reportDirectUsage(chat, p.model);
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
     if (code !== 0 && code !== null) {
       // The CLI's stderr plus whatever it printed: a refusal it explains in
@@ -426,7 +398,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   // The login shell resolves the user's real PATH — Electron's GUI env
   // doesn't carry it, and `claude` lives wherever the user installed it.
   const row = agentRowFor(p.loop || "claude");
-  const line = (row ? loopEnvPrefix(row, wanted) : "")
+  const line = (row ? loopEnvPrefix(row) : "")
     + parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : homedir(),

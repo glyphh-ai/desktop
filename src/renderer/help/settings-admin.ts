@@ -5,15 +5,16 @@
  * settings modal's existing grammar (lib-table lists, crud-toolbar, the
  * crud-inline-form editor standard, dash-card + Chart.js usage):
  *
- *   • Catalog (admin/models)  — the GLOBAL model catalog: rates, context
- *     window, availability. Wire rates are MICRO-credits per MTok; edits go
- *     through PUT /api/admin/models/:provider/:model.
+ *   • Catalog (admin/models)  — the GLOBAL model catalog: context window,
+ *     availability. No prices here (his ruling, 2026-09-20: model calls are
+ *     the org's own dollars); edits go through PUT /api/admin/models/:provider/:model.
  *   • Plans (admin/pricing + admin/plans) — global tier pricing (PATCH
  *     /api/admin/plans/:tier) plus the Stripe price HISTORY contract
  *     (plan_prices: append a price, promote one to active — never mutate).
  *   • Usage (admin/usage) — platform-wide rollups: per-day series, top
  *     spenders, and the region × shared|dedicated × tier breakdown.
- *   • Orgs (admin/orgs) — the org list + admin credit grants.
+ *   • Orgs (admin/orgs) — the org list + admin fund grants (dollars into an
+ *     org's Pipedream budget).
  *
  * Transport — web → window.glyphhSdk.admin (checked FIRST; on web
  * window.glyphh is a Proxy that fabricates methods); desktop →
@@ -29,9 +30,8 @@ import { icoBtn, MDL_SVG } from "./models-admin.js";
 // Chart.js is loaded globally (app-libs/chart.js → window.Chart) by home.html.
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
 
-const MICRO = 1_000_000;
-
-// ── Shapes (structural mirrors of the SDK's contract/admin.ts) ────────────
+// ── Shapes (structural mirrors of the SDK's contract/admin.ts). Money is
+//    dollars — Pipedream budget spend from the spend log; plan prices in cents.
 
 interface AdminModel {
   provider: string;
@@ -40,8 +40,6 @@ interface AdminModel {
   alias: string | null;
   modality: string;   // chat | image | video | speech | transcription
   rate_unit: string;  // mtok | image | second | mchar | minute
-  input_credits_per_mtok: number | null;  // MICRO-credits per unit on the wire
-  output_credits_per_mtok: number | null;
   context_window: number | null;
   max_output_tokens: number | null;
   active: boolean;
@@ -60,8 +58,6 @@ interface AdminModelPatch {
   default_on?: boolean;
   modality?: string;
   rate_unit?: string;
-  input_credits_per_mtok?: number | null;
-  output_credits_per_mtok?: number | null;
   context_window?: number | null;
   max_output_tokens?: number | null;
   long_context_threshold?: number | null;
@@ -71,8 +67,7 @@ interface AdminModelPatch {
 interface AdminPlan {
   tier: string;
   display_name: string;
-  monthly_usd_cents: number;
-  included_credits: number;               // MICRO-credits per seat per month
+  monthly_usd_cents: number;              // per-seat price — also the monthly Pipedream pool, dollar for dollar
   max_seats: number;
   active: boolean;
   org_id: string | null;
@@ -86,7 +81,6 @@ interface AdminPlan {
 interface AdminPlanPatch {
   display_name?: string;
   monthly_usd_cents?: number;
-  included_credits?: number;
   max_seats?: number;
   active?: boolean;
   rate_limit_rpm?: number | null;
@@ -95,24 +89,22 @@ interface AdminPlanPatch {
   allowed_models?: string[] | null;
 }
 interface AdminPlanPrice { id: string; stripePriceId: string; active: boolean; createdAt: string }
-interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; credits: number; tokens: number }
-interface AdminUsageDay { day: string; credits: number; requests: number; inputTokens?: number; outputTokens?: number }
-/** The REVENUE rollup (his correction, 2026-09-02): Stripe = real collected
- *  cash; the lot fields are the paid-vs-free credits math. */
+interface AdminUsageByUser { userId: string; email: string; name: string; requests: number; usd: number; tokens: number }
+interface AdminUsageDay { day: string; usd: number; requests: number; inputTokens?: number; outputTokens?: number }
+/** The REVENUE rollup (his correction, 2026-09-02): Stripe = real collected cash. */
 interface AdminRevenue {
   stripe: { totalUsdCents: number; byDay: Array<{ day: string; usdCents: number }> } | null;
-  lotsInWindow: Record<string, number>;
-  consumedAllTime: Record<string, number>;
 }
 interface AdminUsageByRuntime {
   region: string; mode: string; tier: string;
-  runtimes: number; orgs: number; users: number; requests: number; credits: number;
+  runtimes: number; orgs: number; users: number; requests: number; usd: number;
 }
-interface AdminOrgRow { id: string; name: string; tier: string; billing_status: string; member_count: number; credits_purchased: number; credits_spent: number; managed_by_org_id?: string | null; managed_by_name?: string | null; managed_monthly_cap_micro?: number }
+interface AdminOrgRow { id: string; name: string; tier: string; billing_status: string; member_count: number; funds_usd: number; spent_usd: number; managed_by_org_id?: string | null; managed_by_name?: string | null }
 interface AdminOrgMember { id: string; first_name: string; last_name: string; email: string; role: string; status: string }
 interface AdminOrgDetail extends AdminOrgRow {
   max_seats: number; created_at: string;
-  credits: { balance: number; used: number };  // micro-credits
+  /** The org's Pipedream budget this period, in dollars. */
+  budget: { remaining_usd: number; spent_usd: number };
   members: AdminOrgMember[];
 }
 type AdminOrgPatch = { name?: string; tier?: string; billingStatus?: string };
@@ -123,7 +115,7 @@ interface SdkAdmin {
   models?: () => Promise<{ models: AdminModel[] }>;
   updateModel?: (provider: string, model: string, patch: AdminModelPatch) => Promise<{ model: AdminModel }>;
   createProvider?: (input: { slug: string; name: string; kind: "proxied"; alias?: string | null; baseUrl?: string | null }) => Promise<unknown>;
-  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied"; modality?: string; rateUnit?: string; alias?: string | null; contextWindow?: number | null; inputCreditsPerMTok: number; outputCreditsPerMTok: number }) => Promise<unknown>;
+  createModel?: (input: { id: string; providerSlug: string; name: string; kind: "proxied"; modality?: string; rateUnit?: string; alias?: string | null; contextWindow?: number | null }) => Promise<unknown>;
   plans?: () => Promise<{ plans: AdminPlan[] }>;
   updatePlan?: (tier: string, patch: AdminPlanPatch) => Promise<{ plan: AdminPlan }>;
   createPlan?: (input: AdminPlanPatch & { tier: string }) => Promise<{ plan: AdminPlan }>;
@@ -143,7 +135,7 @@ interface SdkAdmin {
   createOrg?: (input: { name: string; tier?: string }) => Promise<AdminOrgRow>;
   org?: (id: string) => Promise<AdminOrgDetail>;
   updateOrg?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
-  grantCredits?: (id: string, credits: number, note?: string) => Promise<{ balance: number }>;
+  grantFunds?: (id: string, usd: number, note?: string) => Promise<{ remainingUsd: number }>;
   inviteOrgMember?: (id: string, email: string, role?: "org_admin" | "admin" | "user") => Promise<{ acceptUrl: string }>;
   removeOrgMember?: (id: string, userId: string) => Promise<{ ok: boolean }>;
   impersonate?: (orgId: string) => Promise<{ impersonating: { orgId: string } | null } | null>;
@@ -173,7 +165,7 @@ interface DesktopAdminIpc {
   adminOrgCreate?: (input: { name: string; tier?: string }) => Promise<{ ok: boolean; org?: AdminOrgRow; error?: string }>;
   adminOrg?: (id: string) => Promise<AdminOrgDetail>;
   adminOrgUpdate?: (id: string, patch: AdminOrgPatch) => Promise<AdminOrgDetail>;
-  adminOrgGrantCredits?: (id: string, credits: number, note?: string) => Promise<{ ok: boolean; balance?: number; error?: string }>;
+  adminOrgGrantFunds?: (id: string, usd: number, note?: string) => Promise<{ ok: boolean; remainingUsd?: number; error?: string }>;
   adminOrgMemberInvite?: (id: string, email: string, role?: "org_admin" | "admin" | "user") => Promise<{ ok: boolean; acceptUrl?: string; error?: string }>;
   adminOrgMemberRemove?: (id: string, userId: string) => Promise<{ ok: boolean; error?: string }>;
   adminImpersonate?: (orgId: string | null) => Promise<{ ok: boolean; impersonating?: { orgId: string } | null; error?: string }>;
@@ -240,7 +232,11 @@ async function write<T>(
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 
 const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
-const microToCredits = (micro: number | null | undefined): number => Math.round((Number(micro) || 0) / MICRO);
+/** Dollars for display — cents when under $100, whole above. */
+const fmtUsd = (usd: number | null | undefined): string => {
+  const v = Math.max(0, Number(usd) || 0);
+  return `$${v >= 100 ? Math.round(v).toLocaleString() : v.toFixed(2)}`;
+};
 const fmtDate = (iso: string): string => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
@@ -427,12 +423,9 @@ function paintCatalog(): void {
         const mn = document.createElement("div");
         mn.className = "mdl-td-name";
         mn.textContent = m.display_name;
-        const rates = m.input_credits_per_mtok == null && m.output_credits_per_mtok == null
-          ? "BYOK / direct"
-          : `${fmtInt(microToCredits(m.input_credits_per_mtok))}/${fmtInt(microToCredits(m.output_credits_per_mtok))} cr`;
         const ms = document.createElement("div");
         ms.className = "mdl-td-sub mono";
-        ms.textContent = `${m.model} · ${rates}`;
+        ms.textContent = m.model;
         mi.append(mn, ms);
         const editIc = icoBtn(MDL_SVG.edit, "Edit model");
         editIc.addEventListener("click", (ev) => { ev.stopPropagation(); openModelEditor(m); });
@@ -579,15 +572,6 @@ async function addProviderKeyFromForm(): Promise<void> {
   await refreshProviderKeys();
 }
 
-/** The two credit-rate inputs are per-unit; the unit depends on the model's modality.
- *  Relabel them so a super-admin pricing an image model sees "per image", not "per token". */
-const RATE_UNIT_TEXT: Record<string, string> = { mtok: "1M tokens", image: "image", second: "second", mchar: "1M chars", kchar: "1K chars", minute: "minute", hour: "hour", generation: "generation" };
-function relabelModelRates(unit: string): void {
-  const t = RATE_UNIT_TEXT[unit] ?? "unit";
-  const inl = $("pa-model-in-label"); if (inl) inl.textContent = `Input credits / ${t}`;
-  const outl = $("pa-model-out-label"); if (outl) outl.textContent = `Output credits / ${t}`;
-}
-
 function openModelEditor(m: AdminModel): void {
   editingModel = m;
   creatingModelProvider = null;
@@ -600,9 +584,6 @@ function openModelEditor(m: AdminModel): void {
   set("pa-model-alias", m.alias || "");
   const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = m.modality || "chat";
   const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = m.rate_unit || "mtok";
-  relabelModelRates(m.rate_unit || "mtok");
-  set("pa-model-in", m.input_credits_per_mtok == null ? "" : String(microToCredits(m.input_credits_per_mtok)));
-  set("pa-model-out", m.output_credits_per_mtok == null ? "" : String(microToCredits(m.output_credits_per_mtok)));
   set("pa-model-ctx", m.context_window == null ? "" : String(m.context_window));
   set("pa-model-max", m.max_output_tokens == null ? "" : String(m.max_output_tokens));
   set("pa-model-lc-threshold", m.long_context_threshold == null ? "" : String(m.long_context_threshold));
@@ -626,10 +607,9 @@ function openModelCreate(providerSlug: string): void {
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
   set("pa-model-provider", providerSlug);
   set("pa-model-id", "");
-  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-in", "pa-model-out", "pa-model-ctx", "pa-model-max", "pa-model-lc-threshold", "pa-model-lc-in", "pa-model-lc-out"]) set(id, "");
+  for (const id of ["pa-model-name", "pa-model-alias", "pa-model-ctx", "pa-model-max", "pa-model-lc-threshold", "pa-model-lc-in", "pa-model-lc-out"]) set(id, "");
   const modSel = $<HTMLSelectElement>("pa-model-modality"); if (modSel) modSel.value = "chat";
   const ruSel = $<HTMLSelectElement>("pa-model-rate-unit"); if (ruSel) ruSel.value = "mtok";
-  relabelModelRates("mtok");
   const active = $<HTMLInputElement>("pa-model-active"); if (active) active.checked = true;
   const defaultOn = $<HTMLInputElement>("pa-model-default-on"); if (defaultOn) defaultOn.checked = false;
   showModelEditor(true);
@@ -641,8 +621,6 @@ async function saveModel(): Promise<void> {
     const id = inputVal("pa-model-id").trim();
     const name = inputVal("pa-model-name");
     if (!id || !name) { setErr("pa-model-form-error", "The model needs an id and a display name."); return; }
-    const inCr0 = numOrNull(inputVal("pa-model-in")) ?? 0;
-    const outCr0 = numOrNull(inputVal("pa-model-out")) ?? 0;
     const ctx0 = numOrNull(inputVal("pa-model-ctx"));
     const input = {
       id,
@@ -653,8 +631,6 @@ async function saveModel(): Promise<void> {
       rateUnit: inputVal("pa-model-rate-unit") || "mtok",
       ...(inputVal("pa-model-alias").trim() ? { alias: inputVal("pa-model-alias").trim() } : {}),
       ...(ctx0 ? { contextWindow: ctx0 } : {}),
-      inputCreditsPerMTok: inCr0,
-      outputCreditsPerMTok: outCr0,
     };
     const btn = $<HTMLButtonElement>("pa-model-save");
     if (btn) btn.disabled = true;
@@ -673,10 +649,6 @@ async function saveModel(): Promise<void> {
   const name = inputVal("pa-model-name");
   if (!name) { setErr("pa-model-form-error", "The model needs a display name."); return; }
   const alias = inputVal("pa-model-alias");
-  // Wire rates are MICRO-credits per MTok (the platform page's exact scale):
-  // whole credits typed here × 1e6; blank clears to "not per-token priced".
-  const inCr = numOrNull(inputVal("pa-model-in"));
-  const outCr = numOrNull(inputVal("pa-model-out"));
   const ctx = numOrNull(inputVal("pa-model-ctx"));
   const max = numOrNull(inputVal("pa-model-max"));
   const patch: AdminModelPatch = {
@@ -686,8 +658,6 @@ async function saveModel(): Promise<void> {
     default_on: !!$<HTMLInputElement>("pa-model-default-on")?.checked,
     modality: inputVal("pa-model-modality") || "chat",
     rate_unit: inputVal("pa-model-rate-unit") || "mtok",
-    input_credits_per_mtok: inCr == null ? null : inCr * MICRO,
-    output_credits_per_mtok: outCr == null ? null : outCr * MICRO,
     // context_window/max_output_tokens must be POSITIVE ints on the wire —
     // 0 or blank clears to "unrecorded".
     context_window: ctx || null,
@@ -710,8 +680,6 @@ async function saveModel(): Promise<void> {
 
 /** The release flows — the old platform's add-provider / add-model forms. */
 function wireCatalogCreate(): void {
-  // Relabel the editor's rate inputs when the modality's unit changes.
-  $("pa-model-rate-unit")?.addEventListener("change", () => relabelModelRates(inputVal("pa-model-rate-unit")));
   // + Provider = CREATE mode: reset whatever an edit left in the shared form.
   $("pa-provider-add-btn")?.addEventListener("click", () => {
     editingProviderSlug = null;
@@ -812,6 +780,17 @@ function showPlanEditor(on: boolean): void {
   $("pa-plan-editor")?.classList.toggle("hidden", !on);
 }
 
+/** The plan's monthly Pipedream budget IS its price, dollar for dollar. */
+const poolLine = (p: AdminPlan): string => fmtUsd((p.monthly_usd_cents || 0) / 100);
+
+/** The editor's read-only echo under the price field. */
+function paintPoolHint(): void {
+  const hint = $("pa-plan-pool-hint");
+  if (!hint) return;
+  const usd = Math.max(0, Number(inputVal("pa-plan-price")) || 0);
+  hint.textContent = `Monthly Pipedream budget: ${fmtUsd(usd)} — the plan price, dollar for dollar (free = $1).`;
+}
+
 function paintPlans(): void {
   const wrap = $("pa-plans-list");
   if (!wrap) return;
@@ -820,14 +799,15 @@ function paintPlans(): void {
     .filter((p) => !q || p.tier.toLowerCase().includes(q) || (p.display_name || "").toLowerCase().includes(q));
   wrap.innerHTML = "";
   if (!globals.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No plans match." : "No plans yet."}</div>`; return; }
-  const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Credits / mo", "Seats", "Rpm", "Status"], true);
+  // Budget / mo IS the price (dollar for dollar): the plan's monthly Pipedream pool.
+  const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Budget / mo", "Seats", "Rpm", "Status"], true);
   for (const p of globals) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
       <td>$${fmtInt((p.monthly_usd_cents || 0) / 100)}</td>
-      <td>${fmtInt(microToCredits(p.included_credits))}</td>
+      <td>${poolLine(p)}</td>
       <td class="lib-table-dim">${fmtInt(p.max_seats || 1)}</td>
       <td class="lib-table-dim">${p.rate_limit_rpm ? fmtInt(p.rate_limit_rpm) : "∞"}</td>`;
     const status = document.createElement("td");
@@ -872,14 +852,14 @@ function paintOrgPlans(): void {
   wrap.classList.toggle("hidden", !bespoke.length);
   wrap.innerHTML = "";
   if (!bespoke.length) return;
-  const { table, tbody } = mkTable(["Organization", "Plan", "$ / seat / mo", "Credits / mo", "Seats"], false);
+  const { table, tbody } = mkTable(["Organization", "Plan", "$ / seat / mo", "Budget / mo", "Seats"], false);
   for (const p of bespoke) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
       <td>$${fmtInt((p.monthly_usd_cents || 0) / 100)}</td>
-      <td>${fmtInt(microToCredits(p.included_credits))}</td>
+      <td>${poolLine(p)}</td>
       <td class="lib-table-dim">${fmtInt(p.max_seats || 1)}</td>`;
     const org = tr.querySelector(".lib-table-name");
     if (org) org.textContent = p.org_name || p.org_id || "—";
@@ -971,7 +951,7 @@ async function openPlanEditor(p: AdminPlan): Promise<void> {
   const set = (id: string, v: string): void => { const el = $<HTMLInputElement>(id); if (el) el.value = v; };
   set("pa-plan-name", p.display_name || "");
   set("pa-plan-price", String(Math.round((p.monthly_usd_cents || 0) / 100)));
-  set("pa-plan-credits", String(microToCredits(p.included_credits)));
+  paintPoolHint();
   set("pa-plan-seats", String(p.max_seats || 1));
   set("pa-plan-rpm", p.rate_limit_rpm != null ? String(p.rate_limit_rpm) : "");
   set("pa-plan-trial", p.gateway_trial_days ? String(p.gateway_trial_days) : "");
@@ -1000,7 +980,7 @@ function openPlanCreate(): void {
   const gov = $<HTMLInputElement>("pa-plan-governance");
   if (gov) gov.checked = false;
   set("pa-plan-price", "0");
-  set("pa-plan-credits", "0");
+  paintPoolHint();
   set("pa-plan-seats", "1");
   const active = $<HTMLInputElement>("pa-plan-active");
   if (active) active.checked = true;
@@ -1016,7 +996,6 @@ async function savePlan(): Promise<void> {
   const patch: AdminPlanPatch = {
     display_name: name,
     monthly_usd_cents: Math.max(0, Math.round((Number(inputVal("pa-plan-price")) || 0) * 100)),
-    included_credits: Math.max(0, Math.round(Number(inputVal("pa-plan-credits")) || 0)) * MICRO,
     max_seats: Math.max(1, Math.round(Number(inputVal("pa-plan-seats")) || 1)),
     active: !!$<HTMLInputElement>("pa-plan-active")?.checked,
     // Empty clears the limit (null = unlimited); 0 is treated as empty too.
@@ -1092,6 +1071,8 @@ export function loadAdminPlans(): void {
     $("pa-price-new")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void addPrice(); });
     $("pa-plan-add-btn")?.addEventListener("click", () => openPlanCreate());
     $("pa-plans-search")?.addEventListener("input", () => { plansSearch = inputVal("pa-plans-search"); paintPlans(); });
+    // The pool follows the price as it is typed — there is no second field.
+    $("pa-plan-price")?.addEventListener("input", paintPoolHint);
   }
   void (async () => {
     const allowed = await isSuperAdmin();
@@ -1112,13 +1093,6 @@ let usageChart: { destroy: () => void } | null = null;
 let usageFinChart: { destroy: () => void } | null = null;
 let usageWired = false;
 
-// Cost = the meter's uniform COGS basis: the catalog prices models at 62.5
-// credits per vendor dollar, so one burned credit = 1/62.5 = $0.016 of vendor
-// spend (matches the meter's C_MICRO_USD). Revenue is NEVER derived from
-// credits (his correction, 2026-09-02: spent credits may be free grants) —
-// it is Stripe's collected cash.
-const USD_PER_CREDIT_COST = 0.016;
-
 const cssVar = (name: string): string =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -1132,14 +1106,14 @@ function shortDay(iso: string): string {
 const isoDay = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-/** Per-day credits chart — the SAME Chart.js grammar as the Usage panel's
- *  loadUsageChart (dashboard.ts), single platform-wide series. */
+/** Per-day spend chart (dollars) — the SAME Chart.js grammar as the Usage
+ *  panel's loadUsageChart (dashboard.ts), single platform-wide series. */
 function renderUsageChart(days: AdminUsageDay[]): void {
   const canvas = $<HTMLCanvasElement>("pa-usage-chart");
   const empty = $("pa-usage-empty");
   if (!canvas || typeof Chart === "undefined") return;
   if (usageChart) { usageChart.destroy(); usageChart = null; }
-  const hasData = days.some((d) => d.credits > 0 || d.requests > 0);
+  const hasData = days.some((d) => d.usd > 0 || d.requests > 0);
   empty?.classList.toggle("hidden", hasData);
   canvas.style.visibility = hasData ? "visible" : "hidden";
   if (!hasData) return;
@@ -1151,8 +1125,8 @@ function renderUsageChart(days: AdminUsageDay[]): void {
     data: {
       labels: days.map((d) => shortDay(d.day)),
       datasets: [{
-        label: "credits",
-        data: days.map((d) => microToCredits(d.credits)),
+        label: "spend $",
+        data: days.map((d) => d.usd),
         backgroundColor: cssVar("--accent") || "#af5fff",
         borderRadius: 3,
         maxBarThickness: 34,
@@ -1167,7 +1141,7 @@ function renderUsageChart(days: AdminUsageDay[]): void {
           callbacks: {
             label: (c: { parsed: { y: number }; dataIndex: number }) => {
               const cell = byDay.get(days[c.dataIndex]?.day || "");
-              return `${fmtInt(c.parsed.y)} credits${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
+              return `${fmtUsd(c.parsed.y)}${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
             },
           },
         },
@@ -1177,7 +1151,7 @@ function renderUsageChart(days: AdminUsageDay[]): void {
         y: {
           beginAtZero: true,
           grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
-          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtInt(v) },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtUsd(v) },
         },
       },
     },
@@ -1188,14 +1162,15 @@ function renderUsageChart(days: AdminUsageDay[]): void {
 let lastUsageUsers: AdminUsageByUser[] = [];
 let lastUsageRuntimes: AdminUsageByRuntime[] = [];
 
-/** Token spend + revenue + cost as LINES, same window/org as the bar chart.
- *  Revenue is REAL Stripe cash by day (empty when Stripe is unconfigured). */
+/** Tokens + revenue + spend as LINES, same window/org as the bar chart.
+ *  Revenue is REAL Stripe cash by day (empty when Stripe is unconfigured);
+ *  spend is the spend log's dollars. */
 function renderUsageFinChart(days: AdminUsageDay[], stripeByDay: Map<string, number>): void {
   const canvas = $<HTMLCanvasElement>("pa-usage-fin-chart");
   const empty = $("pa-usage-fin-empty");
   if (!canvas || typeof Chart === "undefined") return;
   if (usageFinChart) { usageFinChart.destroy(); usageFinChart = null; }
-  const hasData = days.some((d) => d.credits > 0 || (d.inputTokens ?? 0) + (d.outputTokens ?? 0) > 0);
+  const hasData = days.some((d) => d.usd > 0 || (d.inputTokens ?? 0) + (d.outputTokens ?? 0) > 0);
   empty?.classList.toggle("hidden", hasData);
   canvas.style.visibility = hasData ? "visible" : "hidden";
   if (!hasData) return;
@@ -1220,8 +1195,8 @@ function renderUsageFinChart(days: AdminUsageDay[], stripeByDay: Map<string, num
           borderWidth: 2, pointRadius: 0, tension: 0.25,
         },
         {
-          label: "Cost $", yAxisID: "yUsd",
-          data: days.map((d) => microToCredits(d.credits) * USD_PER_CREDIT_COST),
+          label: "Spend $", yAxisID: "yUsd",
+          data: days.map((d) => d.usd),
           borderColor: "#e5a50a", backgroundColor: "transparent",
           borderWidth: 2, pointRadius: 0, tension: 0.25,
         },
@@ -1264,14 +1239,14 @@ function paintUsageUsers(all: AdminUsageByUser[]): void {
   const users = q ? all.filter((u) => `${u.name} ${u.email}`.toLowerCase().includes(q)) : all;
   wrap.innerHTML = "";
   if (!users.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No members match your search." : "No usage in this window."}</div>`; return; }
-  const { table, tbody } = mkTable(["Member", "Email", "Requests", "Credits"], false);
+  const { table, tbody } = mkTable(["Member", "Email", "Requests", "Spend"], false);
   for (const u of users) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td class="lib-table-name"></td>
       <td class="lib-table-desc"></td>
       <td class="lib-table-dim">${fmtInt(u.requests)}</td>
-      <td>${fmtInt(microToCredits(u.credits))}</td>`;
+      <td>${fmtUsd(u.usd)}</td>`;
     const name = tr.querySelector(".lib-table-name");
     if (name) name.textContent = u.name || "—";
     const email = tr.querySelector(".lib-table-desc");
@@ -1289,7 +1264,7 @@ function paintUsageRuntimes(all: AdminUsageByRuntime[]): void {
   const runtimes = q ? all.filter((r) => `${r.region} ${r.mode} ${r.tier}`.toLowerCase().includes(q)) : all;
   wrap.innerHTML = "";
   if (!runtimes.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "Nothing matches your search." : "No runtime usage in this window."}</div>`; return; }
-  const { table, tbody } = mkTable(["Region", "Mode", "Tier", "Orgs", "Requests", "Credits"], false);
+  const { table, tbody } = mkTable(["Region", "Mode", "Tier", "Orgs", "Requests", "Spend"], false);
   for (const r of runtimes) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -1298,7 +1273,7 @@ function paintUsageRuntimes(all: AdminUsageByRuntime[]): void {
       <td></td>
       <td class="lib-table-dim">${fmtInt(r.orgs)}</td>
       <td class="lib-table-dim">${fmtInt(r.requests)}</td>
-      <td>${fmtInt(microToCredits(r.credits))}</td>`;
+      <td>${fmtUsd(r.usd)}</td>`;
     const region = tr.querySelector(".lib-table-name");
     if (region) region.textContent = r.region;
     const mode = tr.querySelector(".lib-table-desc");
@@ -1334,52 +1309,20 @@ async function refreshAdminUsage(): Promise<void> {
     (usersRes.status === "rejected" && usersRes.reason) ||
     (revenueRes.status === "rejected" && revenueRes.reason))}` : "");
 
-  const credits = days.reduce((s, d) => s + microToCredits(d.credits), 0);
+  const usd = days.reduce((s, d) => s + (d.usd || 0), 0);
   const requests = days.reduce((s, d) => s + (d.requests || 0), 0);
   const set = (id: string, v: string): void => { const el = $(id); if (el) el.textContent = v; };
-  set("pa-usage-credits", fmtInt(credits));
+  set("pa-usage-usd", fmtUsd(usd));
   set("pa-usage-requests", fmtInt(requests));
   set("pa-usage-active", fmtInt(users.length));
-  set("pa-usage-total", `${fmtInt(credits)} credits · ${fmtInt(requests)} calls`);
+  set("pa-usage-total", `${fmtUsd(usd)} · ${fmtInt(requests)} calls`);
   set("pa-usage-range", `last ${win} days`);
-  // REVENUE = Stripe's collected cash, never credits (his correction,
-  // 2026-09-02: spent credits may be free grants). Cost stays the COGS basis.
+  // REVENUE = Stripe's collected cash (his correction, 2026-09-02); spend is
+  // the spend log's dollars. Two different things, shown side by side.
   const revenue: AdminRevenue | null = revenueRes.status === "fulfilled" ? (revenueRes.value ?? null) : null;
   set("pa-usage-revenue", revenue?.stripe ? `$${(revenue.stripe.totalUsdCents / 100).toFixed(2)}` : "—");
   const revSub = document.querySelector("#pa-usage-revenue + .dash-card-sub");
   if (revSub) revSub.textContent = revenue?.stripe ? "collected via Stripe" : "Stripe not configured";
-  const costUsd = credits * USD_PER_CREDIT_COST;
-  set("pa-usage-cost", `$${costUsd.toFixed(2)}`);
-  // Gross margin (his order, 2026-09-02): (Stripe cash − COGS burn) / cash.
-  // Honest caveat carried in the card's sub: revenue is cash COLLECTED in the
-  // window while cost is credits BURNED in it — different bases (credits
-  // bought one month burn in another), so this is the cash-vs-burn margin.
-  const revUsd = revenue?.stripe ? revenue.stripe.totalUsdCents / 100 : null;
-  // MARGIN = profit ÷ COST (his metric, 2026-09-02: "$1.15 spent, $1,567
-  // made" should read as a huge number, not a ~100%-capped gross margin).
-  // Reads as a × multiple past 10x; the accountant's gross-margin-of-revenue
-  // rides in the sub for reconciliation.
-  if (revUsd && revUsd > 0 && costUsd > 0) {
-    const markup = (revUsd - costUsd) / costUsd;
-    set("pa-usage-margin", markup >= 10 ? `${fmtInt(markup)}×` : `${(markup * 100).toFixed(1)}%`);
-    set("pa-usage-margin-sub", `profit ÷ cost · gross ${(((revUsd - costUsd) / revUsd) * 100).toFixed(2)}% of revenue`);
-  } else {
-    set("pa-usage-margin", "—");
-    set("pa-usage-margin-sub", "profit ÷ cost, window");
-  }
-  // The paid-vs-free credits math (he asked for it explicitly): what entered
-  // the window by lot kind + the exact all-time burn split.
-  const mix = $("pa-usage-credit-mix");
-  if (mix) {
-    if (revenue) {
-      const m = (v?: number): string => fmtInt(microToCredits(v ?? 0));
-      const freeIn = (revenue.lotsInWindow.grant ?? 0) + (revenue.lotsInWindow.admin ?? 0);
-      const freeBurn = (revenue.consumedAllTime.grant ?? 0) + (revenue.consumedAllTime.admin ?? 0);
-      mix.textContent =
-        `Credits added in window: ${m(revenue.lotsInWindow.purchase)} purchased · ${m(freeIn)} free/granted. ` +
-        `Burned all-time: ${m(revenue.consumedAllTime.purchase)} paid · ${m(freeBurn)} free (windowed burn split isn't tracked per-debit).`;
-    } else mix.textContent = "";
-  }
   set("pa-usage-fin-range", `last ${win} days${orgId ? " · one org" : " · all orgs"}`);
   renderUsageChart(days);
   renderUsageFinChart(days, new Map((revenue?.stripe?.byDay ?? []).map((d) => [d.day, d.usdCents])));
@@ -1441,20 +1384,14 @@ export function loadAdminUsage(): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Orgs (list + credit grants)
+// Orgs (list + fund grants)
 // ═══════════════════════════════════════════════════════════════════════════
 
 let orgs: AdminOrgRow[] = [];
 let orgsTotal = 0;
 let orgsPage = 0;
-let grantingOrg: AdminOrgRow | null = null;
 let orgsWired = false;
 let orgsSearchTimer = 0;
-
-function showGrantForm(on: boolean): void {
-  $("pa-orgs-list-view")?.classList.toggle("hidden", on);
-  $("pa-org-grant")?.classList.toggle("hidden", !on);
-}
 
 function paintOrgs(): void {
   const wrap = $("pa-orgs-list");
@@ -1500,63 +1437,20 @@ function paintOrgs(): void {
   if (note) note.textContent = "";
 }
 
-function openGrantForm(o: AdminOrgRow): void {
-  grantingOrg = o;
-  setErr("pa-org-grant-error", "");
-  const title = $("pa-org-grant-title");
-  if (title) title.textContent = `Grant credits · ${o.name}`;
-  const credits = $<HTMLInputElement>("pa-grant-credits");
-  if (credits) credits.value = "";
-  const note = $<HTMLInputElement>("pa-grant-note");
-  if (note) note.value = "";
-  const state = $("pa-org-grant-state");
-  if (state) state.textContent = "";
-  showGrantForm(true);
-}
-
-async function grantCredits(): Promise<void> {
-  if (!grantingOrg) return;
-  const credits = Math.round(Number(inputVal("pa-grant-credits")) || 0);
-  if (credits <= 0) { setErr("pa-org-grant-error", "Enter a positive number of credits."); return; }
-  const note = inputVal("pa-grant-note");
-  const sure = await confirmAction({
-    title: `Grant ${fmtInt(credits)} credits to ${grantingOrg.name}?`,
-    body: "Admin-granted credits never expire and land on the org's balance immediately.",
-    confirmLabel: "Grant credits",
-  });
-  if (!sure) return;
-  const btn = $<HTMLButtonElement>("pa-grant-save");
-  if (btn) btn.disabled = true;
-  const res = await write<number>(
-    (a) => a.grantCredits?.(grantingOrg!.id, credits, note || undefined).then((r) => r.balance),
-    (g) => g.adminOrgGrantCredits?.(grantingOrg!.id, credits, note || undefined), "balance");
-  if (btn) btn.disabled = false;
-  if (!res.ok) { setErr("pa-org-grant-error", res.error); return; }
-  setErr("pa-org-grant-error", "");
-  const state = $("pa-org-grant-state");
-  if (state) {
-    state.textContent = `Granted — new balance ${fmtInt(microToCredits(res.data))} credits.`;
-    state.className = "set-save-state success";
-  }
-  const input = $<HTMLInputElement>("pa-grant-credits");
-  if (input) input.value = "";
-}
-
 // ── Org detail (full management view) ─────────────────────────────────────
 let detailOrg: AdminOrgDetail | null = null;
 const ORG_TIERS = ["free", "basic", "pro", "enterprise"];
 
 /** Show exactly one of the org sub-views. */
-function showOrgView(view: "list" | "detail" | "grant" | "create"): void {
+function showOrgView(view: "list" | "detail" | "create"): void {
   $("pa-orgs-list-view")?.classList.toggle("hidden", view !== "list");
   $("pa-org-detail")?.classList.toggle("hidden", view !== "detail");
-  $("pa-org-grant")?.classList.toggle("hidden", view !== "grant");
   $("pa-org-create")?.classList.toggle("hidden", view !== "create");
 }
 
 /** + New Org (his order, 2026-09-02) — the roles-page create grammar: open the
- *  inline form, create a standalone org (base workspace + free credits seeded
- *  server-side), land back on the refreshed list. */
+ *  inline form, create a standalone org (base workspace + the free plan's
+ *  pool seeded server-side), land back on the refreshed list. */
 function openOrgCreate(): void {
   setErr("pa-org-create-error", "");
   const name = $<HTMLInputElement>("pa-org-create-name");
@@ -1606,7 +1500,7 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
   const owner = d.members.find((m) => m.role === "owner" || m.role === "org_admin") ?? d.members[0];
   const ownerName = owner ? (`${owner.first_name} ${owner.last_name}`.trim() || owner.email) : "—";
   const plan = plans.find((p) => p.tier === d.tier);
-  const allowance = plan ? microToCredits(Number(plan.included_credits)) : null;
+  const pool = plan ? (plan.monthly_usd_cents || 0) / 100 : null;
   // The lp-sec rhythm (his spec, 2026-09-01): each section owns real air +
   // a hairline before the next; the view runs full width (lp-edit).
   // Overview | Members tabs (his order, 2026-09-01): Members mirrors the
@@ -1623,15 +1517,16 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
     <div id="pa-org-tab-overview"${orgDetailTab === "members" ? ` class="hidden"` : ""}>
       <div class="lp-sec">
         <div class="pa-org-stats">
-          <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.balance))}</span><span class="pa-stat-lbl">credits balance</span></div>
-          <div class="pa-stat"><span class="pa-stat-num">${fmtInt(microToCredits(d.credits.used))}</span><span class="pa-stat-lbl">credits used</span></div>
+          <div class="pa-stat"><span class="pa-stat-num">${fmtUsd(d.budget.remaining_usd)}</span><span class="pa-stat-lbl">budget remaining</span></div>
+          <div class="pa-stat"><span class="pa-stat-num">${fmtUsd(d.budget.spent_usd)}</span><span class="pa-stat-lbl">spent this period</span></div>
           <div class="pa-stat"><span class="pa-stat-num">${fmtInt(d.member_count)} / ${fmtInt(d.max_seats)}</span><span class="pa-stat-lbl">seats</span></div>
         </div>
         <div class="pa-kv" style="margin-top:16px;">
           <div><span>Admin</span><b>${escapeHtml(ownerName)}</b></div>
           <div><span>Admin email</span><b>${owner ? escapeHtml(owner.email) : "—"}</b></div>
           <div><span>Billing</span><b>${escapeHtml(d.billing_status)}</b></div>
-          <div><span>Plan allowance</span><b>${allowance != null ? fmtInt(allowance) + " / mo" : "—"}</b></div>
+          <div><span>Plan budget</span><b>${pool != null ? fmtUsd(pool) + " / mo" : "—"}</b></div>
+          <div><span>Funds added</span><b>${fmtUsd(d.funds_usd)}</b></div>
           <div><span>Created</span><b>${escapeHtml(fmtDate(d.created_at))}</b></div>
         </div>
       </div>
@@ -1645,11 +1540,11 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
       </div>
 
       <div class="lp-sec">
-        <h4 class="acct-row-head">Grant credits</h4>
-        <p class="section-desc">Admin-granted credits never expire and land on the balance immediately.</p>
+        <h4 class="acct-row-head">Add funds</h4>
+        <p class="section-desc">Dollars into the org's Pipedream budget. Admin-added funds never expire and land immediately.</p>
         <div class="settings-inline">
-          <input id="pa-org-grant-amt" type="number" min="1" class="settings-input settings-input-md" placeholder="e.g. 1000" />
-          <button id="pa-org-grant-go" class="action-btn primary" type="button">Grant</button>
+          <input id="pa-org-grant-amt" type="number" min="1" step="1" class="settings-input settings-input-md" placeholder="USD, e.g. 50" />
+          <button id="pa-org-grant-go" class="action-btn primary" type="button">Add funds</button>
         </div>
       </div>
     </div>
@@ -1687,7 +1582,7 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
     });
   });
   $("pa-org-tier-save")?.addEventListener("click", () => void changeOrgTier());
-  $("pa-org-grant-go")?.addEventListener("click", () => void grantFromDetail());
+  $("pa-org-grant-go")?.addEventListener("click", () => void addFundsFromDetail());
   wireOrgMembersTab(d);
   paintOrgMembers(d);
 }
@@ -1834,21 +1729,22 @@ async function changeOrgTier(): Promise<void> {
   } catch (err) { setErr("pa-org-detail-error", `Couldn't change the plan — ${errText(err)}`); }
 }
 
-async function grantFromDetail(): Promise<void> {
+async function addFundsFromDetail(): Promise<void> {
   if (!detailOrg) return;
-  const credits = Math.round(Number(inputVal("pa-org-grant-amt")) || 0);
-  if (credits <= 0) { setErr("pa-org-detail-error", "Enter a positive number of credits."); return; }
-  const sure = await confirmAction({ title: `Grant ${fmtInt(credits)} credits to ${detailOrg.name}?`, body: "Admin-granted credits never expire.", confirmLabel: "Grant credits" });
+  const usd = Math.round(Number(inputVal("pa-org-grant-amt")) || 0);
+  if (usd <= 0) { setErr("pa-org-detail-error", "Enter a positive dollar amount."); return; }
+  const sure = await confirmAction({ title: `Add ${fmtUsd(usd)} to ${detailOrg.name}'s Pipedream budget?`, body: "Admin-added funds never expire.", confirmLabel: "Add funds" });
   if (!sure) return;
   const res = await write<number>(
-    (a) => a.grantCredits?.(detailOrg!.id, credits).then((r) => r.balance),
-    (g) => g.adminOrgGrantCredits?.(detailOrg!.id, credits), "balance");
+    (a) => a.grantFunds?.(detailOrg!.id, usd).then((r) => r.remainingUsd),
+    (g) => g.adminOrgGrantFunds?.(detailOrg!.id, usd), "remainingUsd");
   if (!res.ok) { setErr("pa-org-detail-error", res.error); return; }
   setErr("pa-org-detail-error", "");
-  detailOrg.credits.balance = res.data;
+  detailOrg.budget.remaining_usd = res.data;
+  detailOrg.funds_usd = (detailOrg.funds_usd || 0) + usd;
   const plansRes = await read((a) => a.plans?.(), (g) => g.adminPlans?.()).catch(() => ({ plans: [] as AdminPlan[] }));
   renderOrgDetail(detailOrg, plansRes?.plans ?? []);
-  detailState(`Granted — balance now ${fmtInt(microToCredits(res.data))} credits`);
+  detailState(`Added — budget now ${fmtUsd(res.data)}`);
 }
 
 const ORGS_PAGE_SIZE = 15;
@@ -1879,10 +1775,7 @@ export function loadAdminOrgs(): void {
       window.clearTimeout(orgsSearchTimer);
       orgsSearchTimer = window.setTimeout(() => { orgsPage = 0; void refreshOrgs(); }, 250);
     });
-    $("pa-org-grant-back")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); void refreshOrgs(); });
-    $("pa-grant-cancel")?.addEventListener("click", () => { grantingOrg = null; showGrantForm(false); });
     $("pa-org-detail-back")?.addEventListener("click", () => { detailOrg = null; showOrgView("list"); void refreshOrgs(); });
-    $("pa-grant-save")?.addEventListener("click", () => { void grantCredits(); });
     $("pa-org-new-btn")?.addEventListener("click", openOrgCreate);
     $("pa-org-create-back")?.addEventListener("click", () => showOrgView("list"));
     $("pa-org-create-cancel")?.addEventListener("click", () => showOrgView("list"));

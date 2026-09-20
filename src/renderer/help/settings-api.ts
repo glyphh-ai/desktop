@@ -16,9 +16,9 @@
  *   writes resolve to { ok, error }, because a 403 from a non-admin is an
  *          EXPECTED outcome a form must explain, not an exception.
  *
- * Everything crossing this boundary keeps the server's units — money in USD
- * cents, credits in MICRO-credits. The display helpers at the bottom are the
- * one place those become human numbers.
+ * Everything crossing this boundary keeps the server's units — Stripe money in
+ * USD cents, the Pipedream budget in DOLLARS. The display helpers at the bottom
+ * are the one place those become human numbers.
  */
 
 // ── Shapes (structural mirrors of the SDK contract) ───────────────────────
@@ -28,7 +28,8 @@ export interface BillingPlan {
   displayName: string;
   monthlyUsdCents: number;
   activeUsdCents?: number;
-  monthlyCredits: number;
+  /** The monthly Pipedream budget the plan funds, in dollars — its price, dollar for dollar. */
+  poolUsdPerMonth: number;
   maxSeats: number;
   sso: boolean;
   /** A PROVISIONED per-org plan — a real invoiced deal, not the generic tier. */
@@ -50,19 +51,21 @@ export interface Subscription {
   maxSeats: number;
 }
 
-/** Micro-credits (1 credit = 1e6). */
-export interface CreditsBreakdown {
-  balance: number;
-  allowance: number;
-  grants: number;
-  purchases: number;
+/** The org's Pipedream budget this period, in dollars. */
+export interface Balance {
+  planUsd: number;
+  fundsUsd: number;
+  spentUsd: number;
+  remainingUsd: number;
+  periodStart: string;
+  periodEnd: string;
 }
 
-/** Micro-credits. */
+/** The auto-reload rule, in dollars. */
 export interface Autotopup {
   enabled: boolean;
-  thresholdCredits: number;
-  topupCredits: number;
+  thresholdUsd: number;
+  topupUsd: number;
 }
 
 /** USD cents; `created` is unix SECONDS. */
@@ -142,14 +145,14 @@ interface SdkAccountHandle {
     status?: () => Promise<Subscription>;
     upcoming?: () => Promise<UpcomingInvoice>;
     reconcile?: () => Promise<Subscription>;
-    credits?: () => Promise<CreditsBreakdown>;
+    balance?: () => Promise<Balance>;
     invoices?: () => Promise<Invoice[]>;
     autotopup?: () => Promise<Autotopup>;
     setAutotopup?: (input: Autotopup) => Promise<Autotopup>;
     subscribe?: (tier: string) => Promise<{ url: string }>;
     subscribeEmbedded?: (tier: string) => Promise<{ clientSecret?: string }>;
     changePlan?: (tier: string) => Promise<PlanChange>;
-    topup?: (input: { credits: number; embedded?: boolean }) => Promise<{ url?: string; clientSecret?: string }>;
+    topup?: (input: { usd: number; embedded?: boolean }) => Promise<{ url?: string; clientSecret?: string }>;
     config?: () => Promise<{ publishableKey: string | null }>;
     portal?: () => Promise<{ url: string }>;
   };
@@ -193,13 +196,13 @@ interface DesktopAccountIpc {
   billingStatus?: () => Promise<Subscription>;
   billingUpcoming?: () => Promise<{ ok: boolean; upcoming?: UpcomingInvoice; error?: string }>;
   billingReconcile?: () => Promise<Subscription>;
-  billingCredits?: () => Promise<CreditsBreakdown>;
+  billingBalance?: () => Promise<Balance>;
   billingInvoices?: () => Promise<Invoice[]>;
   billingAutotopupGet?: () => Promise<Autotopup>;
   billingAutotopupSet?: (input: Autotopup) => Promise<{ ok: boolean; config?: Autotopup; error?: string }>;
   billingSubscribe?: (tier: string, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
   billingChangePlan?: (tier: string) => Promise<{ ok: boolean; change?: PlanChange; error?: string }>;
-  billingTopup?: (credits: number, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
+  billingTopup?: (usd: number, embedded?: boolean) => Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>;
   billingConfig?: () => Promise<{ ok: boolean; publishableKey?: string | null; error?: string }>;
   billingPortal?: () => Promise<{ ok: boolean; url?: string; error?: string }>;
   accountOrgGet?: () => Promise<Org>;
@@ -227,9 +230,10 @@ export interface AccountApi {
   status(): Promise<Subscription>;
   /** The next invoice: the amount and the day it lands. */
   upcoming(): Promise<UpcomingInvoice>;
-  /** Stripe's records applied now: plan, allowance, paid top-ups. Falls back to a plain status read. */
+  /** Stripe's records applied now: plan + paid funds. Falls back to a plain status read. */
   reconcile(): Promise<Subscription>;
-  credits(): Promise<CreditsBreakdown>;
+  /** The Pipedream budget this period (dollars). */
+  balance(): Promise<Balance>;
   invoices(): Promise<Invoice[]>;
   autotopup(): Promise<Autotopup>;
   setAutotopup(input: Autotopup): Promise<WriteResult<Autotopup>>;
@@ -237,9 +241,10 @@ export interface AccountApi {
   /** Embedded Checkout for a plan: a client secret to mount in-app. */
   subscribeEmbedded(tier: string): Promise<WriteResult<string>>;
   changePlan(tier: string): Promise<WriteResult<PlanChange>>;
-  topup(microCredits: number): Promise<WriteResult<string>>;
+  /** Add funds (whole dollars, min 5) — the hosted Checkout URL. */
+  topup(usd: number): Promise<WriteResult<string>>;
   /** Embedded Checkout: a client secret to mount in-app. */
-  topupEmbedded(microCredits: number): Promise<WriteResult<string>>;
+  topupEmbedded(usd: number): Promise<WriteResult<string>>;
   /** The public Stripe key, or null → embedded unavailable, use hosted. */
   billingConfig(): Promise<string | null>;
   portal(): Promise<WriteResult<string>>;
@@ -319,7 +324,7 @@ export function accountApi(): AccountApi {
       status: () => need(b.status, b),
       upcoming: () => (b.upcoming ? need(b.upcoming, b) : Promise.resolve({ hasUpcoming: false })),
       reconcile: () => (b.reconcile ? b.reconcile() : need(b.status, b)),
-      credits: () => need(b.credits, b),
+      balance: () => need(b.balance, b),
       invoices: () => need(b.invoices, b),
       autotopup: () => need(b.autotopup, b),
       setAutotopup: (input) => web(b.setAutotopup && (() => b.setAutotopup!(input))),
@@ -332,12 +337,12 @@ export function accountApi(): AccountApi {
         return r.ok && r.data.clientSecret ? { ok: true, data: r.data.clientSecret } : r.ok ? { ok: false, error: "no client secret" } : r;
       },
       changePlan: (tier) => web(b.changePlan && (() => b.changePlan!(tier))),
-      topup: async (micro) => {
-        const r = await web(b.topup && (() => b.topup!({ credits: micro })));
+      topup: async (usd) => {
+        const r = await web(b.topup && (() => b.topup!({ usd })));
         return r.ok && r.data.url ? { ok: true, data: r.data.url } : r.ok ? { ok: false, error: "no checkout url" } : r;
       },
-      topupEmbedded: async (micro) => {
-        const r = await web(b.topup && (() => b.topup!({ credits: micro, embedded: true })));
+      topupEmbedded: async (usd) => {
+        const r = await web(b.topup && (() => b.topup!({ usd, embedded: true })));
         return r.ok && r.data.clientSecret ? { ok: true, data: r.data.clientSecret } : r.ok ? { ok: false, error: "no client secret" } : r;
       },
       billingConfig: async () => {
@@ -381,15 +386,15 @@ export function accountApi(): AccountApi {
       catch { return { hasUpcoming: false }; }
     },
     reconcile: () => (g?.billingReconcile ? g.billingReconcile() : need(g?.billingStatus, g)),
-    credits: () => need(g?.billingCredits, g),
+    balance: () => need(g?.billingBalance, g),
     invoices: () => need(g?.billingInvoices, g),
     autotopup: () => need(g?.billingAutotopupGet, g),
     setAutotopup: (input) => ipc(g?.billingAutotopupSet && (() => g.billingAutotopupSet!(input)), "config"),
     subscribe: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier)), "url"),
     subscribeEmbedded: (tier) => ipc(g?.billingSubscribe && (() => g.billingSubscribe!(tier, true)), "clientSecret"),
     changePlan: (tier) => ipc(g?.billingChangePlan && (() => g.billingChangePlan!(tier)), "change"),
-    topup: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro)), "url"),
-    topupEmbedded: (micro) => ipc(g?.billingTopup && (() => g.billingTopup!(micro, true)), "clientSecret"),
+    topup: (usd) => ipc(g?.billingTopup && (() => g.billingTopup!(usd)), "url"),
+    topupEmbedded: (usd) => ipc(g?.billingTopup && (() => g.billingTopup!(usd, true)), "clientSecret"),
     billingConfig: async () => {
       try { const r = await g?.billingConfig?.(); return r?.ok ? (r.publishableKey ?? null) : null; } catch { return null; }
     },
@@ -422,39 +427,21 @@ export function accountApi(): AccountApi {
 
 // ── Units + formatting (the one place server units become human ones) ─────
 
-/** 1 credit = 1e6 micro-credits. */
-export const MICRO = 1_000_000;
+/** The Add-funds buckets, in whole dollars — dollar for dollar, no tiers. */
+export const TOPUP_USD_BUCKETS = [20, 45, 80, 140];
+/** The smallest Add-funds purchase the server accepts. */
+export const TOPUP_MIN_USD = 5;
 
-/** Top-up rate — DISPLAY only; the server prices the actual purchase. */
-export const USD_PER_CREDIT = 0.02;
-export const creditsForUsd = (usd: number): number => Math.floor((usd || 0) / USD_PER_CREDIT);
-/** VOLUME DISCOUNTS — mirrors the server's TOPUP_DISCOUNT_TIERS (billing.py);
- *  thresholds in credits, fraction off the flat rate. Keep them in sync. */
-export const TOPUP_DISCOUNT_TIERS: ReadonlyArray<readonly [number, number]> = [
-  [10_000, 0.30],
-  [5_000, 0.20],
-  [2_500, 0.10],
-];
-export const topupDiscount = (credits: number): number => {
-  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) if (credits >= min) return frac;
-  return 0;
-};
-/** The DISCOUNTED price of a credit bucket, in whole USD (display). */
-export const usdForCredits = (credits: number): number =>
-  Math.round(credits * USD_PER_CREDIT * (1 - topupDiscount(credits)) * 100) / 100;
-/** Credit buckets for the top-up cards (the price derives per tier). */
-export const TOPUP_CREDIT_BUCKETS = [1_000, 2_500, 5_000, 10_000];
-/** Credits a CUSTOM USD amount buys — the best tier the resulting size earns. */
-export const creditsForUsdTiered = (usd: number): number => {
-  for (const [min, frac] of TOPUP_DISCOUNT_TIERS) {
-    const c = Math.floor((usd || 0) / (USD_PER_CREDIT * (1 - frac)));
-    if (c >= min) return c;
-  }
-  return creditsForUsd(usd);
-};
-
-export const toCredits = (micro: number): number => Math.floor((micro || 0) / MICRO);
 export const fmtInt = (n: number): string => Math.max(0, Math.round(n || 0)).toLocaleString();
+
+/** Dollars for display — "$12.34"; a whole amount stays whole ("$20"). */
+export function fmtUsd(usd: number): string {
+  const v = Number.isFinite(usd) ? usd : 0;
+  const whole = Number.isInteger(Math.round(v * 100) / 100) && Number.isInteger(v);
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 }).format(v);
+  } catch { return `$${v.toFixed(whole ? 0 : 2)}`; }
+}
 
 /** Stripe amounts arrive in USD cents. */
 export function fmtMoney(cents: number, currency = "usd"): string {

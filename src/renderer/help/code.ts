@@ -1104,7 +1104,7 @@ interface LiveRun {
   startAt: number;
   inTok: number;
   outTok: number;
-  creditsMicro: number;
+  usd: number;                 // running Pipedream spend for the turn, in dollars
   steps: string[];             // timeline breadcrumbs for the Plan rail
   setupMeta: string;           // first-run model-download status
 }
@@ -1281,7 +1281,7 @@ function observeIfRunning(chat: CodeChat): void {
     (runId) => {
       liveRuns.set(chatId, {
         runId, text: "", bubble: null, startAt: Date.now(),
-        inTok: 0, outTok: 0, creditsMicro: 0, steps: [], setupMeta: "",
+        inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "",
       });
       ensureRunTicker();
       if (chatId === currentId) { broadcastTimeline(true); setThinking(true); renderHistory(); renderThread(); }
@@ -1383,14 +1383,13 @@ function isPeekingNow(): boolean {
   return document.querySelector(".code-root")?.classList.contains("peeking") ?? false;
 }
 
-/** Micro-credits → a "N credits" label — the number the user is billed, the
- *  headline of the footer. Small runs get decimals, big ones stay whole. */
-function fmtCredits(micro: number): string {
-  const c = micro / 1_000_000;
-  const n = c >= 100 ? Math.round(c).toLocaleString()
-    : c >= 1 ? c.toFixed(1)
-    : c.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
-  return `${n} credit${c === 1 ? "" : "s"}`;
+/** Dollars → the footer's headline — what the turn's connector calls cost.
+ *  Small runs keep sub-cent precision, big ones stay to the cent. */
+function fmtUsd(usd: number): string {
+  const n = usd >= 100 ? Math.round(usd).toLocaleString()
+    : usd >= 1 ? usd.toFixed(2)
+    : usd.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return `$${n}`;
 }
 
 /** 1_234 → "1.2k", so the footer stays tight as a run grows into six figures. */
@@ -1412,7 +1411,7 @@ function paintRunMeta(): void {
   // line owns the spinner meta; the token meter takes over once ready.
   if (run.setupMeta) { spinner?.setMeta(run.setupMeta); return; }
   const io = run.inTok + run.outTok > 0 ? ` · ↑${fmtTok(run.inTok)} ↓${fmtTok(run.outTok)}` : "";
-  const cr = run.creditsMicro > 0 ? ` · ${fmtCredits(run.creditsMicro)}` : "";
+  const cr = run.usd > 0 ? ` · ${fmtUsd(run.usd)}` : "";
   spinner?.setMeta(`${fmtElapsed(Date.now() - run.startAt)}${io}${cr}`);
 }
 
@@ -2255,14 +2254,14 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
   return wrap;
 }
 
-/** A styled card for a gateway decline (out of credits / role / rate) — replaces
+/** A styled card for a gateway decline (budget used up / role / rate) — replaces
  *  the raw "API Error: 400 …" text with a title, explanation, and one-click
- *  actions (buy credits / manage plan). */
+ *  actions (add funds / manage plan). */
 const CLI_DISPLAY: Record<string, string> = { claude: "Claude Code", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor" };
 function cliDisplayName(cli?: string): string { return (cli && CLI_DISPLAY[cli]) || (cli ? cli : "The loop's CLI"); }
 function declineCardEl(d: { kind: string; url: string; cli?: string; command?: string }): HTMLElement {
   const COPY: Record<string, { title: string; body: string; cta: string }> = {
-    credits: { title: "Out of credits", body: "The model you picked needs gateway credits to run. Buy more to keep going.", cta: "Buy more credits" },
+    credits: { title: "Pipedream budget used up", body: "This turn's connector calls need budget to run. Add funds to your org's Pipedream budget to keep going.", cta: "Add funds" },
     role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
     rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
     signin: { title: "Sign in to continue", body: `${cliDisplayName(d.cli)} needs you to sign in again before a turn can run${d.command ? ` (run \`${d.command}\`)` : ""}. Then send this message once more.`, cta: "Sign in" },
@@ -2287,10 +2286,10 @@ function declineCardEl(d: { kind: string; url: string; cli?: string; command?: s
   if (cta) {
     cta.textContent = c.cta;
     cta.addEventListener("click", () => {
-      // Credits → the in-app buy-credits dialog (ad-hoc top-up + auto-top-up,
-      // redirects to Stripe). Everything else → the in-app account browser.
+      // Budget → the in-app Add-funds dialog (embedded Stripe checkout +
+      // auto-reload). Everything else → the in-app account browser.
       if (d.kind === "signin") void (window.glyphh as unknown as { cliLogin?: (c: string) => Promise<unknown> }).cliLogin?.(d.cli || "claude");
-      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openBuyCreditsModal());
+      else if (d.kind === "credits") void import("./settings-billing.js").then((m) => m.openAddFundsModal());
       else openUrlInWorkbench("Account", d.url);
     });
   }
@@ -3957,7 +3956,7 @@ function send(): void {
   stopObserving(c.id);
   liveRuns.set(c.id, {
     runId: null, text: "", bubble: null, startAt: Date.now(),
-    inTok: 0, outTok: 0, creditsMicro: 0, steps: [], setupMeta: "",
+    inTok: 0, outTok: 0, usd: 0, steps: [], setupMeta: "",
   });
   ensureRunTicker();
   broadcastTimeline(true);
@@ -4204,13 +4203,14 @@ const STOP_LINES = [
 
 /** Land a run's outcome in ITS chat (the user may be looking at another
  *  session) and reset only that run's state — other sessions keep working. */
-/** The 402 "out of credits" often comes back as raw tool/turn error TEXT (media
- *  generation, etc.), not the styled decline card. When we see it on the visible
- *  session, pop the buy-credits dialog so the user can top up on the spot. */
-function maybeCreditsPrompt(chatId: string, text: string): void {
+/** The 402 "budget used up" often comes back as raw tool/turn error TEXT (a
+ *  connector call, media generation, etc.), not the styled decline card. When
+ *  we see it on the visible session, pop the Add-funds dialog so the user can
+ *  fund the budget on the spot. */
+function maybeBudgetPrompt(chatId: string, text: string): void {
   if (chatId !== currentId || !text) return;
-  if (/\b402\b/.test(text) && /out of credits|add credits|upgrade your plan/i.test(text)) {
-    void import("./settings-billing.js").then((m) => m.openBuyCreditsModal()).catch(() => { /* billing module unavailable */ });
+  if (/\b402\b/.test(text) && /budget|add funds|upgrade your plan/i.test(text)) {
+    void import("./settings-billing.js").then((m) => m.openAddFundsModal()).catch(() => { /* billing module unavailable */ });
   }
 }
 
@@ -4218,7 +4218,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
   const run = liveRuns.get(chatId);
   const chat = chats.find((ch) => ch.id === chatId);
   if (chat && text) chat.messages.push({ role: "assistant", text, at: Date.now() });
-  maybeCreditsPrompt(chatId, text);
+  maybeBudgetPrompt(chatId, text);
   if (chat && stopped) {
     chat.messages.push({
       role: "assistant",
@@ -4523,7 +4523,7 @@ function initGlyphhAgentEvents(): void {
   window.glyphh.onGlyphhAgentCredits?.((d) => {
     const e = runEntry(d.runId);
     if (!e) return;
-    e[1].creditsMicro = d.creditsMicro;
+    e[1].usd = d.usd;
     if (e[0] === currentId) paintRunMeta();
   });
   window.glyphh.onGlyphhAgentProgress?.((d) => {
@@ -4650,7 +4650,7 @@ function initGlyphhAgentEvents(): void {
     const e = runEntry(d.runId);
     if (!e) return;
     const [runChatId, run] = e;
-    // A picked-frontier decline (out of credits / role / rate) arrives with a
+    // A picked-frontier decline (budget used up / role / rate) arrives with a
     // %%GLYPHHERR:<kind>:<url>%% marker — render a styled card, not the raw
     // "API Error: 400 …" echo. Look in both the stream buffer and the error.
     const marker = /%%GLYPHHERR:([a-z]+):([^%]*)%%/.exec(`${run.text}\n${d.error}`);

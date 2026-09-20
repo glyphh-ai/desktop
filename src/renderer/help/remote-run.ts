@@ -34,7 +34,7 @@ type HarnessWireFrame = (
   | { type: "delta"; delta: string }
   | { type: "tool"; phase: "start" | "done"; name: string; thought?: string; title?: string; denied?: boolean; failed?: boolean; preview?: string }
   | { type: "progress"; inTokens: number; outTokens: number }
-  | { type: "credits"; creditsMicro: number }
+  | { type: "credits"; usd: number }
   | { type: "approval"; id: string; kind: string; title: string; detail: string }
   | { type: "ask"; id: string; questions: Array<{ question: string; options?: string[] }> }
   | { type: "setup"; phase: string }
@@ -248,10 +248,10 @@ export interface RemoteRunCallbacks {
     diff?: string;     // "[+N -M]"
     error?: string;
   }) => void;
-  /** Live usage for the turn — credits (micro) as the runtime meters them, and
-   *  token progress. Additive; desktop ignores it. Mobile shows a per-turn
-   *  credits + duration footer. */
-  onUsage?: (u: { creditsMicro?: number; inTokens?: number; outTokens?: number }) => void;
+  /** Live usage for the turn — dollars as the runtime meters them, and token
+   *  progress. Additive; desktop ignores it. Mobile shows a per-turn
+   *  dollars + duration footer. */
+  onUsage?: (u: { usd?: number; inTokens?: number; outTokens?: number }) => void;
   onToken?: (delta: string) => void;
   onAnswer?: (fullText: string) => void;
   /** The turn's USER prompt — the run's first frame. Only surfaces OBSERVING a run
@@ -377,7 +377,7 @@ function dispatchFrame(
       state.error = frame.error || "the runtime reported an error";
       return;
     case "credits":
-      cb.onUsage?.({ creditsMicro: frame.creditsMicro });
+      cb.onUsage?.({ usd: frame.usd });
       return;
     case "progress":
       cb.onUsage?.({ inTokens: frame.inTokens, outTokens: frame.outTokens });

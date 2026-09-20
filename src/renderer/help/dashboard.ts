@@ -1,7 +1,7 @@
 /**
- * Dashboard (Home) — the landing section. Shows a welcome, org credit balance,
- * spend this month, apps deployed, and a per-day usage chart (credits + calls;
- * LLM tokens are not a client concept). All numbers come from the server via
+ * Dashboard (Home) — the landing section. Shows a welcome, the org's Pipedream
+ * budget, spend this month, apps deployed, and a per-day usage chart (dollars +
+ * calls; LLM tokens are not a client concept). All numbers come from the server via
  * window.glyphh.dashboardData() (see home-ipc.ts), which mirrors the same
  * billing/usage endpoints the platform dashboard uses.
  */
@@ -19,20 +19,17 @@ declare const Chart: any;
 
 interface DashboardData {
   name: string;
-  plan: string;           // org tier slug (free / basic / pro / advanced)
-  orgCredits: boolean;    // false = org pool is admin-only for this account
-  me: {                   // the member's own allocation (role cap + spend)
-    roleName?: string | null;
-    uncapped?: boolean;
-    capCredits?: number | null;
-    spentCredits?: number;
-    remainingCredits?: number | null;
-    windowEnd?: string | null;
-  } | null;
-  credits: number;        // whole credits available (admins only)
-  allowance: number;      // whole credits/month included in the plan
-  spendCredits: number;   // whole credits used this calendar month
-  requests: number;       // billable calls this month
+  plan: string;           // the plan's display name (a bare tier slug on old builds)
+  orgBudget: boolean;     // false = the Pipedream budget is admin-only for this account
+  remainingUsd: number;   // dollars left in the Pipedream budget this period (admins only)
+  poolUsdPerMonth: number; // what the plan funds each month, dollar for dollar
+  fundsUsd: number;       // purchased + granted dollars on top of the plan
+  budgetSpentUsd: number; // Pipedream dollars spent this period
+  periodEnd: string | null;
+  spendUsd: number;       // dollars spent this calendar month, all sources
+  spendPipedreamUsd: number;
+  spendProviderUsd: number;
+  requests: number;       // metered calls this month
   appsCount: number;      // apps hosted for this org
 }
 
@@ -44,17 +41,19 @@ export function greeting(name: string): string {
   return name ? `${part}, ${name}` : "Welcome back";
 }
 
-/** "1,204" for credits/counts. */
+/** "1,204" for counts. */
 function fmtInt(n: number): string {
   return Math.max(0, Math.round(n)).toLocaleString();
 }
 
-/** Credits — whole numbers get thousands separators; a FRACTION shows one
- *  decimal (sub-credit spend is real: micro-credit metering means "0.2
- *  credits" is the honest number, never a floored 0 beside a floored 49). */
-function fmtCredits(n: number): string {
-  if (!Number.isFinite(n)) return "0";
-  return Number.isInteger(n) ? fmtInt(n) : (Math.round(n * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** Dollars — "$12.34"; sub-cent spend is real (a single call can cost a
+ *  fraction of a cent), so small amounts keep up to four decimals rather than
+ *  rounding to a $0.00 that reads as free. */
+function fmtUsd(n: number): string {
+  if (!Number.isFinite(n)) return "$0.00";
+  const v = Math.max(0, n);
+  const digits = v > 0 && v < 0.01 ? 4 : 2;
+  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: digits })}`;
 }
 
 /** "Jul 5" from a "YYYY-MM-DD" bucket (parsed as local, not UTC). */
@@ -64,7 +63,7 @@ function shortDay(iso: string): string {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-type SeriesPoint = { day: string; key: string; credits: number; requests: number };
+type SeriesPoint = { day: string; key: string; usd: number; requests: number };
 type SeriesData = { from: string; to: string; points: SeriesPoint[] };
 
 /** Stable per-key hue — the same name always gets the same color (matches the
@@ -105,7 +104,7 @@ function renderChart(series: SeriesData, only: string): void {
   if (chart) { chart.destroy(); chart = null; }
 
   const points = only ? series.points.filter((p) => p.key === only) : series.points;
-  const hasData = points.some((p) => p.credits > 0 || p.requests > 0);
+  const hasData = points.some((p) => p.usd > 0 || p.requests > 0);
   empty?.classList.toggle("hidden", hasData);
   canvas.style.visibility = hasData ? "visible" : "hidden";
   if (!hasData) return;
@@ -114,14 +113,14 @@ function renderChart(series: SeriesData, only: string): void {
   const dayIdx = new Map(days.map((d, i) => [d, i]));
   // Keys ordered by total spend so the biggest segments sit at the stack's base.
   const totals = new Map<string, number>();
-  for (const p of points) totals.set(p.key, (totals.get(p.key) ?? 0) + p.credits);
+  for (const p of points) totals.set(p.key, (totals.get(p.key) ?? 0) + p.usd);
   const keys = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
 
   const cells = new Map<string, SeriesPoint>();
   for (const p of points) cells.set(`${p.day}|${p.key}`, p);
   const datasets = keys.map((key) => ({
     label: keyLabel(key),
-    data: days.map((d) => cells.get(`${d}|${key}`)?.credits ?? 0),
+    data: days.map((d) => cells.get(`${d}|${key}`)?.usd ?? 0),
     backgroundColor: `hsl(${hueFor(key)} 62% 52%)`,
     hoverBackgroundColor: `hsl(${hueFor(key)} 62% 60%)`,
     borderRadius: 3,
@@ -146,7 +145,7 @@ function renderChart(series: SeriesData, only: string): void {
           callbacks: {
             label: (c: { parsed: { y: number }; dataIndex: number; dataset: { label: string; __key: string } }) => {
               const cell = cells.get(`${days[c.dataIndex]}|${c.dataset.__key}`);
-              return `${c.dataset.label}: ${fmtCredits(c.parsed.y)} credits${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
+              return `${c.dataset.label}: ${fmtUsd(c.parsed.y)}${cell ? ` · ${fmtInt(cell.requests)} calls` : ""}`;
             },
           },
         },
@@ -157,7 +156,7 @@ function renderChart(series: SeriesData, only: string): void {
           stacked: true,
           beginAtZero: true,
           grid: { color: cssVar("--border") || "rgba(255,255,255,0.08)" },
-          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtCredits(v) },
+          ticks: { color: cssVar("--text-3") || "#868686", callback: (v: number) => fmtUsd(v) },
         },
       },
     },
@@ -211,14 +210,14 @@ export async function loadUsageChart(): Promise<void> {
   const only = filterSel?.value || "";
 
   const shown = only ? series.points.filter((p) => p.key === only) : series.points;
-  const credits = shown.reduce((s, p) => s + p.credits, 0);
+  const usd = shown.reduce((s, p) => s + p.usd, 0);
   const calls = shown.reduce((s, p) => s + p.requests, 0);
   // GUARDED (his report, 2026-09-11): these loaders now run on surfaces
   // where the chart DOM may not exist (web platform) — absent DOM = no-op,
   // never a boot-killing rejection.
   const totalEl = document.getElementById("dash-usage-total");
   const rangeEl = document.getElementById("dash-usage-range");
-  if (totalEl) totalEl.textContent = `${fmtCredits(credits)} credits · ${fmtInt(calls)} calls`;
+  if (totalEl) totalEl.textContent = `${fmtUsd(usd)} · ${fmtInt(calls)} calls`;
   if (rangeEl) rangeEl.textContent = `last ${win} days`;
   if (!totalEl) return;
   renderChart(series, only);
@@ -658,30 +657,20 @@ export async function loadUsageMetrics(): Promise<void> {
     const planName = data.plan
       ? (data.plan.includes(" ") ? data.plan : data.plan.charAt(0).toUpperCase() + data.plan.slice(1))
       : "";
-    if (data.orgCredits === false) {
-      // Member view — the org pool is admin-only; show THEIR allocation
-      // (role cap, spend across LLM + compute, reset date).
-      $a("dash-credits-label").textContent = "Your credits";
-      if (data.me?.uncapped ?? true) {
-        $a("dash-credits-value").textContent = "Pooled";
-        $a("dash-credits-sub").textContent = `no personal cap — you draw from the team pool${data.me?.roleName ? ` · ${data.me.roleName}` : ""}`;
-      } else {
-        $a("dash-credits-value").textContent = fmtInt(data.me?.remainingCredits ?? 0);
-        const resets = data.me?.windowEnd
-          ? new Date(data.me.windowEnd).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-          : "soon";
-        $a("dash-credits-sub").textContent = `${fmtInt(data.me?.spentCredits ?? 0)} of ${fmtInt(data.me?.capCredits ?? 0)} used · resets ${resets}`;
-      }
+    // The org's Pipedream budget (his ruling, 2026-09-20: dollars, no
+    // per-member caps). A member's 403 reads as pooled — they draw from the
+    // org's budget and the admin sees the number.
+    $a("dash-budget-label").textContent = "Pipedream budget";
+    if (data.orgBudget === false) {
+      $a("dash-budget-value").textContent = "Pooled";
+      $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}connector calls draw from the org's budget`;
     } else {
-      $a("dash-credits-label").textContent = "Organization credits";
-      $a("dash-credits-value").textContent = fmtCredits(data.credits);
-      $a("dash-credits-sub").textContent = data.allowance > 0
-        ? `${planName ? `${planName} plan · ` : ""}${fmtInt(data.allowance)} credits/mo`
-        : (planName ? `${planName} plan` : "available");
+      $a("dash-budget-value").textContent = fmtUsd(data.remainingUsd);
+      $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}${fmtUsd(data.poolUsdPerMonth)} / month${data.fundsUsd > 0 ? ` + ${fmtUsd(data.fundsUsd)} funds` : ""}`;
     }
 
-    $a("dash-spend-value").textContent = fmtCredits(data.spendCredits);
-    $a("dash-spend-sub").textContent = `credits used${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;
+    $a("dash-spend-value").textContent = fmtUsd(data.spendUsd);
+    $a("dash-spend-sub").textContent = `${fmtUsd(data.spendPipedreamUsd)} Pipedream · ${fmtUsd(data.spendProviderUsd)} models${data.requests ? ` · ${fmtInt(data.requests)} calls` : ""}`;
 
     $a("dash-apps-value").textContent = fmtInt(data.appsCount);
   } catch (err) {
@@ -924,7 +913,7 @@ export function initDashboardEvents(): void {
   // platform's /billing page in a workbench browser; there's nothing left over
   // there that this app can't do itself.
   // The header's primary action is the community (his order, 2026-08-25) —
-  // credits are bought on Billing.
+  // funds are added on Usage.
   document.getElementById("dash-discord")?.addEventListener("click", () => {
     // typeof guard: on web window.glyphh is a Proxy that fabricates a FUNCTION
     // for any name — a truthy || would "open" that function, not a URL.

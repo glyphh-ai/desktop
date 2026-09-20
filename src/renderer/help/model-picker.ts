@@ -31,8 +31,8 @@ export interface RoleView {
     providerSlug: string;
     contextWindow: number | null;
     maxOutputTokens: number | null;
-    inputCreditsPerMTok: number;
-    outputCreditsPerMTok: number;
+    inputUsdPerMTok: number;
+    outputUsdPerMTok: number;
     isPlatformDefault: boolean;
   }>;
 }
@@ -118,8 +118,9 @@ function windowLabel(tokens: number | null): string {
   return tokens >= 1000 ? `${Math.round(tokens / 1000)}k context` : `${tokens} context`;
 }
 
-function credits(v: number | null | undefined): string {
-  return v == null ? "—" : String(Math.round(v));
+/** A vendor list price, dollars per 1M tokens — informational, never a bill. */
+function usd(v: number | null | undefined): string {
+  return v == null ? "—" : `$${Number.isInteger(v) ? v : v.toFixed(2)}`;
 }
 
 /**
@@ -241,7 +242,7 @@ export function renderMenu(menu: HTMLElement, loop: string, onPicked: () => void
 
         // ⓘ — the sub-line stays scannable; the detail lives in a tooltip that
         // never triggers a model switch.
-        const price = `${credits(choice.inputCreditsPerMTok)}/${credits(choice.outputCreditsPerMTok)} credits per 1M tokens`;
+        const price = `${usd(choice.inputUsdPerMTok)} in / ${usd(choice.outputUsdPerMTok)} out per 1M tokens`;
         const note = selected ? sourceNote(role.source) : "";
         const info = [
           `${choice.name} — ${choice.providerSlug}.`,
