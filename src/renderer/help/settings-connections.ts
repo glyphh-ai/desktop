@@ -73,7 +73,7 @@ let catQuery = "";
 let catTotal = 0;
 let catLoading = false;
 /** The detail on screen: a connection of ours, or a directory app not yet connected. */
-let current: { entry?: Entry; app?: CatalogApp } | null = null;
+let current: { entry?: Entry; app?: CatalogApp; page?: "summary" | "permissions" } | null = null;
 let wired = false;
 
 // ── loading ─────────────────────────────────────────────────────────────────
