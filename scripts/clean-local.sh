@@ -117,6 +117,25 @@ for label in "${KEYCHAIN_LABELS[@]}"; do
   fi
 done
 
+# ── 4. the CLI Installer's done flag (lives on the SERVER, per user) ───────
+# Preferences are server-side, so a wiped machine still skips the installer
+# on its next launch (2026-09-20). On a dev box the server is the local child;
+# clear the flag there for every user so the next launch is a first run.
+echo "▸ CLI Installer first-run flag (local child server)…"
+DB_CONTAINER="glyphh-child-child-db-1"
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$DB_CONTAINER"; then
+  for schema in $(docker exec "$DB_CONTAINER" psql -U litellm -d litellm -Atc "select nspname from pg_namespace where nspname like 'org\_%'" 2>/dev/null); do
+    if [[ $DRY_RUN -eq 1 ]]; then
+      echo "  would clear    cliSetupDoneAt in $schema.glyphh_user_prefs"
+    else
+      n=$(docker exec "$DB_CONTAINER" psql -U litellm -d litellm -Atc "with u as (update $schema.glyphh_user_prefs set prefs = prefs - 'cliSetupDoneAt' where prefs ? 'cliSetupDoneAt' returning 1) select count(*) from u" 2>/dev/null || echo 0)
+      echo "  cleared        cliSetupDoneAt for $n user(s) in $schema"
+    fi
+  done
+else
+  echo "  (local child DB not running — the flag on the server stays; clear it from the console or run the child first)"
+fi
+
 echo ""
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "✓ Dry run complete — nothing was deleted."
