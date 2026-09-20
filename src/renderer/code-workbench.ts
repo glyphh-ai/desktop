@@ -2216,7 +2216,12 @@ async function init(): Promise<void> {
     el.innerHTML = `<button type="button" class="cli-installer-quit" title="Quit Glyphh">&times;</button><div class="cli-installer-host ws-rail-slot-body"></div>`;
     // The one other way out (his order, 2026-09-20): quit the app if the CLI
     // cannot be installed. Not a close: the installer comes back next launch.
-    el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => { window.glyphh.windowClose?.(); });
+    el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => {
+      // Kill the installer's shell first: an orphaned TUI (this same binary,
+      // run as node) kept the app's process alive after the window closed.
+      closeInstaller();
+      window.setTimeout(() => window.glyphh.windowClose?.(), 150);
+    });
     document.body.appendChild(el);
     const slot = makeSlot("terminal") as TermSlot;
     slot.terminals[0].initCmd = r.command;

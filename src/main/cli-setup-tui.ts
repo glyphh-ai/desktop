@@ -154,6 +154,12 @@ function finish(): void {
   setTimeout(() => process.exit(0), 1200);
 }
 
+// The terminal going away is the end: the shell's hangup, a kill, or stdin
+// closing all exit, so a closed app never leaves this process behind.
+for (const sig of ["SIGHUP", "SIGTERM"] as const) process.on(sig, () => { process.stdout.write(c.show); process.exit(0); });
+process.stdin.on("end", () => process.exit(0));
+process.stdin.on("close", () => process.exit(0));
+
 // ── keys ──
 function onKey(_: string, k: readline.Key): void {
   if (waitKey) { waitKey = false; refresh(); draw(); return; }
