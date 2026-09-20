@@ -191,7 +191,7 @@ function onKey(_: string, k: readline.Key): void {
       if (cursor === 0 && input.loops.length) loopIdx = (loopIdx + input.loops.length + d) % input.loops.length;
       else if (cursor === 1) { const n = modelOptions().length; modelIdx = (modelIdx + n + d) % n; }
       else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0;
-    } else if (name === "return") { if (cursor === 3) finish(); else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0; }
+    } else if (name === "return") { if (cursor === 3) { screen = "home"; cursor = CLIS.length + 1; status = "defaults saved"; } else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0; }
   }
   draw();
 }

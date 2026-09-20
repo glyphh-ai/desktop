@@ -54,9 +54,9 @@ export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string
 
 /** The TUI writes output.json on Finish; poll for it while a run is live. */
 function watchOutput(): void {
-  if (watching) return;
-  watching = true;
   const file = outFile();
+  if (watching) fs.unwatchFile(file);
+  watching = true;
   const tick = (): void => {
     let raw = "";
     try { raw = fs.readFileSync(file, "utf-8"); } catch { return; }
@@ -72,8 +72,6 @@ function watchOutput(): void {
     for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("cli-setup-done", { loop: parsed.loop || "", model: parsed.model || "", view: parsed.view || "" }); }
   };
   fs.watchFile(file, { interval: 1000 }, tick);
-  // Nothing landed in twenty minutes: stop polling; the next open re-arms.
-  setTimeout(() => { if (watching) { fs.unwatchFile(file, tick); watching = false; } }, 20 * 60_000);
 }
 
 export function registerCliSetupIpc(): void {

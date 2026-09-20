@@ -2223,7 +2223,20 @@ async function init(): Promise<void> {
     installerOverlay = { el, slot };
     renderTerminalIntoSlot(el.querySelector<HTMLElement>(".cli-installer-host")!, slot);
     console.warn("[cli-installer] open (full screen)");
+    // Finish lands as a preference in main; watch for it here as well as the
+    // event, so the overlay closes even if the event is missed.
+    const poll = window.setInterval(() => {
+      if (!installerOverlay) { window.clearInterval(poll); return; }
+      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => { if (v) { window.clearInterval(poll); closeInstaller(); } }).catch(() => {});
+    }, 2000);
   };
+  // FIRST RUN, from the workbench itself (his report, 2026-09-20: "on first
+  // run the thing still did not load"): the boot gate's timer is not relied
+  // on. Once the door exists, ask main whether the installer has ever finished.
+  void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => {
+    console.warn("[cli-installer] first-run check (workbench)", JSON.stringify({ done: !!v }));
+    if (!v) void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.();
+  }).catch((e: unknown) => console.warn("[cli-installer] first-run check failed", String(e)));
   // Finish in the installer: the loop's model is written through the loop's
   // own save, the one way a row is ever written.
   (window.glyphh as unknown as { onCliSetupDone?: (cb: (r: { loop: string; model: string; view: string }) => void) => void }).onCliSetupDone?.((r) => {
