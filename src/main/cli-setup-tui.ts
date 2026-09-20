@@ -103,7 +103,7 @@ function draw(): void {
     out.push("");
     const extra = ["Set defaults (loop, model, mode)", "Finish"];
     extra.forEach((e, j) => { const sel = cursor === CLIS.length + j; out.push(`  ${sel ? c.invert : ""} ${c.accent}›${c.reset}${sel ? c.invert : ""} ${pad(e, 50)} ${c.reset}`); });
-    out.push("", `  ${key("↑↓", "move")}  ${key("enter", "open")}  ${key("r", "re-check")}  ${key("q", "quit")}`);
+    out.push("", `  ${key("↑↓", "move")}  ${key("enter", "open")}  ${key("r", "re-check")}`, `  ${c.faint}Finish needs one working CLI.${c.reset}`);
   } else if (screen === "cli" && picked) {
     const on = installed.get(picked.key);
     out.push(`  ${c.bold}${c.text}${picked.name}${c.reset}  ${on ? `${c.ok}installed${c.reset}` : `${c.warn}not installed${c.reset}`}`, "");
@@ -147,6 +147,8 @@ function runHere(cmd: string, why: string): void {
 let waitKey = false;
 
 function finish(): void {
+  // THE ONLY WAY OUT IS A WORKING CLI (his order, 2026-09-20).
+  if (![...installed.values()].some(Boolean)) { status = "install at least one CLI before finishing"; draw(); return; }
   const loop = input.loops[loopIdx];
   const model = modelOptions()[modelIdx];
   const outp: Output = { done: true, ...(loop ? { loop: loop.id } : {}), ...(model?.id ? { model: model.id } : {}), view: viewIdx === 1 ? "cli" : "glyphh" };
@@ -160,13 +162,12 @@ function finish(): void {
 function onKey(_: string, k: readline.Key): void {
   if (waitKey) { waitKey = false; refresh(); draw(); return; }
   const name = k.name || "";
-  if (k.ctrl && name === "c") { process.stdout.write(c.show); process.exit(0); }
+  if (k.ctrl && name === "c") { status = "finish when a CLI works; there is no other way out"; draw(); return; }
   if (screen === "home") {
     const n = CLIS.length + 2;
     if (name === "up") cursor = (cursor + n - 1) % n;
     else if (name === "down") cursor = (cursor + 1) % n;
     else if (name === "r") { refresh(); status = "re-checked"; }
-    else if (name === "q") { process.stdout.write(c.show); process.exit(0); }
     else if (name === "return") {
       if (cursor < CLIS.length) { picked = CLIS[cursor]; screen = "cli"; cursor = 0; }
       else if (cursor === CLIS.length) { screen = "defaults"; cursor = 0; }
