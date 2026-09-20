@@ -106,6 +106,8 @@ export interface InstallOrigin {
   /** What the payload wrote, so an update can take away what it removed. */
   files: string[];
   installedAt: string;
+  /** Who published it: the catalog's author, so the list never says "by you". */
+  author?: string;
 }
 const ORIGIN_KEY = (skillId: string): string => `bundleSource:${skillId}`;
 const originOf = (skillId: string): InstallOrigin | null => {
@@ -129,13 +131,14 @@ async function install(ref: string, kind: Kind): Promise<{ id: string }> {
   const [from, id] = ref.split(":", 2) as ["org" | "glyphh", string];
   const base = from === "org" ? `/api/library/${kind}/${encodeURIComponent(id)}` : `/api/hub/public/${encodeURIComponent(id)}`;
   const rows = from === "org" ? await client.http.get<OrgItem[]>(`/api/library/${kind}`) : await client.http.get<PublicItem[]>("/api/hub/public");
-  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null }>).find((r) => r.id === id);
+  const meta = (rows as Array<{ id: string; slug: string; name: string; description: string; headVersion?: number | null; version?: number | null; author?: string; sourceOrg?: string }>).find((r) => r.id === id);
   if (!meta) throw new Error(`that ${kind} is no longer available to you`);
   const payload = await client.http.get<Record<string, unknown>>(`${base}/payload`);
   const files = filesFromHubPayload(meta.slug, meta.description, payload && typeof payload === "object" ? payload : {});
   const installed = installSkill(meta.slug, files, kind);
+  const author = from === "glyphh" ? "Glyphh" : (meta.author || "your organization");
   setPreference(ORIGIN_KEY(installed.id), {
-    from, itemId: id, kind, slug: meta.slug, version: versionOf(meta), files: Object.keys(files), installedAt: new Date().toISOString(),
+    from, itemId: id, kind, slug: meta.slug, version: versionOf(meta), files: Object.keys(files), installedAt: new Date().toISOString(), author,
   } satisfies InstallOrigin);
   await client.http.post(`${base}/install`, {}).catch(() => undefined); // the hub's install count; the folder is the truth
   return { id: installed.id };

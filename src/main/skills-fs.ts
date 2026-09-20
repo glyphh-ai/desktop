@@ -22,6 +22,7 @@ import { homedir } from "os";
 import { execFileSync } from "child_process";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { userScopedPath, glyphhPath } from "./app-paths.js";
+import { getPreference } from "./stores/preferences-db.js";
 import { registerBundleApp, unregisterBundleApp } from "./glyphh-app-host.js";
 import { appCardManifest, appCardSkillMd, GENERATED_MARK, isGeneratedCard, type AppCardInput } from "../shared/bundle-shape.js";
 
@@ -148,6 +149,15 @@ function markerOf(dir: string): string | null {
   return null;
 }
 
+/** A bundle installed from the hub is BY its publisher, not by this user (his
+ *  report, 2026-09-20: the default glyphh skill said "created by you"). The
+ *  install origin (hub-ipc's bundleSource: preference) carries the author. */
+function installedAuthor(id: string): string {
+  const o = getPreference<{ author?: string; from?: string } | null>(`bundleSource:${id}`, null);
+  if (!o || typeof o !== "object") return "";
+  return o.author || (o.from === "glyphh" ? "Glyphh" : o.from === "org" ? "your organization" : "");
+}
+
 function summarize(source: SkillSource, name: string, dir: string, enabled: boolean): SkillSummary | null {
   const md = path.join(dir, "SKILL.md");
   let text = "";
@@ -163,9 +173,10 @@ function summarize(source: SkillSource, name: string, dir: string, enabled: bool
   try { updatedAt = fs.statSync(marker).mtime.toISOString(); } catch { /* fine */ }
   const type = bundleType(dir, frontmatter.type);
   const { icon, tool } = bundleMarks(dir, type);
+  const id = idOf(source, name);
   return {
-    id: idOf(source, name), source, type, name: frontmatter.name || name, description: frontmatter.description || "",
-    author: frontmatter.author || frontmatter.from || "", enabled, dir, fileCount: walk(dir).length, updatedAt,
+    id, source, type, name: frontmatter.name || name, description: frontmatter.description || "",
+    author: frontmatter.author || frontmatter.from || installedAuthor(id), enabled, dir, fileCount: walk(dir).length, updatedAt,
     icon, tool,
   };
 }
