@@ -772,14 +772,14 @@ export async function loadUsageAppView(): Promise<void> {
       planEl.textContent = data.plan.includes(" ") ? data.plan
         : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
     }
-    // THE MEMBER'S BUDGET (his play-out, 2026-09-20): what the org lets them
-    // spend plus what runs through Glyphh. Spent counts both, so
-    // total minus spent is what is left of both.
-    const limit = data?.limitUsd == null ? null : Math.max(0, data.limitUsd);
+    // THE GLYPHH BUDGET (his order, 2026-09-20): one number, the member's
+    // budget for connector and model calls through Glyphh (their team's share
+    // when the org admin handed one out, else the org's pool), spent and
+    // remaining against it. The org's own money is LiteLLM's to show.
     const pool = Math.max(0, data?.poolUsd ?? 0);
     const funds = Math.max(0, data?.fundsUsd ?? 0);
-    const spent = Math.max(0, data?.mySpentUsd ?? 0);
-    const total = (limit ?? 0) + pool;
+    const spent = Math.max(0, data?.poolSpentUsd ?? 0);
+    const total = pool;
     const pct = total > 0 ? Math.min(100, Math.round((spent / total) * 100)) : 0;
     const fill = el("ua-month-fill");
     if (fill) fill.style.width = `${pct}%`;
@@ -796,19 +796,10 @@ export async function loadUsageAppView(): Promise<void> {
     if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
     const poolEl = el("ua-pool");
     if (poolEl) poolEl.textContent = `${fmtUsd(total)} / month`;
-    const poolSub = el("ua-pool-sub");
-    if (poolSub) {
-      const who = data?.limitSource === "member" ? "set for you by your organization" : "your organization's limit";
-      poolSub.textContent = limit == null
-        ? `${fmtUsd(pool)} from Glyphh, for what runs through it · your organization has set no limit`
-        : `${fmtUsd(limit)} ${who} · ${fmtUsd(pool)} from Glyphh, for what runs through it`;
-    }
-    const connEl = el("ua-connector");
-    if (connEl) connEl.textContent = `${fmtUsd(Math.max(0, data?.poolSpentUsd ?? 0))} of ${fmtUsd(pool)} used`;
     const fundsEl = el("ua-funds");
     if (fundsEl) fundsEl.textContent = fmtUsd(funds);
     const balEl = el("ua-balance");
-    if (balEl) balEl.textContent = fmtUsd(Math.max(0, total - spent));
+    if (balEl) balEl.textContent = fmtUsd(Math.max(0, data?.poolRemainingUsd ?? total - spent));
     const t = el("ua-autotopup") as HTMLInputElement | null;
     if (t && topup) t.checked = !!topup.enabled;
     const line = el("ua-autotopup-line");
