@@ -11,7 +11,7 @@
 
 import fs from "fs";
 import { clearGatewayCreds } from "./gateway-token.js";
-import { primeAllLoopEnv } from "./cli-agents.js";
+import { primeAllLoopEnv, refreshGatewayMode } from "./cli-agents.js";
 import path from "path";
 import os from "os";
 import { shell } from "electron";
@@ -248,11 +248,17 @@ async function pollOrgConfig(): Promise<void> {
     const signature = JSON.stringify([
       gates.gatewayAllowed, gates.tier, gates.plan, gates.governance,
       gates.autoOnly, gates.cliAllowed, gates.vendorRouting,
+      // The org's default model (2026-09-20): a change must reach the loops
+      // and the chip without a restart, like every other org switch.
+      gates.defaultModel,
     ]);
     if (lastOrgSignature === null) { lastOrgSignature = signature; return; }
     if (signature === lastOrgSignature) return;
     lastOrgSignature = signature;
     clearGatewayCreds();
+    // The org's default model and lane travel with the gates: re-resolve the
+    // required model before the loop env is rewritten (2026-09-20).
+    await refreshGatewayMode().catch(() => undefined);
     await primeAllLoopEnv().catch(() => undefined);
     await refreshAccountState().catch(() => null);
     orgChangeObserver?.();
