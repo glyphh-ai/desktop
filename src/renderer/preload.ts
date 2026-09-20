@@ -1345,6 +1345,7 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.on("update-status", (_e, info) => cb(info));
   },
   updateInstall: () => ipcRenderer.send("update-install"),
+  updateDownload: () => ipcRenderer.invoke("update-download") as Promise<void>,
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates") as Promise<string | null>,
   // ── GitHub (desktop): the source chip's repo picker + local clone ──
   gitStatus: () => ipcRenderer.invoke("git-status") as Promise<{ ok: boolean; status?: { connected: boolean; login?: string | null }; error?: string }>,
@@ -1353,7 +1354,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   gitCloneInto: (repo: string, dir: string) => ipcRenderer.invoke("git-clone-into", repo, dir) as Promise<{ ok: boolean; error?: string }>,
   // Current pending update (null when none) — lets the About page show the
   // "Relaunch to Update" prompt on load, not only when a live event arrives.
-  getUpdateStatus: () => ipcRenderer.invoke("get-update-status") as Promise<{ version: string; ready: boolean } | null>,
+  getUpdateStatus: () => ipcRenderer.invoke("get-update-status") as Promise<{ version: string; ready: boolean; downloading: boolean } | null>,
 
   // Remote relay — settings UI uses these. The JWT authenticates the WS,
   // so there's no client-token to manage; only the external (server) tokens

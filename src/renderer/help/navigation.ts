@@ -60,12 +60,12 @@ const buildUserMenuInto = (menu: HTMLElement, go: (sub: string) => void, onPicke
     b.addEventListener("click", () => { onPicked(); go(r.sub); });
     menu.appendChild(b);
   }
-  void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ ready?: boolean } | null> } })
+  void (window as unknown as { glyphh?: { getUpdateStatus?: () => Promise<{ version?: string; ready?: boolean } | null> } })
     .glyphh?.getUpdateStatus?.().then((st) => {
-      if (!st?.ready) return;
+      if (!st?.version) return;
       Array.from(menu.querySelectorAll<HTMLElement>(".code-menu-item span"))
         .find((sp) => sp.textContent === "About")
-        ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="An update is ready"></span>`);
+        ?.insertAdjacentHTML("afterend", `<span class="user-menu-dot" title="${st.ready ? "An update is ready to install" : "A new release is available"}"></span>`);
     }).catch(() => {});
   const sep = document.createElement("div");
   sep.className = "menu-sep";

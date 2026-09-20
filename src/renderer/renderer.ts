@@ -571,8 +571,9 @@ declare global {
       // Auto-update
       onUpdateStatus: (cb: (info: { status: string; version?: string; percent?: number; error?: string }) => void) => void;
       updateInstall: () => void;
+      updateDownload: () => Promise<void>;
       checkForUpdates: () => Promise<string | null>;
-      getUpdateStatus: () => Promise<{ version: string; ready: boolean } | null>;
+      getUpdateStatus: () => Promise<{ version: string; ready: boolean; downloading: boolean } | null>;
       // Remote relay
 
       // Local MCP server (127.0.0.1)
@@ -658,21 +659,29 @@ const updatingOverlay = document.getElementById("updating-overlay");
 const updatingLabel = document.getElementById("updating-label");
 const updatingFill = document.getElementById("updating-fill");
 
+let shellUpdateReady = false;
 window.glyphh.onUpdateStatus(({ status, version, percent, error }) => {
   if (status === "available") {
-    updateMsg.textContent = `Downloading v${version}...`;
-    updateProgress.classList.remove("hidden");
-    updateAction.classList.add("hidden");
+    shellUpdateReady = false;
+    updateMsg.textContent = `v${version} is available`;
+    updateProgress.classList.add("hidden");
+    updateAction.textContent = "Download";
+    updateAction.classList.remove("hidden");
     updateBar.classList.remove("hidden");
   } else if (status === "downloading") {
+    updateProgress.classList.remove("hidden");
+    updateAction.classList.add("hidden");
+    updateMsg.textContent = `Downloading v${version}…`;
     updateFill.style.width = `${percent || 0}%`;
     // If the user already hit relaunch, reflect the download on the overlay.
     if (updatingOverlay && !updatingOverlay.classList.contains("hidden") && updatingFill) {
       updatingFill.style.width = `${percent || 0}%`;
     }
   } else if (status === "ready") {
-    updateMsg.textContent = `v${version} ready — restart to update`;
+    shellUpdateReady = true;
+    updateMsg.textContent = `v${version} downloaded. It installs when you next restart.`;
     updateProgress.classList.add("hidden");
+    updateAction.textContent = "Restart now";
     updateAction.classList.remove("hidden");
     updateBar.classList.remove("hidden");
   } else if (status === "restarting") {
@@ -687,7 +696,8 @@ window.glyphh.onUpdateStatus(({ status, version, percent, error }) => {
 });
 
 updateAction.addEventListener("click", () => {
-  window.glyphh.updateInstall();
+  if (shellUpdateReady) window.glyphh.updateInstall();
+  else void window.glyphh.updateDownload();
 });
 
 updateDismiss.addEventListener("click", () => {

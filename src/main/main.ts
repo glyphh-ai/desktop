@@ -618,12 +618,13 @@ async function boot() {
   // Initialize Pipedream connectors — always attempt so MCP tools are available.
 
   // ── Auto-updater ───────────────────────────────────────────
-  // Updates download in the background but are NEVER installed on their own.
-  // The user applies them explicitly via "Relaunch to Update" (About page + a
-  // bottom-right prompt). No mid-session auto-restart, no install-on-quit —
-  // this replaces the old flow that could yank the app out from under the user.
+  // Startup only CHECKS the feed. Nothing downloads on its own (his order,
+  // 2026-09-20): a newer release surfaces as a card in the left rail above the
+  // account button and on Settings → About, each with a "Download" link. Once
+  // the user downloads it, the update installs on the next quit (or right away
+  // through "Restart now"). No mid-session auto-restart.
   const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
-  autoUpdater.autoDownload = autoUpdateEnabled;
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   // Every updater step lands in userData/updater.log — "it closed and never
   // came back" was undiagnosable with the logger nulled.
@@ -638,8 +639,9 @@ async function boot() {
     debug: (...a: unknown[]) => upLog("DEBUG", ...a),
   } as unknown as typeof autoUpdater.logger;
 
-  // Latest update the feed has offered this session; `ready` once downloaded.
-  let pendingUpdate: { version: string; ready: boolean } | null = null;
+  // Latest update the feed has offered this session; `downloading` while the
+  // user-requested download runs, `ready` once it has landed on disk.
+  let pendingUpdate: { version: string; ready: boolean; downloading: boolean } | null = null;
   // Set when the user hits "Relaunch to Update" before the download finishes —
   // we then install the moment it lands.
   let installWhenReady = false;
@@ -687,6 +689,36 @@ async function boot() {
   // downloads the feed's CURRENT latest (cache hit if unchanged) and installs
   // that; only if the check cannot complete (offline, feed error) do we fall
   // back to the update already on disk.
+  // The rail card / About "Download" link. The feed is re-checked first so the
+  // download is always the CURRENT latest, then electron-updater pulls it in
+  // the background; progress and the final "ready" fan out to every renderer.
+  let downloading = false;
+  const requestUpdateDownload = async () => {
+    if (downloading || pendingUpdate?.ready) return;
+    downloading = true;
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      const latest = result?.updateInfo?.version;
+      if (!latest || !isNewerVersion(latest, app.getVersion())) {
+        pendingUpdate = null;
+        broadcastUpdate({ status: "none" });
+        return;
+      }
+      pendingUpdate = { version: latest, ready: false, downloading: true };
+      broadcastUpdate({ status: "downloading", percent: 0, version: latest });
+      upLog("INFO", "download: user requested", latest);
+      await autoUpdater.downloadUpdate();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      upLog("ERROR", "download failed:", message);
+      if (pendingUpdate) pendingUpdate = { ...pendingUpdate, downloading: false };
+      broadcastUpdate({ status: "error", error: message, version: pendingUpdate?.version });
+    } finally {
+      downloading = false;
+    }
+  };
+  ipcMain.handle("update-download", () => requestUpdateDownload());
+
   const requestUpdateInstall = () => {
     installWhenReady = true;
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
@@ -701,7 +733,7 @@ async function boot() {
       if (mainWindow) homeView.show(mainWindow);
     }, 30_000);
     backstop.unref();
-    // The user asked to install — download regardless of the auto-download pref.
+    // The user asked to install: fetch whatever the feed holds now.
     autoUpdater.autoDownload = true;
     autoUpdater.checkForUpdates().catch(() => {
       clearTimeout(backstop);
@@ -716,14 +748,22 @@ async function boot() {
 
   autoUpdater.on("update-available", (info: { version: string }) => {
     if (!isNewerVersion(info.version, app.getVersion())) return;
-    pendingUpdate = { version: info.version, ready: false };
+    if (pendingUpdate?.version === info.version && (pendingUpdate.ready || pendingUpdate.downloading)) return;
+    pendingUpdate = { version: info.version, ready: false, downloading: false };
     broadcastUpdate({ status: "available", version: info.version });
   });
   autoUpdater.on("download-progress", (progress: { percent: number }) => {
     broadcastUpdate({ status: "downloading", percent: Math.round(progress.percent), version: pendingUpdate?.version });
   });
   autoUpdater.on("update-downloaded", (info: { version: string }) => {
-    pendingUpdate = { version: info.version, ready: true };
+    pendingUpdate = { version: info.version, ready: true, downloading: false };
+    autoUpdater.autoDownload = false;
+    // Downloaded = armed: a plain quit now finishes the install, so the next
+    // launch is the new version. cleanupAll's hard-exit backstop is widened
+    // for that quit (updateReadyForQuit) so it cannot kill the handoff.
+    autoUpdater.autoInstallOnAppQuit = true;
+    updateReadyForQuit = true;
+    upLog("INFO", "downloaded: install armed for next quit", info.version);
     broadcastUpdate({ status: "ready", version: info.version });
     if (installWhenReady) doUpdateInstall();
   });
@@ -735,6 +775,7 @@ async function boot() {
       installWhenReady = false;
       if (mainWindow) homeView.show(mainWindow);
     }
+    if (pendingUpdate?.ready) return; // what is on disk still installs on quit
     pendingUpdate = null;
     broadcastUpdate({ status: "none" });
   });
@@ -754,6 +795,7 @@ async function boot() {
   ipcMain.handle("get-update-status", () => pendingUpdate);
 
   if (autoUpdateEnabled) {
+    // Check only (autoDownload is off): a newer release becomes the rail card.
     setTimeout(() => { autoUpdater.checkForUpdates().catch(() => {}); }, 800).unref();
     // .unref() so this recurring check never keeps the process alive on quit.
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000).unref();
@@ -871,7 +913,7 @@ async function boot() {
     // makes the UI show "Downloading v<current>…" forever (nothing actually
     // downloads). Only report a version that is genuinely newer.
     try {
-      autoUpdater.autoDownload = true;
+      autoUpdater.autoDownload = false;
       const result = await autoUpdater.checkForUpdates();
       const latest = result?.updateInfo?.version;
       if (latest && isNewerVersion(latest, app.getVersion())) return latest;
@@ -1267,7 +1309,7 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
 
 app.on("window-all-closed", () => {
   // Stay resident in background mode (tray keeps the process + scheduler alive).
-  cleanupAll();
+  cleanupAll(updateReadyForQuit ? 30_000 : 4000);
   app.quit();
 });
 
@@ -1286,10 +1328,14 @@ process.on("uncaughtException", (err) => {
 
 app.on("will-quit", () => {
   shutdownGlyphhCliBridge();
-  cleanupAll();
+  cleanupAll(updateReadyForQuit ? 30_000 : 4000);
 });
 
 let cleanedUp = false;
+// Set once an update has downloaded: the quit that follows installs it
+// (autoInstallOnAppQuit), so cleanupAll's hard-exit backstop must not fire
+// mid-handoff — the same failure the "Restart now" path already guards.
+let updateReadyForQuit = false;
 function cleanupAll(backstopMs = 4000) {
   if (cleanedUp) return;
   cleanedUp = true;

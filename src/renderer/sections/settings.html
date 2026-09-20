@@ -1502,12 +1502,14 @@
             </div>
           </div>
 
-          <!-- Bottom-right prompt — appears on load when an update is available;
-               forces the update flow (main hides panels + shows the updating
-               splash, then quit+install). See docs.ts loadAbout(). -->
+          <!-- Bottom-right prompt — appears when the feed offers a newer
+               version. "Download" pulls it in the background; once on disk the
+               prompt offers "Restart now" (it also installs on the next
+               restart regardless). See docs.ts loadAbout(). -->
           <div class="about-update-prompt hidden" id="about-update-prompt">
-            <span class="about-update-prompt-text" id="about-update-prompt-text">An update is ready</span>
-            <button class="action-btn primary" id="about-update-relaunch">Relaunch to Update</button>
+            <span class="about-update-prompt-text" id="about-update-prompt-text">A new release is available</span>
+            <button class="action-btn primary" id="about-update-download">Download</button>
+            <button class="action-btn primary hidden" id="about-update-relaunch">Restart now</button>
           </div>
               </div>
 

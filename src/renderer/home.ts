@@ -381,29 +381,75 @@ void (async () => {
   lift();
 })();
 
-// ── Pending-update badge (bottom-right, every page) ─────────────────────────
-// Shows once an update has downloaded; stays until the user restarts into it
-// or dismisses it. Dismissal is per version and main rebroadcasts it, so
-// dismissing in one panel hides it in all of them.
+// ── New-release card (left rail, above the account button) ──────────────────
+// Nothing downloads on its own: the card announces the release with a
+// "Download update" link; while it downloads the link becomes a progress bar;
+// once it is on disk the card says so and offers "Restart now" — otherwise the
+// update installs on whatever restart comes next.
 void (async () => {
-  const btn = document.getElementById("app-rail-relaunch");
-  const text = document.getElementById("app-rail-relaunch-text");
-  if (!btn || !text) return;
+  const card = document.getElementById("app-rail-update");
+  const text = document.getElementById("app-rail-update-text");
+  const link = document.getElementById("app-rail-update-link") as HTMLButtonElement | null;
+  const bar = document.getElementById("app-rail-update-bar");
+  const fill = document.getElementById("app-rail-update-fill");
+  if (!card || !text || !link || !bar || !fill) return;
 
-  const show = (v: string) => {
-    text.textContent = v ? `Relaunch to update — v${v}` : "Relaunch to update";
-    btn.title = v ? `Relaunch to finish updating to v${v}` : "Relaunch to finish updating";
-    btn.classList.remove("hidden");
+  let state: "available" | "downloading" | "ready" = "available";
+  const paint = (next: typeof state, version: string, percent = 0) => {
+    state = next;
+    const v = version ? `v${version}` : "the next release";
+    if (next === "available") {
+      text.textContent = `Glyphh ${v} is available`;
+      link.textContent = "Download update";
+      link.disabled = false;
+      link.classList.remove("hidden");
+      bar.classList.add("hidden");
+      card.title = `Download Glyphh ${v}`;
+    } else if (next === "downloading") {
+      text.textContent = `Downloading ${v}… ${Math.round(percent)}%`;
+      link.classList.add("hidden");
+      bar.classList.remove("hidden");
+      fill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      card.title = `Downloading Glyphh ${v}`;
+    } else {
+      text.textContent = `${v} downloaded. It installs on your next restart.`;
+      link.textContent = "Restart now";
+      link.disabled = false;
+      link.classList.remove("hidden");
+      bar.classList.add("hidden");
+      card.title = `Restart to finish updating to Glyphh ${v}`;
+    }
+    card.classList.remove("hidden");
   };
 
-  btn.addEventListener("click", () => { window.glyphh.updateInstall?.(); });
+  const act = () => {
+    if (link.disabled) return;
+    if (state === "ready") { link.disabled = true; window.glyphh.updateInstall?.(); return; }
+    if (state === "downloading") return;
+    link.disabled = true;
+    void window.glyphh.updateDownload?.();
+  };
+  link.addEventListener("click", (e) => { e.stopPropagation(); act(); });
+  // The icon-strip rail hides the text and link; the card itself is the door.
+  card.addEventListener("click", () => { if (document.getElementById("app-rail")?.classList.contains("rail-icons")) act(); });
 
+  let version = "";
   window.glyphh.onUpdateStatus?.((info) => {
-    if (info.status === "ready") show(info.version || "");
-    else if (info.status === "restarting" || info.status === "none") btn.classList.add("hidden");
+    if (info.version) version = info.version;
+    if (info.status === "available") paint("available", version);
+    else if (info.status === "downloading") paint("downloading", version, info.percent ?? 0);
+    else if (info.status === "ready") paint("ready", version);
+    else if (info.status === "error") {
+      // A failed download falls back to the offer; the message is the tooltip.
+      paint("available", version);
+      card.title = `Update failed: ${info.error || "unknown error"}`;
+    }
+    else if (info.status === "restarting" || info.status === "none") card.classList.add("hidden");
   });
 
-  // Panels mount after boot — ask main whether an update is already waiting.
+  // Panels mount after boot — ask main whether a release is already known.
   const pending = await window.glyphh.getUpdateStatus?.();
-  if (pending?.ready) show(pending.version);
+  if (!pending?.version) return;
+  version = pending.version;
+  paint(pending.ready ? "ready" : pending.downloading ? "downloading" : "available", version);
 })();

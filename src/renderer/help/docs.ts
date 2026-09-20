@@ -75,19 +75,42 @@ async function loadAbout() {
   const progressText = document.getElementById("about-progress-text");
   const prompt = document.getElementById("about-update-prompt");
   const promptText = document.getElementById("about-update-prompt-text");
+  const downloadBtn = document.getElementById("about-update-download") as HTMLButtonElement | null;
   const relaunchBtn = document.getElementById("about-update-relaunch") as HTMLButtonElement | null;
 
-  // Reveal the bottom-right "Relaunch to Update" prompt for a known version.
-  const showPrompt = (version?: string) => {
-    if (promptText) promptText.textContent = version ? `Version ${version} is ready` : "An update is ready";
+  // The bottom-right prompt: "Download" while the release is only offered,
+  // "Restart now" once it is on disk (it installs on the next restart anyway).
+  const showPrompt = (version: string | undefined, ready: boolean) => {
+    if (promptText) {
+      promptText.textContent = ready
+        ? `Version ${version || "?"} downloaded. It installs on your next restart.`
+        : version ? `Version ${version} is available` : "A new release is available";
+    }
+    downloadBtn?.classList.toggle("hidden", ready);
+    if (downloadBtn && !ready) { downloadBtn.disabled = false; downloadBtn.textContent = "Download"; }
+    relaunchBtn?.classList.toggle("hidden", !ready);
     prompt?.classList.remove("hidden");
   };
+  const showDownloading = (version: string | undefined, percent: number) => {
+    if (promptText) promptText.textContent = `Downloading${version ? ` v${version}` : ""}…`;
+    if (downloadBtn) { downloadBtn.disabled = true; downloadBtn.textContent = `${percent}%`; downloadBtn.classList.remove("hidden"); }
+    relaunchBtn?.classList.add("hidden");
+    prompt?.classList.remove("hidden");
+    if (progressWrap && progressFill && progressText) {
+      progressWrap.classList.remove("hidden");
+      progressFill.style.width = `${percent}%`;
+      progressText.textContent = `Downloading… ${percent}%`;
+    }
+  };
 
-  // On load: if the main process already has an update pending, show the prompt
+  // On load: if the main process already knows a release, show the prompt
   // straight away (not only when a live event happens to arrive).
   try {
     const pending = await window.glyphh.getUpdateStatus();
-    if (pending?.version) showPrompt(pending.version);
+    if (pending?.version) {
+      if (pending.downloading) showDownloading(pending.version, 0);
+      else showPrompt(pending.version, pending.ready);
+    }
   } catch { /* not available */ }
 
   // Wire listeners once — loadAbout() re-runs every time the tab opens.
@@ -99,35 +122,41 @@ async function loadAbout() {
     checkBtn.textContent = "Checking…";
     const ver = await window.glyphh.checkForUpdates();
     if (ver) {
-      // The update flow now takes over — its status events reveal the prompt.
-      checkBtn.textContent = `Downloading v${ver}…`;
-      showPrompt(ver);
+      checkBtn.textContent = `Version ${ver} is available`;
+      showPrompt(ver, false);
     } else {
       checkBtn.textContent = "You're up to date";
-      setTimeout(() => { checkBtn.textContent = "Check for Updates"; checkBtn.disabled = false; }, 3000);
     }
+    setTimeout(() => { checkBtn.textContent = "Check for Updates"; checkBtn.disabled = false; }, 3000);
   });
 
-  // Relaunch forces the update flow: main hides the panels, shows the updating
+  downloadBtn?.addEventListener("click", () => {
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = "Starting…";
+    void window.glyphh.updateDownload();
+  });
+
+  // Restart now forces the install: main hides the panels, shows the updating
   // splash, then quit + install + relaunch (docs: renderer.ts onUpdateStatus).
   relaunchBtn?.addEventListener("click", () => {
     relaunchBtn.disabled = true;
-    relaunchBtn.textContent = "Relaunching…";
+    relaunchBtn.textContent = "Restarting…";
     window.glyphh.updateInstall();
   });
 
   window.glyphh.onUpdateStatus((info) => {
     if (info.status === "available") {
-      showPrompt(info.version);
-      if (checkBtn) { checkBtn.disabled = true; checkBtn.textContent = `Downloading v${info.version}…`; }
-    } else if (info.status === "downloading" && progressWrap && progressFill && progressText) {
-      progressWrap.classList.remove("hidden");
-      progressFill.style.width = `${info.percent ?? 0}%`;
-      progressText.textContent = `Downloading… ${info.percent ?? 0}%`;
+      showPrompt(info.version, false);
+    } else if (info.status === "downloading") {
+      showDownloading(info.version, info.percent ?? 0);
     } else if (info.status === "ready") {
       progressWrap?.classList.add("hidden");
-      showPrompt(info.version);
+      showPrompt(info.version, true);
       if (checkBtn) { checkBtn.disabled = false; checkBtn.textContent = "Check for Updates"; }
+    } else if (info.status === "error") {
+      progressWrap?.classList.add("hidden");
+      showPrompt(info.version, false);
+      if (promptText) promptText.textContent = `Update failed: ${info.error || "unknown error"}`;
     } else if (info.status === "none") {
       prompt?.classList.add("hidden");
     }

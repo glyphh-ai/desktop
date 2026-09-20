@@ -285,16 +285,16 @@ export function initBootGate(cb: BootGateCallbacks): void {
   // Update gate — surface a progress bar on the splash and hold it while an
   // update downloads. Wired before onBoot so events that arrive early count.
   window.glyphh.onUpdateStatus((info) => {
-    if (info.status === "available" || info.status === "downloading") {
+    if (info.status === "available") {
+      // A newer release is only ANNOUNCED at boot (the rail card carries it);
+      // nothing downloads until the user asks, so the splash comes down.
+      if (updateVerdict === "pending") updateVerdict = "clear";
+      scheduleSplashFinish(cb);
+    } else if (info.status === "downloading") {
       updateVerdict = "downloading";
       if (pendingGraceTimer) { clearTimeout(pendingGraceTimer); pendingGraceTimer = null; }
       const pct = info.percent ?? 0;
-      setSplashUpdate(
-        pct,
-        info.status === "available"
-          ? `Downloading update${info.version ? ` v${info.version}` : ""}…`
-          : `Downloading update… ${Math.round(pct)}%`,
-      );
+      setSplashUpdate(pct, `Downloading update… ${Math.round(pct)}%`);
       // Never trap the user on the splash if a download stalls.
       if (!downloadCapTimer) {
         downloadCapTimer = setTimeout(() => {

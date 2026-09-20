@@ -12071,16 +12071,6 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 }
 
 /* Floating relaunch-to-update badge (was in the rail; the rail is gone). */
-.app-relaunch-float {
-  position: fixed; right: 16px; bottom: 16px; z-index: 240;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; border: 1px solid var(--border-2); border-radius: 10px;
-  background: var(--surface-2); color: var(--text); font-size: 12.5px;
-  cursor: pointer; box-shadow: 0 8px 28px rgba(0,0,0,.3);
-}
-.app-relaunch-float:hover { border-color: var(--accent); }
-.app-relaunch-float svg { width: 14px; height: 14px; color: var(--accent); }
-.app-relaunch-float.hidden { display: none; }
 
 /* The app header (2.5.0 shell): a full-width 38px bar — the same height
    #help-overlay offsets by, so every panel opens exactly under it. The whole
@@ -16247,32 +16237,32 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 .app-rail-user .app-rail-user-btn { flex: 1 1 auto; min-width: 0; }
 #app-rail.rail-icons .app-rail-user { flex-direction: column; }
 
-/* "Relaunch to update" — an accent CTA that sits just above the account button,
-   shown only when an update has downloaded (home.ts toggles .hidden). */
-.app-rail-relaunch {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 7px 10px;
-  border: none;
+/* New-release card — sits just above the account button once the feed offers
+   a newer version (home.ts paints available / downloading / ready). */
+.app-rail-update {
+  display: flex; align-items: flex-start; gap: 8px;
+  width: 100%; margin-bottom: 6px; padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-2));
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+  color: var(--text); font-size: 12px; line-height: 1.35;
 }
-
-.app-rail-relaunch svg { width: 15px; height: 15px; flex-shrink: 0; }
-
-.app-rail-relaunch:hover { background: var(--accent-hover, var(--accent)); }
-
-.app-rail-relaunch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.app-rail-relaunch.hidden { display: none; }
+.app-rail-update > svg { width: 15px; height: 15px; flex: none; margin-top: 1px; color: var(--accent); }
+.app-rail-update-body { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; }
+.app-rail-update-text { overflow: hidden; text-overflow: ellipsis; }
+.app-rail-update-link {
+  align-self: flex-start; padding: 0; border: none; background: none;
+  color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.app-rail-update-link:hover { color: var(--accent-hover, var(--accent)); }
+.app-rail-update-link:disabled { opacity: .6; cursor: default; }
+.app-rail-update-bar { height: 4px; border-radius: 2px; background: var(--border-2); overflow: hidden; }
+.app-rail-update-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.app-rail-update-bar.hidden, .app-rail-update-link.hidden, .app-rail-update.hidden { display: none; }
+/* Icon-strip rail: only the glyph survives; the card stays clickable via its
+   title, and the download/restart link is the whole card. */
+#app-rail.rail-icons .app-rail-update { justify-content: center; padding: 7px 0; cursor: pointer; }
+#app-rail.rail-icons .app-rail-update-body { display: none; }
 
 .app-rail-user-btn {
   display: flex;
