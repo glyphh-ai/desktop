@@ -338,23 +338,6 @@ export function initBootGate(cb: BootGateCallbacks): void {
       cb.onBootReady(data);
       return;
     }
-    // THE CLI INSTALLER, ONCE (his order, 2026-09-19): after the first
-    // sign-in on this machine, the installer opens in a terminal panel.
-    if (data.authenticated) {
-      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => {
-        console.warn("[cli-installer] first-run check", JSON.stringify({ done: !!v }));
-        if (v) return;
-        // The workbench defines the opener when it mounts; wait for it.
-        let tries = 0;
-        const open = (): void => {
-          const fn = (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller;
-          if (fn) { void fn(); return; }
-          if (tries++ < 60) window.setTimeout(open, 1000);
-        };
-        window.setTimeout(open, 2500);
-      }).catch(() => {});
-    }
-
     // FIRST RUN IS THE WALL TOUR, ON EVERY SURFACE (his report, 2026-08-29:
     // "the old flow showed up again on desktop — are there two flows?"). Yes,
     // there were: web moved to the wall tour on 2026-08-27 while desktop kept

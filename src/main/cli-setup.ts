@@ -8,7 +8,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { app, ipcMain, BrowserWindow } from "electron";
+import { app, ipcMain, webContents } from "electron";
 import { userScopedPath } from "./app-paths.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { listCliAgents } from "./cli-agents.js";
@@ -69,7 +69,8 @@ function watchOutput(): void {
     if (parsed.loop) setPreference("glyphhLoop", parsed.loop);
     if (parsed.view === "glyphh" || parsed.view === "cli") setPreference("defaultLoopView", parsed.view);
     setPreference("cliSetupDoneAt", new Date().toISOString());
-    for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("cli-setup-done", { loop: parsed.loop || "", model: parsed.model || "", view: parsed.view || "" }); }
+    // Every renderer, the home view included: the workbench lives there, not in the window.
+    for (const wc of webContents.getAllWebContents()) { if (!wc.isDestroyed()) wc.send("cli-setup-done", { loop: parsed.loop || "", model: parsed.model || "", view: parsed.view || "" }); }
   };
   fs.watchFile(file, { interval: 1000 }, tick);
 }
