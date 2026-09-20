@@ -67,6 +67,24 @@ export async function loadMemorySettings(): Promise<void> {
   await loadEmbeddingsSettings();
 
   await renderMemoryBrowser();
+  const curate = el<HTMLButtonElement>("memory-curate-btn");
+  if (curate) {
+    curate.onclick = async () => {
+      const status = el("memory-curate-status");
+      if (!status) return;
+      curate.disabled = true;
+      status.classList.remove("hidden"); status.textContent = "";
+      const spin = createGlyphhSpinner({ size: 18, phrases: true });
+      spin.setMeta("Compiling your memory pages…");
+      status.appendChild(spin.el);
+      const r = await (window.glyphh as unknown as { memoryCurateNow?: () => Promise<{ ok: boolean; error?: string }> }).memoryCurateNow?.().catch(() => null);
+      spin.destroy();
+      curate.disabled = false;
+      status.innerHTML = r?.ok ? `<span class="mem-check">✓</span> Pages compiled` : "";
+      if (!r?.ok) status.textContent = r?.error || "Couldn't compile pages.";
+      await renderMemoryBrowser();
+    };
+  }
   const stats = el("memory-stats");
   if (stats) {
     const r = await g.memoryStats?.().catch(() => null);
@@ -128,6 +146,7 @@ async function memForget(row: MemoryRow): Promise<boolean> {
 export async function renderMemoryBrowser(): Promise<void> {
   const host = document.getElementById("memory-browser");
   if (!host) return;
+  memPanelPageMode(false);
   const r = await memApi().memoryTurnList?.().catch(() => null);
   const rows = r?.ok ? r.rows : [];
   host.textContent = "";
@@ -172,9 +191,15 @@ export async function renderMemoryBrowser(): Promise<void> {
   }
 }
 
+/** The page takes the whole Memory panel (his order, 2026-09-20); "← Memory" brings the panel back. */
+function memPanelPageMode(on: boolean): void {
+  document.querySelector<HTMLElement>('.settings-panel[data-sub="memory"]')?.classList.toggle("mem-page-open", on);
+}
+
 function renderMemoryPage(row: MemoryRow): void {
   const host = document.getElementById("memory-browser");
   if (!host) return;
+  memPanelPageMode(true);
   host.textContent = "";
   const page = document.createElement("div"); page.className = "mem-page";
   page.innerHTML = `
@@ -194,8 +219,8 @@ function renderMemoryPage(row: MemoryRow): void {
     for (const d of row.details) { const li = document.createElement("li"); li.textContent = d; ul.appendChild(li); }
   };
   paint();
-  (page.querySelector(".mem-back") as HTMLButtonElement).onclick = () => { void renderMemoryBrowser(); };
-  (page.querySelector(".mem-page-delete") as HTMLButtonElement).onclick = async () => { if (await memForget(row)) void renderMemoryBrowser(); };
+  (page.querySelector(".mem-back") as HTMLButtonElement).onclick = () => { memPanelPageMode(false); void renderMemoryBrowser(); };
+  (page.querySelector(".mem-page-delete") as HTMLButtonElement).onclick = async () => { if (await memForget(row)) { memPanelPageMode(false); void renderMemoryBrowser(); } };
   const input = page.querySelector(".mem-input") as HTMLInputElement;
   const status = page.querySelector(".mem-status") as HTMLElement;
   const send = async (): Promise<void> => {

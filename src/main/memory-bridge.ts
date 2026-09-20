@@ -32,6 +32,66 @@ import { ipcMain } from "electron";
 
 export const MEMORY_APP_SLUG = "glyphh-memory";
 export const MEMORY_COLLECTION = "turns";
+/** The house skill that compiles pages from the turns (seeded on the hub). */
+export const CURATOR_SLUG = "glyphh-memory";
+
+// ── PAGES (his order, 2026-09-20): Profile, topics and areas, compiled from the
+// turns by the curator skill through the loop, since Glyphh makes no model
+// calls of its own. A page is one memory row of kind "page" in the same
+// collection, so it is injected like any other memory.
+export type PageSection = "you" | "topic" | "area";
+const rowsOf = () => vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION).map((it) => ({ it, m: (it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown> }));
+const pageId = (section: PageSection, title: string): string => `page-${section}-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "untitled"}`;
+
+export function memoryTurns(opts: { limit?: number; days?: number } = {}): Array<{ id: string; at: string; folder: string; workspace: string; text: string }> {
+  const since = opts.days ? Date.now() - opts.days * 86_400_000 : 0;
+  const by = new Map<string, { id: string; at: string; folder: string; workspace: string; text: string }>();
+  for (const { it, m } of rowsOf()) {
+    if (String(m.kind ?? "turn") === "page") continue;
+    const at = String(m.at ?? "");
+    if (since && Date.parse(at) < since) continue;
+    const source = String(m.source ?? it.id.split("#")[0]);
+    const cur = by.get(source) ?? { id: source, at, folder: String(m.folder ?? ""), workspace: String(m.workspace ?? ""), text: "" };
+    cur.text += (cur.text ? "\n" : "") + String(it.text ?? "");
+    by.set(source, cur);
+  }
+  return [...by.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, Math.max(1, Math.min(500, opts.limit ?? 100)));
+}
+
+export function memoryPages(): Array<{ id: string; section: string; title: string; summary: string; details: string[]; at: string }> {
+  const by = new Map<string, { id: string; section: string; title: string; summary: string; details: string[]; at: string; text: string }>();
+  for (const { it, m } of rowsOf()) {
+    if (String(m.kind ?? "") !== "page") continue;
+    const source = String(m.source ?? it.id.split("#")[0]);
+    const cur = by.get(source) ?? { id: source, section: String(m.section ?? ""), title: String(m.title ?? ""), summary: String(m.summary ?? ""), details: [], at: String(m.at ?? ""), text: "" };
+    cur.text += (cur.text ? "\n" : "") + String(it.text ?? "");
+    by.set(source, cur);
+  }
+  return [...by.values()].map((p) => ({ ...p, details: p.text.split(/\n+/).map((l) => l.trim()).filter(Boolean) }));
+}
+
+export async function writeMemoryPage(input: { section: PageSection; title: string; summary: string; details: string[] }): Promise<{ id: string }> {
+  const section = input.section;
+  if (!["you", "topic", "area"].includes(section)) throw new Error("section must be you, topic or area");
+  const title = String(input.title || "").trim().slice(0, 90);
+  const details = (input.details ?? []).map((d) => String(d).trim()).filter(Boolean).slice(0, 40);
+  if (!title || !details.length) throw new Error("a page needs a title and at least one detail");
+  const id = pageId(section, title);
+  const old = rowsOf().filter(({ it, m }) => String(m.source ?? it.id.split("#")[0]) === id);
+  const { chunks } = llmChunk({ text: details.join("\n"), maxChars: 1_200 });
+  await vectorUpsert(MEMORY_APP_SLUG, {
+    collection: MEMORY_COLLECTION,
+    items: chunks.map((c, i) => ({ id: `${id}#${i}`, text: c, metadata: { source: id, kind: "page", section, title, summary: String(input.summary || "").slice(0, 140), at: new Date().toISOString() } })),
+  });
+  for (const { it } of old) if (Number(it.id.split("#")[1]) >= chunks.length) vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, id: it.id });
+  return { id };
+}
+
+export function deleteMemoryPage(id: string): { deleted: number } {
+  let deleted = 0;
+  for (const { it, m } of rowsOf()) if (String(m.kind ?? "") === "page" && String(m.source ?? it.id.split("#")[0]) === id) deleted += vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, id: it.id }).deleted;
+  return { deleted };
+}
 
 const CAPTURE_CAP = 32_000;        // chars of user/assistant text kept per turn
 const SSE_ACCUM_CAP = 512_000;     // bytes of response we tee for capture
@@ -103,7 +163,7 @@ export function registerMemoryIpc(): void {
         rows.set(source, cur);
       }
       const out = [...rows.values()].map((r) => {
-        const details = r.text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+        const details = r.text.split(/\n+/).map((l) => l.replace(/^(USER|ASSISTANT):\s*/, "").trim()).filter(Boolean);
         const reply = /ASSISTANT:\s*([\s\S]*)$/.exec(r.text)?.[1] ?? "";
         const summary = (reply || r.text.replace(/^USER:\s*/, "")).replace(/\s+/g, " ").trim().slice(0, 140);
         return { ...r, title: r.title || r.text.replace(/^USER:\s*/, "").replace(/\s+/g, " ").slice(0, 90), summary, details };
@@ -145,6 +205,18 @@ export function registerMemoryIpc(): void {
         if (String(m.source ?? it.id.split("#")[0]) === String(source)) deleted += vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, id: it.id }).deleted;
       }
       return { ok: true, deleted };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  // COMPILE PAGES NOW (his order, 2026-09-20): the curator skill runs through
+  // the default loop, on its schedule (nightly) or from the Memory page. The
+  // schedule is made the first time it is asked for.
+  ipcMain.handle("memory-curate-now", async () => {
+    try {
+      const { listSchedulesView, saveSchedule, runSchedule } = await import("./local-library.js");
+      const have = listSchedulesView().find((s) => s.kind === "skill" && s.target === CURATOR_SLUG);
+      const id = have?.id ?? saveSchedule({ name: "Memory curator", kind: "skill", target: CURATOR_SLUG, agentId: getPreference<string>("glyphhLoop", "") || null, cron: "0 21 * * *", enabled: true }).id;
+      await runSchedule(id);
+      return { ok: true };
     } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
   ipcMain.handle("memory-clear", () => {

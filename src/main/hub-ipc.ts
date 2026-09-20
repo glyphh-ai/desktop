@@ -300,7 +300,7 @@ async function update(skillId: string): Promise<{ version: number }> {
 /** What every desktop gets without asking (his order, 2026-09-16): the Glyphh
  *  skill and its plugin from the public catalog, installed once when absent.
  *  Keeping them CURRENT is the Update button's job, not this function's. */
-const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }];
+const DEFAULT_INSTALLS: ReadonlyArray<{ kind: Kind; slug: string }> = [{ kind: "skill", slug: "glyphh" }, { kind: "plugin", slug: "glyphh" }, { kind: "skill", slug: "glyphh-memory" }];
 export async function installDefaultHubItems(): Promise<void> {
   try {
     const pub = await getClient().http.get<PublicItem[]>("/api/hub/public").catch(() => [] as PublicItem[]);

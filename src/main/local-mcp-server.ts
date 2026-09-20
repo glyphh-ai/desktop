@@ -713,6 +713,32 @@ function buildMcpServer(): McpServer {
     { slug: z.string().describe("Skill slug"), input: z.record(z.string(), z.unknown()).optional() },
     async ({ slug, input }) => via("skills.run", { slug, input: input || {} }),
   );
+  // ── Memory pages (his order, 2026-09-20): what the curator skill reads and writes ──
+  const memText = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });
+  mcp.tool(
+    "memory_turns",
+    "The user's remembered turns on this machine (what they said and what the loop answered), newest first, with the folder and workspace each ran in. Read these to compile memory pages.",
+    { limit: z.number().int().min(1).max(500).optional().describe("How many turns (default 100)"), days: z.number().int().min(1).max(365).optional().describe("Only turns from the last N days") },
+    async ({ limit, days }) => { const { memoryTurns } = await import("./memory-bridge.js"); return memText(memoryTurns({ limit, days })); },
+  );
+  mcp.tool(
+    "memory_pages",
+    "The memory pages that exist today: the Profile (section you), topics and areas, each with title, summary and details. Update a page by writing it again with the same title.",
+    {},
+    async () => { const { memoryPages } = await import("./memory-bridge.js"); return memText(memoryPages()); },
+  );
+  mcp.tool(
+    "memory_page_write",
+    "Write (or rewrite) one memory page. section: you = the Profile, topic = a recurring subject, area = a project or domain. Keep details to short factual bullets the user actually said; never invent.",
+    { section: z.enum(["you", "topic", "area"]), title: z.string().min(1).max(90), summary: z.string().max(140).describe("One line under the title"), details: z.array(z.string()).min(1).max(40) },
+    async (input) => { const { writeMemoryPage } = await import("./memory-bridge.js"); try { return memText(await writeMemoryPage(input)); } catch (err) { return memText(`Error: ${err instanceof Error ? err.message : String(err)}`); } },
+  );
+  mcp.tool(
+    "memory_page_delete",
+    "Delete a memory page by its id (from memory_pages).",
+    { id: z.string().min(1) },
+    async ({ id }) => { const { deleteMemoryPage } = await import("./memory-bridge.js"); return memText(deleteMemoryPage(id)); },
+  );
   mcp.tool(
     "agent_run",
     "Fire a standing agent's scheduled task now, on the user's machine.",

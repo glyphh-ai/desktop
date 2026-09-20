@@ -21106,3 +21106,4 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .mem-name { color: var(--ink, #f1f1f1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mem-summary { color: var(--muted, #c4c4c4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mem-when { color: var(--dim, #828282); font-size: 12px; white-space: nowrap; }
+.settings-panel.mem-page-open > :not(#memory-browser) { display: none; }
