@@ -2204,12 +2204,21 @@ async function init(): Promise<void> {
     const r = await g.cliSetupCommand?.().catch(() => null);
     if (!r?.ok || !r.command) { console.warn("[cli-installer] no command", r?.error); return; }
     const cmd = r.command;
+    console.warn("[cli-installer] opening", JSON.stringify({ viaEcho: !!echoCtl, rails: rails.length, hasTerminal: !!echoCtl?.hasTool("terminal") }));
     openToolWithPayload("terminal", (slot) => {
       const t = (slot as unknown as { terminals?: Array<{ initCmd?: string; ptyId?: string; spawned?: boolean }> }).terminals?.[0];
+      console.warn("[cli-installer] landed", JSON.stringify({ slot: slot.id, view: slot.view, term: !!t, spawned: !!t?.spawned }));
       if (!t) return;
       if (t.spawned && t.ptyId) setTimeout(() => { void window.wb.termWrite(t.ptyId!, `${cmd}\r`); }, 300);
       else t.initCmd = cmd;
     });
+    // PROOF (2026-09-20): where the terminal card ended up, after layout settles.
+    window.setTimeout(() => {
+      const card = document.querySelector<HTMLElement>('.echo-card[data-view="terminal"], .echo-card.tool-terminal, .ws-rail-slot[data-view="terminal"]');
+      const term = document.querySelector<HTMLElement>(".xterm");
+      const rect = (el: HTMLElement | null) => { const b = el?.getBoundingClientRect(); return b ? `${Math.round(b.left)},${Math.round(b.top)} ${Math.round(b.width)}x${Math.round(b.height)}` : "absent"; };
+      console.warn("[cli-installer] on screen", JSON.stringify({ card: rect(card), xterm: rect(term), body: document.body.className }));
+    }, 1500);
   };
   // Finish in the installer: the loop's model is written through the loop's
   // own save, the one way a row is ever written.
