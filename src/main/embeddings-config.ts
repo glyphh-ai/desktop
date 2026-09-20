@@ -10,7 +10,7 @@
 import { ipcMain } from "electron";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { getClient } from "./glyphh-client.js";
-import { gatewayCreds } from "./gateway-token.js";
+import { mcpCreds } from "./gateway-token.js";
 import { registerMemoryIpc } from "./memory-bridge.js";
 
 export interface EmbedModel { id: string; name: string; providerSlug: string }
@@ -46,10 +46,16 @@ function routeName(id: string): string {
 }
 
 /** Embed through the gateway with the member's own key: the org's allow-list,
- *  its rate limits and its spend, like every other model call. */
+ *  its rate limits and its spend, like every other model call.
+ *
+ *  WHATEVER THE GATEWAY LANE SAYS (his report, 2026-09-20: memory captured
+ *  nothing). The lane switch decides where CHAT goes: a loop rides its own
+ *  login when the lane is off. An embedding has no login to ride; the org's
+ *  embedding model lives on the gateway, so it goes there with the member
+ *  credential that still authenticates the server, lane on or off. */
 export async function gatewayEmbed(texts: string[], model: string): Promise<number[][]> {
-  const creds = await gatewayCreds();
-  if (!creds) throw new Error("embeddings need the gateway — sign in, or ask your admin to enable it");
+  const creds = await mcpCreds();
+  if (!creds) throw new Error("embeddings need the server — sign in first");
   const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/v1/embeddings`, {
     method: "POST",
     headers: { authorization: `Bearer ${creds.token}`, "content-type": "application/json" },
