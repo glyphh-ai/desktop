@@ -13553,6 +13553,8 @@ select:focus {
 /* Grid fills the constant-height panel + scrolls, so search results never
    resize the modal. */
 .conn-modal-panel .connector-grid { flex: 1; min-height: 0; overflow-y: auto; align-content: start; }
+/* A search in flight dims the current results instead of wiping them. */
+.connector-grid.is-searching { opacity: .6; transition: opacity .15s; }
 
 /* ── Required connections (app editor, installed Glyphh apps) ── */
 .app-req-conn-row {

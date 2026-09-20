@@ -789,11 +789,20 @@ function renderOrgCatalogSection(search?: string): void {
 }
 function closeCatalog(): void { modalEl.classList.add("hidden"); }
 
+/** Only the NEWEST request may paint (his report, 2026-09-20: the list jumped
+ *  and flickered while typing — every in-flight search painted as it landed,
+ *  in whatever order, and each one first wiped the grid to "Loading…"). */
+let catalogSeq = 0;
 async function loadCatalog(search?: string): Promise<void> {
-  if (catalogOffset === 0) catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Loading…</div>`;
+  const seq = ++catalogSeq;
+  // Keep what is on screen while a search runs; only an EMPTY grid shows the loading line.
+  if (catalogOffset === 0 && !catalogGrid.children.length) catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Loading…</div>`;
+  catalogGrid.classList.add("is-searching");
   let apps: CatalogApp[] = [], hasMore = false;
   try { ({ apps, hasMore } = await window.glyphh.connectorsGetApps(search)); }
-  catch { catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Couldn't load apps.</div>`; return; }
+  catch { if (seq === catalogSeq) { catalogGrid.classList.remove("is-searching"); catalogGrid.innerHTML = `<div class="crud-empty" style="grid-column:1/-1;">Couldn't load apps.</div>`; } return; }
+  if (seq !== catalogSeq) return;   // a newer search is on its way — this answer is stale
+  catalogGrid.classList.remove("is-searching");
 
   if (catalogOffset === 0) {
     catalogGrid.innerHTML = "";
@@ -901,7 +910,7 @@ export function initConnections(): void {
   let catalogTimer: ReturnType<typeof setTimeout> | null = null;
   catalogSearch.addEventListener("input", () => {
     if (catalogTimer) clearTimeout(catalogTimer);
-    catalogTimer = setTimeout(() => { catalogOffset = 0; void loadCatalog(catalogSearch.value.trim() || undefined); }, 200);
+    catalogTimer = setTimeout(() => { catalogOffset = 0; void loadCatalog(catalogSearch.value.trim() || undefined); }, 250);
   });
   catalogMore.addEventListener("click", () => { catalogOffset += 30; void loadCatalog(catalogSearch.value.trim() || undefined); });
 
