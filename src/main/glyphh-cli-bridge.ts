@@ -22,7 +22,7 @@ import path from "node:path";
 import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
-import { authFix } from "./cli-auth.js";
+import { cliFix } from "./cli-auth.js";
 import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
 import { listCliAgents, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
@@ -217,8 +217,8 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
     emit(c, "glyphh-agent:progress", { runId: c.runId, inTokens: c.usage.inTokens, outTokens: c.usage.outTokens });
     if (ev.is_error) {
       const said = String(ev.result ?? "the run failed");
-      const fix = authFix(said, c.cli || "claude");
-      emit(c, "glyphh-agent:error", { runId: c.runId, error: fix ? fix.message : said, fix: fix ?? undefined });
+      const fix = cliFix(said, c.cli || "claude");
+      emit(c, "glyphh-agent:error", { runId: c.runId, error: fix ? fix.message : said, fix: fix?.kind === "signin" ? fix : undefined });
     }
     emit(c, "glyphh-agent:done", { runId: c.runId, stopped: ev.subtype === "error_during_execution" ? false : ev.subtype === "success" ? false : true });
     return;
@@ -354,9 +354,12 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     void reportDirectUsage(chat, p.model);
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
     if (code !== 0 && code !== null) {
-      const said = errTail.trim() || `${agent.cli} exited ${code}`;
-      const fix = authFix(`${said}\n${chat.buf}`, agent.cli || "claude");
-      emit(chat, "glyphh-agent:error", { runId, error: fix ? fix.message : said, fix: fix ?? undefined });
+      // The CLI's stderr plus whatever it printed: a refusal it explains in
+      // its own words becomes a sentence the user can act on (cliFix); an
+      // unknown failure keeps the CLI's own text rather than a shrug.
+      const said = errTail.trim() || chat.buf.trim().slice(-800) || `${agent.cli} exited ${code}`;
+      const fix = cliFix(`${said}\n${chat.buf}`, agent.cli || "claude");
+      emit(chat, "glyphh-agent:error", { runId, error: fix ? fix.message : said, fix: fix?.kind === "signin" ? fix : undefined });
     }
     emit(chat, "glyphh-agent:done", { runId, stopped: false });
   });
@@ -424,8 +427,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     live.delete(p.chatId);
     if (code !== 0 && code !== null) {
       const said = errTail.trim() || `claude exited ${code}`;
-      const fix = authFix(`${said}\n${chat.buf}`, "claude");
-      emit(chat, "glyphh-agent:error", { runId: chat.runId, error: fix ? fix.message : said, fix: fix ?? undefined });
+      const fix = cliFix(`${said}\n${chat.buf}`, "claude");
+      emit(chat, "glyphh-agent:error", { runId: chat.runId, error: fix ? fix.message : said, fix: fix?.kind === "signin" ? fix : undefined });
       emit(chat, "glyphh-agent:done", { runId: chat.runId, stopped: true });
     }
   });

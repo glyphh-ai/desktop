@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isAuthTrouble, authFix, LOGIN_CMD } from "../../src/main/cli-auth.js";
+import { isAuthTrouble, authFix, cliFix, LOGIN_CMD } from "../../src/main/cli-auth.js";
 
 describe("cli-auth", () => {
   it("recognizes what the CLIs actually print when a login runs out", () => {
@@ -33,5 +33,21 @@ describe("cli-auth", () => {
 
   it("stays out of the way when nothing is wrong with the login", () => {
     expect(authFix("exited 1", "claude")).toBeNull();
+  });
+
+  it("explains a known refusal in the user's words and keeps the CLI's line", () => {
+    const fix = cliFix("⚠ Not inside a trusted directory and --skip-git-repo-check was not specified.", "codex");
+    expect(fix?.kind).toBe("explain");
+    expect(fix?.message).toContain("not a git repository");
+    expect(fix?.message).toContain("codex said: ⚠ Not inside a trusted directory");
+    const upd = cliFix("✨ Update available! 0.154.0 -> 0.155.1\nRelease notes: https://example\n1. Update now", "codex");
+    expect(upd?.kind).toBe("explain");
+    expect(upd?.message).toContain("update available");
+    expect(cliFix("zsh: command not found: gemini", "gemini")?.message).toContain("CLI Installer");
+  });
+
+  it("still hands a login failure to the sign-in card, and shrugs at the unknown", () => {
+    expect(cliFix("Failed to authenticate: OAuth session expired", "claude")?.kind).toBe("signin");
+    expect(cliFix("exited 1", "claude")).toBeNull();
   });
 });

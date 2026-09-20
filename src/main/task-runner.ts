@@ -24,6 +24,7 @@ import { app, utilityProcess, type UtilityProcess, ipcMain, BrowserWindow } from
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { listCliAgents, composeHeadless, ensureLoopEnv, agentRowFor, type CliAgentListed } from "./cli-agents.js";
+import { cliFix } from "./cli-auth.js";
 import { execHeadless, slotAgentContext, slotAgentRoster, setTaskRunner, ensureTaskSchedule } from "./local-library.js";
 import { callConnectionTool, listConnRows } from "./mcp-connections.js";
 import { normalizeConnDeps, connDepNames, type ConnDep } from "../shared/bundle-shape.js";
@@ -298,7 +299,10 @@ async function agentTurn(spec: TaskSpec, slot: string, prompt: string, opts: { s
   { const row = agentRowFor(loop.id); if (row) await ensureLoopEnv(row).catch(() => undefined); }
   const line = composeHeadless(loop, standing ? `${standing}\n\n${ask}` : ask, opts.model ?? model);
   const r = await execHeadless(line);
-  if (r.code !== 0) throw new Error(r.error || `${agentName} exited ${r.code}: ${r.output.slice(-800)}`);
+  if (r.code !== 0) {
+    const fix = cliFix(`${r.error || ""}\n${r.output.slice(-2000)}`, loop.cli || "claude");
+    throw new Error(fix ? fix.message : r.error || `${agentName} exited ${r.code}: ${r.output.slice(-800)}`);
+  }
   return { text: r.output, ...(opts.schema ? { json: firstJson(r.output) } : {}), agent: agentName };
 }
 

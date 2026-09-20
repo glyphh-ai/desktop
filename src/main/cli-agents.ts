@@ -592,8 +592,12 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       const { port } = localMcpStatus();
       // Chained turns resume the CLI's own persisted session (codex 0.154:
       // `exec resume <id>`), so a chat's turns share one context.
+      // A headless turn runs wherever the chat's folder is — a plain folder or
+      // the home directory, not only a git checkout. Without the skip flag
+      // codex exec stops dead with "Not inside a trusted directory" (his
+      // report, 2026-09-20); the folder the user picked IS the trust decision.
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""} '${p}'`
+        + `${row.cmd}${CODEX_NO_UPDATE}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
@@ -631,6 +635,9 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
 // headless turn sits on that prompt forever (his report, 2026-09-20). The
 // update check is the CLI's own config switch; the user updates on their terms.
 const CODEX_NO_UPDATE = " -c check_for_update_on_startup=false";
+// codex exec (and exec resume) refuse a folder that is not a git checkout
+// unless told to skip that check; the headless lanes always pass it.
+const CODEX_SKIP_GIT = " --skip-git-repo-check";
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.

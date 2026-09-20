@@ -34,6 +34,7 @@ import { ipcMain } from "electron";
 import cron, { type ScheduledTask } from "node-cron";
 import { getLocalDb } from "./local-db.js";
 import { listCliAgents, composeHeadless, type CliAgentListed } from "./cli-agents.js";
+import { cliFix } from "./cli-auth.js";
 import { getSkill as getSkillFolder } from "./skills-fs.js";
 
 const TASKS_DIR = (): string => userScopedPath("tasks");
@@ -363,7 +364,10 @@ export async function runSchedule(scheduleId: string): Promise<void> {
     return;
   }
   const r = await execHeadless(line);
-  finish(r.code === 0 ? "ok" : "failed", r.code === 0 ? null : r.error ?? `exit ${r.code}`, r.output || null);
+  // A known CLI refusal is reported in the user's words (cliFix), the CLI's
+  // own line kept underneath; anything else keeps the CLI's text.
+  const fix = r.code === 0 ? null : cliFix(`${r.error || ""}\n${r.output.slice(-2000)}`, loop.cli || "claude");
+  finish(r.code === 0 ? "ok" : "failed", r.code === 0 ? null : fix ? fix.message : r.error ?? `exit ${r.code}`, r.output || null);
 }
 
 export function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
