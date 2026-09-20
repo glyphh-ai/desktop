@@ -826,8 +826,11 @@ export async function refreshGatewayMode(): Promise<void> {
     const chat = models.filter((m) => m.modality === "chat");
     const orgDefault = String(gates.defaultModel || "").trim();
     const router = chat.find((m) => m.autoRouter)?.name ?? "";
+    // The org's default, else its router; never an arbitrary first model (his
+    // report, 2026-09-20: "where did it get luna from?"). With neither set the
+    // loop decides, and a refused model is a plain error, not a surprise.
     requiredModel = gatewayOn
-      ? (orgDefault && chat.some((m) => m.name === orgDefault) ? orgDefault : (gates.autoOnly && router) || router || chat[0]?.name || "")
+      ? (orgDefault && chat.some((m) => m.name === orgDefault) ? orgDefault : router || "")
       : "";
   } catch { /* offline — the last answer stands */ }
 }

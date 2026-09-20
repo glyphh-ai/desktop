@@ -23,6 +23,7 @@ import { ipcMain, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { cliFix } from "./cli-auth.js";
+import { requestUsesGateway } from "./gateway-token.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
@@ -388,8 +389,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   ];
   // The CLI takes the vendor's own name; the app stores catalog ids. This lane
   // used to pass the id whole, so the panel asked for "anthropic::claude-…".
-  // A turn that named none runs on the org's default with the gateway on (his order, 2026-09-20).
-  const wanted = bareModel(p.model ?? "") || orgRequiredModel();
+  // The run handler already resolved the pick, lane-aware; nothing is added here.
+  const wanted = bareModel(p.model ?? "");
   if (wanted) parts.push("--model", wanted);
   if (p.effort) parts.push("--effort", p.effort);
   if (resume) parts.push("--resume", resume);
@@ -517,7 +518,11 @@ export function registerGlyphhCliBridge(): void {
     // gateway logged luna). The claude process is spawned with its --model and
     // --effort and keeps them for life, so a changed pick respawns it; the
     // conversation continues through --resume on the CLI's own session.
-    const wantModel = bareModel(p.model ?? "") || orgRequiredModel();
+    // The org's default fills an empty pick ONLY on a loop that rides the
+    // gateway; a loop on its own key or its own login decides for itself
+    // (his report, 2026-09-20: a direct Codex was handed a gateway model).
+    const row = agent ? agentRowFor(agent.id) : null;
+    const wantModel = bareModel(p.model ?? "") || (row && requestUsesGateway(!!row.apiKey) ? orgRequiredModel() : "");
     const wantEffort = p.effort || "";
     if (c && ((c.model || "") !== wantModel || (c.effort || "") !== wantEffort)) {
       console.warn("[cli-bridge] respawning the chat for a new model/effort", { from: c.model || "", to: wantModel, effort: wantEffort });
@@ -525,7 +530,7 @@ export function registerGlyphhCliBridge(): void {
       live.delete(p.chatId);
       c = undefined;
     }
-    if (!c) c = spawnChat(p, e.sender);
+    if (!c) c = spawnChat({ ...p, model: wantModel }, e.sender);
     else {
       c.sender = e.sender;
       c.runId = `${p.chatId}:${Date.now()}`;
