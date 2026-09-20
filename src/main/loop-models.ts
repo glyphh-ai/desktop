@@ -82,7 +82,7 @@ async function listAt(cli: string, base: string, token: string, viaGateway: bool
 /** The org's catalog, by the CLI's vendor (his ruling, 2026-09-16: on Free
  *  every curated model is on and the list is just their names; a paid org
  *  with the gateway on gets the gateway's list instead). */
-const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github" };
+const CLI_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor" };
 
 /**
  * GATEWAY MODE: THE ORG ADMIN OWNS THE LIST (his order, 2026-09-18).
@@ -136,11 +136,21 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
     // Gateway mode short-circuits every other lane: one list, org-controlled,
     // the same for a loop with its own key and a loop on a vendor login.
     if (await gatewayMode()) {
+      // ONE org list, asked once; THIS loop sees its own vendor's slice of it
+      // (his order, 2026-09-20: Codex offered Claude's models). A CLI speaks
+      // its vendor's wire, so the org's allow-list is filtered to the models
+      // that loop can drive; the org's auto-router is every loop's.
       const hitAll = cache.get(GATEWAY_KEY);
-      if (!force && hitAll && Date.now() - hitAll.at < TTL_MS) return hitAll.value;
-      const { models, baseUrl } = await orgGatewayModels();
-      value = { ok: true, source: "gateway", baseUrl, models };
-      cache.set(GATEWAY_KEY, { at: Date.now(), value });
+      const all = !force && hitAll && Date.now() - hitAll.at < TTL_MS ? hitAll.value : await (async () => {
+        const { models, baseUrl } = await orgGatewayModels();
+        const v: LoopModelsResult = { ok: true, source: "gateway", baseUrl, models };
+        cache.set(GATEWAY_KEY, { at: Date.now(), value: v });
+        return v;
+      })();
+      const vendor = CLI_VENDOR[row.cli];
+      value = { ...all, models: all.models.filter((m) => m.providerSlug === "auto" || !vendor || m.providerSlug === vendor) };
+      value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
+      cache.set(loopId, { at: Date.now(), value });
       return value;
     }
     // The gateway lane (paid, on): the list is what the org's gateway serves this member.
