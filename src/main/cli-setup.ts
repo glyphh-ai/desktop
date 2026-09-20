@@ -39,7 +39,9 @@ export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string
     fs.writeFileSync(inFile(), JSON.stringify(input), "utf-8");
     try { fs.rmSync(outFile(), { force: true }); } catch { /* none */ }
     watchOutput();
-    const tui = path.join(__dirname, "cli-setup-tui.js");
+    // Packaged: the TUI is unpacked beside the asar (electron-builder asarUnpack),
+    // since a node process outside the app cannot read from inside the archive.
+    const tui = path.join(__dirname.replace(`${path.sep}app.asar${path.sep}`, `${path.sep}app.asar.unpacked${path.sep}`), "cli-setup-tui.js");
     const command = process.platform === "win32"
       ? `$env:ELECTRON_RUN_AS_NODE=1; & ${q(process.execPath)} ${q(tui)} ${q(inFile())} ${q(outFile())}`
       : `ELECTRON_RUN_AS_NODE=1 ${q(process.execPath)} ${q(tui)} ${q(inFile())} ${q(outFile())}`;

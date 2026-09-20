@@ -343,7 +343,14 @@ export function initBootGate(cb: BootGateCallbacks): void {
     if (data.authenticated) {
       void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => {
         if (v) return;
-        window.setTimeout(() => { void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.(); }, 2500);
+        // The workbench defines the opener when it mounts; wait for it.
+        let tries = 0;
+        const open = (): void => {
+          const fn = (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller;
+          if (fn) { void fn(); return; }
+          if (tries++ < 60) window.setTimeout(open, 1000);
+        };
+        window.setTimeout(open, 2500);
       }).catch(() => {});
     }
 
