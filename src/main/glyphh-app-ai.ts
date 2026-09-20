@@ -251,6 +251,13 @@ export async function vectorSearch(slug: string, args: Record<string, unknown>):
   return { matches: scored.slice(0, k) };
 }
 
+export function vectorItems(slug: string, collection: string): Array<{ id: string; text: string | null; metadata: unknown }> {
+  const db = getVecDb(slug);
+  if (!collectionOf(db, collection)) return [];
+  const rows = db.prepare("SELECT id, text, metadata_json FROM items WHERE collection = ?").all(collection) as Array<{ id: string; text: string | null; metadata_json: string | null }>;
+  return rows.map((r) => { let m: unknown = null; try { m = r.metadata_json ? JSON.parse(r.metadata_json) : null; } catch { m = null; } return { id: r.id, text: r.text, metadata: m }; });
+}
+
 export function vectorDelete(slug: string, args: Record<string, unknown>): { deleted: number } {
   const collection = String(args.collection || "").trim();
   if (!collection) throw new Error("collection is required");

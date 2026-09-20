@@ -26,7 +26,7 @@
 
 import http from "node:http";
 import { getPreference } from "./stores/preferences-db.js";
-import { llmChunk, vectorUpsert, vectorSearch, vectorDelete } from "./glyphh-app-ai.js";
+import { llmChunk, vectorUpsert, vectorSearch, vectorDelete, vectorItems } from "./glyphh-app-ai.js";
 import { getClient } from "./glyphh-client.js";
 import { ipcMain } from "electron";
 
@@ -90,6 +90,63 @@ export function registerMemoryIpc(): void {
       return { ok: true, turns: sources.size, chunks: r.matches.length };
     } catch { return { ok: true, turns: 0, chunks: 0 }; }
   });
+  // THE MEMORY BROWSER (his order, 2026-09-20): one row per remembered turn or
+  // page, with its scope, so the panel groups You / Topics / Areas / projects.
+  ipcMain.handle("memory-turn-list", () => {
+    try {
+      const rows = new Map<string, { id: string; kind: string; section: string; title: string; text: string; at: string; folder: string; workspace: string; parts: number }>();
+      for (const it of vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION)) {
+        const m = (it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>;
+        const source = String(m.source ?? it.id.split("#")[0]);
+        const cur = rows.get(source) ?? { id: source, kind: String(m.kind ?? "turn"), section: String(m.section ?? ""), title: String(m.title ?? ""), text: "", at: String(m.at ?? ""), folder: String(m.folder ?? ""), workspace: String(m.workspace ?? ""), parts: 0 };
+        cur.text += (cur.text ? "\n" : "") + String(it.text ?? ""); cur.parts += 1;
+        rows.set(source, cur);
+      }
+      const out = [...rows.values()].map((r) => {
+        const details = r.text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+        const reply = /ASSISTANT:\s*([\s\S]*)$/.exec(r.text)?.[1] ?? "";
+        const summary = (reply || r.text.replace(/^USER:\s*/, "")).replace(/\s+/g, " ").trim().slice(0, 140);
+        return { ...r, title: r.title || r.text.replace(/^USER:\s*/, "").replace(/\s+/g, " ").slice(0, 90), summary, details };
+      });
+      out.sort((a, b) => b.at.localeCompare(a.at));
+      return { ok: true, rows: out };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err), rows: [] }; }
+  });
+  // EDIT A MEMORY (his order, 2026-09-20): the rewritten text goes back
+  // through the embeddings model; the old pieces leave, the new ones land.
+  ipcMain.handle("memory-turn-update", async (_e, input: { source: string; title?: string; summary?: string; details: string[] }) => {
+    try {
+      const source = String(input?.source || "");
+      const details = (Array.isArray(input?.details) ? input.details : []).map((d) => String(d).trim()).filter(Boolean);
+      if (!source || !details.length) throw new Error("nothing to keep");
+      const old = vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION).filter((it) => {
+        const m = (it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>;
+        return String(m.source ?? it.id.split("#")[0]) === source;
+      });
+      const meta = (old[0]?.metadata && typeof old[0].metadata === "object" ? old[0].metadata : {}) as Record<string, unknown>;
+      const text = details.join("\n");
+      const { chunks } = llmChunk({ text, maxChars: 1_200 });
+      await vectorUpsert(MEMORY_APP_SLUG, {
+        collection: MEMORY_COLLECTION,
+        items: chunks.map((c, i) => ({
+          id: `${source}#${i}`, text: c,
+          metadata: { ...meta, source, at: new Date().toISOString(), title: String(input.title ?? meta.title ?? "").slice(0, 90), summary: String(input.summary ?? "").slice(0, 140) },
+        })),
+      });
+      for (const it of old) if (Number(it.id.split("#")[1]) >= chunks.length) vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, id: it.id });
+      return { ok: true, chunks: chunks.length };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("memory-turn-forget", (_e, source: string) => {
+    try {
+      let deleted = 0;
+      for (const it of vectorItems(MEMORY_APP_SLUG, MEMORY_COLLECTION)) {
+        const m = (it.metadata && typeof it.metadata === "object" ? it.metadata : {}) as Record<string, unknown>;
+        if (String(m.source ?? it.id.split("#")[0]) === String(source)) deleted += vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION, id: it.id }).deleted;
+      }
+      return { ok: true, deleted };
+    } catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
+  });
   ipcMain.handle("memory-clear", () => {
     try { return { ok: true, ...vectorDelete(MEMORY_APP_SLUG, { collection: MEMORY_COLLECTION }) }; }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
@@ -103,10 +160,16 @@ export function registerMemoryIpc(): void {
  *  opt-in toggle; now every loop with a base-URL seam rides through it, and
  *  the Memory settings decide what it does with the traffic, never whether
  *  it is there. A wire the bridge cannot parse is forwarded untouched. */
-export async function bridgeWrap(upstream: string): Promise<string | null> {
+/** WHERE A TURN HAPPENED (his order, 2026-09-20): the folder a loop ran in
+ *  and the workspace it ran under, so memory groups by project. */
+export interface MemoryScope { folder?: string; workspace?: string }
+
+export async function bridgeWrap(upstream: string, scope?: MemoryScope): Promise<string | null> {
   const p = await startMemoryBridge();
   if (!p) return null;
-  const b64 = Buffer.from(upstream, "utf-8").toString("base64url");
+  const clean: MemoryScope = { ...(scope?.folder ? { folder: scope.folder } : {}), ...(scope?.workspace ? { workspace: scope.workspace } : {}) };
+  const lane = Object.keys(clean).length ? JSON.stringify({ u: upstream, s: clean }) : upstream;
+  const b64 = Buffer.from(lane, "utf-8").toString("base64url");
   return `http://127.0.0.1:${p}/fwd/${LAUNCH_SECRET}/${b64}`;
 }
 
@@ -136,13 +199,19 @@ export function stopMemoryBridge(): void {
 
 // ── the proxy ───────────────────────────────────────────────────────────────
 
-function upstreamOf(url: string): { base: string; rest: string } | null {
+function upstreamOf(url: string): { base: string; rest: string; scope: MemoryScope } | null {
   const m = /^\/fwd\/([A-Za-z0-9_-]+)(\/.*)?$/.exec(url);
   if (!m) return null;
   try {
-    const base = Buffer.from(m[1], "base64url").toString("utf-8").replace(/\/$/, "");
+    const decoded = Buffer.from(m[1], "base64url").toString("utf-8");
+    let base = decoded; let scope: MemoryScope = {};
+    if (decoded.startsWith("{")) {
+      const j = JSON.parse(decoded) as { u?: string; s?: MemoryScope };
+      base = String(j.u || ""); scope = j.s && typeof j.s === "object" ? j.s : {};
+    }
+    base = base.replace(/\/$/, "");
     if (!/^https?:\/\//.test(base)) return null;
-    return { base, rest: m[2] || "/" };
+    return { base, rest: m[2] || "/", scope };
   } catch { return null; }
 }
 
@@ -203,7 +272,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
       });
       pres.on("end", () => {
         res.end();
-        if (inject && userText) void captureTurn(userText, assistantTextOf(accum));
+        if (inject && userText) void captureTurn(userText, assistantTextOf(accum), up.scope);
       });
       pres.on("error", () => { try { res.end(); } catch { /* gone */ } });
     },
@@ -286,7 +355,7 @@ async function factBlock(userText: string): Promise<string> {
 // One prompt is captured once: a tool-using turn is several messages calls
 // that all end on the same user text, and each would have stored it again.
 let lastCaptured = { key: "", at: 0 };
-async function captureTurn(userText: string, assistantText: string): Promise<void> {
+async function captureTurn(userText: string, assistantText: string, scope: MemoryScope = {}): Promise<void> {
   try {
     const key = `${userText}\u0000${assistantText}`;
     if (key === lastCaptured.key && Date.now() - lastCaptured.at < 10 * 60_000) return;
@@ -301,7 +370,8 @@ async function captureTurn(userText: string, assistantText: string): Promise<voi
       await vectorUpsert(MEMORY_APP_SLUG, {
         collection: MEMORY_COLLECTION,
         items: chunks.slice(i, i + 32).map((c, j) => ({
-          id: `${sourceId}#${i + j}`, text: c, metadata: { source: sourceId, at: new Date().toISOString() },
+          id: `${sourceId}#${i + j}`, text: c,
+          metadata: { source: sourceId, at: new Date().toISOString(), kind: "turn", title: userText.replace(/\s+/g, " ").slice(0, 90), ...scope },
         })),
       });
     }

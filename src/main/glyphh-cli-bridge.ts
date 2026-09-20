@@ -237,6 +237,8 @@ interface RunPayload {
   prompt?: string;
   /** The picked LOOP (a CLI agent id) — decides WHICH CLI runs this chat. */
   loop?: string;
+  /** The workspace the chat runs under, for project memory. */
+  workspace?: string;
   /** The chat's persisted CLI session — re-primes the in-memory resume map
    *  after a restart, so the first run/hop resumes instead of starting
    *  fresh (his report, 2026-09-14: the first terminal hop was empty). */
@@ -484,7 +486,7 @@ export function registerGlyphhCliBridge(): void {
     }
     // The loop's env (gateway lane, memory bridge) is written here, before
     // any spawn, so a chat turn gets the same wiring a terminal open does.
-    if (agent) { const row = agentRowFor(agent.id); if (row) await ensureLoopEnv(row).catch(() => undefined); }
+    if (agent) { const row = agentRowFor(agent.id); if (row) await ensureLoopEnv(row, { folder: p.workdir || "", workspace: p.workspace || "" }).catch(() => undefined); }
     // Non-claude loops: one headless turn per send, on the LOOP'S OWN CLI.
     if (agent && agent.cli !== "claude") {
       const prior = live.get(p.chatId);

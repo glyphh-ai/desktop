@@ -1101,7 +1101,8 @@ function readClaudeSessionHead(file: string, mtime: number): CliSessionRow | nul
  *  written at boot, which never wrapped. Every path that launches the CLI
  *  calls this first, so the gateway lane and the memory bridge both apply to
  *  the terminal, the chat and a scheduled task alike. */
-export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
+export async function ensureLoopEnv(row: CliAgentRow, scope?: { folder?: string; workspace?: string }): Promise<void> {
+  const where = { folder: scope?.folder || row.cwd || "", ...(scope?.workspace ? { workspace: scope.workspace } : {}) };
   // THE GATEWAY INJECTION (the last mile): point the CLI at the router
   // and hand it this member's minted key, so the role's models, rate and
   // budget bind and the spend lands under their name. BYOK WINS — a loop
@@ -1116,7 +1117,7 @@ export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
     // their wires land.
     const VENDOR_BASE: Record<string, string> = { claude: "https://api.anthropic.com", codex: "https://api.openai.com/v1", gemini: "https://generativelanguage.googleapis.com" };
     const vendorBase = VENDOR_BASE[row.cli];
-    const bridged = vendorBase ? await bridgeWrap(vendorBase).catch(() => null) : null;
+    const bridged = vendorBase ? await bridgeWrap(vendorBase, where).catch(() => null) : null;
     if (row.apiKey) {
       if (bridged) writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);
       else clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
@@ -1127,7 +1128,7 @@ export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
       // And while this vendor's own credits last, the turn goes STRAIGHT
       // at the vendor: the gateway takes over only when they run out.
       if (creds && await loopGoesToGateway(row.cli, false)) {
-        const wrapped = vendorBase ? await bridgeWrap(creds.baseUrl).catch(() => null) : null;
+        const wrapped = vendorBase ? await bridgeWrap(creds.baseUrl, where).catch(() => null) : null;
         writeGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv, wrapped ? { ...creds, baseUrl: wrapped } : creds);
       } else if (bridged) {
         writeBaseUrlOnly(row.id, row.cli, cliProfile.baseUrlEnv, bridged);

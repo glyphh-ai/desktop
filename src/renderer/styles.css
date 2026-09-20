@@ -21077,3 +21077,32 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 .code-menu.loop-filter-menu .code-menu-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .code-menu.loop-filter-menu .code-menu-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .code-menu.loop-filter-menu .menu-check { flex: none; }
+
+/* THE MEMORY BROWSER (2026-09-20): a knowledge base's rows. */
+.mem-browser { margin-top: 12px; }
+.mem-empty { color: var(--dim, #828282); font-size: 13px; }
+.mem-section { padding: 14px 0 6px; font-size: 13px; font-weight: 600; color: var(--ink, #f1f1f1); border-bottom: 1px solid var(--line, #3f3f46); margin-bottom: 4px; }
+.mem-row { display: grid; grid-template-columns: minmax(140px, 1fr) 2fr auto auto; gap: 16px; align-items: center; padding: 9px 4px 9px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.mem-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .12s; }
+.mem-row:hover .mem-actions { opacity: 1; }
+.mem-icon { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted, #c4c4c4); cursor: pointer; }
+.mem-icon:hover { background: var(--bg-2, #2e2e32); color: var(--ink, #f1f1f1); }
+.mem-page { padding: 4px 0 8px; }
+.mem-back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted, #c4c4c4); font: inherit; font-size: 13px; cursor: pointer; padding: 0 0 14px; }
+.mem-back:hover { color: var(--ink, #f1f1f1); }
+.mem-page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.mem-page-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink, #f1f1f1); }
+.mem-label { font-size: 12px; color: var(--dim, #828282); margin: 12px 0 4px; }
+.mem-value { font-size: 13px; color: var(--ink, #f1f1f1); }
+.mem-details { margin: 0; padding-left: 20px; font-size: 13px; color: var(--ink, #f1f1f1); line-height: 1.55; }
+.mem-details li { margin: 4px 0; }
+.mem-status { display: flex; align-items: center; gap: 8px; min-height: 22px; margin: 22px 0 8px; font-size: 12.5px; color: var(--muted, #c4c4c4); }
+.mem-check { color: var(--muted, #c4c4c4); }
+.mem-compose { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--line, #3f3f46); border-radius: 22px; background: var(--panel, #252528); }
+.mem-compose .mem-input { flex: 1; border: 0; background: transparent; box-shadow: none; padding: 6px 0; }
+.mem-send { width: 30px; height: 30px; border: 0; border-radius: 50%; background: var(--bg-2, #2e2e32); color: var(--ink, #f1f1f1); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.mem-send:hover { background: var(--accent, #8c3bf2); }
+.mem-row:hover { background: var(--panel, #252528); }
+.mem-name { color: var(--ink, #f1f1f1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mem-summary { color: var(--muted, #c4c4c4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mem-when { color: var(--dim, #828282); font-size: 12px; white-space: nowrap; }
