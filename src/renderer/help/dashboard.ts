@@ -663,7 +663,7 @@ export async function loadUsageMetrics(): Promise<void> {
     $a("dash-budget-label").textContent = "Budget";
     if (data.orgBudget === false) {
       $a("dash-budget-value").textContent = "Pooled";
-      $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}connector calls draw from the org's budget`;
+      $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}calls through Glyphh draw from the org's budget`;
     } else {
       $a("dash-budget-value").textContent = fmtUsd(data.remainingUsd);
       $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}${fmtUsd(data.poolUsdPerMonth)} / month${data.fundsUsd > 0 ? ` + ${fmtUsd(data.fundsUsd)} funds` : ""}`;

@@ -111,7 +111,7 @@ function buySummary(): void {
   }
   if (sum) {
     // Dollar for dollar (his ruling, 2026-09-20): no unit, no rate, no tiers.
-    sum.textContent = "Funds go dollar for dollar into your Budget — the connector calls "
+    sum.textContent = "Funds go dollar for dollar into your Budget — the calls through Glyphh "
       + "your agents make through the org's connections. They sit on top of the plan's monthly "
       + "budget and never expire. Model calls never draw on it.";
   }
@@ -640,7 +640,7 @@ export async function openAddFundsModal(): Promise<void> {
     <div class="confirm-box add-funds-box">
       <div class="confirm-head"><h3>Budget used up</h3></div>
       <div class="confirm-body">
-        <p class="bc-balance">Connector calls through your org's connections draw on this budget. <strong id="bc-balance">—</strong> left this period · funds you add never expire.</p>
+        <p class="bc-balance">Through Glyphh through your org's connections draw on this budget. <strong id="bc-balance">—</strong> left this period · funds you add never expire.</p>
         <div class="billing-topup-grid bc-grid" id="bc-grid"></div>
         <label class="settings-toggle" style="margin-top:18px;">
           <input type="checkbox" id="bc-autotopup" />

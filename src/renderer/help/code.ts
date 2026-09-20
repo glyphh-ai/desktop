@@ -1383,7 +1383,7 @@ function isPeekingNow(): boolean {
   return document.querySelector(".code-root")?.classList.contains("peeking") ?? false;
 }
 
-/** Dollars → the footer's headline — what the turn's connector calls cost.
+/** Dollars → the footer's headline — what the turn's calls through Glyphh cost.
  *  Small runs keep sub-cent precision, big ones stay to the cent. */
 function fmtUsd(usd: number): string {
   const n = usd >= 100 ? Math.round(usd).toLocaleString()
@@ -2261,7 +2261,7 @@ const CLI_DISPLAY: Record<string, string> = { claude: "Claude Code", codex: "Cod
 function cliDisplayName(cli?: string): string { return (cli && CLI_DISPLAY[cli]) || (cli ? cli : "The loop's CLI"); }
 function declineCardEl(d: { kind: string; url: string; cli?: string; command?: string }): HTMLElement {
   const COPY: Record<string, { title: string; body: string; cta: string }> = {
-    credits: { title: "Budget used up", body: "This turn's connector calls need budget to run. Add funds to your org's budget to keep going.", cta: "Add funds" },
+    credits: { title: "Budget used up", body: "This turn's calls through Glyphh need budget to run. Add funds to your org's budget to keep going.", cta: "Add funds" },
     role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
     rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
     signin: { title: "Sign in to continue", body: `${cliDisplayName(d.cli)} needs you to sign in again before a turn can run${d.command ? ` (run \`${d.command}\`)` : ""}. Then send this message once more.`, cta: "Sign in" },

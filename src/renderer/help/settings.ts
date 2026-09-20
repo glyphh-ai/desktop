@@ -773,7 +773,7 @@ export async function loadUsageAppView(): Promise<void> {
         : `Glyphh ${data.plan.charAt(0).toUpperCase()}${data.plan.slice(1)}`;
     }
     // THE MEMBER'S BUDGET (his play-out, 2026-09-20): what the org lets them
-    // spend plus what Glyphh funds for connector calls. Spent counts both, so
+    // spend plus what runs through Glyphh. Spent counts both, so
     // total minus spent is what is left of both.
     const limit = data?.limitUsd == null ? null : Math.max(0, data.limitUsd);
     const pool = Math.max(0, data?.poolUsd ?? 0);
@@ -800,8 +800,8 @@ export async function loadUsageAppView(): Promise<void> {
     if (poolSub) {
       const who = data?.limitSource === "member" ? "set for you by your organization" : "your organization's limit";
       poolSub.textContent = limit == null
-        ? `${fmtUsd(pool)} from Glyphh for connector calls · your organization has set no limit`
-        : `${fmtUsd(limit)} ${who} · ${fmtUsd(pool)} from Glyphh for connector calls`;
+        ? `${fmtUsd(pool)} from Glyphh, for what runs through it · your organization has set no limit`
+        : `${fmtUsd(limit)} ${who} · ${fmtUsd(pool)} from Glyphh, for what runs through it`;
     }
     const connEl = el("ua-connector");
     if (connEl) connEl.textContent = `${fmtUsd(Math.max(0, data?.poolSpentUsd ?? 0))} of ${fmtUsd(pool)} used`;

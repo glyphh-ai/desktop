@@ -120,7 +120,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // (his law, 2026-08-25) — never a tier string.
       client.billing.plans().catch(() => []),
       client.billing.status().catch(() => null),
-      // The caller's own budget: the org's limit on them plus Glyphh's connector dollars.
+      // The caller's own budget: the org's limit on them plus Glyphh's Glyphh dollars.
       client.billing.myBudget().catch(() => null),
     ]);
 
