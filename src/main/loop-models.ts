@@ -24,7 +24,7 @@ import { agentRowFor, CLI_PROFILES } from "./cli-agents";
 import { getClient } from "./glyphh-client";
 import { gatewayCreds } from "./gateway-token";
 
-export interface LoopModel { id: string; name: string; providerSlug: string }
+export interface LoopModel { id: string; name: string; providerSlug: string; /** "local" = a directory row for a CLI's own login, never proxied. */ source?: string }
 export interface LoopModelsResult {
   ok: boolean;
   source: "gateway" | "byok" | "login" | "none";
@@ -107,12 +107,12 @@ async function orgGatewayModels(): Promise<{ models: LoopModel[]; baseUrl: strin
   // auto-router has no business being offered as a model name at all. Our own
   // endpoint publishes the public name, applies the org's allow-list, and
   // collapses to the auto-router under Auto only (his report, 2026-09-18).
-  const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean }>;
+  const rows = await getClient().models.available() as Array<{ name: string; providerSlug: string; modality: string; autoRouter?: boolean; source?: string }>;
   return {
     baseUrl: creds?.baseUrl ?? null,
     models: rows
       .filter((m) => m.modality === "chat")
-      .map((m) => ({ id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug })),
+      .map((m) => ({ id: m.name, name: m.autoRouter ? "Auto" : m.name, providerSlug: m.autoRouter ? "auto" : m.providerSlug, source: m.source })),
   };
 }
 
@@ -184,11 +184,14 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
         cache.set(GATEWAY_KEY, { at: Date.now(), value: v });
         return v;
       })();
-      // THE WHOLE LIST, ON EVERY LOOP (his order, 2026-09-20): with the
-      // gateway on the router translates every dialect, so Claude Code can run
-      // an OpenAI model and Codex an Anthropic one. Nothing is sliced by vendor.
-      void CLI_VENDOR;
-      value = { ...all, models: [...all.models] };
+      // THE WHOLE PROXIED LIST, ON EVERY LOOP (his order, 2026-09-20): with
+      // the gateway on the router translates every dialect, so Claude Code can
+      // run an OpenAI model and Codex an Anthropic one. DIRECTORY rows are the
+      // exception: they are a CLI's own-login list (Copilot, Cursor), never
+      // proxied, so only that CLI's loop sees its own (his report, the same
+      // day: the Claude loop listed every Cursor row).
+      const vendor = CLI_VENDOR[row.cli];
+      value = { ...all, models: all.models.filter((m) => m.source !== "local" || (!!vendor && m.providerSlug === vendor)) };
       value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
       cache.set(loopId, { at: Date.now(), value });
       return value;
