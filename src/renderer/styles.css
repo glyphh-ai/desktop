@@ -17433,7 +17433,7 @@ body.echo-drag .echo-card webview { pointer-events: none; }
 .code-level-pop { min-width: 250px; padding: 8px 12px 12px; }
 .code-level-pop .level-head { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--text-2); border-bottom: 0; padding: 2px 0 8px; margin: 0; }
 .code-level-pop .level-name { font-weight: 600; color: var(--text); margin-left: 6px; }
-.code-level-pop .level-head.ultra .level-name { color: var(--accent); }
+.code-level-pop .level-head.ultra .level-name { color: #a56cf7; }
 .code-level-pop .level-help { padding: 0 0 10px; font-size: 12px; color: var(--text-3); }
 .level-scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
 .level-track {
@@ -17460,40 +17460,37 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    the right and vanish into the dark on the left, and three dot layers of
    different pitch drift right → left at different speeds. */
 .level-track.ultra {
-  --ultra: var(--accent, #8c3bf2);
+  /* LITERAL purples on purpose: color-mix() is dropped by this Electron, and
+     every dropped declaration left the track grey (his report, 2026-09-20). */
   overflow: hidden;
-  border-color: color-mix(in srgb, var(--ultra) 60%, var(--border));
+  border-color: rgba(140, 59, 242, 0.65);
   background:
-    radial-gradient(70% 140% at 100% 50%, color-mix(in srgb, var(--ultra) 75%, transparent), transparent 70%),
-    linear-gradient(90deg,
-      color-mix(in srgb, var(--ultra) 8%, #0e0a14) 0%,
-      color-mix(in srgb, var(--ultra) 26%, #150f1f) 40%,
-      color-mix(in srgb, var(--ultra) 62%, #1c1230) 78%,
-      color-mix(in srgb, var(--ultra) 90%, #241640) 100%);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--ultra) 45%, transparent) inset, 0 0 12px color-mix(in srgb, var(--ultra) 35%, transparent);
+    radial-gradient(70% 140% at 100% 50%, rgba(140, 59, 242, 0.8), rgba(140, 59, 242, 0) 70%),
+    linear-gradient(90deg, #120b1c 0%, #241238 40%, #4a1f8e 78%, #7a33d6 100%);
+  box-shadow: inset 0 0 16px rgba(140, 59, 242, 0.45), 0 0 12px rgba(140, 59, 242, 0.35);
 }
 .level-track.ultra::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  /* Three purple dot layers: small bright lilac, medium purple, large deep purple. */
+  /* Three purple dot layers: small bright lilac, medium Glyphh purple, large deep purple. */
   background-image:
-    radial-gradient(circle, color-mix(in srgb, var(--ultra) 70%, white) 0 0.7px, transparent 1.2px),
-    radial-gradient(circle, var(--ultra) 0 1px, transparent 1.7px),
-    radial-gradient(circle, color-mix(in srgb, var(--ultra) 85%, #5a2bb0) 0 1.4px, transparent 2.2px);
+    radial-gradient(circle, rgba(214, 190, 255, 0.95) 0 0.7px, rgba(214, 190, 255, 0) 1.2px),
+    radial-gradient(circle, #8c3bf2 0 1px, rgba(140, 59, 242, 0) 1.7px),
+    radial-gradient(circle, #5a2bb0 0 1.4px, rgba(90, 43, 176, 0) 2.2px);
   background-size: 5px 5px, 9px 9px, 14px 14px;
   background-position: 0 0, 3px 2px, 7px 5px;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.12) 22%, rgba(0,0,0,.55) 55%, #000 100%);
-  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.12) 22%, rgba(0,0,0,.55) 55%, #000 100%);
+  -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.12) 22%, rgba(0,0,0,.55) 55%, #000 100%);
+  mask-image: linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.12) 22%, rgba(0,0,0,.55) 55%, #000 100%);
   animation: level-ultra-drift 1.6s linear infinite;
 }
 .level-track.ultra .level-fill { background: transparent; }
-.level-track.ultra .level-dot { background: color-mix(in srgb, var(--ultra) 60%, white); opacity: .55; }
-.level-track.ultra .level-thumb { background: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ultra) 55%, transparent), 0 0 14px color-mix(in srgb, var(--ultra) 85%, transparent); }
+.level-track.ultra .level-dot { background: rgba(200, 170, 255, 0.7); opacity: .6; }
+.level-track.ultra .level-thumb { background: #fff; box-shadow: 0 0 0 1px rgba(140, 59, 242, 0.6), 0 0 14px rgba(140, 59, 242, 0.9); }
 /* Each layer moves a whole number of its own tiles per cycle, so the loop never jumps. */
 @keyframes level-ultra-drift {
   from { background-position: 0 0, 3px 2px, 7px 5px; }
   to   { background-position: -10px 0, -15px 2px, -21px 5px; }
 }
-#code-level-chip.ultra { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+#code-level-chip.ultra { color: #a56cf7; border-color: rgba(140, 59, 242, 0.65); }
 @media (prefers-reduced-motion: reduce) { .level-track.ultra::before { animation: none; } .level-thumb { transition: none; } }
 
 /* Designed monogram tiles — rounded plate, centered mark; the color comes
