@@ -373,6 +373,9 @@ export async function runSchedule(scheduleId: string): Promise<void> {
 export function execHeadless(line: string): Promise<{ code: number; output: string; error?: string }> {
   return new Promise((resolve) => {
     const child = spawn("/bin/sh", ["-lc", line], { env: process.env });
+    // The CLI reads nothing from us; an open stdin pipe held codex exec in its
+    // prompt resolution for as long as the pipe lived (2026-09-20).
+    try { child.stdin.end(); } catch { /* already closed */ }
     let out = "";
     const cap = (b: Buffer): void => { if (out.length < 40_000) out += b.toString(); };
     child.stdout.on("data", cap);

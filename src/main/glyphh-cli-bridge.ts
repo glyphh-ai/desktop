@@ -319,6 +319,10 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     env: { ...process.env },
     stdio: ["pipe", "pipe", "pipe"],
   });
+  // A headless CLI reads nothing from us: close its stdin at once. Codex exec
+  // resolves its prompt against stdin and sat in resolve_root_prompt for as
+  // long as the pipe stayed open (his repro, 2026-09-20, third round).
+  try { proc.stdin.end(); } catch { /* already closed */ }
   const chat: LiveChat = {
     proc: proc as ChildProcessWithoutNullStreams,
     runId, sender,

@@ -590,7 +590,8 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   // claude takes --effort; codex takes the config key; the rest ignore it.
   const lvl = EFFORT_LEVELS.has(String(effort || "")) ? String(effort) : "";
   const claudeEffort = lvl ? ` --effort ${lvl}` : "";
-  const codexEffort = lvl ? ` -c model_reasoning_effort="${lvl}"` : "";
+  // A TOML string, single-quoted for the shell (a bare value made codex drop its overrides).
+  const codexEffort = lvl ? ` -c 'model_reasoning_effort="${lvl}"'` : "";
   let core: string;
   switch (row.cli) {
     case "claude":
@@ -605,10 +606,15 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // the home directory, not only a git checkout. Without the skip flag
       // codex exec stops dead with "Not inside a trusted directory" (his
       // report, 2026-09-20); the folder the user picked IS the trust decision.
+      // EVERY -c OVERRIDE BEFORE `exec` (proved 2026-09-20): overrides given
+      // after the subcommand's prompt replace the ones before it, so the MCP
+      // block at the tail silently dropped the provider and codex fell back
+      // to its ChatGPT login.
+      const mcpOverrides = row.mcp
+        ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "")
+        : "";
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
-        + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
-          + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
+        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`;
       break;
     }
     case "gemini":
@@ -695,10 +701,11 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // codex (v0.154 verified): streamable_http auth rides an ENV VAR, not
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
+      // Overrides before the resume subcommand and the prompt (see composeHeadless).
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
-        + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
-        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
+        + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider} -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "")
+        + `${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
     } else if (row.cli === "claude") {
       base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}`;
     }
