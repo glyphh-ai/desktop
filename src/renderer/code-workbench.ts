@@ -2224,10 +2224,13 @@ async function init(): Promise<void> {
     renderTerminalIntoSlot(el.querySelector<HTMLElement>(".cli-installer-host")!, slot);
     console.warn("[cli-installer] open (full screen)");
     // Finish lands as a preference in main; watch for it here as well as the
-    // event, so the overlay closes even if the event is missed.
+    // event, so the overlay closes even if the event is missed. Only a Finish
+    // AFTER this open counts (his report, 2026-09-20: opened from Settings
+    // after a first Finish, it closed itself on the flag that was already set).
+    const before = String(await window.glyphh.getPreference?.("cliSetupDoneAt", "").catch(() => "") ?? "");
     const poll = window.setInterval(() => {
       if (!installerOverlay) { window.clearInterval(poll); return; }
-      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => { if (v) { window.clearInterval(poll); closeInstaller(); } }).catch(() => {});
+      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => { if (String(v ?? "") !== before) { window.clearInterval(poll); closeInstaller(); } }).catch(() => {});
     }, 2000);
   };
   // FIRST RUN, from the workbench itself (his report, 2026-09-20: "on first
