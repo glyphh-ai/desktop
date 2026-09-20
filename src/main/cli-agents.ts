@@ -650,7 +650,10 @@ const CODEX_NO_UPDATE = " -c check_for_update_on_startup=false";
 // route Codex honors for a proxy is a custom model provider whose key comes
 // from an env var: base_url is the sourced OPENAI_BASE_URL, the key is the
 // sourced OPENAI_API_KEY, wire is the Responses API the router serves.
-const CODEX_PROVIDER = ` -c model_provider="glyphh" -c model_providers.glyphh.name="Glyphh" -c "model_providers.glyphh.base_url=\"$OPENAI_BASE_URL\"" -c model_providers.glyphh.env_key="OPENAI_API_KEY" -c model_providers.glyphh.wire_api="responses"`;
+const CODEX_PROVIDER = ` -c 'model_provider="glyphh"' -c 'model_providers.glyphh.name="Glyphh"' -c 'model_providers.glyphh.base_url="'"$OPENAI_BASE_URL"'"' -c 'model_providers.glyphh.env_key="OPENAI_API_KEY"' -c 'model_providers.glyphh.wire_api="responses"'`;
+// The single quotes above are load-bearing: the values must reach codex as TOML
+// strings (model_provider="glyphh"). Bare, they were dropped and codex fell
+// back to its ChatGPT login (his repro, 2026-09-20, second round).
 /** The effort levels both claude (--effort) and codex (model_reasoning_effort) accept. */
 export const EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 // codex exec (and exec resume) refuse a folder that is not a git checkout
