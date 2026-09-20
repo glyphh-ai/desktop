@@ -4652,7 +4652,7 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
       }
     }
     if (touched) void saveStore();
-    if (activeHit) newSessionInPlace();
+    if (activeHit) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
   }
   return !!r?.ok;
 }

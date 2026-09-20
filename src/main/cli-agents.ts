@@ -735,6 +735,17 @@ let gatewayOn = false;
 /** `unset` for the vars the gateway owns on this CLI, so a request that
  *  stays on the member's own login does not inherit the loop's env file.
  *  A loop with its own key never carries those vars, so nothing to strip. */
+/** The shell prefix every launch of a loop wears: source its env file (the
+ *  bridge, the gateway lane) and, for a turn that stays off the gateway, drop
+ *  the gateway key and point the base URL back at the bridge. The chat
+ *  process used to spawn without it (his report, 2026-09-20: memory captured
+ *  nothing in chat), so the bridge never saw a chat turn. */
+export function loopEnvPrefix(row: CliAgentRow, model: string): string {
+  if (!fs.existsSync(envFile(row.id))) return "";
+  const strip = requestUsesGateway(row.cli, model || requiredModel, !!row.apiKey) ? "" : stripGatewayVars(row);
+  return `set -a; . "${envFile(row.id)}"; set +a;${strip} `;
+}
+
 function stripGatewayVars(row: CliAgentRow): string {
   if (row.apiKey) return "";
   const key = KEY_ENV[row.cli] ? ` unset ${KEY_ENV[row.cli]};` : "";

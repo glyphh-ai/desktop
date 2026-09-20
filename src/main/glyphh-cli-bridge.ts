@@ -25,7 +25,7 @@ import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenVal
 import { authFix } from "./cli-auth.js";
 import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
-import { listCliAgents, composeHeadless, ensureLoopEnv, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -386,7 +386,9 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   if (mcp) parts.push("--mcp-config", mcp);
   // The login shell resolves the user's real PATH — Electron's GUI env
   // doesn't carry it, and `claude` lives wherever the user installed it.
-  const line = parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
+  const row = agentRowFor(p.loop || "claude");
+  const line = (row ? loopEnvPrefix(row, wanted) : "")
+    + parts.map((a) => (/^[\w./=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : homedir(),
     env: { ...process.env },
