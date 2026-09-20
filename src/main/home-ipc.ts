@@ -28,7 +28,7 @@ interface HomeIpcDeps {
 export function registerHomeIpc(deps: HomeIpcDeps): void {
 
   // ── Home dashboard ──────────────────────────────────────────────────────
-  // The Pipedream budget, month spend, apps deployed, and a per-day usage
+  // The budget, month spend, apps deployed, and a per-day usage
   // series (dollars + calls). Money is dollars end to end — LiteLLM's spend
   // log is the ledger. Each call degrades to null so one failure doesn't
   // blank the whole card set.
@@ -106,7 +106,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
     const client = getClient();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const [balance, usage, apps, plans, sub] = await Promise.all([
-      // The org's Pipedream budget — admins only; a member's 403 → null and
+      // The org's budget — admins only; a member's 403 → null and
       // the card reads as pooled.
       client.billing.balance().catch(() => null),
       // The caller's month-to-date spend; the SERVER owns the month boundary
@@ -131,7 +131,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // null balance = the budget is admin-only for this account — the
       // renderer paints the member's pooled card instead.
       orgBudget: balance != null,
-      // The Pipedream budget, in dollars: what is left this period, what the
+      // The budget, in dollars: what is left this period, what the
       // plan funds each month, what was added on top, what was spent.
       remainingUsd: balance?.remainingUsd ?? 0,
       poolUsdPerMonth: plan?.poolUsdPerMonth ?? balance?.planUsd ?? 0,

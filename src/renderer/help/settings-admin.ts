@@ -14,7 +14,7 @@
  *   • Usage (admin/usage) — platform-wide rollups: per-day series, top
  *     spenders, and the region × shared|dedicated × tier breakdown.
  *   • Orgs (admin/orgs) — the org list + admin fund grants (dollars into an
- *     org's Pipedream budget).
+ *     org's budget).
  *
  * Transport — web → window.glyphhSdk.admin (checked FIRST; on web
  * window.glyphh is a Proxy that fabricates methods); desktop →
@@ -31,7 +31,7 @@ import { icoBtn, MDL_SVG } from "./models-admin.js";
 declare const Chart: { new (ctx: CanvasRenderingContext2D, cfg: unknown): { destroy: () => void } };
 
 // ── Shapes (structural mirrors of the SDK's contract/admin.ts). Money is
-//    dollars — Pipedream budget spend from the spend log; plan prices in cents.
+//    dollars — Budget spend from the spend log; plan prices in cents.
 
 interface AdminModel {
   provider: string;
@@ -67,7 +67,7 @@ interface AdminModelPatch {
 interface AdminPlan {
   tier: string;
   display_name: string;
-  monthly_usd_cents: number;              // per-seat price — also the monthly Pipedream pool, dollar for dollar
+  monthly_usd_cents: number;              // per-seat price — also the monthly pool, dollar for dollar
   max_seats: number;
   active: boolean;
   org_id: string | null;
@@ -103,7 +103,7 @@ interface AdminOrgRow { id: string; name: string; tier: string; billing_status: 
 interface AdminOrgMember { id: string; first_name: string; last_name: string; email: string; role: string; status: string }
 interface AdminOrgDetail extends AdminOrgRow {
   max_seats: number; created_at: string;
-  /** The org's Pipedream budget this period, in dollars. */
+  /** The org's budget this period, in dollars. */
   budget: { remaining_usd: number; spent_usd: number };
   members: AdminOrgMember[];
 }
@@ -780,7 +780,7 @@ function showPlanEditor(on: boolean): void {
   $("pa-plan-editor")?.classList.toggle("hidden", !on);
 }
 
-/** The plan's monthly Pipedream budget IS its price, dollar for dollar. */
+/** The plan's monthly budget IS its price, dollar for dollar. */
 const poolLine = (p: AdminPlan): string => fmtUsd((p.monthly_usd_cents || 0) / 100);
 
 /** The editor's read-only echo under the price field. */
@@ -788,7 +788,7 @@ function paintPoolHint(): void {
   const hint = $("pa-plan-pool-hint");
   if (!hint) return;
   const usd = Math.max(0, Number(inputVal("pa-plan-price")) || 0);
-  hint.textContent = `Monthly Pipedream budget: ${fmtUsd(usd)} — the plan price, dollar for dollar (free = $1).`;
+  hint.textContent = `Monthly Budget: ${fmtUsd(usd)} — the plan price, dollar for dollar (free = $1).`;
 }
 
 function paintPlans(): void {
@@ -799,7 +799,7 @@ function paintPlans(): void {
     .filter((p) => !q || p.tier.toLowerCase().includes(q) || (p.display_name || "").toLowerCase().includes(q));
   wrap.innerHTML = "";
   if (!globals.length) { wrap.innerHTML = `<div class="crud-empty">${q ? "No plans match." : "No plans yet."}</div>`; return; }
-  // Budget / mo IS the price (dollar for dollar): the plan's monthly Pipedream pool.
+  // Budget / mo IS the price (dollar for dollar): the plan's monthly pool.
   const { table, tbody } = mkTable(["Plan", "Tier", "$ / seat / mo", "Budget / mo", "Seats", "Rpm", "Status"], true);
   for (const p of globals) {
     const tr = document.createElement("tr");
@@ -1541,7 +1541,7 @@ function renderOrgDetail(d: AdminOrgDetail, plans: AdminPlan[]): void {
 
       <div class="lp-sec">
         <h4 class="acct-row-head">Add funds</h4>
-        <p class="section-desc">Dollars into the org's Pipedream budget. Admin-added funds never expire and land immediately.</p>
+        <p class="section-desc">Dollars into the org's budget. Admin-added funds never expire and land immediately.</p>
         <div class="settings-inline">
           <input id="pa-org-grant-amt" type="number" min="1" step="1" class="settings-input settings-input-md" placeholder="USD, e.g. 50" />
           <button id="pa-org-grant-go" class="action-btn primary" type="button">Add funds</button>
@@ -1733,7 +1733,7 @@ async function addFundsFromDetail(): Promise<void> {
   if (!detailOrg) return;
   const usd = Math.round(Number(inputVal("pa-org-grant-amt")) || 0);
   if (usd <= 0) { setErr("pa-org-detail-error", "Enter a positive dollar amount."); return; }
-  const sure = await confirmAction({ title: `Add ${fmtUsd(usd)} to ${detailOrg.name}'s Pipedream budget?`, body: "Admin-added funds never expire.", confirmLabel: "Add funds" });
+  const sure = await confirmAction({ title: `Add ${fmtUsd(usd)} to ${detailOrg.name}'s budget?`, body: "Admin-added funds never expire.", confirmLabel: "Add funds" });
   if (!sure) return;
   const res = await write<number>(
     (a) => a.grantFunds?.(detailOrg!.id, usd).then((r) => r.remainingUsd),

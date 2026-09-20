@@ -17,7 +17,7 @@
  *          EXPECTED outcome a form must explain, not an exception.
  *
  * Everything crossing this boundary keeps the server's units — Stripe money in
- * USD cents, the Pipedream budget in DOLLARS. The display helpers at the bottom
+ * USD cents, the budget in DOLLARS. The display helpers at the bottom
  * are the one place those become human numbers.
  */
 
@@ -28,7 +28,7 @@ export interface BillingPlan {
   displayName: string;
   monthlyUsdCents: number;
   activeUsdCents?: number;
-  /** The monthly Pipedream budget the plan funds, in dollars — its price, dollar for dollar. */
+  /** The monthly budget the plan funds, in dollars — its price, dollar for dollar. */
   poolUsdPerMonth: number;
   maxSeats: number;
   sso: boolean;
@@ -51,7 +51,7 @@ export interface Subscription {
   maxSeats: number;
 }
 
-/** The org's Pipedream budget this period, in dollars. */
+/** The org's budget this period, in dollars. */
 export interface Balance {
   planUsd: number;
   fundsUsd: number;
@@ -232,7 +232,7 @@ export interface AccountApi {
   upcoming(): Promise<UpcomingInvoice>;
   /** Stripe's records applied now: plan + paid funds. Falls back to a plain status read. */
   reconcile(): Promise<Subscription>;
-  /** The Pipedream budget this period (dollars). */
+  /** The budget this period (dollars). */
   balance(): Promise<Balance>;
   invoices(): Promise<Invoice[]>;
   autotopup(): Promise<Autotopup>;

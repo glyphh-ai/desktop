@@ -2,7 +2,7 @@
  * settings-billing.ts — Settings › Billing.
  *
  * Ported from the platform's /billing page and its shared data layer
- * (platform/app/lib/billing/hooks.js): the Pipedream budget (plan pool +
+ * (platform/app/lib/billing/hooks.js): the budget (plan pool +
  * funds − spent, in DOLLARS — his ruling, 2026-09-20: credits are dead),
  * Add funds, the auto-reload rule, seat usage, the invoice table, and the
  * Stripe customer-portal hand-off.
@@ -34,7 +34,7 @@ import {
 
 let plans: BillingPlan[] = [];
 let sub: Subscription | null = null;
-/** The Pipedream budget this period, in dollars — null until read (a member's
+/** The budget this period, in dollars — null until read (a member's
  *  403 leaves it null: the budget is the org admin's). */
 let balance: Balance | null = null;
 /** The auto-reload rule, in dollars. Defaults are what a first enable writes. */
@@ -106,12 +106,12 @@ function buySummary(): void {
   const usd = buyAmountUsd();
   buySelectedUsd = usd;
   if (hint) {
-    hint.textContent = usd >= TOPUP_MIN_USD ? `Adds ${fmtUsd(usd)} to your Pipedream budget`
+    hint.textContent = usd >= TOPUP_MIN_USD ? `Adds ${fmtUsd(usd)} to your Budget`
       : usd > 0 ? `Minimum ${fmtUsd(TOPUP_MIN_USD)}` : "";
   }
   if (sum) {
     // Dollar for dollar (his ruling, 2026-09-20): no unit, no rate, no tiers.
-    sum.textContent = "Funds go dollar for dollar into your Pipedream budget — the connector calls "
+    sum.textContent = "Funds go dollar for dollar into your Budget — the connector calls "
       + "your agents make through the org's connections. They sit on top of the plan's monthly "
       + "budget and never expire. Model calls never draw on it.";
   }
@@ -226,8 +226,8 @@ function paintPlan(): void {
   const current = plans.find((p) => p.tier === (sub?.tier || "free"));
   setText("billing-plan-name", current?.displayName || sub?.tier || "—");
   const bits: string[] = [];
-  // The plan's Pipedream budget — its price, dollar for dollar.
-  if (current) bits.push(`${fmtUsd(current.poolUsdPerMonth || 0)} / month Pipedream budget`);
+  // The plan's budget — its price, dollar for dollar.
+  if (current) bits.push(`${fmtUsd(current.poolUsdPerMonth || 0)} / month Budget`);
   // What they owe next and when (his order, 2026-09-18). A seat added mid
   // month shows up here as the part-month charge before the date arrives.
   if (upcoming?.hasUpcoming && upcoming.dueAt) {
@@ -350,7 +350,7 @@ function paintPlans(): void {
           : p.bespoke ? `<span class="acct-chip">Custom deal</span>` : "") +
       `</div>` +
       `<div class="billing-plan-price"><span class="billing-plan-amount">${escapeHtml(amount)}</span> <span class="billing-plan-period">${escapeHtml(period)}</span></div>` +
-      `<div class="billing-plan-line">${generic ? "Custom Pipedream budget" : `${escapeHtml(fmtUsd(p.poolUsdPerMonth || 0))} / month Pipedream budget`}</div>` +
+      `<div class="billing-plan-line">${generic ? "Custom Budget" : `${escapeHtml(fmtUsd(p.poolUsdPerMonth || 0))} / month Budget`}</div>` +
       `<div class="billing-plan-line">${escapeHtml(seatsLine)}${p.sso ? ` <span class="billing-plan-sso">SSO</span>` : ""}</div>`;
     const btn = planActionButton(p, { isCurrent, generic, subscribed, currentIsBespoke, currentTier });
     if (btn) card.appendChild(btn);
@@ -500,7 +500,7 @@ async function embeddedTopupOverlay(usd: number): Promise<boolean> {
   overlay.className = "confirm-overlay add-funds-overlay";
   overlay.innerHTML = `
     <div class="confirm-box add-funds-box">
-      <div class="confirm-head"><h3>Add ${escapeHtml(fmtUsd(usd))} to your Pipedream budget</h3></div>
+      <div class="confirm-head"><h3>Add ${escapeHtml(fmtUsd(usd))} to your Budget</h3></div>
       <div class="confirm-body"><div class="bc-checkout-stage"></div></div>
       <div class="confirm-foot"><button class="action-btn" id="bc-x" type="button">Cancel</button></div>
     </div>`;
@@ -626,7 +626,7 @@ async function tryEmbeddedTopup(
 }
 
 /**
- * The COMPACT "Pipedream budget used up" dialog — the 402 hand-off. Add funds
+ * The COMPACT "Budget used up" dialog — the 402 hand-off. Add funds
  * without leaving the agent: Stripe's Embedded Checkout mounts INSIDE this
  * modal (card details go to Stripe's iframe, never our DOM) and completion is
  * confirmed in place.
@@ -638,7 +638,7 @@ export async function openAddFundsModal(): Promise<void> {
   overlay.className = "confirm-overlay add-funds-overlay";
   overlay.innerHTML = `
     <div class="confirm-box add-funds-box">
-      <div class="confirm-head"><h3>Pipedream budget used up</h3></div>
+      <div class="confirm-head"><h3>Budget used up</h3></div>
       <div class="confirm-body">
         <p class="bc-balance">Connector calls through your org's connections draw on this budget. <strong id="bc-balance">—</strong> left this period · funds you add never expire.</p>
         <div class="billing-topup-grid bc-grid" id="bc-grid"></div>
@@ -827,7 +827,7 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
     const freePool = plans.find((x) => x.tier === "free")?.poolUsdPerMonth || 0;
     const ok = await confirmAction({
       title: "Cancel your subscription?",
-      body: `You keep ${current?.displayName || "your plan"} until the period ends, then drop to Free — a ${fmtUsd(freePool)} / month Pipedream budget, single seat. Cancelling happens in the Stripe portal that opens next.`,
+      body: `You keep ${current?.displayName || "your plan"} until the period ends, then drop to Free — a ${fmtUsd(freePool)} / month Budget, single seat. Cancelling happens in the Stripe portal that opens next.`,
       confirmLabel: "Open Stripe portal",
       danger: true,
     });
@@ -835,7 +835,7 @@ async function doChangePlan(p: BillingPlan, btn: HTMLButtonElement): Promise<voi
     return;
   }
 
-  const details = `${amount} ${period} · ${fmtUsd(p.poolUsdPerMonth || 0)} / month Pipedream budget · up to ${fmtInt(p.maxSeats || 1)} seats`;
+  const details = `${amount} ${period} · ${fmtUsd(p.poolUsdPerMonth || 0)} / month Budget · up to ${fmtInt(p.maxSeats || 1)} seats`;
   const ok = await confirmAction(up
     ? {
         title: `Upgrade to ${p.displayName}?`,
@@ -1011,7 +1011,7 @@ export async function loadBilling(): Promise<void> {
   // Admin-only, like the budget: a member's 403 just leaves the line off.
   upcoming = upcomingRes.status === "fulfilled" ? upcomingRes.value : null;
 
-  // The Pipedream budget is ADMIN-ONLY — a member's 403 is not an error to
+  // The budget is ADMIN-ONLY — a member's 403 is not an error to
   // shout about, it just leaves the card blank.
   balance = balanceRes.status === "fulfilled" ? balanceRes.value : null;
 

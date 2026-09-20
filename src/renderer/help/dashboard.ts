@@ -20,8 +20,8 @@ declare const Chart: any;
 interface DashboardData {
   name: string;
   plan: string;           // the plan's display name (a bare tier slug on old builds)
-  orgBudget: boolean;     // false = the Pipedream budget is admin-only for this account
-  remainingUsd: number;   // dollars left in the Pipedream budget this period (admins only)
+  orgBudget: boolean;     // false = the budget is admin-only for this account
+  remainingUsd: number;   // dollars left in the budget this period (admins only)
   poolUsdPerMonth: number; // what the plan funds each month, dollar for dollar
   fundsUsd: number;       // purchased + granted dollars on top of the plan
   budgetSpentUsd: number; // Pipedream dollars spent this period
@@ -657,10 +657,10 @@ export async function loadUsageMetrics(): Promise<void> {
     const planName = data.plan
       ? (data.plan.includes(" ") ? data.plan : data.plan.charAt(0).toUpperCase() + data.plan.slice(1))
       : "";
-    // The org's Pipedream budget (his ruling, 2026-09-20: dollars, no
+    // The org's budget (his ruling, 2026-09-20: dollars, no
     // per-member caps). A member's 403 reads as pooled — they draw from the
     // org's budget and the admin sees the number.
-    $a("dash-budget-label").textContent = "Pipedream budget";
+    $a("dash-budget-label").textContent = "Budget";
     if (data.orgBudget === false) {
       $a("dash-budget-value").textContent = "Pooled";
       $a("dash-budget-sub").textContent = `${planName ? `${planName} plan · ` : ""}connector calls draw from the org's budget`;

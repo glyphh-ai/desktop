@@ -690,7 +690,7 @@ export function loadMcp(): void { mcpSectionRefresh(); }
 
 export { loadSettings, initSettings };
 
-/** The APP's Usage view (plan-limits look) — the Pipedream budget in dollars:
+/** The APP's Usage view (plan-limits look) — the budget in dollars:
  *  a period bar + reset, plan pool, added funds, remaining, Add funds, refresh,
  *  the auto-reload toggle. Platform skips it. */
 let uaWired = false;
@@ -761,7 +761,7 @@ export async function loadUsageAppView(): Promise<void> {
   }).catch(() => { /* signed out — the page renders read-only anyway */ });
   try {
     // dashboardData is the SPEND-LOG truth on both surfaces (desktop home-ipc /
-    // the web contract): the Pipedream budget off billing.balance, the plan's
+    // the web contract): the budget off billing.balance, the plan's
     // name + monthly pool off the catalog. Dollars end to end.
     const [data, topup] = await Promise.all([
       Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null } | undefined>,

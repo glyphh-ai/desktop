@@ -2,7 +2,7 @@
  * admin-ipc.ts — the desktop renderer's transport to the SUPER-ADMIN console
  * surfaces (Settings › Platform): the global model catalog, plan pricing +
  * the Stripe price history, platform usage rollups, and the org list with
- * admin fund grants (dollars into an org's Pipedream budget).
+ * admin fund grants (dollars into an org's budget).
  *
  * Same shape as account-ipc.ts: the renderer has no SDK handle (preload
  * boundary), so these thin IPC methods call the MAIN-process @glyphh/sdk
@@ -133,7 +133,7 @@ export function registerAdminIpc(): void {
   ipcMain.handle("admin-org", (_e, id: string) => getClient().admin.org(String(id)));
   ipcMain.handle("admin-org-update", (_e, id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     getClient().admin.updateOrg(String(id), patch));
-  // Add dollars to an org's Pipedream budget; answers the budget's new remaining dollars.
+  // Add dollars to an org's budget; answers the budget's new remaining dollars.
   ipcMain.handle("admin-org-grant-funds", async (_e, id: string, usd: number, note?: string) => {
     try { return { ok: true as const, remainingUsd: (await getClient().admin.grantFunds(String(id), Number(usd) || 0, note)).remainingUsd }; }
     catch (err) { return fail(err); }

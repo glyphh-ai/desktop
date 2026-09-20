@@ -179,7 +179,7 @@ export interface OrgPendingReleaseRow {
 // ── Account surfaces (Settings › Billing / Organization / Account) ──────────
 // The wire shapes of the SDK's billing/org/profile resources, mirrored here so
 // the desktop contract is self-describing. Stripe money is USD cents; the
-// Pipedream budget is DOLLARS exactly as the server reports them — the
+// Budget is DOLLARS exactly as the server reports them — the
 // renderer's settings-api.ts is the one place that formats for display.
 
 /** A plan in the server-driven catalog (super-admin plans + their pricing). */
@@ -189,7 +189,7 @@ export interface AccountBillingPlan {
   monthlyUsdCents: number;
   /** The TRUE active Stripe price, when resolvable — prefer this for display. */
   activeUsdCents?: number;
-  /** The monthly Pipedream budget the plan funds, in dollars (its price, dollar for dollar). */
+  /** The monthly budget the plan funds, in dollars (its price, dollar for dollar). */
   poolUsdPerMonth: number;
   maxSeats: number;
   sso: boolean;
@@ -207,7 +207,7 @@ export interface AccountSubscription {
   maxSeats: number;
 }
 
-/** The org's Pipedream budget this period, in dollars. */
+/** The org's budget this period, in dollars. */
 export interface AccountBalance {
   planUsd: number;
   fundsUsd: number;
@@ -856,7 +856,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   billingStatus: () => ipcRenderer.invoke("billing-status") as Promise<AccountSubscription>,
   /** Pull the org's plan and funds from Stripe's records (the embedded checkout's settle). */
   billingReconcile: () => ipcRenderer.invoke("billing-reconcile") as Promise<AccountSubscription>,
-  /** The Pipedream budget this period — plan pool, funds, spent, remaining (dollars). */
+  /** The budget this period — plan pool, funds, spent, remaining (dollars). */
   billingBalance: () => ipcRenderer.invoke("billing-balance") as Promise<AccountBalance>,
   billingInvoices: () => ipcRenderer.invoke("billing-invoices") as Promise<AccountInvoice[]>,
   billingPaymentMethod: () => ipcRenderer.invoke("billing-payment-method") as Promise<{ brand: string; last4: string; expMonth: number; expYear: number } | null>,
@@ -874,7 +874,7 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("billing-subscribe", tier, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
   billingChangePlan: (tier: string) =>
     ipcRenderer.invoke("billing-change-plan", tier) as Promise<{ ok: boolean; change?: { tier: string; effect: string; url?: string }; error?: string }>,
-  /** Add funds to the Pipedream budget — whole dollars, minimum 5. */
+  /** Add funds to the budget — whole dollars, minimum 5. */
   billingTopup: (usd: number, embedded?: boolean) =>
     ipcRenderer.invoke("billing-topup", usd, embedded) as Promise<{ ok: boolean; url?: string; clientSecret?: string; error?: string }>,
   cloudFsBrowse: (scope: string, dir?: string) =>
@@ -1000,7 +1000,7 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("admin-org-create", input) as Promise<{ ok: boolean; org?: unknown; error?: string }>,
   adminOrgUpdate: (id: string, patch: { name?: string; tier?: string; billingStatus?: string }) =>
     ipcRenderer.invoke("admin-org-update", id, patch) as Promise<unknown>,
-  /** Add dollars to an org's Pipedream budget (admin grant). */
+  /** Add dollars to an org's budget (admin grant). */
   adminOrgGrantFunds: (id: string, usd: number, note?: string) =>
     ipcRenderer.invoke("admin-org-grant-funds", id, usd, note) as Promise<{ ok: boolean; remainingUsd?: number; error?: string }>,
   // Members on behalf + org impersonation (the super-admin Members tab).

@@ -7585,7 +7585,7 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   gap: 10px;
   margin-top: 12px;
 }
-/* The compact 402 "Pipedream budget used up" dialog — reuses the Add-funds card grid + toggle. */
+/* The compact 402 "Budget used up" dialog — reuses the Add-funds card grid + toggle. */
 .add-funds-box { max-width: 480px; width: min(480px, 92vw); }
 /* Embedded Stripe checkout mounted inside the modal: give the iframe room and
    its own scroll — the modal must never grow past the viewport. */

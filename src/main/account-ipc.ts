@@ -1,6 +1,6 @@
 /**
  * account-ipc.ts — the desktop renderer's transport to the ACCOUNT SURFACES:
- * billing (plans, the Pipedream budget, Add funds, invoices, Stripe hand-offs), the org
+ * billing (plans, the budget, Add funds, invoices, Stripe hand-offs), the org
  * record, the caller's own profile, and the member roster.
  *
  * The renderer has no SDK handle (preload boundary), so these thin IPC methods
@@ -44,7 +44,7 @@ export function registerAccountIpc(): void {
   ipcMain.handle("plan-gates", () => getClient().plans.gates());
   ipcMain.handle("billing-plans", () => getClient().billing.plans());
   ipcMain.handle("billing-status", () => getClient().billing.status());
-  // The org's Pipedream budget this period (plan pool, funds, spent, remaining — dollars).
+  // The org's budget this period (plan pool, funds, spent, remaining — dollars).
   ipcMain.handle("billing-balance", () => getClient().billing.balance());
   ipcMain.handle("billing-invoices", () => getClient().billing.invoices());
   ipcMain.handle("billing-payment-method", () => getClient().billing.paymentMethod());
@@ -83,7 +83,7 @@ export function registerAccountIpc(): void {
     try { return { ok: true as const, change: await getClient().billing.changePlan(String(tier || "")) }; }
     catch (err) { return fail(err); }
   });
-  // Add funds to the Pipedream budget — whole dollars, minimum 5.
+  // Add funds to the budget — whole dollars, minimum 5.
   ipcMain.handle("billing-topup", async (_e, usd: number, embedded?: boolean) => {
     try {
       const out = await getClient().billing.topup({ usd: Number(usd) || 0, ...(embedded ? { embedded: true } : {}) });
