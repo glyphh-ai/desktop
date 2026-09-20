@@ -53,6 +53,8 @@ const api = () => window.glyphh as unknown as {
   cliAgentsSave?: (input: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>;
   layoutsPickFolder?: () => Promise<string | null>;
   workspacesModelCatalog?: () => Promise<{ ok: boolean; data?: Array<{ id: string; name: string; providerSlug?: string }> }>;
+  loopModels?: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: string; models: Array<{ id: string; name: string; providerSlug: string }> }>;
+  planGates?: () => Promise<{ gatewayAllowed?: boolean; autoOnly?: boolean; cliAllowed?: boolean }>;
   orgModelsList?: () => Promise<{ ok: boolean; data?: OrgModelLite[]; error?: string }>;
   orgModelsSetSupported?: (id: string, supported: boolean) => Promise<{ ok: boolean; error?: string }>;
 };
@@ -412,14 +414,38 @@ export async function loadAgentDefaults(): Promise<void> {
     getPreference?: (k: string, d: unknown) => Promise<unknown>;
     setPreference?: (k: string, v: unknown) => void;
   };
-  const [availRes, catalog, savedLoop, savedModel] = await Promise.all([
+  const [availRes, catalog, savedLoop, savedModel, gates, rosterRes] = await Promise.all([
     api().loopsAvailable?.().catch(() => null) ?? Promise.resolve(null),
     api().workspacesModelCatalog?.().catch(() => null) ?? Promise.resolve(null),
     prefs.getPreference?.("defaultLoop", "") ?? Promise.resolve(""),
     prefs.getPreference?.("defaultModel", "") ?? Promise.resolve(""),
+    api().planGates?.().catch(() => null) ?? Promise.resolve(null),
+    api().cliAgentsList?.().catch(() => null) ?? Promise.resolve(null),
   ]);
-  const loops = availRes?.ok ? availRes.data ?? [] : [];
-  models = catalog?.ok ? catalog.data ?? [] : [];
+  // GATEWAY MODE = ONLY WHAT THE ORG ADMIN CONFIGURED (his order, 2026-09-20):
+  // the loops are the org's roster (the same list the loop chip shows) and the
+  // models are the org's approved list, one list for every loop. Force auto
+  // leaves the auto-router as the only model. Off the gateway, the catalog by
+  // the loop's vendor as before. Either way, one entry per model.
+  const gateway = !!gates?.gatewayAllowed;
+  const autoOnly = gateway && !!gates?.autoOnly;
+  const roster = rosterRes?.ok ? rosterRes.agents ?? [] : [];
+  const policy = availRes?.ok ? availRes.data ?? [] : [];
+  const loops: AvailableLoop[] = gateway
+    ? roster.map((r) => {
+        const pol = policy.find((p) => p.cli === r.cli);
+        return { cli: r.cli, name: r.name, isDefault: pol?.isDefault ?? false, model: pol?.model ?? "" } as AvailableLoop;
+      })
+    : policy;
+  if (gateway && roster.length) {
+    const gm = await api().loopModels?.(roster[0]!.id).catch(() => null);
+    const rows = gm?.ok ? gm.models : [];
+    models = (autoOnly ? rows.filter((m) => m.providerSlug === "auto") : rows)
+      .map((m) => ({ id: `${m.providerSlug}::${m.id}`, name: m.name || m.id, providerSlug: m.providerSlug }));
+  } else {
+    models = catalog?.ok ? catalog.data ?? [] : [];
+  }
+  { const seen = new Set<string>(); models = models.filter((m) => !seen.has(m.id) && seen.add(m.id)); }
 
   if (!loops.length) {
     loopSel.innerHTML = `<option value="">No loops available</option>`;
@@ -450,7 +476,7 @@ export async function loadAgentDefaults(): Promise<void> {
   /** The model list follows whichever loop is selected. */
   const paintModels = (selected: string): void => {
     const active = loops.find((l) => l.cli === (loopSel.value || roleLoop.cli)) ?? roleLoop;
-    const pool = models.filter((m) => !active.provider || m.providerSlug === active.provider);
+    const pool = gateway ? models : models.filter((m) => !active.provider || m.providerSlug === active.provider);
     const list = pool.length ? pool : models;
     modelSel.innerHTML = "";
     const inherit = document.createElement("option");
@@ -466,6 +492,13 @@ export async function loadAgentDefaults(): Promise<void> {
       modelSel.appendChild(o);
     }
     modelSel.value = list.some((m) => m.id === selected) ? selected : "";
+    // Force auto: the org's router is the only model, so the choice is made.
+    if (autoOnly) {
+      const only = list[0];
+      if (only) { modelSel.value = only.id; if (String(savedModel ?? "") !== only.id) prefs.setPreference?.("defaultModel", only.id); }
+      modelSel.disabled = true;
+      modelSel.title = "Your organization routes every request through its auto-router.";
+    } else { modelSel.disabled = false; modelSel.title = ""; }
     if (hint) {
       hint.textContent = `A new workspace and a fresh agent panel open with ${active.name}`
         + `${modelSel.value ? ` on ${list.find((m) => m.id === modelSel.value)?.name ?? modelSel.value}` : ""}.`;
