@@ -4638,6 +4638,21 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
   if (r?.ok) {
     railSessions = railSessions.filter((x) => x.id !== sess.id);
     renderRailSessions();
+    // A DELETED SESSION CANNOT BE RESUMED (his report, 2026-09-20: the agent
+    // kept the deleted thread as its active one and the next turn failed on
+    // the resume). Every chat bound to it lets go; the active one starts over.
+    let touched = false;
+    let activeHit = false;
+    const cur = current();
+    for (const c of chats) {
+      const cc = c as { cliSessionId?: string; cliSessionIds?: Record<string, string> };
+      if (cc.cliSessionId === sess.id) { cc.cliSessionId = undefined; touched = true; if (c === cur) activeHit = true; }
+      for (const [k, v] of Object.entries(cc.cliSessionIds ?? {})) {
+        if (v === sess.id) { delete cc.cliSessionIds![k]; touched = true; if (c === cur) activeHit = true; }
+      }
+    }
+    if (touched) void saveStore();
+    if (activeHit) newSessionInPlace();
   }
   return !!r?.ok;
 }
