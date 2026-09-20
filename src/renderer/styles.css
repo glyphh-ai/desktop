@@ -6223,7 +6223,7 @@ body.grid-cell-dragging, body.grid-cell-dragging * { cursor: grabbing !important
    on every dark theme, wherever it appears — the Copilot loop's tiles, the
    rail, the library rows, a connector's icon. Each theme says whether a mark
    like that should flip, so one rule covers all of them. */
-img[src*="github.com"], img[src*="githubassets"] { filter: invert(var(--mark-invert, 0)); }
+img[src*="github.com"], img[src*="githubassets"], img[data-mark-src*="github.com"], img.cli-mark-copilot { filter: invert(var(--mark-invert, 0)); }
 
 /* A share's verdict, on the bundle: waiting, declined, live. */
 .skill-share-chip.pending { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
@@ -21070,3 +21070,10 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 #cli-installer-overlay .cli-installer-host { flex: 1; min-height: 0; position: relative; }
 #cli-installer-overlay .xterm { height: 100%; }
 #cli-installer-overlay .ws-terminal-tabs { display: none; }
+#cli-installer-overlay .cli-installer-quit { position: absolute; top: 8px; right: 12px; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--muted, #c4c4c4); font-size: 22px; line-height: 1; cursor: pointer; opacity: .45; }
+#cli-installer-overlay .cli-installer-quit:hover { opacity: 1; background: var(--panel, #252528); color: var(--ink, #f1f1f1); }
+/* The recents loop filter: wide enough for a name, a mark and a check on one line. */
+.code-menu.loop-filter-menu { min-width: 220px; }
+.code-menu.loop-filter-menu .code-menu-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.code-menu.loop-filter-menu .code-menu-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.code-menu.loop-filter-menu .menu-check { flex: none; }

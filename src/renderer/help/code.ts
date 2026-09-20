@@ -651,7 +651,7 @@ function renderLoopMenu(): void {
       main.className = "drop-main";
       // The loop's CLI mark, the same one the rail shows (his order, 2026-09-16).
       const mark = railCliMarks[l.cli || "claude"];
-      if (mark) { const im = document.createElement("img"); im.className = "loop-mark"; im.src = mark; im.alt = ""; main.appendChild(im); }
+      if (mark) { const im = document.createElement("img"); im.className = `loop-mark cli-mark-${l.cli || "claude"}`; im.src = mark; im.alt = ""; main.appendChild(im); }
       const span = document.createElement("span");
       span.textContent = l.name;
       main.appendChild(span);
@@ -4564,10 +4564,11 @@ function openLoopFilterMenu(anchor: HTMLElement): void {
   loopFilterMenu?.remove();
   const m = document.createElement("div");
   m.className = "code-menu";
-  const row = (label: string, on: boolean, mark: string, onClick: () => void): void => {
+  m.classList.add("loop-filter-menu");
+  const row = (label: string, on: boolean, mark: string, onClick: () => void, cli = ""): void => {
     const b = document.createElement("button");
     b.className = "code-menu-item" + (on ? " on" : "");
-    b.innerHTML = `${mark ? `<img class="loop-mark" src="${mark}" alt="" />` : ""}<span></span>${on ? `<svg class="menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>` : ""}`;
+    b.innerHTML = `${mark ? `<img class="loop-mark cli-mark-${cli}" src="${mark}" alt="" />` : ""}<span></span>${on ? `<svg class="menu-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>` : ""}`;
     (b.querySelector("span") as HTMLElement).textContent = label;
     b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); openLoopFilterMenu(anchor); });
     m.appendChild(b);
@@ -4575,7 +4576,7 @@ function openLoopFilterMenu(anchor: HTMLElement): void {
   row("All loops", loopFilter.length === 0, "", () => setLoopFilter([]));
   for (const a of railAgents) {
     const on = loopFilter.includes(a.id);
-    row(a.name, on, railCliMarks[a.cli || "claude"] || "", () => setLoopFilter(on ? loopFilter.filter((x) => x !== a.id) : [...loopFilter, a.id]));
+    row(a.name, on, railCliMarks[a.cli || "claude"] || "", () => setLoopFilter(on ? loopFilter.filter((x) => x !== a.id) : [...loopFilter, a.id]), a.cli || "claude");
   }
   const r = anchor.getBoundingClientRect();
   m.style.position = "fixed";
@@ -4758,7 +4759,7 @@ function renderRailSessions(): void {
       const mark = railCliMarks[sess.cli];
       const markEl = document.createElement("span");
       markEl.className = "code-sess-mark";
-      if (mark) markEl.innerHTML = `<img src="${mark}" alt="" />`;
+      if (mark) markEl.innerHTML = `<img class="cli-mark-${sess.cli}" src="${mark}" alt="" />`;
       markEl.title = sess.cli;
       const label = document.createElement("span");
       label.className = "code-history-title";
@@ -5154,7 +5155,7 @@ function paintAgentsGrid(host: RailGridHost): void {
     icon.className = "tile-icon";
     const mark = railCliMarks[a.cli || "claude"] || "";
     icon.innerHTML = mark
-      ? `<img src="${mark}" alt="" style="width:20px;height:20px;border-radius:5px" />`
+      ? `<img class="cli-mark-${a.cli || "claude"}" src="${mark}" alt="" style="width:20px;height:20px;border-radius:5px" />`
       : a.icon ? `<span style="font-size:18px;line-height:1">${a.icon.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</span>` : RAIL_AGENT_GLYPH;
     const nm = document.createElement("span");
     nm.className = "tile-name";

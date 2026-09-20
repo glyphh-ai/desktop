@@ -584,7 +584,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // Chained turns resume the CLI's own persisted session (codex 0.154:
       // `exec resume <id>`), so a chat's turns share one context.
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""} '${p}'`
+        + `${row.cmd}${CODEX_NO_UPDATE}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""} '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
@@ -618,6 +618,11 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
     : line;
 }
 
+// Codex 0.155 asks "Update available? 1. Update now" on its first run and a
+// headless turn sits on that prompt forever (his report, 2026-09-20). The
+// update check is the CLI's own config switch; the user updates on their terms.
+const CODEX_NO_UPDATE = " -c check_for_update_on_startup=false";
+
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
   // The model decides the lane; an unset model is the org's proxy model.
@@ -644,7 +649,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       : ""
     : "";
   const permPart = permFlag(row, false);
-  let base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
+  let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -653,7 +658,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${CODEX_NO_UPDATE}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {

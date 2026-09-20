@@ -2213,7 +2213,10 @@ async function init(): Promise<void> {
     if (!r?.ok || !r.command) { console.warn("[cli-installer] no command", r?.error); return; }
     const el = document.createElement("div");
     el.id = "cli-installer-overlay";
-    el.innerHTML = `<div class="cli-installer-host ws-rail-slot-body"></div>`;
+    el.innerHTML = `<button type="button" class="cli-installer-quit" title="Quit Glyphh">&times;</button><div class="cli-installer-host ws-rail-slot-body"></div>`;
+    // The one other way out (his order, 2026-09-20): quit the app if the CLI
+    // cannot be installed. Not a close: the installer comes back next launch.
+    el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => { window.glyphh.windowClose?.(); });
     document.body.appendChild(el);
     const slot = makeSlot("terminal") as TermSlot;
     slot.terminals[0].initCmd = r.command;
@@ -2511,6 +2514,9 @@ async function init(): Promise<void> {
         // Cross-Origin-Resource-Policy only blocks NO-CORS embedding, so the
         // crossorigin attribute is what lets the browser render the bytes.
         if (isWebTarget() && /^https?:/i.test(src)) img.crossOrigin = "anonymous";
+        // The ORIGINAL url stays on the element: a cached data: URL hides it,
+        // and the GitHub mark's dark-mode inversion keys off it (styles.css).
+        img.dataset.markSrc = src;
         const direct = !/^https?:/i.test(src) || isWebTarget();
         if (direct) { img.src = src; return; }
         const cached = iconSrcCache.get(src);
