@@ -21064,6 +21064,7 @@ body.rail-collapsed:not(.rail-peek) .ws-rail-slot.fullscreen > .ws-rail-slot-hea
 /* THE CLI INSTALLER (2026-09-20): full screen over everything; no close. */
 #cli-installer-overlay { position: fixed; inset: 0; z-index: 1000000; display: flex; flex-direction: column; background: var(--bg, #1a1a1c); padding: 38px 18px 18px; }
 #cli-installer-overlay .cli-installer-host { flex: 1; min-height: 0; position: relative; }
+#cli-installer-overlay.booting .cli-installer-host { visibility: hidden; }
 #cli-installer-overlay .xterm { height: 100%; }
 #cli-installer-overlay .ws-terminal-tabs { display: none; }
 #cli-installer-overlay .cli-installer-quit { position: absolute; top: 8px; right: 12px; width: 30px; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--muted, #c4c4c4); font-size: 22px; line-height: 1; cursor: pointer; opacity: .45; }

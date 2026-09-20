@@ -141,9 +141,16 @@ function runHere(cmd: string, why: string): void {
   process.stdout.write(`${c.show}${c.clear}${c.accent}▸ ${why}${c.reset}\n${c.dim}$ ${cmd}${c.reset}\n\n`);
   const [sh, args] = shell();
   const r = spawnSync(sh, [...args, cmd], { stdio: "inherit" });
-  process.stdout.write(`\n${c.dim}(exit ${r.status ?? "?"}) press any key to continue${c.reset}`);
   process.stdin.setRawMode?.(true);
   status = r.status === 0 ? `${why}: done` : `${why}: exit ${r.status ?? "?"}`;
+  // A clean exit goes straight back to the menu (his report, 2026-09-20: the
+  // menu came back with the cursor "stuck" — the terminal's resize after the
+  // install's output redrew the menu over the "press any key" prompt, so the
+  // user's next key was eaten by the pause instead of moving the cursor).
+  // Only a FAILED command keeps its output up until a key, so the error can
+  // be read; the resize handler leaves that screen alone.
+  if (r.status === 0) { refresh(); return; }
+  process.stdout.write(`\n${c.dim}(exit ${r.status ?? "?"}) press any key to continue${c.reset}`);
   waitKey = true;
 }
 let waitKey = false;
@@ -215,7 +222,7 @@ if (!process.stdin.isTTY) {
 readline.emitKeypressEvents(process.stdin);
 process.stdin.setRawMode(true);
 process.stdin.on("keypress", onKey);
-process.stdout.on("resize", draw);
+process.stdout.on("resize", () => { if (!waitKey) draw(); });
 process.stdout.write(c.hide);
 refresh();
 draw();

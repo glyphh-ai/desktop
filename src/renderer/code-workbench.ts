@@ -2214,7 +2214,12 @@ async function init(): Promise<void> {
     if (!r?.ok || !r.command) { console.warn("[cli-installer] no command", r?.error); return; }
     const el = document.createElement("div");
     el.id = "cli-installer-overlay";
+    // The terminal stays out of sight for its first moment: the shell's prompt
+    // and the `clear` flashed before the TUI's first frame (his report,
+    // 2026-09-20). The class drops once the TUI has had time to draw.
+    el.className = "booting";
     el.innerHTML = `<button type="button" class="cli-installer-quit" title="Quit Glyphh">&times;</button><div class="cli-installer-host ws-rail-slot-body"></div>`;
+    window.setTimeout(() => el.classList.remove("booting"), 1400);
     // The one other way out (his order, 2026-09-20): quit the app if the CLI
     // cannot be installed. Not a close: the installer comes back next launch.
     el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => {
