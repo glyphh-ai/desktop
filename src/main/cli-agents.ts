@@ -610,8 +610,12 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // after the subcommand's prompt replace the ones before it, so the MCP
       // block at the tail silently dropped the provider and codex fell back
       // to its ChatGPT login.
+      // OUR server's tools run without codex's own prompt (proved 2026-09-20:
+      // exec refuses MCP calls with "requires approval, but approval policy is
+      // never"; "approve" is the mode that lets them through). Governance is
+      // ours, server-side, per the Connections page.
       const mcpOverrides = row.mcp
-        ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "")
+        ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
         : "";
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
         + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`;
@@ -665,6 +669,8 @@ export const EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "hig
 // codex exec (and exec resume) refuse a folder that is not a git checkout
 // unless told to skip that check; the headless lanes always pass it.
 const CODEX_SKIP_GIT = " --skip-git-repo-check";
+/** codex's accepted values: auto | prompt | writes | approve. */
+const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="approve"'`;
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
@@ -704,7 +710,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // Overrides before the resume subcommand and the prompt (see composeHeadless).
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
         + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider} -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
-        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "")
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
         + `${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
     } else if (row.cli === "claude") {
       base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}`;
