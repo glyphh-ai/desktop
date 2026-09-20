@@ -473,11 +473,14 @@ function paintModelChip(): void {
   // none leaves nothing to run, and naming some leftover pick would invite a
   // turn that can only be refused.
   const none = modelSource === "gateway" && availModels.length === 0;
-  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : "Default")}`;
+  // With the gateway on, "Default" is the ORG'S default (his order, 2026-09-20),
+  // so the chip names it: the turn runs on that, never on the CLI's own pick.
+  const orgDef = modelSource === "gateway" && !sel && !id ? orgDefaultModel : "";
+  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : orgDef ? `Default · ${orgDef}` : "Default")}`;
   mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
     : sel ? `${sel.name} — ${sel.providerSlug}`
     : id ? `${id} — not in your model list; the loop may refuse it`
-    : "The loop's own default model";
+    : orgDef ? `Your organization's default model` : "The loop's own default model";
   mc.className = "code-chip" + (none || (!sel && id) ? " warn" : "");
   paintComposerGate();
 }
@@ -2427,7 +2430,9 @@ function renderThread(): void {
         if (b.msg.attachments?.length) {
           const atts = document.createElement("div");
           atts.className = "code-msg-atts";
-          for (const a of b.msg.attachments) atts.appendChild(attachChipEl(a));
+          // Images render as previews in the thread (his order, 2026-09-20), not
+          // as file chips; a click opens the lightbox. Files and folders keep the chip.
+          for (const a of b.msg.attachments) atts.appendChild(a.kind === "image" ? attachPreviewEl(a) : attachChipEl(a));
           if (b.msg.text) inner.appendChild(el);
           inner.appendChild(atts);
           return;
@@ -3174,6 +3179,94 @@ let pendingNotes: Array<{ id: string; text: string }> = [];
 
 let pendingAttach: AttachRef[] = [];
 
+/** An image attachment inside the thread: a real preview with the name under
+ *  it; clicking it opens the lightbox. */
+function attachPreviewEl(a: AttachRef): HTMLElement {
+  const fig = document.createElement("figure");
+  fig.className = "code-attach-preview";
+  fig.title = a.path;
+  const img = document.createElement("img");
+  img.src = `file://${encodeURI(a.path)}`;
+  img.alt = a.name;
+  img.loading = "lazy";
+  img.onerror = () => { fig.replaceWith(attachChipEl(a)); };
+  img.addEventListener("click", (e) => { e.stopPropagation(); openImageLightbox(img.src, a.name); });
+  const cap = document.createElement("figcaption");
+  cap.textContent = a.name;
+  fig.append(img, cap);
+  return fig;
+}
+
+/** THE LIGHTBOX (his order, 2026-09-20): a clicked image fills the window on a
+ *  dark backdrop with an × top-right; the wheel, the +/− buttons and a
+ *  double-click zoom, dragging pans while zoomed, Esc / the backdrop / the ×
+ *  close it. One element, made on first use. */
+function openImageLightbox(src: string, name: string): void {
+  document.getElementById("code-lightbox")?.remove();
+  const box = document.createElement("div");
+  box.id = "code-lightbox";
+  box.className = "code-lightbox";
+  box.innerHTML = `
+    <div class="code-lightbox-stage"><img class="code-lightbox-img" alt="" draggable="false" /></div>
+    <button type="button" class="code-lightbox-x" title="Close (Esc)">&times;</button>
+    <div class="code-lightbox-bar">
+      <button type="button" class="code-lightbox-btn" data-zoom="out" title="Zoom out">−</button>
+      <span class="code-lightbox-pct">100%</span>
+      <button type="button" class="code-lightbox-btn" data-zoom="in" title="Zoom in">+</button>
+      <button type="button" class="code-lightbox-btn" data-zoom="reset" title="Fit">Fit</button>
+      <span class="code-lightbox-name"></span>
+    </div>`;
+  const stage = box.querySelector(".code-lightbox-stage") as HTMLElement;
+  const img = box.querySelector(".code-lightbox-img") as HTMLImageElement;
+  const pct = box.querySelector(".code-lightbox-pct") as HTMLElement;
+  (box.querySelector(".code-lightbox-name") as HTMLElement).textContent = name;
+  let scale = 1, tx = 0, ty = 0;
+  const apply = (): void => {
+    img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    pct.textContent = `${Math.round(scale * 100)}%`;
+    stage.classList.toggle("zoomed", scale > 1.001);
+  };
+  /** Zoom around a point (the cursor) so what is under it stays put. */
+  const zoom = (next: number, cx?: number, cy?: number): void => {
+    const s = Math.max(0.25, Math.min(8, next));
+    if (cx != null && cy != null) {
+      const r = stage.getBoundingClientRect();
+      const px = cx - r.left - r.width / 2 - tx;
+      const py = cy - r.top - r.height / 2 - ty;
+      tx -= px * (s / scale - 1);
+      ty -= py * (s / scale - 1);
+    }
+    scale = s;
+    if (scale <= 1.001) { tx = 0; ty = 0; }
+    apply();
+  };
+  const close = (): void => { box.remove(); document.removeEventListener("keydown", onKey, true); };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === "+" || e.key === "=") zoom(scale * 1.25);
+    else if (e.key === "-") zoom(scale / 1.25);
+    else if (e.key === "0") zoom(1);
+  };
+  (box.querySelector(".code-lightbox-x") as HTMLButtonElement).addEventListener("click", close);
+  box.querySelectorAll<HTMLButtonElement>(".code-lightbox-btn").forEach((b) => b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (b.dataset.zoom === "in") zoom(scale * 1.25); else if (b.dataset.zoom === "out") zoom(scale / 1.25); else zoom(1);
+  }));
+  stage.addEventListener("click", (e) => { if (e.target === stage) close(); });
+  stage.addEventListener("wheel", (e) => { e.preventDefault(); zoom(scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY); }, { passive: false });
+  img.addEventListener("dblclick", (e) => { e.stopPropagation(); zoom(scale > 1.001 ? 1 : 2.5, e.clientX, e.clientY); });
+  let drag: { x: number; y: number; tx: number; ty: number } | null = null;
+  img.addEventListener("pointerdown", (e) => { if (scale <= 1.001) return; drag = { x: e.clientX, y: e.clientY, tx, ty }; img.setPointerCapture(e.pointerId); e.preventDefault(); });
+  img.addEventListener("pointermove", (e) => { if (!drag) return; tx = drag.tx + (e.clientX - drag.x); ty = drag.ty + (e.clientY - drag.y); apply(); });
+  const endDrag = (): void => { drag = null; };
+  img.addEventListener("pointerup", endDrag);
+  img.addEventListener("pointercancel", endDrag);
+  img.src = src;
+  apply();
+  document.body.appendChild(box);
+  document.addEventListener("keydown", onKey, true);
+}
+
 function attachChipEl(a: AttachRef, onRemove?: () => void): HTMLElement {
   const chip = document.createElement("div");
   chip.className = `code-attach-chip ${a.kind}`;
@@ -3189,6 +3282,7 @@ function attachChipEl(a: AttachRef, onRemove?: () => void): HTMLElement {
       ic.innerHTML = FILE_ICON;
       img.replaceWith(ic);
     };
+    img.addEventListener("click", (e) => { e.stopPropagation(); openImageLightbox(img.src, a.name); });
     chip.appendChild(img);
   } else {
     const ic = document.createElement("span");
@@ -3540,6 +3634,16 @@ function sessionModel(c: CodeChat | null | undefined): string | null {
 /** Settings → General's default model, memoised for the session. Empty
  *  string means "inherit" — the loop's own, or the role's default for it. */
 let defaultModelPref: string | null = null;
+/** The org's default model with the gateway on ("" = the loop decides). */
+let orgDefaultModel = "";
+async function loadOrgDefaultModel(): Promise<void> {
+  try {
+    const g = await (window.glyphh as unknown as { planGates?: () => Promise<{ gatewayAllowed?: boolean; defaultModel?: string }> }).planGates?.();
+    orgDefaultModel = g?.gatewayAllowed ? String(g.defaultModel || "") : "";
+  } catch { orgDefaultModel = ""; }
+}
+void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* not mounted yet */ } });
+window.addEventListener("glyphh:plan-gates-changed", () => void loadOrgDefaultModel().then(() => { try { paintModelChip(); } catch { /* */ } }));
 async function loadDefaultModelPref(): Promise<void> {
   try {
     const v = String((await (window.glyphh as unknown as { getPreference?: (k: string, d: unknown) => Promise<unknown> })

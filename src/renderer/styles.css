@@ -13886,6 +13886,40 @@ select:focus {
 }
 .code-attach-chip .cac-x:hover { color: var(--text); }
 
+/* Image attachments in the thread render as previews (2026-09-20). */
+.code-attach-preview {
+  margin: 0; display: inline-flex; flex-direction: column; gap: 4px; max-width: 100%;
+}
+.code-attach-preview img {
+  display: block; max-width: min(360px, 100%); max-height: 240px; width: auto; height: auto;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--surface); cursor: zoom-in;
+}
+.code-attach-preview figcaption {
+  font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px;
+}
+.code-attach-chip img { cursor: zoom-in; }
+
+/* The lightbox: a clicked image on a dark backdrop, × top-right, zoom bar below. */
+.code-lightbox { position: fixed; inset: 0; z-index: 100000; background: rgba(0, 0, 0, 0.86); display: flex; flex-direction: column; }
+.code-lightbox.hidden { display: none; }
+.code-lightbox-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: zoom-out; }
+.code-lightbox-stage.zoomed { cursor: grab; }
+.code-lightbox-img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 60px rgba(0,0,0,.6); transform-origin: center center; transition: transform .08s ease-out; will-change: transform; cursor: default; }
+.code-lightbox-stage.zoomed .code-lightbox-img { cursor: grab; }
+.code-lightbox-x {
+  position: absolute; top: 14px; right: 18px; width: 36px; height: 36px; border: 1px solid rgba(255,255,255,.18); border-radius: 50%;
+  background: rgba(20,20,22,.7); color: #fff; font-size: 24px; line-height: 1; cursor: pointer;
+}
+.code-lightbox-x:hover { background: rgba(255,255,255,.14); }
+.code-lightbox-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px 16px; color: rgba(255,255,255,.75); font-size: 12px;
+}
+.code-lightbox-btn { min-width: 30px; height: 28px; padding: 0 10px; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; background: rgba(20,20,22,.7); color: #fff; font-size: 14px; cursor: pointer; }
+.code-lightbox-btn:hover { background: rgba(255,255,255,.14); }
+.code-lightbox-pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.code-lightbox-name { margin-left: 12px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; color: rgba(255,255,255,.55); max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* The + chip (right of the mode chip) — the "add to this session" menu. */
 /* Higher specificity (.code-chip.code-plus-chip) so these WIN over the base
    .code-chip rule defined later in the file — otherwise its pill border /
