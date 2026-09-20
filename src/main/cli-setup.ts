@@ -11,7 +11,8 @@ import path from "node:path";
 import { app, ipcMain, webContents } from "electron";
 import { userScopedPath } from "./app-paths.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
-import { listCliAgents } from "./cli-agents.js";
+import { listCliAgents, ensureOrgLoops } from "./cli-agents.js";
+import { getClient } from "./glyphh-client.js";
 import { listLoopModels } from "./loop-models.js";
 
 const dir = (): string => userScopedPath("cli-setup");
@@ -43,9 +44,18 @@ async function models(loops: Array<{ id: string; cli: string }>): Promise<Array<
 export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string; error?: string }> {
   try {
     fs.mkdirSync(dir(), { recursive: true });
+    // The org's answer, fresh (his order, 2026-09-20): with the gateway on the
+    // roster is only the loops the org enabled, and the installer offers only
+    // those CLIs; the org's CLI-mode switch decides whether "CLI" can be the
+    // default view at all.
+    await ensureOrgLoops(true).catch(() => undefined);
+    const gates = await getClient().plans.gates().catch(() => null) as { gatewayAllowed?: boolean; cliAllowed?: boolean } | null;
     const loops = listCliAgents().map((a) => ({ id: a.id, name: a.name, cli: a.cli, model: a.model || "" }));
+    const gateway = !!gates?.gatewayAllowed;
+    const clis = gateway ? [...new Set(loops.map((l) => l.cli))] : null;
+    const cliAllowed = gates?.cliAllowed !== false;
     const input = {
-      version: app.getVersion(), platform: process.platform, loops, models: await models(loops),
+      version: app.getVersion(), platform: process.platform, loops, models: await models(loops), clis, cliAllowed, gateway,
       defaults: { loop: getPreference<string>("glyphhLoop", ""), view: getPreference<string>("defaultLoopView", "glyphh") },
     };
     fs.writeFileSync(inFile(), JSON.stringify(input), "utf-8");

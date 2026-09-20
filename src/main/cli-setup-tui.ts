@@ -17,7 +17,15 @@ import { spawnSync } from "node:child_process";
 import readline from "node:readline";
 
 interface Loop { id: string; name: string; cli: string; model?: string }
-interface Input { version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string; provider?: string }>; defaults: { loop?: string; view?: string; model?: string } }
+interface Input {
+  version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string; provider?: string }>;
+  defaults: { loop?: string; view?: string; model?: string };
+  /** With the gateway on: the only CLIs the org allows (null = every CLI). */
+  clis?: string[] | null;
+  /** The org's CLI-mode switch: false = the loop's own terminal is off. */
+  cliAllowed?: boolean;
+  gateway?: boolean;
+}
 interface Output { done: boolean; loop?: string; model?: string; view?: "glyphh" | "cli" }
 
 const [, , inPath, outPath] = process.argv;
@@ -37,13 +45,18 @@ const LOGO_NARROW: string[] = ["  \u2584        \u2597\u2584", "  \u2588\u2588\u
 
 // ── the CLIs ──
 interface Cli { key: string; name: string; bin: string; install: { mac: string; win: string }; login: string; note?: string }
-const CLIS: Cli[] = [
+const ALL_CLIS: Cli[] = [
   { key: "claude", name: "Claude Code", bin: "claude", install: { mac: "npm install -g @anthropic-ai/claude-code", win: "npm install -g @anthropic-ai/claude-code" }, login: "claude", note: "type /login inside, then /exit" },
   { key: "codex", name: "Codex", bin: "codex", install: { mac: "npm install -g @openai/codex", win: "npm install -g @openai/codex" }, login: "codex login" },
   { key: "gemini", name: "Gemini", bin: "gemini", install: { mac: "npm install -g @google/gemini-cli", win: "npm install -g @google/gemini-cli" }, login: "gemini", note: "sign in on its first screen, then /quit" },
   { key: "copilot", name: "Copilot", bin: "copilot", install: { mac: "npm install -g @github/copilot", win: "npm install -g @github/copilot" }, login: "copilot", note: "type /login inside, then /exit" },
   { key: "cursor", name: "Cursor", bin: "cursor-agent", install: { mac: "curl https://cursor.com/install -fsS | bash", win: "powershell -c \"irm https://cursor.com/install | iex\"" }, login: "cursor-agent login" },
 ];
+// The org decides what is offered (his order, 2026-09-20): with the gateway
+// on only the loops it enabled; off, every CLI. An org that allows none still
+// gets an honest screen and a way out.
+const CLIS: Cli[] = Array.isArray(input.clis) ? ALL_CLIS.filter((c) => input.clis!.includes(c.key)) : ALL_CLIS;
+const CLI_MODE_ALLOWED = input.cliAllowed !== false;
 const shell = (): [string, string[]] => (isWin ? ["powershell.exe", ["-NoLogo", "-Command"]] : [process.env.SHELL || "/bin/zsh", ["-lc"]]);
 function has(bin: string): boolean {
   const r = isWin ? spawnSync("where", [bin], { stdio: "ignore" }) : spawnSync("/bin/sh", ["-lc", `command -v ${bin}`], { stdio: "ignore" });
@@ -67,7 +80,7 @@ let versions = new Map<string, string>();
 let status = "";
 let loopIdx = Math.max(0, input.loops.findIndex((l) => l.id === input.defaults.loop));
 let modelIdx = 0;
-let viewIdx: 0 | 1 = input.defaults.view === "cli" ? 1 : 0;
+let viewIdx: 0 | 1 = input.defaults.view === "cli" && CLI_MODE_ALLOWED ? 1 : 0;
 // A loop reaches one vendor: its model list is that vendor's (his report, 2026-09-20: Codex offered Anthropic's).
 const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor" };
 const modelOptions = (): Array<{ id: string; name: string }> => {
@@ -94,7 +107,8 @@ function draw(): void {
   const out: string[] = [c.clear, ...header(), ""];
   const key = (k: string, what: string): string => `${c.accent}${k}${c.reset} ${c.dim}${what}${c.reset}`;
   if (screen === "home") {
-    out.push(`  ${c.bold}${c.text}Loops on this machine${c.reset}`, "");
+    out.push(`  ${c.bold}${c.text}Loops on this machine${c.reset}${input.gateway ? `  ${c.faint}the loops your organization enabled${c.reset}` : ""}`, "");
+    if (!CLIS.length) out.push(`  ${c.warn}Your organization has not enabled any loops yet. Ask an org admin, then run this again from Settings → CLI Installer.${c.reset}`, "");
     CLIS.forEach((x, i) => {
       const on = installed.get(x.key);
       const sel = i === cursor;
@@ -122,7 +136,7 @@ function draw(): void {
     const rows = [
       [`Loop`, loop ? `${loop.name} ${c.faint}(${loop.cli})${c.reset}` : `${c.faint}no loops yet${c.reset}`],
       [`Model`, model?.name ?? ""],
-      [`Mode`, viewIdx === 0 ? "Glyphh — chat, with the loop underneath" : "CLI — the loop's own terminal"],
+      [`Mode`, !CLI_MODE_ALLOWED ? `Glyphh — chat, with the loop underneath ${c.faint}(CLI mode is off for your organization)${c.reset}` : viewIdx === 0 ? "Glyphh — chat, with the loop underneath" : "CLI — the loop's own terminal"],
       ["Save", ""],
     ];
     out.push(`  ${c.bold}${c.text}Defaults${c.reset}  ${c.dim}what a new session starts with${c.reset}`, "");
@@ -157,7 +171,8 @@ let waitKey = false;
 
 function finish(): void {
   // THE ONLY WAY OUT IS A WORKING CLI (his order, 2026-09-20).
-  if (![...installed.values()].some(Boolean)) { status = "install at least one CLI before finishing"; draw(); return; }
+  // THE ONLY WAY OUT IS A WORKING CLI — unless the org offers none, which is the org's call, not the user's.
+  if (CLIS.length && !CLIS.some((x) => installed.get(x.key))) { status = "install at least one CLI before finishing"; draw(); return; }
   const loop = input.loops[loopIdx];
   const model = modelOptions()[modelIdx];
   const outp: Output = { done: true, ...(loop ? { loop: loop.id } : {}), ...(model?.id ? { model: model.id } : {}), view: viewIdx === 1 ? "cli" : "glyphh" };
@@ -209,8 +224,8 @@ function onKey(_: string, k: readline.Key): void {
       const d = name === "left" ? -1 : 1;
       if (cursor === 0 && input.loops.length) { loopIdx = (loopIdx + input.loops.length + d) % input.loops.length; modelIdx = 0; }
       else if (cursor === 1) { const n = modelOptions().length; modelIdx = (modelIdx + n + d) % n; }
-      else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0;
-    } else if (name === "return") { if (cursor === 3) { screen = "home"; cursor = CLIS.length + 1; status = "defaults saved"; } else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0; }
+      else if (cursor === 2 && CLI_MODE_ALLOWED) viewIdx = viewIdx === 0 ? 1 : 0;
+    } else if (name === "return") { if (cursor === 3) { screen = "home"; cursor = CLIS.length + 1; status = "defaults saved"; } else if (cursor === 2 && CLI_MODE_ALLOWED) viewIdx = viewIdx === 0 ? 1 : 0; }
   }
   draw();
 }
