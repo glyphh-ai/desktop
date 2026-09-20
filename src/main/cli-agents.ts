@@ -31,7 +31,7 @@ import { ipcMain } from "electron";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
-import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, requestUsesGateway, LOOP_VENDOR, KEY_ENV, type GatewayCreds } from "./gateway-token.js";
+import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, requestUsesGateway, LOOP_VENDOR, KEY_ENV, type GatewayCreds, writeDirectBase, directVar } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient } from "./glyphh-client.js";
 
@@ -737,8 +737,11 @@ let gatewayOn = false;
  *  A loop with its own key never carries those vars, so nothing to strip. */
 function stripGatewayVars(row: CliAgentRow): string {
   if (row.apiKey) return "";
-  const vars = [...(CLI_PROFILES[row.cli]?.baseUrlEnv ?? []), ...(KEY_ENV[row.cli] ? [KEY_ENV[row.cli]] : [])];
-  return vars.length ? ` unset ${vars.join(" ")};` : "";
+  const key = KEY_ENV[row.cli] ? ` unset ${KEY_ENV[row.cli]};` : "";
+  // The base URL is not dropped, it is re-pointed: the bridge wrapping the
+  // vendor (GLYPHH_DIRECT_*, written by ensureLoopEnv), else unset.
+  const bases = (CLI_PROFILES[row.cli]?.baseUrlEnv ?? []).map((v) => ` export ${v}="\${${directVar(v)}:-}"; [ -n "$${v}" ] || unset ${v};`).join("");
+  return key + bases;
 }
 /** THE MODEL THE ORG REQUIRES (his order, 2026-09-18: "when the user switches
  *  to cli in proxy mode the model needs to be set"). A terminal opened with no
@@ -1121,6 +1124,8 @@ export async function ensureLoopEnv(row: CliAgentRow): Promise<void> {
         clearGatewayEnv(row.id, row.cli, cliProfile.baseUrlEnv);
       }
     }
+    // Whatever lane the turn takes, a direct turn lands on the bridge.
+    writeDirectBase(row.id, cliProfile.baseUrlEnv, bridged || "");
   }
 }
 

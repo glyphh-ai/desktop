@@ -247,6 +247,28 @@ export function writeGatewayEnv(
   fs.writeFileSync(envFile(id), `${kept}${lines.join("\n")}\n`, { encoding: "utf-8", mode: 0o600 });
 }
 
+/** The bridge's own address for a DIRECT turn, kept beside the gateway lines
+ *  as GLYPHH_DIRECT_<VAR>. A turn the strategy keeps off the gateway drops the
+ *  gateway's key and base URL, then points the base URL here, so the bridge
+ *  stays the seam on every turn (his report, 2026-09-20: a direct turn went
+ *  straight to Anthropic and memory captured nothing). */
+export const directVar = (v: string): string => `GLYPHH_DIRECT_${v}`;
+export function writeDirectBase(id: string, baseUrlVars: string[], bridgedVendor: string): void {
+  const ours = new Set(baseUrlVars.map(directVar));
+  let kept = "";
+  try {
+    kept = fs.readFileSync(envFile(id), "utf-8")
+      .split("\n")
+      .filter((l) => { const n = /^(\w+)=/.exec(l)?.[1]; return l.trim() && (!n || !ours.has(n)); })
+      .join("\n");
+    if (kept) kept += "\n";
+  } catch { /* first write */ }
+  const lines = baseUrlVars.map((v) => `${directVar(v)}="${bridgedVendor}"`);
+  const dir = path.dirname(envFile(id));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(envFile(id), `${kept}${lines.join("\n")}\n`, { encoding: "utf-8", mode: 0o600 });
+}
+
 /** Strip the gateway lines, leaving anything the member set themselves. */
 export function clearGatewayEnv(id: string, cli: string, baseUrlVars: string[]): void {
   const keyVar = KEY_ENV[cli];
