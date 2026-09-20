@@ -72,16 +72,20 @@ const refresh = (): void => { installed = new Map(CLIS.map((x) => [x.key, has(x.
 // ── drawing ──
 const cols = (): number => process.stdout.columns || 100;
 const pad = (s: string, n: number): string => s + " ".repeat(Math.max(0, n - s.replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, "").length));
+// The wordmark, drawn in braille like the mark (Arial Bold at 16px, 3 rows).
+const WORDMARK: string[] = ["\u2800\u28f6\u281f\u281b\u28b7\u2806\u2838\u28ff\u2800\u2800\u2808\u28bf\u28c6\u2800\u28fe\u2803\u28ff\u281f\u281b\u28f7\u2804\u2838\u28ff\u2800\u2800\u28ff\u2800\u2838\u28ff\u2800\u2800\u28ff\u2800", "\u2838\u2847\u2800\u28e4\u28e4\u28e4\u2838\u28ff\u2800\u2800\u2800\u2800\u28bb\u28ff\u2801\u2800\u28ff\u28f7\u2836\u281f\u2801\u2838\u28ff\u2836\u2836\u28ff\u2800\u2838\u28ff\u2836\u2836\u28ff\u2800", "\u2808\u283f\u28e6\u28e4\u287e\u281f\u2838\u28ff\u28e4\u28e4\u2844\u2800\u2838\u28ff\u2800\u2800\u28ff\u2847\u2800\u2800\u2800\u2838\u28ff\u2800\u2800\u28ff\u2800\u2838\u28ff\u2800\u2800\u28ff\u2800"];
+
 function header(): string[] {
+  const white = `${E}38;5;255m`;
   const right = [
-    `${c.accent}${c.bold}G L Y P H H${c.reset}`,
+    ...WORDMARK.map((l) => `${white}${l}${c.reset}`),
     `${c.dim}CLI Installer${c.reset}`,
     `${c.faint}v${input.version || "dev"} · ${isWin ? "Windows" : "macOS"}${c.reset}`,
   ];
   const rows: string[] = [];
   const h = Math.max(BRAILLE.length, right.length);
   for (let i = 0; i < h; i++) {
-    const left = `${c.accent}${BRAILLE[i] ?? " ".repeat(BRAILLE[0]?.length ?? 11)}${c.reset}`;
+    const left = `${white}${BRAILLE[i] ?? " ".repeat(BRAILLE[0]?.length ?? 11)}${c.reset}`;
     const r = right[i - Math.floor((BRAILLE.length - right.length) / 2)] ?? "";
     rows.push(`  ${left}   ${r}`);
   }
