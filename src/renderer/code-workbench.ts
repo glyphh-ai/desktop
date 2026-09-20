@@ -536,6 +536,7 @@ const SECTION_TITLES: Record<string, string> = {
   layouts: "Workspaces",
   skills: "Skills", tasks: "Tasks", agents: "Agents", models: "Models", drips: "Drips",
   settings: "Settings", docs: "Docs",
+  build: "Build", customize: "Customize",
 };
 
 // ── Monaco loader (AMD path: window.require + monaco/ assets in dist) ──

@@ -147,6 +147,7 @@ function activeSection(): string {
 export function loadActiveSection(explicit?: string) {
   const sec = explicit || activeSection();
   if (sec === "dashboard") void loadDashboard();
+  else if (sec === "build" || sec === "customize") loadSettingsGroup(sec);
   else if (sec === "drips") loadDrips();
   else if (sec === "connections") void loadConnections();
   else if (sec === "layouts") loadLayouts();
@@ -284,6 +285,8 @@ export function closeSettingsModal(): void {
   const layout = overlay.querySelector<HTMLElement>(".settings-modal-body > .settings-layout");
   if (layout && settingsHomePen) settingsHomePen.appendChild(layout);
   overlay.remove();
+  // A Build / Customize page left up in the workbench borrows its pages back.
+  rehostOpenGroups();
   if (settingsModalWebviewsGuarded) { guardWebviewsForModal(false); settingsModalWebviewsGuarded = false; }
   void (settingsModalHidePromise ?? Promise.resolve(false)).then(() => {
     restorePanelsForModal(settingsModalPanelsHidden);
@@ -326,6 +329,9 @@ export function openSettingsModal(sub?: string): void {
   // Platform LANDS on the Dashboard (his order, 2026-09-11) — not General.
   const defaultSub = document.body.classList.contains("platform-shell") ? "dash" : "general";
   if (isSettingsModalOpen()) { selectSettingsSub(sub || defaultSub); return; }
+  // Pages a Build / Customize work-panel borrowed go home first: the modal
+  // adopts the whole layout and every loader looks for them under it.
+  returnGroupPanels();
 
   const layout = document.querySelector<HTMLElement>(
     ".help-section[data-section='settings'] > .settings-layout") ??
@@ -882,6 +888,90 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "artifacts") { mountSettingsSection("files"); void loadFiles(); }
 }
 
+// ── Build / Customize work-panels ─────────────────────────────────────────
+//
+// A Settings GROUP (the nav's Build or Customize rows) opens as ONE workbench
+// page with the group's pages as tabs (his order, 2026-09-20: "the same
+// settings pages, just tabs, bigger"). Move-not-clone, like the modal: the
+// .settings-panel nodes are MOVED from .settings-panels into the page's own
+// .settings-panels (inside a .settings-modal-body host, so every modal rule
+// applies verbatim) and moved back the moment the modal opens. The tab list is
+// read from the nav group itself, so role gating (hidden rows) carries over.
+
+/** The .settings-panels pen each borrowed panel came from, by sub. */
+const groupPanelPen: Record<string, HTMLElement | null> = {};
+/** The tab each group last showed, so reopening lands where the user was. */
+const groupLastSub: Record<string, string> = {};
+
+function groupTabs(group: string): Array<{ sub: string; label: string }> {
+  const head = document.getElementById(`nav-group-${group}`);
+  const out: Array<{ sub: string; label: string }> = [];
+  for (let el = head?.nextElementSibling; el && !el.classList.contains("settings-nav-group"); el = el.nextElementSibling) {
+    const b = el as HTMLElement;
+    const sub = b.dataset.sub;
+    if (!sub || b.classList.contains("hidden")) continue;
+    out.push({ sub, label: b.querySelector("span")?.textContent?.trim() || sub });
+  }
+  return out;
+}
+
+/** Build (or refresh) a group page: tabs from its nav rows, panels adopted. */
+export function loadSettingsGroup(group: string): void {
+  const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
+  const strip = sec?.querySelector<HTMLElement>(".settings-group-tabs");
+  const host = sec?.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
+  if (!sec || !strip || !host) return;
+  const tabs = groupTabs(group);
+  if (!tabs.length) { host.innerHTML = `<div class="ws-empty">Nothing to show here yet.</div>`; return; }
+  strip.innerHTML = "";
+  for (const t of tabs) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "skills-tab";
+    b.dataset.sub = t.sub;
+    b.setAttribute("role", "tab");
+    b.textContent = t.label;
+    b.addEventListener("click", () => showGroupTab(group, t.sub));
+    strip.appendChild(b);
+    const panel = document.querySelector<HTMLElement>(`.settings-panel[data-sub="${t.sub}"]`);
+    if (panel && panel.parentElement !== host) {
+      groupPanelPen[t.sub] ||= panel.parentElement as HTMLElement | null;
+      host.appendChild(panel);
+    }
+  }
+  const want = groupLastSub[group];
+  showGroupTab(group, tabs.some((t) => t.sub === want) ? want : tabs[0].sub);
+}
+
+function showGroupTab(group: string, sub: string): void {
+  const sec = document.querySelector<HTMLElement>(`.help-section.settings-group[data-section="${group}"]`);
+  if (!sec) return;
+  groupLastSub[group] = sub;
+  sec.querySelectorAll<HTMLElement>(".settings-group-tabs > .skills-tab").forEach((b) => b.classList.toggle("active", b.dataset.sub === sub));
+  const host = sec.querySelector<HTMLElement>(".settings-group-host > .settings-panels");
+  host?.querySelectorAll<HTMLElement>(":scope > .settings-panel").forEach((p) => p.classList.toggle("active", p.dataset.sub === sub));
+  if (host) host.scrollTop = 0;
+  loadSettingsSub(sub);
+}
+
+/** Every borrowed panel goes back to its .settings-panels pen. */
+function returnGroupPanels(): void {
+  for (const sub of Object.keys(groupPanelPen)) {
+    const pen = groupPanelPen[sub];
+    const panel = document.querySelector<HTMLElement>(`.settings-group-host .settings-panel[data-sub="${sub}"]`);
+    if (panel && pen) { panel.classList.remove("active"); pen.appendChild(panel); }
+  }
+}
+
+/** A group page still up in the workbench after the modal closes gets its
+ *  panels back, so it never sits empty. */
+function rehostOpenGroups(): void {
+  document.querySelectorAll<HTMLElement>(".help-section.settings-group.wb-hosted").forEach((sec) => {
+    const g = sec.dataset.section;
+    if (g) loadSettingsGroup(g);
+  });
+}
+
 // ── Whole-section in-modal adoption (A2 apps/connections, A3 loops/skills/
 //    agents) ────────────
 //
@@ -975,7 +1065,7 @@ export function initHelp() {
   // + New session and Recents only).
   // Rail items open IN THE WORKBENCH (section cards) — the rail is the
   // workspace's front door, and Settings stays a small preferences surface.
-  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts" };
+  const RAIL_WB_SECTIONS: Record<string, string> = { apps: "apps", layouts: "layouts", build: "build", customize: "customize" };
   document.querySelectorAll<HTMLButtonElement>(".app-rail-nav-item[data-settings-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const sub = btn.dataset.settingsSub!;

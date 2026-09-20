@@ -12057,9 +12057,15 @@ body.wb-modal-open #code-agent-layer { visibility: hidden !important; }
 .ws-section-body > .help-section[data-section="dashboard"],
 .ws-section-body > .help-section[data-section="apps"],
 .ws-section-body > .help-section[data-section="connections"],
-.ws-section-body > .help-section[data-section="layouts"] {
+.ws-section-body > .help-section[data-section="layouts"],
+.ws-section-body > .help-section[data-section="build"],
+.ws-section-body > .help-section[data-section="customize"] {
   display: flex; flex-direction: column;
 }
+/* Build / Customize: the hosted .settings-panels own the gutter and the
+   scroll (same rules as the modal); the tab strip sits on the same 28px edge. */
+.ws-section-body > .help-section.settings-group { padding: 10px 0 0; }
+.settings-group-tabs { padding: 0 28px; }
 /* Settings/Docs scroll an INNER pane (.settings-panels) — the hosted
    section's own right/bottom gutter left that pane's scrollbar floating
    inboard of the card edge. Mirror the full-page rule (#page-body:has):
