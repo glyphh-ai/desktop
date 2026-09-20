@@ -191,6 +191,52 @@ export async function renderMemoryBrowser(): Promise<void> {
   }
 }
 
+/** The embeddings model chip under the composer: shows the model the memory
+ *  is embedded through and opens a picker of the org's embedding models.
+ *  Same preference the Settings → Memory select writes (embeddingsConfigSet). */
+async function wireMemoryModelChip(chip: HTMLButtonElement): Promise<void> {
+  const g = window.glyphh as unknown as {
+    embeddingsConfigGet?: () => Promise<{ ok: boolean; model: string; models: Array<{ id: string; name: string; providerSlug: string }> }>;
+    embeddingsConfigSet?: (i: { model?: string }) => Promise<{ ok: boolean; model?: string; error?: string }>;
+  };
+  const cfg = await g.embeddingsConfigGet?.().catch(() => null);
+  const models = cfg?.ok ? cfg.models ?? [] : [];
+  let current = cfg?.ok ? cfg.model : "";
+  const label = (): void => {
+    const m = models.find((x) => x.id === current);
+    chip.textContent = `Model: ${m ? m.name : current || "none"}`;
+    chip.classList.toggle("warn", !current);
+  };
+  label();
+  if (!models.length) { chip.classList.add("is-locked"); chip.title = "No embeddings models are published for your organization."; return; }
+  let menu: HTMLDivElement | null = null;
+  const close = (): void => { menu?.remove(); menu = null; document.removeEventListener("click", onOutside, true); };
+  const onOutside = (ev: MouseEvent): void => { if (!(ev.target as HTMLElement).closest(".mem-model-menu, .mem-model-chip")) close(); };
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (menu) { close(); return; }
+    menu = document.createElement("div");
+    menu.className = "code-menu mem-model-menu";
+    for (const m of models) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "code-menu-item" + (m.id === current ? " active" : "");
+      b.textContent = m.providerSlug ? `${m.name} — ${m.providerSlug}` : m.name;
+      b.addEventListener("click", async () => {
+        close();
+        const res = await g.embeddingsConfigSet?.({ model: m.id });
+        if (res?.ok) { current = m.id; label(); }
+      });
+      menu.appendChild(b);
+    }
+    document.body.appendChild(menu);
+    const r = chip.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
+    menu.style.top = `${r.top - menu.offsetHeight - 6}px`;
+    setTimeout(() => document.addEventListener("click", onOutside, true), 0);
+  });
+}
+
 /** The page takes the whole Memory panel (his order, 2026-09-20); "← Memory" brings the panel back. */
 function memPanelPageMode(on: boolean): void {
   document.querySelector<HTMLElement>('.settings-panel[data-sub="memory"]')?.classList.toggle("mem-page-open", on);
@@ -201,16 +247,25 @@ function renderMemoryPage(row: MemoryRow): void {
   if (!host) return;
   memPanelPageMode(true);
   host.textContent = "";
+  // The page is laid out like the chat: the content scrolls, the composer is
+  // pinned to the bottom, and the embeddings model chip sits under it on the
+  // right (his order, 2026-09-20) — the model the edit re-embeds through.
   const page = document.createElement("div"); page.className = "mem-page";
   page.innerHTML = `
-    <button type="button" class="mem-back">${BACK}<span>Memory</span></button>
-    <div class="mem-page-head"><h3 class="mem-page-title"></h3><button type="button" class="action-btn mem-page-delete">Delete</button></div>
-    <div class="mem-label">Last updated</div><div class="mem-value mem-page-when"></div>
-    <div class="mem-label">Summary</div><div class="mem-value mem-page-summary"></div>
-    <div class="mem-label">Details</div><ul class="mem-details"></ul>
-    <div class="mem-status hidden"></div>
-    <div class="mem-compose"><input class="settings-input mem-input" type="text" placeholder="Add to this memory…" /><button type="button" class="mem-send" title="Update memory">${SEND}</button></div>`;
+    <div class="mem-page-body">
+      <button type="button" class="mem-back">${BACK}<span>Memory</span></button>
+      <div class="mem-page-head"><h3 class="mem-page-title"></h3><button type="button" class="action-btn mem-page-delete">Delete</button></div>
+      <div class="mem-label">Last updated</div><div class="mem-value mem-page-when"></div>
+      <div class="mem-label">Summary</div><div class="mem-value mem-page-summary"></div>
+      <div class="mem-label">Details</div><ul class="mem-details"></ul>
+      <div class="mem-status hidden"></div>
+    </div>
+    <div class="mem-page-foot">
+      <div class="mem-compose"><input class="settings-input mem-input" type="text" placeholder="Add to this memory…" /><button type="button" class="mem-send" title="Update memory">${SEND}</button></div>
+      <div class="mem-foot-bar"><div class="code-chipwrap"><button type="button" class="code-chip mem-model-chip" title="The embeddings model this memory is written through">Model: …</button></div></div>
+    </div>`;
   host.appendChild(page);
+  void wireMemoryModelChip(page.querySelector(".mem-model-chip") as HTMLButtonElement);
   const paint = (): void => {
     (page.querySelector(".mem-page-title") as HTMLElement).textContent = row.title || "Untitled";
     (page.querySelector(".mem-page-when") as HTMLElement).textContent = memWhen(row.at, true);
