@@ -576,10 +576,14 @@ export function modesFor(cli: CliAgentRow["cli"], surface: "panel" | "terminal" 
 export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string, effort?: string): string {
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
-  const m = (model ?? row.model ?? "").trim();
+  const picked = (model ?? row.model ?? "").trim();
   // The model this turn names decides its lane (reserved keeps the heavy
   // ones on the member's own subscription); off the gateway, its vars go.
-  const strip = requestUsesGateway(row.cli, m || requiredModel, !!row.apiKey) ? "" : stripGatewayVars(row);
+  // A turn that named none runs on the org's default with the gateway on
+  // (his order, 2026-09-20): left to the CLI it picks one the org never allowed.
+  const viaGateway = requestUsesGateway(row.cli, picked || requiredModel, !!row.apiKey);
+  const m = picked || (gatewayOn && viaGateway ? requiredModel : "");
+  const strip = viaGateway ? "" : stripGatewayVars(row);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
   const rid = (resumeId ?? "").replace(/'/g, "");
   // Effort (his order, 2026-09-20): the same dial for every CLI that has one.
@@ -787,13 +791,24 @@ export async function refreshGatewayMode(): Promise<void> {
   try {
     const client = getClient();
     const [gates, models] = await Promise.all([
-      client.plans.gates(),
-      client.models.available().catch(() => [] as Array<{ name: string; modality: string }>),
+      client.plans.gates() as Promise<{ gatewayAllowed?: boolean; autoOnly?: boolean; defaultModel?: string }>,
+      client.models.available().catch(() => []) as Promise<Array<{ name: string; modality: string; autoRouter?: boolean }>>,
     ]);
     gatewayOn = !!gates.gatewayAllowed;
-    requiredModel = gatewayOn ? (models.find((m) => m.modality === "chat")?.name ?? "") : "";
+    // THE ORG'S DEFAULT FIRST (his order, 2026-09-20): the model the admin set
+    // for turns that picked none; then the router under Auto only; then the
+    // first model the org allows. Off the gateway the CLI's own choice stands.
+    const chat = models.filter((m) => m.modality === "chat");
+    const orgDefault = String(gates.defaultModel || "").trim();
+    const router = chat.find((m) => m.autoRouter)?.name ?? "";
+    requiredModel = gatewayOn
+      ? (orgDefault && chat.some((m) => m.name === orgDefault) ? orgDefault : (gates.autoOnly && router) || router || chat[0]?.name || "")
+      : "";
   } catch { /* offline — the last answer stands */ }
 }
+
+/** The model a turn runs on when it named none: the org's default with the gateway on, "" otherwise. */
+export function orgRequiredModel(): string { return requiredModel; }
 
 export function listCliAgents(): CliAgentListed[] {
   if (orgLoops) {

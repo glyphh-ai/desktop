@@ -25,7 +25,7 @@ import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenVal
 import { cliFix } from "./cli-auth.js";
 import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
-import { listCliAgents, ensureOrgLoops, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -395,7 +395,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   ];
   // The CLI takes the vendor's own name; the app stores catalog ids. This lane
   // used to pass the id whole, so the panel asked for "anthropic::claude-…".
-  const wanted = bareModel(p.model ?? "");
+  // A turn that named none runs on the org's default with the gateway on (his order, 2026-09-20).
+  const wanted = bareModel(p.model ?? "") || orgRequiredModel();
   if (wanted) parts.push("--model", wanted);
   if (p.effort) parts.push("--effort", p.effort);
   if (resume) parts.push("--resume", resume);
