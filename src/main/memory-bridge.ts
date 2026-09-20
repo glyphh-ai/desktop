@@ -170,6 +170,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   headers.host = target.host;
 
   const inject = isMessagesCall(req.method, up.rest);
+  if (inject) console.warn("[memory-bridge] messages call through the bridge", JSON.stringify({ upstream: target.host }));
   let body: Buffer | null = null;
   let userText = "";
   if (inject) {
@@ -281,9 +282,9 @@ async function factBlock(userText: string): Promise<string> {
 
 async function captureTurn(userText: string, assistantText: string): Promise<void> {
   try {
-    if (!(await lane("capture"))) return;
+    if (!(await lane("capture"))) { console.warn("[memory-bridge] turn not captured: the capture lane is off (policy, org rule, or your switch)"); return; }
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;
-    if (!(await lane("sensitive")) && SENSITIVE.test(text)) return;
+    if (!(await lane("sensitive")) && SENSITIVE.test(text)) { console.warn("[memory-bridge] turn not captured: sensitive topic and the sensitive lane is off"); return; }
     const { chunks } = llmChunk({ text, maxChars: 1_200 });
     if (!chunks.length) return;
     const sourceId = `turn-${Date.now().toString(36)}`;
@@ -295,6 +296,7 @@ async function captureTurn(userText: string, assistantText: string): Promise<voi
         })),
       });
     }
+    console.warn("[memory-bridge] captured", JSON.stringify({ chunks: chunks.length, reply: assistantText.length }));
   } catch (err) {
     console.warn("[memory-bridge] capture failed:", err instanceof Error ? err.message : err);
   }
