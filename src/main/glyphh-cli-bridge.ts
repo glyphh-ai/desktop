@@ -73,6 +73,9 @@ interface LiveChat {
   /** The CLI's own session id — resume + the Terminal view key off it. */
   cliSessionId: string | null;
   permission: "ask" | "plan" | "acceptEdits" | "auto";
+  /** What the process was spawned with; a different ask respawns it. */
+  model?: string;
+  effort?: string;
   /** Which vendor CLI is running, so a failure can name its own sign-in. */
   cli: string;
   buf: string;
@@ -418,6 +421,8 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     cliSessionId: resume ?? null,
     permission,
     cli: "claude",
+    model: wanted,
+    effort: p.effort || "",
     buf: "",
     usage: { inTokens: 0, outTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     nextControl: 1,
@@ -518,6 +523,18 @@ export function registerGlyphhCliBridge(): void {
     }
     let c = live.get(p.chatId);
     if (c && c.proc.exitCode !== null) { live.delete(p.chatId); c = undefined; }
+    // THE CHIP IS THE MODEL (his report, 2026-09-20: the chip said astra, the
+    // gateway logged luna). The claude process is spawned with its --model and
+    // --effort and keeps them for life, so a changed pick respawns it; the
+    // conversation continues through --resume on the CLI's own session.
+    const wantModel = bareModel(p.model ?? "") || orgRequiredModel();
+    const wantEffort = p.effort || "";
+    if (c && ((c.model || "") !== wantModel || (c.effort || "") !== wantEffort)) {
+      console.warn("[cli-bridge] respawning the chat for a new model/effort", { from: c.model || "", to: wantModel, effort: wantEffort });
+      try { c.proc.kill("SIGTERM"); } catch { /* racing exit */ }
+      live.delete(p.chatId);
+      c = undefined;
+    }
     if (!c) c = spawnChat(p, e.sender);
     else {
       c.sender = e.sender;
