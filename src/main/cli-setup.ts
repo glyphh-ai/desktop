@@ -72,7 +72,9 @@ function watchOutput(): void {
     // Every renderer, the home view included: the workbench lives there, not in the window.
     for (const wc of webContents.getAllWebContents()) { if (!wc.isDestroyed()) wc.send("cli-setup-done", { loop: parsed.loop || "", model: parsed.model || "", view: parsed.view || "" }); }
   };
-  fs.watchFile(file, { interval: 1000 }, tick);
+  // Never a persistent handle: it kept the main process alive after the last
+  // window closed (his report, 2026-09-20: "the app doesn't exit properly").
+  fs.watchFile(file, { interval: 1000, persistent: false }, tick);
 }
 
 export function registerCliSetupIpc(): void {
