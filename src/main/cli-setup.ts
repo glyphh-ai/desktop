@@ -21,10 +21,10 @@ let watching = false;
 
 const q = (s: string): string => (process.platform === "win32" ? `'${s.replace(/'/g, "''")}'` : `"${s.replace(/"/g, '\\"')}"`);
 
-async function models(): Promise<Array<{ id: string; name: string }>> {
+async function models(): Promise<Array<{ id: string; name: string; provider: string }>> {
   try {
-    const rows = await getClient().models.available() as Array<{ id?: string; name: string; modality?: string }>;
-    return rows.filter((m) => !m.modality || m.modality === "chat").map((m) => ({ id: m.name, name: m.name }));
+    const rows = await getClient().models.available() as Array<{ id?: string; name: string; modality?: string; providerSlug?: string }>;
+    return rows.filter((m) => !m.modality || m.modality === "chat").map((m) => ({ id: m.name, name: m.name, provider: m.providerSlug || "" }));
   } catch { return []; }
 }
 

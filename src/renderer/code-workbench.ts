@@ -2255,8 +2255,12 @@ async function init(): Promise<void> {
     };
     void api.cliAgentsList?.().then((res) => {
       const row = res?.ok ? res.agents.find((a) => a.id === r.loop) : undefined;
-      if (row && r.model) void api.cliAgentsSave?.({ ...row, model: r.model });
-      window.dispatchEvent(new CustomEvent("glyphh:pref-changed"));
+      const saved = row && r.model ? api.cliAgentsSave?.({ ...row, model: r.model }) : Promise.resolve();
+      void Promise.resolve(saved).then(() => {
+        // The default takes effect NOW: the seated agent switches to it (his report, 2026-09-20).
+        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(r.loop);
+        window.dispatchEvent(new CustomEvent("glyphh:pref-changed"));
+      });
     });
     closeInstaller();
   });

@@ -17,7 +17,7 @@ import { spawnSync } from "node:child_process";
 import readline from "node:readline";
 
 interface Loop { id: string; name: string; cli: string; model?: string }
-interface Input { version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string }>; defaults: { loop?: string; view?: string; model?: string } }
+interface Input { version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string; provider?: string }>; defaults: { loop?: string; view?: string; model?: string } }
 interface Output { done: boolean; loop?: string; model?: string; view?: "glyphh" | "cli" }
 
 const [, , inPath, outPath] = process.argv;
@@ -68,7 +68,13 @@ let status = "";
 let loopIdx = Math.max(0, input.loops.findIndex((l) => l.id === input.defaults.loop));
 let modelIdx = 0;
 let viewIdx: 0 | 1 = input.defaults.view === "cli" ? 1 : 0;
-const modelOptions = (): Array<{ id: string; name: string }> => [{ id: "", name: "the loop's own default" }, ...input.models];
+// A loop reaches one vendor: its model list is that vendor's (his report, 2026-09-20: Codex offered Anthropic's).
+const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor" };
+const modelOptions = (): Array<{ id: string; name: string }> => {
+  const provider = LOOP_PROVIDER[input.loops[loopIdx]?.cli || ""] || "";
+  const mine = input.models.filter((m) => !provider || (m.provider || "") === provider);
+  return [{ id: "", name: "the loop's own default" }, ...mine];
+};
 const refresh = (): void => { installed = new Map(CLIS.map((x) => [x.key, has(x.bin)])); versions = new Map(CLIS.filter((x) => installed.get(x.key)).map((x) => [x.key, version(x.bin)])); };
 
 // ── drawing ──
@@ -194,7 +200,7 @@ function onKey(_: string, k: readline.Key): void {
     else if (name === "escape") { screen = "home"; cursor = CLIS.length; }
     else if (name === "left" || name === "right") {
       const d = name === "left" ? -1 : 1;
-      if (cursor === 0 && input.loops.length) loopIdx = (loopIdx + input.loops.length + d) % input.loops.length;
+      if (cursor === 0 && input.loops.length) { loopIdx = (loopIdx + input.loops.length + d) % input.loops.length; modelIdx = 0; }
       else if (cursor === 1) { const n = modelOptions().length; modelIdx = (modelIdx + n + d) % n; }
       else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0;
     } else if (name === "return") { if (cursor === 3) { screen = "home"; cursor = CLIS.length + 1; status = "defaults saved"; } else if (cursor === 2) viewIdx = viewIdx === 0 ? 1 : 0; }
