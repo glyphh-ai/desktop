@@ -17460,23 +17460,25 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    the right and vanish into the dark on the left, and three dot layers of
    different pitch drift right → left at different speeds. */
 .level-track.ultra {
+  --ultra: var(--accent, #8c3bf2);
   overflow: hidden;
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--ultra) 60%, var(--border));
   background:
-    radial-gradient(70% 140% at 100% 50%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%),
+    radial-gradient(70% 140% at 100% 50%, color-mix(in srgb, var(--ultra) 75%, transparent), transparent 70%),
     linear-gradient(90deg,
-      color-mix(in srgb, var(--accent) 6%, #121214) 0%,
-      color-mix(in srgb, var(--accent) 18%, #17141c) 40%,
-      color-mix(in srgb, var(--accent) 52%, #221a30) 78%,
-      color-mix(in srgb, var(--accent) 78%, #2a1d3d) 100%);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 40%, transparent) inset, 0 0 10px color-mix(in srgb, var(--accent) 25%, transparent);
+      color-mix(in srgb, var(--ultra) 8%, #0e0a14) 0%,
+      color-mix(in srgb, var(--ultra) 26%, #150f1f) 40%,
+      color-mix(in srgb, var(--ultra) 62%, #1c1230) 78%,
+      color-mix(in srgb, var(--ultra) 90%, #241640) 100%);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--ultra) 45%, transparent) inset, 0 0 12px color-mix(in srgb, var(--ultra) 35%, transparent);
 }
 .level-track.ultra::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  /* Three purple dot layers: small bright lilac, medium purple, large deep purple. */
   background-image:
-    radial-gradient(circle, rgba(255,255,255,.95) 0 0.7px, transparent 1.2px),
-    radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, white) 0 1px, transparent 1.7px),
-    radial-gradient(circle, color-mix(in srgb, var(--accent) 80%, white) 0 1.4px, transparent 2.2px);
+    radial-gradient(circle, color-mix(in srgb, var(--ultra) 70%, white) 0 0.7px, transparent 1.2px),
+    radial-gradient(circle, var(--ultra) 0 1px, transparent 1.7px),
+    radial-gradient(circle, color-mix(in srgb, var(--ultra) 85%, #5a2bb0) 0 1.4px, transparent 2.2px);
   background-size: 5px 5px, 9px 9px, 14px 14px;
   background-position: 0 0, 3px 2px, 7px 5px;
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.12) 22%, rgba(0,0,0,.55) 55%, #000 100%);
@@ -17484,8 +17486,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
   animation: level-ultra-drift 1.6s linear infinite;
 }
 .level-track.ultra .level-fill { background: transparent; }
-.level-track.ultra .level-dot { background: color-mix(in srgb, var(--accent) 35%, white); opacity: .5; }
-.level-track.ultra .level-thumb { background: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
+.level-track.ultra .level-dot { background: color-mix(in srgb, var(--ultra) 60%, white); opacity: .55; }
+.level-track.ultra .level-thumb { background: #fff; box-shadow: 0 0 0 1px color-mix(in srgb, var(--ultra) 55%, transparent), 0 0 14px color-mix(in srgb, var(--ultra) 85%, transparent); }
 /* Each layer moves a whole number of its own tiles per cycle, so the loop never jumps. */
 @keyframes level-ultra-drift {
   from { background-position: 0 0, 3px 2px, 7px 5px; }
