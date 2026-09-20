@@ -184,8 +184,11 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
         cache.set(GATEWAY_KEY, { at: Date.now(), value: v });
         return v;
       })();
-      const vendor = CLI_VENDOR[row.cli];
-      value = { ...all, models: all.models.filter((m) => m.providerSlug === "auto" || !vendor || m.providerSlug === vendor) };
+      // THE WHOLE LIST, ON EVERY LOOP (his order, 2026-09-20): with the
+      // gateway on the router translates every dialect, so Claude Code can run
+      // an OpenAI model and Codex an Anthropic one. Nothing is sliced by vendor.
+      void CLI_VENDOR;
+      value = { ...all, models: [...all.models] };
       value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
       cache.set(loopId, { at: Date.now(), value });
       return value;

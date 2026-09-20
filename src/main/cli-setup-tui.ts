@@ -85,7 +85,8 @@ let viewIdx: 0 | 1 = input.defaults.view === "cli" && CLI_MODE_ALLOWED ? 1 : 0;
 const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor" };
 const modelOptions = (): Array<{ id: string; name: string }> => {
   const provider = LOOP_PROVIDER[input.loops[loopIdx]?.cli || ""] || "";
-  const mine = input.models.filter((m) => !provider || (m.provider || "") === provider);
+  // Gateway on: the org's whole list runs on every loop (the router translates); off: the loop's own vendor.
+  const mine = input.gateway ? input.models : input.models.filter((m) => !provider || (m.provider || "") === provider);
   return [{ id: "", name: "the loop's own default" }, ...mine];
 };
 const refresh = (): void => { installed = new Map(CLIS.map((x) => [x.key, has(x.bin)])); versions = new Map(CLIS.filter((x) => installed.get(x.key)).map((x) => [x.key, version(x.bin)])); };

@@ -25,7 +25,7 @@ import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenVal
 import { cliFix } from "./cli-auth.js";
 import { requestUsesGateway, LOOP_VENDOR } from "./gateway-token.js";
 import { getClient } from "./glyphh-client.js";
-import { listCliAgents, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
+import { listCliAgents, ensureOrgLoops, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
@@ -234,6 +234,8 @@ interface RunPayload {
   permission?: LiveChat["permission"];
   steer?: string;
   model?: string;
+  /** The loop's effort level (low … max) for CLIs that take one. */
+  effort?: string;
   prompt?: string;
   /** The picked LOOP (a CLI agent id) — decides WHICH CLI runs this chat. */
   loop?: string;
@@ -271,14 +273,23 @@ function bridgeMcpFile(): string | null {
 /** The chat's LOOP: the picked CLI agent, else the first configured one,
  *  else a bare claude default (his ruling, 2026-09-11: every vendor loop
  *  works — codex must never open claude's session). */
-function loopOf(p: RunPayload): CliAgentListed | null {
-  const rows = listCliAgents();
-  const hit = rows.find((r) => r.id === p.loop);
+async function loopOf(p: RunPayload): Promise<CliAgentListed | null> {
+  let rows = listCliAgents();
+  let hit = rows.find((r) => r.id === p.loop);
   if (hit) return hit;
-  // NEVER a silent reroute (his report, 2026-09-14: a codex session ran on
-  // claude): a named loop that misses the roster is a bug worth one loud
-  // line before the fallback stands in.
-  if (p.loop) console.warn("[cli-bridge] loop not in roster — falling back", { loop: p.loop, roster: rows.map((r) => r.id) });
+  if (p.loop) {
+    // The roster may simply not be loaded yet (his report, 2026-09-20: the
+    // first turn after launch ran on claude until a terminal tile had
+    // refreshed the roster). Ask the server once, then look again.
+    await ensureOrgLoops(true).catch(() => undefined);
+    rows = listCliAgents();
+    hit = rows.find((r) => r.id === p.loop);
+    if (hit) return hit;
+    // NEVER a silent reroute (his report, 2026-09-14: a codex session ran on
+    // claude). A named loop that is not on the roster is refused, loudly.
+    console.warn("[cli-bridge] loop not in roster", { loop: p.loop, roster: rows.map((r) => r.id) });
+    return null;
+  }
   return rows.find((r) => r.cli === "claude") ?? rows[0] ?? null;
 }
 
@@ -295,7 +306,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // and every turn ran fresh).
   // The org's credit strategy decides whether THIS session spends credits:
   // chat and co-work stay on the member's own login under "reserved".
-  const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)));
+  const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)), p.effort);
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
     env: { ...process.env },
@@ -386,6 +397,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   // used to pass the id whole, so the panel asked for "anthropic::claude-…".
   const wanted = bareModel(p.model ?? "");
   if (wanted) parts.push("--model", wanted);
+  if (p.effort) parts.push("--effort", p.effort);
   if (resume) parts.push("--resume", resume);
   const mcp = bridgeMcpFile();
   if (mcp) parts.push("--mcp-config", mcp);
@@ -480,7 +492,13 @@ export function registerGlyphhCliBridge(): void {
     const lastUser = [...(chat?.messages ?? [])].reverse().find((m) => m?.role === "user");
     const steer = String(p.steer ?? "").trim();
     const text = [steer, String(p.prompt ?? lastUser?.text ?? "").trim()].filter(Boolean).join("\n\n");
-    const agent = loopOf(p);
+    const agent = await loopOf(p);
+    if (p.loop && !agent) {
+      const runId = `${p.chatId}:${Date.now()}`;
+      const msg = `The "${p.loop}" loop is not available to you right now. It may be turned off for your organization; pick another loop or ask an org admin.`;
+      try { e.sender.send("glyphh-agent:error", { runId, error: msg }); e.sender.send("glyphh-agent:done", { runId, stopped: true }); } catch { /* window gone */ }
+      return { runId };
+    }
     // Re-prime the per-CLI binding from the chat's persisted map — the
     // in-memory map is empty after a restart, and a run would start a fresh
     // CLI session, silently dropping the conversation's context.

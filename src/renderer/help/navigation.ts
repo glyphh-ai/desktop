@@ -419,7 +419,8 @@ export function openSettingsModal(sub?: string): void {
         nav.querySelector(`.settings-nav-item.not-on-platform[data-sub="${sub}"]`) ?? nav.querySelector(`.settings-nav-item:not(.platform-only)[data-sub="${sub}"]`);
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
       // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
-      for (const sub of ["general", "memory", "privacy", "appearance", "account", "artifacts", "usage", "mcp", "cli-installer"]) {
+      // Appearance sits right under General (his order, 2026-09-20).
+      for (const sub of ["general", "appearance", "memory", "privacy", "account", "artifacts", "usage", "mcp", "cli-installer"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }

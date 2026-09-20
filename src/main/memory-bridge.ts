@@ -289,6 +289,8 @@ function upstreamOf(url: string): { base: string; rest: string; scope: MemorySco
 
 /** An Anthropic-wire chat call — the one shape we inject into (v1; the
  *  OpenAI/Gemini shapes pass through untouched until their lanes land). */
+const FORWARD_IDLE_MS = 180_000;
+
 function isMessagesCall(method: string | undefined, rest: string): boolean {
   const pathOnly = rest.split("?")[0];
   return method === "POST" && /\/v1\/messages$/.test(pathOnly);
@@ -331,6 +333,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     headers["content-length"] = String(body.length);
   }
 
+  console.warn("[memory-bridge] forward", JSON.stringify({ method: req.method, upstream: target.host, path: target.pathname }));
   const pr = (target.protocol === "https:" ? await import("node:https") : await import("node:http")).request(
     { protocol: target.protocol, hostname: target.hostname, port: target.port || undefined,
       method: req.method, path: target.pathname + target.search, headers },
@@ -352,6 +355,15 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   pr.on("error", (err) => {
     if (!res.headersSent) res.writeHead(502);
     res.end(`bridge forward error: ${err instanceof Error ? err.message : String(err)}`);
+  });
+  // A hung upstream must not hang the CLI forever (his report, 2026-09-20: a
+  // Codex turn sat for minutes with nothing on the wire). No bytes at all for
+  // this long ends the request as a 504 the CLI can show.
+  pr.setTimeout(FORWARD_IDLE_MS, () => {
+    console.warn("[memory-bridge] forward timed out", JSON.stringify({ upstream: target.host, path: target.pathname }));
+    if (!res.headersSent) res.writeHead(504);
+    try { res.end("bridge forward timed out"); } catch { /* gone */ }
+    pr.destroy(new Error("bridge forward timed out"));
   });
   if (body) pr.end(body);
   else { req.pipe(pr); req.on("error", () => pr.destroy()); }

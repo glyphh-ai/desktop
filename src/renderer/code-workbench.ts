@@ -441,9 +441,14 @@ async function refreshCliAllowed(): Promise<void> {
     cliAllowed = g?.cliAllowed !== false;
   } catch { /* offline — whatever we last knew stands */ }
   if (!cliAllowed) document.getElementById("code-term-toggle")?.remove();
+  else (window as unknown as { __wbEnsureTermToggle?: () => void }).__wbEnsureTermToggle?.();
 }
 void refreshCliAllowed();
 window.addEventListener("glyphh:plan-gates-changed", () => void refreshCliAllowed());
+// The org's switches reach the shell as account-updated (main's org poll);
+// nothing raised the gates event before, so a flip waited for a restart
+// (his report, 2026-09-20).
+(window as unknown as { glyphh?: { onAccountUpdated?: (cb: () => void) => void } }).glyphh?.onAccountUpdated?.(() => window.dispatchEvent(new Event("glyphh:plan-gates-changed")));
 
 let defaultLoopPref = "";
 const refreshLoopPrefs = (): void => {
@@ -5286,6 +5291,7 @@ async function init(): Promise<void> {
      *  singleton whenever the chat card comes up — from a loop tile, the Glyphh
      *  mark, a workspace cell, or the boot (his report, 2026-09-16: it vanished
      *  when the card opened without a loop in hand). */
+    (window as unknown as { __wbEnsureTermToggle?: () => void }).__wbEnsureTermToggle = () => ensureTermToggle();
     function ensureTermToggle(): void {
       if (!cliAllowed) { document.getElementById("code-term-toggle")?.remove(); return; }
       const headActions = document.querySelector<HTMLElement>(".session-head-actions");

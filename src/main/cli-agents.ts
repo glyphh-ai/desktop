@@ -573,7 +573,7 @@ export function modesFor(cli: CliAgentRow["cli"], surface: "panel" | "terminal" 
  *  same env file / model / MCP wiring an interactive open gets. The loop
  *  scheduler runs these (no session mode → the loop config's permission
  *  stands); chat turns pass the SESSION's mode, which wins. */
-export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string): string {
+export function composeHeadless(agent: CliAgentListed, prompt: string, model?: string, sessionPerm?: SessionPermission, resumeId?: string, effort?: string): string {
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
   const m = (model ?? row.model ?? "").trim();
@@ -582,10 +582,15 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   const strip = requestUsesGateway(row.cli, m || requiredModel, !!row.apiKey) ? "" : stripGatewayVars(row);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
   const rid = (resumeId ?? "").replace(/'/g, "");
+  // Effort (his order, 2026-09-20): the same dial for every CLI that has one.
+  // claude takes --effort; codex takes the config key; the rest ignore it.
+  const lvl = EFFORT_LEVELS.has(String(effort || "")) ? String(effort) : "";
+  const claudeEffort = lvl ? ` --effort ${lvl}` : "";
+  const codexEffort = lvl ? ` -c model_reasoning_effort="${lvl}"` : "";
   let core: string;
   switch (row.cli) {
     case "claude":
-      core = `${row.cmd}${modelFlag(row.cli, m)}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
+      core = `${row.cmd}${modelFlag(row.cli, m)}${claudeEffort}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
       break;
     case "codex": {
       const token = row.mcp ? mcpTokenOf(row.id) : "";
@@ -597,7 +602,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // codex exec stops dead with "Not inside a trusted directory" (his
       // report, 2026-09-20); the folder the user picked IS the trust decision.
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
+        + `${row.cmd}${CODEX_NO_UPDATE}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
@@ -635,6 +640,8 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
 // headless turn sits on that prompt forever (his report, 2026-09-20). The
 // update check is the CLI's own config switch; the user updates on their terms.
 const CODEX_NO_UPDATE = " -c check_for_update_on_startup=false";
+/** The effort levels both claude (--effort) and codex (model_reasoning_effort) accept. */
+export const EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 // codex exec (and exec resume) refuse a folder that is not a git checkout
 // unless told to skip that check; the headless lanes always pass it.
 const CODEX_SKIP_GIT = " --skip-git-repo-check";

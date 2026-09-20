@@ -115,6 +115,125 @@ const MODE_DETAILS: Record<(typeof MODES)[number]["id"], string> = {
   acceptEdits: "File edits inside the working folder run without asking, so refactors flow uninterrupted. Everything else — shell commands, and anything that leaves your machine (connected-account calls, network) — still stops for approval.",
   auto: "Full auto — no gates at all. Every action runs without asking: edits, shell commands, connected-account calls, and dangerous commands alike. Use it for sessions you trust to run unattended end to end.",
 };
+// ── Effort (his order, 2026-09-20): the dial Claude's app has, beside the loop
+// chip, for every CLI that takes one (claude --effort, codex reasoning effort).
+// Five steps, Faster → Smarter; the top step is Ultra and the track lights up.
+const EFFORTS = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "Extra high" },
+  { id: "max", label: "Ultra" },
+] as const;
+const EFFORT_CLIS = new Set(["claude", "codex"]);
+const EFFORT_HELP = "Higher effort means more thorough responses, but takes longer and uses your limits faster.";
+let loopEffort: Record<string, string> = {};
+let loopEffortLoaded = false;
+async function loadLoopEffort(): Promise<void> {
+  if (loopEffortLoaded) return;
+  loopEffortLoaded = true;
+  try {
+    const v = await window.glyphh.getPreference?.("loopEffort", {});
+    if (v && typeof v === "object") loopEffort = v as Record<string, string>;
+  } catch { /* defaults */ }
+}
+function effortCliOf(loopId: string): string { return loops.find((l) => l.id === loopId)?.cli || (loopId === "default" ? "claude" : ""); }
+/** The effort the NEXT turn sends, or "" for a loop without a dial. */
+function currentEffort(): string {
+  if (!EFFORT_CLIS.has(effortCliOf(glyphhLoop))) return "";
+  const v = loopEffort[glyphhLoop] || "medium";
+  return EFFORTS.some((e) => e.id === v) ? v : "medium";
+}
+function paintLevelChip(): void {
+  const wrap = el("code-level-wrap");
+  const chip = el("code-level-chip");
+  if (!wrap || !chip) return;
+  const lvl = currentEffort();
+  wrap.classList.toggle("hidden", !lvl);
+  if (!lvl) return;
+  const e = EFFORTS.find((x) => x.id === lvl);
+  chip.textContent = e?.label ?? lvl;
+  chip.classList.toggle("ultra", lvl === "max");
+}
+function renderLevelPop(): void {
+  const pop = el("code-level-pop");
+  if (!pop) return;
+  pop.textContent = "";
+  const idx = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
+  const head = document.createElement("div");
+  head.className = "code-drop-head level-head";
+  const headLabel = document.createElement("span");
+  headLabel.innerHTML = `Effort <b class="level-name"></b>`;
+  const info = document.createElement("button");
+  info.className = "drop-info-btn";
+  info.type = "button";
+  info.title = "About effort";
+  info.textContent = "i";
+  head.append(headLabel, info);
+  pop.appendChild(head);
+  const help = document.createElement("div");
+  help.className = "drop-detail-body level-help hidden";
+  help.textContent = EFFORT_HELP;
+  pop.appendChild(help);
+  info.addEventListener("click", (ev) => { ev.stopPropagation(); help.classList.toggle("hidden"); });
+  const scale = document.createElement("div");
+  scale.className = "level-scale";
+  scale.innerHTML = `<span>Faster</span><span>Smarter</span>`;
+  pop.appendChild(scale);
+  const track = document.createElement("div");
+  track.className = "level-track";
+  track.tabIndex = 0;
+  track.setAttribute("role", "slider");
+  track.setAttribute("aria-valuemin", "0");
+  track.setAttribute("aria-valuemax", String(EFFORTS.length - 1));
+  const fill = document.createElement("span"); fill.className = "level-fill"; track.appendChild(fill);
+  EFFORTS.forEach((e, i) => {
+    const dot = document.createElement("span");
+    dot.className = "level-dot";
+    dot.style.left = `${(i / (EFFORTS.length - 1)) * 100}%`;
+    dot.title = e.label;
+    track.appendChild(dot);
+  });
+  const thumb = document.createElement("span"); thumb.className = "level-thumb"; track.appendChild(thumb);
+  pop.appendChild(track);
+  const paint = (i: number): void => {
+    const e = EFFORTS[i];
+    (head.querySelector(".level-name") as HTMLElement).textContent = e.label;
+    head.classList.toggle("ultra", e.id === "max");
+    track.classList.toggle("ultra", e.id === "max");
+    track.setAttribute("aria-valuenow", String(i));
+    const pct = (i / (EFFORTS.length - 1)) * 100;
+    thumb.style.left = `${pct}%`;
+    fill.style.width = `${pct}%`;
+    track.querySelectorAll<HTMLElement>(".level-dot").forEach((d, j) => d.classList.toggle("on", j <= i));
+  };
+  const choose = (i: number): void => {
+    const e = EFFORTS[Math.max(0, Math.min(EFFORTS.length - 1, i))];
+    loopEffort = { ...loopEffort, [glyphhLoop]: e.id };
+    void window.glyphh.setPreference?.("loopEffort", loopEffort);
+    paint(EFFORTS.indexOf(e));
+    paintLevelChip();
+  };
+  const stepAt = (clientX: number): number => {
+    const r = track.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (clientX - r.left) / Math.max(1, r.width)));
+    return Math.round(x * (EFFORTS.length - 1));
+  };
+  let dragging = false;
+  track.addEventListener("pointerdown", (ev) => { ev.stopPropagation(); dragging = true; track.setPointerCapture(ev.pointerId); choose(stepAt(ev.clientX)); });
+  track.addEventListener("pointermove", (ev) => { if (dragging) choose(stepAt(ev.clientX)); });
+  const stop = (): void => { dragging = false; };
+  track.addEventListener("pointerup", stop);
+  track.addEventListener("pointercancel", stop);
+  track.addEventListener("keydown", (ev) => {
+    const cur = Math.max(0, EFFORTS.findIndex((e) => e.id === currentEffort()));
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); choose(cur + 1); }
+    else if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); choose(cur - 1); }
+  });
+  pop.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  paint(idx);
+}
+
 // Loop: which agent loop runs the session. This chip replaced the old effort
 // dial; the dial's turn/token tiers are gone with it — an attended session is
 // governed by its human, budgets by the resolved model's own limits.
@@ -199,6 +318,7 @@ function paintChips(): void {
   if (ec) {
     const lp = loops.find((x) => x.id === activeLoop()) ?? loops[0];
     ec.textContent = `Loop: ${lp?.name ?? "Default"}`;
+    void loadLoopEffort().then(paintLevelChip);
     ec.title = lp?.description ?? "Which agent loop runs this session";
     ec.className = "code-chip";
     ec.setAttribute("aria-disabled", "false");
@@ -805,9 +925,28 @@ function initComposerControls(): void {
   pop.id = "code-effort-pop";
   pop.className = "code-drop-up hidden";
   effortWrap.appendChild(pop);
+  // The effort dial, to the right of the loop chip.
+  const levelWrap = el("code-level-wrap");
+  if (levelWrap) {
+    const lpop = document.createElement("div");
+    lpop.id = "code-level-pop";
+    lpop.className = "code-drop-up code-level-pop hidden";
+    levelWrap.appendChild(lpop);
+    el("code-level-chip")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      el("code-mode-menu")?.classList.add("hidden");
+      el("code-effort-pop")?.classList.add("hidden");
+      el("code-ctx-pop")?.classList.add("hidden");
+      const opening = lpop.classList.contains("hidden");
+      if (opening) { renderLevelPop(); lpop.classList.remove("hidden"); openChipDropUp(lpop); }
+      else lpop.classList.add("hidden");
+    });
+    void loadLoopEffort().then(paintLevelChip);
+  }
   el("code-mode-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-effort-pop")?.classList.add("hidden");
+    el("code-level-pop")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
     renderModeMenu();
     const mm = el("code-mode-menu");
@@ -817,6 +956,7 @@ function initComposerControls(): void {
   el("code-effort-chip")?.addEventListener("click", (e) => {
     e.stopPropagation();
     el("code-mode-menu")?.classList.add("hidden");
+    el("code-level-pop")?.classList.add("hidden");
     el("code-ctx-pop")?.classList.add("hidden");
     void refreshLoops().then(() => { renderLoopMenu(); const p2 = el("code-effort-pop"); if (p2 && !p2.classList.contains("hidden")) openChipDropUp(p2); });
     renderLoopMenu();
@@ -2090,12 +2230,14 @@ function connectCardEl(chat: CodeChat, card: ConnectCard): HTMLElement {
 /** A styled card for a gateway decline (out of credits / role / rate) — replaces
  *  the raw "API Error: 400 …" text with a title, explanation, and one-click
  *  actions (buy credits / manage plan). */
+const CLI_DISPLAY: Record<string, string> = { claude: "Claude Code", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor" };
+function cliDisplayName(cli?: string): string { return (cli && CLI_DISPLAY[cli]) || (cli ? cli : "The loop's CLI"); }
 function declineCardEl(d: { kind: string; url: string; cli?: string; command?: string }): HTMLElement {
   const COPY: Record<string, { title: string; body: string; cta: string }> = {
     credits: { title: "Out of credits", body: "The model you picked needs gateway credits to run. Buy more to keep going.", cta: "Buy more credits" },
     role: { title: "Model not allowed", body: "This model isn't enabled for your account or role — pick another, or manage your plan.", cta: "Manage plan" },
     rate: { title: "Rate limited", body: "The gateway is busy right now. Try again in a moment, or pick a different model.", cta: "Open account" },
-    signin: { title: "The CLI's login expired", body: `${d.cli || "The agent"} can't refresh its session, so no turn can run. Sign in again, then send this message once more.`, cta: `Sign in to ${d.cli || "the CLI"}` },
+    signin: { title: "Sign in to continue", body: `${cliDisplayName(d.cli)} needs you to sign in again before a turn can run${d.command ? ` (run \`${d.command}\`)` : ""}. Then send this message once more.`, cta: "Sign in" },
     generic: { title: "Model unavailable", body: "The gateway declined this model. Check your account, or pick a different one.", cta: "Open account" },
   };
   const c = COPY[d.kind] || COPY.generic;
@@ -3722,7 +3864,7 @@ function send(): void {
   const webAlwaysRemote = onWebTarget() && !!(window as unknown as { glyphhSdk?: { sessions?: { create?: unknown } } }).glyphhSdk?.sessions?.create;
   if (canRunRemote(src) || webAlwaysRemote) { void saveStore().then(() => launchRemote(c, steer ? `${steer}\n\n${text}` : text, src ?? { kind: "cloud-new" })); return; }
   const launch = (retried: boolean): Promise<void> =>
-    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}), ...(sessionCliSid(c) ? { cliSessionId: sessionCliSid(c)! } : {}) })
+    window.glyphh.glyphhRun({ chatId: c.id, attachments, ...(c.workdir ? { workdir: c.workdir } : {}), mode: modeOf(c), permission: c.permission ?? defaultMode, ...(src ? { source: src } : {}), ...(steer ? { steer } : {}), ...(sessionModel(c) ? { model: sessionModel(c)! } : {}), ...(c.loop ? { loop: c.loop } : {}), ...(currentEffort() ? { effort: currentEffort() } : {}), ...(sessionCliSid(c) ? { cliSessionId: sessionCliSid(c)! } : {}) })
       .then((r) => { const run = liveRuns.get(c.id); if (run && !run.runId) run.runId = r?.runId ?? `r-local-${c.id}`; })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
