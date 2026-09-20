@@ -432,7 +432,7 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
     headless: true, resumeLast: true, resumeById: true, modelFlag: true, mcp: true,
     baseUrlEnv: ["OPENAI_BASE_URL"],
     perm: { safe: " --sandbox read-only", auto: " --full-auto" },
-    permHeadless: { safe: " --sandbox read-only", auto: " --full-auto" },
+    permHeadless: { safe: " --sandbox read-only", auto: " --dangerously-bypass-approvals-and-sandbox" },
   },
   gemini: {
     headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
@@ -534,7 +534,9 @@ export interface OpenOverrides { model?: string; cwd?: string; resume?: boolean 
 export type SessionPermission = "ask" | "plan" | "acceptEdits" | "auto";
 const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPermission, string>>> = {
   claude: { plan: " --permission-mode plan", acceptEdits: " --permission-mode acceptEdits", auto: " --dangerously-skip-permissions" },
-  codex: { plan: " --sandbox read-only", acceptEdits: " --full-auto", auto: " --dangerously-bypass-approvals-and-sandbox" },
+  // `codex exec` has no --full-auto (it errors "unexpected argument", proved
+  // 2026-09-20); its sandbox flag is the accept-edits shape.
+  codex: { plan: " --sandbox read-only", acceptEdits: " --sandbox workspace-write", auto: " --dangerously-bypass-approvals-and-sandbox" },
   gemini: { acceptEdits: " --approval-mode auto_edit", auto: " --yolo" },
   copilot: { acceptEdits: " --allow-all-tools", auto: " --allow-all" },
   // cursor-agent's own words: --mode plan is read-only, --auto-review lets a
