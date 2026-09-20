@@ -12,7 +12,7 @@ import { app, ipcMain, webContents } from "electron";
 import { userScopedPath } from "./app-paths.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { listCliAgents } from "./cli-agents.js";
-import { getClient } from "./glyphh-client.js";
+import { listLoopModels } from "./loop-models.js";
 
 const dir = (): string => userScopedPath("cli-setup");
 const inFile = (): string => path.join(dir(), "input.json");
@@ -21,11 +21,23 @@ let watching = false;
 
 const q = (s: string): string => (process.platform === "win32" ? `'${s.replace(/'/g, "''")}'` : `"${s.replace(/"/g, '\\"')}"`);
 
-async function models(): Promise<Array<{ id: string; name: string; provider: string }>> {
-  try {
-    const rows = await getClient().models.available() as Array<{ id?: string; name: string; modality?: string; providerSlug?: string }>;
-    return rows.filter((m) => !m.modality || m.modality === "chat").map((m) => ({ id: m.name, name: m.name, provider: m.providerSlug || "" }));
-  } catch { return []; }
+/** The SAME list the loop's picker shows (loop-models): the org's list with
+ *  the gateway on, the login's own list otherwise — so a Codex on a ChatGPT
+ *  login is never offered a catalog name it cannot run (his report,
+ *  2026-09-20). One row per loop vendor, deduped by id. */
+async function models(loops: Array<{ id: string; cli: string }>): Promise<Array<{ id: string; name: string; provider: string }>> {
+  const out = new Map<string, { id: string; name: string; provider: string }>();
+  for (const loop of loops) {
+    try {
+      const r = await listLoopModels(loop.id);
+      for (const m of r.models) {
+        if (m.providerSlug === "auto") continue;
+        const key = `${m.providerSlug}:${m.id}`;
+        if (!out.has(key)) out.set(key, { id: m.id, name: m.name, provider: m.providerSlug });
+      }
+    } catch { /* that loop offers nothing */ }
+  }
+  return [...out.values()];
 }
 
 export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string; error?: string }> {
@@ -33,7 +45,7 @@ export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string
     fs.mkdirSync(dir(), { recursive: true });
     const loops = listCliAgents().map((a) => ({ id: a.id, name: a.name, cli: a.cli, model: a.model || "" }));
     const input = {
-      version: app.getVersion(), platform: process.platform, loops, models: await models(),
+      version: app.getVersion(), platform: process.platform, loops, models: await models(loops),
       defaults: { loop: getPreference<string>("glyphhLoop", ""), view: getPreference<string>("defaultLoopView", "glyphh") },
     };
     fs.writeFileSync(inFile(), JSON.stringify(input), "utf-8");

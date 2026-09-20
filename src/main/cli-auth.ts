@@ -73,6 +73,10 @@ const KNOWN: Array<{ re: RegExp; cli?: string; say: (cli: string) => string }> =
     say: (cli) => `${cli} refused to run in this folder because it is not a git repository and ${cli} was not told to skip that check. Open a folder that is a git checkout, or run \`git init\` in this one.`,
   },
   {
+    re: /not supported when using codex with a chatgpt account/i,
+    say: () => "This loop is on Codex's ChatGPT login, which only runs the models Codex itself lists (open Codex and type /model to see them). Pick one of those for the loop, or give the loop an OpenAI API key to use the full catalog.",
+  },
+  {
     re: /update available!?.*\d+\.\d+\.\d+.*->.*\d+\.\d+\.\d+/is,
     say: (cli) => `${cli} stopped on its own "update available" prompt. Update it from a terminal (\`brew upgrade --cask ${cli}\` or \`npm i -g\` as you installed it), or skip the prompt once in a terminal, then run the turn again.`,
   },

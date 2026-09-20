@@ -44,6 +44,9 @@ describe("cli-auth", () => {
     expect(upd?.kind).toBe("explain");
     expect(upd?.message).toContain("update available");
     expect(cliFix("zsh: command not found: gemini", "gemini")?.message).toContain("CLI Installer");
+    const acct = cliFix('{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-4.1\' model is not supported when using Codex with a ChatGPT account."}}', "codex");
+    expect(acct?.kind).toBe("explain");
+    expect(acct?.message).toContain("ChatGPT login");
   });
 
   it("still hands a login failure to the sign-in card, and shrugs at the unknown", () => {

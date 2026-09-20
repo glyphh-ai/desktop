@@ -17,6 +17,8 @@
  */
 
 import path from "path";
+import fs from "fs";
+import { homedir } from "os";
 import { ipcMain } from "electron";
 import { agentRowFor, CLI_PROFILES } from "./cli-agents";
 import { getClient } from "./glyphh-client";
@@ -114,6 +116,41 @@ async function orgGatewayModels(): Promise<{ models: LoopModel[]; baseUrl: strin
   };
 }
 
+/**
+ * LOGIN LANE, CODEX: a ChatGPT login runs ONLY the models Codex's own picker
+ * lists (his report, 2026-09-20: every catalog name — gpt-4.1, gpt-5.1-codex —
+ * came back "not supported when using Codex with a ChatGPT account"). Codex
+ * caches that list in ~/.codex/models_cache.json; the configured default rides
+ * along. An API-key login (auth_mode "apikey") drives the vendor's full list,
+ * so the catalog stays right there. Null = nothing to say, use the catalog.
+ */
+function codexLoginModels(): LoopModel[] | null {
+  const home = path.join(homedir(), ".codex");
+  try {
+    const auth = JSON.parse(fs.readFileSync(path.join(home, "auth.json"), "utf-8")) as { auth_mode?: string };
+    if ((auth.auth_mode || "").toLowerCase() !== "chatgpt") return null;
+  } catch { return null; }
+  let rows: LoopModel[] = [];
+  try {
+    const cache = JSON.parse(fs.readFileSync(path.join(home, "models_cache.json"), "utf-8")) as { models?: Array<{ slug?: string; display_name?: string; visibility?: string }> };
+    rows = (cache.models ?? [])
+      .filter((m) => m.slug && m.visibility !== "hide")
+      .map((m) => ({ id: m.slug!, name: m.display_name || m.slug!, providerSlug: "openai" }));
+  } catch { /* no cache yet: the configured default alone */ }
+  try {
+    const cfg = fs.readFileSync(path.join(home, "config.toml"), "utf-8");
+    const def = /^\s*model\s*=\s*"([^"]+)"/m.exec(cfg)?.[1];
+    if (def && !rows.some((r) => r.id === def)) rows.unshift({ id: def, name: def, providerSlug: "openai" });
+  } catch { /* no config */ }
+  return rows.length ? rows : null;
+}
+
+/** What a loop on the CLI's OWN login can run (no endpoint to ask). */
+async function loginModels(cli: string): Promise<LoopModel[]> {
+  if (cli === "codex") { const own = codexLoginModels(); if (own) return own; }
+  return orgModels(cli);
+}
+
 async function gatewayMode(): Promise<boolean> {
   try { return !!(await getClient().plans.gates()).gatewayAllowed; } catch { return false; }
 }
@@ -157,7 +194,7 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
     const creds = CLI_PROFILES[row.cli]?.baseUrlEnv.length && !row.apiKey ? await gatewayCreds() : null;
     value = creds
       ? { ok: true, source: "gateway", baseUrl: creds.baseUrl, models: await listAt(row.cli, creds.baseUrl, creds.token, true) }
-      : { ok: true, source: row.apiKey ? "byok" : "login", baseUrl: null, models: await orgModels(row.cli) };
+      : { ok: true, source: row.apiKey ? "byok" : "login", baseUrl: null, models: row.apiKey ? await orgModels(row.cli) : await loginModels(row.cli) };
   } catch (err) {
     value = { ok: false, source: "none", baseUrl: null, models: [], error: err instanceof Error ? err.message : String(err) };
   }
