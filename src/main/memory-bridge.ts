@@ -170,6 +170,9 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   headers.host = target.host;
 
   const inject = isMessagesCall(req.method, up.rest);
+  // The reply is teed for capture as text: ask the vendor for it uncompressed,
+  // else the tee holds gzip and the assistant's words never parse (reply: 0).
+  if (inject) delete headers["accept-encoding"];
   if (inject) console.warn("[memory-bridge] messages call through the bridge", JSON.stringify({ upstream: target.host }));
   let body: Buffer | null = null;
   let userText = "";
@@ -280,8 +283,14 @@ async function factBlock(userText: string): Promise<string> {
   } catch { return ""; }   // empty store / no collection yet — inject nothing
 }
 
+// One prompt is captured once: a tool-using turn is several messages calls
+// that all end on the same user text, and each would have stored it again.
+let lastCaptured = { key: "", at: 0 };
 async function captureTurn(userText: string, assistantText: string): Promise<void> {
   try {
+    const key = `${userText}\u0000${assistantText}`;
+    if (key === lastCaptured.key && Date.now() - lastCaptured.at < 10 * 60_000) return;
+    lastCaptured = { key, at: Date.now() };
     if (!(await lane("capture"))) { console.warn("[memory-bridge] turn not captured: the capture lane is off (policy, org rule, or your switch)"); return; }
     const text = assistantText ? `USER: ${userText}\n\nASSISTANT: ${assistantText}` : `USER: ${userText}`;
     if (!(await lane("sensitive")) && SENSITIVE.test(text)) { console.warn("[memory-bridge] turn not captured: sensitive topic and the sensitive lane is off"); return; }
