@@ -438,7 +438,13 @@ async function connectApp(slug: string, btn: HTMLButtonElement): Promise<void> {
   let tries = 0;
   const tick = async (): Promise<void> => {
     await reloadQuietly();
-    if (keep) { const fresh = keep.entry ? entries.find((x) => x.key === keep.entry!.key) : entries.find((x) => x.conn?.appSlug === slug); await openDetail(fresh ? { entry: fresh, app: keep.app } : keep, true); }
+    if (keep) {
+      const fresh = keep.entry ? entries.find((x) => x.key === keep.entry!.key) : entries.find((x) => x.conn?.appSlug === slug);
+      // Once the account has landed the user is on their connection, not the
+      // directory: open its permissions page (his report, 2026-09-20).
+      const landed = !!fresh?.connected;
+      await openDetail(fresh ? { entry: fresh, app: keep.app, page: landed ? "permissions" : keep.page } : keep, true);
+    }
     if (++tries < 6 && !connectedSlugs().has(slug)) setTimeout(() => void tick(), 1500);
   };
   await tick();
