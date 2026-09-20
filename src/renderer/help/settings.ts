@@ -764,7 +764,7 @@ export async function loadUsageAppView(): Promise<void> {
     // the web contract): the budget off billing.balance, the plan's
     // name + monthly pool off the catalog. Dollars end to end.
     const [data, topup] = await Promise.all([
-      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null; limitUsd?: number | null; limitSource?: string | null; mySpentUsd?: number; poolUsd?: number; poolSpentUsd?: number; poolRemainingUsd?: number } | undefined>,
+      Promise.resolve(window.glyphh.dashboardData?.()) as Promise<{ plan?: string; remainingUsd?: number; poolUsdPerMonth?: number; fundsUsd?: number; budgetSpentUsd?: number; periodEnd?: string | null; limitUsd?: number | null; limitSource?: string | null; mySpentUsd?: number; poolUsd?: number; poolSpentUsd?: number; poolRemainingUsd?: number; poolSource?: "team" | "org"; planUsd?: number } | undefined>,
       api.autotopup().catch(() => null),
     ]);
     const planEl = el("ua-plan");
@@ -794,8 +794,19 @@ export async function loadUsageAppView(): Promise<void> {
     if (spentEl) spentEl.textContent = fmtUsd(spent);
     const spentReset = el("ua-spent-reset");
     if (spentReset) spentReset.textContent = resetEl?.textContent ?? "";
+    // A team's share is a monthly number; the org's pool is the plan's dollars a
+    // month plus cash that carries over, and the line says which is which.
     const poolEl = el("ua-pool");
-    if (poolEl) poolEl.textContent = `${fmtUsd(total)} / month`;
+    if (poolEl) poolEl.textContent = data?.poolSource === "team" ? `${fmtUsd(total)} / month` : fmtUsd(total);
+    const poolSub = el("ua-pool-sub");
+    if (poolSub) {
+      const planUsd = Math.max(0, data?.planUsd ?? 0);
+      poolSub.textContent = data?.poolSource === "team"
+        ? "Your team's share of the Glyphh budget, for connector and model calls through Glyphh"
+        : funds > 0
+          ? `${fmtUsd(planUsd)} a month from your plan plus ${fmtUsd(funds)} added, for connector and model calls through Glyphh. Added funds never expire.`
+          : `${fmtUsd(planUsd)} a month from your plan, for connector and model calls through Glyphh`;
+    }
     const fundsEl = el("ua-funds");
     if (fundsEl) fundsEl.textContent = fmtUsd(funds);
     const balEl = el("ua-balance");

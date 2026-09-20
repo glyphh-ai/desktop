@@ -148,6 +148,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       poolUsd: mine?.poolUsd ?? ((plan?.poolUsdPerMonth ?? 0) + (balance?.fundsUsd ?? 0)),
       poolSpentUsd: mine?.poolSpentUsd ?? balance?.spentUsd ?? 0,
       poolRemainingUsd: mine?.poolRemainingUsd ?? balance?.remainingUsd ?? 0,
+      poolSource: mine?.poolSource ?? "org",
+      planUsd: mine?.planUsd ?? balance?.planUsd ?? plan?.poolUsdPerMonth ?? 0,
       // Month-to-date spend in dollars, by source (Pipedream vs provider).
       spendUsd: usage?.usd || 0,
       spendPipedreamUsd: usage?.bySource?.pipedream || 0,

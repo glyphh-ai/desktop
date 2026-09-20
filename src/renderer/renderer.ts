@@ -242,7 +242,7 @@ declare global {
       glyphhAppPreviewClear: (previewWcId?: number) => Promise<{ ok: boolean }>;
       appCallTool: (slug: string, tool: string, args: unknown) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
       panelAppsList: () => Promise<SavedPanelApp[]>;
-      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; limitUsd: number | null; limitSource: "member" | "team" | "organization" | null; mySpentUsd: number; poolUsd: number; poolSpentUsd: number; poolRemainingUsd: number; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
+      dashboardData: () => Promise<{ name: string; plan: string; orgBudget: boolean; remainingUsd: number; poolUsdPerMonth: number; fundsUsd: number; budgetSpentUsd: number; periodEnd: string | null; limitUsd: number | null; limitSource: "member" | "team" | "organization" | null; mySpentUsd: number; poolUsd: number; poolSpentUsd: number; poolRemainingUsd: number; poolSource: "team" | "org"; planUsd: number; spendUsd: number; spendPipedreamUsd: number; spendProviderUsd: number; requests: number; appsCount: number }>;
       // `userId` narrows to one member (org_admin only); "" = the caller's scope.
       usageSeries: (days: number, groupBy: string, userId?: string) => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       dashboardRuns: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
