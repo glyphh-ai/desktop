@@ -18,7 +18,7 @@ import readline from "node:readline";
 
 interface Loop { id: string; name: string; cli: string; model?: string }
 interface Input {
-  version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string; provider?: string }>;
+  version: string; platform: string; loops: Loop[]; models: Array<{ id: string; name: string; provider?: string; source?: string }>;
   defaults: { loop?: string; view?: string; model?: string };
   /** With the gateway on: the only CLIs the org allows (null = every CLI). */
   clis?: string[] | null;
@@ -86,7 +86,12 @@ const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "ope
 const modelOptions = (): Array<{ id: string; name: string }> => {
   const provider = LOOP_PROVIDER[input.loops[loopIdx]?.cli || ""] || "";
   // Gateway on: the org's whole list runs on every loop (the router translates); off: the loop's own vendor.
-  const mine = input.gateway ? input.models : input.models.filter((m) => !provider || (m.provider || "") === provider);
+  // Gateway on: every proxied model on every loop (the router translates), and a
+  // directory row (a CLI's own-login list, never proxied) only on its own loop.
+  // Off: the loop's own vendor.
+  const mine = input.gateway
+    ? input.models.filter((m) => m.source !== "local" || (m.provider || "") === provider)
+    : input.models.filter((m) => !provider || (m.provider || "") === provider);
   return [{ id: "", name: "the loop's own default" }, ...mine];
 };
 const refresh = (): void => { installed = new Map(CLIS.map((x) => [x.key, has(x.bin)])); versions = new Map(CLIS.filter((x) => installed.get(x.key)).map((x) => [x.key, version(x.bin)])); };

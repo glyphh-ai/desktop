@@ -26,15 +26,15 @@ const q = (s: string): string => (process.platform === "win32" ? `'${s.replace(/
  *  the gateway on, the login's own list otherwise — so a Codex on a ChatGPT
  *  login is never offered a catalog name it cannot run (his report,
  *  2026-09-20). One row per loop vendor, deduped by id. */
-async function models(loops: Array<{ id: string; cli: string }>): Promise<Array<{ id: string; name: string; provider: string }>> {
-  const out = new Map<string, { id: string; name: string; provider: string }>();
+async function models(loops: Array<{ id: string; cli: string }>): Promise<Array<{ id: string; name: string; provider: string; source?: string }>> {
+  const out = new Map<string, { id: string; name: string; provider: string; source?: string }>();
   for (const loop of loops) {
     try {
       const r = await listLoopModels(loop.id);
       for (const m of r.models) {
         if (m.providerSlug === "auto") continue;
         const key = `${m.providerSlug}:${m.id}`;
-        if (!out.has(key)) out.set(key, { id: m.id, name: m.name, provider: m.providerSlug });
+        if (!out.has(key)) out.set(key, { id: m.id, name: m.name, provider: m.providerSlug, source: m.source });
       }
     } catch { /* that loop offers nothing */ }
   }
