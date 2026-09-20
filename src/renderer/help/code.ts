@@ -1001,6 +1001,7 @@ function initComposerControls(): void {
     const t = e.target as Node;
     if (!modeWrap.contains(t)) el("code-mode-menu")?.classList.add("hidden");
     if (!effortWrap.contains(t)) el("code-effort-pop")?.classList.add("hidden");
+    { const lw = el("code-level-wrap"); if (lw && !lw.contains(t)) el("code-level-pop")?.classList.add("hidden"); }
     if (modelWrap && !modelWrap.contains(t)) el("code-model-menu")?.classList.add("hidden");
     if (ctxWrap && !ctxWrap.contains(t)) el("code-ctx-pop")?.classList.add("hidden");
     const plusWrap = el("code-plus-wrap");
