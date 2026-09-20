@@ -105,7 +105,7 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
 
     const client = getClient();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const [balance, usage, apps, plans, sub] = await Promise.all([
+    const [balance, usage, apps, plans, sub, mine] = await Promise.all([
       // The org's budget — admins only; a member's 403 → null and
       // the card reads as pooled.
       client.billing.balance().catch(() => null),
@@ -120,6 +120,8 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       // (his law, 2026-08-25) — never a tier string.
       client.billing.plans().catch(() => []),
       client.billing.status().catch(() => null),
+      // The caller's own budget: the org's limit on them plus Glyphh's connector dollars.
+      client.billing.myBudget().catch(() => null),
     ]);
 
     const acct = getAccountInfo();
@@ -137,7 +139,15 @@ export function registerHomeIpc(deps: HomeIpcDeps): void {
       poolUsdPerMonth: plan?.poolUsdPerMonth ?? balance?.planUsd ?? 0,
       fundsUsd: balance?.fundsUsd ?? 0,
       budgetSpentUsd: balance?.spentUsd ?? 0,
-      periodEnd: balance?.periodEnd ?? null,
+      periodEnd: balance?.periodEnd ?? mine?.periodEnd ?? null,
+      // What THIS member may spend (his play-out, 2026-09-20): the org's limit
+      // on them (null = none set) plus the connector pool; spent counts both.
+      limitUsd: mine?.limitUsd ?? null,
+      limitSource: mine?.limitSource ?? null,
+      mySpentUsd: mine?.spentUsd ?? 0,
+      poolUsd: mine?.poolUsd ?? ((plan?.poolUsdPerMonth ?? 0) + (balance?.fundsUsd ?? 0)),
+      poolSpentUsd: mine?.poolSpentUsd ?? balance?.spentUsd ?? 0,
+      poolRemainingUsd: mine?.poolRemainingUsd ?? balance?.remainingUsd ?? 0,
       // Month-to-date spend in dollars, by source (Pipedream vs provider).
       spendUsd: usage?.usd || 0,
       spendPipedreamUsd: usage?.bySource?.pipedream || 0,
