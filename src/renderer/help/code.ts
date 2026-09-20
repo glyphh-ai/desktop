@@ -5190,6 +5190,15 @@ function paintAgentsGrid(host: RailGridHost): void {
 
 // The Agents section announces saves/deletes — the tray follows live.
 window.addEventListener("glyphh:cli-agents-changed", () => { void loadRecentApps(); });
+// THE SERVER'S ROSTER CHANGED (his order, 2026-09-20): a loop the org admin
+// turned off leaves the tray, the recents and the picker; a seated loop that
+// is no longer allowed hands the agent to the first one that is.
+(window.glyphh as unknown as { onCliAgentsChanged?: (cb: (r: { enabled: string[] }) => void) => void }).onCliAgentsChanged?.((r) => {
+  window.dispatchEvent(new CustomEvent("glyphh:cli-agents-changed"));
+  scheduleRailSessionsRefresh();
+  const cur = activeLoop();
+  if (cur && !r.enabled.includes(cur) && r.enabled[0]) (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(r.enabled[0]);
+});
 
 // (The recents splitter died with the rail tray sections — recents fills
 // the stack; see syncRailLayout.)

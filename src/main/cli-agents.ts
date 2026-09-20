@@ -171,8 +171,17 @@ export async function ensureOrgLoops(force = false): Promise<void> {
     try {
       const rows = await getClient().http.get<ServerLoop[]>("/api/loops/available");
       if (Array.isArray(rows)) {
+        const before = orgLoops ? [...orgLoops.values()].filter((r) => r.enabled !== false).map((r) => r.cli).sort().join(",") : null;
         orgLoops = new Map(rows.filter((r) => r && r.cli).map((r) => [r.cli, r]));
         orgLoopsAt = Date.now();
+        // THE ROSTER CHANGED ON THE SERVER (his order, 2026-09-20): a loop an
+        // admin turned off leaves Echo, the agent's picker and the recents
+        // without a restart. Every renderer hears it and repaints.
+        const after = [...orgLoops.values()].filter((r) => r.enabled !== false).map((r) => r.cli).sort().join(",");
+        if (before !== null && before !== after) {
+          const { webContents } = await import("electron");
+          for (const wc of webContents.getAllWebContents()) { if (!wc.isDestroyed()) wc.send("cli-agents-changed", { enabled: after.split(",").filter(Boolean) }); }
+        }
       }
     } catch (err) {
       console.warn("[agents] org loops unavailable — defaults stand:", err instanceof Error ? err.message : String(err));
@@ -1001,7 +1010,10 @@ function codexSessionFiles(): Array<{ file: string; mtime: number; cli: "codex" 
 }
 
 export function listCliSessions(limit = 40): CliSessionRow[] {
-  const files: Array<{ file: string; mtime: number; cli: SessionCli; cwd?: string }> = [...claudeSessionFiles(), ...codexSessionFiles(), ...geminiSessionFiles(), ...copilotSessionFiles(), ...cursorSessionFiles()];
+  // Only the loops the org allows: a disabled loop's sessions leave the recents too.
+  const allowed = new Set(listCliAgents().map((a) => a.cli));
+  const files: Array<{ file: string; mtime: number; cli: SessionCli; cwd?: string }> = [...claudeSessionFiles(), ...codexSessionFiles(), ...geminiSessionFiles(), ...copilotSessionFiles(), ...cursorSessionFiles()]
+    .filter((f) => allowed.has(f.cli));
   files.sort((a, b) => b.mtime - a.mtime);
   const out: CliSessionRow[] = [];
   const readers: Record<SessionCli, (f: { file: string; mtime: number; cwd?: string }) => CliSessionRow | null> = {
@@ -1142,8 +1154,10 @@ export async function ensureLoopEnv(row: CliAgentRow, scope?: { folder?: string;
 }
 
 export function registerCliAgentsIpc(): void {
-  // The roster is server-side; warm it (a pre-sign-in miss just retries later).
+  // The roster is server-side; warm it (a pre-sign-in miss just retries later),
+  // and keep it fresh so an admin's change lands within a minute.
   void ensureOrgLoops();
+  setInterval(() => { void ensureOrgLoops(true); }, ORG_LOOPS_TTL_MS);
   ipcMain.handle("cli-session-delete", (_e, id: string) => {
     try {
       const base = `${String(id)}.jsonl`;
