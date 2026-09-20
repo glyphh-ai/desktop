@@ -5329,6 +5329,7 @@ async function init(): Promise<void> {
             // kept; the rAF loop only backstops the no-seat case.
             const hopChat = openList.find((x) => x.card && x.tile.kind === "agent");
             if (hopChat) seatHandoff = { donor: hopChat, closeOpts: { keepSession: true } };
+            cliHop = { chatId: chatId || "", at: Date.now() };
             (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
             const closeChatWhenTermUp = (tries = 0): void => {
               const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
@@ -6442,6 +6443,8 @@ async function init(): Promise<void> {
      *  grid cell (geometry, memory key, layout binding intact — never a new
      *  column), and the donor closes with its seat kept. */
     let seatHandoff: { donor: TileEntry; closeOpts: { parkTerms?: boolean; keepSession?: boolean } } | null = null;
+    /** The chat the >_ hop left (""= a pending new session) and when; the ← in the terminal returns to it. */
+    let cliHop: { chatId: string; at: number } | null = null;
 
     const findTile = (slug: string): TileEntry | undefined => {
       const key = slug.trim().toLowerCase();
@@ -9108,9 +9111,9 @@ async function init(): Promise<void> {
     return { ...(row?.cli ? { cli: row.cli } : {}), ...(cwd ? { cwd } : {}) };
   }
 
-  async function scopedCliSessions(agentId: string): Promise<Array<{ id: string; title: string; cwd: string }>> {
+  async function scopedCliSessions(agentId: string): Promise<Array<{ id: string; title: string; cwd: string; mtime?: number }>> {
     const g = window as unknown as { glyphh?: {
-      cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string }> }>;
+      cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string; mtime?: number }> }>;
     } };
     const [sess, lane] = await Promise.all([
       g.glyphh?.cliSessionsList?.() ?? Promise.resolve(null),
@@ -9146,9 +9149,37 @@ async function init(): Promise<void> {
     // LOOP'S LANE only; nothing in the lane opens a fresh chat.
     const toChat = (): void => {
       void scopedCliSessions(agent.id).then((rows) => {
-        (window as unknown as { __wbSwitchToChat?: (id: string) => void }).__wbSwitchToChat?.(agent.id);
+        const w = window as unknown as {
+          __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string; chatId?: string }) => void;
+          __glyphhHasSession?: (id: string) => boolean;
+          __glyphhOpenLocalSession?: (id: string) => void;
+          __glyphhNewSession?: () => void;
+          __glyphhSetLoop?: (id: string) => void;
+          __wbSwitchToChat?: (id: string) => void;
+        };
+        w.__wbSwitchToChat?.(agent.id);
+        const cli = cliAgentRows.find((r) => r.id === agent.id)?.cli;
         const newest = rows[0];
-        if (newest) (window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void }).__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli: cliAgentRows.find((r) => r.id === agent.id)?.cli });
+        // BACK TO THE CHAT YOU LEFT (his report, 2026-09-20: the hop back
+        // opened an older thread with its own loop and model). The hop
+        // remembers which chat it came from; that chat is what returns, and
+        // the terminal's session lands IN IT only when it is newer than the
+        // hop (a fresh terminal that was never typed in adopts nothing).
+        const hop = cliHop; cliHop = null;
+        const typedSince = !!newest && !!hop && (newest.mtime ?? 0) >= hop.at - 2000;
+        if (hop && hop.chatId && w.__glyphhHasSession?.(hop.chatId)) {
+          if (typedSince && newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli, chatId: hop.chatId });
+          else w.__glyphhOpenLocalSession?.(hop.chatId);
+          return;
+        }
+        if (hop && !hop.chatId) {
+          // The hop left a pending NEW session: come back to a new session on
+          // this loop, adopting the terminal's session only if one was made.
+          if (typedSince && newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli });
+          else { w.__glyphhNewSession?.(); w.__glyphhSetLoop?.(agent.id); }
+          return;
+        }
+        if (newest) w.__glyphhAdoptCliSession?.({ agentName: agent.name, sessionId: newest.id, agentId: agent.id, cli });
       });
     };
     // ← + session name, top left — the SAME back-to-chat the chat header

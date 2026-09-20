@@ -1688,12 +1688,21 @@ function sessionCliSid(c: CodeChat | undefined, cli?: string): string | null {
   paintChips();
   void refreshModelList();
 };
-(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string }) => void })
+(window as unknown as { __glyphhHasSession?: (id: string) => boolean }).__glyphhHasSession = (id) => chats.some((c) => c.id === id);
+(window as unknown as { __glyphhOpenLocalSession?: (id: string) => void }).__glyphhOpenLocalSession = (id) => openLocalSession(id);
+(window as unknown as { __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string; chatId?: string }) => void })
   .__glyphhAdoptCliSession = (a) => {
     void (async () => {
       const t = await window.glyphh.glyphhCliTranscript?.(a.sessionId);
       if (!t?.ok) { console.warn("[agent] adopt: transcript unavailable", { sessionId: a.sessionId, error: t?.error }); return; }
-      let c = chats.find((x) => (x as { cliSessionId?: string }).cliSessionId === a.sessionId);
+      // The chat the hop came from takes the session (his report, 2026-09-20);
+      // otherwise the chat already bound to it; otherwise a new one.
+      let c = (a.chatId ? chats.find((x) => x.id === a.chatId) : undefined)
+        ?? chats.find((x) => (x as { cliSessionId?: string }).cliSessionId === a.sessionId);
+      if (c && a.chatId && c.id === a.chatId) {
+        (c as { cliSessionId?: string }).cliSessionId = a.sessionId;
+        c.messages = (t.turns ?? []).map((m) => ({ role: m.role, text: m.text, at: Date.now() }));
+      }
       if (!c) {
         c = { id: `c${Date.now().toString(36)}`, title: t.title || a.agentName, createdAt: Date.now(), messages: [], mode: "code", permission: defaultMode };
         (c as { cliSessionId?: string }).cliSessionId = a.sessionId;

@@ -310,6 +310,10 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   // The org's credit strategy decides whether THIS session spends credits:
   // chat and co-work stay on the member's own login under "reserved".
   const line = composeHeadless(agent, text, p.model, p.permission ?? "ask", resumeIds.get(rkey(p.chatId, agent.cli)), p.effort);
+  // ONE LINE PER TURN (his report, 2026-09-20: "nothing happens, it just
+  // spins") — the command, secrets blanked, so a silent turn can be read.
+  console.warn("[cli-bridge] headless turn", JSON.stringify({ cli: agent.cli, loop: agent.id, model: p.model || "", effort: p.effort || "",
+    line: line.replace(/(TOKEN|KEY|SECRET)="[^"]*"/g, '$1="…"').replace(/'[^']{0,4000}'\s*(-c|$)/g, "'…' $1").slice(0, 600) }));
   const proc = spawn(process.env.SHELL || "/bin/zsh", ["-lc", line], {
     cwd: p.workdir && existsSync(p.workdir) ? p.workdir : agent.cwd && existsSync(agent.cwd) ? agent.cwd : homedir(),
     env: { ...process.env },
@@ -365,6 +369,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   proc.stderr.on("data", (b: Buffer) => { errTail = (errTail + b.toString("utf-8")).slice(-2000); });
   proc.on("exit", (code) => {
     live.delete(p.chatId);
+    console.warn("[cli-bridge] headless turn ended", JSON.stringify({ cli: agent.cli, code, sawJson, stderr: errTail.trim().slice(-300) }));
     void reportDirectUsage(chat, p.model);
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
     if (code !== 0 && code !== null) {

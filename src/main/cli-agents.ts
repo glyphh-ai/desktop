@@ -606,7 +606,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       // codex exec stops dead with "Not inside a trusted directory" (his
       // report, 2026-09-20); the folder the user picked IS the trust decision.
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
+        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`
         + (row.mcp ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
           + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") : "");
       break;
@@ -644,6 +644,13 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
 // headless turn sits on that prompt forever (his report, 2026-09-20). The
 // update check is the CLI's own config switch; the user updates on their terms.
 const CODEX_NO_UPDATE = " -c check_for_update_on_startup=false";
+// CODEX IGNORES OPENAI_BASE_URL / OPENAI_API_KEY ON A CHATGPT LOGIN (proved
+// 2026-09-20: every "gateway" turn went to the ChatGPT backend, the child saw
+// nothing, and an org model the login could not run hung the panel). The one
+// route Codex honors for a proxy is a custom model provider whose key comes
+// from an env var: base_url is the sourced OPENAI_BASE_URL, the key is the
+// sourced OPENAI_API_KEY, wire is the Responses API the router serves.
+const CODEX_PROVIDER = ` -c model_provider="glyphh" -c model_providers.glyphh.name="Glyphh" -c "model_providers.glyphh.base_url=\"$OPENAI_BASE_URL\"" -c model_providers.glyphh.env_key="OPENAI_API_KEY" -c model_providers.glyphh.wire_api="responses"`;
 /** The effort levels both claude (--effort) and codex (model_reasoning_effort) accept. */
 export const EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 // codex exec (and exec resume) refuse a folder that is not a git checkout
@@ -676,7 +683,8 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       : ""
     : "";
   const permPart = permFlag(row, false);
-  let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
+  const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";
+  let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE + codexProvider : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
@@ -685,7 +693,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
+        + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart} -c experimental_use_rmcp_client=true`
         + ` -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
         + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "");
     } else if (row.cli === "claude") {
