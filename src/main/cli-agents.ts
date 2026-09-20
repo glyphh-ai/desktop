@@ -620,7 +620,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
         ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
         : "";
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} '${p}'`;
+        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} --json '${p}'`;
       break;
     }
     case "gemini":

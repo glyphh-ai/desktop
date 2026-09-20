@@ -358,10 +358,19 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
             || (typeof j.session_id === "string" && j.session_id)
             || (typeof j.msg?.session_id === "string" && j.msg.session_id) || "";
           if (sid && !resumeIds.get(rkey(p.chatId, agent.cli))) { chat.cliSessionId = sid; resumeIds.set(rkey(p.chatId, agent.cli), sid); }
-          const itemText = j.item?.type === "agent_message" ? j.item.text
+          // --json (2026-09-20): agent messages stream as they complete, and
+          // every other item (command_execution, mcp_tool_call, …) shows as a
+          // tool card from item.started to item.completed — a long Codex turn
+          // used to sit blank until its last line.
+          const item = j.item as { type?: string; text?: string; command?: string; server?: string; tool?: string; status?: string } | undefined;
+          const itemText = item?.type === "agent_message" ? item.text
             : j.msg?.type === "agent_message" ? j.msg.message : undefined;
-          if (itemText) emit(chat, "glyphh-agent:delta", { runId, delta: itemText });
-          else if (j.item?.type && j.item.type !== "agent_message") emit(chat, "glyphh-agent:tool", { runId, phase: "start", name: j.item.type, title: j.item.type });
+          if (itemText && j.type !== "item.started") emit(chat, "glyphh-agent:delta", { runId, delta: `${itemText}\n\n` });
+          else if (item?.type && item.type !== "agent_message") {
+            const title = item.command || (item.server && item.tool ? `${item.server}: ${item.tool}` : item.tool || item.type);
+            if (j.type === "item.started") emit(chat, "glyphh-agent:tool", { runId, phase: "start", name: item.type, title });
+            else if (j.type === "item.completed") emit(chat, "glyphh-agent:tool", { runId, phase: "done", failed: item.status === "failed" });
+          }
           continue;
         } catch { /* not a frame — fall through as text */ }
       }
