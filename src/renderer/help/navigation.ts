@@ -24,6 +24,7 @@ import { loadOrgPanel, initOrgPanel } from "./settings-org-panel.js";
 import { loadCode, initCode, wireGlobalDotCommands, openAppInWorkbench } from "./code.js";
 import { loadSupport, loadAbout } from "./docs.js";
 import { loadMemorySettings } from "./settings-memory.js";
+import { loadBridgeSettings } from "./settings-bridge.js";
 import { loadFiles, initFiles } from "./files.js";
 import { loadDownload } from "./settings-download.js";
 import { loadSupportPanel, initSupportPanel } from "./settings-support.js";
@@ -880,6 +881,7 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "padmin-orgs") loadAdminOrgs();
   else if (sub === "download") void loadDownload();
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
+  else if (sub === "bridge") void loadBridgeSettings();
   // The installer is a terminal panel, not a settings page: open it and step aside.
   else if (sub === "cli-installer") { closeSettingsModal(); void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }

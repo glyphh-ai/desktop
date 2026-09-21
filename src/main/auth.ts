@@ -11,6 +11,7 @@
 
 import fs from "fs";
 import { clearGatewayCreds } from "./gateway-token.js";
+import { bridgeSignedOut, syncBridgeMode } from "./bridge-mode.js";
 import { primeAllLoopEnv, refreshGatewayMode } from "./cli-agents.js";
 import path from "path";
 import os from "os";
@@ -105,6 +106,7 @@ setSignedOutHandler(() => {
   cachedToken = null;
   cachedAccount = null;
   cachedHeartbeat = null;
+  bridgeSignedOut();
   setActiveUser(null);
   clearPreferences(); // the next user must never read this map
   attachStop();
@@ -215,6 +217,9 @@ export async function initAuth(): Promise<void> {
       // Every loop's env gets the router URL + this member's key NOW, so the
       // first launch — whichever path composes it — is already proxied.
       void primeAllLoopEnv();
+      // Bridge Mode (2026-09-21): the org's gates say whether it is forced;
+      // the member's preference says whether they chose it. Either starts it.
+      void getClient().plans.gates().then((g) => syncBridgeMode(g as unknown as { forceBridge?: unknown })).catch(() => syncBridgeMode());
     }
   }
   if (accountTimer) clearInterval(accountTimer);
@@ -251,10 +256,13 @@ async function pollOrgConfig(): Promise<void> {
       // The org's default model (2026-09-20): a change must reach the loops
       // and the chip without a restart, like every other org switch.
       gates.defaultModel,
+      // Force Bridge Mode (2026-09-21): the org flipping it reaches the desktop the same way.
+      gates.forceBridge,
     ]);
     if (lastOrgSignature === null) { lastOrgSignature = signature; return; }
     if (signature === lastOrgSignature) return;
     lastOrgSignature = signature;
+    void syncBridgeMode(gates as { forceBridge?: unknown });
     clearGatewayCreds();
     // The org's default model and lane travel with the gates: re-resolve the
     // required model before the loop env is rewritten (2026-09-20).
@@ -310,6 +318,8 @@ export function logout(): void {
   // reads. Left behind, the next person at this machine keeps authenticating
   // as the last one and billing their org. Memo + files, both.
   clearGatewayCreds();
+  // Claude Desktop's bridge tokens are this member's too: gone with the sign-out.
+  bridgeSignedOut();
   attachStop();
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory

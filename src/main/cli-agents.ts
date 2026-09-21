@@ -798,6 +798,14 @@ export function loopEnvPrefix(row: CliAgentRow): string {
   return `set -a; . "${envFile(row.id)}"; set +a;${strip} `;
 }
 
+/** THE ACCOUNT LANE (Bridge Mode, 2026-09-21): the loop's env sourced, then the
+ *  gateway lines stripped whatever the org's lane says, so this turn runs on the
+ *  CLI's own login with the bridge still in its path for memory. */
+export function accountLanePrefix(row: CliAgentRow): string {
+  if (!fs.existsSync(envFile(row.id))) return "";
+  return `set -a; . "${envFile(row.id)}"; set +a;${stripGatewayVars(row)} `;
+}
+
 function stripGatewayVars(row: CliAgentRow): string {
   if (row.apiKey) return "";
   const key = KEY_ENV[row.cli] ? ` unset ${KEY_ENV[row.cli]};` : "";

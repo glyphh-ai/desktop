@@ -459,6 +459,12 @@ contextBridge.exposeInMainWorld("glyphh", {
   // BYOK — key write-only, calls direct from this machine, never proxied.
   /** The CLI Installer (his order, 2026-09-19): the command that runs it in a terminal panel, and its answer. */
   cliSetupCommand: () => ipcRenderer.invoke("cli-setup-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
+  /** Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude. */
+  bridgeState: () => ipcRenderer.invoke("bridge-state") as Promise<{ running: boolean; url: string; port: number; wanted: boolean; forced: boolean; background: boolean; enabled: boolean; member: string | null; sessions: number; clients: number; activity: string[] }>,
+  bridgeSetEnabled: (on: boolean) => ipcRenderer.invoke("bridge-set-enabled", on) as Promise<unknown>,
+  bridgeSetBackground: (on: boolean) => ipcRenderer.invoke("bridge-set-background", on) as Promise<unknown>,
+  bridgeTuiCommand: () => ipcRenderer.invoke("bridge-tui-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
+  onBridgeOpenTui: (callback: () => void) => { ipcRenderer.on("bridge-open-tui", () => callback()); },
   onCliSetupDone: (callback: (r: { loop: string; model: string; view: string }) => void) => {
     ipcRenderer.on("cli-setup-done", (_e, r) => callback(r));
   },

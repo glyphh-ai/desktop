@@ -21,7 +21,7 @@ try {
   process.chdir(os.homedir());
 }
 
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, webContents } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, Tray, webContents } from "electron";
 
 // Stop Chromium from encrypting its own internal cookie/session storage via
 // the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
@@ -79,6 +79,7 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
 import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { bridgeBackground, bridgeForced, registerBridgeModeIpc } from "./bridge-mode";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -174,6 +175,11 @@ async function createWindow() {
   mainSes.setPermissionCheckHandler((_wc, permission) => permission === "media");
 
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  // Bridge Mode surface (2026-09-21): launched with --bridge, or forced by the
+  // org, the workbench opens the bridge TUI over everything once it has loaded.
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (process.argv.includes("--bridge") || bridgeForced()) mainWindow?.webContents.send("bridge-open-tui");
+  });
 
   // A link clicked in the renderer must NEVER navigate the app window itself —
   // that replaces the whole app with the page and TRAPS the user (no chrome, no
@@ -210,7 +216,16 @@ async function createWindow() {
 
   mainWindow.setMaxListeners(30);
 
-  // THE PURGE: background/resident mode is gone — closing the window quits.
+  // BRIDGE MODE runs in the background (his order, 2026-09-21): with the bridge
+  // wanted and background on, or the org forcing it, closing the window hides
+  // it and the listener keeps serving Claude Desktop. A real Quit still quits.
+  mainWindow.on("close", (e) => {
+    if (quitting || !bridgeBackground() || !mainWindow) return;
+    e.preventDefault();
+    mainWindow.hide();
+    ensureTray();
+  });
+  // Otherwise closing the window quits.
   mainWindow.on("closed", () => {
     mainWindow = null;
     // Not background mode (or a real Quit): closing the main window quits the
@@ -431,6 +446,8 @@ async function boot() {
     // The Glyphh Agent panel's engine — a bridge over the claude CLI
     // (his ruling, 2026-09-11: the CLI is the loop; the UI is a view of it).
     registerGlyphhCliBridge();
+    // Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude.
+    registerBridgeModeIpc();
   }
 
   if (!ipcMain.listenerCount("get-preference")) {
@@ -1312,8 +1329,34 @@ app.on("login", (event, _wc, _details, authInfo, callback) => {
   });
 });
 
+let quitting = false;
+app.on("before-quit", () => { quitting = true; });
+
+let tray: Tray | null = null;
+/** The one way back to a hidden bridge window on every platform. */
+function ensureTray(): void {
+  if (tray) return;
+  try {
+    const candidates = [path.join(process.resourcesPath || "", "icon.png"), path.join(app.getAppPath(), "build", "icon.png"), path.join(__dirname, "..", "..", "build", "icon.png")];
+    const file = candidates.find((f) => { try { return require("fs").existsSync(f); } catch { return false; } });
+    const image = file ? nativeImage.createFromPath(file).resize({ width: 18, height: 18 }) : nativeImage.createEmpty();
+    tray = new Tray(image);
+    tray.setToolTip("Glyphh bridge");
+    const open = () => { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } else void createWindow(); };
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: "Open Glyphh", click: open },
+      { type: "separator" },
+      { label: "Quit Glyphh", click: () => { quitting = true; cleanupAll(); app.quit(); } },
+    ]));
+    tray.on("click", open);
+  } catch (err) {
+    console.warn("[bridge] no tray:", err instanceof Error ? err.message : err);
+  }
+}
+
 app.on("window-all-closed", () => {
-  // Stay resident in background mode (tray keeps the process + scheduler alive).
+  // Bridge Mode in the background keeps the process alive with its window gone.
+  if (!quitting && bridgeBackground()) { ensureTray(); return; }
   cleanupAll(updateReadyForQuit ? 30_000 : 4000);
   app.quit();
 });

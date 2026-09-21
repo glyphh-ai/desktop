@@ -70,6 +70,7 @@
               <button class="settings-nav-item hidden" data-sub="account"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg><span>Account</span></button>
                   <button class="settings-nav-item not-on-platform" data-sub="usage"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Usage</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="bridge"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h6M14 12h6"/><rect x="2" y="8" width="8" height="8" rx="2"/><rect x="14" y="8" width="8" height="8" rx="2"/></svg><span>Bridge</span></button>
               <button class="settings-nav-item not-on-platform" data-sub="cli-installer"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg><span>CLI Installer</span></button>
               <div class="settings-nav-group">Help</div>
               <button class="settings-nav-item" data-sub="support"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Support</span></button>
@@ -227,6 +228,45 @@
 
               <!-- MEMORY (his order, 2026-09-19): what Glyphh remembers, the policy the
                    user accepts before it remembers anything, and the org's overrides. -->
+              <!-- BRIDGE MODE (his order, 2026-09-21): Claude Desktop → this app → the gateway
+                   or a headless claude on the member's own login (app/docs/BRIDGE-MODE.md). -->
+              <div class="settings-panel" data-sub="bridge">
+                <h3 class="settings-panel-title">Bridge</h3>
+                <p class="settings-panel-desc">Point Claude Desktop at this app. Every turn then takes the lane your organization set per model: the Glyphh gateway, or your own Claude login in a headless Claude Code session.</p>
+                <div class="settings-callout" id="bridge-forced-note" style="display:none">Your organization requires Bridge Mode. It is on, and the app keeps running in the background.</div>
+                <label class="settings-toggle set-pref-row" id="bridge-enabled-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Bridge Mode</div>
+                    <div class="set-pref-desc" id="bridge-enabled-desc">Off. Turn it on to run the bridge whenever you are signed in.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-bridge-enabled" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row" id="bridge-background-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Run in background</div>
+                    <div class="set-pref-desc">Closing the window keeps the bridge serving Claude Desktop. Quit from the tray or the menu.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-bridge-background" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Claude Desktop settings</div>
+                    <div class="set-pref-desc">Gateway base URL and Issuer URL: <code id="bridge-url">http://127.0.0.1:4747</code>. Client ID <code>claude-desktop</code>, credential kind interactive sign-in, bearer token access token, scopes <code>openid profile email offline_access glyphh-gateway</code>.</div>
+                  </div>
+                  <button type="button" class="action-btn" id="bridge-copy-url">Copy URL</button>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Status</div>
+                    <div class="set-pref-desc" id="bridge-status">Not running.</div>
+                  </div>
+                  <button type="button" class="action-btn" id="bridge-open-tui">Open bridge TUI</button>
+                </div>
+                <pre class="settings-log" id="bridge-activity" style="max-height:220px;overflow:auto;font-size:11px;white-space:pre-wrap"></pre>
+              </div>
+
               <div class="settings-panel" data-sub="memory">
                 <h2>Memory</h2>
                 <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
