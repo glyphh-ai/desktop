@@ -92,7 +92,7 @@ import { registerMediaPanelIpc } from "./media-panel";
 import { registerMusicPanelIpc } from "./music-panel";
 import { registerSupportIpc } from "./support-ipc";
 import { registerWorkspacesIpc } from "./workspaces-ipc";
-import { getClient } from "./glyphh-client";
+import { getClient, SERVER_URL } from "./glyphh-client";
 import { registerAppsIpc } from "./apps-ipc";
 import { registerWorkspaceStateIpc } from "./workspace-state";
 import { migrateGlyphhHome } from "./glyphh-home-migrate";
@@ -626,6 +626,11 @@ async function boot() {
   const autoUpdateEnabled = getPreference<boolean>("autoUpdate", true);
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  // The releases repo is private and every surface reads it through the
+  // server (his order, 2026-09-20). The feed serves latest-<os>.yml as text
+  // and answers each file it names with a redirect to GitHub's signed link,
+  // so the app never holds a GitHub credential and never asks GitHub itself.
+  autoUpdater.setFeedURL({ provider: "generic", url: `${SERVER_URL.replace(/\/$/, "")}/api/releases/feed`, useMultipleRangeRequest: false });
   // Every updater step lands in userData/updater.log — "it closed and never
   // came back" was undiagnosable with the logger nulled.
   const updaterLogPath = path.join(app.getPath("userData"), "updater.log");

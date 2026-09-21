@@ -90,7 +90,9 @@ asarUnpack:
   - node_modules/koffi/**/*
   - node_modules/kuzu/**/*
 
+# The packaged app-update.yml. The releases repo is private; the server feeds
+# the updater (main.ts sets the same URL at runtime). CI publishes with
+# --publish never and mirrors the assets itself.
 publish:
-  provider: github
-  owner: glyphh-ai
-  repo: releases
+  provider: generic
+  url: https://api.glyphh.ai/api/releases/feed
