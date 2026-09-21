@@ -465,8 +465,8 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
   glyphh: {
     headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
     baseUrlEnv: [],
-    perm: { safe: " --permission plan", auto: " --permission auto" },
-    permHeadless: { safe: " --permission plan", auto: " --permission auto" },
+    perm: { safe: " --permission plan", auto: " --permission bypass" },
+    permHeadless: { safe: " --permission plan", auto: " --permission bypass" },
   },
   custom: {
     headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
