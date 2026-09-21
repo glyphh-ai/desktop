@@ -34,6 +34,7 @@ import { preferencesByPrefix } from "./stores/preferences-db";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, requestUsesGateway, LOOP_VENDOR, KEY_ENV, type GatewayCreds, writeDirectBase, directVar } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
+import { missingCli } from "./cli-install.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -1400,6 +1401,12 @@ export function registerCliAgentsIpc(): void {
       // listCliAgents serves) — nothing is written until the user configures it.
       const row = agentRowFor(String(id));
       if (!row) return { ok: false, error: "this loop isn't enabled for your organization" };
+      // NO SILENT "command not found" (his order, 2026-09-21, the installer gate
+      // gone): a loop whose binary is not on this machine's PATH answers with
+      // what to install, and the renderer shows a dialog instead of a terminal
+      // that fails.
+      const missing = missingCli(row);
+      if (missing) return { ok: false, error: `${missing.name} is not installed on this machine`, missing };
       if (overrides?.light !== undefined) {
         try {
           if (row.cli === "claude") ensureClaudeTheme(overrides.light);

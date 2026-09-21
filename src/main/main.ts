@@ -102,7 +102,6 @@ import { migrateGlyphhHome } from "./glyphh-home-migrate";
 import { registerCliAgentsIpc } from "./cli-agents";
 import { registerLoopModelsIpc } from "./loop-models";
 import { registerSkillsIpc } from "./skills-fs";
-import { registerCliSetupIpc } from "./cli-setup.js";
 import { registerEmbeddingsIpc } from "./embeddings-config";
 import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
 import { registerConnToolModesIpc } from "./conn-tool-modes.js";
@@ -1083,7 +1082,6 @@ async function boot() {
   registerLoopModelsIpc();
   registerSkillsIpc();
   registerEmbeddingsIpc();
-  registerCliSetupIpc();
   registerLocalLibraryIpc();
   registerConnToolModesIpc();
   registerLocalAgentsIpc();

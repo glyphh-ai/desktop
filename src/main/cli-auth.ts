@@ -10,6 +10,7 @@
  * Pure on purpose: the matching is tested, and the bridge, the task runner and
  * the panel all read the same answer.
  */
+import { installLine } from "./cli-install.js";
 
 export type Cli = "claude" | "codex" | "gemini" | "cursor" | string;
 
@@ -86,7 +87,7 @@ const KNOWN: Array<{ re: RegExp; cli?: string; say: (cli: string) => string }> =
   },
   {
     re: /command not found|ENOENT.*\b(claude|codex|gemini|copilot|cursor-agent)\b/i,
-    say: (cli) => `${cli} is not installed, or is not on this machine's PATH. Open Settings → CLI Installer to install it.`,
+    say: (cli) => { const line = installLine(cli); return `${cli} is not installed, or is not on this machine's PATH.${line ? ` Install it from a terminal: ${line}` : ""}`; },
   },
   {
     re: /rate limit|too many requests|429/i,

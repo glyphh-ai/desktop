@@ -421,7 +421,7 @@ export function openSettingsModal(sub?: string): void {
       // SETTINGS holds the app's own pages (his order, 2026-09-19): General,
       // Memory, Appearance, Account, Artifacts, Usage, MCP Server.
       // Appearance sits right under General (his order, 2026-09-20).
-      for (const sub of ["general", "appearance", "memory", "privacy", "account", "artifacts", "usage", "mcp", "cli-installer"]) {
+      for (const sub of ["general", "appearance", "memory", "privacy", "account", "artifacts", "usage", "mcp"]) {
         const item = pick(sub);
         if (item) { anchor.after(item); anchor = item; }
       }
@@ -883,7 +883,6 @@ function loadSettingsSub(sub: string): void {
   else if (sub === "memory" || sub === "privacy") void loadMemorySettings();
   else if (sub === "bridge") void loadBridgeSettings();
   // The installer is a terminal panel, not a settings page: open it and step aside.
-  else if (sub === "cli-installer") { closeSettingsModal(); void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.(); }
   else if (sub === "layouts") { mountSettingsSection("layouts"); void loadLayouts(); }
   else if (sub === "drips") { mountSettingsSection("drips"); loadDrips(); }
   else if (sub === "tabs") { mountSettingsSection("tabs"); loadApps(); }

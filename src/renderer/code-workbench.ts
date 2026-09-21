@@ -1327,6 +1327,19 @@ async function init(): Promise<void> {
   // The app-standard confirm modal, bridged from the help bundle (the
   // workbench bundle can't import help modules; #confirm-modal lives in
   // this document). Bridge absent → proceed, matching the old paths.
+  /** What main answers when a loop's binary is not on PATH (cli-install.ts). */
+  type MissingCliInfo = { name: string; install: string; login: string; note?: string };
+  /** A LOOP WHOSE CLI IS NOT INSTALLED (his order, 2026-09-21: the installer
+   *  gate is gone; a missing CLI is a dialog at open time). The app modal
+   *  names the install line; the primary button copies it. */
+  async function askInstallCli(m: MissingCliInfo): Promise<void> {
+    const signIn = m.login ? ` Then sign in with \`${m.login}\`${m.note ? ` (${m.note})` : ""}.` : "";
+    const body = m.install
+      ? `${m.name} is not on this machine's PATH. Install it from a terminal: ${m.install}${signIn} Then open the loop again.`
+      : `${m.name} is not on this machine's PATH. Install it, make sure a terminal can run it, then open the loop again.`;
+    const copy = await appConfirm({ title: `${m.name} is not installed`, body, confirmLabel: m.install ? "Copy install command" : "OK", cancelLabel: "Close" });
+    if (copy && m.install) void (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard?.(m.install);
+  }
   function appConfirm(opts: { title: string; body?: string; confirmLabel?: string; cancelLabel?: string; danger?: boolean }): Promise<boolean> {
     const fn = (window as unknown as { __appConfirm?: (o: unknown) => Promise<boolean> }).__appConfirm;
     return typeof fn === "function" ? fn(opts) : Promise.resolve(true);
@@ -2212,57 +2225,9 @@ async function init(): Promise<void> {
     return gdrivePanelInstance().renderIntoSlot(body, slot, wrap);
   }
   (window as unknown as { __wbOpenGDrive?: () => void }).__wbOpenGDrive = () => { openToolWithPayload("gdrive", () => {}); };
-  // THE CLI INSTALLER (his order, 2026-09-20): FULL SCREEN, forced on first
-  // install and whenever it is opened, and the only way out is a working CLI.
-  // Not an Echo card, not a rail slot: an overlay over everything with the
-  // installer's terminal in it. Finish (main's cli-setup-done) takes it down.
-  let installerOverlay: { el: HTMLElement; slot: TermSlot } | null = null;
-  const closeInstaller = (): void => {
-    if (!installerOverlay) return;
-    for (const t of installerOverlay.slot.terminals) { try { killTerminal(t); } catch { /* gone */ } }
-    installerOverlay.el.remove();
-    installerOverlay = null;
-  };
-  (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller = async () => {
-    if (installerOverlay) return;
-    const g = window.glyphh as unknown as { cliSetupCommand?: () => Promise<{ ok: boolean; command?: string; error?: string }> };
-    const r = await g.cliSetupCommand?.().catch(() => null);
-    if (!r?.ok || !r.command) { console.warn("[cli-installer] no command", r?.error); return; }
-    const el = document.createElement("div");
-    el.id = "cli-installer-overlay";
-    // The terminal stays out of sight for its first moment: the shell's prompt
-    // and the `clear` flashed before the TUI's first frame (his report,
-    // 2026-09-20). The class drops once the TUI has had time to draw.
-    el.className = "booting";
-    el.innerHTML = `<button type="button" class="cli-installer-quit" title="Quit Glyphh">&times;</button><div class="cli-installer-host ws-rail-slot-body"></div>`;
-    window.setTimeout(() => el.classList.remove("booting"), 1400);
-    // The one other way out (his order, 2026-09-20): quit the app if the CLI
-    // cannot be installed. Not a close: the installer comes back next launch.
-    el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => {
-      // Kill the installer's shell first: an orphaned TUI (this same binary,
-      // run as node) kept the app's process alive after the window closed.
-      closeInstaller();
-      window.setTimeout(() => window.glyphh.windowClose?.(), 150);
-    });
-    document.body.appendChild(el);
-    const slot = makeSlot("terminal") as TermSlot;
-    slot.terminals[0].initCmd = r.command;
-    installerOverlay = { el, slot };
-    renderTerminalIntoSlot(el.querySelector<HTMLElement>(".cli-installer-host")!, slot);
-    console.warn("[cli-installer] open (full screen)");
-    // Finish lands as a preference in main; watch for it here as well as the
-    // event, so the overlay closes even if the event is missed. Only a Finish
-    // AFTER this open counts (his report, 2026-09-20: opened from Settings
-    // after a first Finish, it closed itself on the flag that was already set).
-    const before = String(await window.glyphh.getPreference?.("cliSetupDoneAt", "").catch(() => "") ?? "");
-    const poll = window.setInterval(() => {
-      if (!installerOverlay) { window.clearInterval(poll); return; }
-      void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => { if (String(v ?? "") !== before) { window.clearInterval(poll); closeInstaller(); } }).catch(() => {});
-    }, 2000);
-  };
-  // BRIDGE MODE (his order, 2026-09-21): the bridge TUI over everything, the
-  // same terminal overlay the installer uses. With the org forcing Bridge
-  // Mode this IS the app; the × hides the window and the bridge keeps serving.
+  // BRIDGE MODE (his order, 2026-09-21): the bridge TUI over everything, a
+  // full-screen terminal overlay. With the org forcing Bridge Mode this IS the
+  // app; the × hides the window and the bridge keeps serving.
   let bridgeOverlay: { el: HTMLElement; slot: TermSlot } | null = null;
   const closeBridgeTui = (): void => {
     if (!bridgeOverlay) return;
@@ -2272,7 +2237,7 @@ async function init(): Promise<void> {
   };
   (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui = async () => {
     if (bridgeOverlay) return;
-    const g = window.glyphh as unknown as { bridgeTuiCommand?: () => Promise<{ ok: boolean; command?: string; error?: string }>; bridgeState?: () => Promise<{ forced: boolean }> };
+    const g = window.glyphh as unknown as { bridgeTuiCommand?: () => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }>; bridgeState?: () => Promise<{ forced: boolean }> };
     const r = await g.bridgeTuiCommand?.().catch(() => null);
     if (!r?.ok || !r.command) { console.warn("[bridge] no command", r?.error); return; }
     const forced = !!(await g.bridgeState?.().catch(() => null))?.forced;
@@ -2306,32 +2271,6 @@ async function init(): Promise<void> {
   // Forced before this renderer existed (a restart with the org already
   // requiring it): open at once rather than wait for the next gates poll.
   void bridgeDoors.bridgeState?.().then((st) => { if (st?.forced) void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.(); }).catch(() => undefined);
-  // FIRST RUN, from the workbench itself (his report, 2026-09-20: "on first
-  // run the thing still did not load"): the boot gate's timer is not relied
-  // on. Once the door exists, ask main whether the installer has ever finished.
-  void window.glyphh.getPreference?.("cliSetupDoneAt", "").then((v) => {
-    console.warn("[cli-installer] first-run check (workbench)", JSON.stringify({ done: !!v }));
-    if (!v) void (window as unknown as { __wbOpenCliInstaller?: () => Promise<void> }).__wbOpenCliInstaller?.();
-  }).catch((e: unknown) => console.warn("[cli-installer] first-run check failed", String(e)));
-  // Finish in the installer: the loop's model is written through the loop's
-  // own save, the one way a row is ever written.
-  (window.glyphh as unknown as { onCliSetupDone?: (cb: (r: { loop: string; model: string; view: string }) => void) => void }).onCliSetupDone?.((r) => {
-    if (!r.loop) { closeInstaller(); return; }
-    const api = window.glyphh as unknown as {
-      cliAgentsList?: () => Promise<{ ok: boolean; agents: Array<Record<string, unknown> & { id: string }> }>;
-      cliAgentsSave?: (input: Record<string, unknown>) => Promise<unknown>;
-    };
-    void api.cliAgentsList?.().then((res) => {
-      const row = res?.ok ? res.agents.find((a) => a.id === r.loop) : undefined;
-      const saved = row && r.model ? api.cliAgentsSave?.({ ...row, model: r.model }) : Promise.resolve();
-      void Promise.resolve(saved).then(() => {
-        // The default takes effect NOW: the seated agent switches to it (his report, 2026-09-20).
-        (window as unknown as { __glyphhSetLoop?: (id: string) => void }).__glyphhSetLoop?.(r.loop);
-        window.dispatchEvent(new CustomEvent("glyphh:pref-changed"));
-      });
-    });
-    closeInstaller();
-  });
 
   let gdesignPanel: DesignPanel | null = null;
   function gdesignPanelInstance(): DesignPanel {
@@ -5644,6 +5583,9 @@ async function init(): Promise<void> {
                 const target = entry;
                 const fallbackCmd = arow.command;
                 void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
+                  // The CLI is not installed: the dialog says what to install;
+                  // no command types into the terminal.
+                  if (r && !r.ok && r.missing) { void askInstallCli(r.missing); return; }
                   // NEVER a silent bare shell: a failed open (MCP port
                   // squabble, missing agent file) still starts the agent
                   // with its default command — resume/model just don't ride.
@@ -5660,8 +5602,10 @@ async function init(): Promise<void> {
               } else {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = arow.command;
-                // dependencies (the local MCP server) come up in the background
-                if (arow.mcp) void yoApi?.cliAgentOpen?.(aid).catch(() => {});
+                // dependencies (the local MCP server) come up in the background;
+                // a missing CLI is said out loud (the terminal alone would only
+                // print "command not found").
+                void yoApi?.cliAgentOpen?.(aid).then((r) => { if (r && !r.ok && r.missing) void askInstallCli(r.missing); }).catch(() => {});
               }
             }
           } else if (id.startsWith("tool:")) {
@@ -6552,8 +6496,10 @@ async function init(): Promise<void> {
       const a = t.cliAgent;
       if (!a) return;
       const appLight = document.documentElement.getAttribute("data-theme") === "light";
-      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
         .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
+          // Not installed: the dialog, not a terminal that fails.
+          if (r && !r.ok && r.missing) { void askInstallCli(r.missing); return; }
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const row = cliAgentRows.find((x) => x.id === a.id);
           // fresh (+ button) and resume-a-specific-session both need their
@@ -9200,10 +9146,14 @@ async function init(): Promise<void> {
     hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string,
   ): Promise<void> {
     const light = document.documentElement.getAttribute("data-theme") === "light";
-    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string }> } })
+    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
       .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
     const cmd = r?.ok ? r.command : undefined;
-    if (!cmd) { console.warn("[loops] resume:", r?.error ?? "no command composed"); return; }
+    if (!cmd) {
+      if (r?.missing) void askInstallCli(r.missing);
+      console.warn("[loops] resume:", r?.error ?? "no command composed");
+      return;
+    }
     const old = slot.terminals[slot.activeIdx];
     if (old) { try { killTerminal(old); } catch { /* already gone */ } }
     slot.terminals[slot.activeIdx] = { ptyId: makeTermId(), initCmd: cmd };

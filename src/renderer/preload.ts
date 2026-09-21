@@ -457,8 +457,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsList: () => ipcRenderer.invoke("cli-agents-list") as Promise<{ ok: boolean; agents: Array<{ id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }>; error?: string }>,
   // Embeddings upgrade (Settings → Embeddings): ONNX default; Together AI
   // BYOK — key write-only, calls direct from this machine, never proxied.
-  /** The CLI Installer (his order, 2026-09-19): the command that runs it in a terminal panel, and its answer. */
-  cliSetupCommand: () => ipcRenderer.invoke("cli-setup-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
   /** Bridge Mode (2026-09-21): Claude Desktop → this app → the gateway or a headless claude. */
   bridgeState: () => ipcRenderer.invoke("bridge-state") as Promise<{ running: boolean; url: string; port: number; wanted: boolean; forced: boolean; allowed: boolean; background: boolean; enabled: boolean; member: string | null; sessions: number; clients: number; activity: string[] }>,
   bridgeSetEnabled: (on: boolean) => ipcRenderer.invoke("bridge-set-enabled", on) as Promise<unknown>,
@@ -466,9 +464,6 @@ contextBridge.exposeInMainWorld("glyphh", {
   bridgeTuiCommand: () => ipcRenderer.invoke("bridge-tui-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
   onBridgeOpenTui: (callback: () => void) => { ipcRenderer.on("bridge-open-tui", () => callback()); },
   onBridgeFinished: (callback: () => void) => { ipcRenderer.on("bridge-finished", () => callback()); },
-  onCliSetupDone: (callback: (r: { loop: string; model: string; view: string }) => void) => {
-    ipcRenderer.on("cli-setup-done", (_e, r) => callback(r));
-  },
   memoryStats: () => ipcRenderer.invoke("memory-stats") as Promise<{ ok: boolean; turns?: number; chunks?: number; facts?: number }>,
   memoryClear: () => ipcRenderer.invoke("memory-clear") as Promise<{ ok: boolean; deleted?: number; error?: string }>,
   memoryTurnList: () => ipcRenderer.invoke("memory-turn-list") as Promise<{ ok: boolean; rows: Array<{ id: string; kind: string; section: string; title: string; text: string; at: string; folder: string; workspace: string; parts: number }>; error?: string }>,
@@ -481,7 +476,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   cliAgentsSave: (input: { id?: string; name: string; icon?: string; cmd: string; mcp?: boolean }) => ipcRenderer.invoke("cli-agents-save", input) as Promise<{ ok: boolean; agent?: { id: string; name: string; icon: string; cmd: string; mcp: boolean; command: string }; error?: string }>,
   cliAgentsDelete: (id: string) => ipcRenderer.invoke("cli-agents-delete", id) as Promise<{ ok: boolean; error?: string }>,
   cliAgentsKeyDelete: (id: string) => ipcRenderer.invoke("cli-agents-key-delete", id) as Promise<{ ok: boolean; error?: string }>,
-  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string }>,
+  cliAgentOpen: (id: string, overrides?: { model?: string; cwd?: string; resume?: boolean | string; prompt?: string; light?: boolean }) => ipcRenderer.invoke("cli-agent-open", id, overrides) as Promise<{ ok: boolean; command?: string; name?: string; error?: string; missing?: { cli: string; name: string; bin: string; install: string; login: string; note?: string } }>,
   /** Recent CLI sessions (Claude's store) — the rail Recents + agent-card history. */
   cliSessionsList: () => ipcRenderer.invoke("cli-sessions-list") as Promise<{ ok: boolean; sessions: Array<{ id: string; cli: string; title: string; cwd: string; mtime: number }> }>,
   cliSessionDelete: (id: string) => ipcRenderer.invoke("cli-session-delete", id) as Promise<{ ok: boolean; error?: string }>,

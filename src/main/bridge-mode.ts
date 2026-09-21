@@ -28,7 +28,7 @@ import { getClient } from "./glyphh-client.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { accountLanePrefix, agentRowFor, ensureLoopEnv } from "./cli-agents.js";
-import { cliSetupCommand } from "./cli-setup.js";
+import { composeBridgeTuiCommand } from "./bridge-tui-launch.js";
 import { getMainWindowRef } from "./main-window-ref.js";
 
 export const BRIDGE_PORT = Number(process.env.GLYPHH_BRIDGE_PORT || 4747);
@@ -213,10 +213,10 @@ export function bridgeState(): BridgeState {
   };
 }
 
-/** The shell line the terminal overlay runs: the CLI Installer in Bridge Mode,
- *  Claude only, signed in, Finish closes the window while the bridge runs. */
+/** The shell line the terminal overlay runs: the Bridge Mode TUI — Claude
+ *  installed and signed in, Finish closes the window while the bridge runs. */
 export function bridgeTuiCommand(): Promise<{ ok: boolean; command?: string; error?: string }> {
-  return cliSetupCommand({ url: `http://127.0.0.1:${BRIDGE_PORT}`, forced });
+  return composeBridgeTuiCommand({ url: `http://127.0.0.1:${BRIDGE_PORT}`, forced });
 }
 
 export function registerBridgeModeIpc(): void {

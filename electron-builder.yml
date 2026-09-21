@@ -84,7 +84,7 @@ files:
   - "!node_modules/kuzu/prebuilt/**"
 
 asarUnpack:
-  - dist/main/cli-setup-tui.js
+  - dist/main/bridge-tui.js
   - node_modules/better-sqlite3/**/*
   - node_modules/node-pty/**/*
   - node_modules/koffi/**/*
