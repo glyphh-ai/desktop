@@ -16,7 +16,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { homedir } from "node:os";
 import { ipcMain } from "electron";
 import { BridgeServer, type BridgeUsage } from "./bridge/server.js";
-import { parseRows, type RoutingRow } from "./bridge/routing.js";
+import { AccountLane } from "./bridge/account-lane.js";
+import { decide, parseRows, type Permission, type RoutingRow } from "./bridge/routing.js";
+import { registerRelayHandler } from "./relay-client.js";
+import { pushToAttach } from "./attach-host.js";
 import { PERMISSION_FLAG, type SpawnOptions } from "./bridge/claude-session.js";
 import type { Member } from "./bridge/oidc-local.js";
 import { getAccountInfo, getHeartbeatInfo, isAuthenticated } from "./auth.js";
@@ -33,6 +36,8 @@ const ROUTING_TTL_MS = 30_000;
 const ACTIVITY_CAP = 200;
 
 let server: BridgeServer | null = null;
+/** The account lane engine, shared by the local listener and the relay's bridge.turn. */
+let lane: AccountLane | null = null;
 let forced = false;
 /** Bridge Mode is Pro and above (his order, 2026-09-21): the plan gates say. */
 let allowed = true;
@@ -106,6 +111,11 @@ async function reportUsage(u: BridgeUsage): Promise<void> {
   await getClient().gateway.reportBridgeUsage({ conversation: u.conversation, model: u.model, inputTokens: u.inputTokens, outputTokens: u.outputTokens, cacheReadTokens: u.cacheReadTokens, cacheWriteTokens: u.cacheWriteTokens, durationMs: u.durationMs });
 }
 
+function accountLane(): AccountLane {
+  if (!lane) lane = new AccountLane({ spawnClaude, reportUsage, onActivity: note });
+  return lane;
+}
+
 async function start(): Promise<void> {
   if (server) return;
   const s = new BridgeServer({
@@ -117,6 +127,7 @@ async function start(): Promise<void> {
     spawnClaude,
     reportUsage,
     onActivity: note,
+    lane: accountLane(),
   });
   try {
     await s.start();
@@ -159,6 +170,33 @@ export function bridgeSignedOut(): void {
   allowed = true;
   routingCache = null;
   stopBridge();
+  lane?.killAll();
+}
+
+/**
+ * THE RELAY'S ACCOUNT LANE (RELAY-RESEARCH.md §5): Claude Desktop talks to the
+ * server, the server decides the lane, and an account-lane turn arrives here
+ * as `bridge.turn` down the attach socket. The same engine as the local
+ * listener; the frames go back up the socket as Messages SSE events on the
+ * run's channel, then an end marker. A client that did not ask to stream gets
+ * the whole message in the reply.
+ */
+export function installBridgeTurnHandler(): void {
+  registerRelayHandler("bridge.turn", async (params) => {
+    const p = (params ?? {}) as Record<string, unknown>;
+    if (!allowed) throw new Error("Bridge Mode is on Pro and above");
+    if (!isAuthenticated()) throw new Error("this machine is signed out of Glyphh");
+    const runId = String(p.runId ?? "");
+    const body = (p.body && typeof p.body === "object" ? p.body : {}) as Record<string, unknown>;
+    const model = String(p.model ?? body.model ?? "");
+    const perm = String(p.permission ?? "read-only") as Permission;
+    const d = { ...decide([], model), permission: (["read-only", "plan", "edits", "auto"] as string[]).includes(perm) ? perm : "read-only", chatOnly: p.chatOnly === true } as ReturnType<typeof decide>;
+    const stream = p.stream === true;
+    note(`relay turn → ${model} (${d.permission}${d.chatOnly ? ", chat only" : ""})`);
+    const ms = await accountLane().run(body, model, d, (frame) => { if (stream && runId) pushToAttach(`run:${runId}`, { event: frame.event, data: frame.data }); });
+    if (stream && runId) pushToAttach(`run:${runId}`, { type: "end" });
+    return { done: true, message: ms.toMessage() };
+  });
 }
 
 export interface BridgeState {

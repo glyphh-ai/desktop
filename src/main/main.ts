@@ -81,7 +81,7 @@ import { closeDataStoreDb } from "./data-store";
 import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
 import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
-import { bridgeBackground, bridgeForced, registerBridgeModeIpc } from "./bridge-mode";
+import { bridgeBackground, bridgeForced, installBridgeTurnHandler, registerBridgeModeIpc } from "./bridge-mode";
 import { registerAccountIpc } from "./account-ipc";
 import { registerAdminIpc } from "./admin-ipc";
 import { registerFilesIpc } from "./files-ipc";
@@ -409,6 +409,8 @@ async function boot() {
   installAttachHandlers();
   // agent.run/frames/answer/stop/permission: a turn from the web or a phone runs here.
   installAttachRunHandlers();
+  // bridge.turn: a Claude Desktop turn the server routed to this member's own login.
+  installBridgeTurnHandler();
   // Every handler is registered: tell the server the whole table, in case the
   // socket opened before this point.
   void import("./attach-host").then((m) => m.attachRefreshHello()).catch(() => undefined);
