@@ -77,6 +77,11 @@ directories:
 files:
   - dist/**/*
   - package.json
+  # kuzu's npm tarball carries its whole C++ source tree and a prebuilt binary
+  # for every platform; at runtime it loads only the root kuzujs.node that
+  # install.js copied in. Shipping the rest doubled the installer (2026-09-20).
+  - "!node_modules/kuzu/kuzu-source/**"
+  - "!node_modules/kuzu/prebuilt/**"
 
 asarUnpack:
   - dist/main/cli-setup-tui.js
