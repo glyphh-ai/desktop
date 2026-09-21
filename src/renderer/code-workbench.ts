@@ -22,6 +22,7 @@ import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-te
 import { resolveBrowserHome } from "../shared/browser-home.js";
 import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
+import { mascotSvg, GLYPHH_LOOP_MASCOT } from "./help/mascots.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 
@@ -2546,8 +2547,8 @@ async function init(): Promise<void> {
     // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
     // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
     // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    // The Glyphh loop's own mark: the ring (2026-09-21), in the brand purple.
-    const GLYPHH_LOOP_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5" style="stroke:#8c3bf2;stroke-width:2.2;fill:none"/><circle cx="12" cy="12" r="3" style="fill:#8c3bf2;stroke:none"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3" style="stroke:#8c3bf2;stroke-width:1.6"/></svg>`;
+    // The Glyphh loop's own mark: the mascot (his order, 2026-09-21).
+    const GLYPHH_LOOP_GLYPH = mascotSvg(GLYPHH_LOOP_MASCOT);
     const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
     const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
       name: a.name,
@@ -9303,6 +9304,8 @@ async function init(): Promise<void> {
             // 2026-09-14), so another CLI's session routes to ITS agent —
             // a codex id must never compose into a claude resume.
             onPick: (sess) => {
+              // A Glyphh-loop session is a stored chat, never a CLI resume.
+              if (sess.cli === "glyphh") { (window as unknown as { __glyphhOpenLoopSession?: (id: string) => void }).__glyphhOpenLoopSession?.(sess.id); return; }
               const sameCli = !sess.cli || sess.cli === (cliAgentRows.find((r) => r.id === agent.id)?.cli ?? "claude");
               if (sameCli) { void resumeHere(hostEl, slot, tabsEl, agent.id, sess.id); return; }
               // Another CLI's session — the ONE chat surface adopts it,

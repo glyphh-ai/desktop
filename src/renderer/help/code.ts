@@ -33,6 +33,7 @@ import * as threadStore from "./thread-store.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
+import { glyphhLoopMarkUrl } from "./mascots.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -2171,29 +2172,33 @@ function historyRow(c: CodeChat): HTMLDivElement {
   menuBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`;
   menuBtn.addEventListener("click", (e) => { e.stopPropagation(); openChatMenu(menuBtn, c); });
   row.append(dot, label, menuBtn);
-  row.addEventListener("click", () => {
-    currentId = c.id;
-    lastSession = c.id;
-    void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
-    threadPinned = true;
-    void saveStore();
-    ensureCodeSection();
-    renderHistory();
-    renderThread();
-    void checkWorkdirGate();
-    applySessionFolder(c);   // the workbench follows the thread's folder
-    // The opened session's OWN source drives the chip, the head locus and the
-    // run — without this the chip stays on the previous (pending) source and
-    // every rail-opened session looked like it ran in the cloud.
-    repaintSourceUi();
-    // ONLY navigate to the agent when one isn't already showing. If an agent is
-    // on screen, the session was just swapped into it (renderThread above) — never
-    // reset the workbench layout or spawn a second agent for a rail click.
-    const agent = document.querySelector<HTMLElement>(".code-agent");
-    const agentShowing = !!agent && agent.offsetParent !== null;
-    if (!agentShowing) gotoSection("agent");
-  });
+  row.addEventListener("click", () => selectChat(c));
   return row;
+}
+
+/** Make a stored session the current one, on screen — the recents row's
+ *  click, also the path a Glyphh-loop session takes from the rail. */
+function selectChat(c: CodeChat): void {
+  currentId = c.id;
+  lastSession = c.id;
+  void window.glyphh.setPreference?.(LAST_SESSION_PREF, c.id);
+  threadPinned = true;
+  void saveStore();
+  ensureCodeSection();
+  renderHistory();
+  renderThread();
+  void checkWorkdirGate();
+  applySessionFolder(c);   // the workbench follows the thread's folder
+  // The opened session's OWN source drives the chip, the head locus and the
+  // run — without this the chip stays on the previous (pending) source and
+  // every rail-opened session looked like it ran in the cloud.
+  repaintSourceUi();
+  // ONLY navigate to the agent when one isn't already showing. If an agent is
+  // on screen, the session was just swapped into it (renderThread above) — never
+  // reset the workbench layout or spawn a second agent for a rail click.
+  const agent = document.querySelector<HTMLElement>(".code-agent");
+  const agentShowing = !!agent && agent.offsetParent !== null;
+  if (!agentShowing) gotoSection("agent");
 }
 
 const DECLINE_WARN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
@@ -4787,7 +4792,9 @@ const RAIL_CLI_MARK_URLS: Record<string, string> = {
   copilot: "https://github.com/favicon.ico",
   cursor: "https://cursor.com/favicon.ico",
 };
-const railCliMarks: Record<string, string> = {};   // cli → data URL, cached
+// cli → data URL, cached. The Glyphh loop wears the mascot from day one — it
+// has no favicon to fetch (his order, 2026-09-21).
+const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.
@@ -4880,7 +4887,14 @@ async function loadRailSessions(): Promise<void> {
     api.cliSessionsList?.().catch(() => null),
     window.glyphh.getPreference?.(SESS_PINS_PREF, []).catch(() => []),
   ]);
-  railSessions = r?.ok ? r.sessions : [];
+  // The Glyphh loop keeps NO transcript on disk (zero local storage) — its
+  // sessions ARE the thread store's chats, so they join the disk list here or
+  // they are on no surface (his report, 2026-09-21).
+  const glyphhLoopIds = new Set(railAgents.filter((a) => a.cli === "glyphh").map((a) => a.id));
+  const ours: RailSession[] = chats
+    .filter((c) => !!c.loop && glyphhLoopIds.has(c.loop) && c.messages.length > 0)
+    .map((c) => ({ id: c.id, cli: "glyphh", title: c.title, cwd: c.workdir || "", mtime: touchedAtOf(c) }));
+  railSessions = [...(r?.ok ? r.sessions : []), ...ours].sort((a, b) => b.mtime - a.mtime);
   railSessionPins = Array.isArray(pins) ? pins.map(String) : [];
   // NEVER silent (the rail disagreed with the dropdown all day, 2026-09-14):
   // one line per refresh pins what this surface actually painted.
@@ -4904,6 +4918,23 @@ async function sessDelete(sess: RailSession): Promise<boolean> {
     danger: true,
   });
   if (!sure) return false;
+  // A Glyphh-loop session lives in the thread store, not on disk.
+  if (sess.cli === "glyphh") {
+    const chat = chats.find((x) => x.id === sess.id);
+    if (!chat) return false;
+    chats = chats.filter((x) => x.id !== chat.id);
+    if (lastSession === chat.id) forgetCurrentSession();
+    const wasCurrent = currentId === chat.id;
+    if (wasCurrent) currentId = "";
+    threadStore.remove(chat.id);
+    void saveStore();
+    renderHistory();
+    renderThread();
+    railSessions = railSessions.filter((x) => x.id !== sess.id);
+    renderRailSessions();
+    if (wasCurrent) (window as unknown as { __glyphhNewSession?: () => void }).__glyphhNewSession?.();
+    return true;
+  }
   const api = window.glyphh as unknown as { cliSessionDelete?: (id: string) => Promise<{ ok: boolean }> };
   const r = await api.cliSessionDelete?.(sess.id).catch(() => null);
   if (r?.ok) {
@@ -4967,6 +4998,16 @@ function sessSectionHead(label: string, title: string): HTMLDivElement {
 }
 
 function sessOpen(sess: RailSession): void {
+  // A Glyphh-loop session is one of OUR chats: select it, then seat the loop
+  // (select first — seating a different loop stamps the CURRENT chat).
+  if (sess.cli === "glyphh") {
+    const chat = chats.find((x) => x.id === sess.id);
+    if (!chat) return;
+    selectChat(chat);
+    const loop = railAgents.find((a) => a.id === chat.loop) ?? railAgents.find((a) => a.cli === "glyphh");
+    if (loop) (window as unknown as { __wbOpenAgentChat?: (id: string) => void }).__wbOpenAgentChat?.(loop.id);
+    return;
+  }
   // ONE SURFACE (his order, 2026-09-14: "make them all one thing") — a
   // recent opens in the agent CHAT panel, adopted with its transcript and
   // bound to run on ITS OWN CLI. The terminal stays one >_ hop away.
@@ -5151,6 +5192,11 @@ function openSessionsDropdown(anchor: HTMLElement, opts: { cli?: string; cwd?: s
   document.addEventListener("mousedown", dismiss, true);
 }
 (window as unknown as { __glyphhSessionsMenu?: typeof openSessionsDropdown }).__glyphhSessionsMenu = openSessionsDropdown;
+/** The agent card's recents pick for a Glyphh-loop session — routed here, never into a CLI resume. */
+(window as unknown as { __glyphhOpenLoopSession?: (id: string) => void }).__glyphhOpenLoopSession = (id) => {
+  const sess = railSessions.find((x) => x.id === id && x.cli === "glyphh");
+  if (sess) sessOpen(sess);
+};
 
 function registerRailGridHost(kind: "apps" | "layouts" | "agents", host: RailGridHost): void {
   (kind === "apps" ? railAppsHosts : kind === "layouts" ? railLayoutsHosts : railAgentsHosts).add(host);
