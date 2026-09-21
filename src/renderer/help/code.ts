@@ -14,7 +14,7 @@
 import { yoConfirm } from "../yo-modal.js";
 import { showDropDetail, confirmAction, confirmChoice, placeDropup } from "./shared.js";
 import { planGates } from "./plan-gate.js";
-import { appIconInner, primeConnectedIcons, primeNativeIcons } from "./app-icon.js";
+import { appIconInner, primeConnectedIcons, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { visibleAppRows, type HouseDefault } from "./app-list.js";
 import { gotoSection, closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { createGlyphhSpinner, type GlyphhSpinner } from "../glyphh-spinner.js";
@@ -33,7 +33,6 @@ import * as threadStore from "./thread-store.js";
 import { uiSound } from "./ui-sounds.js";
 import { startNavBadges } from "./nav-badges.js";
 import { greeting } from "./dashboard.js";
-import { glyphhLoopMarkUrl } from "./mascots.js";
 
 interface AttachRef { kind: "image" | "file" | "folder"; path: string; name: string }
 interface ConnectCard { id: string; appId: string; name: string; icon?: string | null; status: "offer" | "connecting" | "connected" | "failed"; error?: string }
@@ -4792,9 +4791,9 @@ const RAIL_CLI_MARK_URLS: Record<string, string> = {
   copilot: "https://github.com/favicon.ico",
   cursor: "https://cursor.com/favicon.ico",
 };
-// cli → data URL, cached. The Glyphh loop wears the mascot from day one — it
-// has no favicon to fetch (his order, 2026-09-21).
-const railCliMarks: Record<string, string> = { glyphh: glyphhLoopMarkUrl() };
+// cli → data URL, cached. The Glyphh loop wears the brand mascot (the mark
+// every other surface wears) from day one — nothing to fetch (his order, 2026-09-21).
+const railCliMarks: Record<string, string> = { glyphh: GLYPHH_MASCOT_SRC };
 let railRecentTs: Record<string, number> = {};
 // Both rail grids page at 9 — the same 3×3 block, so Apps and Layouts read
 // as one system rather than two differently-sized lists.

@@ -274,15 +274,3 @@ export function timeMascotSvg(hour: number = new Date().getHours()): string {
 export function mascotSvg(m: Mascot): string {
   return `<svg viewBox="0 0 48 48" role="img" aria-label="${m.name}">${CHARACTERS[m.key](m.color)}</svg>`;
 }
-
-/** The Glyphh loop's own face: the brand mascot in the brand purple. Used
- *  wherever a loop wears a CLI mark (rail tiles, session rows, loop dropdown). */
-export const GLYPHH_LOOP_MASCOT: Mascot = { name: "Glyphh", key: "scout", color: "#8c3bf2" };
-
-/** The mascot as an <img>-safe data URL — the mark caches key CLIs to data
- *  URLs, so the Glyphh loop slots in beside the vendor favicons. An <img>
- *  needs the SVG namespace, which inline markup does not. */
-export function glyphhLoopMarkUrl(): string {
-  const svg = mascotSvg(GLYPHH_LOOP_MASCOT).replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ');
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}

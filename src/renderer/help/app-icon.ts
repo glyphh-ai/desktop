@@ -1,3 +1,7 @@
+
+/** The Glyphh mascot — the brand mark every Glyphh surface wears (titlebar,
+ *  New-session tile, the Glyphh loop's CLI mark). */
+export const GLYPHH_MASCOT_SRC = "brand/glyphh-mark.png";
 /**
  * Shared app-icon resolution — used by the Apps page (apps.ts), the Layouts
  * list (layouts.ts), and the command overlay so an app shows the exact same
@@ -140,7 +144,7 @@ export function appIconUrl(app: IconApp): string {
   // The Glyphh system app always shows the brand mark (shipped next to every
   // renderer page that uses this module). Nav apps never resolve a URL —
   // appIconInner inlines their glyph so it can follow the theme.
-  if (app.slug === "glyphh") return "brand/glyphh-mark.png";
+  if (app.slug === "glyphh") return GLYPHH_MASCOT_SRC;
   // Uploaded listing art is the app's REAL icon — every derived layer below
   // is a guess for apps that never uploaded one.
   if (app.iconUrl) return fixIconMediaUrl(app.iconUrl);

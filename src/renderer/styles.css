@@ -16896,7 +16896,8 @@ body.echo-drag .echo-card webview { pointer-events: none; }
    plain outline glyphs read oversized at 62% — seat them smaller. */
 .echo-app-ic svg.dev-glyph { width: 46%; height: 46%; }
 .echo-dock-btn svg.dev-glyph { width: 46%; height: 46%; }
-.echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
+.echo-app-ic img { width: 54%; height: 54%; object-fit: contain; }
+.echo-app-ic img[data-mark-src="brand/glyphh-mark.png"] { width: 74%; height: 74%; }   /* the mascot is tall, not a square favicon */   /* raster icons fill their box edge-to-edge — smaller than the svgs to match visual weight */
 /* The SKILLS fallback mark (an app with no icon of its own): same weight as
    an app icon, not the larger tool-glyph size. */
 .echo-app-ic svg.skill-mark { width: 54%; height: 54%; }
@@ -20993,6 +20994,11 @@ body.wb-has-dragstrip { --wb-top-inset: 38px; }
 .loop-mark { width: 14px; height: 14px; border-radius: 3px; margin-right: 7px; flex: none; object-fit: contain; }
 .code-sess-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; margin-right: 6px; }
 .code-sess-mark img { width: 14px; height: 14px; border-radius: 3px; object-fit: contain; }
+/* The Glyphh mascot is a tall figure, not a square favicon — at favicon size it
+   read as a speck (his eye, 2026-09-21). It gets the whole row height and no plate rounding. */
+.loop-mark.cli-mark-glyphh, .code-sess-mark img.cli-mark-glyphh { width: 20px; height: 20px; margin: -3px 5px -3px -3px; border-radius: 0; }
+.code-sess-mark img.cli-mark-glyphh { margin: -3px; }
+.app-rail-tile .tile-icon img.cli-mark-glyphh { width: 28px; height: 28px; border-radius: 0; }
 
 .app-rail-search { display: flex; align-items: center; gap: 6px; }
 .app-rail-search .search-clear-wrap, .app-rail-search input { flex: 1; min-width: 0; }

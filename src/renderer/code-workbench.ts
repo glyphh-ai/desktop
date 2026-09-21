@@ -20,9 +20,8 @@ import { formatMarkdown } from "./format-markdown.js";
 import { browserErrorPage, panelStateFragment, type BrowserErrorInfo, type ErrorPalette, type PanelStateKey } from "./browser-error-page.js";
 import { openRemotePty, RemotePtyError, type RemotePtyHandle } from "./remote-terminal.js";
 import { resolveBrowserHome } from "../shared/browser-home.js";
-import { appIconInner, appIconUrl, primeNativeIcons } from "./help/app-icon.js";
+import { appIconInner, appIconUrl, primeNativeIcons, GLYPHH_MASCOT_SRC } from "./help/app-icon.js";
 import { wallAppRow, visibleAppRows, type HouseDefault } from "./help/app-list.js";
-import { mascotSvg, GLYPHH_LOOP_MASCOT } from "./help/mascots.js";
 import { ensureDefaultWorkspace, DEFAULT_WORKSPACE_NAME } from "./help/starter-layouts.js";
 import { loadUiState, uiStateGet, uiStateSet, uiStateRemove, uiStateRemovePrefix, flushUiState } from "./help/ui-state.js";
 
@@ -2547,8 +2546,6 @@ async function init(): Promise<void> {
     // CLI AGENTS (the build, 2026-09-10): named pre-configs for terminal
     // CLIs. Rows cache at boot + on "glyphh:cli-agents-changed"; tiles ride
     // the wall like workspaces do, and agent:<id> layout cells resolve here.
-    // The Glyphh loop's own mark: the mascot (his order, 2026-09-21).
-    const GLYPHH_LOOP_GLYPH = mascotSvg(GLYPHH_LOOP_MASCOT);
     const CLI_AGENT_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2v2.6" style="fill:none;stroke:#a21caf;stroke-width:1.8"/><circle cx="12" cy="2.6" r="1.3" style="fill:#d946ef;stroke:none"/><rect x="2" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="20" y="10" width="2" height="4.5" rx="1" style="fill:#a21caf;stroke:none"/><rect x="4" y="6" width="16" height="12.5" rx="3.5" style="fill:#d946ef;stroke:none"/><circle cx="9" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><circle cx="15" cy="11.4" r="1.7" style="fill:#ffffff;stroke:none"/><rect x="8.6" y="15" width="6.8" height="1.7" rx="0.85" style="fill:#f5d0fe;stroke:none"/></svg>`;
     const cliAgentTileOf = (a: CliAgentRowLite): EchoTile => ({
       name: a.name,
@@ -2560,7 +2557,7 @@ async function init(): Promise<void> {
         : a.cli === "gemini" ? { iconUrl: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" }
         : a.cli === "copilot" ? { iconUrl: "https://github.com/favicon.ico" }
         : a.cli === "cursor" ? { iconUrl: "https://cursor.com/favicon.ico" }
-        : a.cli === "glyphh" ? { glyphSvg: GLYPHH_LOOP_GLYPH }
+        : a.cli === "glyphh" ? { iconUrl: GLYPHH_MASCOT_SRC }
         : { glyphSvg: CLI_AGENT_GLYPH }),
       kind: "tool",
       toolView: "terminal",

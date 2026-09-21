@@ -12,6 +12,7 @@
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { closeSettingsModal, openSettingsModal } from "./navigation.js";
 import { openAppInWorkbench, openWorkPanelInWorkbench } from "./code.js";
+import { GLYPHH_MASCOT_SRC } from "./app-icon.js";
 import { renderToolGroups } from "./settings-connections.js";
 import { formatMarkdown } from "../format-markdown.js";
 import { toolViewIcon } from "./layouts.js";
@@ -21,7 +22,6 @@ import { cronToWords, openScheduleOnLoad } from "./schedules.js";
 import { renderRunList } from "./lib-runs.js";
 import { renderConnectionTable, connDeps, openConnectionOnLoad, type ConnDep } from "./settings-connections.js";
 import { toastOk, toastError } from "./toast.js";
-import { glyphhLoopMarkUrl } from "./mascots.js";
 
 type Source = "glyphh" | "app" | "plugin" | "task" | "claude" | "codex" | "gemini";
 /** Every folder on this page is a skill; the TYPE says what kind of skill it
@@ -1106,7 +1106,7 @@ const LOOP_FAVICON: Record<string, string> = {
   gemini: "https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64",
   copilot: "https://github.com/favicon.ico",
   cursor: "https://cursor.com/favicon.ico",
-  glyphh: glyphhLoopMarkUrl(),
+  glyphh: GLYPHH_MASCOT_SRC,
 };
 let loopRows: LoopRow[] = [];
 
