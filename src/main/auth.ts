@@ -97,9 +97,10 @@ function triggerReauth(): void {
   try { reauthHandler?.(); } catch { /* noop */ }
 }
 
-// THE PURGE: the outbound attach socket is gone — nothing tracks auth but us.
-function attachStart(): void { /* attach is dead */ }
-function attachStop(): void { /* attach is dead */ }
+// The outbound attach socket (RELAY-RESEARCH.md §4, back 2026-09-21): starts
+// with the session, stops with it. Lazy import: attach-host imports auth.
+function attachStart(): void { void import("./attach-host.js").then((m) => m.startAttach()).catch((e) => console.warn("[attach] start failed", String(e))); }
+function attachStop(): void { void import("./attach-host.js").then((m) => m.stopAttach()).catch(() => undefined); }
 
 setSignedOutHandler(() => {
   signedIn = false;

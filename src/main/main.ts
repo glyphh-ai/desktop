@@ -72,6 +72,7 @@ import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
 import { installAttachHandlers } from "./attach-handlers";
+import { installAttachRunHandlers } from "./attach-run";
 import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
@@ -406,6 +407,11 @@ async function boot() {
   installRpaHandlers();
   // fs picker, native apps and the headless scrape, for loopback MCP and the attach socket.
   installAttachHandlers();
+  // agent.run/frames/answer/stop/permission: a turn from the web or a phone runs here.
+  installAttachRunHandlers();
+  // Every handler is registered: tell the server the whole table, in case the
+  // socket opened before this point.
+  void import("./attach-host").then((m) => m.attachRefreshHello()).catch(() => undefined);
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
 

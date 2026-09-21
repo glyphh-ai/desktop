@@ -65,7 +65,7 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
 
 // ── live processes ───────────────────────────────────────────────────────────
 
-interface LiveChat {
+export interface LiveChat {
   proc: ChildProcessWithoutNullStreams;
   runId: string;
   sender: WebContents;
@@ -206,7 +206,7 @@ function handleEvent(chatId: string, c: LiveChat, ev: Record<string, unknown>): 
 
 // ── process lifecycle ────────────────────────────────────────────────────────
 
-interface RunPayload {
+export interface RunPayload {
   chatId: string;
   attachments?: AttachRef[];
   workdir?: string;
@@ -472,8 +472,9 @@ function writeControl(c: LiveChat, request: Record<string, unknown>): string {
 
 // ── IPC surface — the exact channels the parked renderer calls ───────────────
 
-export function registerGlyphhCliBridge(): void {
-  ipcMain.handle("glyphh-agent-run", async (e, p: RunPayload & { steer?: string; prompt?: string }) => {
+/** One user turn on a chat, from ANY sender: the renderer's IPC, or the attach
+ *  executor's fake WebContents that forwards frames up the socket (attach-run.ts). */
+export async function runAgentTurn(sender: WebContents, p: RunPayload & { steer?: string; prompt?: string }): Promise<{ runId: string }> {
     await startLocalMcpServer().catch(() => { /* the spawn still runs, tool-less but honest */ });
     // Re-prime the in-memory resume map from the chat's persisted binding —
     // after a restart the map is empty and a run would start a FRESH CLI
@@ -493,7 +494,7 @@ export function registerGlyphhCliBridge(): void {
     if (p.loop && !agent) {
       const runId = `${p.chatId}:${Date.now()}`;
       const msg = `The "${p.loop}" loop is not available to you right now. It may be turned off for your organization; pick another loop or ask an org admin.`;
-      try { e.sender.send("glyphh-agent:error", { runId, error: msg }); e.sender.send("glyphh-agent:done", { runId, stopped: true }); } catch { /* window gone */ }
+      try { sender.send("glyphh-agent:error", { runId, error: msg }); sender.send("glyphh-agent:done", { runId, stopped: true }); } catch { /* window gone */ }
       return { runId };
     }
     // Re-prime the per-CLI binding from the chat's persisted map — the
@@ -510,7 +511,7 @@ export function registerGlyphhCliBridge(): void {
       const prior = live.get(p.chatId);
       if (prior && prior.proc.exitCode === null) { try { prior.proc.kill("SIGTERM"); } catch { /* racing exit */ } }
       if (!text) return { runId: `${p.chatId}:${Date.now()}` };
-      return runHeadlessTurn(p, agent, text, e.sender);
+      return runHeadlessTurn(p, agent, text, sender);
     }
     let c = live.get(p.chatId);
     if (c && c.proc.exitCode !== null) { live.delete(p.chatId); c = undefined; }
@@ -530,24 +531,54 @@ export function registerGlyphhCliBridge(): void {
       live.delete(p.chatId);
       c = undefined;
     }
-    if (!c) c = spawnChat({ ...p, model: wantModel }, e.sender);
+    if (!c) c = spawnChat({ ...p, model: wantModel }, sender);
     else {
-      c.sender = e.sender;
+      c.sender = sender;
       c.runId = `${p.chatId}:${Date.now()}`;
     }
     const atts = validAttachments(p.attachments);
     if (text || atts.length) writeUserTurn(c, text, atts);
     return { runId: c.runId };
-  });
+}
 
-  ipcMain.handle("glyphh-agent-stop", (_e, p: { chatId?: string }) => {
-    const c = p.chatId ? live.get(p.chatId) : undefined;
-    if (!c) return false;
-    try { writeControl(c, { subtype: "interrupt" }); } catch { /* fall through to kill */ }
-    setTimeout(() => { if (c.proc.exitCode === null) c.proc.kill("SIGTERM"); }, 3000);
-    emit(c, "glyphh-agent:done", { runId: c.runId, stopped: true });
-    return true;
-  });
+export function stopAgentChat(chatId: string): boolean {
+  const c = chatId ? live.get(chatId) : undefined;
+  if (!c) return false;
+  try { writeControl(c, { subtype: "interrupt" }); } catch { /* fall through to kill */ }
+  setTimeout(() => { if (c.proc.exitCode === null) c.proc.kill("SIGTERM"); }, 3000);
+  emit(c, "glyphh-agent:done", { runId: c.runId, stopped: true });
+  return true;
+}
+
+export function setAgentPermission(chatId: string, permission: LiveChat["permission"]): boolean {
+  const c = live.get(chatId);
+  if (!c) return false;
+  c.permission = permission;
+  try { writeControl(c, { subtype: "set_permission_mode", mode: PERM_FLAG[permission] }); } catch { return false; }
+  emit(c, "glyphh-agent:permission", { runId: c.runId, permission });
+  return true;
+}
+
+export function respondAgentApproval(id: string, allow: boolean): boolean {
+  const chatId = String(id ?? "").split(":")[0] ?? "";
+  const c = live.get(chatId);
+  const requestId = c?.pending.get(id);
+  if (!c || !requestId) return false;
+  c.pending.delete(id);
+  c.proc.stdin.write(JSON.stringify({
+    type: "control_response",
+    // updatedInput must be an OBJECT or ABSENT — null failed the CLI's
+    // canUseTool validation, so every ALLOWED permission died with
+    // "invalid permission result" (his Gmail open, 2026-09-11).
+    response: { subtype: "success", request_id: requestId, response: allow ? { behavior: "allow" } : { behavior: "deny", message: "The user declined." } },
+  }) + "\n");
+  return true;
+}
+
+export function registerGlyphhCliBridge(): void {
+  ipcMain.handle("glyphh-agent-run", (e, p: RunPayload & { steer?: string; prompt?: string }) => runAgentTurn(e.sender, p));
+
+  ipcMain.handle("glyphh-agent-stop", (_e, p: { chatId?: string }) => stopAgentChat(p.chatId ?? ""));
 
   ipcMain.handle("glyphh-agent-inject", (_e, p: { chatId: string; text: string }) => {
     const c = live.get(p.chatId);
@@ -556,30 +587,9 @@ export function registerGlyphhCliBridge(): void {
     return { injected: true };
   });
 
-  ipcMain.handle("glyphh-agent-set-permission", (_e, p: { chatId: string; permission: LiveChat["permission"] }) => {
-    const c = live.get(p.chatId);
-    if (!c) return { updated: false };
-    c.permission = p.permission;
-    try { writeControl(c, { subtype: "set_permission_mode", mode: PERM_FLAG[p.permission] }); } catch { return { updated: false }; }
-    emit(c, "glyphh-agent:permission", { runId: c.runId, permission: p.permission });
-    return { updated: true };
-  });
+  ipcMain.handle("glyphh-agent-set-permission", (_e, p: { chatId: string; permission: LiveChat["permission"] }) => ({ updated: setAgentPermission(p.chatId, p.permission) }));
 
-  ipcMain.handle("glyphh-agent-approval-respond", (_e, p: { id: string; allow: boolean }) => {
-    const chatId = String(p.id ?? "").split(":")[0] ?? "";
-    const c = live.get(chatId);
-    const requestId = c?.pending.get(p.id);
-    if (!c || !requestId) return false;
-    c.pending.delete(p.id);
-    c.proc.stdin.write(JSON.stringify({
-      type: "control_response",
-      // updatedInput must be an OBJECT or ABSENT — null failed the CLI's
-      // canUseTool validation, so every ALLOWED permission died with
-      // "invalid permission result" (his Gmail open, 2026-09-11).
-      response: { subtype: "success", request_id: requestId, response: p.allow ? { behavior: "allow" } : { behavior: "deny", message: "The user declined." } },
-    }) + "\n");
-    return true;
-  });
+  ipcMain.handle("glyphh-agent-approval-respond", (_e, p: { id: string; allow: boolean }) => respondAgentApproval(p.id, p.allow));
 
   // The CLI has no separate ask/connect channels — questions arrive as tool
   // permission asks and are answered there. These stay callable so old
