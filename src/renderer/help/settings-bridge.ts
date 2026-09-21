@@ -16,6 +16,25 @@ type Doors = {
 const el = <T extends HTMLElement = HTMLElement>(id: string): T | null => document.getElementById(id) as T | null;
 let poll: number | null = null;
 
+/** The copy ladder the other pages use: browser-native, then the IPC door, then execCommand on a scratch field. */
+async function copyText(val: string): Promise<boolean> {
+  if (!val) return false;
+  try { await navigator.clipboard.writeText(val); return true; } catch { /* file:// renderer: fall through */ }
+  const bridge = (window as unknown as { glyphh?: { copyToClipboard?: (s: string) => void } }).glyphh?.copyToClipboard;
+  if (bridge) { void bridge(val); return true; }
+  const ta = document.createElement("textarea");
+  ta.value = val;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
+
 function paint(st: BridgeState): void {
   const enabled = el<HTMLInputElement>("toggle-bridge-enabled");
   const background = el<HTMLInputElement>("toggle-bridge-background");
@@ -50,7 +69,12 @@ export async function loadBridgeSettings(): Promise<void> {
   const background = el<HTMLInputElement>("toggle-bridge-background");
   if (background) background.onchange = () => { void g.bridgeSetBackground?.(background.checked).then(refresh); };
   const copy = el<HTMLButtonElement>("bridge-copy-url");
-  if (copy) copy.onclick = () => { void navigator.clipboard.writeText(el("bridge-url")?.textContent ?? ""); copy.textContent = "Copied"; window.setTimeout(() => { copy.textContent = "Copy URL"; }, 1500); };
+  if (copy) copy.onclick = () => {
+    void copyText(el("bridge-url")?.textContent ?? "").then((ok) => {
+      copy.textContent = ok ? "Copied" : "Copy failed";
+      window.setTimeout(() => { copy.textContent = "Copy URL"; }, 1500);
+    });
+  };
   const open = el<HTMLButtonElement>("bridge-open-tui");
   if (open) open.onclick = () => { void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.(); };
   if (poll) window.clearInterval(poll);

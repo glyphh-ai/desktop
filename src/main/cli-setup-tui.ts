@@ -25,8 +25,11 @@ interface Input {
   /** The org's CLI-mode switch: false = the loop's own terminal is off. */
   cliAllowed?: boolean;
   gateway?: boolean;
+  /** BRIDGE MODE (his order, 2026-09-21): Claude only, signed in, then Finish
+   *  closes the window while the bridge keeps serving Claude Desktop. */
+  bridge?: { url: string; forced: boolean };
 }
-interface Output { done: boolean; loop?: string; model?: string; view?: "glyphh" | "cli" }
+interface Output { done: boolean; loop?: string; model?: string; view?: "glyphh" | "cli"; bridge?: boolean }
 
 const [, , inPath, outPath] = process.argv;
 const input: Input = (() => { try { return JSON.parse(fs.readFileSync(String(inPath), "utf-8")) as Input; } catch { return { version: "", platform: process.platform, loops: [], models: [], defaults: {} }; } })();
@@ -55,13 +58,28 @@ const ALL_CLIS: Cli[] = [
 // The org decides what is offered (his order, 2026-09-20): with the gateway
 // on only the loops it enabled; off, every CLI. An org that allows none still
 // gets an honest screen and a way out.
-const CLIS: Cli[] = Array.isArray(input.clis) ? ALL_CLIS.filter((c) => input.clis!.includes(c.key)) : ALL_CLIS;
+const BRIDGE = input.bridge ?? null;
+const CLIS: Cli[] = BRIDGE ? ALL_CLIS.filter((c) => c.key === "claude") : Array.isArray(input.clis) ? ALL_CLIS.filter((c) => input.clis!.includes(c.key)) : ALL_CLIS;
 const CLI_MODE_ALLOWED = input.cliAllowed !== false;
 const shell = (): [string, string[]] => (isWin ? ["powershell.exe", ["-NoLogo", "-Command"]] : [process.env.SHELL || "/bin/zsh", ["-lc"]]);
 function has(bin: string): boolean {
   const r = isWin ? spawnSync("where", [bin], { stdio: "ignore" }) : spawnSync("/bin/sh", ["-lc", `command -v ${bin}`], { stdio: "ignore" });
   return r.status === 0;
 }
+/** Claude Code signed in on this machine: its account record, its credential
+ *  file, or its own word for it. Never throws; false is "not that we can see". */
+function claudeSignedIn(): boolean {
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  try { if (/"oauthAccount"\s*:\s*\{/.test(fs.readFileSync(`${home}/.claude.json`, "utf-8"))) return true; } catch { /* none */ }
+  try { if (fs.existsSync(`${home}/.claude/.credentials.json`)) return true; } catch { /* none */ }
+  try {
+    const [sh, args] = shell();
+    const r = spawnSync(sh, [...args, "claude auth status"], { encoding: "utf-8", timeout: 8000 });
+    return r.status === 0 && /logged.?in|authenticated/i.test(`${r.stdout}${r.stderr}`) && !/not logged/i.test(`${r.stdout}${r.stderr}`);
+  } catch { return false; }
+}
+let signedIn = false;
+
 function version(bin: string): string {
   try {
     const [sh, args] = shell();
@@ -94,7 +112,11 @@ const modelOptions = (): Array<{ id: string; name: string }> => {
     : input.models.filter((m) => !provider || (m.provider || "") === provider);
   return [{ id: "", name: "the loop's own default" }, ...mine];
 };
-const refresh = (): void => { installed = new Map(CLIS.map((x) => [x.key, has(x.bin)])); versions = new Map(CLIS.filter((x) => installed.get(x.key)).map((x) => [x.key, version(x.bin)])); };
+const refresh = (): void => {
+  installed = new Map(CLIS.map((x) => [x.key, has(x.bin)]));
+  versions = new Map(CLIS.filter((x) => installed.get(x.key)).map((x) => [x.key, version(x.bin)]));
+  if (BRIDGE) signedIn = !!installed.get("claude") && claudeSignedIn();
+};
 
 // ── drawing ──
 const cols = (): number => process.stdout.columns || 100;
@@ -105,27 +127,38 @@ function header(): string[] {
   return [
     ...logo.map((l) => `  ${white}${l}${c.reset}`),
     "",
-    `  ${c.dim}CLI Installer${c.reset}  ${c.faint}v${input.version || "dev"} · ${isWin ? "Windows" : "macOS"}${c.reset}`,
+    BRIDGE
+      ? `  ${c.dim}Bridge Mode${c.reset}  ${c.faint}v${input.version || "dev"} · Claude Desktop → ${c.reset}${c.text}${BRIDGE.url}${c.reset}${c.faint} → Glyphh${c.reset}`
+      : `  ${c.dim}CLI Installer${c.reset}  ${c.faint}v${input.version || "dev"} · ${isWin ? "Windows" : "macOS"}${c.reset}`,
   ];
 }
+/** The home rows past the CLIs: the installer offers defaults, the bridge does not. */
+const EXTRA = (): string[] => (BRIDGE ? ["Finish"] : ["Set defaults (loop, model, mode)", "Finish"]);
 function line(s = ""): string { return s; }
 function draw(): void {
   const out: string[] = [c.clear, ...header(), ""];
   const key = (k: string, what: string): string => `${c.accent}${k}${c.reset} ${c.dim}${what}${c.reset}`;
   if (screen === "home") {
-    out.push(`  ${c.bold}${c.text}Loops on this machine${c.reset}${input.gateway ? `  ${c.faint}the loops your organization enabled${c.reset}` : ""}`, "");
+    if (BRIDGE) {
+      out.push(`  ${c.bold}${c.text}Claude Desktop rides this machine's bridge${c.reset}`, "",
+        `  ${c.dim}Point Claude Desktop's gateway and issuer at ${c.reset}${c.text}${BRIDGE.url}${c.reset}${c.dim}, client id ${c.reset}${c.text}claude-desktop${c.reset}${c.dim}, interactive sign-in.${c.reset}`,
+        `  ${c.dim}Turns your organization routes to your own Claude login run in Claude Code here, so it has to be installed and signed in.${c.reset}`, "");
+    } else {
+      out.push(`  ${c.bold}${c.text}Loops on this machine${c.reset}${input.gateway ? `  ${c.faint}the loops your organization enabled${c.reset}` : ""}`, "");
+    }
     if (!CLIS.length) out.push(`  ${c.warn}Your organization has not enabled any loops yet. Ask an org admin, then run this again from Settings → CLI Installer.${c.reset}`, "");
     CLIS.forEach((x, i) => {
       const on = installed.get(x.key);
       const sel = i === cursor;
       const dot = on ? `${c.ok}●${c.reset}` : `${c.faint}○${c.reset}`;
-      const st = on ? `${c.ok}installed${c.reset} ${c.faint}${versions.get(x.key) || ""}${c.reset}` : `${c.warn}not installed${c.reset}`;
-      out.push(`  ${sel ? c.invert : ""} ${dot} ${pad(x.name, 14)} ${pad(st, 34)} ${c.reset}`);
+      const login = BRIDGE ? (signedIn ? ` ${c.ok}signed in${c.reset}` : on ? ` ${c.warn}not signed in${c.reset}` : "") : "";
+      const st = on ? `${c.ok}installed${c.reset} ${c.faint}${versions.get(x.key) || ""}${c.reset}${login}` : `${c.warn}not installed${c.reset}`;
+      out.push(`  ${sel ? c.invert : ""} ${dot} ${pad(x.name, 14)} ${pad(st, 44)} ${c.reset}`);
     });
     out.push("");
-    const extra = ["Set defaults (loop, model, mode)", "Finish"];
-    extra.forEach((e, j) => { const sel = cursor === CLIS.length + j; out.push(`  ${sel ? c.invert : ""} ${c.accent}›${c.reset}${sel ? c.invert : ""} ${pad(e, 50)} ${c.reset}`); });
-    out.push("", `  ${key("↑↓", "move")}  ${key("enter", "open")}  ${key("r", "re-check")}`, `  ${c.faint}Finish needs one working CLI.${c.reset}`);
+    EXTRA().forEach((e, j) => { const sel = cursor === CLIS.length + j; out.push(`  ${sel ? c.invert : ""} ${c.accent}›${c.reset}${sel ? c.invert : ""} ${pad(e, 50)} ${c.reset}`); });
+    out.push("", `  ${key("↑↓", "move")}  ${key("enter", "open")}  ${key("r", "re-check")}`,
+      BRIDGE ? `  ${c.faint}Finish needs Claude Code installed and signed in. It closes this window; the bridge keeps running.${c.reset}` : `  ${c.faint}Finish needs one working CLI.${c.reset}`);
   } else if (screen === "cli" && picked) {
     const on = installed.get(picked.key);
     out.push(`  ${c.bold}${c.text}${picked.name}${c.reset}  ${on ? `${c.ok}installed${c.reset}` : `${c.warn}not installed${c.reset}`}`, "");
@@ -149,7 +182,8 @@ function draw(): void {
     rows.forEach(([k, v], i) => out.push(`  ${i === cursor ? c.invert : ""} ${pad(k, 8)} ${pad(v, 60)} ${c.reset}`));
     out.push("", `  ${key("←→", "change")}  ${key("enter", "save")}  ${key("esc", "back")}`);
   } else if (screen === "finish") {
-    out.push(`  ${c.ok}${c.bold}Done.${c.reset} ${c.text}Your loops are set. This panel can close.${c.reset}`, "", `  ${c.dim}Run this again any time from Settings → CLI Installer.${c.reset}`);
+    if (BRIDGE) out.push(`  ${c.ok}${c.bold}Done.${c.reset} ${c.text}The bridge keeps running in the background. This window closes.${c.reset}`, "", `  ${c.dim}Open Glyphh from the tray to come back here.${c.reset}`);
+    else out.push(`  ${c.ok}${c.bold}Done.${c.reset} ${c.text}Your loops are set. This panel can close.${c.reset}`, "", `  ${c.dim}Run this again any time from Settings → CLI Installer.${c.reset}`);
   }
   if (status) out.push("", `  ${c.dim}${status}${c.reset}`);
   process.stdout.write(out.join("\n") + "\n");
@@ -179,9 +213,12 @@ function finish(): void {
   // THE ONLY WAY OUT IS A WORKING CLI (his order, 2026-09-20).
   // THE ONLY WAY OUT IS A WORKING CLI — unless the org offers none, which is the org's call, not the user's.
   if (CLIS.length && !CLIS.some((x) => installed.get(x.key))) { status = "install at least one CLI before finishing"; draw(); return; }
+  if (BRIDGE) { refresh(); if (!signedIn) { status = "sign in to Claude Code before finishing (Sign in, then /login inside, then /exit)"; draw(); return; } }
   const loop = input.loops[loopIdx];
   const model = modelOptions()[modelIdx];
-  const outp: Output = { done: true, ...(loop ? { loop: loop.id } : {}), ...(model?.id ? { model: model.id } : {}), view: viewIdx === 1 ? "cli" : "glyphh" };
+  const outp: Output = BRIDGE
+    ? { done: true, bridge: true, loop: "claude", view: "cli" }
+    : { done: true, ...(loop ? { loop: loop.id } : {}), ...(model?.id ? { model: model.id } : {}), view: viewIdx === 1 ? "cli" : "glyphh" };
   try { fs.writeFileSync(String(outPath), JSON.stringify(outp)); } catch { /* main will notice nothing landed */ }
   screen = "finish"; draw();
   process.stdout.write(c.show);
@@ -200,13 +237,13 @@ function onKey(_: string, k: readline.Key): void {
   const name = k.name || "";
   if (k.ctrl && name === "c") { status = "finish when a CLI works; there is no other way out"; draw(); return; }
   if (screen === "home") {
-    const n = CLIS.length + 2;
+    const n = CLIS.length + EXTRA().length;
     if (name === "up") cursor = (cursor + n - 1) % n;
     else if (name === "down") cursor = (cursor + 1) % n;
     else if (name === "r") { refresh(); status = "re-checked"; }
     else if (name === "return") {
       if (cursor < CLIS.length) { picked = CLIS[cursor]; screen = "cli"; cursor = 0; }
-      else if (cursor === CLIS.length) { screen = "defaults"; cursor = 0; }
+      else if (!BRIDGE && cursor === CLIS.length) { screen = "defaults"; cursor = 0; }
       else finish();
     }
   } else if (screen === "cli" && picked) {

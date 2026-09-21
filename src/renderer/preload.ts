@@ -465,6 +465,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   bridgeSetBackground: (on: boolean) => ipcRenderer.invoke("bridge-set-background", on) as Promise<unknown>,
   bridgeTuiCommand: () => ipcRenderer.invoke("bridge-tui-command") as Promise<{ ok: boolean; command?: string; error?: string }>,
   onBridgeOpenTui: (callback: () => void) => { ipcRenderer.on("bridge-open-tui", () => callback()); },
+  onBridgeFinished: (callback: () => void) => { ipcRenderer.on("bridge-finished", () => callback()); },
   onCliSetupDone: (callback: (r: { loop: string; model: string; view: string }) => void) => {
     ipcRenderer.on("cli-setup-done", (_e, r) => callback(r));
   },

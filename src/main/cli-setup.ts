@@ -41,7 +41,11 @@ async function models(loops: Array<{ id: string; cli: string }>): Promise<Array<
   return [...out.values()];
 }
 
-export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string; error?: string }> {
+/** BRIDGE MODE (his order, 2026-09-21): the same TUI, Claude only, signed in,
+ *  Finish closes the window while the bridge keeps serving Claude Desktop. */
+export interface BridgeTui { url: string; forced: boolean }
+
+export async function cliSetupCommand(bridge: BridgeTui | null = null): Promise<{ ok: boolean; command?: string; error?: string }> {
   try {
     fs.mkdirSync(dir(), { recursive: true });
     // The org's answer, fresh (his order, 2026-09-20): with the gateway on the
@@ -57,6 +61,7 @@ export async function cliSetupCommand(): Promise<{ ok: boolean; command?: string
     const input = {
       version: app.getVersion(), platform: process.platform, loops, models: await models(loops), clis, cliAllowed, gateway,
       defaults: { loop: getPreference<string>("glyphhLoop", ""), view: getPreference<string>("defaultLoopView", "glyphh") },
+      ...(bridge ? { bridge } : {}),
     };
     fs.writeFileSync(inFile(), JSON.stringify(input), "utf-8");
     try { fs.rmSync(outFile(), { force: true }); } catch { /* none */ }
@@ -82,12 +87,19 @@ function watchOutput(): void {
   const tick = (): void => {
     let raw = "";
     try { raw = fs.readFileSync(file, "utf-8"); } catch { return; }
-    let parsed: { done?: boolean; loop?: string; model?: string; view?: string } = {};
+    let parsed: { done?: boolean; loop?: string; model?: string; view?: string; bridge?: boolean } = {};
     try { parsed = JSON.parse(raw) as typeof parsed; } catch { return; }
     if (!parsed.done) return;
     fs.unwatchFile(file, tick);
     watching = false;
     try { fs.rmSync(file, { force: true }); } catch { /* fine */ }
+    if (parsed.bridge) {
+      // The bridge TUI finished: Claude is installed and signed in. The window
+      // closes (the bridge keeps running); the installer's own marks stay untouched.
+      setPreference("cliSetupDoneAt", getPreference<string>("cliSetupDoneAt", "") || new Date().toISOString());
+      for (const wc of webContents.getAllWebContents()) { if (!wc.isDestroyed()) wc.send("bridge-finished"); }
+      return;
+    }
     if (parsed.loop) setPreference("glyphhLoop", parsed.loop);
     if (parsed.view === "glyphh" || parsed.view === "cli") setPreference("defaultLoopView", parsed.view);
     setPreference("cliSetupDoneAt", new Date().toISOString());

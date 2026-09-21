@@ -25,6 +25,8 @@ import { getClient } from "./glyphh-client.js";
 import { bridgeWrap } from "./memory-bridge.js";
 import { getPreference, setPreference } from "./stores/preferences-db.js";
 import { accountLanePrefix, agentRowFor, ensureLoopEnv } from "./cli-agents.js";
+import { cliSetupCommand } from "./cli-setup.js";
+import { getMainWindowRef } from "./main-window-ref.js";
 
 export const BRIDGE_PORT = Number(process.env.GLYPHH_BRIDGE_PORT || 4747);
 const ROUTING_TTL_MS = 30_000;
@@ -138,8 +140,12 @@ export function stopBridge(): void {
 export async function syncBridgeMode(gates?: { forceBridge?: unknown; bridgeAllowed?: unknown }): Promise<void> {
   if (gates) {
     allowed = gates.bridgeAllowed !== false;
+    const wasForced = forced;
     forced = allowed && gates.forceBridge === true;
     if (!allowed) note("Bridge Mode is on Pro and above; this organization's plan has none");
+    // Forced: the TUI goes over everything the moment we know (his order,
+    // 2026-09-21: the user must not see any of the app).
+    if (forced && !wasForced) { const win = getMainWindowRef(); if (win && !win.isDestroyed()) win.webContents.send("bridge-open-tui"); }
   }
   if (starting) await starting;
   const wanted = bridgeWanted() && isAuthenticated();
@@ -169,10 +175,10 @@ export function bridgeState(): BridgeState {
   };
 }
 
-/** The shell line the terminal overlay runs: the Glyphh TUI in bridge mode, or a plain note when it is not installed. */
-export function bridgeTuiCommand(): string {
-  const url = `http://127.0.0.1:${BRIDGE_PORT}`;
-  return `clear; if command -v glyphh >/dev/null 2>&1; then GLYPHH_BRIDGE_URL=${q(url)} glyphh --bridge; else echo "Glyphh bridge is running at ${url}"; echo "Point Claude Desktop's gateway and issuer at it. Install the Glyphh CLI for the TUI here: npm i -g @glyphh-ai/cli"; exec "$SHELL" -l; fi`;
+/** The shell line the terminal overlay runs: the CLI Installer in Bridge Mode,
+ *  Claude only, signed in, Finish closes the window while the bridge runs. */
+export function bridgeTuiCommand(): Promise<{ ok: boolean; command?: string; error?: string }> {
+  return cliSetupCommand({ url: `http://127.0.0.1:${BRIDGE_PORT}`, forced });
 }
 
 export function registerBridgeModeIpc(): void {
@@ -187,5 +193,5 @@ export function registerBridgeModeIpc(): void {
     setPreference("bridgeRunInBackground", on === true);
     return bridgeState();
   });
-  ipcMain.handle("bridge-tui-command", async () => ({ ok: true, command: bridgeTuiCommand() }));
+  ipcMain.handle("bridge-tui-command", () => bridgeTuiCommand());
 }

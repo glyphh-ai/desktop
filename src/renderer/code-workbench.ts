@@ -2279,12 +2279,11 @@ async function init(): Promise<void> {
     const el = document.createElement("div");
     el.id = "cli-installer-overlay";
     el.className = "booting";
-    el.innerHTML = `<button type="button" class="cli-installer-quit" title="${forced ? "Hide Glyphh (the bridge keeps running)" : "Close the bridge TUI"}">&times;</button><div class="cli-installer-host ws-rail-slot-body"></div>`;
+    // Forced: no × at all. Finish in the TUI is the only way out, and it closes
+    // the window (the bridge keeps running behind the tray).
+    el.innerHTML = `${forced ? "" : `<button type="button" class="cli-installer-quit" title="Close the bridge TUI">&times;</button>`}<div class="cli-installer-host ws-rail-slot-body"></div>`;
     window.setTimeout(() => el.classList.remove("booting"), 1400);
-    el.querySelector<HTMLButtonElement>(".cli-installer-quit")!.addEventListener("click", () => {
-      if (forced) { window.glyphh.windowClose?.(); return; }
-      closeBridgeTui();
-    });
+    el.querySelector<HTMLButtonElement>(".cli-installer-quit")?.addEventListener("click", () => closeBridgeTui());
     document.body.appendChild(el);
     const slot = makeSlot("terminal") as TermSlot;
     slot.terminals[0].initCmd = r.command;
@@ -2292,9 +2291,21 @@ async function init(): Promise<void> {
     renderTerminalIntoSlot(el.querySelector<HTMLElement>(".cli-installer-host")!, slot);
     console.warn("[bridge] TUI open (full screen)", JSON.stringify({ forced }));
   };
-  (window.glyphh as unknown as { onBridgeOpenTui?: (cb: () => void) => void }).onBridgeOpenTui?.(() => {
+  const bridgeDoors = window.glyphh as unknown as { onBridgeOpenTui?: (cb: () => void) => void; onBridgeFinished?: (cb: () => void) => void; bridgeState?: () => Promise<{ forced: boolean }> };
+  bridgeDoors.onBridgeOpenTui?.(() => {
     void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.();
   });
+  // Finish in the bridge TUI: the overlay goes, and under a forced org the
+  // window goes with it (main hides it; the bridge keeps serving).
+  bridgeDoors.onBridgeFinished?.(() => {
+    void bridgeDoors.bridgeState?.().then((st) => {
+      closeBridgeTui();
+      if (st?.forced) window.setTimeout(() => window.glyphh.windowClose?.(), 400);
+    }).catch(() => closeBridgeTui());
+  });
+  // Forced before this renderer existed (a restart with the org already
+  // requiring it): open at once rather than wait for the next gates poll.
+  void bridgeDoors.bridgeState?.().then((st) => { if (st?.forced) void (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui?.(); }).catch(() => undefined);
   // FIRST RUN, from the workbench itself (his report, 2026-09-20: "on first
   // run the thing still did not load"): the boot gate's timer is not relied
   // on. Once the door exists, ask main whether the installer has ever finished.
