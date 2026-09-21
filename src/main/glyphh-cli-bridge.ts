@@ -26,6 +26,7 @@ import { cliFix } from "./cli-auth.js";
 import { requestUsesGateway } from "./gateway-token.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
 import { userScopedDir } from "./app-paths.js";
+import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop } from "./glyphh-loop.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
@@ -506,6 +507,11 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload & { steer?
     // The loop's env (gateway lane, memory bridge) is written here, before
     // any spawn, so a chat turn gets the same wiring a terminal open does.
     if (agent) { const row = agentRowFor(agent.id); if (row) await ensureLoopEnv(row, { folder: p.workdir || "", workspace: p.workspace || "" }).catch(() => undefined); }
+    // THE GLYPHH LOOP (2026-09-21): our own agent loop on the gateway, any model.
+    if (agent && agent.cli === "glyphh") {
+      const history = (chat?.messages ?? []) as Array<{ role?: string; text?: string }>;
+      return runGlyphhLoopTurn(sender, { chatId: p.chatId, permission: p.permission, model: p.model, workdir: p.workdir, workspace: p.workspace, history }, text);
+    }
     // Non-claude loops: one headless turn per send, on the LOOP'S OWN CLI.
     if (agent && agent.cli !== "claude") {
       const prior = live.get(p.chatId);
@@ -542,6 +548,7 @@ export async function runAgentTurn(sender: WebContents, p: RunPayload & { steer?
 }
 
 export function stopAgentChat(chatId: string): boolean {
+  if (glyphhLoopHas(chatId) && stopGlyphhLoop(chatId)) return true;
   const c = chatId ? live.get(chatId) : undefined;
   if (!c) return false;
   try { writeControl(c, { subtype: "interrupt" }); } catch { /* fall through to kill */ }
@@ -551,6 +558,7 @@ export function stopAgentChat(chatId: string): boolean {
 }
 
 export function setAgentPermission(chatId: string, permission: LiveChat["permission"]): boolean {
+  if (glyphhLoopHas(chatId)) return setGlyphhLoopPermission(chatId, permission);
   const c = live.get(chatId);
   if (!c) return false;
   c.permission = permission;
@@ -560,6 +568,7 @@ export function setAgentPermission(chatId: string, permission: LiveChat["permiss
 }
 
 export function respondAgentApproval(id: string, allow: boolean): boolean {
+  if (isGlyphhApproval(id)) return respondGlyphhApproval(id, allow);
   const chatId = String(id ?? "").split(":")[0] ?? "";
   const c = live.get(chatId);
   const requestId = c?.pending.get(id);

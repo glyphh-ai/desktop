@@ -104,7 +104,7 @@ export async function gatewayCreds(): Promise<GatewayCreds | null> {
  * no heavy-model carve-out and no per-request strategy: one org switch, one
  * answer for every turn the loop runs.
  */
-export const LOOP_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google" };
+export const LOOP_VENDOR: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", glyphh: "glyphh" };
 
 /** WHERE ONE REQUEST GOES. Synchronous on the memoised credential so the
  *  command composers can ask at launch: the gateway when the org's lane is on

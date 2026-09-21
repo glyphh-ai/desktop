@@ -42,7 +42,7 @@ export interface CliAgentRow {
   name: string;
   /** Which CLI this agent drives — branded ones carry their marks; "custom"
    *  uses the emoji icon. More CLIs join this union as they're wired. */
-  cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "custom";
+  cli: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "glyphh" | "custom";
   /** Small glyph for lists (an emoji or short text) — custom CLIs only. */
   icon: string;
   /** The command line the terminal plays on open (before MCP wiring). */
@@ -197,7 +197,7 @@ export async function ensureOrgLoops(force = false): Promise<void> {
  *  member's own key (local, write-only) when they set one. */
 function rowFromServer(l: ServerLoop): CliAgentRow {
   const local = readAgent(l.cli);
-  const cli = (["codex", "gemini", "copilot", "cursor"].includes(l.cli) ? l.cli : "claude") as CliAgentRow["cli"];
+  const cli = (["codex", "gemini", "copilot", "cursor", "glyphh"].includes(l.cli) ? l.cli : "claude") as CliAgentRow["cli"];
   const now = new Date().toISOString();
   return {
     id: l.cli, name: l.name, cli, icon: l.icon || "", cmd: l.cmd || l.cli, model: "",
@@ -458,6 +458,14 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
     perm: { safe: " --mode ask", auto: " --force" },
     permHeadless: { safe: " --mode ask", auto: " --force --approve-mcps" },
   },
+  // THE GLYPHH LOOP (2026-09-21): no command, no base-URL seam; it runs in
+  // the app on the gateway (glyphh-loop.ts). Gateway lane only.
+  glyphh: {
+    headless: true, resumeLast: false, resumeById: false, modelFlag: false, mcp: true,
+    baseUrlEnv: [],
+    perm: {},
+    permHeadless: {},
+  },
   custom: {
     headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
     baseUrlEnv: [],
@@ -543,6 +551,9 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
   // classifier run the safe calls and ask about the rest, --force runs
   // everything (his report, 2026-09-17: nothing was wired here at all).
   cursor: { plan: " --mode plan", acceptEdits: " --auto-review", auto: " --force" },
+  // The Glyphh loop takes the words themselves (glyphh-loop-core.ts gate); the
+  // flags are markers so modesFor offers every mode.
+  glyphh: { plan: " plan", acceptEdits: " acceptEdits", auto: " auto" },
   custom: {},
 };
 
@@ -556,7 +567,7 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
  * prompting the user to approve?"). Offering Ask mode on those loops promises
  * a prompt that cannot arrive, and the refusal reads as the user's own.
  */
-const CAN_PROMPT: Partial<Record<CliAgentRow["cli"], boolean>> = { claude: true };
+const CAN_PROMPT: Partial<Record<CliAgentRow["cli"], boolean>> = { claude: true, glyphh: true };
 
 /** Which session modes a loop can honor, on a given surface. In a TERMINAL the
  *  CLI prompts the user itself, so Ask always works; in the agent PANEL it only
@@ -674,6 +685,8 @@ const CODEX_SKIP_GIT = " --skip-git-repo-check";
 const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="approve"'`;
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
+  // The Glyphh loop has no terminal: it runs in the chat panel (glyphh-loop.ts).
+  if (row.cli === "glyphh") return "echo 'The Glyphh loop runs in the chat panel; it has no terminal of its own.'";
   // Governed and unset means the org's own answer, not the CLI's saved one.
   // The org's lane decides; an unset model is the org's proxy model.
   const picked = (ov?.model ?? row.model ?? "").trim();
@@ -757,8 +770,10 @@ export async function primeAllLoopEnv(): Promise<void> {
  *  Settings → Loops save dies on "a loop needs a name" because there is no
  *  existing row to patch (his report, 2026-09-14). */
 const DEFAULT_LOOP_NAMES: Partial<Record<CliAgentRow["cli"], string>> = {
-  claude: "Claude", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor",
+  claude: "Claude", codex: "Codex", gemini: "Gemini", copilot: "Copilot", cursor: "Cursor", glyphh: "Glyphh",
 };
+/** Loops that exist only on the gateway lane: no vendor login to fall back to. */
+export const GATEWAY_ONLY_LOOPS: ReadonlySet<string> = new Set(["glyphh"]);
 function defaultRowFor(id: string): CliAgentRow | null {
   const name = DEFAULT_LOOP_NAMES[id as CliAgentRow["cli"]];
   if (!name) return null;
@@ -781,7 +796,7 @@ function defaultRowFor(id: string): CliAgentRow | null {
  * so nothing the org decides can reach them. In gateway mode they are not
  * offered, whatever the org's roster says.
  */
-export const GATEWAY_CLIS: ReadonlySet<string> = new Set(["claude", "codex"]);
+export const GATEWAY_CLIS: ReadonlySet<string> = new Set(["claude", "codex", "glyphh"]);
 
 let gatewayOn = false;
 /** `unset` for the vars the gateway owns on this CLI, so a request that
@@ -851,6 +866,7 @@ export function listCliAgents(): CliAgentListed[] {
     return [...orgLoops.values()]
       .filter((l) => l.enabled !== false)
       .filter((l) => !gatewayOn || GATEWAY_CLIS.has(l.cli))
+      .filter((l) => gatewayOn || !GATEWAY_ONLY_LOOPS.has(l.cli))
       .map((l) => rowFromServer(l))
       .map((row) => ({ ...row, command: composeCommand(row), headless: !!CLI_PROFILES[row.cli]?.headless, modes: modesFor(row.cli, "panel") }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -866,6 +882,7 @@ export function listCliAgents(): CliAgentListed[] {
   // only Claude while the rest were enabled) — an explicit row (even a
   // disabled one) always wins its slot; only absent loops get the virtual.
   for (const cli of Object.keys(DEFAULT_LOOP_NAMES)) {
+    if (GATEWAY_ONLY_LOOPS.has(cli) && !gatewayOn) continue;
     if (!out.some((r) => r.cli === cli)) {
       const def = defaultRowFor(cli)!;
       out.push({ ...def, command: composeCommand(def), headless: !!CLI_PROFILES[def.cli]?.headless, modes: modesFor(def.cli, "panel") });

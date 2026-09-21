@@ -111,6 +111,7 @@ setSignedOutHandler(() => {
   setActiveUser(null);
   clearPreferences(); // the next user must never read this map
   attachStop();
+  void import("./glyphh-loop.js").then((m) => m.forgetGlyphhLoops()).catch(() => undefined);
   triggerReauth();
 });
 
@@ -323,6 +324,8 @@ export function logout(): void {
   // Claude Desktop's bridge tokens are this member's too: gone with the sign-out.
   bridgeSignedOut();
   attachStop();
+  // The Glyphh loop's conversations are the member's: nothing stays for the next one.
+  void import("./glyphh-loop.js").then((m) => m.forgetGlyphhLoops()).catch(() => undefined);
   try { fs.unlinkSync(SESSION_FILE); } catch { /* already gone */ }
   resetClient(); // the live instance still holds the old session in memory
   if (token) {
