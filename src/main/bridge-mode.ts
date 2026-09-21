@@ -32,6 +32,8 @@ const ACTIVITY_CAP = 200;
 
 let server: BridgeServer | null = null;
 let forced = false;
+/** Bridge Mode is Pro and above (his order, 2026-09-21): the plan gates say. */
+let allowed = true;
 let starting: Promise<void> | null = null;
 const activity: string[] = [];
 let routingCache: { at: number; rows: RoutingRow[] } | null = null;
@@ -40,8 +42,10 @@ const argvBridge = (): boolean => process.argv.includes("--bridge");
 
 /** Bridge Mode is on for this member: the org forces it, they chose it, or the app was launched for it. */
 export function bridgeWanted(): boolean {
-  return forced || argvBridge() || getPreference<boolean>("bridgeModeEnabled", false) === true;
+  return allowed && (forced || argvBridge() || getPreference<boolean>("bridgeModeEnabled", false) === true);
 }
+
+export function bridgeAllowed(): boolean { return allowed; }
 
 /** The app keeps running with its window closed: forced, or the member's own choice. */
 export function bridgeBackground(): boolean {
@@ -131,8 +135,12 @@ export function stopBridge(): void {
 }
 
 /** Start or stop to match what is wanted. Called after sign-in, when the org's gates move, and when the member flips the switch. */
-export async function syncBridgeMode(gates?: { forceBridge?: unknown }): Promise<void> {
-  if (gates) forced = gates.forceBridge === true;
+export async function syncBridgeMode(gates?: { forceBridge?: unknown; bridgeAllowed?: unknown }): Promise<void> {
+  if (gates) {
+    allowed = gates.bridgeAllowed !== false;
+    forced = allowed && gates.forceBridge === true;
+    if (!allowed) note("Bridge Mode is on Pro and above; this organization's plan has none");
+  }
   if (starting) await starting;
   const wanted = bridgeWanted() && isAuthenticated();
   if (wanted && !server) { starting = start(); await starting; starting = null; }
@@ -142,19 +150,20 @@ export async function syncBridgeMode(gates?: { forceBridge?: unknown }): Promise
 /** The member signed out: every Claude Desktop token dies with the sessions. */
 export function bridgeSignedOut(): void {
   forced = false;
+  allowed = true;
   routingCache = null;
   stopBridge();
 }
 
 export interface BridgeState {
-  running: boolean; url: string; port: number; wanted: boolean; forced: boolean; background: boolean; enabled: boolean;
+  running: boolean; url: string; port: number; wanted: boolean; forced: boolean; allowed: boolean; background: boolean; enabled: boolean;
   member: string | null; sessions: number; clients: number; activity: string[];
 }
 
 export function bridgeState(): BridgeState {
   const st = server?.status();
   return {
-    running: !!server, url: `http://127.0.0.1:${BRIDGE_PORT}`, port: BRIDGE_PORT, wanted: bridgeWanted(), forced, background: bridgeBackground(),
+    running: !!server, url: `http://127.0.0.1:${BRIDGE_PORT}`, port: BRIDGE_PORT, wanted: bridgeWanted(), forced, allowed, background: bridgeBackground(),
     enabled: getPreference<boolean>("bridgeModeEnabled", false) === true,
     member: st?.member ?? member()?.email ?? null, sessions: st?.sessions ?? 0, clients: st?.clients ?? 0, activity: [...activity],
   };

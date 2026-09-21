@@ -6,7 +6,7 @@
  * and locked.
  */
 
-type BridgeState = { running: boolean; url: string; port: number; wanted: boolean; forced: boolean; background: boolean; enabled: boolean; member: string | null; sessions: number; clients: number; activity: string[] };
+type BridgeState = { running: boolean; url: string; port: number; wanted: boolean; forced: boolean; allowed: boolean; background: boolean; enabled: boolean; member: string | null; sessions: number; clients: number; activity: string[] };
 type Doors = {
   bridgeState?: () => Promise<BridgeState>;
   bridgeSetEnabled?: (on: boolean) => Promise<unknown>;
@@ -19,10 +19,14 @@ let poll: number | null = null;
 function paint(st: BridgeState): void {
   const enabled = el<HTMLInputElement>("toggle-bridge-enabled");
   const background = el<HTMLInputElement>("toggle-bridge-background");
-  if (enabled) { enabled.checked = st.forced || st.enabled; enabled.disabled = st.forced; }
-  if (background) { background.checked = st.background; background.disabled = st.forced || !(st.forced || st.enabled); }
+  const locked = !st.allowed;
+  if (enabled) { enabled.checked = st.allowed && (st.forced || st.enabled); enabled.disabled = locked || st.forced; }
+  if (background) { background.checked = st.allowed && st.background; background.disabled = locked || st.forced || !(st.forced || st.enabled); }
   const desc = el("bridge-enabled-desc");
-  if (desc) desc.textContent = st.forced ? "Required by your organization." : st.enabled ? "On. The bridge runs whenever you are signed in." : "Off. Turn it on to run the bridge whenever you are signed in.";
+  if (desc) {
+    if (locked) desc.textContent = "Bridge Mode is on Pro and above. Your organization's plan does not carry it.";
+    else desc.textContent = st.forced ? "Required by your organization." : st.enabled ? "On. The bridge runs whenever you are signed in." : "Off. Turn it on to run the bridge whenever you are signed in.";
+  }
   el("bridge-forced-note")?.style.setProperty("display", st.forced ? "" : "none");
   const url = el("bridge-url");
   if (url) url.textContent = st.url;
