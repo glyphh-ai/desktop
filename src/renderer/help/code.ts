@@ -5745,20 +5745,10 @@ export function initCode(): void {
     else if (cmd.action === "switcher") openCommandCenter();
   });
   // One delegated handler for everything interactive inside the thread —
-  // survives every re-render: code-block copy buttons, file cards (→ Monaco),
-  // run cards (→ terminal).
+  // survives every re-render: file cards (→ Monaco), run cards (→ terminal).
+  // Code-block copy/run live on the document (format-markdown.ts).
   el("code-thread")?.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    const copyBtn = t.closest<HTMLElement>(".yo-md-copy-btn");
-    if (copyBtn) {
-      const block = copyBtn.closest(".yo-md-codeblock");
-      const code = block?.querySelector("pre code")?.textContent ?? "";
-      void navigator.clipboard.writeText(code).then(() => {
-        copyBtn.textContent = "Copied ✓";
-        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
-      });
-      return;
-    }
     const fileCard = t.closest<HTMLElement>(".code-file-card");
     if (fileCard?.dataset.path) {
       (window as unknown as { __wbOpenFile?: (p: string) => void }).__wbOpenFile?.(fileCard.dataset.path);

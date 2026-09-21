@@ -1,6 +1,49 @@
 /** Lightweight markdown -> HTML renderer for LLM output.
  *  Handles: code fences, headers, bold, italic, inline code, links,
  *  unordered/ordered lists, blockquotes, horizontal rules, paragraphs. */
+/** Blocks the agent means as commands: they get a run action beside copy. */
+const SHELL_LANGS: ReadonlySet<string> = new Set(["bash", "sh", "zsh", "shell", "console", "terminal", "cmd", "powershell", "ps1", "fish"]);
+const COPY_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const CHECK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const RUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
+
+/** The command a shell block types into a terminal: prompt markers stripped,
+ *  one Enter per line. */
+export function shellCommandOf(code: string): string {
+  return code.split("\n").map((l) => l.replace(/^\s*(\$|>|%)\s+/, "")).filter((l) => l.trim() !== "").join("\r");
+}
+
+/** ONE delegated handler for every code block on the page, wherever it was
+ *  rendered (chat thread, docs, the workbench's markdown preview) and however
+ *  often that host re-renders: copy flips the icon to a check for a moment; run
+ *  hands the command to the workbench, which opens a terminal panel and types
+ *  it. Installed once per window on module load. */
+function installCodeBlockActions(): void {
+  if (typeof document === "undefined") return;
+  const w = window as unknown as { __yoMdActions?: boolean; __wbRunInTerminal?: (cmd: string) => void };
+  if (w.__yoMdActions) return;
+  w.__yoMdActions = true;
+  document.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement | null;
+    const btn = t?.closest<HTMLButtonElement>(".yo-md-copy-btn, .yo-md-run-btn");
+    if (!btn) return;
+    const code = btn.closest(".yo-md-codeblock")?.querySelector("pre code")?.textContent ?? "";
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.classList.contains("yo-md-run-btn")) {
+      const run = w.__wbRunInTerminal;
+      if (run) { run(shellCommandOf(code)); return; }
+    }
+    void navigator.clipboard.writeText(code).then(() => {
+      btn.innerHTML = CHECK_SVG;
+      btn.classList.add("yo-copied");
+      btn.title = "Copied";
+      setTimeout(() => { btn.innerHTML = btn.classList.contains("yo-md-run-btn") ? RUN_SVG : COPY_SVG; btn.classList.remove("yo-copied"); btn.title = btn.classList.contains("yo-md-run-btn") ? "Run in a terminal" : "Copy"; }, 1500);
+    }).catch(() => { /* clipboard refused: the block is still selectable */ });
+  }, true);
+}
+installCodeBlockActions();
+
 export function formatMarkdown(text: string): string {
   if (!text) return "";
 
@@ -86,11 +129,17 @@ export function formatMarkdown(text: string): string {
       if (i < lines.length) i++;
       const label = lang || "code";
       const codeId = `yo-code-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const runBtn = SHELL_LANGS.has(lang.toLowerCase())
+        ? `<button class="yo-md-run-btn" type="button" title="Run in a terminal" aria-label="Run in a terminal">${RUN_SVG}</button>`
+        : "";
       out.push(
-        `<div class="yo-md-codeblock" data-code-id="${codeId}">` +
+        `<div class="yo-md-codeblock" data-code-id="${codeId}" data-lang="${esc(lang)}">` +
           `<div class="yo-md-codeblock-header">` +
             `<span class="yo-md-codeblock-lang">${esc(label)}</span>` +
-            `<button class="yo-md-copy-btn" data-code-id="${codeId}">Copy</button>` +
+            `<span class="yo-md-codeblock-actions">` +
+              `<button class="yo-md-copy-btn" type="button" title="Copy" aria-label="Copy">${COPY_SVG}</button>` +
+              runBtn +
+            `</span>` +
           `</div>` +
           `<pre class="yo-md-pre"><code>${codeLines.join("\n")}</code></pre>` +
         `</div>`

@@ -9516,23 +9516,27 @@ button.a4-row-btn:disabled { opacity: 0.55; cursor: default; }
   letter-spacing: 0.3px;
 }
 
-.yo-md-copy-btn {
+.yo-md-codeblock-actions { display: flex; align-items: center; gap: 4px; }
+.yo-md-copy-btn, .yo-md-run-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
   background: none;
   border: 1px solid var(--border-3);
   border-radius: 4px;
   color: var(--text-3);
-  font-size: 11px;
-  padding: 2px 8px;
+  padding: 0;
   cursor: pointer;
-  font-family: inherit;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.yo-md-copy-btn:hover {
+.yo-md-copy-btn:hover, .yo-md-run-btn:hover {
   color: var(--text);
   border-color: var(--text-muted);
   background: var(--border);
 }
-.yo-md-copy-btn.yo-copied {
+.yo-md-copy-btn.yo-copied, .yo-md-run-btn.yo-copied {
   color: var(--text);
   border-color: rgba(175, 95, 255, 0.33);
 }

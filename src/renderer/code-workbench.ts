@@ -1395,6 +1395,9 @@ async function init(): Promise<void> {
     refreshForCwd(): void;
     reset(): void;
     openTool(view: "files" | "terminal" | "monaco" | "diff" | "preview" | "plan" | "rail" | "gpoint" | "gdrive" | "gdesign" | "gimage" | "gvideo" | "gsound"): void;
+    /** Open (or re-front) the terminal card and type a command into its shell:
+     *  straight into a live pty, or as the first command of one still booting. */
+    openTerminalWith(cmd: string): void;
     /** Open (or re-front) a tool card and LAND a payload in its slot before the
      *  card repaints — the deep-link path (open_video("id") etc.) while Echo
      *  owns the workspace. Landing via placeSlot instead tore the wall down —
@@ -1493,6 +1496,14 @@ async function init(): Promise<void> {
   }
   function viewIsOpen(view: ViewKind): boolean {
     return rails.some((r) => r.slots.some((s) => s.view === view));
+  }
+  /** Type a command into a terminal: a live shell gets it now (after the same
+   *  grace the boot typing uses), one still booting runs it first thing. */
+  function typeIntoTerminal(t: { ptyId: string; spawned?: boolean; initCmd?: string; remote?: { write: (d: string) => void } } | undefined, cmd: string): void {
+    if (!t) return;
+    if (t.remote) { setTimeout(() => t.remote?.write(`${cmd}\r`), 600); return; }
+    if (t.spawned) { setTimeout(() => { void window.wb.termWrite(t.ptyId, `${cmd}\r`); }, 600); return; }
+    t.initCmd = cmd;
   }
   function makeSlot(view: Exclude<ViewKind, "app">): Slot {
     const id = nextSlotId++;
@@ -6652,6 +6663,17 @@ async function init(): Promise<void> {
       },
       reset: () => resetEcho(),
       openTool: (view) => { void getOrOpenTool(view); },
+      openTerminalWith: (cmd) => {
+        const entry = getOrOpenTool("terminal");
+        let tries = 0;
+        const settle = (): void => {
+          const target = entry.toolSlot ? entry : openList.find((x) => x.tile.toolView === "terminal" && x.toolSlot);
+          const slot = target?.toolSlot;
+          if (slot?.view === "terminal") { typeIntoTerminal(slot.terminals[slot.activeIdx] ?? slot.terminals[0], cmd); return; }
+          if (tries++ < 40) requestAnimationFrame(settle);
+        };
+        settle();
+      },
       openToolWith: (view, land) => {
         const entry = getOrOpenTool(view as Parameters<typeof getOrOpenTool>[0]);
         // A FRESHLY opened card creates its slot after mount — landing only
@@ -9658,6 +9680,16 @@ async function init(): Promise<void> {
     if (echoCtl) { echoCtl.openTool("terminal"); return; }
     // MULTI-INSTANCE: every terminal command spawns its own panel.
     placeSlot(makeSlot("terminal"));
+  };
+  // A code block's run action (format-markdown.ts): the command lands in a
+  // terminal panel and runs, the same way a run card or a layout's first
+  // command does.
+  (window as unknown as { __wbRunInTerminal?: (cmd: string) => void }).__wbRunInTerminal = (cmd) => {
+    if (!cmd.trim()) return;
+    if (echoCtl) { echoCtl.openTerminalWith(cmd); return; }
+    const slot = makeSlot("terminal");
+    if (slot.view === "terminal") slot.terminals[0].initCmd = cmd;
+    placeSlot(slot);
   };
   // Artifacts gallery (Files section) → workbench. Mount by KIND: code/text/
   // markdown open in Monaco (fetched as text from the artifact's short-lived
