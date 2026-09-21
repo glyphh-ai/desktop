@@ -8,7 +8,7 @@
 > is chosen per request from a routing table the org admin owns on the gateway.
 > Claude Desktop never knows anything sits in the middle.
 >
-> Decided 2026-09-21. Spec only; no code until this is read.
+> Decided 2026-09-21; built the same day (see §13 for where the build departed from the plan).
 
 ## 0. Why
 
@@ -285,3 +285,49 @@ surface (§9).
   CLI's `--append-system-prompt`, or ignore it. Default: append it.
 - Codex as a second account lane is the same adapter with a different
   stream; not in this scope.
+
+## 13. As built (2026-09-21)
+
+Where the build departed from the plan above, and why.
+
+- **Nothing on disk.** The desktop's zero-local-storage law applies to the
+  bridge too. The issuer's keypair, Claude Desktop's codes and tokens, the
+  registered clients and the conversation ↔ session table all live in
+  process memory (`src/main/bridge/*`). A restart of the app means one
+  browser hop for Claude Desktop (the member is still signed in to Glyphh) and
+  a fresh CLI session seeded from the transcript. No persisted port: the
+  listener is fixed at `127.0.0.1:4747` (`GLYPHH_BRIDGE_PORT` overrides).
+- **The issuer's identity is the app's session.** `/oauth/authorize` does not
+  redirect into a web sign-in. It renders a consent page naming the client and
+  the signed-in member and issues the code on Allow; with nobody signed in it
+  says to sign in to the Glyphh app first. Glyphh first, then the bridge.
+- **Its own listener.** The bridge is a second loopback server beside the
+  memory bridge, not new routes on it; the gateway lane forwards *through* the
+  memory bridge's wrap so inject and capture apply. `/health` answers with CORS
+  so the console's Connect dialog can find a running bridge and point Claude
+  Desktop at it.
+- **When it runs.** After sign-in, when the org forces it (plan gate
+  `forceBridge`), when the member turned it on (server-side preference
+  `bridgeModeEnabled`), or when the app was launched with `--bridge`. It stops
+  on sign-out and revokes every token it minted.
+- **Force Bridge Mode** (Organization settings, org admin): the desktop shows
+  the bridge TUI over everything after sign-in, both switches on Settings →
+  Bridge are on and locked, and the app runs in the background: closing the
+  window hides it behind a tray; Quit is a real quit.
+- **Routing changes** reach the bridge on a thirty-second cache, and at once
+  when the org's gates move (the desktop's existing org poll). There is no
+  broker channel; none was needed.
+- **The account lane's env** sources the loop's env file and strips the
+  gateway lines whatever the org's lane says (`accountLanePrefix`), so the
+  turn runs on the CLI's own login with the memory bridge still in its path.
+  `chatOnly` rows disallow the CLI's tools; `read-only` maps to plan mode.
+- **The usage event** lands as a zero-cost `LiteLLM_SpendLogs` row on the
+  member's own gateway key with `metadata.lane = "account"`.
+- **The TUI** takes `--bridge` and names the bridge URL in its banner; the
+  desktop opens it in a terminal overlay with `GLYPHH_BRIDGE_URL` set.
+- **Still to check on a real machine:** Claude Desktop accepting a plain-http
+  loopback issuer and gateway URL, whether it re-reads the setting without a
+  restart, and whether it calls `/v1/models`. The HTTP-level test of the
+  listener (`test/main/bridge/server.test.ts`) runs a scripted `claude`
+  against the real server and cannot run in a sandbox that forbids loopback
+  sockets; it runs in CI and on a developer machine.
