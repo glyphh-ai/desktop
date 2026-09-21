@@ -54,6 +54,8 @@ const ALL_CLIS: Cli[] = [
   { key: "gemini", name: "Gemini", bin: "gemini", install: { mac: "npm install -g @google/gemini-cli", win: "npm install -g @google/gemini-cli" }, login: "gemini", note: "sign in on its first screen, then /quit" },
   { key: "copilot", name: "Copilot", bin: "copilot", install: { mac: "npm install -g @github/copilot", win: "npm install -g @github/copilot" }, login: "copilot", note: "type /login inside, then /exit" },
   { key: "cursor", name: "Cursor", bin: "cursor-agent", install: { mac: "curl https://cursor.com/install -fsS | bash", win: "powershell -c \"irm https://cursor.com/install | iex\"" }, login: "cursor-agent login" },
+  // The Glyphh loop's own terminal (2026-09-21): the SDK engine in a TUI, on the gateway.
+  { key: "glyphh", name: "Glyphh", bin: "glyphh", install: { mac: "npm install -g @glyphh-ai/cli", win: "npm install -g @glyphh-ai/cli" }, login: "glyphh", note: "sign in on its first screen, then /quit" },
 ];
 // The org decides what is offered (his order, 2026-09-20): with the gateway
 // on only the loops it enabled; off, every CLI. An org that allows none still
@@ -100,7 +102,7 @@ let loopIdx = Math.max(0, input.loops.findIndex((l) => l.id === input.defaults.l
 let modelIdx = 0;
 let viewIdx: 0 | 1 = input.defaults.view === "cli" && CLI_MODE_ALLOWED ? 1 : 0;
 // A loop reaches one vendor: its model list is that vendor's (his report, 2026-09-20: Codex offered Anthropic's).
-const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor" };
+const LOOP_PROVIDER: Record<string, string> = { claude: "anthropic", codex: "openai", gemini: "google", copilot: "github", cursor: "cursor", glyphh: "glyphh" };
 const modelOptions = (): Array<{ id: string; name: string }> => {
   const provider = LOOP_PROVIDER[input.loops[loopIdx]?.cli || ""] || "";
   // Gateway on: the org's whole list runs on every loop (the router translates); off: the loop's own vendor.

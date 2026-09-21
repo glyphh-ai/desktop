@@ -33,7 +33,7 @@ import { effectiveToolMode } from "./conn-tool-modes.js";
 import { preferencesByPrefix } from "./stores/preferences-db";
 import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayEnv, writeBaseUrlOnly, loopGoesToGateway, requestUsesGateway, LOOP_VENDOR, KEY_ENV, type GatewayCreds, writeDirectBase, directVar } from "./gateway-token.js";
 import { bridgeWrap } from "./memory-bridge.js";
-import { getClient } from "./glyphh-client.js";
+import { getClient, SERVER_URL } from "./glyphh-client.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -458,13 +458,14 @@ export const CLI_PROFILES: Record<CliAgentRow["cli"], CliProfile> = {
     perm: { safe: " --mode ask", auto: " --force" },
     permHeadless: { safe: " --mode ask", auto: " --force --approve-mcps" },
   },
-  // THE GLYPHH LOOP (2026-09-21): no command, no base-URL seam; it runs in
-  // the app on the gateway (glyphh-loop.ts). Gateway lane only.
+  // THE GLYPHH LOOP (2026-09-21): the panel runs the SDK's engine in-process
+  // (glyphh-loop.ts); the terminal runs the `glyphh` CLI, the same engine.
+  // Gateway lane only; no base-URL seam — the CLI exchanges its own token.
   glyphh: {
-    headless: true, resumeLast: false, resumeById: false, modelFlag: false, mcp: true,
+    headless: true, resumeLast: false, resumeById: false, modelFlag: true, mcp: true,
     baseUrlEnv: [],
-    perm: {},
-    permHeadless: {},
+    perm: { safe: " --permission plan", auto: " --permission auto" },
+    permHeadless: { safe: " --permission plan", auto: " --permission auto" },
   },
   custom: {
     headless: false, resumeLast: false, resumeById: false, modelFlag: false, mcp: false,
@@ -501,6 +502,7 @@ function modelFlag(cli: CliAgentRow["cli"], model: string): string {
     case "gemini": return ` -m "${m}"`;
     case "copilot": return ` --model "${m}"`;
     case "cursor": return ` --model "${m}"`;
+    case "glyphh": return ` --model "${m}"`;
     default: return "";
   }
 }
@@ -551,7 +553,7 @@ const SESSION_PERM_HEADLESS: Record<CliAgentRow["cli"], Partial<Record<SessionPe
   // classifier run the safe calls and ask about the rest, --force runs
   // everything (his report, 2026-09-17: nothing was wired here at all).
   cursor: { plan: " --mode plan", acceptEdits: " --auto-review", auto: " --force" },
-  // The Glyphh loop takes the words themselves (glyphh-loop-core.ts gate); the
+  // The Glyphh loop takes the words themselves (the SDK loop's gate); the
   // flags are markers so modesFor offers every mode.
   glyphh: { plan: " plan", acceptEdits: " acceptEdits", auto: " auto" },
   custom: {},
@@ -685,8 +687,6 @@ const CODEX_SKIP_GIT = " --skip-git-repo-check";
 const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="approve"'`;
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
-  // The Glyphh loop has no terminal: it runs in the chat panel (glyphh-loop.ts).
-  if (row.cli === "glyphh") return "echo 'The Glyphh loop runs in the chat panel; it has no terminal of its own.'";
   // Governed and unset means the org's own answer, not the CLI's saved one.
   // The org's lane decides; an unset model is the org's proxy model.
   const picked = (ov?.model ?? row.model ?? "").trim();
@@ -707,11 +707,24 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // positionally; gemini via -i); CLIs without the affordance just open.
   const p0 = (ov?.prompt ?? "").trim();
   const promptPart = p0
-    ? (row.cli === "claude" || row.cli === "codex") ? ` '${p0.replace(/'/g, "'\\''")}'`
+    ? (row.cli === "claude" || row.cli === "codex" || row.cli === "glyphh") ? ` '${p0.replace(/'/g, "'\\''")}'`
       : row.cli === "gemini" ? ` -i '${p0.replace(/'/g, "'\\''")}'`
       : ""
     : "";
   const permPart = permFlag(row, false);
+  // THE GLYPHH LOOP'S TERMINAL (his order, 2026-09-21): the `glyphh` CLI runs
+  // the same SDK engine the panel does, in its own process. It signs in on its
+  // own (its own session file — the desktop's 15-minute access token is not
+  // lendable) and is pointed at THIS server. The app's local MCP server rides
+  // along as env so the terminal's runs get the glyphh_* tools the panel has.
+  if (row.cli === "glyphh") {
+    const { port } = localMcpStatus();
+    const mcpToken = row.mcp && port ? mcpTokenOf(row.id) : "";
+    const env = `GLYPHH_SERVER_URL="${SERVER_URL}"`
+      + (mcpToken ? ` GLYPHH_APP_MCP_URL="http://127.0.0.1:${port}/mcp" GLYPHH_APP_MCP_TOKEN="${mcpToken}"` : "");
+    const base = `${env} ${row.cmd}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
+    return cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
+  }
   const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";
   let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE + codexProvider : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
   if (row.mcp) {
