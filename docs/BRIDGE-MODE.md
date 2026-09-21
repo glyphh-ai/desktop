@@ -331,3 +331,26 @@ Where the build departed from the plan above, and why.
   listener (`test/main/bridge/server.test.ts`) runs a scripted `claude`
   against the real server and cannot run in a sandbox that forbids loopback
   sockets; it runs in CI and on a developer machine.
+
+## 14. Over the relay (2026-09-21, later the same day)
+
+Claude Desktop refuses a plain-http loopback for its gateway and issuer, so
+the front door moved to the server and the engine stayed on the machine
+(RELAY-RESEARCH.md §5):
+
+- **Issuer:** the server's own OpenID provider. **Gateway URL:** the server's
+  `/bridge`. The Connect dialog's Claude Desktop card names both.
+- **`POST /bridge/v1/messages`** (server, `glyphh_auth/attach.py`) resolves the
+  member from the access token, gates on the plan, decides the lane from the
+  org's routing table. Gateway lane: LiteLLM on the member's key, streamed
+  through. Account lane: `bridge.turn` down the member's attach socket; the
+  desktop's account-lane engine (`bridge/account-lane.ts`, shared with the
+  local listener) runs the headless claude and pushes Messages SSE frames back
+  on `run:<id>`; no desktop attached is a clear 412.
+- **The attach plane** is back on the fork: `/ws/attach`, status, dispatch,
+  `run` as SSE, presence in Redis with fly-replay placement, and the console's
+  Connected Devices page. The desktop attaches on sign-in and runs `agent.run`
+  on the CLI bridge for the web and the phone.
+- **The local listener** (`127.0.0.1:4747`) stays as a development convenience
+  and for clients that accept http; it is no longer what Claude Desktop is
+  pointed at.
