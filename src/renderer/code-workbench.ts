@@ -9178,6 +9178,22 @@ async function init(): Promise<void> {
         };
         w.__wbSwitchToChat?.(agent.id);
         const cli = cliAgentRows.find((r) => r.id === agent.id)?.cli;
+        // THE GLYPHH LOOP: the terminal and the panel share ONE store. The
+        // terminal marked the chat it was on as current; refresh from disk and
+        // open that chat — the one you left, or the one the terminal started.
+        if (cli === "glyphh") {
+          const hop = cliHop; cliHop = null;
+          void (async () => {
+            await (window as unknown as { __glyphhReloadSessions?: () => Promise<void> }).__glyphhReloadSessions?.();
+            const s = await (window.glyphh as unknown as { glyphhSessionsLoad?: () => Promise<{ chats: Array<{ id: string; loop?: string; updatedAt?: number }>; currentId: string | null }> }).glyphhSessionsLoad?.();
+            const mark = s?.chats.find((c) => c.id === s.currentId && c.loop === "glyphh");
+            const fresh = !!mark && !!hop && (mark.updatedAt ?? 0) >= hop.at - 2000;
+            const target = fresh && mark ? mark.id : hop?.chatId;
+            if (target && w.__glyphhHasSession?.(target)) w.__glyphhOpenLocalSession?.(target);
+            else { w.__glyphhNewSession?.(); w.__glyphhSetLoop?.(agent.id); }
+          })();
+          return;
+        }
         const newest = rows[0];
         // BACK TO THE CHAT YOU LEFT (his report, 2026-09-20: the hop back
         // opened an older thread with its own loop and model). The hop

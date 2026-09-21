@@ -652,7 +652,10 @@ export function registerGlyphhCliBridge(): void {
     return true;
   });
   // The chat's CURRENT CLI session id — the terminal view resumes it.
-  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string; cli?: string }) => resumeIds.get(rkey(p?.chatId ?? "", p?.cli || "claude")) ?? null);
+  // THE GLYPHH LOOP'S SESSION IS THE CHAT ITSELF (2026-09-21): the terminal
+  // resumes it by chat id, so the hop never opens a different conversation.
+  ipcMain.handle("glyphh-agent-session-of", (_e, p: { chatId: string; cli?: string }) =>
+    (p?.cli === "glyphh" ? (p.chatId || null) : resumeIds.get(rkey(p?.chatId ?? "", p?.cli || "claude")) ?? null));
 
   // The CLI transcript IS the history (his report, 2026-09-11: switching
   // views must carry the conversation). Plain text turns only — tool frames

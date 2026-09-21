@@ -6626,8 +6626,10 @@ export function initCode(): void {
   // list so a ghost-created session appears in the history dropdown immediately. The
   // CURRENT chat keeps its local object: it may be mid-stream, and the disk
   // copy of it is never newer than this window's memory.
-  (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => {
-    void (async () => {
+  /** Take the shared store as it is on disk (another writer — the glyphh
+   *  terminal — landed turns). Exposed so the hop back from a terminal can
+   *  refresh BEFORE it opens the chat the terminal was on. */
+  const reloadSessionsFromDisk = async (): Promise<void> => {
       try {
         const s = await window.glyphh.glyphhSessionsLoad?.();
         const disk = ((s?.chats as CodeChat[]) || []);
@@ -6645,8 +6647,9 @@ export function initCode(): void {
         renderHistory();
         if (cur && current() !== cur) renderThread();
       } catch { /* stale repaint only — next save syncs */ }
-    })();
-  });
+  };
+  (window as unknown as { __glyphhReloadSessions?: () => Promise<void> }).__glyphhReloadSessions = reloadSessionsFromDisk;
+  (window.glyphh as unknown as { onGlyphhSessionsUpdated?: (cb: () => void) => void }).onGlyphhSessionsUpdated?.(() => { void reloadSessionsFromDisk(); });
 }
 
 /**
