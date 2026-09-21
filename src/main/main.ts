@@ -71,6 +71,7 @@ import { installPanelHost, closeAllPanels } from "./panel-host";
 import { installRelayPty, killAllRelayPtys } from "./relay-pty";
 import { installRelayFs } from "./relay-fs";
 import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
+import { installAttachHandlers } from "./attach-handlers";
 import { installAppSeamAuth } from "./app-seam-auth";
 import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
@@ -403,6 +404,8 @@ async function boot() {
   // rpa.* drive an open app panel. The renderer registers each panel's
   // slug → webContents id so main can resolve the live view.
   installRpaHandlers();
+  // fs picker, native apps and the headless scrape, for loopback MCP and the attach socket.
+  installAttachHandlers();
   ipcMain.on("wb:rpa-register", (_e, slug: string, wcId: number) => registerRpaTarget(String(slug), Number(wcId)));
   ipcMain.on("wb:rpa-unregister", (_e, slug: string) => unregisterRpaTarget(String(slug)));
 

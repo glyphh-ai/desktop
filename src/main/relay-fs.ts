@@ -19,10 +19,9 @@
  *                                 / {type:"cwd-changed",cwd}
  *   fs.unwatch {channel}        → stop forwarding on that channel
  *
- * (`fs.gitInfo` already exists on the registry — attach-handlers.ts registers
- * it for the web folder picker with a shape the workbench can consume, so it
- * is deliberately NOT re-registered here. Same for `fs.list`/`fs.mkdir`, the
- * picker's home-capped browse surface — different semantics, not clobbered.)
+ * (`fs.gitInfo`, `fs.list` and `fs.mkdir` are the web folder PICKER's surface,
+ * registered by attach-handlers.ts with the shapes the picker consumes, so they
+ * are deliberately NOT re-registered here: different semantics, not clobbered.)
  *
  * Every implementation is the EXACT function the desktop's files:* IPC
  * handlers call (working-directory.ts) — one behavior, two transports.

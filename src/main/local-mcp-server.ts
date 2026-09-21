@@ -700,19 +700,7 @@ function buildMcpServer(): McpServer {
     async (a) => via("rpa.goto", a),
   );
 
-  // ── Run the user's automations / scrape ──────────────
-  mcp.tool(
-    "loop_run",
-    "Run one of the user's saved loops on their machine and return its output.",
-    { slug: z.string().describe("Loop slug"), input: z.record(z.string(), z.unknown()).optional() },
-    async ({ slug, input }) => via("loops.run", { slug, input: input || {} }),
-  );
-  mcp.tool(
-    "skill_run",
-    "Run one of the user's saved skills on their machine and return its output.",
-    { slug: z.string().describe("Skill slug"), input: z.record(z.string(), z.unknown()).optional() },
-    async ({ slug, input }) => via("skills.run", { slug, input: input || {} }),
-  );
+  // ── Scrape (the runners for saved loops/skills/agents left with the scheduler, 2026-09-21) ──
   // ── Memory pages (his order, 2026-09-20): what the curator skill reads and writes ──
   const memText = (v: unknown) => ({ content: [{ type: "text" as const, text: typeof v === "string" ? v : JSON.stringify(v, null, 2) }] });
   mcp.tool(
@@ -738,12 +726,6 @@ function buildMcpServer(): McpServer {
     "Delete a memory page by its id (from memory_pages).",
     { id: z.string().min(1) },
     async ({ id }) => { const { deleteMemoryPage } = await import("./memory-bridge.js"); return memText(deleteMemoryPage(id)); },
-  );
-  mcp.tool(
-    "agent_run",
-    "Fire a standing agent's scheduled task now, on the user's machine.",
-    { agentId: z.string(), taskId: z.string() },
-    async ({ agentId, taskId }) => via("agents.run", { agentId, taskId }),
   );
   mcp.tool(
     "scrape_page",
