@@ -392,11 +392,16 @@ void (async () => {
   const link = document.getElementById("app-rail-update-link") as HTMLButtonElement | null;
   const bar = document.getElementById("app-rail-update-bar");
   const fill = document.getElementById("app-rail-update-fill");
+  const close = document.getElementById("app-rail-update-close");
   if (!card || !text || !link || !bar || !fill) return;
 
   let state: "available" | "downloading" | "ready" = "available";
+  // "Not now": the card stays closed for this release until the app relaunches
+  // or a newer release shows up.
+  let dismissed = "";
   const paint = (next: typeof state, version: string, percent = 0) => {
     state = next;
+    if (next === "available" && dismissed && dismissed === (version || "next")) { card.classList.add("hidden"); return; }
     const v = version ? `v${version}` : "the next release";
     if (next === "available") {
       text.textContent = `Glyphh ${v} is available`;
@@ -430,6 +435,7 @@ void (async () => {
     void window.glyphh.updateDownload?.();
   };
   link.addEventListener("click", (e) => { e.stopPropagation(); act(); });
+  close?.addEventListener("click", (e) => { e.stopPropagation(); dismissed = version || "next"; card.classList.add("hidden"); });
   // The icon-strip rail hides the text and link; the card itself is the door.
   card.addEventListener("click", () => { if (document.getElementById("app-rail")?.classList.contains("rail-icons")) act(); });
 

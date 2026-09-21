@@ -16258,19 +16258,22 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 }
 .app-rail-user {
   flex: 0 0 auto;
-  display: flex; align-items: center; gap: 4px;
+  /* A column: the new-release card stacks ABOVE the account button (his
+     report, 2026-09-20: a row squashed the card beside the name). */
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
   padding: 8px;
   /* The rail's own divider, on the rail's own ground. */
   border-top: 1px solid var(--sidebar-border, var(--border));
 }
-.app-rail-user .app-rail-user-btn { flex: 1 1 auto; min-width: 0; }
+.app-rail-user .app-rail-user-btn { width: 100%; min-width: 0; }
 #app-rail.rail-icons .app-rail-user { flex-direction: column; }
 
 /* New-release card — sits just above the account button once the feed offers
    a newer version (home.ts paints available / downloading / ready). */
 .app-rail-update {
+  position: relative;
   display: flex; align-items: flex-start; gap: 8px;
-  width: 100%; margin-bottom: 6px; padding: 8px 10px;
+  width: 100%; margin: 0; padding: 8px 26px 8px 10px;
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-2));
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
@@ -16288,6 +16291,14 @@ body.platform-shell .settings-nav > .org-switch { padding: 0 14px 14px 2px; }
 .app-rail-update-bar { height: 4px; border-radius: 2px; background: var(--border-2); overflow: hidden; }
 .app-rail-update-bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 .app-rail-update-bar.hidden, .app-rail-update-link.hidden, .app-rail-update.hidden { display: none; }
+.app-rail-update-close {
+  position: absolute; top: 4px; right: 4px; width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 5px; background: none; color: var(--text-muted); cursor: pointer;
+}
+.app-rail-update-close:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.app-rail-update-close > svg { width: 12px; height: 12px; }
+#app-rail.rail-icons .app-rail-update-close { display: none; }
 /* Icon-strip rail: only the glyph survives; the card stays clickable via its
    title, and the download/restart link is the whole card. */
 #app-rail.rail-icons .app-rail-update { justify-content: center; padding: 7px 0; cursor: pointer; }
