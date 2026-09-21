@@ -6633,9 +6633,17 @@ export function initCode(): void {
         const disk = ((s?.chats as CodeChat[]) || []);
         if (!disk.length || !storeLoaded) return;
         const cur = current();
-        chats = disk.map((d) => (cur && d.id === cur.id ? cur : d));
+        // The CURRENT chat follows the disk too when another host (the glyphh
+        // terminal) wrote newer turns into it and nothing is running here.
+        chats = disk.map((d) => {
+          if (!cur || d.id !== cur.id) return d;
+          const newer = ((d as { updatedAt?: number }).updatedAt ?? 0) > ((cur as { updatedAt?: number }).updatedAt ?? 0)
+            && d.messages.length > cur.messages.length && !liveRuns.has(cur.id);
+          return newer ? d : cur;
+        });
         if (cur && !chats.some((c) => c.id === cur.id)) chats.unshift(cur);
         renderHistory();
+        if (cur && current() !== cur) renderThread();
       } catch { /* stale repaint only — next save syncs */ }
     })();
   });

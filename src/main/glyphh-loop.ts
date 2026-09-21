@@ -59,6 +59,11 @@ const loop = new GlyphhLoop({
   warn: (m) => console.warn(m),
 });
 
+/** The stored-turn count the engine last seeded from, per chat: a jump of more
+ *  than one exchange means another host (the terminal) wrote turns into the
+ *  shared store, so the engine's copy is stale and re-seeds from the history. */
+const seenTurns = new Map<string, number>();
+
 export function glyphhLoopHas(chatId: string): boolean { return loop.has(chatId); }
 export const isGlyphhApproval = (id: string): boolean => GlyphhLoop.isApproval(id);
 
@@ -66,9 +71,16 @@ export async function runGlyphhLoopTurn(sender: WebContents, p: LoopRunPayload, 
   // The model the panel picked, else the one the org requires; the engine
   // refuses in its own words when neither names one.
   const model = bareModel(p.model ?? "") || orgRequiredModel();
+  const n = p.history?.length ?? 0;
+  const prev = seenTurns.get(p.chatId);
+  if (prev !== undefined && n - prev > 2) loop.forget(p.chatId);
+  seenTurns.set(p.chatId, n);
   const emit = (ev: LoopEvent & { runId: string }): void => {
     const { type, ...payload } = ev;
-    try { if (!sender.isDestroyed()) sender.send(`glyphh-agent:${type}`, payload); } catch { /* window closed */ }
+    // The chat id IS the terminal's session id: the panel binds it per CLI, and
+    // the >_ hop opens `glyphh --resume <id>` on the same conversation.
+    const extra = type === "setup" ? { cliSessionId: p.chatId } : {};
+    try { if (!sender.isDestroyed()) sender.send(`glyphh-agent:${type}`, { ...payload, ...extra }); } catch { /* window closed */ }
   };
   return loop.run({
     chatId: p.chatId, text, model,
@@ -84,4 +96,4 @@ export function setGlyphhLoopPermission(chatId: string, permission: LoopPermissi
 export function respondGlyphhApproval(id: string, allow: boolean): boolean { return loop.respondApproval(id, allow); }
 
 /** Sign-out: nothing of the last member's conversations stays in memory. */
-export function forgetGlyphhLoops(): void { loop.forgetAll(); }
+export function forgetGlyphhLoops(): void { loop.forgetAll(); seenTurns.clear(); }

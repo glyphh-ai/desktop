@@ -721,9 +721,13 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   if (row.cli === "glyphh") {
     const { port } = localMcpStatus();
     const mcpToken = row.mcp && port ? mcpTokenOf(row.id) : "";
-    const env = `GLYPHH_SERVER_URL="${SERVER_URL}"`
+    // ONE HISTORY (his report, 2026-09-21): the terminal reads and writes the
+    // panel's own session store, so a chat carries across the hop both ways.
+    const sessions = userScopedPath("agent-sessions.json");
+    const env = `GLYPHH_SERVER_URL="${SERVER_URL}" GLYPHH_APP_SESSIONS="${sessions.replace(/"/g, '\\"')}"`
       + (mcpToken ? ` GLYPHH_APP_MCP_URL="http://127.0.0.1:${port}/mcp" GLYPHH_APP_MCP_TOKEN="${mcpToken}"` : "");
-    const base = `${env} ${row.cmd}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
+    const resume = ov?.resume ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue") : "";
+    const base = `${env} ${row.cmd}${resume}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
     return cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
   }
   const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";

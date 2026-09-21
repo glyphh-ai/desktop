@@ -16,10 +16,11 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import * as fsWatch from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { ipcMain, type WebContents } from "electron";
+import { ipcMain, webContents, type WebContents } from "electron";
 import { pickAttachments, classifyPaths, saveClipboardImage, validAttachments, type AttachRef } from "./glyphh-agent-attachments";
 import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenValid } from "./local-mcp-server.js";
 import { cliFix } from "./cli-auth.js";
@@ -42,6 +43,23 @@ function loadSessionsFile(): SessionsSnapshot {
   } catch { return { chats: [], currentId: null }; }
 }
 
+/** ANOTHER WRITER (the glyphh terminal, 2026-09-21): watch the store and tell
+ *  every renderer when a write that was not ours lands, so the rail and the
+ *  panel show a terminal's turns without a restart. Never a persistent
+ *  handle (it would keep main alive after the last window closed). */
+let watchedFile = "";
+let ourWriteAt = 0;
+function watchSessionsFile(): void {
+  const file = SESSIONS_FILE;
+  if (watchedFile === file) return;
+  if (watchedFile) fsWatch.unwatchFile(watchedFile);
+  watchedFile = file;
+  fsWatch.watchFile(file, { interval: 1500, persistent: false }, (cur) => {
+    if (Math.abs(cur.mtimeMs - ourWriteAt) < 50) return; // our own save
+    for (const wc of webContents.getAllWebContents()) { if (!wc.isDestroyed()) wc.send("glyphh-sessions-updated"); }
+  });
+}
+
 function saveSessionsFile(snap: SessionsSnapshot): void {
   try {
     mkdirSync(STORE_DIR(), { recursive: true });
@@ -61,6 +79,7 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
     const seen = new Set<string>();
     const chats = order.filter((id) => (seen.has(id) ? false : (seen.add(id), true))).map((id) => byId.get(id)!);
     writeFileSync(SESSIONS_FILE, JSON.stringify({ chats, currentId: snap.currentId }), "utf-8");
+    try { ourWriteAt = statSync(SESSIONS_FILE).mtimeMs; } catch { /* the watcher will just announce it */ }
   } catch { /* a failed save loses nothing but the recents ordering */ }
 }
 
@@ -699,7 +718,7 @@ export function registerGlyphhCliBridge(): void {
     return { ok: true, title, cwd, turns: turns.slice(-200) };
   });
 
-  ipcMain.handle("glyphh-agent-sessions-load", () => loadSessionsFile());
+  ipcMain.handle("glyphh-agent-sessions-load", () => { watchSessionsFile(); return loadSessionsFile(); });
   ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null }) => {
     saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null });
     return true;
