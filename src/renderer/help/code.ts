@@ -431,6 +431,11 @@ function modelsForLoop(): AvailModel[] {
   return availModels;
 }
 
+/** The active loop's display name ("Codex", "Claude"), for the picker's group and the chip. */
+function activeLoopName(): string {
+  return loops.find((l) => l.id === activeLoop())?.name || "Loop";
+}
+
 /** THE CATALOG'S ID IS NOT THE MODEL'S NAME (his report, 2026-09-18: the chip
  *  read "anthropic::claude-haiku-4-5" and never changed with the loop).
  *  Settings stores the catalog id, `provider::name`; a loop's list and every
@@ -503,10 +508,10 @@ function paintModelChip(): void {
   // so the chip names it: the turn runs on that, never on the CLI's own pick.
   const orgDef = modelSource === "gateway" && !sel && !id ? orgDefaultModel : "";
   // With two lanes on offer the chip says which one this turn takes.
-  const lane = laneMode === "choice" ? (sel?.lane === "direct" ? " · own login" : " · gateway") : "";
+  const lane = laneMode === "choice" ? (sel?.lane === "direct" ? ` · ${activeLoopName()} loop` : " · gateway") : "";
   mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : orgDef ? `Default · ${orgDef}` : "Default")}${none ? "" : lane}`;
   mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
-    : sel ? `${sel.name} — ${sel.providerSlug}${sel.lane === "direct" ? " · runs on this CLI's own login, not metered by your organization" : laneMode === "choice" ? " · runs through your organization's gateway" : ""}`
+    : sel ? `${sel.name} — ${sel.providerSlug}${sel.lane === "direct" ? ` · runs on the ${activeLoopName()} loop's own login` : laneMode === "choice" ? " · runs through your organization's gateway" : ""}`
     : id ? `${id} — not in your model list; the loop may refuse it`
     : orgDef ? `Your organization's default model` : "The loop's own default model";
   mc.className = "code-chip" + (none || (!sel && id) ? " warn" : "");
@@ -599,18 +604,20 @@ function renderModelMenu(): void {
     // TWO GROUPS when the org enabled the gateway without requiring it (his
     // order, 2026-09-21): the metered gateway list, then the CLI's own login.
     // Required: the gateway list alone. Off: the loop's own list alone.
-    const groups: Array<{ label: string | null; hint: string; rows: AvailModel[] }> = laneMode === "choice"
+    // Two groups, named plainly (his wording, 2026-09-21): "Gateway", and the
+    // loop itself — "Codex Loop", "Claude Loop" — for the CLI's own login.
+    const groups: Array<{ label: string | null; rows: AvailModel[] }> = laneMode === "choice"
       ? [
-        { label: "Gateway", hint: "metered by your organization", rows: rows.filter((m) => m.lane !== "direct") },
-        { label: "Own login", hint: "this CLI's account · not metered", rows: rows.filter((m) => m.lane === "direct") },
+        { label: "Gateway", rows: rows.filter((m) => m.lane !== "direct") },
+        { label: `${activeLoopName()} Loop`, rows: rows.filter((m) => m.lane === "direct") },
       ]
-      : [{ label: null, hint: "", rows }];
+      : [{ label: null, rows }];
     for (const g of groups) {
       if (!g.rows.length) continue;
       if (g.label) {
         const head = document.createElement("div");
         head.className = "code-drop-head";
-        head.innerHTML = `<span>${g.label}</span><span class="drop-hint" style="text-transform:none;font-weight:500;margin-left:8px">${g.hint}</span>`;
+        head.textContent = g.label;
         list.appendChild(head);
       }
       for (const m of g.rows.slice(0, 200)) {
