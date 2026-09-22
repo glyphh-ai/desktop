@@ -9052,6 +9052,9 @@ async function init(): Promise<void> {
     // pod has no pty surface. Say so honestly instead of opening a local shell
     // that silently works on the WRONG filesystem.
     const src = (window as unknown as { __glyphhActiveSource?: () => { kind?: string } | null }).__glyphhActiveSource?.();
+    // NEVER SILENT (his report, 2026-09-21: a black card and nothing to go on):
+    // one line per render says which terminal, which source, and what it did.
+    console.warn("[wb-term] render", JSON.stringify({ agent: slot.agent?.id ?? null, source: src?.kind ?? null, terms: slot.terminals.length, active: slot.activeIdx, spawned: !!slot.terminals[slot.activeIdx]?.spawned }));
     if (src && src.kind && src.kind !== "local") {
       body.innerHTML = `<div class="ws-term-cloud-note">Terminal isn't available for cloud sessions — ask the agent to run commands in its workspace instead.</div>`;
       return;
@@ -9319,19 +9322,31 @@ async function init(): Promise<void> {
       // terminals before the rails have laid out (or while the section is
       // hidden): fit() at zero size computes garbage cols/rows, the pty
       // spawns wedged and narrow, and the tab looks dead until recreated.
-      const spawnWhenSized = (): void => {
-        if (!hostEl.isConnected) return;
+      // The host may not be in the document yet (a card still being seated)
+      // or may have no size yet: wait, up to a few seconds, and SAY SO when
+      // giving up — a shell that never spawns is a black pane with no clue
+      // (his report, 2026-09-21).
+      const spawnWhenSized = (tries = 0): void => {
+        if (wbt.spawned) return;
+        if (!hostEl.isConnected) {
+          if (tries < 60) { setTimeout(() => spawnWhenSized(tries + 1), 50); return; }
+          console.warn("[wb-term] host never attached; no shell spawned", JSON.stringify({ ptyId: wbt.ptyId }));
+          return;
+        }
         const r = hostEl.getBoundingClientRect();
         if (r.width < 40 || r.height < 40) {
           if (typeof ResizeObserver !== "undefined") {
             const ro = new ResizeObserver(() => {
-              if (!hostEl.isConnected) { ro.disconnect(); return; }
+              if (!hostEl.isConnected) { ro.disconnect(); spawnWhenSized(tries + 1); return; }
               const rr = hostEl.getBoundingClientRect();
               if (rr.width >= 40 && rr.height >= 40) { ro.disconnect(); doSpawn(); }
             });
             ro.observe(hostEl);
+            // A host that never grows would wait forever: spawn at whatever
+            // size it has after a moment, and let the fit correct it.
+            setTimeout(() => { if (!wbt.spawned) { ro.disconnect(); if (hostEl.isConnected) doSpawn(); else spawnWhenSized(tries + 1); } }, 1500);
           } else {
-            setTimeout(spawnWhenSized, 150);
+            setTimeout(() => spawnWhenSized(tries + 1), 150);
           }
           return;
         }
@@ -9341,8 +9356,10 @@ async function init(): Promise<void> {
       // a canvas atlas built pre-load would cache tofu for those cells.
       try { void document.fonts.load("12px 'Glyphh Braille'", "⣿"); } catch { /* older engines */ }
       const doSpawn = (): void => {
+        if (wbt.spawned) return;
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
+        console.warn("[wb-term] spawn", JSON.stringify({ ptyId: wbt.ptyId, cols, rows, cwd: cwd || "", initCmd: !!wbt.initCmd }));
         if (isWebTarget()) {
           // WEB: window.wb is a no-op — the shell runs on the user's ATTACHED
           // DESKTOP over the pty relay instead (remote-terminal.ts).
@@ -9363,7 +9380,7 @@ async function init(): Promise<void> {
         // One more fit next frame — the first can land mid-reflow.
         requestAnimationFrame(() => { try { fit.fit(); } catch { /* noop */ } });
       };
-      requestAnimationFrame(spawnWhenSized);
+      requestAnimationFrame(() => spawnWhenSized());
       term.onData((data) => {
         if (wbt.remote) { wbt.remote.write(data); return; }
         window.wb.termWrite(wbt.ptyId, data);
@@ -9377,8 +9394,21 @@ async function init(): Promise<void> {
       wbt.term = term;
       wbt.fit = fit;
       wbt.detach = () => { off1(); off2(); };
+    } else if (!wbt.spawned && !wbt.remote) {
+      // A terminal that was created but whose shell NEVER spawned (its host
+      // vanished before it had a size) is dead weight: drop the xterm and start
+      // over on this host — nothing is lost, no shell ever ran.
+      console.warn("[wb-term] re-attach of a never-spawned terminal; recreating", JSON.stringify({ ptyId: wbt.ptyId }));
+      wbt.detach?.();
+      wbt.ro?.disconnect();
+      try { wbt.term.dispose(); } catch { /* noop */ }
+      wbt.term = undefined;
+      wbt.fit = undefined;
+      mountTerminal(hostEl, slot);
+      return;
     } else {
       // Re-attach existing xterm instance to the new host element.
+      console.warn("[wb-term] re-attach", JSON.stringify({ ptyId: wbt.ptyId }));
       hostEl.appendChild(wbt.term.element!);
       requestAnimationFrame(() => { try { wbt.fit?.fit(); } catch { /* noop */ } });
     }

@@ -52,7 +52,17 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
 }
 
 function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, rows: number, light?: boolean): void {
-  const proc = spawnShellPty({ cwd, cols, rows, light });
+  let proc: ReturnType<typeof spawnShellPty>;
+  try {
+    proc = spawnShellPty({ cwd, cols, rows, light });
+  } catch (err) {
+    // A pty that cannot start is said out loud, to main's log and to the pane.
+    const said = err instanceof Error ? err.message : String(err);
+    console.error("[wb-term] spawn failed", JSON.stringify({ termId, cwd, cols, rows, error: said }));
+    if (!wc.isDestroyed()) wc.send(`wb-term:data:${termId}`, `\r\n\x1b[31mterminal failed to start: ${said}\x1b[0m\r\n`);
+    return;
+  }
+  console.warn("[wb-term] pty", JSON.stringify({ termId, cwd: cwd || "", cols, rows, pid: proc.pid }));
   proc.onData((data) => {
     if (wc.isDestroyed()) return;
     wc.send(`wb-term:data:${termId}`, data);
