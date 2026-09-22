@@ -41,10 +41,23 @@ const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null; /** Ids the saver deleted — dropped from the merge. */ deleted?: string[] }
 
+/** A chat's folder as an absolute path: a display "~" that leaked into the
+ *  store (2026-09-21) becomes the home folder, so nothing downstream resolves
+ *  it against the app's own directory. */
+function healFolder<T extends { workdir?: unknown; source?: unknown }>(c: T): T {
+  const fix = (p: unknown): unknown => (p === "~" ? homedir() : typeof p === "string" && p.startsWith("~/") ? path.join(homedir(), p.slice(2)) : p);
+  const src = c.source as { kind?: string; path?: unknown } | undefined;
+  return {
+    ...c,
+    ...(c.workdir !== undefined ? { workdir: fix(c.workdir) } : {}),
+    ...(src && src.kind === "local" && src.path !== undefined ? { source: { ...src, path: fix(src.path) } } : {}),
+  };
+}
+
 function readSnapshot(file: string): SessionsSnapshot {
   try {
     const j = JSON.parse(readFileSync(file, "utf-8")) as SessionsSnapshot;
-    return { chats: Array.isArray(j.chats) ? j.chats : [], currentId: typeof j.currentId === "string" ? j.currentId : null };
+    return { chats: Array.isArray(j.chats) ? (j.chats as Array<{ workdir?: unknown; source?: unknown }>).map(healFolder) : [], currentId: typeof j.currentId === "string" ? j.currentId : null };
   } catch { return { chats: [], currentId: null }; }
 }
 

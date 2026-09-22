@@ -69,7 +69,15 @@ export function setDefaultWorkingDirectory(dir: string): void {
  *  none has been set. This doubles as "last used" — it persists across chats
  *  so a new chat inherits it. */
 export function getWorkingDirectory(): string {
-  return getPreference<string | null>("workingDirectory", null) || defaultWorkingDirectory();
+  const stored = getPreference<string | null>("workingDirectory", null);
+  // A stored folder that no longer exists (or never did) heals to the default
+  // instead of breaking every terminal until someone finds the preference.
+  if (stored && !isDir(stored)) {
+    console.warn("[workdir] stored folder is not a directory; falling back", JSON.stringify({ stored }));
+    setPreference("workingDirectory", null);
+    return defaultWorkingDirectory();
+  }
+  return stored || defaultWorkingDirectory();
 }
 
 /** The EXPLICITLY chosen working directory, or null when the user never
@@ -84,11 +92,26 @@ export function getWorkingDirRecents(): string[] {
   return getPreference<string[]>("workingDirRecents", []) || [];
 }
 
+/** `~` and `~/x` as a shell would expand them. A bare "~" once reached here
+ *  from a stored chat, and path.resolve made it <app dir>/~ — a folder that
+ *  does not exist, so every shell the terminal spawned there died at once
+ *  (his report, 2026-09-21: a black pane for every CLI). */
+function expandHome(dir: string): string {
+  const d = dir.trim();
+  return d === "~" ? os.homedir() : d.startsWith("~/") ? path.join(os.homedir(), d.slice(2)) : d;
+}
+
 /** One spelling per folder: absolute, no trailing slash, symlinks resolved. */
 function normalizeDir(dir: string): string {
-  let out = path.resolve(dir.trim());
+  let out = path.resolve(expandHome(dir));
   try { out = realpathSync(out); } catch { /* not there yet */ }
   return out.length > 1 ? out.replace(/[\\/]+$/, "") : out;
+}
+
+/** Is this an existing directory? The working folder is never allowed to point
+ *  at nothing: a shell spawned there exits before its prompt. */
+function isDir(dir: string): boolean {
+  try { return statSync(dir).isDirectory(); } catch { return false; }
 }
 const sameDir = (a: string, b: string): boolean => (process.platform === "darwin" || process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b);
 
@@ -251,6 +274,10 @@ function startWorkdirWatcher(dir: string): void {
 /** Set the working directory and notify the renderer + every panel. */
 export function setWorkingDirectory(dir: string | null): void {
   const value = dir ? normalizeDir(dir) : null;
+  if (value && !isDir(value)) {
+    console.warn("[workdir] refused: not a directory", JSON.stringify({ dir, value }));
+    return;
+  }
   setPreference("workingDirectory", value);
   if (value) pushRecentFolder(value);
   getMainWindow()?.webContents.send("working-dir-changed", value);
@@ -265,6 +292,7 @@ export function setWorkingDirectory(dir: string | null): void {
  *  2026-09-16: a resumed session in some app folder must not become the default). */
 export function followWorkingDirectory(dir: string): void {
   const value = normalizeDir(dir);
+  if (!isDir(value)) return;
   getMainWindow()?.webContents.send("working-dir-changed", value);
   broadcastToPanels("working-dir-changed", value);
   onWorkingDirChange(value);

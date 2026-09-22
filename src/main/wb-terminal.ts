@@ -42,11 +42,16 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
   // indices) — CLIs that auto-detect the background pick the right variant.
   const env: Record<string, string> = { ...(process.env as Record<string, string>) };
   if (opts.light !== undefined) env.COLORFGBG = opts.light ? "0;15" : "15;0";
+  // A folder that does not exist kills the shell before its prompt — the pane
+  // is black and the user has nothing to go on. Home is the honest fallback.
+  let cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
+  try { if (!fs.statSync(cwd).isDirectory()) throw new Error("not a directory"); }
+  catch { console.warn("[wb-term] cwd is not a directory; spawning in home", JSON.stringify({ cwd })); cwd = os.homedir(); }
   return pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: opts.cols || 80,
     rows: opts.rows || 24,
-    cwd: opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir(),
+    cwd,
     env,
   });
 }
