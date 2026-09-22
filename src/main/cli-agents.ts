@@ -1461,7 +1461,12 @@ export function registerCliAgentsIpc(): void {
         const r = await startLocalMcpServer();
         if (!r.ok) return { ok: false, error: r.error ?? "local MCP server failed to start" };
       }
-      return { ok: true, command: composeCommand(row, overrides), name: row.name };
+      const command = composeCommand(row, overrides);
+      // THE LINE THE TERMINAL PLAYS, in main's log (his report, 2026-09-21: a
+      // blank card with nothing to go on). Tokens are the loop's own local MCP
+      // bearer, never a gateway key, so the line is safe to print.
+      console.warn("[agents] open", JSON.stringify({ id: row.id, cli: row.cli, cwd: overrides?.cwd ?? row.cwd ?? "", resume: overrides?.resume ?? null, command: command.replace(/GLYPHH_APP_MCP_TOKEN="[^"]*"/, 'GLYPHH_APP_MCP_TOKEN="…"') }));
+      return { ok: true, command, name: row.name };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
