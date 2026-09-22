@@ -1704,6 +1704,13 @@ function syncSpaceAttrs(): void {
 // bridge to --resume it. Fresh opens never call this — the one-opener law
 // (zero state writes) applies to DOORS, not to session-preserving toggles.
 (window as unknown as { __glyphhCurrentChatId?: () => string | null }).__glyphhCurrentChatId = () => currentId;
+/** The current chat's OWN folder — its workdir, else its local source's path —
+ *  for the terminal hop (the pty starts where the agent works). */
+(window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder = () => {
+  const c = current();
+  const dir = c?.workdir || (c?.source?.kind === "local" ? c.source.path || "" : "");
+  return dir || null;
+};
 // The session's ACTIVE LOOP — what the workbench's >_ terminal switcher
 // follows (his report, 2026-09-14: it always switched to claude because it
 // read the agent bound at card-open, not the loop the session rides now).

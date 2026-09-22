@@ -144,6 +144,9 @@ interface TermSlot {
   terminals: WbTerminal[];
   activeIdx: number;
   sticky?: boolean;
+  /** THIS terminal's folder (an agent's, resolved by main) — the pty spawns
+   *  here, never in the workbench's global folder. Absent = the workbench's. */
+  cwd?: string;
   /** Set ONLY by openAgentCliCard: this terminal is an AGENT view, and its
    *  tab row becomes the agent header (session name + the shared control
    *  cluster). Plain terminals never carry it — their tabs are untouched. */
@@ -2239,7 +2242,7 @@ async function init(): Promise<void> {
   };
   (window as unknown as { __wbOpenBridgeTui?: () => Promise<void> }).__wbOpenBridgeTui = async () => {
     if (bridgeOverlay) return;
-    const g = window.glyphh as unknown as { bridgeTuiCommand?: () => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }>; bridgeState?: () => Promise<{ forced: boolean }> };
+    const g = window.glyphh as unknown as { bridgeTuiCommand?: () => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }>; bridgeState?: () => Promise<{ forced: boolean }> };
     const r = await g.bridgeTuiCommand?.().catch(() => null);
     if (!r?.ok || !r.command) { console.warn("[bridge] no command", r?.error); return; }
     const forced = !!(await g.bridgeState?.().catch(() => null))?.forced;
@@ -5330,7 +5333,11 @@ async function init(): Promise<void> {
             const hopChat = openList.find((x) => x.card && x.tile.kind === "agent");
             if (hopChat) seatHandoff = { donor: hopChat, closeOpts: { keepSession: true } };
             cliHop = { chatId: chatId || "", at: Date.now() };
-            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string }) => void }).__wbOpenAgentCli?.(boundId, undefined, sid ? { resumeId: sid } : undefined);
+            // THE CHAT'S OWN FOLDER rides into the terminal (his order, 2026-09-21):
+            // the pty starts where the agent works, not in the workbench's global folder.
+            const chatFolder = (window as unknown as { __glyphhCurrentFolder?: () => string | null }).__glyphhCurrentFolder?.() ?? null;
+            (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { resumeId?: string; cwd?: string }) => void })
+              .__wbOpenAgentCli?.(boundId, undefined, { ...(sid ? { resumeId: sid } : {}), ...(chatFolder ? { cwd: chatFolder } : {}) });
             const closeChatWhenTermUp = (tries = 0): void => {
               const term = openList.find((x) => x.card && x.tile.slug === `agent:${boundId}`);
               if (term) {
@@ -6500,8 +6507,8 @@ async function init(): Promise<void> {
       const a = t.cliAgent;
       if (!a) return;
       const appLight = document.documentElement.getAttribute("data-theme") === "light";
-      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
-        .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
+      void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
+        .glyphh?.cliAgentOpen?.(a.id, { light: appLight, ...(opts?.cwd ? { cwd: opts.cwd } : {}) }).then((r) => {
           // Possibly not installed: the dialog says so; the terminal opens anyway.
           if (r?.missing) void askInstallCli(r.missing);
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
@@ -6521,7 +6528,9 @@ async function init(): Promise<void> {
             if (stale) { parkedTerms.delete(`agent::agent:${a.id}`); for (const tt of stale.terminals) { try { killTerminal(tt); } catch { /* gone */ } } }
           }
           if (parked) { parkedTerms.delete(`agent::agent:${a.id}`); pendingParkedTerms = parked; }
-          setPendingAgentTermMeta({ id: a.id, name: t.name });
+          // The terminal's folder is main's answer — the chat's, the loop's,
+          // the workbench's, home — and the pty spawns there.
+          setPendingAgentTermMeta({ id: a.id, name: t.name, ...(r?.cwd ? { cwd: r.cwd } : {}) });
           uiStateSet("agentLastView", "terminal");
           activateTile(entry);
           pendingParkedTerms = null;
@@ -9041,14 +9050,15 @@ async function init(): Promise<void> {
   // activateTile — and PLACEMENT MAY RENDER ASYNC, so the stamp carries a
   // short deadline instead of being nulled right after activate (nulling it
   // synchronously raced the render and the tab row won — his screenshot).
-  let pendingAgentTermMeta: { id: string; name: string; at: number } | null = null;
-  function setPendingAgentTermMeta(m: { id: string; name: string } | null): void {
+  let pendingAgentTermMeta: { id: string; name: string; cwd?: string; at: number } | null = null;
+  function setPendingAgentTermMeta(m: { id: string; name: string; cwd?: string } | null): void {
     pendingAgentTermMeta = m ? { ...m, at: Date.now() } : null;
   }
 
   function renderTerminalIntoSlot(body: HTMLElement, slot: TermSlot): void {
     if (!slot.agent && pendingAgentTermMeta && Date.now() - pendingAgentTermMeta.at < 3000) {
       slot.agent = { id: pendingAgentTermMeta.id, name: pendingAgentTermMeta.name };
+      if (pendingAgentTermMeta.cwd) slot.cwd = pendingAgentTermMeta.cwd;
       pendingAgentTermMeta = null;
     }
     // CLOUD SESSIONS (his rule, 2026-08-19): terminals are machine-local; the
@@ -9153,7 +9163,7 @@ async function init(): Promise<void> {
     hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string,
   ): Promise<void> {
     const light = document.documentElement.getAttribute("data-theme") === "light";
-    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
+    const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
       .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
     if (r?.missing) void askInstallCli(r.missing);
     const cmd = r?.ok ? r.command : undefined;
@@ -9362,7 +9372,8 @@ async function init(): Promise<void> {
         if (wbt.spawned) return;
         try { fit.fit(); } catch { /* noop */ }
         const { cols, rows } = term;
-        console.warn("[wb-term] spawn", JSON.stringify({ ptyId: wbt.ptyId, cols, rows, cwd: cwd || "", initCmd: !!wbt.initCmd }));
+        const spawnCwd = slot.cwd || cwd || "";
+        console.warn("[wb-term] spawn", JSON.stringify({ ptyId: wbt.ptyId, cols, rows, cwd: spawnCwd, own: !!slot.cwd, initCmd: !!wbt.initCmd }));
         if (isWebTarget()) {
           // WEB: window.wb is a no-op — the shell runs on the user's ATTACHED
           // DESKTOP over the pty relay instead (remote-terminal.ts).
@@ -9370,7 +9381,7 @@ async function init(): Promise<void> {
         } else {
           // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
           // light/dark variant to match the app.
-          window.wb.termSpawn(wbt.ptyId, cwd || "", cols, rows,
+          window.wb.termSpawn(wbt.ptyId, spawnCwd, cols, rows,
             document.documentElement.getAttribute("data-theme") === "light");
           wbt.spawned = true;
           if (wbt.initCmd) {

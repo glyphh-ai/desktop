@@ -35,6 +35,7 @@ import { gatewayCreds, mcpCreds, writeGatewayEnv, clearGatewayEnv, primeGatewayE
 import { bridgeWrap } from "./memory-bridge.js";
 import { getClient, SERVER_URL } from "./glyphh-client.js";
 import { missingCli } from "./cli-install.js";
+import { getWorkingDirectory } from "./working-directory.js";
 
 export const AGENTS_DIR = (): string => userScopedPath("loops");
 
@@ -691,6 +692,19 @@ const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="
 /** `~` and `~/x` as the shell would expand them unquoted. */
 function expandHome(p: string): string {
   return p === "~" ? homedir() : p.startsWith("~/") ? path.join(homedir(), p.slice(2)) : p;
+}
+
+const isDirectory = (p: string): boolean => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+
+/** The folder a loop's terminal starts in: the first EXISTING folder of the
+ *  chat's, the loop's, the workbench's, home. Exported for the pty spawn's
+ *  own fallback and for tests of the order. */
+export function agentTerminalFolder(chatFolder: string | undefined, loopFolder: string | undefined): string {
+  for (const raw of [chatFolder, loopFolder, getWorkingDirectory()]) {
+    const dir = expandHome((raw ?? "").trim());
+    if (dir && path.isAbsolute(dir) && isDirectory(dir)) return dir;
+  }
+  return homedir();
 }
 
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
@@ -1462,12 +1476,18 @@ export function registerCliAgentsIpc(): void {
         const r = await startLocalMcpServer();
         if (!r.ok) return { ok: false, error: r.error ?? "local MCP server failed to start" };
       }
-      const command = composeCommand(row, overrides);
+      // THE FOLDER THE TERMINAL STARTS IN, decided HERE and nowhere else (his
+      // order, 2026-09-21): the chat's own folder, else the loop's configured
+      // folder, else the workbench folder, else home — and only a folder that
+      // exists. The same value is the shell's cwd AND the command's cd, so the
+      // two can never disagree, and opening a terminal writes no global state.
+      const cwd = agentTerminalFolder(overrides?.cwd, row.cwd);
+      const command = composeCommand(row, { ...overrides, cwd });
       // THE LINE THE TERMINAL PLAYS, in main's log (his report, 2026-09-21: a
       // blank card with nothing to go on). Tokens are the loop's own local MCP
       // bearer, never a gateway key, so the line is safe to print.
-      console.warn("[agents] open", JSON.stringify({ id: row.id, cli: row.cli, cwd: overrides?.cwd ?? row.cwd ?? "", resume: overrides?.resume ?? null, missing: missing?.bin ?? null, command: command.replace(/GLYPHH_APP_MCP_TOKEN="[^"]*"/, 'GLYPHH_APP_MCP_TOKEN="…"') }));
-      return { ok: true, command, name: row.name, ...(missing ? { missing } : {}) };
+      console.warn("[agents] open", JSON.stringify({ id: row.id, cli: row.cli, cwd, resume: overrides?.resume ?? null, missing: missing?.bin ?? null, command: command.replace(/GLYPHH_APP_MCP_TOKEN="[^"]*"/, 'GLYPHH_APP_MCP_TOKEN="…"') }));
+      return { ok: true, command, name: row.name, cwd, ...(missing ? { missing } : {}) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
