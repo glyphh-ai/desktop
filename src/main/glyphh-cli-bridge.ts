@@ -16,7 +16,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import * as fsWatch from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -26,21 +26,53 @@ import { startLocalMcpServer, localMcpStatus, localMcpGenToken, localMcpTokenVal
 import { cliFix } from "./cli-auth.js";
 import { requestUsesGateway } from "./gateway-token.js";
 import { listCliAgents, ensureOrgLoops, orgRequiredModel, composeHeadless, ensureLoopEnv, loopEnvPrefix, agentRowFor, bareModel, geminiSessionFiles, cursorSessionFiles, readCursorSessionHead, NOISE_TITLE, type CliAgentListed } from "./cli-agents.js";
-import { userScopedDir } from "./app-paths.js";
+import { GLYPHH_DIR, getActiveUserId, userScopedDir } from "./app-paths.js";
 import { glyphhLoopHas, isGlyphhApproval, respondGlyphhApproval, runGlyphhLoopTurn, setGlyphhLoopPermission, stopGlyphhLoop } from "./glyphh-loop.js";
 
 // ── chat ↔ CLI session store (~/.glyphh — the desktop's local law) ──────────
 
 const STORE_DIR = (): string => userScopedDir();
-const SESSIONS_FILE = path.join(STORE_DIR(), "agent-sessions.json");
+// RESOLVED PER CALL, never at import (his report, 2026-09-21: the terminal's
+// chats were in no rail). At import time no user is known yet, so a constant
+// here pointed at ~/.glyphh/agent-sessions.json for the whole run while every
+// other per-user path — and the terminal we launch — used users/<id>/.
+const sessionsFile = (): string => path.join(STORE_DIR(), "agent-sessions.json");
+const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
 interface SessionsSnapshot { chats: unknown[]; currentId: string | null }
 
-function loadSessionsFile(): SessionsSnapshot {
+function readSnapshot(file: string): SessionsSnapshot {
   try {
-    const j = JSON.parse(readFileSync(SESSIONS_FILE, "utf-8")) as SessionsSnapshot;
+    const j = JSON.parse(readFileSync(file, "utf-8")) as SessionsSnapshot;
     return { chats: Array.isArray(j.chats) ? j.chats : [], currentId: typeof j.currentId === "string" ? j.currentId : null };
   } catch { return { chats: [], currentId: null }; }
+}
+
+/** ONE-TIME: the chats the import-time constant kept machine-global move under
+ *  the signed-in user (merged by id, the newer updatedAt winning); the legacy
+ *  file is renamed so this runs once. */
+function adoptLegacySessions(): void {
+  if (!getActiveUserId() || !existsSync(LEGACY_SESSIONS_FILE)) return;
+  try {
+    type Rec = { id?: string; updatedAt?: number };
+    const legacy = readSnapshot(LEGACY_SESSIONS_FILE);
+    const mine = readSnapshot(sessionsFile());
+    const byId = new Map<string, Rec>();
+    for (const c of legacy.chats as Rec[]) if (c && typeof c.id === "string") byId.set(c.id, c);
+    for (const c of mine.chats as Rec[]) {
+      if (!c || typeof c.id !== "string") continue;
+      const cur = byId.get(c.id);
+      if (!cur || (c.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) byId.set(c.id, c);
+    }
+    mkdirSync(STORE_DIR(), { recursive: true });
+    writeFileSync(sessionsFile(), JSON.stringify({ chats: [...byId.values()], currentId: mine.currentId ?? legacy.currentId }), "utf-8");
+    renameSync(LEGACY_SESSIONS_FILE, `${LEGACY_SESSIONS_FILE.slice(0, -5)}.legacy.json`);
+  } catch { /* best-effort: the legacy chats simply stay where they were */ }
+}
+
+function loadSessionsFile(): SessionsSnapshot {
+  adoptLegacySessions();
+  return readSnapshot(sessionsFile());
 }
 
 /** ANOTHER WRITER (the glyphh terminal, 2026-09-21): watch the store and tell
@@ -50,7 +82,7 @@ function loadSessionsFile(): SessionsSnapshot {
 let watchedFile = "";
 let ourWriteAt = 0;
 function watchSessionsFile(): void {
-  const file = SESSIONS_FILE;
+  const file = sessionsFile();
   if (watchedFile === file) return;
   if (watchedFile) fsWatch.unwatchFile(watchedFile);
   watchedFile = file;
@@ -66,7 +98,7 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
     // Several agent panels write this file (2026-09-16): merge by chat id, the
     // newer updatedAt wins, and a chat only one panel knows about survives.
     type Rec = { id?: string; updatedAt?: number };
-    const have = loadSessionsFile().chats as Rec[];
+    const have = readSnapshot(sessionsFile()).chats as Rec[];
     const incoming = snap.chats as Rec[];
     const byId = new Map<string, Rec>();
     for (const c of have) if (c && typeof c.id === "string") byId.set(c.id, c);
@@ -78,8 +110,9 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
     const order = [...incoming.map((c) => c?.id).filter((x): x is string => typeof x === "string"), ...have.map((c) => c?.id).filter((x): x is string => typeof x === "string")];
     const seen = new Set<string>();
     const chats = order.filter((id) => (seen.has(id) ? false : (seen.add(id), true))).map((id) => byId.get(id)!);
-    writeFileSync(SESSIONS_FILE, JSON.stringify({ chats, currentId: snap.currentId }), "utf-8");
-    try { ourWriteAt = statSync(SESSIONS_FILE).mtimeMs; } catch { /* the watcher will just announce it */ }
+    writeFileSync(sessionsFile(), JSON.stringify({ chats, currentId: snap.currentId }), "utf-8");
+    try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* the watcher will just announce it */ }
+    watchSessionsFile();
   } catch { /* a failed save loses nothing but the recents ordering */ }
 }
 

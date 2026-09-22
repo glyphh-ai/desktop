@@ -55,8 +55,8 @@ function adoptLegacyState(userDir: string): void {
       } catch { /* per-file best-effort */ }
     }
 
-    // Layout cache + local app registry were machine-global too.
-    for (const name of [".layouts", "apps"]) {
+    // Layout cache, local app registry and the agent chats were machine-global too.
+    for (const name of [".layouts", "apps", "agent-sessions.json"]) {
       try {
         const src = path.join(GLYPHH_DIR, name);
         const dest = path.join(userDir, name);
