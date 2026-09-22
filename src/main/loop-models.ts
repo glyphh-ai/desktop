@@ -159,6 +159,21 @@ async function loginModels(cli: string): Promise<LoopModel[]> {
   return orgModels(cli);
 }
 
+/** THE OWN-LOGIN GROUP with the gateway ENABLED (hybrid mode, 2026-09-21): the
+ *  server's direct list — the CLI's vendor's active models, outside the org's
+ *  gateway allow-list — never `models.available`, which under the gateway IS
+ *  the allow-list (and, under Auto only, just the router). Codex on a ChatGPT
+ *  login still lists its own cache first. The server answers [] when the org
+ *  requires the gateway, so no lane can appear that the org closed. */
+async function ownLoginModels(cli: string): Promise<LoopModel[]> {
+  if (cli === "codex") { const own = codexLoginModels(); if (own) return own; }
+  const vendor = CLI_VENDOR[cli];
+  const rows = await getClient().models.direct();
+  return rows
+    .filter((m) => m.modality === "chat" && (!vendor || m.providerSlug === vendor))
+    .map((m) => ({ id: m.name, name: m.name, providerSlug: m.providerSlug }));
+}
+
 async function orgModels(cli: string): Promise<LoopModel[]> {
   const vendor = CLI_VENDOR[cli];
   const rows = await getClient().models.available();
@@ -207,7 +222,7 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
       // lane so two lists with the same model name stay two picks. The
       // Glyphh loop has no own login: gateway rows only.
       const own = laneMode === "choice" && vendor && !row.apiKey
-        ? (await loginModels(row.cli).catch(() => [] as LoopModel[]))
+        ? (await ownLoginModels(row.cli).catch(() => [] as LoopModel[]))
           .map((m): LoopModel => ({ ...m, id: `${DIRECT_PREFIX}${m.id}`, lane: "direct" }))
           .sort((a, b) => a.name.localeCompare(b.name))
         : [];

@@ -454,7 +454,11 @@ const bareModelId = (id: string | null | undefined): string | null => {
  *  decides" is not a choice anyone has, and offering it sends a turn with no
  *  model at all. The server marks the row; the renderer never guesses. */
 const autoModel = (): AvailModel | null => availModels.find((m) => m.providerSlug === "auto") ?? null;
-const autoOnly = (): boolean => availModels.length === 1 && !!autoModel();
+/** AUTO ONLY governs the GATEWAY group alone: the org's router is the one gateway
+ *  row, while the own-login group (hybrid mode) stays the member's to pick. */
+const autoOnly = (): boolean => availModels.filter((m) => m.lane !== "direct").length === 1 && !!autoModel();
+/** Under Auto only, a pick still counts when it names the own-login lane. */
+const autoPins = (raw: string | null | undefined): boolean => autoOnly() && laneOf(raw) !== "direct";
 
 /** The stored pick, as stored (a lane prefix included). */
 function pickedRawId(): string | null {
@@ -469,8 +473,9 @@ function rowForPick(raw: string | null): AvailModel | null {
   return availModels.find((m) => bareModelId(m.id) === bare && (laneMode !== "choice" || laneOf(m.id) === laneOf(raw))) ?? null;
 }
 function effectiveModelId(): string | null {
-  if (autoOnly()) return autoModel()!.id;
-  const raw = pickedRawId();
+  const raw0 = pickedRawId();
+  if (autoPins(raw0)) return autoModel()!.id;
+  const raw = raw0;
   const picked = bareModelId(raw);
   if (!picked) return null;
   // A default the ACTIVE loop cannot run is not this loop's model. Saying so
@@ -478,8 +483,9 @@ function effectiveModelId(): string | null {
   return availModels.length && !rowForPick(raw) ? null : picked;
 }
 function selectedModel(): AvailModel | null {
-  if (autoOnly()) return availModels.find((m) => bareModelId(m.id) === autoModel()!.id) ?? null;
-  return rowForPick(pickedRawId());
+  const raw = pickedRawId();
+  if (autoPins(raw)) return autoModel();
+  return rowForPick(raw);
 }
 
 function paintModelChip(): void {
@@ -604,7 +610,7 @@ function renderModelMenu(): void {
       if (g.label) {
         const head = document.createElement("div");
         head.className = "code-drop-head";
-        head.innerHTML = `<span>${g.label}</span><span class="drop-hint">${g.hint}</span>`;
+        head.innerHTML = `<span>${g.label}</span><span class="drop-hint" style="text-transform:none;font-weight:500;margin-left:8px">${g.hint}</span>`;
         list.appendChild(head);
       }
       for (const m of g.rows.slice(0, 200)) {
@@ -3693,8 +3699,8 @@ function syncThinking(): void {
  *  chose one still opens on the configured default rather than "whatever
  *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
-  if (autoOnly()) return autoModel()!.id;
   const raw = c?.models?.["default"] ?? defaultModelPref;
+  if (autoPins(raw)) return autoModel()!.id;
   // An "Own login" pick keeps its lane prefix on the wire — main reads the
   // lane from it and strips it for the CLI's flag (bareModel).
   if (raw && laneOf(raw) === "direct") return String(raw);
