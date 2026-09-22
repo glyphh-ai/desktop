@@ -78,7 +78,7 @@ import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory }
 import { registerWorkbenchTerminalIpc } from "./wb-terminal";
 import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
 import { closeDataStoreDb } from "./data-store";
-import { registerSettingsIpc, LIGHT_THEMES } from "./settings-ipc";
+import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-ipc";
 import { registerAgentStubs } from "./agent-stubs";
 import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
 import { bridgeBackground, bridgeForced, installBridgeTurnHandler, registerBridgeModeIpc } from "./bridge-mode";
@@ -360,7 +360,7 @@ async function boot() {
   const session = new SessionCache();
   session.setOnCapture(() => {});
 
-  const initialTheme = getPreference<string>("theme", "dark");
+  const initialTheme = normalizeThemeId(getPreference<string>("theme", "dark"));
   // Map themed ids (purple/aurora/prism/…) to a base mode nativeTheme accepts.
   nativeTheme.themeSource = initialTheme === "system" ? "system" : LIGHT_THEMES.has(initialTheme) ? "light" : "dark";
 
@@ -1224,7 +1224,7 @@ async function boot() {
       tier: authStatus.tier,
       needsOnboarding: currentNeedsOnboarding,
       hideWelcome,
-      theme: (() => { const t = getPreference<string>("theme", "dark"); return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t; })(),
+      theme: (() => { const t = normalizeThemeId(getPreference<string>("theme", "dark")); return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t; })(),
     });
     if (!currentNeedsOnboarding && !panelsReady) {
       if (mainWindow) homeView.ensureCreated(mainWindow);

@@ -10,7 +10,14 @@ import type { SessionCache } from "./session-cache";
 
 /** Theme ids whose BASE MODE is light — everything else maps to dark for the OS
  *  window chrome. Must list every light [data-theme] block in styles.css. */
-export const LIGHT_THEMES = new Set(["light", "prism", "claude"]);
+export const LIGHT_THEMES = new Set(["light", "modern-light", "prism", "claude"]);
+
+/** "highvis" became "dark" on 2026-09-22 (High Vis IS the dark theme now; the
+ *  old dark lives on as "modern-dark"). A pref saved under the retired id reads
+ *  as the new one, so the picker marks it and the OS chrome maps it. */
+export function normalizeThemeId(theme: string): string {
+  return theme === "highvis" ? "dark" : theme;
+}
 
 interface SettingsIpcDeps {
   getPreference: <T>(key: string, def?: T) => T;
@@ -48,7 +55,7 @@ export function registerSettingsIpc(deps: SettingsIpcDeps): void {
     getMainWindow, hidePanels,
   } = deps;
 
-  ipcMain.handle("get-theme", () => getPreference<string>("theme", "dark"));
+  ipcMain.handle("get-theme", () => normalizeThemeId(getPreference<string>("theme", "dark")));
   ipcMain.handle("set-theme", (_e, theme: string) => {
     setPreference("theme", theme);
     // nativeTheme only accepts system|light|dark, but theme ids can be richer

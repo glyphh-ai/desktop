@@ -1,4 +1,13 @@
 @font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(fonts/Geist-latin.woff2) format('woff2');
+}
+
+/* Inter stays for the Claude theme only — every other theme reads Geist. */
+@font-face {
   font-family: 'Inter';
   font-style: normal;
   font-weight: 400 800;
@@ -41,16 +50,18 @@
   user-select: none;
 }
 /* glyphh-logo-black = dark backgrounds, glyphh-logo-white = light. EVERY
-   dark-scheme theme swaps — not just "dark" (High Vis, GitHub, ChatGPT,
-   Gemini, Dracula, Nord, Synthwave, Matrix, Purple/Aurora are all dark). */
+   dark-scheme theme swaps — not just "dark" (Modern Dark, GitHub, ChatGPT,
+   Gemini, Dracula, Nord, Synthwave, Matrix, Purple/Aurora are all dark).
+   "highvis" is the retired id of today's Dark — kept so a saved pref still
+   resolves; Light keeps the logo the old light theme wore. */
 .glyphh-logo--black { display: none; }
 .glyphh-logo--white { display: block; }
-html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data-theme="github"],
-  [data-theme="highvis"], [data-theme="chatgpt"], [data-theme="gemini"], [data-theme="dracula"],
-  [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) .glyphh-logo--white { display: none; }
-html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data-theme="github"],
-  [data-theme="highvis"], [data-theme="chatgpt"], [data-theme="gemini"], [data-theme="dracula"],
-  [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) .glyphh-logo--black { display: block; }
+html:is([data-theme="dark"], [data-theme="highvis"], [data-theme="modern-dark"], [data-theme="purple"],
+  [data-theme="aurora"], [data-theme="github"], [data-theme="chatgpt"], [data-theme="gemini"],
+  [data-theme="dracula"], [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) .glyphh-logo--white { display: none; }
+html:is([data-theme="dark"], [data-theme="highvis"], [data-theme="modern-dark"], [data-theme="purple"],
+  [data-theme="aurora"], [data-theme="github"], [data-theme="chatgpt"], [data-theme="gemini"],
+  [data-theme="dracula"], [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) .glyphh-logo--black { display: block; }
 
 .glyphh-mark {
   display: block;
@@ -60,13 +71,69 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   user-select: none;
 }
 
+/* ════════════════════════════════════════════════════════════════════════
+   THE BASE (his order, 2026-09-22): the site, the app and the server console
+   share one visual system — Geist + JetBrains Mono, and the High Vis palette
+   as BOTH the default dark and the default light. The palettes that used to
+   answer to "dark" and "light" are still here as Modern Dark / Modern Light.
+   ════════════════════════════════════════════════════════════════════════ */
+:root {
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  /* --bg-2 is used across the app (streamed panels, skill explorer, attach
+     rows) but was never DEFINED by any theme, so every use computed to
+     transparent — which is how the Browser panel went white: the streamed
+     panel's var(--bg-2) backing vanished and the holder's #fff showed
+     through. One alias here serves every theme (var() resolves against the
+     active theme's --surface-2 at use time). */
+  --bg-2:        var(--surface-2);
+}
+
+/* ── Light — High Vis on a white ground. Black text, gray hairlines that
+   step DARKER (the mirror of the dark theme's stepping lighter), the brand
+   purple deepened to #8c3bf2 so it holds contrast on white. ─────────────── */
 :root,
 [data-theme="light"] {
   color-scheme: light;
   --mark-invert: 0;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Courier New', monospace;
+  --bg: #ffffff; --bg-raised: #ffffff; --surface: #f7f7f7; --surface-2: #efefef; --surface-3: #e6e6e6;
+  /* var() resolves at use time, so a theme that declares no --sidebar gets
+     ITS OWN ground for the rail (before this, :root's white leaked into every
+     dark theme that skipped the token). */
+  --sidebar: var(--bg); --sidebar-border: var(--border);
+  --border: #8a8a8a; --border-2: #6a6a6a; --border-3: #4a4a4a;
+  --text: #000000; --text-bright: #000000; --text-2: #1a1a1a; --text-3: #333333; --text-muted: #4d4d4d; --text-faint: #6f6f6f;
+  --white: #000000; --hover: #ececec; --active-bg: rgba(140, 59, 242, 0.14);
+  --accent: #8c3bf2; --accent-hover: #7a2fe0; --accent-fg: #fff; --accent-text: #7a2fe0; --accent-dark: #6a22cc; --accent-bg: #f1e8ff;
+  --danger: #d40000; --danger-soft: #e53535; --danger-bg: #ffe8e8; --warning: #c96a00; --success: #00873f; --blue: #0070d1; --purple: #8c3bf2;
+  --overlay-bg: rgba(0, 0, 0, 0.45); --shadow: rgba(0, 0, 0, 0.20); --selection: rgba(140, 59, 242, 0.25);
+  --scrollbar: #8a8a8a; --scrollbar-hover: #8c3bf2; --toast-bg: #ffffff; --code-inline: #7a2fe0;
+  --input-bg: #ffffff; --card-bg: var(--surface); --grad-accent: linear-gradient(120deg, #8c3bf2, #af5fff);
+}
 
+/* ── Dark — High Vis: black, gray hairlines, white text, purple accent.
+   "highvis" is this theme's retired id (renamed 2026-09-22); the alias keeps
+   a saved pref painting the right palette on the very first frame. ─────── */
+[data-theme="dark"], [data-theme="highvis"] {
+  color-scheme: dark;
+  --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
+  --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
+  --sidebar: #000000; --sidebar-border: #5a5a5a;
+  --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
+  --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
+  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(176, 102, 255, 0.20);
+  --accent: #b066ff; --accent-hover: #c68cff; --accent-fg: #fff; --accent-text: #c68cff; --accent-dark: #af5fff; --accent-bg: #221133;
+  --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
+  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(176, 102, 255, 0.35);
+  --scrollbar: #5a5a5a; --scrollbar-hover: #b066ff; --toast-bg: #0d0d0d; --code-inline: #c68cff;
+  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #b066ff, #af5fff);
+}
+
+/* ── Modern Light — the light theme as it was before 2026-09-22: the server
+   console's neutrals, verbatim (his order, 2026-09-18). ────────────────── */
+[data-theme="modern-light"] {
+  color-scheme: light;
+  --mark-invert: 0;
   /* THE CONSOLE'S NEUTRALS, verbatim (his order, 2026-09-18: align the colors
      pervasively, nothing else). Every value below is a token from the server
      console's globals.css, so the rail and the pages read the same in both
@@ -78,13 +145,6 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --surface-3:   oklch(0.967 0.003 264.542);
   --sidebar:     oklch(1 0 0);
   --sidebar-border: oklch(0.928 0.006 264.531);
-  /* --bg-2 is used across the app (streamed panels, skill explorer, attach
-     rows) but was never DEFINED by any theme, so every use computed to
-     transparent — which is how the Browser panel went white: the streamed
-     panel's var(--bg-2) backing vanished and the holder's #fff showed
-     through. One alias here serves every theme (var() resolves against the
-     active theme's --surface-2 at use time). */
-  --bg-2:        var(--surface-2);
   --border:      oklch(0.928 0.006 264.531);
   --border-2:    oklch(0.872 0.006 264.531);
   --border-3:    oklch(0.808 0.006 264.531);
@@ -125,7 +185,9 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --grad-accent: var(--accent);
 }
 
-[data-theme="dark"] {
+/* ── Modern Dark — the dark theme as it was before 2026-09-22: the console's
+   dark neutrals, near-white accent. ──────────────────────────────────────── */
+[data-theme="modern-dark"] {
   color-scheme: dark;
   --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
   /* The console's dark neutrals, verbatim. --sidebar is darker than the page
@@ -279,21 +341,6 @@ html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data
   --overlay-bg: rgba(1, 4, 9, 0.7); --shadow: rgba(1, 4, 9, 0.5); --selection: rgba(47, 129, 247, 0.30);
   --scrollbar: #30363d; --scrollbar-hover: #4a525b; --toast-bg: #161b22; --code-inline: #79c0ff;
   --input-bg: #0d1117; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #2f81f7, #a371f7);
-}
-
-/* ── High Vis — maximum-contrast black + electric yellow ───────────────── */
-[data-theme="highvis"] {
-  color-scheme: dark;
-  --mark-invert: 1;   /* a black-on-transparent mark (GitHub) flips in dark */
-  --bg: #000000; --bg-raised: #0a0a0a; --surface: #0d0d0d; --surface-2: #141414; --surface-3: #1a1a1a;
-  --border: #5a5a5a; --border-2: #7a7a7a; --border-3: #9a9a9a;
-  --text: #ffffff; --text-bright: #ffffff; --text-2: #eaeaea; --text-3: #c8c8c8; --text-muted: #b0b0b0; --text-faint: #909090;
-  --white: #ffffff; --hover: #1f1f1f; --active-bg: rgba(176, 102, 255, 0.20);
-  --accent: #b066ff; --accent-hover: #c68cff; --accent-fg: #fff; --accent-text: #c68cff; --accent-dark: #af5fff; --accent-bg: #221133;
-  --danger: #ff2b2b; --danger-soft: #ff5555; --danger-bg: #2a0000; --warning: #ff9500; --success: #00e676; --blue: #00b0ff; --purple: #d500f9;
-  --overlay-bg: rgba(0, 0, 0, 0.8); --shadow: rgba(0, 0, 0, 0.7); --selection: rgba(176, 102, 255, 0.35);
-  --scrollbar: #5a5a5a; --scrollbar-hover: #b066ff; --toast-bg: #0d0d0d; --code-inline: #c68cff;
-  --input-bg: #0d0d0d; --card-bg: var(--surface-2); --grad-accent: linear-gradient(120deg, #b066ff, #af5fff);
 }
 
 /* ── Claude — Anthropic warm cream + clay ─────────────────────────────── */
@@ -984,9 +1031,9 @@ body {
   background: #000;
   border: 1px solid var(--border);
 }
-html:is([data-theme="dark"], [data-theme="purple"], [data-theme="aurora"], [data-theme="github"],
-  [data-theme="highvis"], [data-theme="chatgpt"], [data-theme="gemini"], [data-theme="dracula"],
-  [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) #onboarding-overlay .auth-download-ic { background: #fff; }
+html:is([data-theme="dark"], [data-theme="highvis"], [data-theme="modern-dark"], [data-theme="purple"],
+  [data-theme="aurora"], [data-theme="github"], [data-theme="chatgpt"], [data-theme="gemini"],
+  [data-theme="dracula"], [data-theme="nord"], [data-theme="synthwave"], [data-theme="matrix"]) #onboarding-overlay .auth-download-ic { background: #fff; }
 #onboarding-overlay .auth-download-ic img { width: 38px; height: 38px; object-fit: contain; }
 #onboarding-overlay .auth-download-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 #onboarding-overlay .auth-download-title { font-size: 16px; font-weight: 600; color: var(--white); }
@@ -3681,7 +3728,7 @@ body[data-session-space="chat"] .plus-folder-only { display: none !important; }
 }
 .code-history-sec:first-child { margin-top: 2px; }
 
-[data-theme="dark"] .code-history-sec { opacity: 0.55; }
+[data-theme="dark"] .code-history-sec, [data-theme="modern-dark"] .code-history-sec { opacity: 0.55; }
 
 /* Spaces are gone — every session is the Code agent, so the rail nav no
    longer scopes items by space (the Chat/Work/Code tabs were removed). */
@@ -6817,20 +6864,30 @@ select.settings-input {
 .tp-bar { height: 10px; }
 .tp-content { flex: 1; }
 
-.theme-preview-dark { background: #1a1a1c; }
-.theme-preview-dark .tp-sidebar { background: #111; border-right: 1px solid #1e1e1e; }
-.theme-preview-dark .tp-bar { background: #111; border-bottom: 1px solid #1e1e1e; }
-.theme-preview-dark .tp-content { background: #1a1a1c; }
+.theme-preview-dark { background: #000; }
+.theme-preview-dark .tp-sidebar { background: #000; border-right: 1px solid #5a5a5a; }
+.theme-preview-dark .tp-bar { background: #0d0d0d; border-bottom: 1px solid #5a5a5a; }
+.theme-preview-dark .tp-content { background: #000; }
 
-.theme-preview-light { background: #f5f5f5; }
-.theme-preview-light .tp-sidebar { background: #fff; border-right: 1px solid #e5e5e5; }
-.theme-preview-light .tp-bar { background: #fff; border-bottom: 1px solid #e5e5e5; }
-.theme-preview-light .tp-content { background: #f5f5f5; }
+.theme-preview-light { background: #fff; }
+.theme-preview-light .tp-sidebar { background: #fff; border-right: 1px solid #8a8a8a; }
+.theme-preview-light .tp-bar { background: #f7f7f7; border-bottom: 1px solid #8a8a8a; }
+.theme-preview-light .tp-content { background: #fff; }
 
-.theme-preview-system { background: linear-gradient(135deg, #1a1a1c 50%, #f5f5f5 50%); }
-.theme-preview-system .tp-sidebar { background: linear-gradient(180deg, #111 50%, #fff 50%); border-right: 1px solid #666; }
-.theme-preview-system .tp-bar { background: linear-gradient(135deg, #111 50%, #fff 50%); border-bottom: 1px solid #666; }
-.theme-preview-system .tp-content { background: linear-gradient(135deg, #1a1a1c 50%, #f5f5f5 50%); }
+.theme-preview-system { background: linear-gradient(135deg, #000 50%, #fff 50%); }
+.theme-preview-system .tp-sidebar { background: linear-gradient(180deg, #000 50%, #fff 50%); border-right: 1px solid #7a7a7a; }
+.theme-preview-system .tp-bar { background: linear-gradient(135deg, #0d0d0d 50%, #f7f7f7 50%); border-bottom: 1px solid #7a7a7a; }
+.theme-preview-system .tp-content { background: linear-gradient(135deg, #000 50%, #fff 50%); }
+
+.theme-preview-modern-dark { background: #1a1a1c; }
+.theme-preview-modern-dark .tp-sidebar { background: #111; border-right: 1px solid #1e1e1e; }
+.theme-preview-modern-dark .tp-bar { background: #111; border-bottom: 1px solid #1e1e1e; }
+.theme-preview-modern-dark .tp-content { background: #1a1a1c; }
+
+.theme-preview-modern-light { background: #f5f5f5; }
+.theme-preview-modern-light .tp-sidebar { background: #fff; border-right: 1px solid #e5e5e5; }
+.theme-preview-modern-light .tp-bar { background: #fff; border-bottom: 1px solid #e5e5e5; }
+.theme-preview-modern-light .tp-content { background: #f5f5f5; }
 
 .theme-preview-purple { background: #140a1f; }
 .theme-preview-purple .tp-sidebar { background: #1b1029; border-right: 1px solid #2c1e42; }
@@ -6851,11 +6908,6 @@ select.settings-input {
 .theme-preview-github .tp-sidebar { background: #161b22; border-right: 1px solid #30363d; }
 .theme-preview-github .tp-bar { background: #161b22; border-bottom: 1px solid #30363d; }
 .theme-preview-github .tp-content { background: #0d1117; }
-
-.theme-preview-highvis { background: #000; }
-.theme-preview-highvis .tp-sidebar { background: #0d0d0d; border-right: 1px solid #b066ff; }
-.theme-preview-highvis .tp-bar { background: #0d0d0d; border-bottom: 1px solid #b066ff; }
-.theme-preview-highvis .tp-content { background: #000; }
 
 .theme-preview-claude { background: #f0eee6; }
 .theme-preview-claude .tp-sidebar { background: #faf9f5; border-right: 1px solid #e3e1d6; }
@@ -17836,7 +17888,7 @@ body[data-session-space="chat"] #code-effort-wrap { display: none !important; }
 
 /* The rail's More fly-out — anchored right of the toggle (navigation.ts). */
 .app-rail-more-toggle { opacity: 0.85; }
-[data-theme="dark"] .app-rail-more-toggle { opacity: 0.55; }
+[data-theme="dark"] .app-rail-more-toggle, [data-theme="modern-dark"] .app-rail-more-toggle { opacity: 0.55; }
 .app-rail-more-toggle:hover, .app-rail-more-toggle.open { opacity: 1; }
 .rail-more-menu { position: fixed; z-index: 300; display: flex; flex-direction: column; gap: 2px; min-width: 172px; padding: 6px; }
 .rail-more-menu .app-rail-nav-item { width: 100%; }

@@ -614,6 +614,13 @@ function applyAccentInk(): void {
   document.documentElement.style.setProperty("--accent-ink", tokenLuminance("--accent", 128) < 140 ? "#fff" : "#000");
 }
 applyAccentInk();
+/** Is the ACTIVE theme light? Every [data-theme] block in styles.css declares
+ *  color-scheme, so this holds for Light, Modern Light, Prism and Claude alike —
+ *  comparing the id to "light" read the other three as dark (2026-09-22). */
+function appIsLight(): boolean {
+  return getComputedStyle(document.documentElement).getPropertyValue("color-scheme").trim() === "light";
+}
+
 // Monaco's theme is GLOBAL and only read at editor creation — re-apply it
 // (and the accent ink) whenever the app theme flips (settings stamps
 // data-theme on <html>).
@@ -5581,7 +5588,7 @@ async function init(): Promise<void> {
             if (!parkedA && arow) {
               // The cell's own folder, else the workspace's (his order, 2026-09-16).
               const overrides = {
-                light: document.documentElement.getAttribute("data-theme") === "light",
+                light: appIsLight(),
                 ...(cellCfg.model ? { model: cellCfg.model } : {}),
                 ...(cellCfg.folder || layout.folder ? { cwd: cellCfg.folder || layout.folder } : {}),
                 ...(mode === "last" ? { resume: true } : {}),
@@ -6506,7 +6513,7 @@ async function init(): Promise<void> {
     const openAgentCliCard = (t: EchoTile, prompt?: string, opts?: AgentOpenOpts): void => {
       const a = t.cliAgent;
       if (!a) return;
-      const appLight = document.documentElement.getAttribute("data-theme") === "light";
+      const appLight = appIsLight();
       void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean; cwd?: string }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
         .glyphh?.cliAgentOpen?.(a.id, { light: appLight, ...(opts?.cwd ? { cwd: opts.cwd } : {}) }).then((r) => {
           // Possibly not installed: the dialog says so; the terminal opens anyway.
@@ -9012,7 +9019,7 @@ async function init(): Promise<void> {
     const accent = styles.getPropertyValue("--ws-accent").trim() || "#a855f7";
     // THE ANSI 16 follow the theme too — CLIs (claude/codex/gemini, git,
     // ls) draw with these, so retheming the palette IS retheming the CLI.
-    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const light = appIsLight();
     const ansi = light
       ? {
           black: "#3b3b43", red: "#c93c4b", green: "#1d8a4e", yellow: "#b07d12",
@@ -9175,7 +9182,7 @@ async function init(): Promise<void> {
   async function resumeHere(
     hostEl: HTMLElement, slot: TermSlot, tabsEl: HTMLElement, agentId: string, sessionId: string,
   ): Promise<void> {
-    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const light = appIsLight();
     const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; cwd?: string; error?: string; missing?: MissingCliInfo }> } })
       .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
     if (r?.missing) void askInstallCli(r.missing);
@@ -9395,7 +9402,7 @@ async function init(): Promise<void> {
           // Theme hint rides the spawn — TUIs reading COLORFGBG pick their
           // light/dark variant to match the app.
           window.wb.termSpawn(wbt.ptyId, spawnCwd, cols, rows,
-            document.documentElement.getAttribute("data-theme") === "light");
+            appIsLight());
           wbt.spawned = true;
           if (wbt.initCmd) {
             // The layout's slotted first command — once, after the shell boots.

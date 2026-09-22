@@ -8,8 +8,10 @@
 
 /* Theme-aware chrome colors for the canvas (edges, dot grid). */
 :root,
-html[data-theme="light"] { --sf-edge: #c2c2c2; }
-html[data-theme="dark"]  { --sf-edge: #454545; }
+html[data-theme="light"] { --sf-edge: #8a8a8a; }
+html[data-theme="modern-light"] { --sf-edge: #c2c2c2; }
+html[data-theme="dark"], html[data-theme="highvis"] { --sf-edge: #5a5a5a; }
+html[data-theme="modern-dark"] { --sf-edge: #454545; }
 
 .lib-split-flow {
   flex: 1 1 auto;
