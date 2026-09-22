@@ -5110,7 +5110,11 @@ function renderRailSessions(): void {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "wb-session-empty";
-    empty.textContent = q ? "No sessions match." : "No recent sessions yet.";
+    // A FILTER THAT HIDES EVERYTHING SAYS SO (his log, 2026-09-21: 40 sessions
+    // refreshed, 0 painted, and "No recent sessions yet" on screen).
+    empty.textContent = q ? "No sessions match."
+      : clis && railSessions.length ? "No sessions for the selected loop — clear the filter to see all."
+      : "No recent sessions yet.";
     host.appendChild(empty);
     return;
   }
