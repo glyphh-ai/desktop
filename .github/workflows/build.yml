@@ -170,17 +170,58 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
-      - name: Sign Windows exe with SSL.com
-        uses: sslcom/esigner-codesign@cf5f6c1d38ad10f47e3ed9aca873f429b1a8d85b # main, pinned 2026-09-18
+      # SSL.com's esigner-codesign action ran CodeSignTool on the JDK bundled
+      # in the tool's zip — Java 11.0.2 from January 2019, whose trust store
+      # predates "SSL.com TLS RSA Root CA 2022". On 2026-09-22 cs.ssl.com began
+      # chaining to that root and every sign died with "PKIX path building
+      # failed" (v1.1.13, twice; v1.1.12 had passed 13 hours earlier). The
+      # action re-extracts the tool on every run, so nothing patched around it
+      # survives. Run the same jar ourselves on a maintained Temurin 11 (the
+      # windows-2022 toolcache carries it) — same credentials, same config the
+      # action wrote, same output path, so the hash refresh below is unchanged.
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
-          command: sign
-          username: ${{ secrets.ES_USERNAME }}
-          password: ${{ secrets.ES_PASSWORD }}
-          credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-          file_path: release/Glyphh-Setup.exe
-          output_path: release/signed
-          malware_block: false
+          distribution: temurin
+          java-version: "11"
+
+      - name: Sign Windows exe with SSL.com
+        shell: pwsh
+        env:
+          ES_USERNAME: ${{ secrets.ES_USERNAME }}
+          ES_PASSWORD: ${{ secrets.ES_PASSWORD }}
+          ES_CREDENTIAL_ID: ${{ secrets.ES_CREDENTIAL_ID }}
+          ES_TOTP_SECRET: ${{ secrets.ES_TOTP_SECRET }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tool = Join-Path $env:RUNNER_TEMP "CodeSignTool"
+          $zip = "$tool.zip"
+          Invoke-WebRequest -Uri "https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.0/CodeSignTool-v1.3.0-windows.zip" -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $tool -Force
+          $jar = Get-ChildItem $tool -Recurse -Filter "code_sign_tool-*.jar" | Select-Object -First 1
+          if (-not $jar) { throw "code_sign_tool jar not found in the CodeSignTool zip" }
+          $root = $jar.Directory.Parent.FullName
+          $env:CODE_SIGN_TOOL_PATH = $root
+          # The production endpoints, verbatim what the action wrote to conf/.
+          @(
+            "CLIENT_ID=kaXTRACNijSWsFdRKg_KAfD3fqrBlzMbWs6TwWHwAn8",
+            "OAUTH2_ENDPOINT=https://login.ssl.com/oauth2/token",
+            "CSC_API_ENDPOINT=https://cs.ssl.com",
+            "TSA_URL=http://ts.ssl.com",
+            "TSA_LEGACY_URL=http://ts.ssl.com/legacy"
+          ) | Set-Content -Path (Join-Path $root "conf\code_sign_tool.properties") -Encoding ascii
+          New-Item -ItemType Directory -Force -Path release\signed | Out-Null
+          $in = (Resolve-Path release\Glyphh-Setup.exe).Path
+          $out = (Resolve-Path release\signed).Path
+          java -version 2>&1 | Write-Host
+          Push-Location $root
+          & java -Xmx1024M -jar $jar.FullName sign `
+            "-username=$env:ES_USERNAME" "-password=$env:ES_PASSWORD" `
+            "-credential_id=$env:ES_CREDENTIAL_ID" "-totp_secret=$env:ES_TOTP_SECRET" `
+            "-input_file_path=$in" "-output_dir_path=$out" "-malware_block=false"
+          $code = $LASTEXITCODE
+          Pop-Location
+          if ($code -ne 0) { throw "CodeSignTool exited $code" }
+          if (-not (Test-Path (Join-Path $out "Glyphh-Setup.exe"))) { throw "CodeSignTool produced no signed exe" }
 
       - name: Replace unsigned exe with signed
         run: Move-Item -Force release\signed\Glyphh-Setup.exe release\Glyphh-Setup.exe
