@@ -1530,6 +1530,7 @@ contextBridge.exposeInMainWorld("wb", {
   termResize: (termId: string, cols: number, rows: number) =>
     ipcRenderer.send("wb-term:resize", termId, cols, rows),
   termKill: (termId: string) => ipcRenderer.send("wb-term:kill", termId),
+  termAlive: (termId: string) => ipcRenderer.invoke("wb-term:alive", termId) as Promise<boolean>,
   termOnData: (termId: string, cb: (data: string) => void) => {
     const channel = `wb-term:data:${termId}`;
     const handler = (_e: Electron.IpcRendererEvent, data: string) => cb(data);

@@ -68,6 +68,7 @@ function spawnPty(wc: WebContents, termId: string, cwd: string, cols: number, ro
     wc.send(`wb-term:data:${termId}`, data);
   });
   proc.onExit(({ exitCode }) => {
+    console.warn("[wb-term] exit", JSON.stringify({ termId, exitCode }));
     if (!wc.isDestroyed()) wc.send(`wb-term:exit:${termId}`, exitCode);
     const gone = key(wc.id, termId);
     ptys.delete(gone);
@@ -137,9 +138,13 @@ export function registerWorkbenchTerminalIpc(): void {
       try { r.proc.resize(cols, rows); } catch { /* xterm sends 0 occasionally on init */ }
     }
   });
+  // Is this pty still running? A parked terminal asks before it re-attaches:
+  // a dead shell re-attached is a black pane (his report, 2026-09-21).
+  ipcMain.handle("wb-term:alive", (e, termId: string) => ptys.has(key(e.sender.id, String(termId ?? ""))));
   ipcMain.on("wb-term:kill", (e, termId: string) => {
     const k = key(e.sender.id, termId);
     const r = ptys.get(k);
+    console.warn("[wb-term] kill", JSON.stringify({ termId, running: !!r }));
     if (r) {
       try { r.proc.kill(); } catch { /* already dead */ }
       ptys.delete(k);

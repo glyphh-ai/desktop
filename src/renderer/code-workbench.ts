@@ -98,6 +98,8 @@ interface WbApi {
   termWrite: (termId: string, data: string) => void;
   termResize: (termId: string, cols: number, rows: number) => void;
   termKill: (termId: string) => void;
+  /** Is the pty behind this id still running? Absent on the web shim. */
+  termAlive?: (termId: string) => Promise<boolean>;
   termOnData: (termId: string, cb: (data: string) => void) => () => void;
   termOnExit: (termId: string, cb: (code: number) => void) => () => void;
   getTheme: () => Promise<string>;
@@ -4966,6 +4968,7 @@ async function init(): Promise<void> {
               // keep pty + xterm wired (offscreen writes land in the buffer);
               // only the per-host ResizeObservers go
               for (const t of toolSlot.terminals) t.ro?.disconnect();
+              console.warn("[wb-term] park", JSON.stringify({ key: parkKey, terms: toolSlot.terminals.map((t) => t.ptyId) }));
               parkedTerms.set(parkKey, toolSlot);
             } else {
               for (const t of toolSlot.terminals) { try { killTerminal(t); } catch { /* pty already gone */ } }
@@ -9390,7 +9393,7 @@ async function init(): Promise<void> {
         window.wb.termResize(wbt.ptyId, cols, rows);
       });
       const off1 = window.wb.termOnData(wbt.ptyId, (data) => term.write(data));
-      const off2 = window.wb.termOnExit(wbt.ptyId, () => { /* leave the buffer up so the user can read it */ });
+      const off2 = window.wb.termOnExit(wbt.ptyId, (code) => { console.warn("[wb-term] shell exited", JSON.stringify({ ptyId: wbt.ptyId, code })); /* leave the buffer up so the user can read it */ });
       wbt.term = term;
       wbt.fit = fit;
       wbt.detach = () => { off1(); off2(); };
@@ -9411,6 +9414,24 @@ async function init(): Promise<void> {
       console.warn("[wb-term] re-attach", JSON.stringify({ ptyId: wbt.ptyId }));
       hostEl.appendChild(wbt.term.element!);
       requestAnimationFrame(() => { try { wbt.fit?.fit(); } catch { /* noop */ } });
+      // A PARKED SHELL MAY HAVE DIED (his report, 2026-09-21: every CLI opened
+      // to a black pane — the same dead pty re-attached each time). Ask main;
+      // a gone pty means a fresh terminal on this host, with a new id, and the
+      // pending first command still lands after it boots.
+      if (!wbt.remote && window.wb.termAlive) {
+        void window.wb.termAlive(wbt.ptyId).then((alive) => {
+          if (alive || !hostEl.isConnected || slot.terminals[slot.activeIdx] !== wbt) return;
+          console.warn("[wb-term] pty gone; recreating", JSON.stringify({ ptyId: wbt.ptyId }));
+          wbt.detach?.();
+          wbt.ro?.disconnect();
+          try { wbt.term?.dispose(); } catch { /* noop */ }
+          wbt.term = undefined;
+          wbt.fit = undefined;
+          wbt.spawned = false;
+          wbt.ptyId = makeTermId();
+          mountTerminal(hostEl, slot);
+        }).catch(() => undefined);
+      }
     }
     // Persistent host observer: whenever the host changes size the xterm
     // re-fits, so the terminal always fills its full height — including the
