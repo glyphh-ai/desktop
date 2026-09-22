@@ -1435,11 +1435,12 @@ export function registerCliAgentsIpc(): void {
       const row = agentRowFor(String(id));
       if (!row) return { ok: false, error: "this loop isn't enabled for your organization" };
       // NO SILENT "command not found" (his order, 2026-09-21, the installer gate
-      // gone): a loop whose binary is not on this machine's PATH answers with
-      // what to install, and the renderer shows a dialog instead of a terminal
-      // that fails.
-      const missing = missingCli(row);
-      if (missing) return { ok: false, error: `${missing.name} is not installed on this machine`, missing };
+      // gone): a loop whose binary is not on this machine's PATH ALSO answers
+      // with what to install, and the renderer shows the dialog. The terminal
+      // opens regardless — a wrong "missing" must never cost the hop (his
+      // report, the same night: every CLI read as missing under Electron's
+      // shell and no terminal opened).
+      const missing = await missingCli(row);
       if (overrides?.light !== undefined) {
         try {
           if (row.cli === "claude") ensureClaudeTheme(overrides.light);
@@ -1465,8 +1466,8 @@ export function registerCliAgentsIpc(): void {
       // THE LINE THE TERMINAL PLAYS, in main's log (his report, 2026-09-21: a
       // blank card with nothing to go on). Tokens are the loop's own local MCP
       // bearer, never a gateway key, so the line is safe to print.
-      console.warn("[agents] open", JSON.stringify({ id: row.id, cli: row.cli, cwd: overrides?.cwd ?? row.cwd ?? "", resume: overrides?.resume ?? null, command: command.replace(/GLYPHH_APP_MCP_TOKEN="[^"]*"/, 'GLYPHH_APP_MCP_TOKEN="…"') }));
-      return { ok: true, command, name: row.name };
+      console.warn("[agents] open", JSON.stringify({ id: row.id, cli: row.cli, cwd: overrides?.cwd ?? row.cwd ?? "", resume: overrides?.resume ?? null, missing: missing?.bin ?? null, command: command.replace(/GLYPHH_APP_MCP_TOKEN="[^"]*"/, 'GLYPHH_APP_MCP_TOKEN="…"') }));
+      return { ok: true, command, name: row.name, ...(missing ? { missing } : {}) };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

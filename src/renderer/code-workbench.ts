@@ -5583,9 +5583,10 @@ async function init(): Promise<void> {
                 const target = entry;
                 const fallbackCmd = arow.command;
                 void yoApi?.cliAgentOpen?.(aid, overrides).then((r) => {
-                  // The CLI is not installed: the dialog says what to install;
-                  // no command types into the terminal.
-                  if (r && !r.ok && r.missing) { void askInstallCli(r.missing); return; }
+                  // The CLI may not be installed: the dialog says what to install.
+                  // The terminal still opens and runs the line — the shell's own
+                  // "command not found" is honest, a closed door is not.
+                  if (r?.missing) void askInstallCli(r.missing);
                   // NEVER a silent bare shell: a failed open (MCP port
                   // squabble, missing agent file) still starts the agent
                   // with its default command — resume/model just don't ride.
@@ -5605,7 +5606,7 @@ async function init(): Promise<void> {
                 // dependencies (the local MCP server) come up in the background;
                 // a missing CLI is said out loud (the terminal alone would only
                 // print "command not found").
-                void yoApi?.cliAgentOpen?.(aid).then((r) => { if (r && !r.ok && r.missing) void askInstallCli(r.missing); }).catch(() => {});
+                void yoApi?.cliAgentOpen?.(aid).then((r) => { if (r?.missing) void askInstallCli(r.missing); }).catch(() => {});
               }
             }
           } else if (id.startsWith("tool:")) {
@@ -6498,8 +6499,8 @@ async function init(): Promise<void> {
       const appLight = document.documentElement.getAttribute("data-theme") === "light";
       void (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
         .glyphh?.cliAgentOpen?.(a.id, { light: appLight }).then((r) => {
-          // Not installed: the dialog, not a terminal that fails.
-          if (r && !r.ok && r.missing) { void askInstallCli(r.missing); return; }
+          // Possibly not installed: the dialog says so; the terminal opens anyway.
+          if (r?.missing) void askInstallCli(r.missing);
           if (r && !r.ok && r.error) console.warn("[agents] open:", r.error);
           const row = cliAgentRows.find((x) => x.id === a.id);
           // fresh (+ button) and resume-a-specific-session both need their
@@ -9148,9 +9149,9 @@ async function init(): Promise<void> {
     const light = document.documentElement.getAttribute("data-theme") === "light";
     const r = await (window as unknown as { glyphh?: { cliAgentOpen?: (id: string, ov?: { resume?: boolean | string; light?: boolean }) => Promise<{ ok: boolean; command?: string; error?: string; missing?: MissingCliInfo }> } })
       .glyphh?.cliAgentOpen?.(agentId, { resume: sessionId, light });
+    if (r?.missing) void askInstallCli(r.missing);
     const cmd = r?.ok ? r.command : undefined;
     if (!cmd) {
-      if (r?.missing) void askInstallCli(r.missing);
       console.warn("[loops] resume:", r?.error ?? "no command composed");
       return;
     }

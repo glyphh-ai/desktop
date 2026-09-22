@@ -7,7 +7,7 @@
  * terminal that prints "command not found".
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 export interface CliInstall {
   name: string;
@@ -39,26 +39,55 @@ export function binOf(cmd: string): string {
   return first.replace(/^["']|["']$/g, "");
 }
 
-/** Is `bin` on the user's PATH? A LOGIN shell answers, since nvm/brew paths
- *  live in the profile, not in the app's own environment. Never throws. */
-export function binOnPath(bin: string, platform: NodeJS.Platform = process.platform): boolean {
+/** The user's shell. Electron launched from the Dock has no SHELL in its
+ *  environment, and /bin/sh reads neither .zprofile nor .zshrc, so a check run
+ *  there misses every brew/nvm binary (his report, 2026-09-21: switching to
+ *  ANY CLI broke — every one read as missing). */
+function userShell(platform: NodeJS.Platform): string {
+  return process.env.SHELL || (platform === "darwin" ? "/bin/zsh" : "/bin/sh");
+}
+
+/** One shell probe → exit status, or null on timeout/error. Never throws, never blocks main. */
+function probe(cmd: string, args: string[], timeoutMs: number): Promise<number | null> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: number | null): void => { if (!done) { done = true; resolve(v); } };
+    try {
+      const child = spawn(cmd, args, { stdio: "ignore", timeout: timeoutMs });
+      child.on("error", () => finish(null));
+      child.on("close", (code) => finish(code));
+    } catch {
+      finish(null);
+    }
+  });
+}
+
+/** Is `bin` on the user's PATH? Asked of the user's own shell as a login shell
+ *  (.zprofile: brew), then as an interactive one (.zshrc: nvm). ASYNC and
+ *  capped: main never blocks on a slow profile. Unknown (timeout) reads as
+ *  PRESENT — a wrong "missing" costs the user their terminal, a wrong
+ *  "present" costs one "command not found" line they can read. */
+export async function binOnPath(bin: string, platform: NodeJS.Platform = process.platform): Promise<boolean> {
   if (!bin) return false;
-  try {
-    if (platform === "win32") return spawnSync("where", [bin], { stdio: "ignore", timeout: 8000 }).status === 0;
-    const quoted = `'${bin.replace(/'/g, "'\\''")}'`;
-    return spawnSync(process.env.SHELL || "/bin/sh", ["-lc", `command -v ${quoted}`], { stdio: "ignore", timeout: 8000 }).status === 0;
-  } catch {
-    return false;
+  if (platform === "win32") {
+    const st = await probe("where", [bin], 4000);
+    return st === null ? true : st === 0;
   }
+  const quoted = `'${bin.replace(/'/g, "'\\''")}'`;
+  const sh = userShell(platform);
+  const login = await probe(sh, ["-lc", `command -v ${quoted}`], 3000);
+  if (login === 0 || login === null) return true;
+  const interactive = await probe(sh, ["-lic", `command -v ${quoted}`], 3000);
+  return interactive === 0 || interactive === null;
 }
 
 /** What the renderer's dialog needs when a loop's binary is not installed. */
 export interface MissingCli { cli: string; name: string; bin: string; install: string; login: string; note?: string }
 
-/** Null when the loop's binary is on PATH; else what to install. */
-export function missingCli(row: { cli: string; name: string; cmd: string }, platform: NodeJS.Platform = process.platform): MissingCli | null {
+/** Null when the loop's binary is on PATH (or cannot be told); else what to install. */
+export async function missingCli(row: { cli: string; name: string; cmd: string }, platform: NodeJS.Platform = process.platform): Promise<MissingCli | null> {
   const bin = binOf(row.cmd);
-  if (!bin || binOnPath(bin, platform)) return null;
+  if (!bin || (await binOnPath(bin, platform))) return null;
   const t = CLI_INSTALL[row.cli];
   return {
     cli: row.cli, name: t?.name ?? row.name, bin,
