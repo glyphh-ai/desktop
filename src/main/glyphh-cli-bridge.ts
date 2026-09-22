@@ -39,7 +39,7 @@ const STORE_DIR = (): string => userScopedDir();
 const sessionsFile = (): string => path.join(STORE_DIR(), "agent-sessions.json");
 const LEGACY_SESSIONS_FILE = path.join(GLYPHH_DIR, "agent-sessions.json");
 
-interface SessionsSnapshot { chats: unknown[]; currentId: string | null }
+interface SessionsSnapshot { chats: unknown[]; currentId: string | null; /** Ids the saver deleted — dropped from the merge. */ deleted?: string[] }
 
 function readSnapshot(file: string): SessionsSnapshot {
   try {
@@ -107,9 +107,10 @@ function saveSessionsFile(snap: SessionsSnapshot): void {
       const cur = byId.get(c.id);
       if (!cur || (c.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) byId.set(c.id, c);
     }
+    const gone = new Set(snap.deleted ?? []);
     const order = [...incoming.map((c) => c?.id).filter((x): x is string => typeof x === "string"), ...have.map((c) => c?.id).filter((x): x is string => typeof x === "string")];
     const seen = new Set<string>();
-    const chats = order.filter((id) => (seen.has(id) ? false : (seen.add(id), true))).map((id) => byId.get(id)!);
+    const chats = order.filter((id) => (gone.has(id) ? false : seen.has(id) ? false : (seen.add(id), true))).map((id) => byId.get(id)!);
     writeFileSync(sessionsFile(), JSON.stringify({ chats, currentId: snap.currentId }), "utf-8");
     try { ourWriteAt = statSync(sessionsFile()).mtimeMs; } catch { /* the watcher will just announce it */ }
     watchSessionsFile();
@@ -755,8 +756,8 @@ export function registerGlyphhCliBridge(): void {
   });
 
   ipcMain.handle("glyphh-agent-sessions-load", () => { watchSessionsFile(); return loadSessionsFile(); });
-  ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null }) => {
-    saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null });
+  ipcMain.handle("glyphh-agent-sessions-save", (_e, p: { chats: unknown[]; currentId: string | null; deleted?: string[] }) => {
+    saveSessionsFile({ chats: p?.chats ?? [], currentId: p?.currentId ?? null, ...(Array.isArray(p?.deleted) ? { deleted: p.deleted.map(String) } : {}) });
     return true;
   });
 }

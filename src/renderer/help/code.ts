@@ -417,9 +417,15 @@ function setLoop(id: string): void {
 //   gateway   → the org's gateway, the member's key — the org's team allow-list
 //   login     → the CLI's own login: nothing to ask; the CLI decides
 // No seeded catalog, no plan gate here: the server decided when it minted the key.
-interface AvailModel { id: string; name: string; providerSlug: string }
+interface AvailModel { id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }
 let availModels: AvailModel[] = [];
 let modelSource: "gateway" | "byok" | "login" | "none" = "none";
+/** THE LANE LAW (his order, 2026-09-21): off = the CLI's own login; choice =
+ *  the picker has two groups and the pick carries the lane; required = gateway only. */
+let laneMode: "off" | "choice" | "required" = "off";
+/** A pick's lane is in its id: the "Own login" group prefixes `direct::`. */
+const DIRECT_PREFIX = "direct::";
+const laneOf = (id: string | null | undefined): "gateway" | "direct" => (String(id ?? "").startsWith(DIRECT_PREFIX) ? "direct" : "gateway");
 
 function modelsForLoop(): AvailModel[] {
   return availModels;
@@ -450,17 +456,30 @@ const bareModelId = (id: string | null | undefined): string | null => {
 const autoModel = (): AvailModel | null => availModels.find((m) => m.providerSlug === "auto") ?? null;
 const autoOnly = (): boolean => availModels.length === 1 && !!autoModel();
 
+/** The stored pick, as stored (a lane prefix included). */
+function pickedRawId(): string | null {
+  const raw = current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref;
+  return raw ? String(raw) : null;
+}
+/** The row a pick names: the same bare name AND, when the picker has two
+ *  groups, the same lane — the gateway's claude-sonnet-5 and the login's are two picks. */
+function rowForPick(raw: string | null): AvailModel | null {
+  const bare = bareModelId(raw);
+  if (!bare) return null;
+  return availModels.find((m) => bareModelId(m.id) === bare && (laneMode !== "choice" || laneOf(m.id) === laneOf(raw))) ?? null;
+}
 function effectiveModelId(): string | null {
   if (autoOnly()) return autoModel()!.id;
-  const picked = bareModelId(current()?.models?.["default"] ?? pendingModels?.["default"] ?? defaultModelPref);
+  const raw = pickedRawId();
+  const picked = bareModelId(raw);
   if (!picked) return null;
   // A default the ACTIVE loop cannot run is not this loop's model. Saying so
   // (null = the loop's own default) beats naming a model the turn won't use.
-  return availModels.length && !availModels.some((m) => bareModelId(m.id) === picked) ? null : picked;
+  return availModels.length && !rowForPick(raw) ? null : picked;
 }
 function selectedModel(): AvailModel | null {
-  const id = effectiveModelId();
-  return availModels.find((m) => bareModelId(m.id) === id) ?? null;
+  if (autoOnly()) return availModels.find((m) => bareModelId(m.id) === autoModel()!.id) ?? null;
+  return rowForPick(pickedRawId());
 }
 
 function paintModelChip(): void {
@@ -477,9 +496,11 @@ function paintModelChip(): void {
   // With the gateway on, "Default" is the ORG'S default (his order, 2026-09-20),
   // so the chip names it: the turn runs on that, never on the CLI's own pick.
   const orgDef = modelSource === "gateway" && !sel && !id ? orgDefaultModel : "";
-  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : orgDef ? `Default · ${orgDef}` : "Default")}`;
+  // With two lanes on offer the chip says which one this turn takes.
+  const lane = laneMode === "choice" ? (sel?.lane === "direct" ? " · own login" : " · gateway") : "";
+  mc.textContent = `Model: ${none ? "None" : sel?.name ?? (id ? id : orgDef ? `Default · ${orgDef}` : "Default")}${none ? "" : lane}`;
   mc.title = none ? "Your organization hasn't allowed any model yet. An org admin turns them on in the console."
-    : sel ? `${sel.name} — ${sel.providerSlug}`
+    : sel ? `${sel.name} — ${sel.providerSlug}${sel.lane === "direct" ? " · runs on this CLI's own login, not metered by your organization" : laneMode === "choice" ? " · runs through your organization's gateway" : ""}`
     : id ? `${id} — not in your model list; the loop may refuse it`
     : orgDef ? `Your organization's default model` : "The loop's own default model";
   mc.className = "code-chip" + (none || (!sel && id) ? " warn" : "");
@@ -504,7 +525,7 @@ async function refreshModelList(force?: boolean): Promise<void> {
     // A stale answer for another loop must never paint: the loop can change
     // while the request is in flight.
     if (loop !== activeLoop()) return;
-    if (r?.ok) { availModels = r.models; modelSource = r.source; }
+    if (r?.ok) { availModels = r.models; modelSource = r.source; laneMode = r.laneMode ?? "off"; }
   } catch { /* offline — the last list stands */ }
   paintModelChip();
 }
@@ -569,22 +590,40 @@ function renderModelMenu(): void {
       list.appendChild(empty);
       return;
     }
-    for (const m of rows.slice(0, 200)) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "code-drop-item drop-item-2line" + (selectedModel()?.id === m.id ? " selected" : "");
-      const main = document.createElement("div");
-      main.className = "drop-main";
-      const span = document.createElement("span");
-      span.textContent = m.name;
-      main.appendChild(span);
-      if (selectedModel()?.id === m.id) main.insertAdjacentHTML("beforeend", check);
-      const sub = document.createElement("div");
-      sub.className = "drop-sub";
-      sub.textContent = m.providerSlug;
-      item.append(main, sub);
-      item.addEventListener("click", () => { void choose(m.id); });
-      list.appendChild(item);
+    // TWO GROUPS when the org enabled the gateway without requiring it (his
+    // order, 2026-09-21): the metered gateway list, then the CLI's own login.
+    // Required: the gateway list alone. Off: the loop's own list alone.
+    const groups: Array<{ label: string | null; hint: string; rows: AvailModel[] }> = laneMode === "choice"
+      ? [
+        { label: "Gateway", hint: "metered by your organization", rows: rows.filter((m) => m.lane !== "direct") },
+        { label: "Own login", hint: "this CLI's account · not metered", rows: rows.filter((m) => m.lane === "direct") },
+      ]
+      : [{ label: null, hint: "", rows }];
+    for (const g of groups) {
+      if (!g.rows.length) continue;
+      if (g.label) {
+        const head = document.createElement("div");
+        head.className = "code-drop-head";
+        head.innerHTML = `<span>${g.label}</span><span class="drop-hint">${g.hint}</span>`;
+        list.appendChild(head);
+      }
+      for (const m of g.rows.slice(0, 200)) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "code-drop-item drop-item-2line" + (selectedModel()?.id === m.id ? " selected" : "");
+        const main = document.createElement("div");
+        main.className = "drop-main";
+        const span = document.createElement("span");
+        span.textContent = m.name;
+        main.appendChild(span);
+        if (selectedModel()?.id === m.id) main.insertAdjacentHTML("beforeend", check);
+        const sub = document.createElement("div");
+        sub.className = "drop-sub";
+        sub.textContent = m.providerSlug;
+        item.append(main, sub);
+        item.addEventListener("click", () => { void choose(m.id); });
+        list.appendChild(item);
+      }
     }
   };
   search.addEventListener("input", paint);
@@ -3655,7 +3694,11 @@ function syncThinking(): void {
  *  the CLI feels like". */
 function sessionModel(c: CodeChat | null | undefined): string | null {
   if (autoOnly()) return autoModel()!.id;
-  return bareModelId(c?.models?.["default"] ?? defaultModelPref);
+  const raw = c?.models?.["default"] ?? defaultModelPref;
+  // An "Own login" pick keeps its lane prefix on the wire — main reads the
+  // lane from it and strips it for the CLI's flag (bareModel).
+  if (raw && laneOf(raw) === "direct") return String(raw);
+  return bareModelId(raw);
 }
 
 /** Settings → General's default model, memoised for the session. Empty

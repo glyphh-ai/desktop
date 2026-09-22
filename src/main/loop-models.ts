@@ -20,16 +20,24 @@ import path from "path";
 import fs from "fs";
 import { homedir } from "os";
 import { ipcMain } from "electron";
-import { agentRowFor, CLI_PROFILES } from "./cli-agents";
+import { agentRowFor, CLI_PROFILES, DIRECT_PREFIX, gatewayLaneMode, refreshGatewayMode, type GatewayLaneMode } from "./cli-agents";
 import { getClient } from "./glyphh-client";
 import { gatewayCreds } from "./gateway-token";
 
-export interface LoopModel { id: string; name: string; providerSlug: string; /** "local" = a directory row for a CLI's own login, never proxied. */ source?: string }
+export interface LoopModel {
+  id: string; name: string; providerSlug: string;
+  /** "local" = a directory row for a CLI's own login, never proxied. */
+  source?: string;
+  /** Which lane a pick of this row runs on (set with the gateway enabled). */
+  lane?: "gateway" | "direct";
+}
 export interface LoopModelsResult {
   ok: boolean;
   source: "gateway" | "byok" | "login" | "none";
   baseUrl: string | null;
   models: LoopModel[];
+  /** The org's lane law: off | choice (two groups in the picker) | required. */
+  laneMode?: GatewayLaneMode;
   error?: string;
 }
 
@@ -151,10 +159,6 @@ async function loginModels(cli: string): Promise<LoopModel[]> {
   return orgModels(cli);
 }
 
-async function gatewayMode(): Promise<boolean> {
-  try { return !!(await getClient().plans.gates()).gatewayAllowed; } catch { return false; }
-}
-
 async function orgModels(cli: string): Promise<LoopModel[]> {
   const vendor = CLI_VENDOR[cli];
   const rows = await getClient().models.available();
@@ -172,7 +176,9 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
   try {
     // Gateway mode short-circuits every other lane: one list, org-controlled,
     // the same for a loop with its own key and a loop on a vendor login.
-    if (await gatewayMode()) {
+    await refreshGatewayMode();
+    const laneMode = gatewayLaneMode();
+    if (laneMode !== "off") {
       // ONE org list, asked once; THIS loop sees its own vendor's slice of it
       // (his order, 2026-09-20: Codex offered Claude's models). A CLI speaks
       // its vendor's wire, so the org's allow-list is filtered to the models
@@ -191,16 +197,29 @@ export async function listLoopModels(loopId: string, force = false): Promise<Loo
       // proxied, so only that CLI's loop sees its own (his report, the same
       // day: the Claude loop listed every Cursor row).
       const vendor = CLI_VENDOR[row.cli];
-      value = { ...all, models: all.models.filter((m) => m.source !== "local" || (!!vendor && m.providerSlug === vendor)) };
-      value.models.sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
+      const gateway = all.models
+        .filter((m) => m.source !== "local" || (!!vendor && m.providerSlug === vendor))
+        .map((m): LoopModel => ({ ...m, lane: "gateway" }))
+        .sort((a, b) => a.providerSlug.localeCompare(b.providerSlug) || a.name.localeCompare(b.name));
+      // THE CHOICE (his order, 2026-09-21): the gateway enabled but not
+      // required, the picker offers a second group — the CLI's OWN LOGIN —
+      // and a pick from it runs that turn direct, unmetered. Ids carry the
+      // lane so two lists with the same model name stay two picks. The
+      // Glyphh loop has no own login: gateway rows only.
+      const own = laneMode === "choice" && vendor && !row.apiKey
+        ? (await loginModels(row.cli).catch(() => [] as LoopModel[]))
+          .map((m): LoopModel => ({ ...m, id: `${DIRECT_PREFIX}${m.id}`, lane: "direct" }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+        : [];
+      value = { ...all, laneMode, models: [...gateway, ...own] };
       cache.set(loopId, { at: Date.now(), value });
       return value;
     }
     // The gateway lane (paid, on): the list is what the org's gateway serves this member.
     const creds = CLI_PROFILES[row.cli]?.baseUrlEnv.length && !row.apiKey ? await gatewayCreds() : null;
     value = creds
-      ? { ok: true, source: "gateway", baseUrl: creds.baseUrl, models: await listAt(row.cli, creds.baseUrl, creds.token, true) }
-      : { ok: true, source: row.apiKey ? "byok" : "login", baseUrl: null, models: row.apiKey ? await orgModels(row.cli) : await loginModels(row.cli) };
+      ? { ok: true, source: "gateway", baseUrl: creds.baseUrl, laneMode, models: await listAt(row.cli, creds.baseUrl, creds.token, true) }
+      : { ok: true, source: row.apiKey ? "byok" : "login", baseUrl: null, laneMode, models: row.apiKey ? await orgModels(row.cli) : await loginModels(row.cli) };
   } catch (err) {
     value = { ok: false, source: "none", baseUrl: null, models: [], error: err instanceof Error ? err.message : String(err) };
   }

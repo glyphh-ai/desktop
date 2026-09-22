@@ -108,11 +108,15 @@ function transport(): Transport | null {
 async function cacheLoad(): Promise<{ chats: ThreadChat[]; currentId: string }> {
   try {
     const s = await window.glyphh.glyphhSessionsLoad?.();
-    return { chats: ((s?.chats as ThreadChat[]) || []), currentId: String(s?.currentId || "") };
+    // A chat this window deleted stays deleted, whatever the file says.
+    return { chats: ((s?.chats as ThreadChat[]) || []).filter((c) => deleted[c.id] === undefined), currentId: String(s?.currentId || "") };
   } catch { return { chats: [], currentId: "" }; }
 }
 async function cacheSave(): Promise<void> {
-  try { await window.glyphh.glyphhSessionsSave?.(chatsRef, currentIdRef); }
+  // TOMBSTONES RIDE ALONG (his report, 2026-09-21: a deleted chat came back
+  // after a restart): the shared file merges by id and keeps chats this
+  // window does not carry, so a delete has to be said, not implied.
+  try { await window.glyphh.glyphhSessionsSave?.(chatsRef, currentIdRef, Object.keys(deleted)); }
   catch { /* cache write failure never breaks the UI — the server copy stands */ }
 }
 

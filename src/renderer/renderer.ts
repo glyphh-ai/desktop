@@ -399,7 +399,7 @@ declare global {
       glyphhClassifyPaths: (paths: string[]) => Promise<Array<{ kind: "image" | "file" | "folder"; path: string; name: string }>>;
       glyphhSaveClipboardImage: (bytes: ArrayBuffer) => Promise<{ kind: "image"; path: string; name: string }>;
       glyphhSessionsLoad: () => Promise<{ chats: unknown[]; currentId: string }>;
-      glyphhSessionsSave: (chats: unknown[], currentId: string) => Promise<boolean>;
+      glyphhSessionsSave: (chats: unknown[], currentId: string, deleted?: string[]) => Promise<boolean>;
       // Server threads surface (desktop transport for help/thread-store.ts).
       threadsList?: () => Promise<Array<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number }>>;
       threadsGet?: (id: string) => Promise<{ id: string; title: string; mode: string; source: unknown; createdAt: number; updatedAt: number; messageCount: number; messages: unknown[] }>;
@@ -461,7 +461,7 @@ declare global {
       librarySkillDelete: (ref: string) => Promise<LibEnvelope>;
       tasksAgentsList: () => Promise<LibEnvelope>;
       loopsAvailable: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
-      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>;
+      loopModels: (loopId: string, force?: boolean) => Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }>; laneMode?: "off" | "choice" | "required"; error?: string }>;
       orgLoopsList: () => Promise<{ ok: boolean; data?: unknown; error?: string }>;
       orgLoopSet: (cli: string, enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
       planGates: () => Promise<{ gatewayAllowed: boolean; trialEndsAt: string | null; governance: boolean; sso: boolean; rpm: number }>;

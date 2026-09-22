@@ -593,10 +593,11 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
   const row = { ...agent } as CliAgentRow;
   const p = prompt.replace(/'/g, "'\\''");
   const picked = (model ?? row.model ?? "").trim();
-  // The org's lane decides where the turn goes; off the gateway, its vars go.
+  // THE TURN'S LANE (his order, 2026-09-21): the org's switch first, then the
+  // pick — an "Own login" model runs direct; off the gateway, its vars go.
   // A turn that named none runs on the org's default with the gateway on
   // (his order, 2026-09-20): left to the CLI it picks one the org never allowed.
-  const viaGateway = requestUsesGateway(!!row.apiKey);
+  const viaGateway = turnViaGateway(!!row.apiKey, picked);
   const m = picked || (gatewayOn && viaGateway ? requiredModel : "");
   const strip = viaGateway ? "" : stripGatewayVars(row);
   const perm = sessionPerm ? (SESSION_PERM_HEADLESS[row.cli]?.[sessionPerm] ?? "") : permFlag(row, true);
@@ -687,14 +688,22 @@ const CODEX_SKIP_GIT = " --skip-git-repo-check";
 /** codex's accepted values: auto | prompt | writes | approve. */
 const CODEX_MCP_APPROVE = ` -c 'mcp_servers.glyphh.default_tools_approval_mode="approve"'`;
 
+/** `~` and `~/x` as the shell would expand them unquoted. */
+function expandHome(p: string): string {
+  return p === "~" ? homedir() : p.startsWith("~/") ? path.join(homedir(), p.slice(2)) : p;
+}
+
 function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // Governed and unset means the org's own answer, not the CLI's saved one.
   // The org's lane decides; an unset model is the org's proxy model.
   const picked = (ov?.model ?? row.model ?? "").trim();
-  const viaGateway = requestUsesGateway(!!row.apiKey);
+  const viaGateway = turnViaGateway(!!row.apiKey, picked);
   const strip = viaGateway ? "" : stripGatewayVars(row);
   const model = picked || (gatewayOn && viaGateway ? requiredModel : "");
-  const cwd = (ov?.cwd ?? row.cwd ?? "").trim();
+  // A stored folder may read "~" (a display path that leaked into a chat, 2026-09-21):
+  // the shell does not expand a quoted tilde, and `cd "~" &&` ran nothing — the
+  // terminal sat at a prompt and looked hung. Expand it here, always.
+  const cwd = expandHome((ov?.cwd ?? row.cwd ?? "").trim());
   // RESUME: the CLI's own continue-last affordance. claude takes a flag;
   // codex resumes via a subcommand; CLIs without one just start fresh.
   const resumePart = ov?.resume
@@ -727,7 +736,8 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
     const env = `GLYPHH_SERVER_URL="${SERVER_URL}" GLYPHH_APP_SESSIONS="${sessions.replace(/"/g, '\\"')}"`
       + (mcpToken ? ` GLYPHH_APP_MCP_URL="http://127.0.0.1:${port}/mcp" GLYPHH_APP_MCP_TOKEN="${mcpToken}"` : "");
     const resume = ov?.resume ? (typeof ov.resume === "string" ? ` --resume '${ov.resume.replace(/'/g, "")}'` : " --continue") : "";
-    const base = `${env} ${row.cmd}${resume}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
+    // The folder was chosen in the app, so the terminal's trust question is answered.
+    const base = `${env} ${row.cmd} --trust${resume}${modelFlag(row.cli, model)}${permPart}${promptPart}`;
     return cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
   }
   const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";
@@ -853,14 +863,33 @@ function stripGatewayVars(row: CliAgentRow): string {
  *  is a model the org never allowed, and the turn dies on a 403 the user can
  *  do nothing about. */
 let requiredModel = "";
+/** The org's Require Gateway switch (or the server forcing it): every turn proxied. */
+let gatewayRequired = false;
+/** THE LANE LAW (his order, 2026-09-21): off = every turn on the CLI's own login;
+ *  choice = the gateway is enabled and the member picks each turn's lane in the
+ *  model picker; required = every turn through the gateway. */
+export type GatewayLaneMode = "off" | "choice" | "required";
+export function gatewayLaneMode(): GatewayLaneMode {
+  return !gatewayOn ? "off" : gatewayRequired ? "required" : "choice";
+}
+/** A model pick that names the CLI's OWN LOGIN as its lane (the picker's
+ *  "Own login" group prefixes its ids). bareModel strips it for the flag. */
+export const DIRECT_PREFIX = "direct::";
+export const isDirectPick = (model: string): boolean => model.startsWith(DIRECT_PREFIX);
+/** Does THIS turn ride the gateway? The org's lane, then the pick's lane. */
+export function turnViaGateway(hasOwnKey: boolean, picked: string): boolean {
+  if (!requestUsesGateway(hasOwnKey)) return false;
+  return gatewayLaneMode() === "required" || !isDirectPick(picked);
+}
 export async function refreshGatewayMode(): Promise<void> {
   try {
     const client = getClient();
     const [gates, models] = await Promise.all([
-      client.plans.gates() as Promise<{ gatewayAllowed?: boolean; autoOnly?: boolean; defaultModel?: string }>,
+      client.plans.gates() as Promise<{ gatewayAllowed?: boolean; gatewayRequired?: boolean; autoOnly?: boolean; defaultModel?: string }>,
       client.models.available().catch(() => []) as Promise<Array<{ name: string; modality: string; autoRouter?: boolean }>>,
     ]);
     gatewayOn = !!gates.gatewayAllowed;
+    gatewayRequired = !!gates.gatewayRequired;
     // THE ORG'S DEFAULT FIRST (his order, 2026-09-20): the model the admin set
     // for turns that picked none; then the router under Auto only; then the
     // first model the org allows. Off the gateway the CLI's own choice stands.

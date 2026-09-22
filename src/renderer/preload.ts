@@ -1076,8 +1076,8 @@ contextBridge.exposeInMainWorld("glyphh", {
     ipcRenderer.invoke("glyphh-agent-save-clipboard-image", { bytes }) as Promise<{ kind: "image"; path: string; name: string }>,
   glyphhSessionsLoad: () =>
     ipcRenderer.invoke("glyphh-agent-sessions-load") as Promise<{ chats: unknown[]; currentId: string }>,
-  glyphhSessionsSave: (chats: unknown[], currentId: string) =>
-    ipcRenderer.invoke("glyphh-agent-sessions-save", { chats, currentId }) as Promise<boolean>,
+  glyphhSessionsSave: (chats: unknown[], currentId: string, deleted?: string[]) =>
+    ipcRenderer.invoke("glyphh-agent-sessions-save", { chats, currentId, deleted }) as Promise<boolean>,
   // ── Server threads surface (thread-store.ts's desktop transport) — the
   // main-process SDK client executes these (threads-ipc.ts). ──
   threadsList: () =>
@@ -1112,7 +1112,7 @@ contextBridge.exposeInMainWorld("glyphh", {
   /** LOOPS — the effective set and the org's support list. */
   /** The models THIS loop can run — asked of the endpoint the turn will hit
    *  (gateway or the loop's own vendor key). Empty on a CLI-login loop. */
-  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string }>; error?: string }>,
+  loopModels: (loopId: string, force?: boolean) => ipcRenderer.invoke("loop-models", loopId, force) as Promise<{ ok: boolean; source: "gateway" | "byok" | "login" | "none"; baseUrl: string | null; models: Array<{ id: string; name: string; providerSlug: string; lane?: "gateway" | "direct" }>; laneMode?: "off" | "choice" | "required"; error?: string }>,
   loopsAvailable: () => ipcRenderer.invoke("loops-available") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopsList: () => ipcRenderer.invoke("org-loops-list") as Promise<{ ok: boolean; data?: unknown; error?: string }>,
   orgLoopSet: (cli: string, enabled: boolean) => ipcRenderer.invoke("org-loop-set", cli, enabled) as Promise<{ ok: boolean; error?: string }>,
