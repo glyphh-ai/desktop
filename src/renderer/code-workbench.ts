@@ -9143,7 +9143,13 @@ async function init(): Promise<void> {
     return { ...(row?.cli ? { cli: row.cli } : {}), ...(cwd ? { cwd } : {}) };
   }
 
-  async function scopedCliSessions(agentId: string): Promise<Array<{ id: string; title: string; cwd: string; mtime?: number }>> {
+  /** The CLI sessions the hop back may adopt: those in THIS terminal's own
+   *  folder first (the folder main spawned it in — his report, 2026-09-21: a
+   *  new session's terminal ran in the resolved folder, the lane's guess was
+   *  empty, nothing matched, and the conversation was "not there"); else the
+   *  lane's folder; else every session, newest first — the caller's
+   *  typed-since-the-hop check keeps a stale one from being adopted. */
+  async function scopedCliSessions(agentId: string, termCwd?: string): Promise<Array<{ id: string; title: string; cwd: string; mtime?: number }>> {
     const g = window as unknown as { glyphh?: {
       cliSessionsList?: () => Promise<{ ok: boolean; sessions: Array<{ id: string; title: string; cwd: string; mtime?: number }> }>;
     } };
@@ -9151,8 +9157,15 @@ async function init(): Promise<void> {
       g.glyphh?.cliSessionsList?.() ?? Promise.resolve(null),
       loopLane(agentId),
     ]);
-    if (!sess?.ok || !lane.cwd) return [];
-    return sess.sessions.filter((x) => x.cwd === lane.cwd);
+    if (!sess?.ok) return [];
+    const norm = (p: string): string => p.replace(/[\\/]+$/, "");
+    const byTime = [...sess.sessions].sort((a, b) => (b.mtime ?? 0) - (a.mtime ?? 0));
+    for (const scope of [termCwd, lane.cwd]) {
+      if (!scope) continue;
+      const inScope = byTime.filter((x) => norm(x.cwd) === norm(scope));
+      if (inScope.length) return inScope;
+    }
+    return byTime;
   }
 
   /** Swap the session running in THIS card: ask main to compose the loop's
@@ -9184,7 +9197,7 @@ async function init(): Promise<void> {
     // The SAME conversation follows into chat — newest session IN THIS
     // LOOP'S LANE only; nothing in the lane opens a fresh chat.
     const toChat = (): void => {
-      void scopedCliSessions(agent.id).then((rows) => {
+      void scopedCliSessions(agent.id, slot.cwd).then((rows) => {
         const w = window as unknown as {
           __glyphhAdoptCliSession?: (a: { agentName: string; sessionId: string; agentId?: string; cli?: string; chatId?: string }) => void;
           __glyphhHasSession?: (id: string) => boolean;
