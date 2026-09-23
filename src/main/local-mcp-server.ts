@@ -598,6 +598,12 @@ function buildMcpServer(): McpServer {
     async ({ app }) => via("panels.remove", { app }),
   );
   mcp.tool(
+    "models_available",
+    "List the models THIS user can actually call, and what each one is registered FOR: `mode` is chat, embedding, image_generation or video_generation. Call this BEFORE trying to generate an image, a video or an embedding — pick a model whose mode matches, then call the gateway `endpoint` this returns (OpenAI-shaped: /v1/chat/completions, /v1/images/generations, /v1/videos/generations) with the desktop's own gateway key. Never go hunting for provider API keys: `lane: \"gateway\"` means Glyphh bills and authenticates it for the user. Returns { endpoint, authenticated, byMode, models: [{ model, provider, mode, lane, contextWindow, maxOutputTokens, pricing }] }.",
+    {},
+    async () => via("models.available", {}),
+  );
+  mcp.tool(
     "layouts_open",
     "Open one of the user's saved layouts (a named grid of apps). mode 'window' (default) opens ONE window with the apps tiled inside it; mode 'screen' tiles the whole screen with one native window per app.",
     {

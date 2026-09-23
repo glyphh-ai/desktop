@@ -6,6 +6,7 @@
  * window (app-window-manager). Tools are keyed by app slug:
  *   - panels.open  {app}         → open "browser" / "terminal" / a saved app
  *   - panels.add {name,url,slug?} / panels.remove {app} → the saved-tab library
+ *   - models.available           → the caller's models + what each is FOR
  *   - panels.list                → open app windows
  *   - panels.switch/close {app}  → focus / close an app's window
  *   - layouts.open {name, mode}  → a server layout, either tiled inside one
@@ -19,6 +20,8 @@ import { registerRelayHandler } from "./relay-client.js";
 import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { fetchOrgApps } from "./org-apps.js";
 import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
+import { getClient } from "./glyphh-client.js";
+import { gatewayCreds } from "./gateway-token.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
@@ -82,6 +85,46 @@ export function installRelayHandlers(deps: Deps): void {
     return addSavedTab(p);
   });
   registerRelayHandler("panels.remove", async (params) => removeSavedTab(appParam(params)));
+
+  // ── models — WHAT THIS USER CAN CALL, AND WHAT FOR ─────
+  // His order, 2026-09-23: "the agent needs tools to be able to list the
+  // available models and what they are registered for". Without it an agent
+  // asked for an image went looking for provider keys in the OS keychain
+  // instead of asking Glyphh which model does images and calling the gateway.
+  // The SERVER answers (not the gateway's own /v1/models): public names, the
+  // org's allow-list applied, the auto-router collapsed.
+  registerRelayHandler("models.available", async () => {
+    type Row = {
+      name: string; providerSlug: string; modality: string; source?: string; autoRouter?: boolean;
+      contextWindow?: number | null; maxOutputTokens?: number | null;
+      inputUsdPerMTok?: number; outputUsdPerMTok?: number;
+    };
+    const rows = await getClient().models.available() as Row[];
+    const creds = await gatewayCreds().catch(() => null);
+    // `modality` IS the registration: chat, embedding, image_generation,
+    // video_generation, … An agent picks by it rather than guessing from a name.
+    const models = rows.map((m) => ({
+      model: m.name,
+      provider: m.autoRouter ? "auto" : m.providerSlug,
+      mode: m.modality,
+      lane: m.source === "local" ? "own-login" : "gateway",
+      ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+      ...(m.maxOutputTokens ? { maxOutputTokens: m.maxOutputTokens } : {}),
+      ...(m.inputUsdPerMTok ? { inputUsdPerMTok: m.inputUsdPerMTok } : {}),
+      ...(m.outputUsdPerMTok ? { outputUsdPerMTok: m.outputUsdPerMTok } : {}),
+    }));
+    const byMode: Record<string, string[]> = {};
+    for (const m of models) (byMode[m.mode] ??= []).push(m.model);
+    return {
+      // The door: an OpenAI-shaped endpoint. /v1/chat/completions for chat,
+      // /v1/images/generations for image_generation, and so on — the key is
+      // the gateway key this desktop already holds.
+      endpoint: creds?.baseUrl ?? null,
+      authenticated: !!creds?.token,
+      byMode,
+      models,
+    };
+  });
 
   // ── layouts — server-defined grids of apps ─────────────
 
