@@ -714,17 +714,18 @@ async function boot() {
       catch (err) { upLog("ERROR", "quitAndInstall failed:", err instanceof Error ? err.message : String(err)); }
     }, 1200);
   };
-  // The About "Relaunch to Update" button invokes this via the update-install
-  // IPC. ALWAYS re-check the feed first: a downloaded update can go stale while
-  // the app sits open (beta.5 downloaded, beta.7 shipped since), and installing
-  // the stale one marched users through every version in sequence. The re-check
-  // downloads the feed's CURRENT latest (cache hit if unchanged) and installs
-  // that; only if the check cannot complete (offline, feed error) do we fall
-  // back to the update already on disk.
   // The rail card / About "Download" link. The feed is re-checked first so the
-  // download is always the CURRENT latest, then electron-updater pulls it in
-  // the background; progress and the final "ready" fan out to every renderer.
+  // download is always the CURRENT latest (skip-to-latest lives HERE, not on
+  // the install click), then electron-updater pulls it in the background;
+  // progress and the final "ready" fan out to every renderer.
   let downloading = false;
+  // A "Restart now" that had to download first hid the workspace behind the
+  // updating splash; if that download cannot deliver, give the UI back.
+  const giveBackUi = () => {
+    if (!installWhenReady) return;
+    installWhenReady = false;
+    if (mainWindow) homeView.show(mainWindow);
+  };
   const requestUpdateDownload = async () => {
     if (downloading || pendingUpdate?.ready) return;
     downloading = true;
@@ -733,6 +734,7 @@ async function boot() {
       const latest = result?.updateInfo?.version;
       if (!latest || !isNewerVersion(latest, app.getVersion())) {
         pendingUpdate = null;
+        giveBackUi();
         broadcastUpdate({ status: "none" });
         return;
       }
@@ -744,6 +746,7 @@ async function boot() {
       const message = err instanceof Error ? err.message : String(err);
       upLog("ERROR", "download failed:", message);
       if (pendingUpdate) pendingUpdate = { ...pendingUpdate, downloading: false };
+      giveBackUi();
       broadcastUpdate({ status: "error", error: message, version: pendingUpdate?.version });
     } finally {
       downloading = false;
@@ -751,31 +754,26 @@ async function boot() {
   };
   ipcMain.handle("update-download", () => requestUpdateDownload());
 
+  // "Restart now" (rail card / About) via the update-install IPC. Install WHAT
+  // SQUIRREL HOLDS — never re-check or re-download here. The 2026-09-20 rework
+  // arms install-on-quit the moment a download lands, and with that flag on
+  // electron-updater starts Squirrel's native staging on EVERY download call.
+  // The re-check this used to do (skip-to-latest, 2026-08-14) therefore began
+  // a SECOND staging that deleted the first one's folder, and quitAndInstall
+  // 1.2s later — electron-updater's "Squirrel already has it" flag never
+  // resets — fired against the deleted copy: ShipIt "Failed to copy bundle …
+  // no such file", three retries, relaunch of the OLD version, the card back
+  // on screen. Every hop since 1.1.11 died that way (ShipIt_stderr.log,
+  // 2026-09-23). Skip-to-latest is the DOWNLOAD click's job (it re-checks the
+  // feed and pulls the current release), so the staged copy is at most as old
+  // as that click.
   const requestUpdateInstall = () => {
+    if (pendingUpdate?.ready) { doUpdateInstall(); return; }
     installWhenReady = true;
     broadcastUpdate({ status: "restarting", version: pendingUpdate?.version });
     if (mainWindow) homeView.hide(mainWindow);
-    // Backstop: a hung feed check must not strand the updating splash — after
-    // 30s install what we have, or restore the UI if nothing ever downloaded.
-    const backstop = setTimeout(() => {
-      if (!installWhenReady) return;
-      if (pendingUpdate?.ready) { doUpdateInstall(); return; }
-      installWhenReady = false;
-      broadcastUpdate({ status: "error", error: "update check timed out" });
-      if (mainWindow) homeView.show(mainWindow);
-    }, 30_000);
-    backstop.unref();
-    // The user asked to install: fetch whatever the feed holds now.
-    autoUpdater.autoDownload = true;
-    autoUpdater.checkForUpdates().catch(() => {
-      clearTimeout(backstop);
-      if (pendingUpdate?.ready) doUpdateInstall();
-      else {
-        installWhenReady = false;
-        broadcastUpdate({ status: "error", error: "update check failed" });
-        if (mainWindow) homeView.show(mainWindow);
-      }
-    });
+    // Nothing on disk yet: ONE download; update-downloaded installs it.
+    if (!downloading) void requestUpdateDownload();
   };
 
   autoUpdater.on("update-available", (info: { version: string }) => {
@@ -789,7 +787,6 @@ async function boot() {
   });
   autoUpdater.on("update-downloaded", (info: { version: string }) => {
     pendingUpdate = { version: info.version, ready: true, downloading: false };
-    autoUpdater.autoDownload = false;
     // Downloaded = armed: a plain quit now finishes the install, so the next
     // launch is the new version. cleanupAll's hard-exit backstop is widened
     // for that quit (updateReadyForQuit) so it cannot kill the handoff.
