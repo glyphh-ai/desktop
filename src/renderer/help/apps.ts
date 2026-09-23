@@ -1125,6 +1125,100 @@ function initMcpTab(): void {
   });
 }
 
+/**
+ * IMPORT FROM GOOGLE (his order, 2026-09-23) — Chrome's bookmarks become saved
+ * tabs, and the cookies for those sites come with them so an imported tab opens
+ * signed in. The dialog names the profile, the counts and the cookie carry
+ * BEFORE anything is read: macOS asks for Keychain permission during the
+ * import, and a user who did not expect that should have cancelled here.
+ */
+async function openChromeImport(): Promise<void> {
+  const btn = document.getElementById("apps-chrome-btn") as HTMLButtonElement | null;
+  if (btn) { btn.disabled = true; btn.textContent = "Reading Chrome…"; }
+  const scan = await window.glyphh.chromeImportScan?.().catch(() => null);
+  if (btn) { btn.disabled = false; btn.textContent = "Import from Google"; }
+  if (!scan?.ok) { await confirmAction({ title: "Import from Google", body: scan?.error || "Chrome could not be read.", confirmLabel: "OK", cancelLabel: "Close" }); return; }
+  if (!scan.installed) { await confirmAction({ title: "Import from Google", body: "Chrome is not installed for this user account, so there is nothing to import.", confirmLabel: "OK", cancelLabel: "Close" }); return; }
+  if (!scan.profiles.length) { await confirmAction({ title: "Import from Google", body: "No Chrome profile on this Mac has any bookmarks to import.", confirmLabel: "OK", cancelLabel: "Close" }); return; }
+
+  const overlay = document.getElementById("chrome-import-modal")!;
+  const intro = document.getElementById("chrome-import-intro")!;
+  const select = document.getElementById("chrome-import-profile") as HTMLSelectElement;
+  const cookies = document.getElementById("chrome-import-cookies") as HTMLInputElement;
+  const cookiesLabel = document.getElementById("chrome-import-cookies-label")!;
+  const detail = document.getElementById("chrome-import-detail")!;
+  const go = document.getElementById("chrome-import-go") as HTMLButtonElement;
+  const cancel = document.getElementById("chrome-import-cancel") as HTMLButtonElement;
+  // PORTAL, same reason as the standard confirm: this markup is authored inside
+  // the settings section, whose stacking context would cap it below the modal.
+  if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+
+  select.innerHTML = "";
+  for (const p of scan.profiles) {
+    const o = document.createElement("option");
+    o.value = p.dir;
+    // Chrome's own name is what the user recognizes; the folder disambiguates
+    // the several profiles people have under one name.
+    o.textContent = `${p.name} — ${p.bookmarks} bookmark${p.bookmarks === 1 ? "" : "s"} (${p.dir})`;
+    select.appendChild(o);
+  }
+  cookies.disabled = !scan.cookiesSupported;
+  if (!scan.cookiesSupported) cookies.checked = false;
+
+  const paint = (): void => {
+    const p = scan.profiles.find((x) => x.dir === select.value) ?? scan.profiles[0];
+    const already = p.bookmarks - p.newBookmarks;
+    intro.textContent = `This adds ${p.newBookmarks} saved tab${p.newBookmarks === 1 ? "" : "s"} from “${p.name}”${already ? `, skipping ${already} you already have` : ""}.`;
+    cookiesLabel.textContent = scan.cookiesSupported
+      ? `Also bring the cookies for those ${p.cookieSites} site${p.cookieSites === 1 ? "" : "s"}, so the tabs open signed in`
+      : "Cookies can only be imported on macOS";
+    detail.textContent = cookies.checked
+      ? "Glyphh reads this profile's bookmarks and, for those sites only, copies their cookies into Glyphh's browser. macOS will ask permission to read Chrome's cookie key. Your history, passwords, payment details and extensions are not read, and nothing in Chrome is changed."
+      : "Glyphh reads this profile's bookmarks only. No cookies are copied, so you will sign in to each site inside Glyphh. Your history, passwords, payment details and extensions are not read, and nothing in Chrome is changed.";
+    go.textContent = `Import ${p.newBookmarks} tab${p.newBookmarks === 1 ? "" : "s"}`;
+    go.disabled = p.newBookmarks === 0 && !cookies.checked;
+  };
+  paint();
+
+  const done = await new Promise<boolean>((resolve) => {
+    const cleanup = (): void => {
+      overlay.classList.add("hidden");
+      select.removeEventListener("change", paint);
+      cookies.removeEventListener("change", paint);
+      go.removeEventListener("click", onGo);
+      cancel.removeEventListener("click", onNo);
+      overlay.removeEventListener("mousedown", onAway);
+      document.removeEventListener("keydown", onKey);
+    };
+    function onGo(): void { cleanup(); resolve(true); }
+    function onNo(): void { cleanup(); resolve(false); }
+    function onAway(e: MouseEvent): void { if (e.target === overlay) onNo(); }
+    function onKey(e: KeyboardEvent): void { if (e.key === "Escape") { e.preventDefault(); onNo(); } }
+    select.addEventListener("change", paint);
+    cookies.addEventListener("change", paint);
+    go.addEventListener("click", onGo);
+    cancel.addEventListener("click", onNo);
+    overlay.addEventListener("mousedown", onAway);
+    document.addEventListener("keydown", onKey);
+    overlay.classList.remove("hidden");
+    go.focus();
+  });
+  if (!done) return;
+
+  go.disabled = true;
+  const r = await window.glyphh.chromeImportRun?.({ profile: select.value, cookies: cookies.checked }).catch(() => null);
+  await loadApps();   // the new tabs are the page's content now
+  const said = !r || !r.ok
+    ? (r?.error || "The import failed.")
+    : [
+      `${r.tabsAdded} tab${r.tabsAdded === 1 ? "" : "s"} added`,
+      r.tabsSkipped ? `${r.tabsSkipped} skipped (already saved)` : "",
+      cookies.checked && !r.cookieError ? `cookies for ${r.cookiesImported} entr${r.cookiesImported === 1 ? "y" : "ies"} imported` : "",
+      r.cookieError ? `cookies were not imported: ${r.cookieError}` : "",
+    ].filter(Boolean).join(", ") + ".";
+  await confirmAction({ title: "Import from Google", body: said, confirmLabel: "OK", cancelLabel: "Close" });
+}
+
 function initApps() {
   initMcpTab();
 
@@ -1152,6 +1246,7 @@ function initApps() {
   // Manual refresh + live refresh when the app library changes server-side
   // (e.g. an app installed over the MCP relay while this page is open).
   document.getElementById("apps-refresh-btn")?.addEventListener("click", () => { void loadApps(); });
+  document.getElementById("apps-chrome-btn")?.addEventListener("click", () => { void openChromeImport(); });
   window.glyphh.onPanelAppsChanged?.(() => {
     // Don't stomp an open editor — the list re-fetches next time it shows.
     if (appDetail.classList.contains("hidden")) void loadApps();

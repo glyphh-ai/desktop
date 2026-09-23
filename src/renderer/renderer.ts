@@ -252,6 +252,8 @@ declare global {
       panelAppsCreate: (input: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsUpdate: (id: string, patch: PanelAppInput) => Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>;
       panelAppsDelete: (id: string) => Promise<{ ok: boolean; error?: string }>;
+      chromeImportScan: () => Promise<{ ok: boolean; installed: boolean; cookiesSupported: boolean; profiles: Array<{ dir: string; name: string; bookmarks: number; newBookmarks: number; cookieSites: number }>; error?: string }>;
+      chromeImportRun: (opts: { profile?: string; cookies?: boolean }) => Promise<{ ok: boolean; tabsAdded: number; tabsSkipped: number; cookiesImported: number; cookiesFailed: number; cookieError?: string; error?: string }>;
       loopsList: () => Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>;
       connectionsList: () => Promise<{ ok: boolean; error?: string; connections: Connection[] }>;
       connectionRename: (id: string, label: string) => Promise<{ ok: boolean; connection?: Connection; error?: string }>;

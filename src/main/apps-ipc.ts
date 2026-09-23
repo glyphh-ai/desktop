@@ -11,6 +11,7 @@ import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
 import { BUILTIN_WORKPANELS, WORKPANEL_REFUSAL } from "./saved-tabs";
+import { scanChromeProfiles, importFromChrome } from "./chrome-import";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
@@ -315,6 +316,18 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
     }
     catch (err) { return { ok: false, error: err instanceof Error ? err.message : String(err) }; }
   });
+  // IMPORT FROM GOOGLE (his order, 2026-09-23). The scan is what the dialog
+  // reads out (profile names + counts, nothing secret); the import is what the
+  // user then confirmed.
+  ipcMain.handle("chrome-import-scan", async () => {
+    try { return await scanChromeProfiles(); }
+    catch (err) { return { ok: false, installed: false, cookiesSupported: false, profiles: [], error: err instanceof Error ? err.message : String(err) }; }
+  });
+  ipcMain.handle("chrome-import-run", async (_e, opts: { profile?: string; cookies?: boolean }) => {
+    try { return await importFromChrome(opts ?? {}); }
+    catch (err) { return { ok: false, tabsAdded: 0, tabsSkipped: 0, cookiesImported: 0, cookiesFailed: 0, error: err instanceof Error ? err.message : String(err) }; }
+  });
+
   ipcMain.handle("app-secrets-list", async (_e, id: string) => listAppSecrets(id));
   ipcMain.handle("app-secrets-set", async (_e, id: string, key: string, value: string, appReadable?: boolean) => setAppSecret(id, key, value, appReadable === true));
   ipcMain.handle("app-secrets-delete", async (_e, id: string, key: string) => deleteAppSecret(id, key));

@@ -8,6 +8,7 @@
             <h2>Tabs</h2>
             <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="app-search" type="text" placeholder="Search tabs" spellcheck="false" autocomplete="off" /></div>
             <button id="apps-add-btn" class="action-btn primary" type="button">+ Add</button>
+            <button id="apps-chrome-btn" class="action-btn" type="button" title="Bring your Chrome bookmarks in as tabs">Import from Google</button>
             <button id="apps-import-btn" class="action-btn hidden" title="Import a .glyphh bundle">Import app</button>
             <button id="apps-refresh-btn" class="action-btn hidden" title="Refresh tabs" aria-label="Refresh tabs" type="button"></button>
           </div>
@@ -24,6 +25,30 @@
           <div id="apps-approvals" class="hidden" style="margin:0 0 14px;"></div>
           <div id="apps-list" class="tabs-list">
             <div id="apps-grid"></div>
+          </div>
+
+          <!-- IMPORT FROM GOOGLE (2026-09-23): the confirm dialog says exactly
+               what is being taken, and from which Chrome profile. Same
+               confirm-* anatomy as the standard modal, with a profile picker
+               and a cookie choice the standard one cannot carry. -->
+          <div id="chrome-import-modal" class="confirm-overlay hidden">
+            <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="chrome-import-title">
+              <div class="confirm-head"><h3 id="chrome-import-title">Import from Google</h3></div>
+              <div class="confirm-body">
+                <p id="chrome-import-intro" style="margin:0 0 12px;"></p>
+                <label class="settings-label" for="chrome-import-profile" style="display:block;margin:0 0 4px;">Chrome profile</label>
+                <select id="chrome-import-profile" class="settings-input" style="margin:0 0 12px;"></select>
+                <label class="settings-toggle" style="margin:0 0 10px;">
+                  <input id="chrome-import-cookies" type="checkbox" checked style="width:auto;margin:0;flex:none;" />
+                  <span id="chrome-import-cookies-label"></span>
+                </label>
+                <p id="chrome-import-detail" style="margin:0;font-size:12.5px;line-height:1.55;color:var(--text-3);"></p>
+              </div>
+              <div class="confirm-foot">
+                <button id="chrome-import-cancel" class="action-btn secondary" type="button">Cancel</button>
+                <button id="chrome-import-go" class="action-btn primary" type="button">Import</button>
+              </div>
+            </div>
           </div>
 
           <!-- App add form -->

@@ -299,6 +299,13 @@ export interface GuardrailsRow { guardrails_policy: Record<string, number> | nul
 
 // Fields the create/update calls forward to /api/panel-apps. Kept as a named
 // type so preload + renderer stay in sync on the accepted keys.
+/** One Chrome profile the import could read (name + counts, never contents). */
+export interface ChromeProfileRow { dir: string; name: string; bookmarks: number; newBookmarks: number; cookieSites: number }
+export interface ChromeImportOutcome {
+  ok: boolean; tabsAdded: number; tabsSkipped: number; cookiesImported: number; cookiesFailed: number;
+  cookieError?: string; error?: string;
+}
+
 export interface PanelAppInput {
   name?: string;
   slug?: string;
@@ -684,6 +691,10 @@ contextBridge.exposeInMainWorld("glyphh", {
   panelAppsUpdate: (id: string, patch: PanelAppInput) =>
     ipcRenderer.invoke("panel-apps-update", id, patch) as Promise<{ ok: boolean; app?: SavedPanelApp; error?: string }>,
   panelAppsDelete: (id: string) => ipcRenderer.invoke("panel-apps-delete", id) as Promise<{ ok: boolean; error?: string }>,
+  chromeImportScan: () =>
+    ipcRenderer.invoke("chrome-import-scan") as Promise<{ ok: boolean; installed: boolean; cookiesSupported: boolean; profiles: ChromeProfileRow[]; error?: string }>,
+  chromeImportRun: (opts: { profile?: string; cookies?: boolean }) =>
+    ipcRenderer.invoke("chrome-import-run", opts) as Promise<ChromeImportOutcome>,
   // First-class Connections (connected accounts + per-connection tool exposure).
   loopsList: () =>
     ipcRenderer.invoke("loops-list") as Promise<{ ok: boolean; loops: Array<{ id: string; name: string; description: string; builtIn?: boolean }>; canBuild: boolean }>,
