@@ -5,6 +5,7 @@
  * 5b Panel Manager model: every "panel" is an app in its own native OS
  * window (app-window-manager). Tools are keyed by app slug:
  *   - panels.open  {app}         → open "browser" / "terminal" / a saved app
+ *   - panels.add {name,url,slug?} / panels.remove {app} → the saved-tab library
  *   - panels.list                → open app windows
  *   - panels.switch/close {app}  → focus / close an app's window
  *   - layouts.open {name, mode}  → a server layout, either tiled inside one
@@ -17,6 +18,7 @@
 import { registerRelayHandler } from "./relay-client.js";
 import { openAppByRef, openLayoutByName, listOpenAppWindows, focusOpenApp, closeOpenApp } from "./app-resolver.js";
 import { fetchOrgApps } from "./org-apps.js";
+import { addSavedTab, removeSavedTab } from "./saved-tabs.js";
 import { listInstalledAppTools, callAppTool, installGlyphhAppBundle, installGlyphhAppBundleFromBase64 } from "./glyphh-app-host.js";
 import { connectorStatus } from "./glyphh-app-services.js";
 import fs from "fs";
@@ -72,6 +74,14 @@ export function installRelayHandlers(deps: Deps): void {
     closeOpenApp(app);
     return { app, closed: true };
   });
+
+  // The saved-tab LIBRARY itself (his order, 2026-09-23): the agent could list
+  // and open tabs but not add or remove them. Same rules as the Tabs page.
+  registerRelayHandler("panels.add", async (params) => {
+    const p = (params ?? {}) as { name?: string; url?: string; slug?: string };
+    return addSavedTab(p);
+  });
+  registerRelayHandler("panels.remove", async (params) => removeSavedTab(appParam(params)));
 
   // ── layouts — server-defined grids of apps ─────────────
 

@@ -582,6 +582,22 @@ function buildMcpServer(): McpServer {
     async ({ app }) => via("panels.open", { app }),
   );
   mcp.tool(
+    "panels_add",
+    "SAVE a web page as a tab in the user's app library (Settings → Tabs), so panels_open can open it by slug from now on. Use it when the user asks to add a site, bookmark, dashboard or tool as a tab — it appears on their wall at once. Returns { app, name, url }.",
+    {
+      name: z.string().describe("Display name for the tab"),
+      url: z.string().describe("The http(s) URL the tab opens"),
+      slug: z.string().optional().describe("Slug to open it by (defaults to the name, lowercased and hyphenated)"),
+    },
+    async ({ name, url, slug }) => via("panels.add", { name, url, slug }),
+  );
+  mcp.tool(
+    "panels_remove",
+    "REMOVE a saved tab from the user's app library, by its slug from panels_available. Built-in work panels and installed Glyphh apps are not tabs and cannot be removed this way.",
+    { app: z.string().describe("Slug of the saved tab to remove") },
+    async ({ app }) => via("panels.remove", { app }),
+  );
+  mcp.tool(
     "layouts_open",
     "Open one of the user's saved layouts (a named grid of apps). mode 'window' (default) opens ONE window with the apps tiled inside it; mode 'screen' tiles the whole screen with one native window per app.",
     {

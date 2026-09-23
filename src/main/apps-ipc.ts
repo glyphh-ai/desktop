@@ -10,6 +10,7 @@ import { getExplicitWorkingDirectory } from "./working-directory";
 import { hasMcpAccess, AUTH_SERVER } from "./auth";
 import * as appsStore from "./apps-store";
 import { fetchOrgApps, invalidateOrgApps } from "./org-apps";
+import { BUILTIN_WORKPANELS, WORKPANEL_REFUSAL } from "./saved-tabs";
 
 import { openAppByRef, openLayoutByName } from "./app-resolver";
 import { isGlyphhAppBundle, installGlyphhAppBundle, isGlyphhAppRow } from "./glyphh-app-host";
@@ -245,9 +246,6 @@ export function registerAppsIpc(deps: AppsIpcDeps): void {
 
   ipcMain.handle("has-mcp-access", () => hasMcpAccess());
 
-
-  const BUILTIN_WORKPANELS = new Set(["gpoint", "gdoc", "gsheet", "gdrive"]);
-  const WORKPANEL_REFUSAL = "work panels are built in — they cannot be altered or removed";
 
   const entryKind = (o: Record<string, unknown>): "web" | "native" | "glyphh" => {
     if (String(o.appArchetype ?? "") === "glyphh-app") return "glyphh";
