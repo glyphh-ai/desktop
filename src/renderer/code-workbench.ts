@@ -3966,6 +3966,22 @@ async function init(): Promise<void> {
      *   settings — his exception: it always opens at its front page. */
     const NO_DOC_STATE = new Set(["monaco", "preview", "terminal", "echo", "settings", "section"]);
     const holdsDocState = (view: string): boolean => !NO_DOC_STATE.has(view);
+    /** A loose card's identity, enough to reopen it: what the wall tile or ad-hoc
+     *  entry carried, minus the live objects (layoutRow, cells, cliAgent). */
+    type ExtraTileRef = Pick<EchoTile, "name" | "slug" | "kind" | "toolView" | "url" | "glyphh" | "appId" | "iconUrl" | "workbench" | "sticky">;
+    /** What a named workspace remembers between opens. `cells` are the
+     *  DEFINITION's panels (keyed), `extras` everything the user opened beside
+     *  them while the workspace was up — kept only under the "last" contract
+     *  (his order, 2026-09-23: "everything open in that workspace, beyond the
+     *  workspace panels, should be remembered with the draggable areas"). The
+     *  definition's columns save in colWidths; the appended ones in
+     *  extraColWidths, so the definition-length check stays exact. */
+    interface EchoLayoutMem {
+      sig?: string; colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[];
+      cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }>;
+      extras?: Array<{ tile: ExtraTileRef; col: number; row: number; colSpan: number; rowSpan: number; state?: EchoCellState }>;
+      extraColWidths?: number[]; extraRowFracs?: number[][];
+    }
     /** Copy a native panel's slot minus the keys that must never be restored. */
     const slotDocState = (slot: Record<string, unknown>): Record<string, unknown> | undefined => {
       const out: Record<string, unknown> = {};
@@ -4049,7 +4065,24 @@ async function init(): Promise<void> {
       // save for a 2-col layout failed the reopen length check wholesale →
       // 50/50, his report 2026-09-10). Only the layout's own columns save.
       const nDefCols = echoGrid.defCols ?? echoGrid.colWidths.length;
-      const data = {
+      // EVERYTHING ELSE the workspace had open (his order, 2026-09-23): the
+      // loose cards beside the definition — no memKey, a live card, not the
+      // agent seat (the session contract owns that) — with their cells and
+      // documents, plus the appended columns' seams. "last" only; "new"/"keep"
+      // reset them on close and keep just the definition's geometry.
+      const extraRef = (t: EchoTile): ExtraTileRef => ({
+        name: t.name, slug: t.slug, kind: t.kind, toolView: t.toolView, url: t.url, glyphh: t.glyphh,
+        appId: t.appId, iconUrl: t.iconUrl, workbench: t.workbench, sticky: t.sticky,
+      });
+      const extras = keepState
+        ? echoGrid.cells
+          .filter((c) => !c.entry.memKey && c.entry.card && c.entry.tile.kind !== "agent" && c.entry.tile.slug !== "glyphh-home")
+          .map((c) => {
+            const state = captureCellState(c.entry);
+            return { tile: extraRef(c.entry.tile), col: c.col, row: c.row, colSpan: c.colSpan, rowSpan: c.rowSpan, ...(state ? { state } : {}) };
+          })
+        : [];
+      const data: EchoLayoutMem = {
         sig: echoLayoutSig,
         colWidths: echoGrid.colWidths.slice(0, nDefCols),
         rowFracs: echoGrid.rowFracs.slice(0, nDefCols).map((r) => r.slice()),
@@ -4060,8 +4093,93 @@ async function init(): Promise<void> {
             ...(state ? { state } : {}),
           };
         }),
+        ...(extras.length ? {
+          extras,
+          extraColWidths: echoGrid.colWidths.slice(nDefCols),
+          extraRowFracs: echoGrid.rowFracs.slice(nDefCols).map((r) => r.slice()),
+        } : {}),
       };
       try { uiStateSet(echoMemKey(echoLayoutName), JSON.stringify(data)); } catch { /* full */ }
+    };
+    /** A reopened panel gets its documents back — the editor's files (contents
+     *  re-read from disk), the Browser's tabs. Shared by the definition's cells
+     *  and the workspace's extras so both restore the same way. */
+    const applySavedPanelState = (entry: TileEntry, st: EchoCellState | undefined): void => {
+      if (!st) return;
+      if (st.files?.length && entry.toolSlot?.view === "monaco") {
+        const m = entry.toolSlot as MonacoSlot;
+        m.tabs = st.files.map((f) => ({ name: f.name, path: f.path, content: "", ...(f.mode ? { mode: f.mode } : {}) }));
+        m.activeIdx = Math.min(st.activeIdx ?? 0, m.tabs.length - 1);
+        void Promise.all(m.tabs.map(async (t) => {
+          try {
+            const r = await window.wb.readFile(t.path);
+            t.content = r.error ? `// error: ${r.error}` : r.content;
+          } catch { /* file gone — the tab shows empty */ }
+        })).then(() => rerenderToolBody(entry));
+      }
+      if (st.tabs?.length && entry.toolSlot?.view === "preview") {
+        const pv = entry.toolSlot as PreviewSlot;
+        pv.tabs = st.tabs.map((t) => ({ id: 0, url: t.url, ...(t.title ? { title: t.title } : {}) }));
+        pv.activeTab = Math.min(st.activeTab ?? 0, pv.tabs.length - 1);
+        pv.url = pv.tabs[pv.activeTab]?.url;
+        rerenderToolBody(entry);
+      }
+    };
+    /** The workspace's EXTRAS come back (the "last" contract): each loose card
+     *  reopens through its normal door, then takes the cell it had, and the
+     *  appended columns take their remembered seams. Runs after the definition's
+     *  cells are on the grid, with openingLayout OFF so the opens JOIN the grid
+     *  the way a live open does. An agent CLI card reopens through its own
+     *  (async) door and lands where the grid has room. */
+    const restoreLayoutExtras = (mem: EchoLayoutMem): void => {
+      if (!echoGrid || !mem.extras?.length) return;
+      const nDef = echoGrid.defCols ?? echoGrid.colWidths.length;
+      const opened: Array<{ entry: TileEntry; at: { col: number; row: number; colSpan: number; rowSpan: number } }> = [];
+      for (const x of [...mem.extras].sort((a, b) => (a.col - b.col) || (a.row - b.row))) {
+        const t = x.tile;
+        const st = x.state;
+        const slug = (t.slug || "").toLowerCase();
+        let entry: TileEntry | null = null;
+        if (slug.startsWith("page:")) {
+          openSectionCard(slug.slice(5), t.name);
+          entry = openList.find((e) => (e.tile.slug || "").toLowerCase() === slug) ?? null;
+        } else if (slug.startsWith("agent:")) {
+          (window as unknown as { __wbOpenAgentCli?: (id: string) => void }).__wbOpenAgentCli?.(slug.slice(6));
+          continue;
+        } else if (t.kind === "tool" && t.toolView) {
+          entry = adHoc({ name: t.name, slug: t.slug, kind: "tool", toolView: t.toolView, appId: t.appId, iconUrl: t.iconUrl, sticky: t.sticky });
+          if (st?.slot && holdsDocState(t.toolView)) entry.pendingSlotState = st.slot;
+          activateTile(entry);
+          entry.pendingSlotState = undefined;
+          applySavedPanelState(entry, st);
+        } else if (t.url || t.glyphh) {
+          const wall = t.slug ? findTile(t.slug)?.tile : undefined;
+          let base: EchoTile = wall
+            ? { ...wall, sticky: t.sticky }
+            : { name: t.name, slug: t.slug, kind: "app", url: t.url, glyphh: t.glyphh, appId: t.appId, iconUrl: t.iconUrl, workbench: t.workbench, sticky: t.sticky };
+          if (base.url && st?.url) base = { ...base, url: st.url };
+          if (base.glyphh && st?.route) base = { ...base, routeHint: st.route };
+          entry = adHoc(base);
+          activateTile(entry);
+        }
+        if (entry?.card) opened.push({ entry, at: x });
+      }
+      if (!echoGrid) return;
+      // The cell each card had, then the seams — geometry is the user's.
+      for (const { entry, at } of opened) {
+        const cell = echoGrid.cells.find((c) => c.entry === entry);
+        if (!cell) continue;
+        cell.col = at.col; cell.row = at.row;
+        cell.colSpan = Math.max(1, at.colSpan); cell.rowSpan = Math.max(1, at.rowSpan);
+      }
+      const extraCols = Math.max(0, ...echoGrid.cells.map((c) => c.col + c.colSpan)) - nDef;
+      if (extraCols > 0 && mem.extraColWidths?.length === extraCols) {
+        echoGrid.colWidths = [...echoGrid.colWidths.slice(0, nDef), ...mem.extraColWidths];
+        const fr = (mem.extraRowFracs ?? []).slice(0, extraCols).map((r) => (Array.isArray(r) && r.length ? r.slice() : [1]));
+        echoGrid.rowFracs = [...echoGrid.rowFracs.slice(0, nDef), ...fr];
+        while (echoGrid.rowFracs.length < echoGrid.colWidths.length) echoGrid.rowFracs.push([1]);
+      }
+      layoutCards();
     };
     // Shadow can be HELD (⌃⌥) or PINNED (the composer band's CC button) — a
     // pin survives modifier keyups; opening/closing the last card or Esc
@@ -5521,7 +5639,6 @@ async function init(): Promise<void> {
         echoActiveLayout = echoLayoutName ? { name: echoLayoutName, mode: layout.sessionMode ?? "keep" } : null;
         // B1: mint the shared id for every panel THIS open fans out.
         activeLayoutId = `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-        interface EchoLayoutMem { sig?: string; colWidths?: number[]; rowFracs?: number[][]; rowHeights?: number[]; cells?: Array<{ key: string; col?: number; row?: number; colSpan?: number; rowSpan?: number; state?: EchoCellState }> }
         let mem: EchoLayoutMem | null = null;
         echoLayoutSig = layoutSig(layout);
         try {
@@ -5725,31 +5842,10 @@ async function init(): Promise<void> {
             entry.memKey = pendingKey;
             // B1/B2: this card belongs to the layout being opened.
             entry.layoutId = activeLayoutId ?? undefined;
-            // the editor gets its files back (contents re-read from disk)
-            if (st?.files?.length && entry.toolSlot?.view === "monaco") {
-              const m = entry.toolSlot as MonacoSlot;
-              m.tabs = st.files.map((f) => ({ name: f.name, path: f.path, content: "", ...(f.mode ? { mode: f.mode } : {}) }));
-              m.activeIdx = Math.min(st.activeIdx ?? 0, m.tabs.length - 1);
-              const ent = entry;
-              void Promise.all(m.tabs.map(async (t) => {
-                try {
-                  const r = await window.wb.readFile(t.path);
-                  t.content = r.error ? `// error: ${r.error}` : r.content;
-                } catch { /* file gone — the tab shows empty */ }
-              })).then(() => rerenderToolBody(ent));
-            }
-            // a native Glyphh panel reopens ON ITS DOCUMENT (deck, sheet,
-            // image) — the slot fields it tracks are grafted back before the
-            // body paints, so the panel mounts straight into the document
-            // instead of its library.
-            // the Browser gets its tabs back
-            if (st?.tabs?.length && entry.toolSlot?.view === "preview") {
-              const pv = entry.toolSlot as PreviewSlot;
-              pv.tabs = st.tabs.map((t) => ({ id: 0, url: t.url, ...(t.title ? { title: t.title } : {}) }));
-              pv.activeTab = Math.min(st.activeTab ?? 0, pv.tabs.length - 1);
-              pv.url = pv.tabs[pv.activeTab]?.url;
-              rerenderToolBody(entry);
-            }
+            // the editor gets its files back, the Browser its tabs; a native
+            // Glyphh panel's document was grafted onto the slot before the
+            // first paint (pendingSlotState above).
+            applySavedPanelState(entry, st);
             // remembered SLOT for this panel (swaps persist), layout default otherwise
             const g = saved && saved.col != null ? saved : null;
             gridCells.push({
@@ -5845,6 +5941,13 @@ async function init(): Promise<void> {
           // the cell's folder is a hard bind; the layout's rides weak, same as standard mode
           if (sess && codingFolder) sess.stampWorkdir?.(codingFolder);
           else if (sess && layout.folder) sess.stampWorkdir?.(layout.folder, true);   // weak — a thread's own folder wins
+        }
+        // EVERYTHING ELSE the workspace had open comes back under "last" (his
+        // order, 2026-09-23) — after the definition, joining the grid like a
+        // live open, so openingLayout must already be off.
+        if (echoGrid && (layout.sessionMode ?? "keep") === "last" && mem?.extras?.length) {
+          openingLayout = false;
+          restoreLayoutExtras(mem);
         }
       } finally {
         openingLayout = false;
