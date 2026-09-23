@@ -4137,6 +4137,12 @@ async function init(): Promise<void> {
      *  reflows live (the cards' position transition carries the animation).
      *  Layout-grid cells keep their grid; controls keep their clicks. Pointer
      *  capture on the head keeps events flowing even over iframes/webviews. */
+    /** THE AGENT, in either view (his order, 2026-09-23): the chat panel
+     *  (kind "agent") and a loop's CLI card (slug "agent:<loop>", a terminal
+     *  playing the agent) fill the grid the SAME way — column owner, never
+     *  reflowed, composer off while it seats a layout. The Terminal TOOL is a
+     *  different thing and keeps its own rules. */
+    const isAgentEntry = (e: TileEntry): boolean => e.tile.kind === "agent" || (e.tile.slug || "").startsWith("agent:");
     const wireCardDrag = (e: TileEntry, card: HTMLElement, head: HTMLElement): void => {
       head.addEventListener("pointerdown", (ev) => {
         if (ev.button !== 0) return;
@@ -4144,7 +4150,7 @@ async function init(): Promise<void> {
         if (t.closest("button, input, .ws-app-chrome")) return;
         if (card.classList.contains("expanded")) return;
         if (gridRects()?.has(e)) return;
-        if (e.tile.kind === "agent") return;   // the agent owns its column — never reflowed
+        if (isAgentEntry(e)) return;   // the agent (chat or CLI) owns its column — never reflowed
         const startX = ev.clientX, startY = ev.clientY;
         let dragging = false;
         // Capture keeps the stream flowing over iframes/webviews; a pointer
@@ -4181,7 +4187,7 @@ async function init(): Promise<void> {
             .find((el) => el !== card && el instanceof HTMLElement && el.classList.contains("echo-card")) as HTMLElement | undefined;
           if (!over) return;
           const target = openList.find((x) => x.card === over);
-          if (!target || target.tile.kind === "agent" || gridRects()?.has(target)) return;
+          if (!target || isAgentEntry(target) || gridRects()?.has(target)) return;
           const from = openList.indexOf(e);
           const to = openList.indexOf(target);
           if (from < 0 || to < 0 || from === to) return;
@@ -4279,14 +4285,16 @@ async function init(): Promise<void> {
         // THE AGENT OWNS ITS COLUMN (his rule, said many times, most recently
         // 2026-09-18): nothing ever stacks UNDER the glyphh agent. The next
         // panel opens to its right, or in the next open column beyond that.
-        // An earlier change had it the other way round and paired them.
-        const solo = e.flowSolo === true || e.tile.kind === "agent";
+        // An earlier change had it the other way round and paired them. The
+        // CLI view of the agent is the agent too (2026-09-23) — it was read
+        // as a Terminal tool and stacked like one.
+        const solo = e.flowSolo === true || isAgentEntry(e);
         const target = solo
           ? undefined
           : cols.find(
               (col) =>
                 col.length < 2 &&
-                !col.some((c) => c.flowSolo === true || c.tile.kind === "agent"),
+                !col.some((c) => c.flowSolo === true || isAgentEntry(c)),
             );
         if (target) target.push(e);
         else cols.push([e]);
@@ -4667,7 +4675,7 @@ async function init(): Promise<void> {
       // "full screen"); without an agent cell the composer stays and the
       // layout opens in the band ABOVE it. Toggling this after the rects
       // (the old order) painted each state with the other's geometry.
-      const agentInLayout = openList.some((e) => e.layoutId != null && e.tile.kind === "agent");
+      const agentInLayout = openList.some((e) => e.layoutId != null && isAgentEntry(e));
       document.body.classList.toggle("echo-agent-in-layout", agentInLayout);
       // Close-all shows only while there is something TO close.
       document.body.classList.toggle("echo-has-panels", openList.length > 0);
