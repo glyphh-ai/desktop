@@ -18,9 +18,10 @@
  * never executes one.
  */
 
+import { broadcast as broadcastToRenderers } from "./broadcast";
 import fs from "fs";
 import path from "path";
-import { app, utilityProcess, type UtilityProcess, ipcMain, BrowserWindow } from "electron";
+import { app, utilityProcess, type UtilityProcess, ipcMain } from "electron";
 import { getLocalDb } from "./local-db.js";
 import { listSkills, TASKS_HOME, installSkill, getSkill } from "./skills-fs.js";
 import { listCliAgents, composeHeadless, ensureLoopEnv, agentRowFor, type CliAgentListed } from "./cli-agents.js";
@@ -380,7 +381,7 @@ function answer(l: Live, runId: string, kind: string, args: unknown[]): Promise<
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 function broadcast(): void {
-  for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("task-runs-changed"); }
+  broadcastToRenderers("task-runs-changed");
 }
 
 function finish(runId: string, startedAt: string, status: "ok" | "failed", error: string | null, result: unknown): void {

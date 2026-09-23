@@ -33,7 +33,8 @@
  *   notify.send     { title, body }  → { shown }
  */
 
-import { BrowserWindow, ipcMain, webContents, session } from "electron";
+import { broadcast } from "./broadcast";
+import { ipcMain, webContents, session } from "electron";
 import { execFile } from "child_process";
 import AdmZip from "adm-zip";
 import fs from "fs";
@@ -250,7 +251,7 @@ export async function registerAppInPlace(appProjectDir: string, manifestJson: st
       await appsStore.createEntry({ kind: "glyphh", slug: fields.slug, name: fields.name, nativeRef: fields.execPath, config: fields.launchConfig });
     }
     invalidateOrgApps();
-    for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+    broadcast("panel-apps-changed");
   } catch (e) {
     return { ok: false, error: `register failed: ${(e as Error).message}` };
   }
@@ -330,7 +331,7 @@ export async function registerBundleApp(dir: string, opts: { slug?: string; name
     }
     if (stashed) setPreference(STASH_KEY(slug), null);
     invalidateOrgApps();
-    for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+    broadcast("panel-apps-changed");
   } catch (e) {
     return { ok: false, error: `register failed: ${(e as Error).message}` };
   }
@@ -364,7 +365,7 @@ export async function unregisterBundleApp(dir: string, opts: { keepSecrets?: boo
   // parked vars are cleared by name too — nothing outlives the bundle.
   if (!opts.keepSecrets) setPreference(STASH_KEY(path.basename(dir).toLowerCase().trim()), null);
   invalidateOrgApps();
-  for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+  broadcast("panel-apps-changed");
 }
 
 /** Parse + validate a glyphh-app manifest ("" slug etc. rejected). */
@@ -538,9 +539,7 @@ export async function installGlyphhAppBundle(zipPath: string): Promise<{ ok: boo
     // Tell every open window the app library changed so the Apps page
     // re-fetches — without this, an app installed over the MCP relay
     // doesn't appear until the user manually reloads.
-    for (const w of BrowserWindow.getAllWindows()) {
-      if (!w.isDestroyed()) w.webContents.send("panel-apps-changed");
-    }
+    broadcast("panel-apps-changed");
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -1028,7 +1027,7 @@ async function migrateCustomAppsToOrgScoped(): Promise<void> {
     }
     if (moved) {
       invalidateOrgApps();
-      for (const w of BrowserWindow.getAllWindows()) { if (!w.isDestroyed()) w.webContents.send("panel-apps-changed"); }
+      broadcast("panel-apps-changed");
     }
   } catch (e) {
     console.error("[glyphh-app] org-scope migration failed:", e instanceof Error ? e.message : e);
