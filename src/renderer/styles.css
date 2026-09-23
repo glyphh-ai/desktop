@@ -3166,9 +3166,12 @@ body.platform-shell .settings-panel[data-sub="appearance"] { display: none !impo
 .confirm-overlay {
   position: fixed;
   inset: 0;
-  /* Confirms can be raised FROM inside the settings modal (z 9000) — e.g.
-     revoking an API key — so they must float above it, like the cell picker. */
-  z-index: 9600;
+  /* Confirms are raised FROM inside the settings modal (.yo-modal, z 99500) —
+     revoking an API key, the Tabs page's Chrome import — so they must float
+     ABOVE it. The settings overlay moved 9000 → 99500 on 2026-09-18 and this
+     layer stayed at 9600, which put every such confirm behind the page that
+     opened it (his report, 2026-09-23). Below the lightbox (100000). */
+  z-index: 99600;
   background: var(--overlay-bg);
   display: flex;
   align-items: center;
