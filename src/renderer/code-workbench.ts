@@ -5807,16 +5807,23 @@ async function init(): Promise<void> {
               // must shape the placeholder's first paint (the overlay reads
               // the DOM, so a post-mount graft would flash the full rail).
               if (v === "rail") entry.pendingSlotState = { ...(entry.pendingSlotState || {}), ...railFlagsOf(cell.config) };
+              // A Browser cell's URL is the DEFINITION's (his report,
+              // 2026-09-23: "the url is not loaded when the browser is shown").
+              // It used to be grafted onto slot.url AFTER the first paint — by
+              // then previewTabs() had minted the tab model from the empty
+              // default, and the tabs are what render, so the graft was never
+              // read. Seed the tab itself before the mint; remembered tabs (a
+              // "last" workspace) still take over after the open.
+              if (v === "preview" && cell.config?.url && !st?.tabs?.length) {
+                const url = cell.config.url;
+                entry.pendingSlotState = { ...(entry.pendingSlotState || {}), url, tabs: [{ id: 0, url }], activeTab: 0 };
+              }
               activateTile(entry);
               entry.pendingSlotState = undefined;
               pendingParkedTerms = null;   // never leak into the next cell
               if (v === "terminal" && cell.config?.cmd && !parked) {
                 const ts = entry.toolSlot as unknown as { terminals?: Array<{ initCmd?: string }> } | undefined;
                 if (ts?.terminals?.[0]) ts.terminals[0].initCmd = cell.config.cmd;
-              }
-              if (v === "preview" && cell.config?.url) {
-                const pv = entry.toolSlot as unknown as { url?: string } | undefined;
-                if (pv && !pv.url) { pv.url = cell.config.url; rerenderToolBody(entry); }
               }
             }
           } else {
