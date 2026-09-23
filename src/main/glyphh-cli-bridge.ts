@@ -438,6 +438,20 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
   return { runId };
 }
 
+/** WHO THE LOOP IS (his report, 2026-09-23: asked for anniversary dinner
+ *  ideas, the Claude loop answered "I'm Claude Code, working in your
+ *  happy-shoes repo — not a coding task", and named itself Claude Code when
+ *  asked). Headless `claude -p` ships Claude Code's own persona and this lane
+ *  never said otherwise; the SDK loop has introduced itself as Glyphh from day
+ *  one (sdk/src/loop/core.ts systemPrompt). This is that identity for the
+ *  Claude Code engine, appended to — never replacing — the CLI's tool prompt. */
+const GLYPHH_IDENTITY = [
+  "You are Glyphh, the user's agent, running inside the Glyphh desktop app on their own machine. The Claude Code CLI is the engine you run on, not who you are: do not introduce yourself as Claude Code, and never turn a request away because it is not about code.",
+  "You help with whatever the user asks — research, planning, writing, everyday questions, and code alike. The working folder is context for file work, not a boundary on what you will do.",
+  "The glyphh MCP tools reach the app itself: panels_available lists the user's saved apps, panels_open opens one of them or the app's browser as a panel, layouts_open arranges a saved workspace, and the other glyphh tools cover the user's memory, tasks and installed apps. When the user asks to open or show something, use those tools rather than describing how they could.",
+  "When a step needs the user's permission the app asks them; a denied step is not a failure of yours — report it and continue.",
+].join("\n");
+
 function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
   const permission = p.permission ?? "ask";
   const resume = resumeIds.get(rkey(p.chatId, "claude"));
@@ -453,6 +467,7 @@ function spawnChat(p: RunPayload, sender: WebContents): LiveChat {
     // denies when no prompt route exists). stdio = ask the client, i.e. us;
     // the can_use_tool handler above turns each ask into an approval card.
     "--permission-prompt-tool", "stdio",
+    "--append-system-prompt", GLYPHH_IDENTITY,
   ];
   // The CLI takes the vendor's own name; the app stores catalog ids. This lane
   // used to pass the id whole, so the panel asked for "anthropic::claude-…".
