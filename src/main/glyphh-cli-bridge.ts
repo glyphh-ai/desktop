@@ -149,6 +149,10 @@ export interface LiveChat {
   nextControl: number;
   /** control_request ids we asked the renderer about, by approval id. */
   pending: Map<string, string>;
+  /** THE USER STOPPED THIS ONE (his report, 2026-09-23: interrupting showed
+   *  "⚠ the run failed"). We kill the process a moment later, so its non-zero
+   *  exit is OUR doing, not a failure — the exit handler stays quiet. */
+  stopping?: boolean;
 }
 
 const live = new Map<string, LiveChat>();
@@ -447,6 +451,11 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
     live.delete(p.chatId);
     console.warn("[cli-bridge] headless turn ended", JSON.stringify({ cli: agent.cli, code, sawJson, stderr: errTail.trim().slice(-300) }));
     if (chat.buf.trim() && !sawJson) emit(chat, "glyphh-agent:delta", { runId, delta: chat.buf });
+    // A STOP IS NOT A FAILURE (his report, 2026-09-23): stopAgentChat already
+    // settled this run as stopped and the renderer has moved on — often onto
+    // the queued message it just sent. Announcing the kill as an error landed
+    // on THAT turn and killed it too.
+    if (chat.stopping) { emit(chat, "glyphh-agent:done", { runId, stopped: true }); return; }
     if (code !== 0 && code !== null) {
       // The CLI's stderr plus whatever it printed: a refusal it explains in
       // its own words becomes a sentence the user can act on (cliFix); an
@@ -654,6 +663,7 @@ export function stopAgentChat(chatId: string): boolean {
   if (glyphhLoopHas(chatId) && stopGlyphhLoop(chatId)) return true;
   const c = chatId ? live.get(chatId) : undefined;
   if (!c) return false;
+  c.stopping = true;   // the kill below is ours; its exit is not a failure
   try { writeControl(c, { subtype: "interrupt" }); } catch { /* fall through to kill */ }
   setTimeout(() => { if (c.proc.exitCode === null) c.proc.kill("SIGTERM"); }, 3000);
   emit(c, "glyphh-agent:done", { runId: c.runId, stopped: true });

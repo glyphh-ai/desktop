@@ -1162,10 +1162,26 @@ interface LiveRun {
 }
 const liveRuns = new Map<string, LiveRun>();
 let runTicker: ReturnType<typeof setInterval> | null = null;
+/** Runs finishRun has already settled. A stopped or finished run can still
+ *  emit — a CLI we killed exits a moment later — and those frames must not be
+ *  adopted by the NEXT launch (his report, 2026-09-23: interrupt, then the
+ *  message typed during the run was sent and instantly died with "⚠ the run
+ *  failed" — the dead run's exit had claimed it). Bounded: only the recent
+ *  ones can still be in flight. */
+const settledRuns = new Set<string>();
+function markSettled(runId: string | null): void {
+  if (!runId) return;
+  settledRuns.add(runId);
+  if (settledRuns.size > 64) settledRuns.delete(settledRuns.values().next().value as string);
+}
+
 /** The chat entry that owns a runId. Events can beat the IPC ack that stamps
- *  the id, so an unmatched runId claims the OLDEST launch still waiting. */
+ *  the id, so an unmatched runId claims the OLDEST launch still waiting —
+ *  unless that runId is one we already settled, which is a late frame from a
+ *  run that is over, not an early frame from the one just launched. */
 function runEntry(runId: string): [string, LiveRun] | null {
   for (const e of liveRuns) { if (e[1].runId === runId) return e; }
+  if (settledRuns.has(runId)) return null;
   for (const e of liveRuns) { if (e[1].runId === null) { e[1].runId = runId; return e; } }
   return null;
 }
@@ -3504,10 +3520,18 @@ function queueNote(): boolean {
  * indistinguishable from a typed one — same title handling, same store write,
  * same run launch.
  */
-function flushPendingNotes(): void {
+function flushPendingNotes(tries = 0): void {
   if (!pendingNotes.length) return;
   const ta = input();
-  if (!ta) return;
+  // NO COMPOSER YET IS NOT "NEVER SEND" (his report, 2026-09-23: a message
+  // typed during a run was not sent automatically when the turn ended). The
+  // agent panel may be mid-mount, or the CLI view may hold the surface — the
+  // composer arrives a beat later. Wait for it rather than dropping the turn;
+  // the notes stay on their cards the whole time, so nothing is ever lost.
+  if (!ta) {
+    if (tries < 40) window.setTimeout(() => flushPendingNotes(tries + 1), 250);
+    return;
+  }
   const text = pendingNotes.map((n) => n.text).join("\n\n");
   pendingNotes = [];
   paintPendingNotes();
@@ -4295,6 +4319,7 @@ function finishRun(chatId: string, text: string, stopped = false): void {
     });
   }
   void saveStore();
+  markSettled(run?.runId ?? null);   // its late frames belong to nobody
   liveRuns.delete(chatId);
   clearToolRows(chatId);   // any ⚙ row whose done never arrived stays as-is
   // This run's pending cards vanish; other runs' stay queued. (paintAskDock
