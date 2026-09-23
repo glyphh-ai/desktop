@@ -4374,6 +4374,27 @@ function stopDockTicker(): void {
   if (dockTicker !== null) { clearInterval(dockTicker); dockTicker = null; }
 }
 
+/** The approval card's view of a tool input: `description` → headline,
+ *  `command` → code block, everything else → rows. null when the detail is
+ *  not a JSON object (a producer's own prose, or JSON cut at the 2000-char cap). */
+type ToolInputView = { headline: string | null; command: string | null; rows: Array<[string, string]> };
+function parseToolInput(detail: string): ToolInputView | null {
+  if (!detail || detail[0] !== "{") return null;
+  let v: unknown;
+  try { v = JSON.parse(detail); } catch { return null; }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const str = (k: string): string | null => (typeof o[k] === "string" && (o[k] as string).trim() ? (o[k] as string) : null);
+  const headline = str("description");
+  const command = str("command") ?? str("cmd");
+  const rows: Array<[string, string]> = [];
+  for (const [k, val] of Object.entries(o)) {
+    if (k === "description" || k === "command" || k === "cmd" || val === undefined || val === null) continue;
+    rows.push([k, typeof val === "string" ? val : JSON.stringify(val)]);
+  }
+  return { headline, command, rows };
+}
+
 const mmss = (ms: number): string => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -4462,11 +4483,21 @@ function paintAskDock(): void {
       edit: "Make a change",
       network: "Network access",
       read: "Read",
+      tool: "Use a tool",
     };
-    dock.appendChild(dockHead(KIND_LABEL[item.kind] ?? item.kind, "warn", item));
+    // The detail is the tool's INPUT as pretty-printed JSON, from both
+    // producers (the SDK loop, the Claude Code harness). Shown raw it was a
+    // wall of \" escapes with the command's head scrolled away (his report,
+    // 2026-09-23). Read it back: the tool's own `description` is the
+    // headline, a `command` is a code block with its quotes intact, the rest
+    // is one `key: value` line each. Detail that is not JSON renders as it was.
+    const input = parseToolInput(item.detail);
+    const toolName = (item.title || "").split(/\s+/)[0] || item.title;
+    const kindLabel = input?.command ? KIND_LABEL.command : (KIND_LABEL[item.kind] ?? item.kind);
+    dock.appendChild(dockHead(input?.headline ? `${kindLabel} · ${toolName}` : kindLabel, "warn", item));
     const title = document.createElement("div");
     title.className = "cad-title";
-    title.textContent = item.title;
+    title.textContent = input?.headline ?? (input && (input.command || input.rows.length) ? toolName : item.title);
     dock.appendChild(title);
     if (item.kind === "dangerous" && !item.detail) {
       const why = document.createElement("div");
@@ -4474,7 +4505,34 @@ function paintAskDock(): void {
       why.textContent = "Outside auto mode's safe bounds — these always ask.";
       dock.appendChild(why);
     }
-    if (item.detail) {
+    if (input && (input.command || input.rows.length)) {
+      if (input.command) {
+        const cmd = document.createElement("pre");
+        cmd.className = "cad-detail cad-cmd";
+        cmd.textContent = input.command;
+        dock.appendChild(cmd);
+      }
+      if (input.rows.length) {
+        const rows = document.createElement("div");
+        rows.className = "cad-rows";
+        for (const [k, v] of input.rows) {
+          const row = document.createElement("div");
+          row.className = "cad-row";
+          const key = document.createElement("span");
+          key.className = "cad-key";
+          key.textContent = k;
+          // A long or multi-line value (a file's content, an edit's strings)
+          // gets its own block; a short one sits on the key's line.
+          const long = v.length > 80 || v.includes("\n");
+          const val = document.createElement(long ? "pre" : "span");
+          val.className = long ? "cad-detail cad-val-block" : "cad-val";
+          val.textContent = v;
+          row.append(key, val);
+          rows.appendChild(row);
+        }
+        dock.appendChild(rows);
+      }
+    } else if (item.detail) {
       const det = document.createElement("pre");
       det.className = "cad-detail";
       det.textContent = item.detail;

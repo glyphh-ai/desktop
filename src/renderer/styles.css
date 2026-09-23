@@ -14906,18 +14906,26 @@ body.fullbleed-active #titlebar { height: 6px; min-height: 6px; }
 .cad-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
 .cad-detail {
   margin: 0 0 10px;
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.5;
   color: var(--text-2);
   background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 7px 9px;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   max-height: 130px;
   overflow-y: auto;
 }
+/* The command being approved: the tool's input, unescaped, readable in full. */
+.cad-cmd { color: var(--text); max-height: 200px; }
+.cad-rows { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; }
+.cad-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 12px; }
+.cad-key { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--text-3); flex: none; }
+.cad-val { color: var(--text-2); overflow-wrap: anywhere; }
+.cad-val-block { flex: 1 1 100%; margin: 2px 0 0; max-height: 120px; }
 .cad-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .cad-options { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 9px; }
 .cad-option {
