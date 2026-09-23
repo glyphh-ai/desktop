@@ -280,6 +280,19 @@ function ensureRemoteMcp(id: string, cli: string, creds: GatewayCreds | null): v
   if (cli === "cursor") upsertMcpServer(path.join(homedir(), ".cursor", "mcp.json"), "glyphh_gateway", { url: entry.url, headers: entry.headers });
 }
 
+/** The agent's bearer, MINTED IF IT IS MISSING OR STALE (his report,
+ *  2026-09-23: every codex MCP call answered 401 "Invalid or missing bearer
+ *  token", and `loops/codex/` held an env file but no mcp.json). Only the
+ *  claude lane wrote that file, and the codex lane merely read it — so codex
+ *  exported no token, the launcher dropped the bearer override, and the rmcp
+ *  worker died on the first call. Every reader goes through here now. */
+function ensureMcpToken(id: string): string {
+  const have = mcpTokenOf(id);
+  if (have && localMcpTokenValid(have)) return have;
+  ensureMcpConfig(id);
+  return mcpTokenOf(id);
+}
+
 /** The agent's minted bearer, read back from its mcp.json. */
 function mcpTokenOf(id: string): string {
   try {
@@ -495,12 +508,26 @@ function permFlag(row: Pick<CliAgentRow, "cli" | "permission">, headless: boolea
  */
 export const bareModel = (model: string): string => model.replace(/"/g, "").replace(/^[a-z0-9_-]+::/i, "").trim();
 
+/** CODEX TAKES THE MODEL AS A CONFIG OVERRIDE (his report, 2026-09-23: "I
+ *  changed the model but it doesn't look like it changed"). `-m/--model`
+ *  belongs to `codex exec` alone — `codex exec resume --help` (0.155.1) lists
+ *  no model option at all, and every turn after the first RESUMES — so a `-m`
+ *  sitting before the subcommand was read by the top-level command and the
+ *  resumed rollout kept whatever model it was created with. The resume help
+ *  documents the way in itself: `-c model="o3"`. Like every other codex
+ *  override it must come BEFORE the subcommand (proved 2026-09-20). */
+export const codexModelOverride = (model: string): string => {
+  const m = bareModel(model);
+  return m ? ` -c 'model="${m}"'` : "";
+};
+
 function modelFlag(cli: CliAgentRow["cli"], model: string): string {
   if (!model) return "";
   const m = bareModel(model);
   switch (cli) {
     case "claude": return ` --model "${m}"`;
-    case "codex": return ` -m "${m}"`;
+    // Handled by codexModelOverride at each codex call site, before the subcommand.
+    case "codex": return "";
     case "gemini": return ` -m "${m}"`;
     case "copilot": return ` --model "${m}"`;
     case "cursor": return ` --model "${m}"`;
@@ -615,7 +642,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
       core = `${row.cmd}${modelFlag(row.cli, m)}${claudeEffort}${perm}${claudeToolFlags()}${rid ? ` --resume '${rid}'` : ""} -p '${p}'${row.mcp ? ` --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}` : ""}`;
       break;
     case "codex": {
-      const token = row.mcp ? mcpTokenOf(row.id) : "";
+      const token = row.mcp ? ensureMcpToken(row.id) : "";
       const { port } = localMcpStatus();
       // Chained turns resume the CLI's own persisted session (codex 0.154:
       // `exec resume <id>`), so a chat's turns share one context.
@@ -635,7 +662,7 @@ export function composeHeadless(agent: CliAgentListed, prompt: string, model?: s
         ? ` -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'` + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
         : "";
       core = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
-        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${modelFlag(row.cli, m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} --json '${p}'`;
+        + `${row.cmd}${CODEX_NO_UPDATE}${viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : ""}${mcpOverrides}${codexEffort}${codexModelOverride(m)}${perm} exec${rid ? ` resume '${rid}'` : ""}${CODEX_SKIP_GIT} --json '${p}'`;
       break;
     }
     case "gemini":
@@ -743,7 +770,7 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
   // along as env so the terminal's runs get the glyphh_* tools the panel has.
   if (row.cli === "glyphh") {
     const { port } = localMcpStatus();
-    const mcpToken = row.mcp && port ? mcpTokenOf(row.id) : "";
+    const mcpToken = row.mcp && port ? ensureMcpToken(row.id) : "";
     // ONE HISTORY (his report, 2026-09-21): the terminal reads and writes the
     // panel's own session store, so a chat carries across the hop both ways.
     const sessions = userScopedPath("agent-sessions.json");
@@ -755,19 +782,22 @@ function composeCommand(row: CliAgentRow, ov?: OpenOverrides): string {
     return cwd ? `cd "${cwd.replace(/"/g, '\\"')}" && ${base}` : base;
   }
   const codexProvider = row.cli === "codex" && viaGateway && fs.existsSync(envFile(row.id)) ? CODEX_PROVIDER : "";
-  let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE + codexProvider : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
+  // The codex model override joins the other -c flags BEFORE the subcommand
+  // that resumePart opens; every other CLI keeps its own --model flag.
+  const codexModel = row.cli === "codex" ? codexModelOverride(model) : "";
+  let base = `${row.cmd}${row.cli === "codex" ? CODEX_NO_UPDATE + codexProvider + codexModel : ""}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
   if (row.mcp) {
     if (row.cli === "codex") {
       const { port } = localMcpStatus();
-      const token = mcpTokenOf(row.id);
+      const token = ensureMcpToken(row.id);
       // codex (v0.154 verified): streamable_http auth rides an ENV VAR, not
       // an inline bearer_token ("bearer_token is not supported for
       // streamable_http") — the shell line exports it just for this process.
       // Overrides before the resume subcommand and the prompt (see composeHeadless).
       base = (token ? `GLYPHH_MCP_TOKEN="${token}" ` : "")
         + `${row.cmd}${CODEX_NO_UPDATE}${codexProvider} -c experimental_use_rmcp_client=true -c 'mcp_servers.glyphh.url="http://127.0.0.1:${port}/mcp"'`
-        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE
-        + `${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}`;
+        + (token ? ` -c 'mcp_servers.glyphh.bearer_token_env_var="GLYPHH_MCP_TOKEN"'` : "") + CODEX_MCP_APPROVE + codexModel
+        + `${resumePart}${promptPart}${permPart}`;
     } else if (row.cli === "claude") {
       base = `${row.cmd}${resumePart}${modelFlag(row.cli, model)}${promptPart}${permPart}${claudeToolFlags()} --mcp-config "${mcpFile(row.id)}"${STRICT_MCP}`;
     }

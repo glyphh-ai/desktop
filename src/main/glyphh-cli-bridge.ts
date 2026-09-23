@@ -342,6 +342,28 @@ async function loopOf(p: RunPayload): Promise<CliAgentListed | null> {
 /** Non-claude loops run PER-TURN headless (codex exec --json / gemini -p):
  *  no persistent control channel, so the turn streams as one growing delta
  *  and closes. composeHeadless rides the agent's OWN env/mcp/model wiring. */
+/** WHAT A FAILED TURN SAYS TO THE USER (his report, 2026-09-23: a raw
+ *  /v1/models body, rmcp worker traces and a wall of "OutputTextDelta without
+ *  active item" arrived in the panel as one ⚠, head-truncated mid-JSON — it
+ *  read as if the turn had run on some other model). The CLI's own sentences
+ *  are worth showing; its internal trace and any JSON body it printed are not.
+ *  Nothing is hidden from the log — console.warn still carries the raw tail. */
+const CLI_NOISE = [
+  /rmcp::transport|codex_core::util|OutputTextDelta without active item/,
+  /^\s*[{[]/,                                   // a JSON body, not a message
+  /^\s*at\s|^\s*\w+::\w+/,                      // stack / module traces
+  /WARNING: proceeding, even though we could not create PATH aliases/,
+];
+export function cliStderrSummary(raw: string): string {
+  const lines = raw.split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !CLI_NOISE.some((re) => re.test(l)));
+  // The LAST lines are the ones about this failure; a few is a sentence, a
+  // hundred is a dump.
+  const kept = lines.slice(-6).join("\n").trim();
+  return kept.length > 600 ? `${kept.slice(0, 599)}…` : kept;
+}
+
 function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sender: WebContents): { runId: string } {
   const runId = `${p.chatId}:${Date.now()}`;
   // The SESSION's mode rides every turn — the composer chip transitions the
@@ -429,7 +451,7 @@ function runHeadlessTurn(p: RunPayload, agent: CliAgentListed, text: string, sen
       // The CLI's stderr plus whatever it printed: a refusal it explains in
       // its own words becomes a sentence the user can act on (cliFix); an
       // unknown failure keeps the CLI's own text rather than a shrug.
-      const said = errTail.trim() || chat.buf.trim().slice(-800) || `${agent.cli} exited ${code}`;
+      const said = cliStderrSummary(errTail) || chat.buf.trim().slice(-800) || `${agent.cli} exited ${code}`;
       const fix = cliFix(`${said}\n${chat.buf}`, agent.cli || "claude");
       emit(chat, "glyphh-agent:error", { runId, error: fix ? fix.message : said, fix: fix?.kind === "signin" ? fix : undefined });
     }

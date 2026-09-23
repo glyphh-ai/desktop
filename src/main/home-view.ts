@@ -142,6 +142,29 @@ export function setupPanelSessions(): void {
   wireDownloads(session.defaultSession);
 }
 
+/** The identity providers whose popups carry an opener handshake — Google
+ *  Identity Services (`/gsi/select`, `/o/oauth2`), Microsoft, Apple, GitHub,
+ *  Okta/Auth0 and the OAuth paths sites host themselves. Matched on the HOST
+ *  (plus an explicit oauth/login path), never on a substring of the whole URL,
+ *  so `evil.com/?x=accounts.google.com` is not an identity provider. */
+const AUTH_HOSTS = [
+  "accounts.google.com", "accounts.youtube.com", "oauth2.googleapis.com",
+  "login.microsoftonline.com", "login.live.com", "login.microsoft.com",
+  "appleid.apple.com", "github.com", "gitlab.com", "slack.com",
+  "www.facebook.com", "facebook.com", "api.twitter.com", "x.com",
+  "www.linkedin.com", "linkedin.com", "auth0.com", "okta.com", "duosecurity.com",
+];
+const AUTH_PATH_RE = /\/(oauth2?|openid|signin|sign-in|login|auth|saml2?|sso|gsi)(\/|$|\?)/i;
+
+function isAuthPopup(url: string): boolean {
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+  const host = u.hostname.toLowerCase();
+  const known = AUTH_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  return known || AUTH_PATH_RE.test(u.pathname);
+}
+
 export class HomeView {
   private view: BrowserView | null = null;
   private win: BrowserWindow | null = null;
@@ -264,7 +287,26 @@ export class HomeView {
       // apps keep it in THEIR panel (in-place navigation); everything else
       // opens as its own panel in the workspace (an Echo card when Echo is
       // up), so every surface the user opens lives in a slot.
-      guest.setWindowOpenHandler(({ url }) => {
+      guest.setWindowOpenHandler(({ url, disposition }) => {
+        // A SIGN-IN POPUP MUST STAY A POPUP (his report, 2026-09-23: Google's
+        // /gsi/select page opened but "the auth never goes through"). Every
+        // http(s) popup used to be denied and re-opened as a detached panel,
+        // which breaks the whole handshake: the panel has no `window.opener`,
+        // so the provider's postMessage back to the channel it was given
+        // reaches nothing, and its `window.close()` closes nothing. Identity
+        // providers get a REAL child window on the same partition — opener
+        // intact, cookies shared — and everything else still becomes a panel.
+        if (isAuthPopup(url) && disposition !== "foreground-tab") {
+          return {
+            action: "allow",
+            overrideBrowserWindowOptions: {
+              width: 520,
+              height: 640,
+              autoHideMenuBar: true,
+              webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
+            },
+          };
+        }
         if (handleForceWebPopup(guest, url)) return { action: "deny" };   // stays put
         if (url.startsWith("http://") || url.startsWith("https://")) {
           openPopupPanel(url);
