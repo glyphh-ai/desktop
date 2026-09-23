@@ -14,6 +14,7 @@
  */
 
 import { promises as fsp } from "node:fs";
+import { broadcast } from "./broadcast";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { ipcMain } from "electron";
@@ -397,6 +398,10 @@ export async function writeGPoint(name: unknown, html: string): Promise<{ file: 
   // Cache the EXACT bytes the store now holds (post lock+normalize), so the next
   // readGPoint in this pass rebases on them, not on an eventually-consistent GET.
   deckCache.set(meta.file, { html: normalizeDeckHtml(stored), at: Date.now() });
+  // Tell every renderer: the Slides panel caches deck HTML per session and
+  // otherwise keeps showing the pre-write deck (the one-slide starter) until
+  // a restart.
+  broadcast("gpoint-changed", meta.file);
   return { file: meta.file, path: `~/.glyphh/office/slides/${meta.file}`, slides: meta.slides };
 }
 
@@ -404,6 +409,7 @@ export async function deleteGPoint(name: unknown): Promise<void> {
   const file = gpointFileName(name);
   deckCache.delete(file);
   await store.deleteSlide(file);
+  broadcast("gpoint-changed", file);
 }
 
 const errText = (err: unknown): string => (err instanceof Error ? err.message : String(err));

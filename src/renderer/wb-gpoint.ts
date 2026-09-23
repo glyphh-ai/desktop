@@ -431,6 +431,11 @@ export function initGPoint(host: GPointHost): GPointPanel {
       return;
     }
     if (!body.isConnected) return;
+    // A refresh landed while we awaited (a deck was opened, or the agent rewrote
+    // one): the body now holds a different view. Painting into it would find
+    // none of our elements and throw — and the error screen would wipe that
+    // view. The stale pass simply stands down.
+    if (!grid.isConnected) return;
     if (!res || typeof res.ok !== "boolean") {
       showEmpty("This surface has no deck store.<br>Slides runs in the desktop app.");
       return;
@@ -501,7 +506,8 @@ export function initGPoint(host: GPointHost): GPointPanel {
         });
       }
     };
-    const search = body.querySelector<HTMLInputElement>(".office-search")!;
+    const search = body.querySelector<HTMLInputElement>(".office-search");
+    if (!search) return;
     let debounce = 0;
     search.addEventListener("keydown", (e) => e.stopPropagation());
     search.addEventListener("input", () => {
@@ -513,6 +519,25 @@ export function initGPoint(host: GPointHost): GPointPanel {
 
   /** Contain every failure: renderSlot void-calls this, so an uncaught throw
    *  would leave the slot body dark and silent — the one thing it must never do. */
+  /** Every slot this panel has painted — so a deck change from main can
+   *  repaint exactly the views showing it, in place. Disconnected bodies
+   *  are skipped and pruned on the next paint. */
+  const live = new Map<number, { body: HTMLElement; slot: GPointSlotState; wrap: HTMLElement }>();
+  // The agent writes decks through main (create_deck, then write_deck with the
+  // real slides). The renderer cached the one-slide starter at open and never
+  // heard about the rewrite, so the reader, rail and Present all showed ONE
+  // slide until a restart (his report, 2026-09-23). Main now announces every
+  // write/delete; drop the cache and repaint the slots that show that deck —
+  // and the library, whose thumbnails and slide counts just went stale.
+  (window as unknown as { glyphh?: { onGPointChanged?: (cb: (file: string) => void) => void } }).glyphh?.onGPointChanged?.((file) => {
+    htmlCache.delete(file);
+    for (const [id, l] of live) {
+      if (!l.body.isConnected) { live.delete(id); continue; }
+      if (l.slot.file && l.slot.file !== file) continue;
+      void renderIntoSlot(l.body, l.slot, l.wrap);
+    }
+  });
+
   async function renderIntoSlot(body: HTMLElement, slot: GPointSlotState, wrap: HTMLElement): Promise<void> {
     try {
       await renderIntoSlotInner(body, slot, wrap);
@@ -530,6 +555,7 @@ export function initGPoint(host: GPointHost): GPointPanel {
 
   async function renderIntoSlotInner(body: HTMLElement, slot: GPointSlotState, wrap: HTMLElement): Promise<void> {
     body.classList.add("ws-gpoint-body");
+    live.set(slot.id, { body, slot, wrap });
     // Repaint THIS panel in place — never the rails (see GPointHost note).
     const refresh = (): void => {
       if (body.isConnected) void renderIntoSlot(body, slot, wrap);

@@ -1420,6 +1420,9 @@ contextBridge.exposeInMainWorld("glyphh", {
   gpointDelete: (file: string) => ipcRenderer.invoke("gpoint-delete", file) as Promise<{ ok: boolean; error?: string }>,
   gpointNew: (name: string, title?: string) => ipcRenderer.invoke("gpoint-new", name, title) as Promise<{ ok: boolean; file?: string; title?: string; error?: string }>,
   gpointWrite: (file: string, html: string) => ipcRenderer.invoke("gpoint-write", file, html) as Promise<{ ok: boolean; error?: string }>,
+  // Fired by main whenever a deck is written or deleted (agent tools, ＋ New,
+  // in-panel surgery) — the Slides panel drops its cached copy and repaints.
+  onGPointChanged: (callback: (file: string) => void) => { ipcRenderer.on("gpoint-changed", (_e, file: string) => callback(String(file))); },
   // Glyphh Office → PDF (slides page-per-slide, docs on Letter).
   officeExportPdf: (req: { kind: "slides" | "doc-html"; file?: string; title?: string; html?: string; print?: boolean }) => ipcRenderer.invoke("office-export-pdf", req) as Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>,
   // Glyphh Office · Docs (the Docs panel's org library).
