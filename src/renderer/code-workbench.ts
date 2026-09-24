@@ -6496,7 +6496,12 @@ async function init(): Promise<void> {
       if (t.url || t.glyphh) {
         // pinned card wins as the landing target (never while a layout is
         // fanning out its own cells, and a pin never retargets itself)
-        const pinned = openList.find((x) => x.tile.sticky && x.card && x !== e);
+        // A DECLARED SEAT HANDOFF OUTRANKS THE PIN (his report, 2026-09-23:
+        // switching the agent from chat to CLI inside a layout closed the
+        // agent and opened the CLI in a DIFFERENT slot). The handoff is an
+        // explicit, atomic "take this card's cell"; the pinned-card rule is
+        // the fallback for an ordinary open with no seat of its own.
+        const pinned = seatHandoff ? undefined : openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinned && !openingLayout) { retargetCard(pinned, t); return; }
         // B3 RETIRED (his order, 2026-08-30): a live layout NO LONGER wipes.
         // With no pinned slot the app simply opens in the next available slot
@@ -6512,7 +6517,9 @@ async function init(): Promise<void> {
         // is the landing target; otherwise an active LAYOUT clears and the
         // panel opens standalone. Tools were exempt and jammed in beside
         // layout cells — Slides/Docs/Sheets/Drive/Browser are apps to the user.
-        const pinnedT = openList.find((x) => x.tile.sticky && x.card && x !== e);
+        // Same rule as the app branch: a seat handoff was declared for THIS
+        // open, so the pin does not get to claim it.
+        const pinnedT = seatHandoff ? undefined : openList.find((x) => x.tile.sticky && x.card && x !== e);
         if (pinnedT && !openingLayout) {
           const card = pinnedT.card!;
           setShadow(false, false);
@@ -9438,7 +9445,18 @@ async function init(): Promise<void> {
         });
       });
     const fresh = btn("New session", `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-      () => (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void }).__wbOpenAgentCli?.(agent.id, undefined, { fresh: true }));
+      () => {
+        // NEW SESSION IN *THIS* SLOT (his report, 2026-09-23: in a layout the +
+        // opened another terminal panel instead of a fresh CLI in the slot the
+        // user was looking at). The open is the same door; what was missing is
+        // the SEAT — without a handoff openShell treats it as a brand-new card
+        // and, inside a layout, gives it its own column. Hand it this card's
+        // cell and let the old pty die: a new session is not a parked one.
+        const mine = openList.find((x) => x.toolSlot === slot && x.card);
+        if (mine) seatHandoff = { donor: mine, closeOpts: { parkTerms: false } };
+        (window as unknown as { __wbOpenAgentCli?: (id: string, prompt?: string, opts?: { fresh?: boolean }) => void })
+          .__wbOpenAgentCli?.(agent.id, undefined, { fresh: true });
+      });
     const dev = btn("Developer tools", `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>`,
       (ev) => (window as unknown as { __wbShowAgentDevMenu?: (ev: MouseEvent) => void }).__wbShowAgentDevMenu?.(ev));
     tabsEl.append(back, title, spacer, chat, drips, recents, fresh, dev);
