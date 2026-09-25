@@ -20,6 +20,7 @@
 import { escapeHtml, confirmAction, loadingHtml } from "./shared.js";
 import { appIconInner, primeConnectedIcons } from "./app-icon.js";
 import { adoptConnectionsInto, onConnectionsChanged } from "./connections.js";
+import { planGates } from "./plan-gate.js";
 import { toastError } from "./toast.js";
 
 type Conn = Awaited<ReturnType<typeof window.glyphh.connectionsList>>["connections"][number];
@@ -49,6 +50,9 @@ function fail(msg: string): void {
 
 let entries: Entry[] = [];
 let customAllowed = false;
+/** Pipedream connections are paid-plan only (each connected account is billed);
+ *  custom MCP servers stay free, so only Connect actions lock, never the page. */
+let pdAllowed = true;
 let tab: "mine" | "discover" = "mine";
 let stateFilter: "all" | "connected" | "not" = "all";
 let query = "";
@@ -91,12 +95,14 @@ export async function loadSettingsConnections(): Promise<void> {
   el("conn2-list-view")?.classList.remove("hidden");
   fail("");
   if (!entries.length) body.innerHTML = loadingHtml("Loading your connections…");
-  const [res, custom, gate] = await Promise.all([
+  const [res, custom, gate, gates] = await Promise.all([
     window.glyphh.connectionsList().catch(() => ({ ok: false, connections: [] as Conn[] })),
     window.glyphh.mcpConnectionsList().catch(() => ({ ok: false, connections: [] as McpConn[] })),
     window.glyphh.mcpCustomAllowed?.().catch(() => ({ allowed: false })) ?? Promise.resolve({ allowed: false }),
+    planGates(),
   ]);
   customAllowed = !!(gate as { allowed?: boolean })?.allowed;
+  pdAllowed = gates.connectionsAllowed !== false;
   const addBtn = el<HTMLButtonElement>("conn2-add");
   if (addBtn) { addBtn.disabled = !customAllowed; addBtn.title = customAllowed ? "Add an MCP server of your own" : (gate as { reason?: string })?.reason || "Custom MCP servers aren't available on your plan"; }
   const conns = (res as { connections?: Conn[] })?.connections ?? [];
@@ -226,11 +232,31 @@ function iconForApp(a: CatalogApp, cls = "conn2-icon"): string {
 }
 const connectedSlugs = (): Set<string> => new Set(entries.filter((e) => e.conn && e.connected).map((e) => e.conn!.appSlug));
 
+/** The upsell line every plan-gated page wears, but only over Connect: the
+ *  list, tool switches and custom MCP servers stay live on Free. */
+function lockedNote(): HTMLElement {
+  const note = document.createElement("div");
+  note.className = "plan-locked-note";
+  const msg = document.createElement("span");
+  msg.textContent = "Connections are on a paid plan — upgrade to connect apps. Custom MCP servers are free on every plan. ";
+  const link = document.createElement("a");
+  link.href = "#";
+  link.className = "plan-locked-link";
+  link.textContent = "Upgrade plan →";
+  link.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    document.querySelector<HTMLButtonElement>('.settings-nav-item[data-sub="billing"]')?.click();
+  });
+  note.append(msg, link);
+  return note;
+}
+
 function render(): void {
   const host = el("conn2-body");
   if (!host) return;
   document.querySelectorAll<HTMLButtonElement>("[data-conn2-tab]").forEach((b) => b.classList.toggle("active", b.dataset.conn2Tab === tab));
   host.textContent = "";
+  if (!pdAllowed) host.appendChild(lockedNote());
   if (tab === "discover") { renderDiscover(host); return; }
 
   const q = query.trim().toLowerCase();
@@ -333,6 +359,7 @@ export async function renderConnectionTable(
   const deps = connDeps(raw);
   host.textContent = "";
   if (!deps.length) return;
+  pdAllowed = (await planGates()).connectionsAllowed !== false;
   // THE LOADING LINE THE PAGE ITSELF USES (his order, 2026-09-17), so the pane
   // never sits blank while the member's accounts come back.
   host.innerHTML = loadingHtml("Loading connections…");
@@ -395,11 +422,14 @@ export async function renderConnectionTable(
   );
 }
 
+const LOCKED_TITLE = "Connections are on a paid plan — upgrade to connect apps";
+
 function connectButton(e: Entry): HTMLButtonElement {
   const b = document.createElement("button");
   b.type = "button";
   b.className = "action-btn conn2-connect";
   b.textContent = "Connect";
+  if (!pdAllowed && !e.mcp) { b.disabled = true; b.title = LOCKED_TITLE; }
   b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectEntry(e, b); });
   return b;
 }
@@ -409,8 +439,8 @@ function connectAppButton(a: CatalogApp, wide = false): HTMLButtonElement {
   const done = connectedSlugs().has(a.id);
   b.className = wide ? "action-btn conn2-connect" : "action-btn conn2-plus" + (done ? " done" : "");
   b.innerHTML = wide ? (done ? "Connected" : "Connect") : (done ? CHECK : PLUS);
-  b.disabled = done;
-  b.title = done ? "Connected" : "Connect";
+  b.disabled = done || !pdAllowed;
+  b.title = done ? "Connected" : pdAllowed ? "Connect" : LOCKED_TITLE;
   b.addEventListener("click", (ev) => { ev.stopPropagation(); void connectApp(a.id, b); });
   return b;
 }

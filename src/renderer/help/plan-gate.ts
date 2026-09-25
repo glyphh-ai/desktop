@@ -29,6 +29,10 @@ export interface PlanGates {
   cliAllowed: boolean;
   /** The org picks nothing: every turn goes to its auto-router. */
   autoOnly: boolean;
+  /** Pipedream connections are on this plan (paid only — Pipedream bills per
+   *  connected account). Custom MCP servers are free everywhere. Absent on an
+   *  older server = allowed; the server enforces on write regardless. */
+  connectionsAllowed?: boolean;
   /** Memory overrides (his order, 2026-09-19): member = the user's choice, on / off = forced. */
   memoryPolicy?: { inject?: "member" | "on" | "off"; capture?: "member" | "on" | "off"; sensitive?: "member" | "on" | "off" };
 }
