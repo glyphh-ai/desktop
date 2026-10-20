@@ -14,6 +14,7 @@
  * Tools (2026-10-20).
  */
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -25,6 +26,16 @@ function electronVersion() {
 
 function moduleDir(name) {
   try { return path.dirname(require.resolve(`${name}/package.json`)); } catch { return null; }
+}
+
+// node-pty 1.1.0 publishes its spawn-helper without the execute bit, and every
+// terminal then fails with "posix_spawnp failed" (src/main/pty-helper.ts checks
+// it again at the first spawn, for an install that skipped scripts).
+const ptyDir = moduleDir("node-pty");
+if (ptyDir && process.platform !== "win32") {
+  for (const file of [path.join(ptyDir, "prebuilds", `${process.platform}-${process.arch}`, "spawn-helper"), path.join(ptyDir, "build", "Release", "spawn-helper")]) {
+    try { fs.chmodSync(file, fs.statSync(file).mode | 0o755); } catch { /* not on this platform */ }
+  }
 }
 
 const version = electronVersion();

@@ -23,6 +23,7 @@ import os from "os";
 import fs from "fs";
 import { execFile } from "child_process";
 import { followWorkingDirectory, getWorkingDirectory } from "./working-directory.js";
+import { ensurePtyReady } from "./pty-helper.js";
 
 interface Running { proc: pty.IPty; wc: WebContents }
 
@@ -47,6 +48,7 @@ export function spawnShellPty(opts: { cwd?: string; cols?: number; rows?: number
   let cwd = opts.cwd && opts.cwd.length > 0 ? opts.cwd : os.homedir();
   try { if (!fs.statSync(cwd).isDirectory()) throw new Error("not a directory"); }
   catch { console.warn("[wb-term] cwd is not a directory; spawning in home", JSON.stringify({ cwd })); cwd = os.homedir(); }
+  ensurePtyReady();
   return pty.spawn(shell, shellArgs, {
     name: "xterm-256color",
     cols: opts.cols || 80,
