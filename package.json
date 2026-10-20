@@ -1,6 +1,6 @@
 {
   "name": "@glyphh-ai/desktop",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "productName": "Glyphh",
   "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
   "license": "MIT",
@@ -15,6 +15,7 @@
   "files": [
     "bin/",
     "dist/",
+    "scripts/postinstall.mjs",
     "LICENSE",
     "README.md"
   ],
@@ -47,7 +48,7 @@
     "build:sdk": "npm --prefix packages/glyphh-sdk ci && npm --prefix packages/glyphh-sdk run build",
     "prepare": "npm run build:sdk",
     "prepack": "npm run build:sdk && rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk && cp -R packages/glyphh-sdk/package.json packages/glyphh-sdk/dist node_modules/@glyphh/sdk/",
-    "postinstall": "electron-rebuild",
+    "postinstall": "node scripts/postinstall.mjs",
     "test:harness": "npm run build && electron test/harness/run-harness.mjs",
     "test:harness:fast": "electron test/harness/run-harness.mjs",
     "test": "vitest run"
@@ -94,7 +95,7 @@
     "marked": "^14.0.0",
     "monaco-editor": "^0.55.1",
     "node-cron": "^4.2.1",
-    "node-pty": "^1.0.0",
+    "node-pty": "^1.1.0",
     "openai": "^6.45.0",
     "pdfjs-dist": "^6.3.289",
     "react": "^19.2.6",
