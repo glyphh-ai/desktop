@@ -1,0 +1,1014 @@
+        <div class="help-section" data-section="settings">
+          <div class="settings-layout">
+            <nav class="settings-nav">
+              <div id="settings-nav-search-wrap" class="not-on-platform">
+                <span class="set-search-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg></span>
+                <input id="settings-nav-search" type="text" class="settings-input" placeholder="Search" spellcheck="false" autocomplete="off" />
+                <div id="settings-nav-search-pop" class="hidden"></div>
+              </div>
+              <!-- CUSTOMIZE — ONE GROUP (his report, 2026-10-07: "The Build and
+                   Customize tabs are confusing. It should just be one tab"): what the
+                   org's agents are made of (Skills, Agents, Apps, Connections, Plugins;
+                   his order, 2026-09-16) and the work panel's own shape (Tabs,
+                   Workspaces, Drips, Schedules) under one header, in the Customize
+                   page's tab order (surface.ts CUSTOMIZE_TAB_ORDER). -->
+              <div class="settings-nav-group not-on-platform" id="nav-group-customize">Customize</div>
+              <button class="settings-nav-item not-on-platform" data-sub="skills"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Skills</span></button>
+              <!-- AGENTS (his order, 2026-09-29): the definitions the Glyphh loop can
+                   hand work to — a name, when to use it, a brief, a model slot. -->
+              <button class="settings-nav-item not-on-platform" data-sub="agents"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2v3.3M12 10.5 6.4 16.1M12 10.5l5.6 5.6"/></svg><span>Agents</span></button>
+              <!-- Apps moved onto Skills (his order, 2026-09-17): every bundle is a skill
+                   and the type says which kind. The tab is hidden, not gone. -->
+              <button class="settings-nav-item not-on-platform" data-sub="apps"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg><span>Apps</span></button>
+              <!-- Artifacts sits with the rest of what you BUILD and submit
+                   (his order, 2026-09-18), not with what you customize. -->
+              <button class="settings-nav-item not-on-platform" data-sub="artifacts"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg><span>Artifacts</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="connections-cfg"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 10.6a4.4 4.4 0 0 1 0 6.2l-2.9 2.9a4.4 4.4 0 0 1-6.2-6.2l1.7-1.7"/><path d="M10.6 13.4a4.4 4.4 0 0 1 0-6.2l2.9-2.9a4.4 4.4 0 0 1 6.2 6.2l-1.7 1.7"/></svg><span>Connections</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="plugins"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v3M15 3v3M6 6h12v5a6 6 0 0 1-12 0V6zM12 17v4"/></svg><span>Plugins</span></button>
+              <!-- Tasks moved onto Skills (2026-09-17), same as Apps: hidden, not gone. -->
+              <button class="settings-nav-item not-on-platform hidden" data-sub="tasks"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 17 2 2 4-4"/></svg><span>Tasks</span></button>
+              <div class="settings-nav-group not-on-platform" id="nav-group-settings">Settings</div>
+              <button class="settings-nav-item active" data-sub="general"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15.4a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.7 8.4a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V2a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>General</span></button>
+              <button class="settings-nav-item" data-sub="memory"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a5 5 0 0 0-5 5v1a4 4 0 0 0-2 7v1a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-1a4 4 0 0 0-2-7V8a5 5 0 0 0-5-5z"/><path d="M12 8v12"/></svg><span>Memory</span></button>
+              <button class="settings-nav-item" data-sub="models"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2.5"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg><span>Models</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="loops"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a3 3 0 0 1 3-3h15"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a3 3 0 0 1-3 3H3"/></svg><span>Loops</span></button>
+              <button class="settings-nav-item" data-sub="appearance"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"/><circle cx="8.3" cy="9.5" r="1.2"/><circle cx="12" cy="7.6" r="1.2"/><circle cx="15.7" cy="9.5" r="1.2"/><path d="M12 21.5c1.4 0 2.1-1 2.1-1.9 0-1.5-2.1-1.3-2.1-2.8 0-1 .9-1.8 2.3-1.8h1.3a5.9 5.9 0 0 0 5.9-5.9"/></svg><span>Appearance</span></button>
+              <button class="settings-nav-item not-on-platform" data-sub="mcp"><svg class="settings-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="14" width="18" height="6" rx="1.8"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="17" x2="7.01" y2="17"/></svg><span>MCP Server</span></button>
+            </nav>
+            <div class="settings-panels">
+
+              <div class="settings-panel active" data-sub="general">
+                <h2>General</h2>
+                <p class="section-desc">App-wide preferences.</p>
+
+                <h3 class="settings-subheading" style="margin-top:0;">App</h3>
+
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Keep running in the background</div>
+                    <div class="set-pref-desc">Closing the window keeps Glyphh in the menu bar so scheduled agents, loops, and skills keep running. Adds a tray icon and launches at login.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-background-mode" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <!-- NOTIFICATIONS (his order, 2026-10-05): what an app's notification
+                     meets — asked about first (a toast with Allow and "Don't ask me
+                     again" where it would have shown), shown, or dropped.
+                     help/notify-pref.ts + help/notify.ts. -->
+                <div class="set-pref-row" id="notifications-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Notifications</div>
+                    <div class="set-pref-desc">When an app wants to notify you: ask first, show it, or keep quiet. On the desktop that is the system notification; on the web, the browser's.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-notifications" class="settings-input"></select>
+                  </div>
+                </div>
+                <!-- STREAMED WEB PANELS (his order, 2026-10-04): a URL app panel or
+                     the Browser on the web is a page rendered on a worker and
+                     streamed to the tab. Experimental, so OFF by default and a
+                     two-click switch: on asks first (the warning below + "Turn on"),
+                     off is immediate. help/settings.ts + help/streamed-panels-flag.ts. -->
+                <label class="settings-toggle set-pref-row" id="streamed-panels-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Streamed web panels</div>
+                    <div class="set-pref-desc">On the web, URL apps and the Browser open as a page streamed from a worker. Off, those panels show a card instead.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-streamed-panels" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="settings-warn hidden" id="streamed-panels-warn" role="alert">
+                  <div id="streamed-panels-warn-text"></div>
+                  <div class="settings-actions">
+                    <button type="button" class="action-btn primary" id="streamed-panels-confirm">Turn on</button>
+                    <button type="button" class="action-btn" id="streamed-panels-cancel">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- THE AGENT DEFAULTS (help/settings-loops.ts loadAgentDefaults):
+                     the loop a new session opens on, the face an agent opens
+                     with, and the CLIs' route. A workspace and a session can
+                     each say otherwise. -->
+                <h3 class="settings-subheading not-on-platform" id="agent-defaults-head">Agent</h3>
+                <div class="set-pref-row not-on-platform" id="default-loop-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default loop</div>
+                    <div class="set-pref-desc">The loop a new session opens on. Turn loops on in Settings › Loops.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop" class="settings-input"></select>
+                  </div>
+                </div>
+                <div class="set-pref-row not-on-platform" id="default-view-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default view</div>
+                    <div class="set-pref-desc">Whether an agent opens as the chat panel or as its loop's terminal. &ldquo;Last used&rdquo; opens it the way you left the last one.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="set-default-loop-view" class="settings-input">
+                      <option value="chat">Chat</option>
+                      <option value="terminal">Terminal</option>
+                      <option value="last">Last used</option>
+                    </select>
+                  </div>
+                </div>
+                <label class="settings-toggle set-pref-row not-on-platform" id="cli-gateway-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Route CLIs through my providers by default</div>
+                    <div class="set-pref-desc" id="cli-gateway-desc">Claude runs on your own providers through Glyphh's local router unless a workspace or a session says otherwise.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-cli-gateway" />
+                  <span class="toggle-switch"></span>
+                </label>
+
+                <!-- The row grammar (his spec, 2026-08-24): title left with its
+                     description UNDER it, the value control aligned to the
+                     page's right edge. -->
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Default workspace</div>
+                    <div class="set-pref-desc">The workspace that opens on a fresh start (when no previous arrangement is being restored). &ldquo;None&rdquo; boots to the bare landing.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <select id="settings-default-workspace" class="settings-input"></select>
+                  </div>
+                </div>
+
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Interface sounds <span id="general-ui-sound-status" class="set-save-state"></span></div>
+                    <div class="set-pref-desc">The tiny hover and click sounds. Zero turns them off.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="general-ui-sound" min="0" max="100" step="5" />
+                    <span id="general-ui-sound-val" class="settings-hint"></span>
+                  </div>
+                </div>
+
+                <!-- VOICE (his order, 2026-10-07): the member's microphone mode,
+                     spoken replies, and the voice they hear — on both surfaces
+                     through window.glyphh.voiceSettingsGet/Set + voiceConfig
+                     (help/settings-voice.ts). The admin's flagged speech models
+                     stand behind every unset pick (voice-mic.ts voicePref). -->
+                <div id="voice-section">
+                  <h3 class="settings-subheading">Voice</h3>
+                  <div id="voice-settings-error" class="settings-error hidden"></div>
+                  <div class="set-pref-row" id="voice-voice-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Voice</div>
+                      <div class="set-pref-desc">The voice that reads replies to you — one of the speech model's.</div>
+                      <div class="settings-hint hidden" id="voice-voices-line"></div>
+                    </div>
+                    <div class="set-pref-value">
+                      <select id="voice-voice" class="settings-input"></select>
+                    </div>
+                  </div>
+                  <!-- BRIEF REPLIES IN VOICE MODE (his order, 2026-10-07: "we had a
+                       flag before that would shorten the response of the agent via
+                       a config for voice mode — bring that back"). On by default. -->
+                  <label class="settings-toggle set-pref-row" id="voice-brief-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Brief replies in voice mode</div>
+                      <div class="set-pref-desc">While you talk to Glyphh by voice, replies come back in a few spoken sentences — no lists, tables or code unless you ask.</div>
+                    </div>
+                    <input type="checkbox" id="voice-brief" />
+                    <span class="toggle-switch"></span>
+                  </label>
+                </div>
+
+                
+<div id="settings-relaunch" class="settings-relaunch hidden">
+                  <span>Restart required for changes to take effect</span>
+                  <button id="settings-relaunch-btn" class="action-btn primary">Relaunch</button>
+                </div>
+
+                <!-- Org-admin groups — PLATFORM-ONLY surfaces (desktop General
+                     carries the interface-sounds row alone). -->
+              </div>
+
+
+
+
+              <!-- MODELS: the user's own providers, keys and models (help/settings-models.ts,
+                   main/models-ipc.ts). The router calls each provider directly. -->
+              <div class="settings-panel" data-sub="models">
+                <h2>Models</h2>
+                <p class="section-desc">Your model providers and their keys. Glyphh calls each provider directly with your own key; keys stay on this computer.</p>
+                <div id="models-error" class="settings-error hidden"></div>
+                <h3 class="settings-subheading" style="margin-top:0;">Defaults</h3>
+                <div id="models-defaults"></div>
+                <div class="pvd-section-head">
+                  <h3 class="settings-subheading">Providers</h3>
+                  <button class="action-btn" id="models-add-provider" type="button">Add provider</button>
+                </div>
+                <div id="models-providers"></div>
+              </div>
+              <!-- LOOPS: Glyphh's own loop and the vendor CLIs — on/off and how each
+                   opens (help/settings-loops.ts, main/cli-agents.ts). -->
+              <div class="settings-panel" data-sub="loops">
+                <h2>Loops</h2>
+                <p class="section-desc">The engines a session can run on: Glyphh's own loop, and the coding CLIs you have installed and signed in to. Each runs in the chat panel or in its own terminal.</p>
+                <div id="loops-error" class="settings-error hidden"></div>
+                <div id="loops-accordion"></div>
+              </div>
+              <!-- MEMORY: what Glyphh remembers on this machine, and the switches. -->
+              <div class="settings-panel" data-sub="memory">
+                <h2>Memory</h2>
+                <p class="section-desc">What Glyphh keeps from your sessions, where it lives, and who decides.</p>
+                <!-- No embeddings model = memory is off (help/settings-memory.ts). -->
+                <div id="memory-needs-model" class="settings-warn mem-needs-model hidden" role="status">
+                  <span>Memory needs an embeddings model. Add one in Settings › Models.</span>
+                  <button id="memory-open-models" class="action-btn" type="button">Open Models</button>
+                </div>
+
+                <h3 class="settings-subheading" style="margin-top:0;">Preferences</h3>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Search and reference past sessions</div>
+                    <div class="set-pref-desc">Let your loops read relevant context from earlier sessions.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-memory-inject" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Generate memory from sessions</div>
+                    <div class="set-pref-desc">Save each turn so later sessions can find it.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-memory-capture" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Include sensitive topics in memory</div>
+                    <div class="set-pref-desc">Allow details about health, religion, politics, finances and the like to be saved. Off skips turns that touch them.</div>
+                  </div>
+                  <input type="checkbox" id="toggle-memory-sensitive" />
+                  <span class="toggle-switch"></span>
+                </label>
+
+                <h3 class="settings-subheading">Your data</h3>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Remembered so far</div>
+                    <div class="set-pref-desc" id="memory-stats">…</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <button id="memory-clear-btn" class="action-btn" type="button">Clear memory</button>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Pages</div>
+                    <div class="set-pref-desc">Your Profile, topics and areas are compiled from the turns by the memory curator, through your default loop, nightly. Compile now to build them today.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <button id="memory-curate-btn" class="action-btn" type="button">Compile pages now</button>
+                  </div>
+                </div>
+                <div id="memory-curate-status" class="mem-status hidden"></div>
+                <div id="memory-browser" class="mem-browser"></div>
+              </div>
+
+              <div class="settings-panel" data-sub="appearance">
+                <h2>Appearance</h2>
+                <p class="section-desc">Customize the workspace interface.</p>
+                <h3 class="settings-subheading" style="margin-top:0;">Theme</h3>
+                <div id="theme-picker" class="theme-picker">
+                  <button class="theme-option active" data-theme="dark">
+                    <div class="theme-preview theme-preview-dark"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Dark</span>
+                  </button>
+                  <button class="theme-option" data-theme="light">
+                    <div class="theme-preview theme-preview-light"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Light</span>
+                  </button>
+                  <button class="theme-option" data-theme="system">
+                    <div class="theme-preview theme-preview-system"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>System</span>
+                  </button>
+                  <button class="theme-option" data-theme="modern-dark">
+                    <div class="theme-preview theme-preview-modern-dark"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Modern Dark</span>
+                  </button>
+                  <button class="theme-option" data-theme="modern-light">
+                    <div class="theme-preview theme-preview-modern-light"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Modern Light</span>
+                  </button>
+                  <button class="theme-option" data-theme="purple">
+                    <div class="theme-preview theme-preview-purple"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Midnight Purple</span>
+                  </button>
+                  <button class="theme-option" data-theme="aurora">
+                    <div class="theme-preview theme-preview-aurora"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Aurora</span>
+                  </button>
+                  <button class="theme-option" data-theme="prism">
+                    <div class="theme-preview theme-preview-prism"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Prism</span>
+                  </button>
+                  <button class="theme-option" data-theme="github">
+                    <div class="theme-preview theme-preview-github"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>GitHub</span>
+                  </button>
+                  <button class="theme-option" data-theme="claude">
+                    <div class="theme-preview theme-preview-claude"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Claude</span>
+                  </button>
+                  <button class="theme-option" data-theme="chatgpt">
+                    <div class="theme-preview theme-preview-chatgpt"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>ChatGPT</span>
+                  </button>
+                  <button class="theme-option" data-theme="gemini">
+                    <div class="theme-preview theme-preview-gemini"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Gemini</span>
+                  </button>
+                  <button class="theme-option" data-theme="dracula">
+                    <div class="theme-preview theme-preview-dracula"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Dracula</span>
+                  </button>
+                  <button class="theme-option" data-theme="nord">
+                    <div class="theme-preview theme-preview-nord"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Nord</span>
+                  </button>
+                  <button class="theme-option" data-theme="synthwave">
+                    <div class="theme-preview theme-preview-synthwave"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Synthwave</span>
+                  </button>
+                  <button class="theme-option" data-theme="matrix">
+                    <div class="theme-preview theme-preview-matrix"><div class="tp-sidebar"></div><div class="tp-main"><div class="tp-bar"></div><div class="tp-content"></div></div></div>
+                    <span>Matrix</span>
+                  </button>
+                </div>
+
+                <!-- THE SIDEBAR (his order, 2026-10-08): the Tabs option is gone;
+                     Workspaces is ON by default — pref railShowLayouts
+                     (help/wall-prefs.ts). The rail re-reads on
+                     glyphh:rail-sections-changed. -->
+                <h3 class="settings-subheading">Sidebar</h3>
+                <label class="settings-toggle set-pref-row" id="rail-layouts-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Show Workspaces in the sidebar</div>
+                    <div class="set-pref-desc">The Workspaces tray at the foot of the sidebar — click a workspace to open it, + to save what is on screen as one.</div>
+                  </div>
+                  <input type="checkbox" id="settings-rail-layouts" />
+                  <span class="toggle-switch"></span>
+                </label>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Icon zoom</div>
+                    <div class="set-pref-desc">How much dock icons magnify on hover.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-icon-zoom" min="1" max="1.5" step="0.02" />
+                    <span id="settings-icon-zoom-val" class="settings-hint"></span>
+                  </div>
+                </div>
+
+                <!-- Echo Agent sliders — OFF the surface (his order, 2026-09-14: "remove the echo agent configs");
+                     the prefs + CSS vars behind them stay wired (remove = hide, never delete). -->
+                <div id="settings-echo-agent-group" class="hidden">
+                <h3 class="settings-subheading">Echo Agent</h3>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Panel transparency</div>
+                    <div class="set-pref-desc">The agent panel's opacity over the workspace — panel and text fade together.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-echo-agent-opacity" min="0.25" max="1" step="0.05" />
+                    <span id="settings-echo-agent-opacity-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Text transparency</div>
+                    <div class="set-pref-desc">The panel's text fades independently — glassy panel, solid words, or both.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-echo-agent-text-opacity" min="0.25" max="1" step="0.05" />
+                    <span id="settings-echo-agent-text-opacity-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                <div class="set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Max panel height</div>
+                    <div class="set-pref-desc">How tall the agent panel may grow before it scrolls.</div>
+                  </div>
+                  <div class="set-pref-value">
+                    <input type="range" id="settings-echo-agent-max-h" min="20" max="100" step="5" />
+                    <span id="settings-echo-agent-max-h-val" class="settings-hint"></span>
+                  </div>
+                </div>
+                </div>
+
+                <h3 class="settings-subheading">Browser</h3>
+                <div id="browser-home-group">
+                  <div class="set-pref-row">
+                    <div class="set-pref-text">
+                      <div class="set-pref-title">Default homepage</div>
+                      <div class="set-pref-desc">What a new Browser panel opens to.</div>
+                    </div>
+                    <div class="set-pref-value">
+                      <select id="settings-browser-home" class="settings-input settings-input-md">
+                        <option value="claude">Claude</option>
+                        <option value="chatgpt">ChatGPT</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="custom">Custom URL</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div id="browser-home-custom-row" class="settings-inline hidden" style="margin-top:6px">
+                    <input id="settings-browser-home-url" type="text" class="settings-input" placeholder="https://..." spellcheck="false" />
+                  </div>
+                </div>
+                <label class="settings-toggle set-pref-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Show the address bar on app panels</div>
+                    <div class="set-pref-desc">New workbench app panels open with the browser address bar visible. You can still show or hide it per panel from the panel header.</div>
+                  </div>
+                  <input type="checkbox" id="settings-app-urlbar" checked />
+                  <span class="toggle-switch"></span>
+                </label>
+                <label class="settings-toggle set-pref-row hidden" id="settings-mobile-ui-row">
+                  <div class="set-pref-text">
+                    <div class="set-pref-title">Use the mobile app on this device</div>
+                    <div class="set-pref-desc">Switch this tablet back to the mobile interface. You can return here from the mobile app's Appearance settings.</div>
+                  </div>
+                  <input type="checkbox" id="settings-mobile-ui" />
+                  <span class="toggle-switch"></span>
+                </label>
+
+              </div>
+
+
+              <!-- Members — ported from the platform's configure/members page.
+                   org_admin only (the nav item hides for everyone else, and the
+                   server enforces every write). No modals: invite is a row, and
+                   name/role edit in place and save themselves. -->
+
+              <!--
+                   top-right driving everything. settings-domains.ts paints it
+                   via the shared traffic painter (apps.ts owns the shape). -->
+
+
+              <!-- Developer — the M7 developer program (Settings → Developer).
+                   TWO TABS on the app's real tab strip (app-detail-tabs):
+                     • Developer — the profile form at the very top (shared with
+                       the marketplace console, Apps → New form grammar), then
+                       Earnings as usage-style dash-cards with the payout
+                       history below them, then the Stripe payout connection.
+                     • Developer Agreement — the legal page link, version info,
+                       the consent checkbox that enrolls, and program status.
+                   The program/payout SDK surface ships separately;
+                   settings-developer.ts renders a "coming online" state until
+                   it lands. -->
+<!-- Gateway › API Keys — the keys the gateway hands out (gateway-keys.ts).
+     The pre-purge Settings › API Keys grammar (aa04a2cc^) rebound to router
+     virtual keys: each key is minted against ONE role (models + vendor
+     credential resolution), named, with its own expiry; the token shows once.
+     Registry rows never die — telemetry outlives the key. -->
+<!-- Gateway › Metrics — the org's router telemetry (gateway-metrics.ts).
+     Mirrors the Platform › Usage grammar: dash-cards, a filtered per-day
+     chart, a performance chart on the SAME filters, and a by-model table.
+     Metadata only — prompts/completions are never stored by the gateway. -->
+              <!-- LOOPS — the fixed set, one expandable section each, like the
+                   model catalog: header carries the name and the enable
+                   toggle on the far right; expanding shows that loop's
+                   config. Nothing is created or deleted here; a loop the
+                   org -> role policy doesn't allow simply isn't listed. -->
+
+              <!-- ORGANIZATION -> LOOPS: the same accordion, but the toggle is
+                   the ORG's support list (org_loops). A loop off here is off
+                   for every member, whatever their role says. -->
+              <!-- BUILD -> AGENTS: the Connections page's grammar (his order,
+                   2026-09-29) — head with search and + New, the list as a table,
+                   a row opens the agent's own page (help/settings-agents.ts). -->
+              <div class="settings-panel skills-panel" data-sub="agents">
+                <div id="agents2-list-view">
+                  <div class="skills-head">
+                    <h2>Agents</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="agents2-search" type="text" placeholder="Search agents" spellcheck="false" autocomplete="off" /></div>
+                    <button id="agents2-add" class="action-btn primary" type="button">+ New</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" type="button">Your agents</button>
+                    <div style="flex:1;"></div>
+                    <span id="agents2-count" class="skills-count"></span>
+                  </div>
+                  <div id="agents2-body"></div>
+                </div>
+                <!-- NEW / EDIT: the Drips form (his order, 2026-09-29: "look at the
+                     drips new / edit form") — an inline form that takes the page,
+                     the edit head, stacked labels, Delete · Cancel · Save. -->
+                <div id="agents2-editor" class="crud-inline-form hidden">
+                  <div class="crud-inline-header">
+                    <button class="skills-back" id="agents2-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>Agents</button>
+                    <div class="crud-spacer"></div>
+                  </div>
+                  <div id="agents2-form-error" class="crud-form-error hidden"></div>
+                  <div id="agents2-detail-head" class="edit-head"></div>
+                  <label class="settings-label" for="agents2-name">Name</label>
+                  <input type="text" id="agents2-name" class="settings-input" placeholder="Researcher" maxlength="80" spellcheck="false" autocomplete="off" />
+
+                  <label class="settings-label" for="agents2-desc">When to use it</label>
+                  <input type="text" id="agents2-desc" class="settings-input" placeholder="Reads the web and reports facts with sources — the main agent reads this to decide what to hand over" maxlength="300" autocomplete="off" />
+
+
+                  <label class="settings-label" for="agents2-model">Model</label>
+                  <div class="settings-inline">
+                    <select id="agents2-model" class="settings-input" style="width:auto;"></select>
+                  </div>
+
+                  <!-- The brief's head carries the WAND (his order, 2026-09-29): it
+                       writes the brief on the member's default model from what
+                       the form already says. -->
+                  <div class="agents2-brief-head">
+                    <label class="settings-label" for="agents2-brief">Brief</label>
+                    <button id="agents2-generate" class="agents2-wand" type="button" title="Write the brief with AI" aria-label="Write the brief with AI"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M12.2 6.2 11 5"/><path d="m15 9-12 12"/></svg></button>
+                  </div>
+                  <div id="agents2-brief-error" class="agents2-brief-error hidden" role="alert"></div>
+                  <textarea id="agents2-brief" class="settings-input agents2-brief" rows="9" placeholder="What this agent always knows and how it works. You research one question at a time: search, read the primary sources, and report what you found with the links…"></textarea>
+
+                  <div class="settings-actions" style="margin-top:28px;">
+                    <button id="agents2-delete-btn" class="action-btn danger" type="button">Delete</button>
+                    <div style="flex:1;"></div>
+                    <button id="agents2-cancel-btn" class="action-btn" type="button">Cancel</button>
+                    <button id="agents2-save-btn" class="action-btn primary" type="button">Save</button>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel skills-panel" data-sub="connections-cfg">
+                <div id="conn2-list-view">
+                  <div class="skills-head">
+                    <h2>Connections</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="conn2-search" type="text" placeholder="Search connections" spellcheck="false" autocomplete="off" /></div>
+                    <button id="conn2-add" class="action-btn primary" type="button">+ Add</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-conn-tab="mine" type="button">Connections</button>
+                    <button class="skills-tab" data-conn-tab="pd" type="button">Discover</button>
+                    <div style="flex:1;"></div>
+                    <span id="conn2-count" class="skills-count"></span>
+                  </div>
+                  <div id="conn2-body"></div>
+                </div>
+                <div id="conn2-detail-view" class="hidden">
+                  <button id="conn2-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Connections</span></button>
+                  <div id="conn2-detail"></div>
+                </div>
+              </div>
+
+              <!-- Organization › General — the org record (name, image,
+                   address, seats), moved out from under Billing (his spec,
+                   2026-08-24). Ids unchanged so settings-org-panel.ts binds;
+                   the nav item is admin-gated in gateAdminSubs. -->
+                                                        <!-- Workspaces — ported from the platform's configure/workspaces
+                   page and its data layer (platform/app/lib/workspaces/hooks.js).
+                   A workspace IS the governance layer: which models, which
+                   shared and personal connections (down to single tools), a
+                   rate limit and a dollar budget. org_admin only; the server
+                   enforces every write and the base workspace's undeletability. -->
+
+              <!-- Hosting › Metrics (his order, 2026-09-02): the edge-traffic
+                   charts moved off Domains, with domain/app/timeline filters
+                   top-right driving everything. settings-domains.ts paints it
+                   via the shared traffic painter (apps.ts owns the shape). -->
+
+              <!-- Organization › Clients (his order, 2026-09-02): workspaces
+                   the org creates + FUNDS for its clients — the consultancy
+                   model. settings-clients.ts renders. -->
+
+              <!-- Marketing › Links (his order, 2026-09-02): org-minted
+                   campaign URLs; the edge ties clicks + sessions back to each
+                   code. settings-marketing.ts renders the list + create modal
+                   via the shared list-page scaffold. -->
+
+
+
+              <!-- Billing — the license subscription: plan, card, invoices.
+                   Plans are NOT spelled out here: pricing, tiers and features
+                   are the web's copy to own, so the Plan bar links out rather
+                   than carrying a second pricing table that would drift. -->
+
+
+              <!-- MCP Server — THE PURGE: the cloud endpoint (api.glyphh.ai/mcp)
+                   is gone; what remains is the LOCAL 127.0.0.1 MCP server this
+                   machine runs — the product's front door for Claude/any client —
+                   plus the Glyphh Skill export. Desktop-only. -->
+              <div class="settings-panel" data-sub="mcp">
+                <h2>MCP Server</h2>
+                <!-- LOCAL (desktop only): the 127.0.0.1 server this machine
+                     runs for a local LLM tool. -->
+                <div class="glyphh-desktop-only">
+                <p class="section-desc">Let Claude, Cursor, or any MCP client drive your workspace from this machine. Uses an API key as its token.</p>
+
+                <!-- Glyphh Skill — teaches the connected assistant how to drive
+                     this workspace. Claude installs straight into
+                     ~/.claude/skills; Gemini/ChatGPT save a file to paste into
+                     custom instructions. -->
+                <h3 class="settings-subheading hidden" style="margin:4px 0 4px;">Glyphh Skill</h3>
+                <p class="settings-hint hidden" style="margin:0 0 10px;">Teach your assistant to drive Glyphh over MCP. Claude installs directly into <code>~/.claude/skills</code>; Gemini and ChatGPT export a file you paste into custom instructions.</p>
+                <div class="settings-actions hidden" style="flex-wrap:wrap;margin-bottom:18px;">
+                  <button id="export-skill-claude" class="action-btn primary" data-provider="claude">Install for Claude</button>
+                  <button id="export-skill-gemini" class="action-btn" data-provider="gemini">Export for Gemini</button>
+                  <button id="export-skill-openai" class="action-btn" data-provider="openai">Export for ChatGPT</button>
+                  <span id="export-skill-status" class="settings-hint"></span>
+                </div>
+
+                <div id="mcp-section-wrap" class="settings-form">
+                  <!-- ── Local MCP server (this machine). Opt-in: runs a
+                       127.0.0.1 HTTP MCP server so a local LLM (Claude Desktop,
+                       Cursor, the claude CLI) connects directly — no cloud,
+                       lowest latency. Exposes the same tool surface as the
+                       relay. ── -->
+                  <div id="local-mcp-section" class="hidden" style="margin-top:28px;padding-top:24px;border-top:1px solid var(--border-2);">
+                    <h3 class="settings-subheading" style="margin:0 0 4px;">Local server</h3>
+                    <label class="settings-toggle" style="margin-bottom:10px;">
+                      <input type="checkbox" id="local-mcp-toggle" />
+                      <span class="toggle-switch"></span>
+                      <div class="toggle-info">
+                        <span class="toggle-title">Run a local MCP server</span>
+                        <span class="toggle-desc">Serve Glyphh's tools from this machine over 127.0.0.1 — direct, no cloud round-trip. Best for a local LLM on the same computer.</span>
+                      </div>
+                    </label>
+                    <span id="local-mcp-status" class="settings-hint" style="display:inline-block;margin-bottom:8px;">Stopped.</span>
+
+                    <div id="local-mcp-body">
+                      <!-- Port -->
+                      <h4 class="acct-row-head" style="margin:16px 0 6px;">Port</h4>
+                      <div class="settings-inline">
+                        <input id="local-mcp-port" type="text" class="settings-input settings-input-sm" value="7860" />
+                        <button id="local-mcp-port-save" class="action-btn">Save</button>
+                      </div>
+
+                      <!-- Config -->
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Config</h4>
+                      <p class="settings-hint" style="margin:0 0 6px;">Add this to the local tool's MCP config. Replace <code style="color:var(--accent);">&lt;your-token&gt;</code> with a token generated below.</p>
+                      <div style="position:relative;">
+                        <pre id="local-mcp-config" style="background:var(--surface-2);padding:12px 14px;border-radius:6px;font-size:11px;line-height:1.6;font-family:'SF Mono','Fira Code',monospace;overflow:auto;margin:0;color:var(--text);white-space:pre;"></pre>
+                        <button id="local-mcp-copy-config" class="action-btn" style="position:absolute;top:8px;right:8px;font-size:10px;padding:3px 10px;">Copy</button>
+                      </div>
+
+                      <!-- Tokens -->
+                      <h4 class="acct-row-head" style="margin:18px 0 6px;">Access Tokens</h4>
+                      <p class="settings-hint" style="margin:0 0 10px;">Each local tool needs a token. Shown <strong>once</strong> on creation — copy immediately.</p>
+                      <div id="local-mcp-new-token" class="hidden" style="background:var(--surface-2);border:1px solid var(--accent);border-radius:6px;padding:10px 12px;margin-bottom:10px;">
+                        <p style="font-size:11px;color:var(--accent);margin:0 0 6px;font-weight:600;">Token created — copy it now, it won't be shown again</p>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                          <code id="local-mcp-new-token-value" style="flex:1;background:var(--bg);padding:5px 8px;border-radius:4px;font-size:11px;word-break:break-all;user-select:all;font-family:'SF Mono','Fira Code',monospace;color:var(--text);"></code>
+                          <button id="local-mcp-copy-token" class="action-btn primary" style="font-size:11px;padding:4px 12px;white-space:nowrap;">Copy</button>
+                        </div>
+                      </div>
+                      <div id="local-mcp-tokens-list" style="margin-bottom:10px;"></div>
+                      <div class="settings-inline">
+                        <input id="local-mcp-token-label" type="text" class="settings-input" placeholder="Label (e.g. Claude Desktop)" style="flex:1;" />
+                        <button id="local-mcp-gen-token" class="action-btn primary">+ Generate</button>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+                </div>
+              </div>
+
+
+              <!-- (Runtime and Guardrails moved onto the General tab — the
+                   Sessions group and the folded Guardrails group. Their loaders
+                   bind the same ids there; navigation.ts aliases the old
+                   data-subs to "general".) -->
+
+              <!-- ══ Platform (super_admin console) — Catalog / Plans / Usage /
+                   Orgs, ported from the platform's admin pages onto the modal's
+                   existing grammar (lib-table lists, crud-toolbar, the
+                   crud-inline-form editor standard, dash-cards + Chart.js).
+                   Loaders in help/settings-admin.ts; nav gated in
+                   navigation.ts gateAdminSubs; the SERVER enforces the role. ══ -->
+
+              <!-- Catalog — the GLOBAL model catalog (admin/models). -->
+              <!-- Plans — global tier pricing + the Stripe price HISTORY
+                   (plan_prices: append + promote, never mutate). -->
+
+              <!-- Plans — global tier pricing + the Stripe price HISTORY
+                   (plan_prices: append + promote, never mutate). -->
+
+              <!-- Orgs — the org list + admin fund grants. -->
+
+              <!-- Orgs — the org list + plan/member management. -->
+
+
+              <div class="settings-panel settings-panel-section" data-sub="artifacts">
+                <div id="settings-files-host"></div>
+              </div>
+
+              <!-- SKILLS (his order, 2026-09-16) — the Agent Skills standard: every
+                   skill is a folder with SKILL.md at its root, read from the CLIs'
+                   own skill directories and Glyphh's. List → detail (Overview /
+                   Contents). Discover = the org's hub + the Glyphh catalog. -->
+              <div class="settings-panel skills-panel" data-sub="skills">
+                <div id="skills-list-view">
+                  <div class="skills-head">
+                    <h2>Skills</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="skills-search" type="text" placeholder="Search" spellcheck="false" autocomplete="off" /></div>
+                    <button id="skills-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your skills</button>
+                    <div style="flex:1;"></div>
+                    <span id="skills-count" class="skills-count"></span>
+                    <button id="skills-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                    <button id="skills-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  </div>
+                  <div id="skills-groups"></div>
+                </div>
+                <div id="skill-detail-view" class="hidden">
+                  <button id="skill-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Skills</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="skill-detail-name" class="skill-detail-name"></div>
+                      <div id="skill-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <label class="skills-switch" title="Enabled"><input id="skill-enabled" type="checkbox" /><span></span></label>
+                    <button id="skill-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab hidden" data-dtab="flow" type="button">Flow</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="skill-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="skills" type="button">Skills <span id="skill-skill-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="tools" type="button">Tools <span id="skill-tool-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="agents" type="button">Agents <span id="skill-agent-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="runs" type="button">Runs <span id="skill-run-count" class="skills-count"></span></button>
+                    <button class="skills-tab hidden" data-dtab="connections" type="button">Connections <span id="skill-conn-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="skill-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="skill-skills-list" class="app-bundle-list"></div></div></div>
+                  <div id="skill-tools" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Choose when your AI is allowed to use these tools.</div><div id="skill-tools-list" class="conn2-groups"></div></div></div>
+                  <div id="skill-agents" class="skill-overview hidden"><div class="skill-overview-main"><div id="skill-agents-list" class="skill-list"></div></div></div>
+                  <div id="skill-runs" class="skill-overview hidden"><div class="skill-overview-main"><div id="skill-runs-list" class="skill-list"></div></div></div>
+                  <div id="skill-connections" class="skill-overview hidden"><div class="skill-overview-main"><div id="skill-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="skill-flow" class="skill-flow-pane hidden"><div id="skill-flow-host" class="skill-flow-host"></div></div>
+                  <div id="skill-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="skill-overview-desc" class="skill-overview-desc"></div>
+                      <!-- THE PAGE ITSELF (his order, 2026-10-07): the bundle's SKILL.md, rendered. -->
+                      <div id="skill-overview-body" class="lib-md-render skill-overview-body hidden"></div>
+                      <div id="skill-overview-extra" class="app-overview-extra"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="skill-author" class="skill-author"></div>
+                      <div id="skill-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="skill-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <div style="flex:1;"></div>
+                      <button id="skill-reveal" class="action-btn" type="button">Show in folder</button>
+                      <button id="skill-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="skill-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="skill-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="skill-view-preview" class="active" type="button" title="Preview">👁</button><button id="skill-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="skill-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="skill-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel skills-panel" data-sub="apps">
+                <div id="gapps-list-view">
+                  <div class="skills-head">
+                    <h2>Apps</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gapps-search" type="text" placeholder="Search apps" spellcheck="false" autocomplete="off" /></div>
+                    <button id="gapps-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your apps</button>
+                    <div style="flex:1;"></div>
+                    <span id="gapps-count" class="skills-count"></span>
+                    <button id="gapps-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                    <button id="gapps-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  </div>
+                  <div id="gapps-error" class="crud-form-error hidden"></div>
+                  <div id="gapps-groups"></div>
+                </div>
+                <div id="gapp-detail-view" class="hidden">
+                  <button id="gapp-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Apps</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="gapp-detail-name" class="skill-detail-name"></div>
+                      <div id="gapp-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <label class="skills-switch" title="Enabled"><input id="gapp-enabled" type="checkbox" /><span></span></label>
+                    <button id="gapp-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="gapp-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="skills" type="button">Skills <span id="gapp-skill-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="tools" type="button">Tools <span id="gapp-tool-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="connections" type="button">Connections <span id="gapp-conn-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="gapp-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="gapp-skills-list" class="app-bundle-list"></div></div></div>
+                  <div id="gapp-tools" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Choose when your AI is allowed to use these tools.</div><div id="gapp-tools-list" class="conn2-groups"></div></div></div>
+                  <div id="gapp-connections" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Accounts this app works through. Connect the ones it needs.</div><div id="gapp-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="gapp-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="gapp-overview-desc" class="skill-overview-desc"></div>
+                      <!-- THE PAGE ITSELF (his order, 2026-10-07): the bundle's SKILL.md, rendered. -->
+                      <div id="gapp-overview-body" class="lib-md-render skill-overview-body hidden"></div>
+                      <div id="gapp-overview-extra" class="app-overview-extra"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="gapp-author" class="skill-author"></div>
+                      <div id="gapp-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="gapp-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <div style="flex:1;"></div>
+                      <button id="gapp-reveal" class="action-btn" type="button">Show in folder</button>
+                      <button id="gapp-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="gapp-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="gapp-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="gapp-view-preview" class="active" type="button" title="Preview">👁</button><button id="gapp-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="gapp-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="gapp-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel skills-panel" data-sub="tasks">
+                <div id="gtasks-list-view">
+                  <div class="skills-head">
+                    <h2>Tasks</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gtasks-search" type="text" placeholder="Search tasks" spellcheck="false" autocomplete="off" /></div>
+                    <button id="gtasks-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your tasks</button>
+                    <div style="flex:1;"></div>
+                    <span id="gtasks-count" class="skills-count"></span>
+                    <button id="gtasks-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                    <button id="gtasks-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  </div>
+                  <div id="gtasks-error" class="crud-form-error hidden"></div>
+                  <div id="gtasks-groups"></div>
+                </div>
+                <div id="gtask-detail-view" class="hidden">
+                  <button id="gtask-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Apps</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="gtask-detail-name" class="skill-detail-name"></div>
+                      <div id="gtask-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <label class="skills-switch" title="Enabled"><input id="gtask-enabled" type="checkbox" /><span></span></label>
+                    <button id="gtask-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab hidden" data-dtab="flow" type="button">Flow</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="gtask-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="agents" type="button">Agents <span id="gtask-agent-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="runs" type="button">Runs <span id="gtask-run-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="connections" type="button">Connections <span id="gtask-conn-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="gtask-agents" class="skill-overview hidden"><div class="skill-overview-main"><div id="gtask-agents-list" class="skill-list"></div></div></div>
+                  <div id="gtask-runs" class="skill-overview hidden"><div class="skill-overview-main"><div id="gtask-runs-list" class="skill-list"></div></div></div>
+                  <div id="gtask-connections" class="skill-overview hidden"><div class="skill-overview-main"><div id="gtask-connections-list" class="app-bundle-list"></div></div></div>
+                  <div id="gtask-flow" class="skill-flow-pane hidden"><div id="gtask-flow-host" class="skill-flow-host"></div></div>
+                  <div id="gtask-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="gtask-overview-desc" class="skill-overview-desc"></div>
+                      <div id="gtask-overview-extra" class="app-overview-extra"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="gtask-author" class="skill-author"></div>
+                      <div id="gtask-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="gtask-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <div style="flex:1;"></div>
+                      <button id="gtask-reveal" class="action-btn" type="button">Show in folder</button>
+                      <button id="gtask-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="gtask-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="gtask-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="gtask-view-preview" class="active" type="button" title="Preview">👁</button><button id="gtask-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="gtask-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="gtask-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel skills-panel" data-sub="plugins">
+                <div id="gplugs-list-view">
+                  <div class="skills-head">
+                    <h2>Plugins</h2>
+                    <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="gplugs-search" type="text" placeholder="Search plugins" spellcheck="false" autocomplete="off" /></div>
+                    <button id="gplugs-add" class="action-btn primary" type="button">Add ▾</button>
+                  </div>
+                  <div class="skills-tabs">
+                    <button class="skills-tab active" data-tab="mine" type="button">Your plugins</button>
+                    <div style="flex:1;"></div>
+                    <span id="gplugs-count" class="skills-count"></span>
+                    <button id="gplugs-filter" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Filter</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                    <button id="gplugs-sort" class="skills-pill" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16m0 0-3-3m3 3 3-3M17 20V4m0 0-3 3m3-3 3 3"/></svg><span>Sort · Last edited</span><svg class="skills-pill-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                  </div>
+                  <div id="gplugs-error" class="crud-form-error hidden"></div>
+                  <div id="gplugs-groups"></div>
+                </div>
+                <div id="gplug-detail-view" class="hidden">
+                  <button id="gplug-back" class="skills-back" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>Apps</button>
+                  <div class="skill-detail-head">
+                    <div class="skill-tile-icon lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+                    <div class="skill-detail-title">
+                      <div id="gplug-detail-name" class="skill-detail-name"></div>
+                      <div id="gplug-detail-sub" class="skill-detail-sub"></div>
+                    </div>
+                    <div style="flex:1;"></div>
+                    <label class="skills-switch" title="Enabled"><input id="gplug-enabled" type="checkbox" /><span></span></label>
+                    <button id="gplug-kebab" class="skills-kebab" type="button" title="More">⋮</button>
+                  </div>
+                  <div class="skills-tabs detail">
+                    <button class="skills-tab active" data-dtab="overview" type="button">Overview</button>
+                    <button class="skills-tab" data-dtab="contents" type="button">Contents <span id="gplug-file-count" class="skills-count"></span></button>
+                    <button class="skills-tab" data-dtab="skills" type="button">Skills <span id="gplug-skill-count" class="skills-count"></span></button>
+                  </div>
+                  <div id="gplug-skills" class="skill-overview hidden"><div class="skill-overview-main"><div class="skill-overview-desc">Invoke by typing / in chat, or let the agent use them when they apply.</div><div id="gplug-skills-list" class="app-bundle-list"></div></div></div>
+                  <div id="gplug-overview" class="skill-overview">
+                    <div class="skill-overview-main">
+                      <div class="skill-overview-label">Description</div>
+                      <div id="gplug-overview-desc" class="skill-overview-desc"></div>
+                      <div id="gplug-overview-extra" class="app-overview-extra"></div>
+                    </div>
+                    <aside class="skill-author-card">
+                      <div class="skill-overview-label">Created by</div>
+                      <div id="gplug-author" class="skill-author"></div>
+                      <div id="gplug-author-meta" class="skill-author-meta"></div>
+                    </aside>
+                  </div>
+                  <div id="gplug-contents" class="skill-contents hidden">
+                    <div class="skill-contents-bar">
+                      <div style="flex:1;"></div>
+                      <button id="gplug-reveal" class="action-btn" type="button">Show in folder</button>
+                      <button id="gplug-edit" class="action-btn" type="button">Edit</button>
+                    </div>
+                    <div class="skill-files">
+                      <div id="gplug-tree" class="skill-tree"></div>
+                      <div class="skill-viewer">
+                        <div class="skill-viewer-bar">
+                          <code id="gplug-file-path"></code>
+                          <div style="flex:1;"></div>
+                          <div class="skill-view-toggle"><button id="gplug-view-preview" class="active" type="button" title="Preview">👁</button><button id="gplug-view-code" type="button" title="Code">&lt;/&gt;</button></div>
+                        </div>
+                        <div id="gplug-file-preview" class="lib-md-render skill-file-preview"></div>
+                        <div id="gplug-file-editor" class="skill-file-editor hidden"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Connections — the connections section body (from
+                   sections/connections.html) is MOVED into this host on open and
+                   parked back on close; loadConnections binds unchanged. -->
+              <div class="settings-panel settings-panel-section" data-sub="connections">
+                <div id="settings-connections-host"></div>
+              </div>
+
+              <!-- Layouts — the layout builder/library management page moved in
+                   (the rail keeps its quick-launch tray). Same whole-node adoption. -->
+
+            </div>
+          </div>
+        </div>

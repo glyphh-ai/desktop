@@ -1,0 +1,436 @@
+/**
+ * Home app — entry point for the home.html section panels (loaded as
+ * home.html?section=<slug> for each system-app tab: Apps / Layouts / Drips /
+ * Skills / Settings / About). Runs in a dedicated BrowserView with the full
+ * window.glyphh API.
+ */
+
+import { initHelp, gotoSection, openSettingsModal } from "./help/index.js";
+import { seedNewSession } from "./help/code.js";
+import { initSearchClears } from "./search-clear.js";
+// ONE NOTIFICATION STACK for the whole panel, and the bridge the workbench
+// bundle reaches it through: imported here so it exists from the first paint.
+import "./help/toast.js";
+import { installNotifications } from "./help/notify.js";
+import { installAutofillGuard } from "./autofill-guard.js";
+import { hostHas, onWeb } from "./help/web-surface.js";
+
+// Theme: the inline script in home.html applied localStorage theme synchronously.
+// Here we re-fetch the authoritative value from main and keep localStorage in sync.
+function applyTheme(theme: string) {
+  const resolved = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+    : theme;
+  document.documentElement.setAttribute("data-theme", resolved);
+  try { localStorage.setItem("yoTheme", theme); } catch {}
+}
+
+window.glyphh.getTheme?.().then(applyTheme).catch(() => {});
+window.glyphh.onThemeChanged?.(applyTheme);
+
+// React to system dark/light changes when theme = "system"
+window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", async () => {
+  try {
+    const theme = await window.glyphh.getTheme();
+    if (theme === "system") applyTheme(theme);
+  } catch {}
+});
+
+initHelp();
+initSearchClears();
+// A notification's door (help/notify.ts): shown, asked about, or dropped by the member's pref.
+installNotifications();
+installAutofillGuard();
+window.glyphh.refreshAuth?.().catch(() => {});
+
+// Full-bleed chrome — the panel covers the titlebar strip, so it owns the
+// window controls and the command button (page-top, left of which sits the
+// rail toggle wired by code.ts).
+// A browser tab has no window to close/minimize/maximize: on web the bridge
+// serves none of these, so the controls are REMOVED (the .glyphh-web CSS hides
+// them too — this is the belt to that suspenders, keyed off what the host has).
+for (const [id, method] of [["panel-btn-close", "windowClose"], ["panel-btn-minimize", "windowMinimize"], ["panel-btn-maximize", "windowMaximize"]] as const) {
+  const btn = document.getElementById(id);
+  if (!btn) continue;
+  if (!hostHas(method)) { btn.remove(); continue; }
+  btn.addEventListener("click", () => void (window.glyphh as unknown as Record<string, () => unknown>)[method]());
+}
+// THE WEB HEADER'S BRAND MARK (his report, 2026-10-04: the two small rail icons
+// render on app.glyphh.ai, the mark does not). Echo 2.6 (1a9aeacf) took the
+// rail's mark out of #panel-wc on both targets — the desktop still has its
+// traffic lights there, but the web's fixed header (.glyphh-web #panel-wc, the
+// 50px the rail clears) was left EMPTY. On web the cluster gets the mark back:
+// the same door as the dock's glyphh mark (a new Glyphh session).
+if (onWeb()) {
+  const cluster = document.getElementById("panel-wc");
+  if (cluster && !document.getElementById("rail-home-btn")) {
+    const btn = document.createElement("button");
+    btn.id = "rail-home-btn";
+    btn.className = "app-rail-mark-btn";
+    btn.type = "button";
+    btn.title = "Glyphh — new session";
+    btn.innerHTML = `<img class="app-rail-mark" src="brand/glyphh-mark.png" alt="Glyphh" draggable="false" />`;
+    btn.addEventListener("click", () => {
+      const w = window as unknown as { __wbOpenGlyphhAgent?: () => void; __wbOpenEchoHome?: () => void };
+      if (w.__wbOpenGlyphhAgent) w.__wbOpenGlyphhAgent(); else w.__wbOpenEchoHome?.();
+    });
+    cluster.appendChild(btn);
+  }
+}
+// Pick the startup section. Priority: ?section=<slug> in the URL (system-app
+// panel mounted as its own section) → the user's configured default
+// ("homeStartupSection", blank = "last viewed") → the last section → dashboard.
+void (async () => {
+  // System-app panels (yo://apps, yo://layouts, …) load home.html with a
+  // ?section=<slug> query. When set, this panel is locked to that section.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    // PLATFORM shell (web-only — platform.glyphh.ai's /platform route serves
+    // home.html; Electron loads home.html from disk, so this pathname never
+    // matches there and the branch is inert on desktop). The workbench/echo
+    // never shows: the existing settings surface opens as THE PAGE — the
+    // settings modal, restyled full-bleed by body.platform-shell (rail left
+    // with a collapse toggle, content right, no close/backdrop — styles.css
+    // "Platform shell (web)"). All panel loaders, the org-admin gating and
+    // the super-admin (gateAdminSubs) nav-gating run untouched inside it.
+    if (/^\/platform\/?$/.test(window.location.pathname)) {
+      document.documentElement.setAttribute("data-home-scope", "platform");
+      document.body.classList.add("platform-shell");
+      const style = document.createElement("style");
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="platform"] #help-overlay { display: none !important; }`;
+      document.head.appendChild(style);
+      document.title = "Platform — Glyphh";
+      // The boot veil (body.wb-booting) is lifted by the wall-settle loop in
+      // the DEFAULT boot path, which this branch returns before — drop it now
+      // or this page keeps the opaque booting state forever.
+      document.body.classList.remove("wb-booting");
+      // Rail collapse state persists per browser (chevron toggle below).
+      try {
+        if (localStorage.getItem("glyphhPlatformRail") === "collapsed") {
+          document.body.classList.add("platform-rail-collapsed");
+        }
+      } catch { /* private mode — starts expanded */ }
+      // Open the settings surface as the page. ?sub=<panel> deep-links a
+      // specific panel (billing, members, padmin-orgs, …); the platform LANDS
+      // on the Dashboard (his rule, 2026-08-25).
+      openSettingsModal(params.get("sub") || "dash");
+      // Rail collapse chevron — pinned to the rail's top edge of the shell.
+      const railBtn = document.createElement("button");
+      railBtn.type = "button";
+      railBtn.id = "platform-rail-toggle";
+      railBtn.className = "settings-modal-close";
+      // The LEFT-RAIL icon (a sidebar glyph, same both ways) — not a chevron.
+      railBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`;
+      const paintRailBtn = () => {
+        const collapsed = document.body.classList.contains("platform-rail-collapsed");
+        railBtn.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+        railBtn.title = collapsed ? "Expand navigation" : "Collapse navigation";
+      };
+      paintRailBtn();
+      railBtn.addEventListener("click", () => {
+        const collapsed = document.body.classList.toggle("platform-rail-collapsed");
+        try { localStorage.setItem("glyphhPlatformRail", collapsed ? "collapsed" : "open"); } catch { /* */ }
+        paintRailBtn();
+      });
+      // Rail HEADER (his spec, 2026-08-24): wordmark + the rail toggle to its
+      // right; collapsed shows the MASCOT. No surface switch: the Builder
+      // opens from the Apps row's launcher (new tab) and carries "← Platform".
+      // Build the head ONCE, then keep it mounted as the nav's PREVIOUS
+      // SIBLING (in the rail container, not inside .settings-nav). The
+      // org-admin gating (gateAdminSubs) rebuilds the nav's children async —
+      // anything INSIDE the nav gets wiped a beat after insert (the bug: it
+      // showed then vanished). A sibling survives that; an observer re-mounts
+      // it if the whole nav element is ever replaced.
+      const buildRailHead = (): HTMLElement => {
+        const head = document.createElement("div");
+        head.id = "platform-rail-head";
+        // Wordmark when expanded, the MASCOT when collapsed (CSS swaps them);
+        // the rail toggle rides to the RIGHT of the logo, in the head row.
+        head.innerHTML = `<img id="platform-brand" src="brand/glyphh-logo-text-black.png" alt="Glyphh" draggable="false" /><img id="platform-mascot" src="brand/glyphh-mark.png" alt="" draggable="false" />`;
+        head.appendChild(railBtn);
+        return head;
+      };
+      // A Stripe return (/billing → 302 /platform?success=1|topup=1) lands
+      // on the Billing tab, so the outcome is visible where the purchase
+      // started. Params stripped so a reload doesn't re-open it.
+      {
+        const q = new URLSearchParams(window.location.search);
+        if (q.has("success") || q.has("topup") || q.has("billing")) {
+          window.setTimeout(() => {
+            document.querySelector<HTMLElement>('#settings-modal .settings-nav-item[data-sub="billing"], .settings-nav-item[data-sub="billing"]')?.click();
+          }, 600);
+          try { window.history.replaceState(null, "", "/platform"); } catch { /* cosmetic */ }
+        }
+      }
+      // The Dashboard | Desktop surface toggle was removed (his call,
+      // 2026-08-29): app-web is the Platform only, so there is no Desktop
+      // command center to flip to on the web. The rail keeps the plain
+      // Dashboard row (.dash-plain).
+      // ── Rail-bottom USER CHIP (his spec, 2026-08-24): first name with the
+      // plan under it; its popup menu carries Docs / Support / About (their
+      // rail rows are hidden in the platform shell — .not-platform). Fixed to
+      // the shell's bottom-left, so nav rebuilds can never wipe it. The menu
+      // items click the (hidden) nav rows, so panel switching stays the one
+      // existing path.
+      {
+        const chip = document.createElement("div");
+        chip.id = "platform-user-chip";
+        chip.innerHTML = `
+          <button type="button" id="platform-user-btn">
+            <span id="platform-user-avatar"></span>
+            <span id="platform-user-meta">
+              <span id="platform-user-name">—</span>
+              <span id="platform-user-plan"></span>
+            </span>
+          </button>
+          <div id="platform-user-menu" class="hidden" role="menu"></div>`;
+        document.body.appendChild(chip);
+        const menu = chip.querySelector<HTMLElement>("#platform-user-menu")!;
+        // Theme — the platform answers to exactly three modes (his spec,
+        // 2026-08-25): light, dark (default), system. Icon row up top.
+        {
+          const row = document.createElement("div");
+          row.className = "menu-theme-row";
+          const MODES: Array<[string, string, string]> = [
+            ["light", "Light", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.4"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5 5l1.7 1.7M17.3 17.3 19 19M19 5l-1.7 1.7M6.7 17.3 5 19"/></svg>`],
+            ["dark", "Dark", `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>`],
+          ];
+          const mark = (mode: string): void => {
+            row.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+          };
+          for (const [mode, label, icon] of MODES) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.dataset.mode = mode;
+            b.title = label;
+            b.setAttribute("aria-label", `${label} theme`);
+            b.innerHTML = icon;
+            b.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              const resolved = mode === "system"
+                ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+                : mode;
+              document.documentElement.setAttribute("data-theme", resolved);
+              void window.glyphh.setTheme(mode);
+              mark(mode);
+            });
+            row.appendChild(b);
+          }
+          // Current mode — anything beyond the three (a desktop theme) shows
+          // as no selection; dark is the default when unset.
+          void window.glyphh.getTheme?.().then((t) => mark(t || "dark")).catch(() => mark("dark"));
+          menu.appendChild(row);
+          const sep = document.createElement("div");
+          sep.className = "menu-sep";
+          menu.appendChild(sep);
+        }
+        const MENU_ICONS: Record<string, string> = {
+          docs: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+        };
+        for (const [label, sub] of [["Docs", "docs"]] as const) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.innerHTML = `${MENU_ICONS[sub]}<span></span>`;
+          (b.lastElementChild as HTMLElement).textContent = label;
+          b.setAttribute("role", "menuitem");
+          b.addEventListener("click", () => {
+            menu.classList.add("hidden");
+            if (sub === "docs") { void window.glyphh.openExternal("https://glyphh.ai/docs"); return; }
+            document.querySelector<HTMLElement>(`#settings-modal .settings-nav-item[data-sub="${sub}"]`)?.click();
+          });
+          menu.appendChild(b);
+        }
+        // Log out closes the web session and returns to the login shell.
+        {
+          const sep = document.createElement("div");
+          sep.className = "menu-sep";
+          menu.appendChild(sep);
+          const out = document.createElement("button");
+          out.type = "button";
+          out.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Log out</span>`;
+          out.className = "menu-danger";
+          out.setAttribute("role", "menuitem");
+          out.addEventListener("click", async () => {
+            menu.classList.add("hidden");
+            const api = (window as unknown as { glyphh?: { logout?: () => Promise<void> } }).glyphh;
+            try { await api?.logout?.(); } catch { /* tokens cleared best-effort */ }
+            window.location.assign("/");
+          });
+          menu.appendChild(out);
+        }
+        chip.querySelector("#platform-user-btn")?.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          menu.classList.toggle("hidden");
+        });
+        document.addEventListener("click", () => menu.classList.add("hidden"));
+        type AccountInfo = { firstName?: string; email?: string; tier?: string; avatarUrl?: string } | null;
+        const glyphhApi = (window as unknown as { glyphh?: { getAccountInfo?: () => Promise<AccountInfo> } }).glyphh;
+        void glyphhApi?.getAccountInfo?.().then((info) => {
+          if (!info) return;
+          const first = (info.firstName || "").trim() || (info.email || "").split("@")[0] || "—";
+          const tier = (info.tier || "none").toLowerCase();
+          chip.querySelector("#platform-user-name")!.textContent = first;
+          chip.querySelector("#platform-user-plan")!.textContent = tier === "none" || tier === "free" ? "Free plan" : `${tier.charAt(0).toUpperCase()}${tier.slice(1)} plan`;
+          const face = chip.querySelector("#platform-user-avatar") as HTMLElement;
+          const avatar = (info as { avatarUrl?: string } | null)?.avatarUrl || "";
+          if (avatar) {
+            face.innerHTML = "";
+            const img = document.createElement("img");
+            img.alt = "";
+            img.addEventListener("error", () => { face.textContent = first.charAt(0).toUpperCase(); });
+            img.src = avatar;
+            face.appendChild(img);
+          } else {
+            face.textContent = first.charAt(0).toUpperCase();
+          }
+        }).catch(() => { /* chip stays a dash — the shell still works */ });
+      }
+      const railHead = buildRailHead();
+      // MUST scope to #settings-modal: the document holds a SECOND
+      // .settings-nav inside #help-overlay, which this page force-hides — a
+      // bare querySelector(".settings-nav") finds THAT one first and the head
+      // mounts into an invisible tree (the bug: everything "worked" headless,
+      // rendered 0×0 on screen).
+      const platformNav = (): Element | null =>
+        document.querySelector("#settings-modal .settings-nav");
+      const mountRailHead = (): boolean => {
+        const nav = platformNav();
+        if (!nav || !nav.parentElement) return false;
+        if (railHead.isConnected) return true;
+        nav.parentElement.insertBefore(railHead, nav);   // ABOVE the nav, as a sibling
+        return true;
+      };
+      let railTries = 0;
+      const railGo = (): void => {
+        if (mountRailHead()) {
+          // Keep it mounted across nav rebuilds / replacement.
+          const rail = platformNav()?.parentElement;
+          if (rail) new MutationObserver(() => { if (!railHead.isConnected) mountRailHead(); }).observe(rail, { childList: true });
+          return;
+        }
+        if (railTries++ < 120) requestAnimationFrame(railGo);
+      };
+      railGo();
+      return;
+    }
+    // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
+    // workbench tools as their own OS windows. The full home page loads, but
+    // only the workbench shows, booted with exactly one slot.
+    const solo = params.get("solo");
+    // Standalone TOOL window (?solo=tool:<ViewKind>) — a desktop layout tiles
+    // workbench tools as their own OS windows.
+    if (solo && solo.startsWith("tool:")) {
+      document.documentElement.setAttribute("data-home-scope", "solo-tool");
+      const style = document.createElement("style");
+      // NOTE: hide only the agent at its HOME position (.code-root > …) — the
+      // Coding Agent slot REPARENTS the live .code-agent into the workbench,
+      // and it must stay visible there. The workbench takes the full window.
+      style.textContent = `
+        [data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }
+        [data-home-scope="solo-tool"] .code-root > .code-agent, [data-home-scope="solo-tool"] #code-wb-edge { display: none !important; }
+        [data-home-scope="solo-tool"] .code-workbench { flex: 1 1 auto !important; border-left: none !important; }
+        [data-home-scope="solo-tool"] .ws-right-rails { width: 100% !important; }
+        [data-home-scope="solo-tool"] .ws-right-rail { flex: 1 1 auto !important; width: auto !important; }
+        [data-home-scope="solo-tool"] body, [data-home-scope="solo-tool"] { --rail-w: 0px !important; }
+        [data-home-scope="solo-tool"] #echo-dock-layer, [data-home-scope="solo-tool"] .echo-dock-hotstrip, [data-home-scope="solo-tool"] #rail-collapsed-strip, [data-home-scope="solo-tool"] #app-rail-resize { display: none !important; }`;
+      document.head.appendChild(style);
+      gotoSection("code");
+      // An agent panel opened for a LOOP (a workspace cell, "New agent panel"): stamp it once the agent is up.
+      const wantLoop = params.get("loop");
+      if (wantLoop) {
+        let loopTries = 0;
+        const stamp = (): void => {
+          const w = window as unknown as { __glyphhSetLoop?: (id: string) => void };
+          if (w.__glyphhSetLoop) w.__glyphhSetLoop(wantLoop);
+          else if (loopTries++ < 60) window.setTimeout(stamp, 100);
+        };
+        stamp();
+      }
+      const SOLO_LABELS: Record<string, string> = {
+        preview: "Browser", coding: "Glyphh", diff: "Diff", monaco: "Editor",
+        files: "Files", plan: "Plan", terminal: "Terminal",
+      };
+      const kind = solo.slice(5);
+      const soloLabel = SOLO_LABELS[kind] || kind;
+      // The agent's own window is just "Glyphh" — never "Glyphh — Glyphh".
+      document.title = soloLabel === "Glyphh" ? "Glyphh" : `${soloLabel} — Glyphh`;
+      // AN AGENT PANEL IS THE AGENT, NOTHING AROUND IT (his report, 2026-09-26:
+      // "it is putting a window in a window"). The layout path below seated the
+      // agent in a rail slot with its own header, and Echo mounted beside it
+      // with the dock — two slots, so the solo rule never applied. The agent
+      // panel hosts Echo as its ONLY surface and opens the agent through the
+      // same door the shell uses (chat or CLI per Settings, the >_ hop, tools
+      // beside it); the solo styles strip the card chrome, so the panel IS
+      // the agent.
+      // This only MOUNTS Echo; the workbench seats the agent itself the moment
+      // the wall's doors exist (restoreWallOnce's solo branch), so there is no
+      // poll here that can expire first and leave the panel black.
+      if (kind === "coding") {
+        const wa = window as unknown as { __wbOpenEchoHome?: () => void };
+        let mountTries = 0;
+        const mount = (): void => {
+          if (wa.__wbOpenEchoHome) { wa.__wbOpenEchoHome(); return; }
+          if (mountTries++ < 600) window.setTimeout(mount, 50);
+          else console.warn("[solo] the workbench never came up — nothing to mount the agent in");
+        };
+        mount();
+        return;
+      }
+      const payload = {
+        cols: 1, colWidths: [], rowHeights: [],
+        cells: [{ slug: solo, name: SOLO_LABELS[kind] || kind, url: "", glyphh: false, col: 0, row: 0, tool: kind }],
+      };
+      // The workbench boots on the code section's first load — poll for it
+      // (same pattern as openLayoutInWorkbench).
+      const w = window as unknown as { __wbOpenLayout?: (l: typeof payload) => void };
+      let tries = 0;
+      const go = () => {
+        if (w.__wbOpenLayout) w.__wbOpenLayout(payload);
+        else if (tries++ < 40) requestAnimationFrame(go);
+      };
+      go();
+      return;
+    }
+    const urlSection = params.get("section");
+    if (urlSection) {
+      document.documentElement.setAttribute("data-home-scope", urlSection);
+      // Hide the left rail when this panel is locked to a single section —
+      // it's mounted as its own app (yo://<slug>), so no in-rail switching.
+      const style = document.createElement("style");
+      // Locked panels sit below the real titlebar — hide the full-bleed
+      // chrome (rail, splitter, page-top strip, panel window controls).
+      style.textContent = `[data-home-scope] #app-rail, [data-home-scope] #code-rail-splitter, [data-home-scope] #page-top, [data-home-scope] #panel-wc, [data-home-scope] #shell-drag-strip { display: none !important; }`;
+      document.head.appendChild(style);
+      gotoSection(urlSection);
+      return;
+    }
+  } catch { /* fall through */ }
+  // Every restart lands on the AGENT (the wall is gone, his order 2026-10-08):
+  // initCode's boot mounts the workbench (ensureWorkbench) and the saved
+  // state replays — a workspace, loose panels, or the agent alone.
+  // Lift the boot veil only once the agent is actually up — its bare first
+  // paint was the flash between splash and Home.
+  let veilTries = 0;
+  let settled = 0;
+  const lift = (): void => {
+    // The agent is UP when its card is placed and its composer is visible
+    // (the agent rides in the body-level holder over the card, so both are
+    // checked). Wait until that holds for ~10 frames, then lift.
+    // On the DESKTOP the agent is an INSTANCE (a webview card, its composer in
+    // its own document): the placed card is the tell. The web's in-document
+    // agent is up when its card is placed and its composer is visible.
+    const wall = document.querySelector(".echo-card.placed.echo-agent-instance")
+      ?? (document.querySelector(".echo-card.placed.echo-agent-card") ? document.getElementById("code-input") : null);
+    const up = !!wall && wall.getClientRects().length > 0;
+    settled = up ? settled + 1 : 0;
+    if (settled >= 10 || veilTries++ > 360) {
+      document.body.classList.remove("wb-booting");
+      return;
+    }
+    requestAnimationFrame(lift);
+  };
+  lift();
+})();
+

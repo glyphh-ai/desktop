@@ -1,0 +1,16 @@
+# Keep the Fly remote-build context lean. .sdk-vendor/ (the vendored file:../sdk
+# dependency, produced by the deploy workflow) must stay IN the context.
+node_modules
+.git
+dist
+dist-apps
+release
+native/mac-window-helper/build
+web/.env
+.env
+.yo
+.sdk-src
+*.dmg
+*.exe
+*.zip
+*.log

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "jsx": "react-jsx",
+    "outDir": "../../dist/renderer",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": ["renderer.ts", "downloads-ui.ts", "boot-gate-ui.ts", "drip-ui.ts", "yo-modal.ts", "council.ts", "vibe.ts", "help/**/*.ts", "home.ts", "onboarding.ts", "search-clear.ts"]
+}

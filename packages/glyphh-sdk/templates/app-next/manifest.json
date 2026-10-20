@@ -1,0 +1,25 @@
+{
+  "manifestVersion": 3,
+  "kind": "glyphh-app",
+  "name": "Notes",
+  "slug": "notes",
+  "description": "Keep short notes. The agent files them with add_note; the page lists them.",
+  "capabilities": ["db.exec"],
+  "connectors": [],
+  "worker": "worker.js",
+  "window": { "width": 720, "height": 560 },
+  "tools": [
+    {
+      "name": "add_note",
+      "description": "File a short note. Returns the stored row.",
+      "handler": "add_note",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string", "description": "The note" }
+        },
+        "required": ["text"]
+      }
+    }
+  ]
+}

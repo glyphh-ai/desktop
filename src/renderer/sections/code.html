@@ -1,0 +1,237 @@
+        <div class="help-section" data-section="code">
+          <div class="code-root">
+
+            <!-- Sessions live in the Coding Agent panel's history dropdown. -->
+
+            <!-- Center — the agent -->
+            <section class="code-agent">
+              <div class="code-agent-head">
+                <!-- In-thread session head: the thread's TYPE + its name (his
+                     order, 2026-09-29: the ‹ arrow and the locus icon come off
+                     — the arrow's target, the CLI hop, is gone, and the icon
+                     that reads is WHAT THIS IS). Same glyph the rail rows and
+                     the + New button wear. -->
+                <span id="code-session-back" class="session-head-back">
+                  <span id="code-session-locus" class="session-head-locus" title="Session type"></span>
+                </span>
+                <!-- The NAME lives OUTSIDE the back button: an input swapped
+                     into a <button> is inert (nested interactive content) —
+                     that is why inline rename "didn't work". Plain span:
+                     click renames, everywhere. -->
+                <span id="code-session-title" class="session-head-title" title="Click to rename this session">New session</span>
+                <!-- Workdir controls (old workbench header): folder picker +
+                     git branch (shown once a repo is picked) + add-folder.
+                     Wiring lands with the William loop. -->
+
+                <!-- + and recents live at the TOP LEFT of every agent view,
+                     left of the kebab: new session (this agent's type) and the
+                     recents dropdown (scoped to this type). -->
+
+                <div class="code-spacer"></div>
+
+                <!-- The head's RIGHT: the session controls (drips / history /
+                     + new / the ONE ⋮ menu) relocate in here from the composer
+                     row (help/code.ts). The old session kebab is gone (his
+                     report, 2026-10-05: two ⋮ on Work, one dead) — Rename /
+                     Pin / New agent panel / Delete live in that one menu. -->
+                <div class="session-head-actions"></div>
+
+                <!-- (View toggles moved: the ⋮ work-panels menu lives on the
+                     agent's top row now, right of the + — it opens UPWARD.) -->
+              </div>
+
+              <div id="code-thread" class="code-thread"></div>
+              <!-- Collapsed (centre-anchored) mode: the thread is hidden and the
+                   whole conversation reduces to this one line. The caret PEEKS —
+                   it floats the live thread up over the layout without costing
+                   the layout any space. A <button> so it is keyboard-reachable. -->
+              <div class="code-agent-toprow">
+                <!-- The status TEXT is the peek control — click it to open/close
+                     the thread panel (the caret glyph is gone). -->
+                <button id="code-status-line" class="code-status-line" type="button" hidden>
+                  <span id="code-status-text" class="code-status-text"></span>
+                </button>
+
+              </div>
+              <div class="code-composer">
+                <!-- The money banner: no plan, near a budget's line, or past it (help/code.ts paintSpendBanner). -->
+                <div id="code-ask-dock" class="code-ask-dock" hidden></div>
+                <!-- Notes typed while the agent is running. They wait here until the
+                     run ends, then go as the next turn — deletable until they do. -->
+                <div id="code-pending-notes" class="code-pending-notes" hidden></div>
+                <div id="code-attach-chips" class="code-attach-chips" hidden></div>
+                <!-- Workspace-source chip (Work + Code only) — where the next
+                     session RUNS + what it works on. Hidden in Chat via CSS. -->
+                <!-- THE FLOATING INPUT CARD — the composer's one visual object
+                     (the source row, the input, and in Work the + and the voice
+                     pair), floating over the wall like the dock. The chip row
+                     sits UNDER it, outside (.code-composer-bar below). -->
+                <!-- THE ROW ABOVE THE BOX (his order, 2026-10-07, Claude Code on the web as the
+                     reference): environment / directory / git / new folder, OUTSIDE the
+                     input card, the mascot at the far right. Code only. -->
+                <div id="code-source-slot" class="code-source-slot">
+                  <button id="code-workdir-btn" class="code-wd-btn" title="Pick the working folder" type="button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+                    <span id="code-workdir-name">Pick a folder</span>
+                  </button>
+                  <span class="code-wd-branch" id="code-workdir-branch-wrap" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10v1a4 4 0 0 1-4 4H8"/></svg>
+                    <span id="code-workdir-branch"></span>
+                  </span>
+                  <button id="code-workdir-add" class="code-icon-btn" title="Add folder" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                  </button>
+                  <span class="code-source-spacer"></span>
+                  <!-- OFF THE COMPOSER (his order, 2026-09-17). The lock itself
+                       stays: the preference, the covered-tuck rule that reads it,
+                       and the workbench event all still work, so whatever state it
+                       was left in holds. Only the button is off this surface. -->
+                  <button id="code-agent-lock" class="code-icon-btn hidden" title="Lock the agent up (stays visible over open panels)" type="button">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  </button>
+                  <!-- Session controls (recents / + new / ⋯ dev tools). In a
+                       layout this whole group RELOCATES into the agent panel's
+                       header, right of the session name (help/code.ts). -->
+                  <div id="code-session-controls" class="code-session-controls">
+                  <span class="echo-drip-anchor">
+                    <button id="code-drips-btn" class="code-icon-btn" title="Drips" type="button">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                    </button>
+                    <div id="code-drip-pop" class="echo-drip-pop hidden"></div>
+                  </span>
+                  <button id="code-session-history" class="code-icon-btn" title="Session history" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  </button>
+                  <button id="code-session-new" class="code-icon-btn" title="New session" type="button">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                  <div id="code-tools-wrap" class="code-view-more-wrap">
+                    <button id="code-tools-more" class="code-icon-btn" title="Developer tools" type="button" aria-haspopup="true">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    </button>
+                    <div id="code-tools-menu" class="code-view-more-menu hidden"></div>
+                  </div>
+                  </div>
+                  <!-- The Glyphh mark at the row's far right — decorative, shown
+                       only when the row sits ABOVE the box (the Code layout,
+                       his order 2026-10-07). -->
+                  <span id="code-source-mascot" class="code-source-mascot" aria-hidden="true"><img src="brand/glyphh-mark.png" alt="" draggable="false" /></span>
+                </div>
+                <div class="code-pill-row">
+                <div class="code-input-card">
+                <div class="code-input-wrap">
+                  <div id="code-plus-wrap" class="code-chipwrap">
+                    <button id="code-plus-chip" class="code-chip code-plus-chip" type="button" title="Add to this session — files, folders, images (paste and drag-drop work too)">+</button>
+                  </div>
+                  <textarea id="code-input" class="code-input" rows="1" placeholder="Describe the app to build…" spellcheck="false"></textarea>
+                  <!-- THE VOICE CONTROLS (his order, 2026-10-07, Claude's composer):
+                       the mic is DICTATE — the text streams into the box as the
+                       member speaks; the bigger button to its right is VOICE MODE —
+                       a spoken conversation, listen → reply aloud → listen; the caret
+                       opens the microphone picker. Work seats them right of the
+                       input; Code seats them under the box. -->
+                  <div id="code-mic-wrap" class="code-chipwrap hidden">
+                    <button id="code-mic-chip" class="code-chip code-mic-chip" type="button" title="Dictate" aria-label="Dictate">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                    </button>
+                    <button id="code-voice-mode" class="code-chip code-voice-mode" type="button" title="Voice mode" aria-label="Voice mode" aria-pressed="false">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="10" x2="4" y2="14"/><line x1="8" y1="7" x2="8" y2="17"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="7" x2="16" y2="17"/><line x1="20" y1="10" x2="20" y2="14"/></svg>
+                    </button>
+                    <button id="code-mic-caret" class="code-chip code-mic-caret" type="button" title="Voice options" aria-label="Voice options">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                  </div>
+                  <!-- THE SLOT (his order, 2026-10-07, Claude's composer as the
+                       reference). The wrap's data-slot — paintComposerSlot in
+                       help/code.ts, from composer-state.ts — picks what shows here:
+                       voice = the mic + speak pair (above); ptt = the dotted level
+                       meter then ✕ ✓; free = the mic + the ▮▮▮ Stop pill; send /
+                       stop = the ONE primary button, its face following the state. -->
+                  <canvas id="code-rec-wave" class="code-rec-wave" aria-hidden="true"></canvas>
+                  <div id="code-voice-ptt" class="code-voice-ptt">
+                    <button id="code-voice-cancel" class="code-voice-sq" type="button" title="Cancel (Esc)" aria-label="Cancel dictation">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+                    </button>
+                    <button id="code-voice-accept" class="code-voice-sq accept" type="button" title="Done — add the text" aria-label="Accept dictation">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                  </div>
+                  <!-- VOICE MODE ON (his order, 2026-10-07, Claude's voice bar): a mute
+                       toggle, the live waveform (the canvas above, widened), and ✕ to end.
+                       The transcript streams into the box the whole time. -->
+                  <button id="code-voice-mute" class="code-voice-sq code-voice-mute" type="button" title="Mute" aria-label="Mute the microphone" aria-pressed="false">
+                    <svg class="ic-on" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+                    <svg class="ic-off" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9v2a3 3 0 0 0 5.1 2.1M15 10V5a3 3 0 0 0-5.9-.8"/><path d="M5 11a7 7 0 0 0 11.3 5.5M19 11a7 7 0 0 1-.6 2.8"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="3" y1="3" x2="21" y2="21"/></svg>
+                  </button>
+                  <button id="code-voice-end" class="code-voice-sq code-voice-end" type="button" title="End voice mode" aria-label="End voice mode">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+                  </button>
+                  <button id="code-send" class="code-send" type="button" title="Send" aria-label="Send message">
+                    <svg class="icon-send" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                    <span class="icon-stop" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="4" y="4" width="16" height="16" rx="3"/></svg><span>Stop</span></span>
+                  </button>
+                </div>
+                </div><!-- /.code-input-card -->
+                <div class="code-side-band">
+                  <button id="code-opts-caret" class="ws-icon-btn" type="button" title="Show session options">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 15 12 9 18 15"/></svg>
+                  </button>
+                  <button id="code-reset-open" class="ws-icon-btn" type="button" title="Reset — close every panel; the agent stands alone">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg>
+                  </button>
+                </div>
+                </div><!-- /.code-pill-row -->
+                <!-- THE QUIET ROW UNDER THE BOX (his order, 2026-10-07, Claude's
+                     composer as the reference): OUTSIDE the card, no chip
+                     borders — plain muted words, each still opening its own
+                     drop-up. Work: Output left; model · effort · mode right (the
+                     Stop chip joins the right while a reply is spoken). Code:
+                     + · mic · mode · Output left; model · effort · speak right.
+                     seatMic (help/code.ts) moves the +, the mic, the speak
+                     toggle, the mode and Output into the seats the type takes;
+                     the markup below is the Work order. -->
+                <div class="code-composer-bar">
+                  <div class="code-bar-left">
+                    <!-- The Output chip (his order, 2026-10-05): what shape the
+                         answer takes — Auto, or an artifact. The drop-up is
+                         built by initComposerControls. -->
+                    <!-- THE FOLDER CHIP (his order, 2026-10-07, Claude's "Project or
+                         folder"): the desktop's session folder — pick a recent one
+                         or add any folder. Hidden on the web (no local folders). -->
+                  </div>
+                  <div class="code-bar-right">
+                    <div id="code-model-wrap" class="code-chipwrap">
+                      <button id="code-model-chip" class="code-chip" type="button"></button>
+                    </div>
+                    <!-- The effort dial (his order, 2026-10-04): one preference for
+                         every turn; dimmed when the model takes one effort. -->
+                    <div id="code-level-wrap" class="code-chipwrap">
+                      <button id="code-level-chip" class="code-chip" type="button" title="Effort"></button>
+                    </div>
+                    <div id="code-mode-wrap" class="code-chipwrap">
+                      <button id="code-mode-chip" class="code-chip" type="button"></button>
+                    </div>
+                    <!-- Appears only while the agent is speaking a reply aloud —
+                         click (or Esc) to stop the voice. -->
+                    <div id="code-speak-wrap" class="code-chipwrap hidden">
+                      <button id="code-speak-stop" class="code-chip code-speak-stop" type="button" title="Stop the spoken reply (Esc)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <span>Stop</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Right — the workbench rails (the old workbench engine, ported:
+                 code-workbench-bundle.js). Closed until a view is opened from
+                 the header toggles; slots insert/tile/drag/maximize per the
+                 old rules, layout persists per working folder. -->
+            <aside id="code-workbench" class="code-workbench collapsed">
+              <div id="code-wb-edge" class="code-wb-edge" title="Drag to resize"></div>
+              <div id="code-wb-rails" class="ws-right-rails"></div>
+            </aside>
+
+          </div>
+        </div>

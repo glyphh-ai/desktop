@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "commonjs",
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@glyphh/sdk/runtime": [
+        "./node_modules/@glyphh/sdk/dist/runtime.d.ts"
+      ],
+      "@glyphh/sdk/machine": [
+        "./node_modules/@glyphh/sdk/dist/machine.d.ts"
+      ],
+      "@glyphh/sdk/loop": [
+        "./node_modules/@glyphh/sdk/dist/loop.d.ts"
+      ],
+      "@glyphh/sdk/router": [
+        "./node_modules/@glyphh/sdk/dist/router.d.ts"
+      ],
+      "@glyphh/sdk/slides": [
+        "./node_modules/@glyphh/sdk/dist/slides.d.ts"
+      ]
+    },
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "files": [
+    "src/renderer/preload.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/renderer/**"
+  ]
+}

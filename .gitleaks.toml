@@ -1,0 +1,14 @@
+# gitleaks config for the app: the default rules, plus the allow-list below.
+# The Security workflow runs `gitleaks git .` with no --config; gitleaks reads
+# this file from the repository root.
+[extend]
+useDefault = true
+
+[[allowlists]]
+# web/test/serve-routes.test.js (commit 86178762): the fixture cookie string
+# `glyphh_logged_in=1; other=x` is the sign-in flag the route test reads; its
+# value is the digit 1, not a credential.
+description = "serve-routes test fixture: the sign-in cookie string, value '1'"
+paths = ['''^web/test/serve-routes\.test\.js$''']
+regexTarget = "match"
+regexes = ['''glyphh_logged_in=1''']

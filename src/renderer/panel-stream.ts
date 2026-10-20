@@ -1,0 +1,421 @@
+/**
+ * panel-stream.ts — the WEB renderer's streamed-panel component.
+ *
+ * On the desktop an app panel is a native <webview>. On the WEB, a <webview>
+ * does nothing (it is Electron-only), so this component is the drop-in
+ * replacement: it opens a page on a far source over the server's panel relay
+ * and renders it here — a canvas of relayed JPEG frames (phase 1) or a WebRTC
+ * <video> track (phase 2), with full mouse/keyboard/wheel/resize input sent
+ * back — and shows an honest state card instead of a dead rectangle when it
+ * cannot.
+ *
+ * TWO SOURCES, ONE WIRE (help/panel-locus.ts). On the web the page renders on
+ * a CLOUD browser worker — a machine of the workers farm running rrotor's
+ * panel mode, acquired by the server for the member's first cloud panel (his
+ * order, 2026-10-04: no tunnel into a person's machine). On the desktop it
+ * renders on the member's own attached machine (src/main/panel-host.ts). This
+ * component talks ONLY to the relay's panel.* surface and the frame/nav/webrtc
+ * push shapes; the locus rides `panel.open` and decides the connect copy and
+ * which dead-end card to show, nothing else.
+ *
+ * Transport selection (phase 2): the component ALWAYS starts on the JPEG canvas
+ * (it works everywhere), sends `hello{webrtc:true}`, and if the desktop answers
+ * with an offer and media flows, swaps the canvas for the <video>. If WebRTC
+ * can't connect (no TURN, blocked UDP, werift/ffmpeg absent on the desktop) the
+ * desktop tells it `transport:"screencast"` and the JPEG path — which never
+ * stopped — carries on. A small badge surfaces which transport is live.
+ */
+
+import { panelStateFragment, type PanelStateKey } from "./browser-error-page.js";
+
+const PANEL_OPEN_TIMEOUT_MS = 90_000;
+// The relay envelope (auth'd /ws/panel socket, req/res/push frames) lives in
+// the shared relay-socket helper — the remote terminal rides the same one.
+import { connectRelaySocket, relaySdk, machineDetached, type RelaySocket } from "./relay-socket.js";
+// Keyboard + clipboard capture rides the shared hidden-proxy module (the
+// mobile tray mounts the same one) — see panel-kb.ts for the why.
+import { mountPanelKb, modBits } from "./panel-kb.js";
+// Where the page renders — cloud on the web, the member's desktop on the
+// desktop — and the copy + dead-end cards that follow from it.
+import { pickPanelLocus, panelNeedsDesktop, panelOpenParams, panelDeadCard, PANEL_CONNECT_COPY, type PanelLocus, type PanelDeadCause } from "./help/panel-locus.js";
+import { onWeb } from "./help/web-surface.js";
+
+// ── wire shapes (mirror src/main/panel-host.ts + panel-webrtc.ts) ────────────
+
+interface FramePush { type: "frame"; data: string; format: "jpeg"; meta: { deviceWidth: number; deviceHeight: number }; at: number }
+interface NavPush { type: "nav"; url: string; title: string }
+interface OfferPush { type: "offer"; sdp: string }
+interface IcePush { type: "ice"; candidate: { candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null } | null }
+interface TransportPush { type: "transport"; transport: "webrtc" | "screencast"; reason: string }
+type PanelPush = FramePush | NavPush | OfferPush | IcePush | TransportPush | { type?: string };
+
+export interface StreamedPanelOptions {
+  url: string;
+  /** Preferred capture quality 1–100 (JPEG path). */
+  quality?: number;
+  /** Try to negotiate WebRTC (phase 2). Default true; the JPEG path is the
+   *  automatic fallback, so turning this off just forces JPEG. */
+  webrtc?: boolean;
+  /** Top-frame navigation on the far side (drives the caller's address bar). */
+  onNav?: (url: string, title: string) => void;
+  /** Where the page renders. Default: cloud on the web, desktop on the desktop
+   *  (help/panel-locus.ts pickPanelLocus). */
+  locus?: PanelLocus;
+}
+
+export interface StreamedPanelHandle {
+  /** The root element to place in the panel holder. */
+  readonly el: HTMLElement;
+  /** Which transport is currently carrying video. */
+  transport(): "webrtc" | "screencast";
+  /** Where the page renders. */
+  locus(): PanelLocus;
+  /** Drive the far page: address-bar navigation + history + reload. */
+  navigate(url: string): void;
+  back(): void;
+  forward(): void;
+  reload(): void;
+  /** The far page's current top-frame URL (last nav push). */
+  currentUrl(): string;
+  /** Tear down: close the panel on the far side + the sockets/peer. Idempotent. */
+  dispose(): void;
+}
+
+/**
+ * Mount a streamed panel into a fresh element. Returns immediately with a handle
+ * whose `.el` can be appended anywhere; the connect + open happen asynchronously
+ * and surface their state in the UI. `dispose()` tears everything down —
+ * callers that remove `.el` from the DOM must call it, or the far side keeps
+ * casting into the void until the socket dies on its own.
+ */
+export function mountStreamedPanel(opts: StreamedPanelOptions): StreamedPanelHandle {
+  const root = document.createElement("div");
+  root.className = "streamed-panel";
+  root.style.cssText = "position:relative;width:100%;height:100%;background:var(--bg-2, transparent);overflow:hidden;display:flex;flex-direction:column;";
+
+  // The video surfaces. Canvas is always present (JPEG floor); the <video> is
+  // shown only once WebRTC media flows, layered over the canvas.
+  // Not focusable itself — keystrokes belong to the hidden key proxy (panel-kb),
+  // which mousedown/connect focus instead.
+  const canvas = document.createElement("canvas");
+  canvas.width = 1280; canvas.height = 800;
+  canvas.style.cssText = "flex:1;min-height:0;width:100%;height:100%;object-fit:contain;background:transparent;outline:none;cursor:default;";
+  const video = document.createElement("video");
+  video.autoplay = true; video.muted = true; (video as HTMLVideoElement).playsInline = true;
+  video.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:transparent;display:none;pointer-events:none;";
+
+  const overlay = document.createElement("div");
+  overlay.className = "streamed-panel-overlay";
+  overlay.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--text-2, #ccc);font:13px system-ui,sans-serif;text-align:center;padding:24px;z-index:3;";
+
+  root.append(canvas, video, overlay);
+
+  const ctx = canvas.getContext("2d");
+  const locus = pickPanelLocus({ web: onWeb(), requested: opts.locus });
+  let relay: RelaySocket | null = null;
+  let panelId: string | null = null;
+  let disposed = false;
+  let transport: "webrtc" | "screencast" = "screencast";
+  let lastUrl = opts.url;
+  let pc: RTCPeerConnection | null = null;
+  /** Bumped by every boot(); a superseded run must go silent — its socket's
+   *  late onClose used to paint "Desktop disconnected" OVER the fresh run. */
+  let bootGen = 0;
+
+  function setOverlay(html: string | null): void {
+    if (html == null) { overlay.style.display = "none"; overlay.innerHTML = ""; return; }
+    overlay.style.display = "flex";
+    overlay.innerHTML = html;
+    // Any card carrying a retry button re-runs the whole connect sequence —
+    // the common case (desktop offline) is fixed by the user in another app,
+    // and reopening the panel by hand to pick that up is busywork.
+    overlay.querySelector<HTMLButtonElement>("[data-panel-retry]")?.addEventListener("click", () => {
+      if (disposed) return;
+      void boot();
+    });
+  }
+
+  function call(method: string, params: unknown): Promise<unknown> {
+    if (!relay || !relay.isOpen()) return Promise.reject(new Error("panel socket not open"));
+    return relay.call(method, params);
+  }
+  /** Fire-and-forget request (input events don't need a reply). */
+  function send(method: string, params: unknown): void {
+    relay?.send(method, params);
+  }
+
+  // ── frame + control handling ───────────────────────────────────────────────
+  function onPush(d: PanelPush): void {
+    switch (d.type) {
+      case "frame": return drawFrame(d as FramePush);
+      case "nav": {
+        // `d` is the frame — an earlier rename left this reading a `push`
+        // identifier that does not exist, so every nav frame threw a
+        // ReferenceError and took the panel down with it.
+        const nav = d as NavPush;
+        lastUrl = nav.url || lastUrl;
+        opts.onNav?.(nav.url || "", nav.title || "");
+        return;
+      }
+      case "offer": return void onOffer(d as OfferPush);
+      case "ice": return void onRemoteIce(d as IcePush);
+      case "transport": return onTransport(d as TransportPush);
+    }
+  }
+
+  function drawFrame(f: FramePush): void {
+    // While WebRTC carries media the canvas is hidden; keep decoding is wasteful.
+    if (transport === "webrtc") return;
+    const img = new Image();
+    img.onload = () => {
+      if (disposed) return;
+      if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }
+      ctx?.drawImage(img, 0, 0);
+    };
+    img.src = "data:image/jpeg;base64," + f.data;
+  }
+
+  function onTransport(t: TransportPush): void {
+    transport = t.transport;
+    if (transport === "webrtc") { video.style.display = ""; canvas.style.pointerEvents = "none"; }
+    else { video.style.display = "none"; video.srcObject = null; canvas.style.pointerEvents = ""; }
+  }
+
+  // ── phase 2: WebRTC as the client peer ─────────────────────────────────────
+  async function startWebrtc(): Promise<void> {
+    if (opts.webrtc === false) return;
+    if (typeof RTCPeerConnection === "undefined") return;
+    // Tell the desktop we can do WebRTC; it answers with an offer if it can too.
+    // ICE servers for the CLIENT side come from the same env-config surface as
+    // the desktop; the browser learns STUN/TURN from the offer's a=candidate
+    // lines + its own config. We pass none here (the desktop announces its
+    // reachable candidates); a TURN-only network still works because the desktop
+    // offers its relay candidate.
+    try { await call("panel.webrtc", { panelId, signal: { type: "hello", webrtc: true, codecs: ["h264"] } }); }
+    catch { /* stay on screencast */ }
+  }
+
+  async function onOffer(o: OfferPush): Promise<void> {
+    try {
+      const peer = new RTCPeerConnection({ iceServers: clientIceServers() });
+      pc = peer;
+      peer.ontrack = (ev) => { if (ev.streams[0]) video.srcObject = ev.streams[0]; void video.play().catch(() => {}); };
+      peer.onicecandidate = (ev) => { send("panel.webrtc", { panelId, signal: { type: "ice", candidate: ev.candidate ? ev.candidate.toJSON() : null } }); };
+      peer.onconnectionstatechange = () => {
+        if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
+          // Desktop's decideTransport will also fail us over; hiding the video
+          // here makes the canvas visible again immediately.
+          // (setBadge() used to be called here but was never defined anywhere —
+          // a latent ReferenceError on the WebRTC-failover path, caught the
+          // first time this file was actually typechecked.)
+          transport = "screencast"; video.style.display = "none"; canvas.style.pointerEvents = "";
+        }
+      };
+      await peer.setRemoteDescription({ type: "offer", sdp: o.sdp });
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+      send("panel.webrtc", { panelId, signal: { type: "answer", sdp: answer.sdp } });
+    } catch { /* stay on screencast */ }
+  }
+
+  async function onRemoteIce(m: IcePush): Promise<void> {
+    if (!pc) return;
+    try { await pc.addIceCandidate(m.candidate ?? undefined); } catch { /* trickle noise */ }
+  }
+
+  /** Client-side ICE servers, config-driven (window.__GLYPHH_ICE_SERVERS__ =
+   *  "stun:…,turn:user:pass@host:3478"). Empty by default — the desktop
+   *  announces its own reachable candidates; a TURN is only needed when BOTH
+   *  peers are NAT'd (see the report). */
+  function clientIceServers(): RTCIceServer[] {
+    const raw = (window as unknown as { __GLYPHH_ICE_SERVERS__?: string }).__GLYPHH_ICE_SERVERS__ || "";
+    return raw.split(",").map((s) => s.trim()).filter(Boolean).map((entry) => {
+      const m = /^(turns?):([^:@]+):([^@]+)@(.+)$/.exec(entry);
+      if (m) return { urls: `${m[1]}:${m[4]}`, username: m[2], credential: m[3] };
+      return { urls: entry };
+    });
+  }
+
+  // ── input capture → panel.input ────────────────────────────────────────────
+  function pt(e: MouseEvent | WheelEvent): { x: number; y: number } {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) };
+  }
+  const BTN = ["left", "middle", "right"] as const;
+  function input(event: Record<string, unknown>): void { if (panelId) send("panel.input", { panelId, event }); }
+
+  // Keyboard + clipboard ride the shared hidden-proxy (panel-kb.ts): the KEY
+  // NAME crosses the wire (desktop derives VK codes — Backspace/arrows work),
+  // paste sends the LOCAL clipboard as insertText, copy/cut round-trip the far
+  // page's selection back onto the local clipboard.
+  const kb = mountPanelKb(root, {
+    key: (ev) => input(ev as unknown as Record<string, unknown>),
+    insertText: (text) => input({ type: "insertText", text }),
+    clipboard: (action) => { void remoteClipboard(action); },
+  });
+  async function remoteClipboard(action: "copy" | "cut"): Promise<void> {
+    if (!panelId) return;
+    try {
+      const r = (await call("panel.clipboard", { panelId, action })) as { text?: string };
+      if (r?.text) await navigator.clipboard?.writeText(r.text);
+    } catch { /* nothing selected, or clipboard permission denied — nothing to land */ }
+  }
+
+  canvas.addEventListener("mousemove", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "move", x, y, buttons: e.buttons, mods: modBits(e) }); });
+  // preventDefault BEFORE focusing the key proxy: mousedown's DEFAULT action
+  // moves focus to the clicked element (an unfocusable canvas → the body),
+  // which blurred the proxy right after kb.focus() and silently dropped every
+  // keystroke — clicks worked, typing went nowhere.
+  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); kb.focus(); const { x, y } = pt(e); input({ type: "mouse", action: "down", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
+  canvas.addEventListener("mouseup", (e) => { const { x, y } = pt(e); input({ type: "mouse", action: "up", x, y, button: BTN[e.button] ?? "left", buttons: e.buttons, mods: modBits(e), clickCount: e.detail || 1 }); });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  canvas.addEventListener("wheel", (e) => { e.preventDefault(); const { x, y } = pt(e); input({ type: "wheel", x, y, dx: e.deltaX, dy: e.deltaY, mods: modBits(e) }); }, { passive: false });
+
+  // Resize: when the element's box changes, tell the far side to re-render at the
+  // new device size (debounced to avoid a cast-restart storm during a drag).
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  const ro = new ResizeObserver(() => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (!panelId) return;
+      const r = canvas.getBoundingClientRect();
+      const width = Math.max(1, Math.round(r.width));
+      const height = Math.max(1, Math.round(r.height));
+      input({ type: "resize", width, height });
+    }, 200);
+  });
+  ro.observe(root);
+
+  // ── connect + open ─────────────────────────────────────────────────────────
+  /** RE-ENTRANT by design: the retry button re-runs it, so every (re)boot
+   *  SUPERSEDES the previous run — old socket/peer closed, panel forgotten,
+   *  and every await gen-checked so a superseded run can never touch the UI
+   *  again (a stale socket's onClose used to stomp the live overlay). */
+  async function boot(): Promise<void> {
+    const gen = ++bootGen;
+    const old = relay;
+    relay = null;
+    panelId = null;
+    try { pc?.close(); } catch { /* noop */ }
+    pc = null;
+    try { old?.close(); } catch { /* noop */ }
+    // Back to the JPEG floor — a retry after a WebRTC session starts clean.
+    transport = "screencast";
+    video.style.display = "none"; video.srcObject = null; canvas.style.pointerEvents = "";
+
+    const client = relaySdk();
+    if (!client) { setOverlay(deadHtml("signed-out")); return; }
+    setOverlay(`<div>${PANEL_CONNECT_COPY[locus]}</div>`);
+
+    // Honest offline state: a DESKTOP panel checks attach BEFORE opening a
+    // socket. A cloud panel has no desktop in the path and never asks.
+    if (panelNeedsDesktop(locus)) {
+      let attached = false;
+      try { attached = (await client.attach.status()).attached; } catch { attached = false; }
+      if (disposed || gen !== bootGen) return;
+      if (!attached) { setOverlay(deadHtml("desktop-offline")); return; }
+    }
+
+    const token = await client.token().catch(() => null);
+    if (disposed || gen !== bootGen) return;
+    if (!token) { setOverlay(deadHtml("signed-out")); return; }
+
+    await connect(token, gen);
+  }
+
+  async function connect(token: string, gen: number): Promise<void> {
+    let sock: RelaySocket;
+    try {
+      sock = await connectRelaySocket(token);
+    } catch {
+      if (!disposed && gen === bootGen) setOverlay(deadHtml("connect-failed"));
+      return;
+    }
+    if (disposed || gen !== bootGen) { try { sock.close(); } catch { /* noop */ } return; }
+    relay = sock;
+    // `relay === sock` gates both callbacks: once a newer boot swaps the
+    // socket out, this one's events are history, not state.
+    // A 4410 is the DESKTOP detaching mid-panel (the server's "machine
+    // detached"): the same "Desktop disconnected" card, saying so, with Try
+    // again — which re-runs boot() once the desktop is back.
+    sock.onClose((info) => {
+      if (disposed || relay !== sock) return;
+      setOverlay(deadHtml(machineDetached(info) ? "machine-detached" : "dropped"));
+    });
+    // Filter to OUR panel's channel — panelId isn't known until panel.open
+    // returns, so match at delivery time rather than subscribing per-channel.
+    sock.onPush(null, (channel, data) => {
+      if (relay === sock && panelId && channel === panelId && data) onPush(data as PanelPush);
+    });
+    try {
+      // Open at the element's REAL box, not the canvas's 1280x800 default —
+      // otherwise the page renders at the wrong size until the user happens
+      // to resize (the ResizeObserver drops events while panelId is null).
+      const box = root.getBoundingClientRect();
+      const w0 = Math.max(1, Math.round(box.width)) || canvas.width;
+      const h0 = Math.max(1, Math.round(box.height)) || canvas.height;
+      // sock.call, not the shared call(): if a newer boot has already swapped
+      // `relay`, this superseded open must ride (and die with) ITS socket.
+      // A cloud browser's first Chromium takes ~20 s on a fresh machine, behind
+      // the machine's own start; the open waits for that, not the 15 s default.
+      const r = (await sock.call("panel.open", panelOpenParams(locus, { url: opts.url, width: w0, height: h0, quality: opts.quality ?? 70 }), { timeoutMs: PANEL_OPEN_TIMEOUT_MS })) as { panelId: string };
+      if (disposed || gen !== bootGen) { sock.send("panel.close", { panelId: r.panelId }); return; }
+      panelId = r.panelId;
+      // Layout may have settled while the socket/open round-tripped — sync
+      // once now that resize events are deliverable.
+      const after = root.getBoundingClientRect();
+      const w1 = Math.max(1, Math.round(after.width));
+      const h1 = Math.max(1, Math.round(after.height));
+      if ((w1 !== w0 || h1 !== h0) && w1 > 1 && h1 > 1) input({ type: "resize", width: w1, height: h1 });
+      setOverlay(null);
+      kb.focus();
+      void startWebrtc();
+    } catch (err) {
+      if (!disposed && gen === bootGen) setOverlay(deadHtml("open-failed", (err as Error).message || undefined));
+    }
+  }
+
+  /**
+   * A dead-end state as the same card the Browser panel shows for a failed
+   * page — mascot, badge, themed — picked for this panel's locus (a cloud
+   * panel never shows a desktop card). `data-panel-retry` is what makes it a
+   * way back rather than a notice: setOverlay wires it to another boot().
+   */
+  function deadHtml(cause: PanelDeadCause, detail?: string): string {
+    const card = panelDeadCard(locus, cause, detail);
+    return panelStateFragment(card.state as PanelStateKey, { detail: card.detail, retryAttrs: 'data-panel-retry="1"' });
+  }
+
+  void boot();
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    try { ro.disconnect(); } catch { /* noop */ }
+    kb.dispose();
+    if (resizeTimer) clearTimeout(resizeTimer);
+    try { pc?.close(); } catch { /* noop */ }
+    pc = null;
+    // Best-effort close on the far side, then the socket.
+    if (panelId) send("panel.close", { panelId });
+    const sock = relay;
+    relay = null;
+    setTimeout(() => { try { sock?.close(); } catch { /* noop */ } }, 100);
+  }
+
+  const navCall = (action: "url" | "back" | "forward" | "reload", url?: string): void => {
+    if (!panelId) return;
+    void call("panel.nav", { panelId, action, url }).catch(() => { /* surfaced by nav push absence */ });
+  };
+  return {
+    el: root,
+    transport: () => transport,
+    locus: () => locus,
+    navigate: (url: string) => navCall("url", url),
+    back: () => navCall("back"),
+    forward: () => navCall("forward"),
+    reload: () => navCall("reload"),
+    currentUrl: () => lastUrl,
+    dispose,
+  };
+}

@@ -1,0 +1,18 @@
+node_modules/
+dist/
+release/
+*.dmg
+*.exe
+*.zip
+.env
+.mcp.json
+# .yo agent's per-folder runtime artifacts (plan.md from MODE: PLAN,
+# chat history, etc). Per-developer state — never committed.
+.yo/
+dist-apps/
+native/mac-window-helper/build/
+# CI-only: vendored file:../sdk for the Fly Docker build (deploy-web.yml)
+.sdk-vendor/
+.sdk-src/
+vendor/
+.DS_Store

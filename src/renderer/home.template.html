@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glyphh</title>
+  <!-- Favicons — the platform's set (ported from platform/public). -->
+  <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="brand/favicon.ico" sizes="any">
+  <link rel="icon" href="brand/favicon-96x96.png" sizes="96x96" type="image/png">
+  <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#af5fff">
+  <!-- Social cards. __PUBLIC_ORIGIN__ is filled per-request by web/serve.mjs
+       (scrapers need absolute URLs); the desktop build never renders these. -->
+  <meta property="og:title" content="Glyphh">
+  <meta property="og:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="__PUBLIC_ORIGIN__/">
+  <meta property="og:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Glyphh">
+  <meta name="twitter:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta name="twitter:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <!-- A SOLO AGENT PANEL boots this whole shell inside a webview. Before the
+       first paint: hide everything until the agent is seated (the workbench
+       lifts data-solo-booting), and take the host's theme from the URL so the
+       reveal is the right colour on the first frame, not after getTheme lands. -->
+  <script>(function(){try{var q=new URLSearchParams(location.search);if((q.get("solo")||"").indexOf("tool:")===0){document.documentElement.setAttribute("data-solo-booting","");var t=q.get("theme");if(t)document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();</script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="monaco/editor/editor.main.css">
+  <!-- xterm — the Code workbench's Terminal slots -->
+  <link rel="stylesheet" href="xterm.css">
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; background: var(--bg); }
+    #home-root { position: absolute; inset: 0; overflow: hidden; }
+    /* Force overlay to fill the page and override any .hidden from help.ts */
+    /* Below the app header — inset-top tracks #shell-drag-strip via --titlebar-h
+       (38px on desktop, 0 on web so the app is flush under the browser chrome). */
+    /* The content shell: to the RIGHT of the fixed sidebar and at the very top
+       (his order, 2026-09-16); the sidebar carries the only header. */
+    #help-overlay { position: absolute !important; inset: 0 0 0 var(--rail-w, 264px) !important; display: block !important; background: var(--bg); }
+    #help-layout { position: absolute; inset: 0; display: flex; }
+    /* The nav lives in the app's left rail now — keep it in the DOM (its
+       buttons still drive section switching) but hide the sidebar. */
+  </style>
+  <script src="monaco/loader.js"></script>
+  <script>
+    // Apply theme synchronously before anything renders (avoids flash).
+    // Reads from localStorage which the main renderer keeps in sync.
+    try {
+      var t = localStorage.getItem("yoTheme") || "dark";
+      var r = t === "system"
+        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : t;
+      document.documentElement.setAttribute("data-theme", r);
+    } catch (e) {}
+  </script>
+</head>
+<body class="wb-booting">
+  <div id="home-root">
+    <!-- Top chrome cluster — traffic lights only. Every child explicitly
+         no-drag so the strip's drag region can't swallow clicks. The command
+         center opens with ⌘⇧Space / ⌘. — no chrome button. -->
+    <div id="panel-wc">
+      <button id="panel-btn-close" class="wc wc-close"></button>
+      <button id="panel-btn-minimize" class="wc wc-minimize"></button>
+      <button id="panel-btn-maximize" class="wc wc-maximize"></button>
+    </div>
+    <!-- The APP HEADER — a real full-width bar across the top. The chrome
+         cluster (#panel-wc, fixed) sits on it; every panel opens below it
+         (#help-overlay starts at the same 38px). Whole bar drags the window;
+         the cluster's buttons are explicitly no-drag. -->
+    <!-- Bare header: drag surface only. Settings (and Account inside it)
+         live in the wall's dock; no logo, no user chip. -->
+    <header id="shell-drag-strip"><div class="shell-drag-area app-rail-top"></div></header>
+    <div id="help-overlay">
+    <div id="help-layout">
+
+      <!-- App rail — RESTORED beside the full-width workbench: sessions,
+           section nav (opens the 2.5.0 section PANELS), and the Apps/Layouts
+           grids. The update badge stays floating bottom-right. -->
+      <!-- App rail — the persistent left rail of the Code-primary surface:
+           Home|Code switcher, sessions, section nav, and the user area.
+           Hidden when the panel is locked to a single section (?section=). -->
+      <!-- Collapsed sidebar: this strip stays at the top-left (beside the traffic
+           lights); hovering its icon peeks the sidebar as an overlay. -->
+      <div id="rail-collapsed-strip" class="hidden">
+        <!-- WEB: the wordmark holds the traffic lights' spot here too, so the
+             two icons sit at the same x open or collapsed (his order, 2026-10-05). -->
+        <span class="app-rail-logo" aria-hidden="true"><img class="app-rail-logo-img" src="brand/glyphh-logo-text.png" alt="" draggable="false"/></span>
+        <button id="rail-expand-btn" class="app-rail-top-btn" type="button" title="Show the sidebar"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg></button>
+      </div>
+      <aside id="app-rail">
+        <!-- The rail's OWN header (his order, 2026-09-16): the only fixed strip on
+             the page. Traffic lights sit at its left (#panel-wc); collapse and
+             the Echo launcher at its right. Drags the window. -->
+        <div id="app-rail-top">
+          <!-- The console's wordmark (glyphh/assets/logo_dark.png = brand/glyphh-logo-text.png,
+               one file for both themes), web only, big (his order, 2026-10-05:
+               "add the logo back to the top left and just make it bigger"). -->
+          <span class="app-rail-logo" aria-hidden="true"><img class="app-rail-logo-img" src="brand/glyphh-logo-text.png" alt="" draggable="false"/></span>
+          <button id="rail-collapse-btn" class="app-rail-top-btn" type="button" title="Collapse the sidebar"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><line x1="9" y1="4" x2="9" y2="20"/></svg></button>
+          <div class="app-rail-drag"></div>
+        </div>
+        <!-- Everything above the account row scrolls; the row stays pinned (his report, 2026-09-16). -->
+        <div id="app-rail-scroll" class="app-rail-scroll">
+        <!-- Org switcher (multi-org members only, 2026-09-02): top-left of the
+             platform — filled by initOrgSwitcher(); hidden for single-org users. -->
+        <div id="org-switch-rail" class="org-switch hidden"></div>
+        <!-- + New: a QUIET ROW, not a filled button (his order + screenshot,
+             2026-09-29): it reads as one of the rail's own destinations, in
+             the same grammar as Customize and More below. -->
+        <button id="code-new-chat" class="app-rail-nav-item code-new-session-rail" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New</span>
+        </button>
+        <!-- Rail nav: three LINKS into the Settings modal — Connections, Apps,
+             Layouts (each opens the modal at that section; the pages live in
+             the modal). Everything else stays modal-only. -->
+        <nav class="app-rail-nav" data-rail-section="menu">
+          <!-- THE RAIL'S MENU (his order, 2026-10-05): Artifacts, Customize
+               on both surfaces — help/surface.ts WEB_RAIL_LINKS. Connections
+               and Devices left the web rail the same day ("remove connections
+               and devices from the left rail on web"); they live in Settings.
+               Artifacts opens the work panel (full screen on the web);
+               Customize opens its page. -->
+          <button class="app-rail-nav-item" data-settings-sub="artifacts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+            <span>Artifacts</span>
+          </button>
+          <!-- Customize (his order, 2026-09-20): opens as a work-panel page
+               in the workbench that carries its Settings group's pages as
+               tabs — the same pages, bigger. ONE page since his report,
+               2026-10-07 ("The Build and Customize tabs are confusing. It
+               should just be one tab"): Build's tabs live here. -->
+          <button class="app-rail-nav-item" data-settings-sub="customize">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v6"/></svg>
+            <span>Customize</span>
+          </button>
+          <!-- Schedules (his order, 2026-10-09): its own full-screen page, like Artifacts. -->
+          <button class="app-rail-nav-item" data-settings-sub="schedules">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            <span>Schedules</span>
+          </button>
+          <!-- More: the fly-out for the second-tier destinations (the
+               Browser) — opens IN THE WORKBENCH (navigation.ts). -->
+          <button id="rail-more-toggle" class="app-rail-nav-item app-rail-more-toggle" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+            <span>More</span>
+          </button>
+        </nav>
+        <!-- Recents — BACK (his order, 2026-09-10): the sessions are the CLI
+             agents' own stores now (Claude first); a click resumes that exact
+             conversation on its agent. Same section grammar as Apps below. -->
+        <div class="code-rail-label app-rail-section-head" data-rail-section="recents">
+          <button id="rail-recents-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Recents</span>
+          </button>
+        </div>
+        <div id="rail-recents-body" class="app-rail-section-body" data-rail-section="recents">
+          <div class="app-rail-search">
+            <input id="recent-sessions-search" class="rail-recents-search" type="text" placeholder="Search sessions…" spellcheck="false" autocomplete="off" />
+            <button id="recent-sessions-filter" class="rail-filter-btn" type="button" title="Filter by loop and place"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></button>
+          </div>
+          <div id="recent-sessions-list" class="code-history"></div>
+        </div>
+        <!-- THE WORKSPACES TRAY at the rail's foot (his orders, 2026-10-08):
+             on by default (`railShowLayouts`), a drag line above it sizes it
+             (railLayoutsH), collapsed it rests at the bottom; the + saves what
+             is on screen as a workspace (help/workspace-create.ts). -->
+        <div id="rail-layouts-vsplit" class="rail-layouts-vsplit hidden" title="Drag to resize"></div>
+        <div id="rail-layouts-head" class="hidden code-rail-label app-rail-section-head" data-rail-section="layouts">
+          <button id="rail-layouts-toggle" class="code-rail-disclosure app-rail-section-toggle" type="button">
+            <svg class="disc-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            <span>Workspaces</span>
+          </button>
+          <button id="rail-layouts-add" class="rail-label-btn" type="button" title="Create workspace — save what is on screen" aria-label="Create workspace">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+        <div id="rail-layouts-body" class="hidden app-rail-section-body" data-rail-section="layouts">
+          <div class="app-rail-search">
+            <input id="recent-layouts-search" class="rail-recents-search" type="text" placeholder="Search workspaces…" spellcheck="false" autocomplete="off" />
+          </div>
+          <div id="recent-layouts-list" class="app-rail-grid"></div>
+        </div>
+        </div>
+        <div class="app-rail-user">
+          <button id="app-rail-user-btn" class="app-rail-user-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="app-rail-user-name">Account</span>
+          </button>
+        </div>
+      </aside>
+      <div id="code-rail-splitter" class="code-splitter" title="Drag to resize"></div>
+
+      <main id="help-content">
+        <div id="page-body">
+
+        <!-- Dashboard / Home — the landing section (welcome, budget, spend,
+             apps deployed, usage chart). -->
+        <!--#include sections/dashboard.html -->
+
+        <!-- Docs -->
+
+
+        <!-- MCP section removed — merged into Apps tabs -->
+
+        <!-- Files — the artifacts gallery (opens in the workbench, not the modal) -->
+        <!--#include sections/files.html -->
+
+        <!-- Layouts -->
+
+        <!--#include sections/drips.html -->
+        <!--#include sections/schedules.html -->
+
+
+
+
+        <!--#include sections/connections.html -->
+
+        <!-- Code — the William agent surface (chats | agent | workbench) -->
+        <!--#include sections/code.html -->
+
+
+        <!-- Apps -->
+
+        <!-- Settings -->
+        <!--#include sections/settings.html -->
+
+        <!-- CUSTOMIZE — the ONE work-panel page that hosts the Settings group
+             as tabs (navigation.ts loadSettingsGroup; one page since his
+             report, 2026-10-07). The tab strip is the skills-tabs grammar;
+             beside it the page's ONE Yours | Discover switch, which spans every
+             tab and stays (the per-panel pair is CSS-hidden in here). The host
+             wears .settings-modal-body so the adopted .settings-panel nodes read
+             exactly as they do in Settings. The panels are MOVED here from
+             .settings-panels and moved back the moment the Settings modal opens. -->
+        <section class="help-section settings-group" data-section="customize">
+          <!-- ONE HEADER (his order, 2026-10-09, Claude's Customize as the
+               reference): the title, then one row — the tabs, Yours | Discover,
+               and on the right the shown tab's own search / filter / sort / Add
+               (navigation.ts adoptGroupTools), right above the list. -->
+          <div class="settings-group-titlebar">
+            <h1 class="settings-group-title">Customize</h1>
+            <!-- Full screen, this row IS the page's header (his order, 2026-10-09:
+                 "Remove the top one with the <- Customize"), so it carries the close. -->
+            <button type="button" class="ws-icon-btn settings-group-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+          </div>
+          <div class="settings-group-head">
+            <div class="skills-tabs settings-group-tabs" role="tablist"></div>
+            <div class="settings-group-tools"></div>
+          </div>
+          <div class="settings-modal-body settings-group-host"><div class="settings-panels"></div></div>
+        </section>
+
+        <!-- Standard dialogs — one skeleton everywhere: head (title), body
+             (detail / input), foot (Cancel + primary action). -->
+        <div id="skill-ask-user-modal" class="confirm-overlay hidden">
+          <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="skill-ask-user-question">
+            <div class="confirm-head"><h3 id="skill-ask-user-question"></h3></div>
+            <div class="confirm-body">
+              <textarea id="skill-ask-user-answer" rows="3" spellcheck="false"></textarea>
+            </div>
+            <div class="confirm-foot">
+              <button id="skill-ask-user-cancel" class="action-btn secondary" type="button">Cancel</button>
+              <button id="skill-ask-user-submit" class="action-btn primary" type="button">OK</button>
+            </div>
+          </div>
+        </div>
+        <div id="confirm-modal" class="confirm-overlay hidden">
+          <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="confirm-head"><h3 id="confirm-title"></h3></div>
+            <div class="confirm-body"><p id="confirm-message"></p></div>
+            <div class="confirm-foot">
+              <button id="confirm-no" class="action-btn secondary" type="button">Cancel</button>
+              <button id="confirm-yes" class="action-btn primary" type="button">Confirm</button>
+            </div>
+          </div>
+        </div>
+
+        </div><!-- /#page-body -->
+      </main>
+    </div>
+    </div>
+
+  </div>
+  <!-- Chart.js (auto build) → window.Chart, used by the Home dashboard chart. -->
+  <script src="app-libs/chart.js"></script>
+  <!-- Code workbench engine (esbuild bundle: xterm + rails) → window.__initCodeWorkbench -->
+  <script src="code-workbench-bundle.js"></script>
+  <script type="module" src="home.js"></script>
+</body>
+</html>

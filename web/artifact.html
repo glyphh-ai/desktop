@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en" class="glyphh-web">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Artifact — Glyphh</title>
+  <!-- THE SHARED ARTIFACT PAGE (his order, 2026-10-05): a direct or public
+       link at /a/<id>. The bytes frame from /a/<id>/raw in a sandbox; the
+       title comes from /a/<id>/meta. "‹ Artifacts" goes to the app. -->
+  <meta name="robots" content="noindex">
+  <style>
+    :root { color-scheme: dark; --bg: #000; --surface: #0d0d0d; --border: #5a5a5a; --text: #fff; --text-2: #eaeaea; --text-3: #c8c8c8; --hover: #1a1a1a; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 "Geist", system-ui, sans-serif; }
+    .head { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 6px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .back { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px 0 4px; border-radius: 6px; color: var(--text-2); text-decoration: none; font-weight: 600; font-family: "JetBrains Mono", ui-monospace, monospace; }
+    .back:hover { background: var(--hover); color: var(--text); }
+    .back svg { width: 16px; height: 16px; }
+    .title { flex: 0 1 auto; min-width: 0; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; padding-left: 6px; }
+    .ro { color: var(--text-3); font-size: 12px; padding-left: 6px; }
+    .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-size: 12px; }
+    .signin { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 6px; background: var(--text); color: var(--bg); font-weight: 600; text-decoration: none; font-size: 12px; }
+    .stage { position: absolute; top: 41px; left: 0; right: 0; bottom: 0; }
+    iframe, img, pre { display: block; width: 100%; height: 100%; border: 0; margin: 0; box-sizing: border-box; }
+    img { object-fit: contain; }
+    pre { overflow: auto; padding: 20px 24px; white-space: pre-wrap; font: 12.5px/1.5 "JetBrains Mono", ui-monospace, monospace; }
+    .empty { padding: 32px 24px; color: var(--text-3); }
+  </style>
+</head>
+<body>
+  <!-- THE MINIMAL HEADER (his order, 2026-10-05): an anonymous visitor sees the
+       title, "Read-only", the unverified line and Sign in; a signed-in member
+       never sees this page — the script hands the id to the app, which opens
+       the artifact in its own Artifacts view. -->
+  <div class="head">
+    <span class="title" id="title">Artifact</span>
+    <span class="ro" id="ro">Read-only</span>
+    <span class="note">Content is user-generated and unverified.</span>
+    <a class="signin" id="signin" href="/home">Sign in</a>
+  </div>
+  <div class="stage" id="stage"><div class="empty">Loading…</div></div>
+  <script>
+    (async () => {
+      const cfg = __ARTIFACT__;
+      const q = cfg.t ? `?t=${encodeURIComponent(cfg.t)}` : '';
+      const raw = `/a/${encodeURIComponent(cfg.id)}/raw${q}`;
+      const stage = document.getElementById('stage');
+      // A SIGNED-IN MEMBER GETS THE APP VIEW (his order, 2026-10-05): the app
+      // opens the artifact in its Artifacts panel — comments, share, the lot.
+      let signedIn = false;
+      try { const s = JSON.parse(localStorage.getItem('glyphh_session') || 'null'); signedIn = !!(s && s.accessToken); } catch {}
+      if (signedIn) { location.replace(`/home?artifact=${encodeURIComponent(cfg.id)}${cfg.t ? `&t=${encodeURIComponent(cfg.t)}` : ''}`); return; }
+      let meta = null;
+      // The anonymous read carries no credentials at all: a stale parked
+      // cookie must never turn a public link into "private".
+      try { const r = await fetch(`/a/${encodeURIComponent(cfg.id)}/meta${q}`, { credentials: 'omit' }); if (r.ok) { const j = await r.json(); meta = j && j.data ? j.data : j; } } catch {}
+      if (!meta) { stage.innerHTML = '<div class="empty">This artifact is private or no longer exists. Sign in to Glyphh to see your artifacts.</div>'; return; }
+      document.getElementById('title').textContent = meta.name || 'Artifact';
+      document.title = `${meta.name || 'Artifact'} — Glyphh`;
+      const mime = String(meta.mime || '').toLowerCase();
+      stage.innerHTML = '';
+      if (mime.startsWith('image/') && mime !== 'image/svg+xml') { const img = document.createElement('img'); img.src = raw; img.alt = meta.name || ''; stage.appendChild(img); return; }
+      if (mime === 'text/html' || mime === 'application/xhtml+xml' || mime === 'image/svg+xml' || mime === 'application/pdf') {
+        const f = document.createElement('iframe'); f.setAttribute('sandbox', 'allow-scripts'); f.setAttribute('referrerpolicy', 'no-referrer'); f.title = meta.name || ''; f.src = raw; stage.appendChild(f); return;
+      }
+      try { const r = await fetch(raw, { credentials: 'omit' }); const pre = document.createElement('pre'); pre.textContent = r.ok ? await r.text() : `HTTP ${r.status}`; stage.appendChild(pre); }
+      catch (e) { stage.innerHTML = '<div class="empty">Couldn’t read the artifact.</div>'; }
+    })();
+  </script>
+</body>
+</html>

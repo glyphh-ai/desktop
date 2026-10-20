@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: swap; src: url(fonts/Geist-latin.woff2) format('woff2'); }
+    @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 700; font-display: swap; src: url(fonts/JetBrainsMono-latin.woff2) format('woff2'); }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a0a; font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+
+    /* ── Toolbar (hidden — global URL bar handles navigation) ── */
+    .toolbar { display: none; }
+
+    /* ── Loading bar ─────────────────── */
+    .loading-bar {
+      height: 2px;
+      /* surface-2 (dark mode) — matches the chrome/rail silver color so
+         the 2px strip doesn't read as a dark gap above the page. */
+      background: #2e2e32;
+      position: relative;
+      overflow: hidden;
+      z-index: 2;
+    }
+    .loading-bar.active {
+      background: #111;
+    }
+    .loading-bar.active::after {
+      content: "";
+      position: absolute;
+      top: 0; left: -40%;
+      width: 40%; height: 100%;
+      background: #a855f7;
+      animation: loading-slide 1s ease-in-out infinite;
+    }
+    @keyframes loading-slide {
+      0%   { left: -40%; }
+      100% { left: 100%; }
+    }
+
+    /* ── Content area — stacks empty state on top of webview ── */
+    .content {
+      position: relative;
+      width: 100%;
+      height: calc(100% - 2px); /* loading bar only */
+    }
+
+    /* ── Webview ──────────────────────── */
+    webview {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: #0a0a0a;
+    }
+
+    /* ── Empty state — overlays webview until first navigation ── */
+    .empty-state {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+      font-size: 14px;
+      gap: 12px;
+      background: #0a0a0a;
+      z-index: 1;
+      transition: opacity 0.3s ease;
+    }
+    .empty-state .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 48px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.035em;
+    }
+    .empty-state .logo .dot {
+      color: #a855f7;
+      display: inline-block;
+      animation: dot-pulse 3s ease-in-out infinite;
+    }
+    .empty-state .hint {
+      color: #555;
+      font-size: 13px;
+    }
+    @keyframes dot-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+    }
+    .empty-state.hidden { opacity: 0; pointer-events: none; }
+
+    /* ── Scrollbars ──────────────────── */
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(168, 85, 247, 0.45); }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button class="nav-btn" id="btn-back" title="Back" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <button class="nav-btn" id="btn-forward" title="Forward" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <button class="nav-btn" id="btn-refresh" title="Refresh">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <input class="url-bar" id="url-bar" type="text" placeholder="Search or enter URL..." spellcheck="false" autocomplete="off" />
+  </div>
+  <div class="loading-bar" id="loading-bar"></div>
+
+  <div class="content">
+    <webview id="webview" partition="persist:yo" allowpopups></webview>
+    <div class="empty-state" id="empty-state">
+      <div class="logo">Browse</div>
+      <div class="hint">Enter a URL or search above</div>
+    </div>
+  </div>
+
+  <script>
+    const urlBar   = document.getElementById("url-bar");
+    const webview  = document.getElementById("webview");
+    const btnBack  = document.getElementById("btn-back");
+    const btnFwd   = document.getElementById("btn-forward");
+    const btnRef   = document.getElementById("btn-refresh");
+    const loadBar  = document.getElementById("loading-bar");
+    const empty    = document.getElementById("empty-state");
+
+    // Check for initial URL from query parameter (?url=...)
+    const params = new URLSearchParams(location.search);
+    const initialUrl = params.get("url");
+
+    // Navigate the webview. Setting src always works — the webview queues
+    // the load internally if its guest process hasn't attached yet.
+    if (initialUrl) {
+      empty.classList.add("hidden");
+      urlBar.value = initialUrl;
+      webview.setAttribute("src", initialUrl);
+    }
+
+    function normalizeUrl(input) {
+      input = input.trim();
+      if (!input) return null;
+      if (/^https?:\/\//i.test(input)) return input;
+      if (/^localhost(:\d+)?(\/|$)/i.test(input)) return "http://" + input;
+      if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?(\/|$)/.test(input)) return "http://" + input;
+      if (/^[^\s]+\.[^\s]+$/.test(input)) return "https://" + input;
+      return "https://www.google.com/search?q=" + encodeURIComponent(input);
+    }
+
+    function doNavigate(url) {
+      empty.classList.add("hidden");
+      webview.src = url;
+    }
+
+    // URL bar: Enter to navigate
+    urlBar.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const normalized = normalizeUrl(urlBar.value);
+        if (normalized) doNavigate(normalized);
+        urlBar.blur();
+      }
+    });
+
+    // Select all on focus
+    urlBar.addEventListener("focus", () => {
+      setTimeout(() => urlBar.select(), 0);
+    });
+
+    // Nav buttons
+    btnBack.addEventListener("click", () => webview.goBack());
+    btnFwd.addEventListener("click",  () => webview.goForward());
+    btnRef.addEventListener("click",  () => webview.reload());
+
+    // Webview events
+    webview.addEventListener("did-start-loading", () => {
+      loadBar.classList.add("active");
+    });
+
+    function updateNavButtons() {
+      try {
+        btnBack.disabled = !webview.canGoBack();
+        btnFwd.disabled  = !webview.canGoForward();
+      } catch(e) {}
+    }
+
+    webview.addEventListener("did-stop-loading", () => {
+      loadBar.classList.remove("active");
+      updateNavButtons();
+    });
+
+    webview.addEventListener("did-navigate", (e) => {
+      if (e.url && e.url !== "about:blank") urlBar.value = e.url;
+      updateNavButtons();
+    });
+
+    webview.addEventListener("did-navigate-in-page", (e) => {
+      if (e.isMainFrame) {
+        urlBar.value = e.url;
+        updateNavButtons();
+      }
+    });
+
+    webview.addEventListener("page-title-updated", (e) => {
+      document.title = e.title || "Browser";
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "l") {
+        e.preventDefault();
+        urlBar.focus();
+        urlBar.select();
+      }
+      if (e.altKey && e.key === "ArrowLeft") {
+        e.preventDefault();
+        webview.goBack();
+      }
+      if (e.altKey && e.key === "ArrowRight") {
+        e.preventDefault();
+        webview.goForward();
+      }
+    });
+
+    // Focus URL bar on load
+    urlBar.focus();
+  </script>
+</body>
+</html>

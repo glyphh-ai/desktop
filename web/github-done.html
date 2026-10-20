@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>GitHub connected</title>
+<link rel="stylesheet" href="/styles.css" />
+<script>
+  // The member's theme, as the shell stores it (home.ts applyTheme → localStorage
+  // yoTheme), before first paint — so the button is the theme's primary.
+  (function () {
+    var t = 'dark';
+    try { t = localStorage.getItem('yoTheme') || 'dark'; } catch (e) { t = 'dark'; }
+    if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  /* The return from GitHub lands HERE, not in a second copy of the app (his
+     report, 2026-10-05: "when it landed back on app.glyphh.ai the page was not
+     where I had left it"). This page completes the link as the signed-in
+     member and closes itself; the tab that started Connect sees the status
+     flip and fills the repo list. */
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-sans, system-ui, sans-serif); }
+  main { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
+  h1 { font-family: var(--font-display, var(--font-mono, monospace)); font-weight: 700; font-size: 20px; margin: 0 0 8px; }
+  p { margin: 0; color: var(--text-2); font-size: 14px; }
+  .action-btn { margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1 id="title">Finishing up…</h1>
+    <p id="text">Linking GitHub to your Glyphh account.</p>
+    <button class="action-btn primary" id="close" type="button" hidden>Close this tab</button>
+  </div>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var title = document.getElementById('title');
+  var text = document.getElementById('text');
+  var close = document.getElementById('close');
+  var api = (window.__GLYPHH_API_URL__ || 'https://api.glyphh.ai').replace(/\/$/, '');
+  function done(ok, head, line) {
+    title.textContent = head; text.textContent = line; close.hidden = false;
+    close.addEventListener('click', function () { window.close(); });
+    if (ok) setTimeout(function () { window.close(); }, 1500);
+  }
+  if (q.get('github') === 'error') {
+    done(false, 'GitHub did not finish', q.get('reason') === 'no-installation'
+      ? 'No installation came back. Open Connect GitHub again from the app.'
+      : 'GitHub did not confirm the link. Open Connect GitHub again from the app.');
+    return;
+  }
+  var link = q.get('link') || '';
+  var token = '';
+  try { token = (JSON.parse(localStorage.getItem('glyphh_session') || '{}').accessToken) || ''; } catch (e) { token = ''; }
+  if (!token) { done(false, 'Sign in first', 'This tab is not signed in to Glyphh. Go back to the app and connect again.'); return; }
+  fetch(api + '/api/git/connect/complete', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
+    body: JSON.stringify(link ? { link: link } : {}),
+  }).then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); })
+    .then(function (res) {
+      if (res.status === 200) { done(true, 'GitHub connected', 'Go back to the app: your repositories are ready to pick.'); return; }
+      if (res.status === 403) { done(false, 'Started by another account', 'This GitHub link was started by another account. Connect again from the app.'); return; }
+      if (res.status === 404) { done(false, 'The link expired', 'Open Connect GitHub again from the app.'); return; }
+      done(false, 'GitHub did not finish', (res.body && res.body.error && res.body.error.message) || 'Try again from the app.');
+    })
+    .catch(function () { done(false, 'Glyphh is unreachable', 'Check your connection, then connect again from the app.'); });
+})();
+</script>
+</body>
+</html>

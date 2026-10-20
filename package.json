@@ -1,0 +1,128 @@
+{
+  "name": "@glyphh-ai/desktop",
+  "version": "1.7.1",
+  "productName": "Glyphh",
+  "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glyphh-ai/desktop.git"
+  },
+  "main": "dist/main/main.js",
+  "bin": {
+    "glyphh": "bin/glyphh.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "npm run build && ELECTRON_RUN_AS_NODE= electron .",
+    "build": "node scripts/check-ipc-registered.mjs && npm run build:main && npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:cli",
+    "build:cli": "tsc -p cli/tsconfig.json && rm -rf dist/cli && esbuild cli/src/main.tsx --bundle --platform=node --format=esm --target=node20 --jsx=automatic --outfile=dist/cli/main.mjs --sourcemap --external:ink --external:react",
+    "typecheck:cli": "tsc -p cli/tsconfig.json",
+    "build:code-workbench": "esbuild src/renderer/code-workbench.ts --bundle --outfile=dist/renderer/code-workbench-bundle.js --platform=browser && esbuild src/renderer/pdf-raster.ts --bundle --outfile=dist/renderer/pdf-raster.js --platform=browser --format=iife && esbuild node_modules/pdfjs-dist/build/pdf.worker.mjs --bundle --outfile=dist/renderer/pdf-raster-worker.js --platform=browser --format=esm --minify && shx cp src/renderer/pdf-raster.html dist/renderer/",
+    "build:main": "rm -rf dist/main && tsc",
+    "build:skill-flow": "esbuild src/renderer/skill-flow.tsx --bundle --outfile=dist/renderer/skill-flow.js --platform=browser --format=iife --jsx=automatic --loader:.css=css",
+    "build:renderer": "tsc -p src/renderer/tsconfig.json && node scripts/check-renderer-emit.mjs && shx cp src/renderer/styles.css src/renderer/browser.html src/renderer/thinking.html node_modules/@xterm/xterm/css/xterm.css dist/renderer/ && shx cp -r src/renderer/fonts dist/renderer/ && shx cp -r src/renderer/brand dist/renderer/ && esbuild scripts/chart-global.mjs --bundle --format=iife --minify --platform=browser --outfile=dist/renderer/app-libs/chart.js && node scripts/assemble-home.mjs",
+    "build:monaco": "shx cp -r node_modules/monaco-editor/min/vs dist/renderer/monaco",
+    "bench:code-index": "npm run build:main && node dist/main/code-index/benchmark.js",
+    "bench:code-index-ab": "npm run build:main && node dist/main/code-index/benchmark-ab.js",
+    "start": "electron .",
+    "build:web": "npm run build:renderer && npm run build:skill-flow && npm run build:code-workbench && npm run build:monaco && npm run build:web-bridge && npm run build:web-mobile",
+    "watch:web": "node scripts/watch-web.mjs",
+    "build:web-bridge": "esbuild web/src/bridge.js --bundle --outfile=dist/renderer/glyphh-web-bundle.js --platform=browser --format=iife --sourcemap --define:__GLYPHH_VERSION__=\\\"$npm_package_version\\\" && shx cp web/github-done.html web/artifact.html dist/renderer/",
+    "build:web-mobile": "esbuild web/src/mobile.tsx --bundle --outfile=dist/renderer/glyphh-mobile.js --platform=browser --format=iife --jsx=automatic --sourcemap --define:__GLYPHH_VERSION__=\\\"$npm_package_version\\\" && shx cp web/mobile.html web/mobile.css dist/renderer/ && shx cp web/pwa/manifest.webmanifest web/pwa/sw.js dist/renderer/ && shx mkdir -p dist/renderer/brand/icons && shx cp web/pwa/icons/icon-192.png web/pwa/icons/icon-512.png web/pwa/icons/icon-180.png dist/renderer/brand/icons/",
+    "build:mobile": "shx mkdir -p dist/renderer && shx cp -r src/renderer/brand src/renderer/fonts dist/renderer/ && npm run build:web-mobile",
+    "web": "node web/serve.mjs",
+    "dev:web": "npm run build:web && npm run web",
+    "test:web": "vitest run web/test",
+    "test:web:watch": "vitest web/test",
+    "clean:local": "bash scripts/clean-local.sh",
+    "build:sdk": "npm --prefix packages/glyphh-sdk ci && npm --prefix packages/glyphh-sdk run build",
+    "prepare": "npm run build:sdk",
+    "prepack": "npm run build:sdk && rm -rf node_modules/@glyphh/sdk && mkdir -p node_modules/@glyphh/sdk && cp -R packages/glyphh-sdk/package.json packages/glyphh-sdk/dist node_modules/@glyphh/sdk/",
+    "postinstall": "electron-rebuild",
+    "test:harness": "npm run build && electron test/harness/run-harness.mjs",
+    "test:harness:fast": "electron test/harness/run-harness.mjs",
+    "test": "vitest run"
+  },
+  "author": "Glyphh AI",
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.19.17",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.0",
+    "ink-testing-library": "^4.0.0",
+    "shx": "^0.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@electron/rebuild": "^3.7.0",
+    "@glyphh/sdk": "file:./packages/glyphh-sdk",
+    "@google/genai": "^2.10.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@types/cytoscape": "^3.21.9",
+    "@xterm/addon-canvas": "^0.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "@xyflow/react": "^12.10.2",
+    "adm-zip": "^0.6.0",
+    "better-sqlite3": "^12.11.1",
+    "chart.js": "^4.5.1",
+    "cytoscape": "^3.33.3",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5",
+    "dompurify": "^3.4.13",
+    "dotenv": "^17.4.2",
+    "electron": "^42.5.1",
+    "ink": "^6.8.0",
+    "js-yaml": "^4.1.1",
+    "kuzu": "^0.11.3",
+    "marked": "^14.0.0",
+    "monaco-editor": "^0.55.1",
+    "node-cron": "^4.2.1",
+    "node-pty": "^1.0.0",
+    "openai": "^6.45.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "ws": "^8.21.0",
+    "zod": "^4.3.6"
+  },
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "^3.4.13"
+    },
+    "nanoid": "^3.3.18",
+    "tar": "^7.5.22",
+    "sharp": "^0.35.3",
+    "fast-uri": "^3.1.4",
+    "body-parser": "^2.3.0",
+    "adm-zip": "^0.6.0",
+    "brace-expansion": "^5.0.8",
+    "@hono/node-server": "^2.0.5"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "werift": "^0.24.3"
+  },
+  "bundleDependencies": [
+    "@glyphh/sdk"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

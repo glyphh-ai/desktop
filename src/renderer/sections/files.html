@@ -1,0 +1,31 @@
+        <!-- Files — the ARTIFACTS gallery. A first-class object browser over the
+             user's stored artifacts (R2-backed, via the SDK's files resource):
+             code, text, markdown, images, PDFs. Read-first grid of cards; a card
+             opens by kind in the workbench (Monaco for code/text/markdown, a
+             preview panel for image/pdf). LOCAL files (his ruling, 2026-09-18):
+             app-data/artifacts/files/, read by artifacts-local.ts. -->
+        <div class="help-section" data-section="files">
+          <div id="files-head" class="skills-head">
+            <h2>Artifacts</h2>
+            <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="file-search" type="text" placeholder="Search artifacts" spellcheck="false" autocomplete="off" /></div>
+            <button id="file-new-btn" class="action-btn primary" type="button">+ New artifact</button>
+          </div>
+          <div id="files-toolbar" class="skills-tabs">
+            <button class="skills-tab active" type="button">Your artifacts</button>
+            <div style="flex:1;"></div>
+            <span id="files-count" class="skills-count"></span>
+            <!-- Grid or table (his order, 2026-09-18). The grid tile previews
+                 the artifact itself; the table is the library shape. -->
+            <div class="artifact-view-toggle">
+              <button id="file-view-grid" class="artifact-view-btn active" type="button" title="Grid" aria-label="Grid">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>
+              </button>
+              <button id="file-view-table" class="artifact-view-btn" type="button" title="List" aria-label="List">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3.5" y1="6" x2="3.51" y2="6"/><line x1="3.5" y1="12" x2="3.51" y2="12"/><line x1="3.5" y1="18" x2="3.51" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="files-error" class="crud-form-error hidden"></div>
+          <div id="files-empty" class="crud-empty hidden">No artifacts yet — create one, or ask the agent to.</div>
+          <div id="files-gallery" class="files-gallery"></div>
+        </div>

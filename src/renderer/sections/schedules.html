@@ -1,0 +1,75 @@
+        <!-- Schedules (Settings → Customize → Schedules, 2026-09-17): anything
+             on a clock — a task bundle or a skill through an agent. The old
+             Scheduled Tasks work panel's view (runs chart, what fires next,
+             recent runs) in the settings layout, plus the edit page. -->
+        <div class="help-section" data-section="schedules">
+          <!-- THE SCHEDULES PAGE (his order, 2026-10-09: a page of its own from
+               the left rail, on both surfaces; out of Customize): Customize's
+               header — the title row with the close, then ONE row: "Your
+               schedules" with its count on the left, search / refresh / Add on
+               the right. -->
+          <div class="settings-group-titlebar page-titlebar">
+            <h1 class="settings-group-title">Schedules</h1>
+            <button type="button" class="ws-icon-btn settings-group-close" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+          </div>
+          <div id="schedules-head" class="skills-head page-toolrow">
+            <!-- "Your schedules" with its count as a badge, so the number reads as
+                 what it is (his report, 2026-10-09). -->
+            <button class="skills-tab active" type="button">Your schedules<span id="schedules-count" class="tab-count"></span></button>
+            <div class="skills-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="schedules-search" type="text" placeholder="Search schedules" spellcheck="false" autocomplete="off" /></div>
+            <button id="schedules-refresh" class="skills-pill" type="button" title="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><polyline points="21 3 21 9 15 9"/></svg><span>Refresh</span></button>
+            <button id="schedule-new-btn" class="action-btn primary" type="button">+ Add</button>
+          </div>
+          <div id="schedules-overview">
+            <div class="ws-tasks-chartwrap"><canvas id="schedules-chart"></canvas></div>
+            <div class="ws-tasks-cols">
+              <div class="ws-tasks-col">
+                <div class="ws-tasks-coltitle">What fires next</div>
+                <div id="schedules-list" class="tabs-list"></div>
+              </div>
+              <div class="ws-tasks-col">
+                <div class="ws-tasks-coltitle">Recent runs</div>
+                <div id="schedules-recent" class="ws-tasks-recent-list"></div>
+              </div>
+            </div>
+          </div>
+          <div id="schedule-editor" class="crud-inline-form hidden">
+            <div class="crud-inline-header">
+              <button class="skills-back" id="schedule-back-link" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Schedules</button>
+              <div class="crud-spacer"></div>
+              <button id="schedule-run-btn" class="action-btn" type="button" title="Run it now, outside the clock">&#9654; Run now</button>
+            </div>
+            <div id="schedule-form-error" class="crud-form-error hidden"></div>
+            <div id="schedule-detail-head" class="edit-head"></div>
+            <label class="settings-label">Name</label>
+            <input type="text" id="schedule-name" class="settings-input" placeholder="What this schedule is for" spellcheck="false" autocomplete="off" />
+
+            <label class="settings-label">Runs</label>
+            <select id="schedule-target" class="settings-input"></select>
+            <p id="schedule-target-hint" class="settings-hint" style="margin:4px 0 6px;"></p>
+
+            <div id="schedule-agent-row">
+              <label class="settings-label">Through</label>
+              <select id="schedule-agent" class="settings-input"></select>
+              <p class="settings-hint" style="margin:4px 0 6px;">The agent that reads the skill. A task fills its own slots on its Tasks page.</p>
+            </div>
+
+            <label class="settings-label">When</label>
+            <input type="text" id="schedule-say" class="settings-input" placeholder="weekdays at 9am" spellcheck="false" autocomplete="off" />
+            <p id="schedule-say-preview" class="settings-hint" style="margin:4px 0 6px;min-height:17px;">Say it like a human: <i>weekdays at 9am</i>, <i>every 15 minutes</i>, <i>mondays at 8:30</i>, <i>monthly on the 1st</i>. A five-field cron works too.</p>
+
+            <label class="settings-label" style="display:flex;align-items:center;gap:10px;margin-top:8px;"><input type="checkbox" id="schedule-enabled" checked /> Armed</label>
+
+            <div class="settings-actions" style="margin-top:28px;">
+              <button id="schedule-delete-btn" class="action-btn danger">Delete</button>
+              <div style="flex:1;"></div>
+              <button id="schedule-cancel-btn" class="action-btn">Cancel</button>
+              <button id="schedule-save-btn" class="action-btn primary">Save</button>
+            </div>
+
+            <div id="schedule-runs-block" class="hidden schedule-runs-section">
+              <div class="skill-overview-label">Run history</div>
+              <div id="schedule-runs" class="ws-task-runs"></div>
+            </div>
+          </div>
+        </div>

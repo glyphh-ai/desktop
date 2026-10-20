@@ -1,0 +1,22 @@
+# Test and build on every push to main and every pull request — the same
+# steps the npm publish runs, so a tag is only cut from a green main.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The lock is written by npm 11; npm 10 (Node 22's) misreads tsx's nested esbuild.
+      - run: npm install -g npm@11
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Glyphh</title>
+  <script>
+    // Apply theme synchronously before paint (avoids a flash + keeps the
+    // login/onboarding screens on the right theme). Mirrors home.html.
+    try {
+      var t = localStorage.getItem("yoTheme") || "dark";
+      var r = t === "system"
+        ? (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+        : t;
+      document.documentElement.setAttribute("data-theme", r);
+    } catch (e) {}
+  </script>
+  <!-- Favicons + social cards (platform set; __PUBLIC_ORIGIN__ filled by serve.mjs). -->
+  <link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="brand/favicon.ico" sizes="any">
+  <link rel="icon" href="brand/favicon-96x96.png" sizes="96x96" type="image/png">
+  <link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#af5fff">
+  <meta property="og:title" content="Glyphh">
+  <meta property="og:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="__PUBLIC_ORIGIN__/">
+  <meta property="og:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Glyphh">
+  <meta name="twitter:description" content="Your AI workspace — agents, apps, and memory that follow you everywhere.">
+  <meta name="twitter:image" content="__PUBLIC_ORIGIN__/brand/glyphh-mark-purple.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Splash screen -->
+  <div id="splash">
+    <!-- The flowing-streams backdrop (#splash-flow) is OFF (his order, 2026-10-05: "remove the
+         background from the splash screens on app, web, and mobile") — the splash is the
+         logo on the plain ground. The canvas is not mounted; the script below bails. -->
+    <button id="splash-close" class="splash-close">&times;</button>
+    <div class="splash-content">
+      <div class="splash-logo">
+        <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+        <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+      </div>
+      <div id="splash-status" class="splash-status"></div>
+    </div>
+  </div>
+  <script>
+    // Splash backdrop — a vanilla port of the web home hero's HeroFlow
+    // (flowing data streams, "fan" mode, the home purple set). Stops itself
+    // when the splash fades out.
+    (function () {
+      var canvas = document.getElementById("splash-flow");
+      var splash = document.getElementById("splash");
+      if (!canvas || !splash) return;
+      var ctx = canvas.getContext("2d");
+      var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      var COLORS = ["179, 107, 251", "175, 95, 255", "236, 72, 153"];
+      var PULSE = "255, 236, 180";
+      var N = 28;
+      var seed = 1337;
+      function rand() {
+        seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+        var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+      var streams = [];
+      for (var i = 0; i < N; i++) {
+        var st = {
+          y0: 0.5 + (rand() - 0.5) * 0.14,
+          endX: 0.42 + rand() * 0.56,
+          y1: 0.5 + (rand() - 0.5) * 0.95,
+          alpha: 0.12 + rand() * 0.24,
+          tint: rand() < 0.72 ? 0 : rand() < 0.6 ? 1 : 2,
+          dashSpeed: 0.02 + rand() * 0.05,
+          dashPhase: rand() * 40,
+          pulse: rand() < 0.5,
+          pSpeed: 0.0001 + rand() * 0.00014,
+          pPhase: rand(),
+          scatter: [],
+        };
+        var n = 4 + Math.floor(rand() * 7);
+        for (var j = 0; j < n; j++) {
+          st.scatter.push({
+            dx: rand() * 46, dy: (rand() - 0.5) * 26,
+            s: 1 + rand() * 2, a: 0.3 + rand() * 0.6,
+            tw: rand() * Math.PI * 2, tr: 0.5 + rand() * 1.5,
+            tint: rand() < 0.5 ? 0 : rand() < 0.5 ? 2 : 3,
+          });
+        }
+        streams.push(st);
+      }
+      var w = 0, h = 0;
+      function resize() {
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        w = window.innerWidth; h = window.innerHeight;
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      resize();
+      window.addEventListener("resize", resize);
+      function ctrl(S) {
+        return [
+          [0, S.y0 * h],
+          [S.endX * 0.42 * w, S.y0 * h],
+          [S.endX * 0.72 * w, S.y1 * h],
+          [S.endX * w, S.y1 * h],
+        ];
+      }
+      function pointAt(P, t) {
+        var u = 1 - t;
+        return [
+          u * u * u * P[0][0] + 3 * u * u * t * P[1][0] + 3 * u * t * t * P[2][0] + t * t * t * P[3][0],
+          u * u * u * P[0][1] + 3 * u * u * t * P[1][1] + 3 * u * t * t * P[2][1] + t * t * t * P[3][1],
+        ];
+      }
+      var running = true;
+      function frame(now) {
+        if (!running) return;
+        if (splash.classList.contains("fade-out") || !splash.isConnected) { running = false; return; }
+        requestAnimationFrame(frame);
+        ctx.clearRect(0, 0, w, h);
+        ctx.lineWidth = 1;
+        ctx.lineCap = "round";
+        for (var i = 0; i < streams.length; i++) {
+          var S = streams[i], P = ctrl(S);
+          ctx.setLineDash([2, 5]);
+          ctx.lineDashOffset = reduced ? 0 : -(now * S.dashSpeed) - S.dashPhase;
+          ctx.strokeStyle = "rgba(" + COLORS[S.tint] + ", " + S.alpha + ")";
+          ctx.beginPath();
+          ctx.moveTo(P[0][0], P[0][1]);
+          ctx.bezierCurveTo(P[1][0], P[1][1], P[2][0], P[2][1], P[3][0], P[3][1]);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.globalCompositeOperation = "lighter";
+        for (var i2 = 0; i2 < streams.length; i2++) {
+          var S2 = streams[i2], P2 = ctrl(S2);
+          var ex = P2[3][0], ey = P2[3][1];
+          for (var k = 0; k < S2.scatter.length; k++) {
+            var d = S2.scatter[k];
+            var tw = reduced ? 0.8 : 0.45 + 0.55 * Math.sin(now * 0.0018 * d.tr + d.tw);
+            var col = d.tint === 3 ? "255, 255, 255" : COLORS[d.tint];
+            ctx.fillStyle = "rgba(" + col + ", " + d.a * tw + ")";
+            ctx.beginPath();
+            ctx.arc(ex + d.dx, ey + d.dy, d.s / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          if (S2.pulse && !reduced) {
+            var t = (now * S2.pSpeed + S2.pPhase) % 1;
+            var pt = pointAt(P2, t);
+            var g = Math.sin(t * Math.PI);
+            ctx.fillStyle = "rgba(" + PULSE + ", " + 0.9 * g + ")";
+            ctx.shadowColor = "rgba(" + COLORS[S2.tint] + ", 0.9)";
+            ctx.shadowBlur = 10;
+            ctx.beginPath();
+            ctx.arc(pt[0], pt[1], 1.7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+        }
+        ctx.globalCompositeOperation = "source-over";
+        if (reduced) running = false;
+      }
+      requestAnimationFrame(frame);
+    })();
+  </script>
+
+
+  <!-- Onboarding gate — split shell: login (left) | hero footage (right).
+       The right side matches the login column's ground and floats the video
+       as a centered card; no fallback treatment — footage absent means the
+       plain matching background. Hidden on narrow viewports; the login
+       column is always primary. -->
+  <div id="onboarding-overlay" class="hidden">
+    <div class="auth-shell">
+      <header class="auth-shell-header">
+        <!-- Inside the drag header on purpose: a no-drag element nested in the
+             drag region reliably carves out its rect (a sibling one does not
+             on macOS), so the button stays clickable in the frameless window. -->
+        <button id="onboarding-close">&times;</button>
+        <div class="auth-shell-brand">
+          <span class="onboarding-wordmark">
+            <img class="glyphh-logo glyphh-logo--black" src="brand/glyphh-logo-black.png" alt="Glyphh" />
+            <img class="glyphh-logo glyphh-logo--white" src="brand/glyphh-logo-white.png" alt="Glyphh" />
+          </span>
+        </div>
+      </header>
+      <main class="auth-shell-body">
+        <!-- renderAuthStep() fills this content column for every auth step. -->
+        <div id="onboarding-step-auth" class="auth-shell-content"></div>
+      </main>
+      <footer class="auth-shell-footer">
+        &copy; 2026 Glyphh AI LLC
+      </footer>
+    </div>
+    <aside class="auth-muse" aria-hidden="true">
+      <!-- Hero footage (ported from the platform login, 4ddb46d): a padded,
+           centered card. Invisible until it has real frames (loadeddata) and
+           REMOVED on error — no fallback; the panel is just the matching
+           ground. Muted must be attribute AND property or Safari refuses
+           autoplay (the inline script below sets the property). -->
+      <video class="auth-muse-video" src="brand/videos/login-hero.mp4"
+             autoplay loop muted playsinline preload="auto" tabindex="-1"></video>
+    </aside>
+    <!-- Kept for backwards-compat status messaging; visually unused now. -->
+    <div id="onboarding-status" class="hidden"></div>
+    <script>
+      // Hero-video probe (vanilla twin of the platform's AuthScene logic).
+      (function () {
+        var v = document.querySelector(".auth-muse-video");
+        var muse = document.querySelector(".auth-muse");
+        if (!v || !muse) return;
+        v.muted = true; v.defaultMuted = true; v.setAttribute("muted", "");
+        function on() {
+          muse.classList.add("has-video");
+          var p = v.play(); if (p && p.catch) p.catch(function () { /* poster frame covers */ });
+        }
+        function off() { muse.classList.remove("has-video"); if (v.parentNode) v.parentNode.removeChild(v); }
+        if (v.readyState >= 2) on();
+        v.addEventListener("loadeddata", on);
+        v.addEventListener("error", off);
+      })();
+    </script>
+  </div>
+
+  <div id="titlebar">
+    <div id="window-controls">
+      <button id="btn-close" class="wc wc-close"></button>
+      <button id="btn-minimize" class="wc wc-minimize"></button>
+      <button id="btn-maximize" class="wc wc-maximize"></button>
+    </div>
+    <div id="titlebar-label"><img class="glyphh-mark" src="brand/glyphh-mark.png" alt="Glyphh" /></div>
+    <!-- The titlebar tab strip + logout are gone — navigation and the user
+         menu live in the Code-primary home panel's app rail now. -->
+  </div>
+
+
+  <!--#include sections/tutorial.html -->
+
+  <!-- Yo agent slide-out panel removed (pivot-mcp) -->
+  <!-- Files left rail removed — Apps/Settings dashboard tabs replace it. -->
+
+  <div id="panel-container"></div>
+
+  <!-- Command Center feature removed. -->
+
+  <!-- Claude Code bootstrap modal — gates app use behind a CC sign-in.
+       Hidden by default; shown by renderer.ts when CC creds are missing. -->
+  <div id="cc-bootstrap-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;">
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;max-width:560px;width:90%;font-family:var(--font);">
+      <h2 style="margin:0 0 8px 0;font-size:20px;">Connect your Anthropic API key</h2>
+      <p id="cc-bootstrap-body" style="margin:0 0 18px 0;color:var(--text-2);font-size:14px;line-height:1.5;">
+        Glyphh's agent calls api.anthropic.com directly with your key.
+        The key stays on this machine — encrypted in your local profile,
+        never sent to Glyphh's servers.
+      </p>
+
+      <!-- Primary path: BYOK API key. Stored encrypted in ~/yo/.providers.json
+           and used as ANTHROPIC_API_KEY by the SDK. -->
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">
+        <label style="font-size:12px;font-weight:600;color:var(--text-2);">Anthropic API key</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input id="cc-bootstrap-byok-key" class="settings-input" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off" style="flex:1;font-family:var(--font-mono);font-size:12px;" />
+          <button id="cc-bootstrap-byok-save" class="action-btn primary">Save key</button>
+        </div>
+        <p style="margin:2px 0 0;font-size:11px;color:var(--text-3);">
+          Get one at <a id="cc-bootstrap-key-link" href="#" style="color:var(--accent);text-decoration:underline;">console.anthropic.com/settings/keys</a>. Never sent to Glyphh's servers.
+        </p>
+      </div>
+
+      <div style="display:flex;gap:8px;">
+        <button id="cc-bootstrap-quit" class="action-btn" style="margin-left:auto;">Quit Glyphh</button>
+      </div>
+      <div id="cc-bootstrap-error" style="margin-top:12px;color:#d44a4a;font-size:12px;font-family:var(--font-mono, monospace);"></div>
+    </div>
+  </div>
+
+  <script src="app-libs/chart.js"></script>
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

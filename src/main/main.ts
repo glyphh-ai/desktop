@@ -1,0 +1,1082 @@
+/**
+ * Yo — Electron main process.
+ *
+ * Boots the app, registers the global hotkey, creates the main window, and
+ * hosts the home surface (home-view.ts) — one persistent BrowserView; all
+ * workspace apps are renderer-owned webview panels inside its workbench.
+ */
+
+import "dotenv/config";
+import { sendToHomeShell } from "./broadcast.js";
+
+// Fix process.cwd() in packaged Electron apps — .asar is a file, not a directory,
+// which causes ENOTDIR when child_process.spawn inherits cwd.
+import os from "os";
+try {
+  const cwd = process.cwd();
+  if (cwd.includes(".asar") || !require("fs").statSync(cwd).isDirectory()) {
+    process.chdir(os.homedir());
+  }
+} catch {
+  process.chdir(os.homedir());
+}
+
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session as electronSession, shell, systemPreferences, Tray, webContents } from "electron";
+
+// Stop Chromium from encrypting its own internal cookie/session storage via
+// the OS keychain ("Chrome Safe Storage" on macOS). This is separate from
+// anything our own code does (auth.ts avoids safeStorage already) — it's
+// Chromium's automatic behavior for ANY persistent session partition (e.g. `persist:yo`, used by webviews and
+// browser tabs), and it's what was still triggering a keychain prompt on
+// every launch. In an unsigned/dev build, macOS can't remember the "Always
+// Allow" grant across relaunches (the app's signature changes each build),
+// so it re-prompts every single time. Must be set before app is ready.
+app.commandLine.appendSwitch("use-mock-keychain");
+
+import path from "path";
+import fs from "fs";
+import { pathToFileURL } from "url";
+import { userScopedPath, glyphhPath } from "./app-paths.js";
+import { HomeView } from "./home-view";
+import { CommandParser } from "./command-parser";
+import { registerHotkey } from "./hotkey";
+import { isAuthenticated, initAuth, restoreUserScopeFromSidecar, startAuthFlow, getAuthStatus, getAccountInfo, logout, cleanupAuthTimers, refreshHeartbeat } from "./auth";
+import { getLayoutManager, type LayoutManager } from "./layout-manager";
+import { canSaveLayout, canUseCustomMcp } from "./entitlements";
+import { clearPreferences, getPreference, setPreference, loadPreferences } from "./stores/preferences-db";
+import { getLocalDb } from "./local-db";
+import { SessionCache } from "./session-cache";
+import { resolveShellPath } from "./shell-path";
+
+/** True if semver `latest` is strictly newer than `current` (major.minor.patch). */
+function isNewerVersion(latest: string, current: string): boolean {
+  const parse = (v: string) => v.split(/[.+-]/).map((n) => parseInt(n, 10) || 0);
+  const a = parse(latest);
+  const b = parse(current);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
+}
+import { setMainWindowRef } from "./main-window-ref";
+import { initRailCollapse } from "./screen-layout";
+import { syncLocalMcpServer, stopLocalMcpServer } from "./local-mcp-server";
+import { installRelayHandlers } from "./relay-handlers";
+import { installRpaHandlers, registerRpaTarget, unregisterRpaTarget } from "./rpa";
+import { installRpaMapHandlers } from "./rpa-map";
+import { installAttachHandlers } from "./attach-handlers";
+import { registerNotifyIpc } from "./notify";
+import { registerWorkingDirectoryIpc, getWorkingDirectory, setWorkingDirectory } from "./working-directory";
+import { registerWorkbenchTerminalIpc } from "./wb-terminal";
+import { registerWbAppRegistry, openAppByRef, openBrowserAt } from "./app-resolver";
+import { closeDataStoreDb } from "./data-store";
+import { registerSettingsIpc, LIGHT_THEMES, normalizeThemeId } from "./settings-ipc";
+import { registerAgentStubs } from "./agent-stubs";
+import { registerAgentIpc } from "./agent-ipc";
+import { registerCliAgentsIpc } from "./cli-agents";
+import { registerGlyphhCliBridge, shutdownGlyphhCliBridge } from "./glyphh-cli-bridge";
+import { stopCliSessionWatch } from "./cli-session-watch";
+import { stopRouterServer } from "./router-server";
+import { registerAgentLiveIpc } from "./agent-live";
+import { registerVoiceIpc } from "./voice-ipc";
+import { registerModelsIpc } from "./models-ipc";
+import { registerFilesIpc } from "./files-ipc";
+import { registerGPointIpc } from "./gpoints";
+import { registerPopoutIpc } from "./popout";
+import { registerOfficeExportIpc } from "./office-export";
+import { registerOfficeDocsIpc } from "./office-docs";
+import { registerOfficeSheetsIpc } from "./office-sheets";
+import { registerDesignIpc } from "./design";
+import { registerDriveIpc } from "./drive";
+import { registerMediaPanelIpc } from "./media-panel";
+import { registerArtifactsIpc } from "./artifacts-ipc";
+import { registerAppsIpc } from "./apps-ipc";
+import { registerWorkspaceStateIpc } from "./workspace-state";
+import { migrateGlyphhHome } from "./glyphh-home-migrate";
+import { registerLoopModelsIpc } from "./loop-models";
+import { registerAgentBriefIpc } from "./agent-brief";
+import { registerSessionTitleIpc } from "./session-title";
+import { registerSkillsIpc } from "./skills-fs";
+import { registerEmbeddingsIpc } from "./embeddings-config";
+import { registerLocalLibraryIpc, startLoopScheduler, stopLoopScheduler } from "./local-library";
+import { registerConnToolModesIpc } from "./conn-tool-modes.js";
+import { registerLocalAgentsIpc, reconcileAgentSchedules } from "./local-agents";
+import { onUserZoneChange } from "./user-zone";
+import { registerTaskRunnerIpc, stopTaskRunner } from "./task-runner";
+import { registerMcpConnectionsIpc, closeMcpConnections } from "./mcp-connections";
+import { registerPipedreamIpc } from "./pipedream-ipc";
+import { registerGitIpc } from "./git-ipc";
+import { registerHomeIpc } from "./home-ipc";
+import { initLocalDb, closeLocalDb } from "./local-db";
+import { DripManager, setDripManagerInstance } from "./drip-manager";
+import { setUserScopeReloader, onUserChange } from "./user-scope";
+import { migrateFromFiles } from "./stores/migrate-from-files";
+
+
+let mainWindow: BrowserWindow | null = null;
+let homeView: HomeView;
+let layoutManager: LayoutManager;
+let commandParser: CommandParser;
+let dripManager: DripManager | null = null;
+
+
+
+
+async function createWindow() {
+  const saved = getPreference<{ x?: number; y?: number; width: number; height: number; maximized?: boolean }>("windowBounds", { width: 1200, height: 800 });
+
+  mainWindow = new BrowserWindow({
+    width: saved.width,
+    height: saved.height,
+    ...(saved.x !== undefined && saved.y !== undefined ? { x: saved.x, y: saved.y } : {}),
+    frame: false,
+    transparent: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "..", "renderer", "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: true,
+    },
+  });
+
+  // A WINDOWED overlay is PARENTED to this window, so the drip manager needs
+  // the handle in EVERY build (his report, 2026-09-25: Play did nothing). It
+  // used to be set inside the !isPackaged debug block below — dev worked, the
+  // shipped app had no parent to hang a preview on and overlayBounds returned
+  // null, so the click was swallowed in silence. Unconditional, and before the
+  // debug wiring so the two can't be confused for one concern again.
+  dripManager?.setMainWindow(mainWindow);
+
+  // DEV VISIBILITY: forward the shell renderer's console errors/warnings to
+  // the terminal — a renderer that dies during boot otherwise reads as "the
+  // splash never dismisses" with zero evidence (2026-09-10).
+  if (!app.isPackaged) {
+    mainWindow.webContents.on("console-message", (_e, level, message, line, sourceId) => {
+      if (level >= 2) console.error(`[renderer] ${message} (${sourceId}:${line})`);
+    });
+  }
+
+
+  if (saved.maximized) mainWindow.maximize();
+  // Share the main-window handle with modules that can't import main.ts
+  // (app-resolver focuses it when the "Glyphh" system app is opened).
+  setMainWindowRef(mainWindow);
+  initRailCollapse(mainWindow);
+
+  // Request macOS mic entitlement (triggers OS permission dialog on first use)
+  if (process.platform === "darwin") {
+    systemPreferences.askForMediaAccess("microphone").catch(() => {});
+  }
+
+  // Media permission for the main window renderer
+  const mainSes = mainWindow.webContents.session;
+  mainSes.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === "media");
+  });
+  mainSes.setPermissionCheckHandler((_wc, permission) => permission === "media");
+
+  mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+  // A link clicked in the renderer must NEVER navigate the app window itself —
+  // that replaces the whole app with the page and TRAPS the user (no chrome, no
+  // way out). Only the app's own file:// bundle may load in-window; any external
+  // http(s) link opens in the system browser instead (in-app browser panels use
+  // <webview>, a separate webContents, so they're unaffected).
+  const openLinkExternally = (url: string): void => {
+    try { const p = new URL(url).protocol; if (p === "http:" || p === "https:") void shell.openExternal(url); }
+    catch { /* malformed URL — ignore */ }
+  };
+  mainWindow.webContents.on("will-navigate", (e, url) => {
+    if (!url.startsWith("file://")) { e.preventDefault(); openLinkExternally(url); }
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => { openLinkExternally(url); return { action: "deny" }; });
+
+  mainWindow.on("ready-to-show", () => {
+    mainWindow?.show();
+  });
+
+  // Persist window position and size
+  let boundsTimer: ReturnType<typeof setTimeout> | null = null;
+  const saveBounds = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (boundsTimer) clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const maximized = mainWindow.isMaximized();
+      const bounds = maximized ? (getPreference<any>("windowBounds", null) || mainWindow.getBounds()) : mainWindow.getBounds();
+      setPreference("windowBounds", { ...bounds, maximized });
+    }, 500);
+  };
+  mainWindow.on("resize", saveBounds);
+  mainWindow.on("move", saveBounds);
+
+  mainWindow.setMaxListeners(30);
+
+  // Otherwise closing the window quits.
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    // Not background mode (or a real Quit): closing the main window quits the
+    // app. Auxiliary windows (hidden app workers, overlays, per-app windows) can
+    // keep window-all-closed from firing AND can block app.quit() from ever
+    // reaching will-quit — leaving a zombie process with no window and no tray.
+    // So tear everything down here directly (idempotent) and arm the hard-exit
+    // backstop BEFORE asking to quit, so nothing can strand the process.
+    cleanupAll();
+    app.quit();
+  });
+}
+
+async function boot() {
+  // The RUNTIME name — the menu bar, Quit item, and About panel read this,
+  // overriding package.json productName. It said "Yo" long after the rebrand.
+  app.setName("Glyphh");
+
+  // Rotate ~/.glyphh to the current vocabulary (loops→tasks, agents→loops)
+  // BEFORE anything opens a directory under it. Idempotent.
+  migrateGlyphhHome();
+
+  // Resolve real shell PATH once — Electron on macOS launched from Finder
+  // inherits a sanitized PATH that breaks Homebrew/asdf/nvm tools. Cached for
+  // all later spawns (terminals, PTYs, agent shells).
+  resolveShellPath();
+
+  // Clear stale IndexedDB locks from previous crashes
+  try {
+    const idbDir = path.join(app.getPath("userData"), "Partitions", "yo", "IndexedDB");
+    const fs = require("fs");
+    if (fs.existsSync(idbDir)) {
+      for (const entry of fs.readdirSync(idbDir)) {
+        const lockPath = path.join(idbDir, entry, "LOCK");
+        if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath);
+      }
+    }
+  } catch { /* non-critical */ }
+
+  // Scope to the last signed-in user BEFORE the DB opens — otherwise every
+  // boot-time read (window bounds, prefs) hits the default-scope DB while
+  // post-auth writes land in the user's, and nothing survives a restart.
+  restoreUserScopeFromSidecar();
+  // Initialize local SQLite database (agents, layouts, preferences).
+  // NOTE: this store is on death row — the zero-local-storage law (2026-08-15)
+  // says every piece of user state goes through the SDK to the server.
+  initLocalDb();
+  const migrationResult = migrateFromFiles();
+  if (migrationResult.migrated) {
+    console.log(`[local-db] migrated from files: ${migrationResult.layouts} layouts, ${migrationResult.prefs} prefs, ${migrationResult.prefsV2} stranded prefs`);
+  }
+
+  // Load LLM config (provider + model selection only)
+
+  // ── yo-asset:// protocol — serves shared assets (Chart.js etc.) to vibe panels ──
+  const rendererDir = path.join(__dirname, "..", "renderer");
+  protocol.handle("yo-asset", (request) => {
+    const assetName = decodeURIComponent(request.url.replace(/^yo-asset:\/\//, "").replace(/^\/+/, ""));
+    const filePath = path.join(rendererDir, assetName);
+    if (!fs.existsSync(filePath)) {
+      return new Response(`yo-asset not found: ${assetName}`, { status: 404 });
+    }
+    return net.fetch(pathToFileURL(filePath).href);   // a real file URL — `file://` + a Windows path is not one
+  });
+
+  // ── glyphh-preview:// — streams a local file into the Browser panel's
+  // webview (which cannot navigate to file:// itself). Registered on the
+  // default session AND on persist:yo: the Browser tool's tabs moved to
+  // persist:yo (2026-10-07, one cookie jar with the app tabs so sign-ins
+  // stick), and the previews they open must keep working there.
+  const servePreview = (request: Request) => {
+    const u = new URL(request.url);
+    let p = decodeURIComponent(u.pathname);
+    if (process.platform === "win32") p = p.replace(/^\//, "").replace(/\//g, "\\");
+    if (!p || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
+      return new Response(`preview not found: ${p}`, { status: 404 });
+    }
+    return net.fetch(pathToFileURL(p).toString());
+  };
+  protocol.handle("glyphh-preview", servePreview);
+  const yoProtocol = electronSession.fromPartition("persist:yo").protocol;
+  if (!yoProtocol.isProtocolHandled("glyphh-preview")) yoProtocol.handle("glyphh-preview", servePreview);
+
+  // Backward compat: redirect file:// requests for chart.umd.min.js from skill folders
+  const skillsDir = userScopedPath("skills");
+  electronSession.defaultSession.webRequest.onBeforeRequest(
+    { urls: ["file://*chart.umd.min.js"] },
+    (details: { url: string }, callback: (response: { redirectURL?: string }) => void) => {
+      if (details.url.includes(skillsDir)) {
+        callback({ redirectURL: pathToFileURL(path.join(rendererDir, "chart.umd.min.js")).href });
+      } else {
+        callback({});
+      }
+    },
+  );
+
+  // Local MCP server — the loopback (127.0.0.1) MCP surface for same-machine
+  // LLMs. The cloud relay that let external callers reach in was removed; this
+  // is the only remaining MCP surface, and it shares the handler registry.
+  void syncLocalMcpServer().catch((err) => console.error("[local-mcp] sync failed:", err));
+
+  // Identity switch → hard renderer reload so no DOM/JS state from the
+  // previous account survives (per-user stores re-scope in user-scope.ts).
+  // BOTH renderers (his report, 2026-08-28: user B booted onto user A's wall
+  // and apps). The workspace — echo wall, apps, workspaces, every cache — is
+  // the HOME VIEW's renderer; reloading only the shell window left it intact
+  // across a user switch.
+  setUserScopeReloader(() => {
+    mainWindow?.webContents.reload();
+    homeView.reload();
+  });
+  // …and reset every main-process singleton holding per-user state in memory
+  // (closures over the `let` bindings — all assigned long before any switch).
+  onUserChange(() => {
+    layoutManager?.resetForUserChange();
+    // The server prefs map is per-USER (wall state, icon order, dock order,
+    // workbench UI state). Left warm, the next user's loadPreferences()
+    // no-ops on its `loaded` flag and every pref-driven surface renders the
+    // previous user's map — the stale wall he reported.
+    clearPreferences();
+  });
+
+  // Session cache — in-memory yo/sup content store
+  const session = new SessionCache();
+  session.setOnCapture(() => {});
+
+  const initialTheme = normalizeThemeId(getPreference<string>("theme", "dark"));
+  // Map themed ids (purple/aurora/prism/…) to a base mode nativeTheme accepts.
+  nativeTheme.themeSource = initialTheme === "system" ? "system" : LIGHT_THEMES.has(initialTheme) ? "light" : "dark";
+
+  nativeTheme.on("updated", () => {
+    if (getPreference<string>("theme", "dark") !== "system") return;
+    const resolved = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+    broadcastTheme(resolved);
+  });
+
+  // Helper: send theme to every webContents — the shell, the home view, its
+  // workbench webviews, and any ghost/solo windows.
+  function broadcastTheme(resolved: string) {
+    for (const wc of webContents.getAllWebContents()) {
+      try { if (!wc.isDestroyed()) wc.send("theme-changed", resolved); } catch { /* window gone */ }
+    }
+  }
+
+  // The home surface — one persistent BrowserView owned here; workspace apps
+  // are renderer-owned <webview> panels inside its workbench.
+  homeView = new HomeView();
+  // Persist zoom when changed via keyboard shortcut in the home view
+  homeView.setOnZoomChange((factor) => {
+    setPreference("zoom", factor);
+  });
+
+  // Panel + RPA handlers on the shared registry the loopback MCP dispatches
+  // through; handlers are looked up at request time.
+  installRelayHandlers({});
+  // rpa.* drive an open app panel. The renderer registers each panel's
+  // slug → webContents id so main can resolve the live view.
+  installRpaHandlers();
+  installRpaMapHandlers();
+  // fs picker, native apps and the headless scrape, for the loopback MCP.
+  installAttachHandlers();
+  // ONLY THE WORKBENCH THE USER SEES registers what the agent drives (his
+  // report, 2026-09-29: rpa_goto "preview" said ✓ while the Browser on screen
+  // never moved). An agent panel is a home.html document running the same
+  // workbench code, and a webview it hosted could take the "preview" name, so
+  // the agent navigated a page nobody could see.
+  const fromAgentPanel = (e: Electron.IpcMainEvent): boolean => {
+    try { return /[?&]solo=/.test(e.sender.getURL()); } catch { return true; }
+  };
+  ipcMain.on("wb:rpa-register", (e, slug: string, wcId: number, opts?: { preview?: boolean }) => { if (!fromAgentPanel(e)) registerRpaTarget(String(slug), Number(wcId), { preview: opts?.preview === true }); });
+  ipcMain.on("wb:rpa-unregister", (e, slug: string, opts?: { preview?: boolean }) => { if (!fromAgentPanel(e)) unregisterRpaTarget(String(slug), { preview: opts?.preview === true }); });
+
+  // The shared instance: the attach socket's layouts.* read through it too.
+  layoutManager = getLayoutManager();
+  commandParser = new CommandParser();
+  // Drips are BACK (his order, 2026-09-10) — presets in local SQLite, the
+  // overlays untouched. The manager parents windowed effects to mainWindow
+  // (wired in createWindow).
+  dripManager = new DripManager();
+  setDripManagerInstance(dripManager);
+  if (mainWindow) dripManager.setMainWindow(mainWindow);
+  commandParser.setDripManager(dripManager);
+
+
+  // OS windows, the command palette, and the keytap overlay are retired —
+  // apps open as workbench panels beside the agent (wb:app-cmd), reported
+  // back by the renderer for panels_list / Glyphh's list tools.
+  registerWbAppRegistry();
+
+  // Push session state to renderer
+  const sendSessionState = () => {
+    mainWindow?.webContents.send("session-changed", session.getInfo());
+  };
+
+  const execCommand = async (cmd: string) => {
+    const result = await commandParser.execute(cmd);
+    sendSessionState();
+    return result;
+  };
+
+  // EVERY renderer-facing handler registers BEFORE the first window loads —
+  // the home panel's boot modules invoke get-preference immediately, and a
+  // handler registered after createWindow loses that race ("No handler
+  // registered for …" at every launch).
+  // Code workbench terminals — per-id pty bridge (wb-term:* namespace).
+  if (!ipcMain.listenerCount("wb-term:spawn")) {
+    registerWorkbenchTerminalIpc();
+    registerGitIpc();
+    // Dead ends for every retired agent-era channel (see agent-stubs.ts).
+    registerAgentStubs();
+    // The Glyphh Agent panel's engines: the Glyphh loop, and the vendor CLIs
+    // on the bridge (their loops, sessions and terminal opens).
+    registerAgentIpc();
+    registerGlyphhCliBridge();
+    registerCliAgentsIpc();
+    // Notifications (main/notify.ts): the OS notification the workbench asks for; a click fronts the app, a local app's opens its panel.
+    registerNotifyIpc();
+    registerAgentLiveIpc();
+  }
+
+  if (!ipcMain.listenerCount("get-preference")) {
+    ipcMain.handle("get-preference", async (_e, key: string, defaultVal: unknown) => {
+      // The prefs map is the SERVER map (zero-local law), loaded async after auth.
+      // Boot-time reads — session resume (lastSessionCode), the agent anchor, theme —
+      // must WAIT for that load, else they race it and get DEFAULTS: the session never
+      // resumes ("starts new every load") and settings read as un-persisted. When
+      // signed in, await the shared in-flight load so the map is warm before we answer.
+      if (isAuthenticated()) await loadPreferences();
+      const v = getPreference(key, defaultVal);
+      if (key === "glyphhAnchorMode") console.log(`[prefs] READ glyphhAnchorMode → ${JSON.stringify(v)} (authed=${isAuthenticated()})`);
+      return v;
+    });
+  }
+
+
+  // ⌘⇧. anywhere on the system: kill every playing drip effect. A full-screen
+  // overlay with no timeout reads exactly like a dead app — this is the out.
+  globalShortcut.register("CommandOrControl+Shift+.", () => {
+    try { dripManager?.stopAll(); } catch (e) {
+      console.error("[drips] stop shortcut failed:", (e as Error).message);
+    }
+  });
+
+  // ⌘⇧Space anywhere on the system: front Glyphh.
+  globalShortcut.register("CommandOrControl+Shift+Space", () => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    } catch { /* window mid-teardown */ }
+  });
+
+  // Create window
+  await createWindow();
+
+  // Scope to the local user and warm the preferences.
+  await initAuth();
+
+  // LOAD-THEN-ADJUST. The window + renderer booted BEFORE the prefs fetch (createWindow
+  // above runs before initAuth), so the shell opened at a default size and no pref-driven
+  // UI could apply — the "inconsistent on boot / shell doesn't adjust" race. Now that auth
+  // and its prefs load have settled, warm the map, restore the saved window bounds, and
+  // signal the renderer to re-apply everything pref-shaped (the agent anchor, theme).
+  if (isAuthenticated()) {
+    await loadPreferences();
+    const b = getPreference<{ x?: number; y?: number; width?: number; height?: number; maximized?: boolean } | null>("windowBounds", null);
+    if (b && mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        if (b.maximized) mainWindow.maximize();
+        else if (b.width && b.height) {
+          const cur = mainWindow.getBounds();
+          mainWindow.setBounds({ x: b.x ?? cur.x, y: b.y ?? cur.y, width: b.width, height: b.height });
+        }
+      } catch { /* bounds off-screen or window torn down */ }
+    }
+    for (const wc of webContents.getAllWebContents()) {
+      try { wc.send("prefs-ready"); } catch { /* view mid-swap */ }
+    }
+  }
+
+  // Working directory — the single project folder the app is focused on.
+  if (!ipcMain.listenerCount("working-dir:get")) {
+    registerWorkingDirectoryIpc({
+      getMainWindow: () => mainWindow,
+      broadcastToPanels: (ch, ...args) => {
+        const home = homeView.webContents;
+        if (home) {
+          try { home.send(ch, ...args); } catch { /* ignore */ }
+        }
+      },
+      onWorkingDirChange: () => {
+        // VS Code surface removed — nothing to re-point anymore.
+      },
+      // Re-open a recent entry. Folder-bound entries restore the captured
+      // workdir first; non-folder apps leave the current workdir alone.
+      // Apps open through the modern resolver (workbench panels / nav
+      // sections); a layout recent lands on the Layouts section.
+      openRecent: (entry) => {
+        if (!mainWindow) return;
+        if (entry.folder) setWorkingDirectory(entry.folder);
+        const ref = entry.kind === "layout" ? "layouts" : entry.id;
+        void openAppByRef(ref).catch(() => { /* app no longer resolvable */ });
+      },
+    });
+  }
+
+  // Check if onboarding is needed BEFORE loading the home view
+  // (a BrowserView renders above HTML, so it'd cover the onboarding overlay)
+  const authenticated = isAuthenticated();
+  const needsOnboarding = !authenticated;
+  let panelsReady = false;
+
+  // Restore zoom level
+  const savedZoom = getPreference<number>("zoom", 1.0);
+  if (savedZoom !== 1.0) homeView.setZoom(savedZoom);
+
+  // Start loading home.html behind the splash — the renderer reveals it via
+  // panels-show once the splash dismisses. Skipped while onboarding gates.
+  if (!needsOnboarding) {
+    if (mainWindow) homeView.ensureCreated(mainWindow);
+    panelsReady = true;
+  }
+
+  // Global hotkey: Cmd+Y / Ctrl+Y
+  registerHotkey(mainWindow!);
+
+  // App menu (Cmd+Q, Cmd+W, etc.)
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about" },
+          { type: "separator" },
+          { role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { role: "quit" },
+        ],
+      },
+      {
+        label: "Edit",
+        submenu: [
+          { role: "undo" },
+          { role: "redo" },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "selectAll" },
+        ],
+      },
+      {
+        label: "View",
+        submenu: [
+          {
+            label: "Toggle Panel DevTools",
+            accelerator: "CmdOrCtrl+Alt+I",
+            click: () => homeView.toggleDevTools(),
+          },
+          {
+            label: "Toggle App DevTools",
+            accelerator: "CmdOrCtrl+Shift+I",
+            click: () => {
+              if (mainWindow) {
+                if (mainWindow.webContents.isDevToolsOpened()) {
+                  mainWindow.webContents.closeDevTools();
+                } else {
+                  mainWindow.webContents.openDevTools({ mode: "detach" });
+                }
+              }
+            },
+          },
+          { type: "separator" },
+          // MENU accelerators, not renderer keydowns: with focus inside a
+          // panel <webview> the host document never sees the chord — the
+          // application menu fires regardless of which guest holds the keys.
+          {
+            label: "New Session",
+            accelerator: "CmdOrCtrl+Shift+N",
+            click: () => {
+              for (const wc of webContents.getAllWebContents()) {
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:new-session"); } catch { /* mid-teardown */ }
+              }
+            },
+          },
+          {
+            label: "Reset Workspace",
+            accelerator: "CmdOrCtrl+Shift+Escape",
+            click: () => {
+              for (const wc of webContents.getAllWebContents()) {
+                try { if (!wc.isDestroyed() && /home\.html/.test(wc.getURL()) && !/[?&]solo=/.test(wc.getURL())) wc.send("home:reset-workspace"); } catch { /* mid-teardown */ }
+              }
+            },
+          },
+          { type: "separator" },
+          { role: "reload" },
+          { role: "forceReload" },
+          { type: "separator" },
+          { role: "resetZoom" },
+          { role: "zoomIn" },
+          { role: "zoomOut" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      {
+        label: "Window",
+        submenu: [
+          { role: "minimize" },
+          // ⌘W routes through the renderer: close the top workbench panel
+          // first; the renderer calls window-close itself when nothing is
+          // open. A bare { role: "close" } killed the window while users
+          // meant "close this panel".
+          {
+            label: "Close",
+            accelerator: "CmdOrCtrl+W",
+            click: () => { mainWindow?.webContents.send("close-gesture"); },
+          },
+        ],
+      },
+    ])
+  );
+
+  // IPC: window controls
+  ipcMain.on("window-close", () => mainWindow?.close());
+  ipcMain.on("window-minimize", () => mainWindow?.minimize());
+  ipcMain.on("window-maximize", () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  });
+
+  // IPC: refresh the home view
+  ipcMain.on("panels-refresh", () => {
+    homeView.reload();
+  });
+
+  // IPC: zoom
+  ipcMain.on("panels-zoom", (_e, factor: number) => {
+    homeView.setZoom(factor);
+    setPreference("zoom", factor);
+  });
+  ipcMain.handle("panels-get-zoom", () => homeView.getZoom());
+
+  // IPC: reveal downloaded file in Finder/Explorer
+  ipcMain.on("download:show", (_e, filePath: string) => {
+    shell.showItemInFolder(filePath);
+  });
+
+  // IPC: home view visibility — hidden while a shell overlay (splash,
+  // onboarding, tutorial, lockout) must be visible above it.
+  ipcMain.on("panels-hide", () => {
+    if (mainWindow) homeView.hide(mainWindow);
+  });
+  ipcMain.on("panels-show", () => {
+    if (!mainWindow || !panelsReady) return;
+    homeView.show(mainWindow);
+  });
+
+  // yo-panel-send/-stop/cmd-palette-open removed with the interactive chat
+  // agent panel (YoAgent + yo-panel-ui-vscode.ts).
+
+  // Open a file from a yo-panel file link — defers to the OS default app.
+  ipcMain.on("open-in-editor", (_e, filePath: string) => {
+    if (typeof filePath !== "string" || !filePath) return;
+    const resolved = path.isAbsolute(filePath) ? filePath : glyphhPath(filePath);
+    void shell.openPath(resolved);
+  });
+
+  // File-open router — media open in the workbench Browser panel (the
+  // glyphh-preview:// scheme streams local files, since the panel's webview
+  // can't navigate to file:// itself); everything else hands off to the OS
+  // default app via shell.openPath.
+  const BROWSER_EXTS = new Set([
+    "pdf", "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico",
+    "mp4", "webm", "mov", "mp3", "wav", "htm", "html",
+  ]);
+  ipcMain.on("file-open", (_e, filePath: string) => {
+    if (!mainWindow || typeof filePath !== "string" || !filePath) return;
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.join(getWorkingDirectory(), filePath);
+    const ext = path.extname(resolved).slice(1).toLowerCase();
+
+    if (BROWSER_EXTS.has(ext)) {
+      const posix = resolved.split(path.sep).join("/");
+      const previewUrl = "glyphh-preview://local" +
+        (posix.startsWith("/") ? "" : "/") +
+        posix.split("/").map(encodeURIComponent).join("/");
+      openBrowserAt(previewUrl);
+      return;
+    }
+
+    void shell.openPath(resolved);
+  });
+
+  // yo-panel-open/-prefill/-dismiss-from-renderer removed with the panel.
+  // The Schedules run-history "View run" hand-off (previously window.glyphh.openYoChat
+  // -> "yo-open-chat-from-renderer") was also removed from the renderer side
+  // (src/renderer/help/schedules.ts) since there's no surface left to open a
+  // run's transcript INTO. No handler is registered for that channel anymore.
+
+  // Approval system, ask_user_question, and preview_url (wb-preview:*)
+  // callback wiring removed — they only served the interactive chat agent's
+  // (YoAgent) SDK MCP tools, which no longer exist. mcp-expose.ts's own
+  // preview_url tool (used by run_jammer etc.) is unrelated — it posts to
+  // cypherBus directly and was never routed through this machinery.
+
+  // ── Extracted IPC modules ──────────────────────────────
+  registerSettingsIpc({
+    getPreference, setPreference, broadcastTheme,
+    startAuthFlow, isAuthenticated,
+    getAccountInfo, getAuthStatus, refreshHeartbeat, logout,
+    session, sendSessionState,
+    execCommand,
+    getMainWindow: () => mainWindow,
+    hidePanels: () => { if (mainWindow) homeView.hide(mainWindow); },
+    reloadHome: () => homeView.reload(),
+    broadcastAccountUpdated: (info) => {
+      mainWindow?.webContents.send("account-updated", info);
+      const home = homeView.webContents;
+      if (home && !home.isDestroyed()) {
+        try { home.send("account-updated", info); } catch { /* view swapping */ }
+      }
+    },
+  });
+
+  // Voice — dictation and spoken replies on the user's own models (voice-ipc.ts).
+  registerVoiceIpc();
+  // Settings › Models — the providers, keys and models the router calls (models-ipc.ts).
+  registerModelsIpc();
+
+  // Files — the artifacts gallery's transport, same main-process SDK client.
+  registerFilesIpc();
+
+  // Glyphh Office · Slides — the Slides panel's org deck library.
+  registerGPointIpc();
+
+  // Panel pop-out — any web panel (and Slides) as a standalone OS window.
+  registerPopoutIpc();
+
+  // Glyphh Office PDF export (slides page-per-slide, docs on Letter).
+  registerOfficeExportIpc();
+
+  // Glyphh Office · Docs — the Docs panel's org library transport.
+  registerOfficeDocsIpc();
+  registerWorkspaceStateIpc();
+  registerLoopModelsIpc();
+  registerAgentBriefIpc();
+  registerSessionTitleIpc();
+  registerSkillsIpc();
+  registerEmbeddingsIpc();
+  registerLocalLibraryIpc();
+  registerConnToolModesIpc();
+  registerLocalAgentsIpc();
+  registerTaskRunnerIpc();
+  registerMcpConnectionsIpc();
+  registerPipedreamIpc();
+  startLoopScheduler();
+  // Agents own schedules too: a parked agent must not fire. Runs AFTER the
+  // generic arming, which only knows each row own enabled flag.
+  reconcileAgentSchedules();
+  // A zone moved in Settings › Account re-arms every schedule on the new clock.
+  onUserZoneChange(() => { startLoopScheduler(); reconcileAgentSchedules(); });
+
+  // Glyphh Office · Sheets — workbooks (recalc-on-write via the shared engine).
+  registerOfficeSheetsIpc();
+  registerDesignIpc();
+  registerMediaPanelIpc();
+  // Glyphh Drive — the folders and the view across everything the house apps made.
+  registerDriveIpc();
+
+  // THE ARTIFACTS PANEL (his order, 2026-10-05) — the local artifacts and their comments.
+  registerArtifactsIpc();
+
+  registerAppsIpc({
+    layoutManager,
+    canSaveLayout,
+    getMainWindow: () => mainWindow,
+  });
+
+  // Settings / home panel IPC — section steering and the local MCP server.
+  registerHomeIpc();
+
+  ipcMain.on("open-external", (_e, url: string) => {
+    // Only allow http(s) and mailto URLs — block file://, javascript://, etc.
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "mailto:") {
+        shell.openExternal(url);
+      } else {
+        console.warn("[open-external] blocked unsafe protocol:", parsed.protocol, url.slice(0, 80));
+      }
+    } catch {
+      console.warn("[open-external] blocked malformed URL:", url.slice(0, 80));
+    }
+  });
+
+  // IPC: preferences
+  ipcMain.on("set-preference", (_e, key: string, value: unknown) => {
+    setPreference(key, value);
+    // Notify every panel/BrowserView so forms reading this pref (e.g. Settings →
+    // Agent Defaults) update immediately when it's changed elsewhere (e.g. the
+    // compaction modal in the right-rail .Yo agent).
+    for (const wc of webContents.getAllWebContents()) {
+      try { wc.send("preference-changed", key, value); } catch { /* ignore */ }
+    }
+  });
+  // (get-preference IPC registered earlier, before the first window loads)
+
+  // IPC: relaunch app (for settings that require restart)
+  ipcMain.on("relaunch", () => {
+    app.relaunch();
+    app.exit(0);
+  });
+
+  // IPC: onboarding complete — start loading Home behind the tutorial
+  ipcMain.handle("onboarding-complete", () => {
+    if (mainWindow) homeView.ensureCreated(mainWindow);
+    panelsReady = true;
+    // Keep the view detached — the tutorial shows next and it's HTML that
+    // gets painted under BrowserViews. panelsShow fires when tutorial closes.
+    if (mainWindow) homeView.hide(mainWindow);
+  });
+
+  // A webview's preload is fixed when its guest is created, so it is set here
+  // at will-attach time: the coding panel (our own home.html) gets the shell
+  // preload; every other guest page gets none.
+  (mainWindow?.webContents as any)?.on(
+    "will-attach-webview",
+    (_event: unknown, webPreferences: Electron.WebPreferences, params: { src?: string } | undefined) => {
+      const src = String(params?.src || "");
+      if (src.includes("home.html?solo=tool:coding")) webPreferences.preload = path.join(__dirname, "..", "renderer", "preload.js");
+      else delete webPreferences.preload;
+    },
+  );
+
+  // Configure webviews embedded in the renderer (e.g. app-preview in help overlay)
+  (mainWindow?.webContents as any)?.on("did-attach-webview", (_event: unknown, childWc: Electron.WebContents) => {
+    childWc.setWindowOpenHandler(({ url }) => {
+      if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("about:")) {
+        return { action: "deny" };
+      }
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: { contextIsolation: true, nodeIntegration: false, partition: "persist:yo" },
+        },
+      };
+    });
+  });
+
+  // Tell renderer to check auth gate
+  function sendBoot() {
+    const hideWelcome = getPreference<boolean>("hideWelcome", false);
+    const authStatus = getAuthStatus();
+    const currentNeedsOnboarding = !isAuthenticated();
+    mainWindow?.webContents.send("boot", {
+      authenticated: authStatus.authenticated,
+      status: authStatus.status,
+      tier: authStatus.tier,
+      needsOnboarding: currentNeedsOnboarding,
+      hideWelcome,
+      theme: (() => { const t = normalizeThemeId(getPreference<string>("theme", "dark")); return t === "system" ? (nativeTheme.shouldUseDarkColors ? "dark" : "light") : t; })(),
+    });
+    if (!currentNeedsOnboarding && !panelsReady) {
+      if (mainWindow) homeView.ensureCreated(mainWindow);
+      panelsReady = true;
+    }
+  }
+
+  mainWindow?.webContents.on("did-finish-load", sendBoot);
+  if (!mainWindow?.webContents.isLoading()) sendBoot();
+}
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: "yo-asset", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Local-file previews for the workbench Browser panel. Chromium refuses
+  // file:// subframe navigation (and the panel iframe is sandboxed), so the
+  // renderer loads glyphh-preview://local/<path> and main streams the file.
+  // stream:true so video/PDF get ranged responses.
+  { scheme: "glyphh-preview", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
+
+// ── Single instance ──────────────────────────────────────────
+// Without this, a second launch (or a background-resident copy from an earlier
+// session) runs alongside the first — and the Windows updater then hangs
+// forever on "an existing version is running": the updating instance exits,
+// but NSIS finds the other one. A half-finished install after that is how a
+// mixed-binary tree (agent subprocess access violations) happens. One instance,
+// ever; a second launch fronts the existing window instead.
+// The lock can be briefly held by a DYING copy of the app — most commonly
+// the old version tearing down while the auto-updater relaunches the new
+// one. Retry for a few seconds before concluding we're a true second
+// launch; exiting immediately here is what made updated installs "never
+// come back".
+const startWithLock = (attempt: number): void => {
+  if (app.requestSingleInstanceLock()) {
+    app.on("second-instance", () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+    void app.whenReady().then(boot);
+    return;
+  }
+  if (attempt < 3) setTimeout(() => startWithLock(attempt + 1), 1200);
+  else {
+    console.error("[main] another Glyphh instance holds the single-instance lock — quit it (or the installed Glyphh Desktop.app) and relaunch.");
+    app.exit(0);
+  }
+};
+startWithLock(0);
+
+// Handle HTTP Basic Auth prompts (401 WWW-Authenticate) from any webContents
+app.on("login", (event, _wc, _details, authInfo, callback) => {
+  event.preventDefault();
+  const authWin = new BrowserWindow({
+    width: 360, height: 260,
+    parent: mainWindow || undefined,
+    modal: true,
+    show: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    titleBarStyle: "hidden",
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+  const host = authInfo.host || "This site";
+  const realm = authInfo.realm ? ` (${authInfo.realm})` : "";
+  const html = `data:text/html,${encodeURIComponent(`<!DOCTYPE html><html><head><style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#1a1a1a;color:#e0e0e0;font-family:-apple-system,system-ui,sans-serif;padding:24px;display:flex;flex-direction:column;gap:12px}
+    h3{font-size:14px;font-weight:600;color:#fff}
+    p{font-size:12px;color:#888}
+    input{width:100%;padding:8px 10px;background:#0a0a0a;border:1px solid #333;border-radius:6px;color:#fff;font-size:13px;outline:none}
+    input:focus{border-color:#a855f7}
+    .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:8px}
+    button{padding:6px 16px;border:none;border-radius:6px;font-size:13px;cursor:pointer}
+    .cancel{background:#333;color:#ccc}
+    .login{background:#a855f7;color:#000;font-weight:600}
+  </style></head><body>
+    <h3>Authentication Required</h3>
+    <p>${host}${realm} requires credentials.</p>
+    <input id="u" type="text" placeholder="Username" autofocus />
+    <input id="p" type="password" placeholder="Password" />
+    <div class="btns">
+      <button class="cancel" onclick="window.close()">Cancel</button>
+      <button class="login" id="go">Log In</button>
+    </div>
+    <script>
+      document.getElementById('go').onclick=()=>{
+        document.title='AUTH:'+encodeURIComponent(document.getElementById('u').value)+'|'+encodeURIComponent(document.getElementById('p').value);
+      };
+      document.getElementById('p').onkeydown=(e)=>{if(e.key==='Enter')document.getElementById('go').click()};
+      document.getElementById('u').onkeydown=(e)=>{if(e.key==='Enter')document.getElementById('p').focus()};
+    </script>
+  </body></html>`)}`;
+  authWin.loadURL(html);
+  authWin.once("ready-to-show", () => authWin.show());
+  let answered = false;
+  authWin.webContents.on("page-title-updated", (_e, title) => {
+    if (!title.startsWith("AUTH:")) return;
+    answered = true;
+    const parts = title.slice(5).split("|", 2);
+    const username = decodeURIComponent(parts[0]);
+    const password = decodeURIComponent(parts[1] || "");
+    callback(username, password);
+    authWin.close();
+  });
+  authWin.on("closed", () => {
+    if (!answered) callback(); // cancel
+  });
+});
+
+let quitting = false;
+app.on("before-quit", () => { quitting = true; });
+
+app.on("window-all-closed", async () => {
+  cleanupAll(updateReadyForQuit ? 30_000 : 4000);
+  await flushCookieStores();   // bounded; the sign-ins reach disk before the quit
+  app.quit();
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+// A missing helper binary (spawn ENOENT surfaces as an ASYNC uncaught
+// exception) must degrade the feature, never crash the app into the OS error
+// dialog. Anything landing here is a bug to fix — but the user keeps working.
+process.on("uncaughtException", (err) => {
+  console.error("[main] uncaught exception (survived):", err?.stack || err);
+});
+
+app.on("will-quit", () => {
+  cleanupAll(updateReadyForQuit ? 30_000 : 4000);
+});
+
+let cleanedUp = false;
+// Set once an update has downloaded: the quit that follows installs it
+// (autoInstallOnAppQuit), so cleanupAll's hard-exit backstop must not fire
+// mid-handoff — the same failure the "Restart now" path already guards.
+let updateReadyForQuit = false;
+/** Write the cookie jars to disk NOW, best effort, bounded so a quit is never
+ *  held (his report, 2026-10-07: "Browsers are not remembering auth cookies or
+ *  states on the apps" — a hard exit from the backstop could drop a sign-in
+ *  Chromium had not yet persisted). */
+let cookieFlush: Promise<void> | null = null;
+function flushCookieStores(): Promise<void> {
+  if (cookieFlush) return cookieFlush;
+  const flush = Promise.allSettled([
+    electronSession.fromPartition("persist:yo").cookies.flushStore(),
+    electronSession.defaultSession.cookies.flushStore(),
+  ]).then(() => undefined, () => undefined);
+  const bounded = new Promise<void>((resolve) => setTimeout(resolve, 1500).unref());
+  cookieFlush = Promise.race([flush, bounded]).catch(() => undefined);
+  return cookieFlush;
+}
+
+function cleanupAll(backstopMs = 4000) {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  // Cookies first, before the hard-exit backstop is armed below.
+  try { void flushCookieStores(); } catch { /* noop */ }
+  // Arm the hard-exit FIRST: if any teardown step below throws, the process must
+  // still die rather than zombie. .unref() so it never keeps the loop alive on
+  // its own — a clean teardown exits well before this fires. The UPDATE path
+  // passes a much longer budget: process.exit(0) during quitAndInstall's
+  // handoff KILLS the installer — the app closed, nothing installed.
+  setTimeout(() => process.exit(0), backstopMs).unref();
+  try {
+    const tabs = getPreference<string[]>("openTabs", []);
+    if (tabs.includes("cypher")) {
+      setPreference("openTabs", tabs.filter((t: string) => t !== "cypher"));
+    }
+  } catch {}
+  // Each step is isolated so one failure can't strand the rest (or the exit).
+  // Order: unregister shortcuts, stop timers/loops, kill children, then close
+  // the background handles that otherwise keep the Node event loop alive and
+  // window-all-closed from firing.
+  const steps: Array<[string, () => void]> = [
+    ["globalShortcut", () => globalShortcut.unregisterAll()],
+    ["authTimers", () => cleanupAuthTimers()],
+    ["cliBridge", () => shutdownGlyphhCliBridge()],
+    ["cliSessionWatch", () => stopCliSessionWatch()],
+    ["routerServer", () => { void stopRouterServer(); }],
+    ["localMcpServer", () => stopLocalMcpServer()],
+    ["drips", () => dripManager?.cleanup()],
+    ["loopScheduler", () => stopLoopScheduler()],
+    ["taskRunner", () => stopTaskRunner()],
+    ["mcpConnections", () => closeMcpConnections()],
+    ["localDb", () => closeLocalDb()],
+    ["dataStoreDb", () => closeDataStoreDb()],
+  ];
+  for (const [name, fn] of steps) {
+    try { fn(); } catch (err) { console.warn(`[quit] cleanup step "${name}" failed:`, err); }
+  }
+}
