@@ -39,8 +39,9 @@ if (args[0] === "desktop") {
     electron = require("electron");
   } catch (err) {
     process.stderr.write(
-      `glyphh: Electron is not installed in ${appDir}.\n` +
-        "Reinstall so it downloads now: npm install -g @glyphh-ai/desktop (with sudo if you installed it with sudo).\n",
+      `glyphh: Electron is not installed in ${appDir}: npm skipped the install scripts that download it.\n` +
+        "Reinstall with them allowed (with sudo if you installed it with sudo):\n" +
+        "  npm install -g @glyphh-ai/desktop --allow-scripts=@glyphh-ai/desktop,better-sqlite3,node-pty,kuzu,ffmpeg-static,protobufjs\n",
     );
     process.exit(1);
   }

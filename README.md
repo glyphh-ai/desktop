@@ -10,7 +10,7 @@ Glyphh is distributed only through npm. It needs Node.js 20 or newer and runs on
 macOS, Windows and Linux.
 
 ```bash
-npm install -g @glyphh-ai/desktop
+npm install -g @glyphh-ai/desktop --allow-scripts=@glyphh-ai/desktop,better-sqlite3,node-pty,kuzu,ffmpeg-static,protobufjs
 glyphh            # the agent in this terminal (glyphh --help for its flags)
 glyphh desktop    # the desktop app
 ```
@@ -18,21 +18,16 @@ glyphh desktop    # the desktop app
 Both run the same agent loop on the same local data, so a chat started in
 one opens in the other (`glyphh --resume <id>`, `glyphh --continue`).
 
-Glyphh runs on Electron and uses native modules (better-sqlite3, node-pty,
-kuzu), so it needs its install scripts. If your npm blocks install scripts,
-allow them for this install:
-
-```bash
-npm install -g @glyphh-ai/desktop --allow-scripts=@glyphh-ai/desktop,electron,better-sqlite3,node-pty,kuzu
-```
+Keep `--allow-scripts`: npm 12 blocks install scripts unless they are named, and Glyphh needs them to download
+Electron and prepare its native modules (better-sqlite3, node-pty, kuzu). Older npm ignores the flag.
 
 ### Linux
 
 The terminal module (node-pty) is built on install on Linux, so first install the build tools, then Glyphh:
 
 ```bash
-sudo apt install -y build-essential python3 git
-sudo npm install -g @glyphh-ai/desktop
+sudo apt install -y build-essential python3
+sudo npm install -g @glyphh-ai/desktop --allow-scripts=@glyphh-ai/desktop,better-sqlite3,node-pty,kuzu,ffmpeg-static,protobufjs
 glyphh desktop
 ```
 
