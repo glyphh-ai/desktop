@@ -26,6 +26,20 @@ allow them for this install:
 npm install -g @glyphh-ai/desktop --allow-scripts=@glyphh-ai/desktop,electron,better-sqlite3,node-pty,kuzu
 ```
 
+### Linux
+
+The terminal module (node-pty) is built on install on Linux, so first install the build tools, then Glyphh:
+
+```bash
+sudo apt install -y build-essential python3 git
+sudo npm install -g @glyphh-ai/desktop
+glyphh desktop
+```
+
+Installed with `sudo`, Chromium's sandbox is set up for you. Installed without it (nvm, a user prefix) on Ubuntu 23.10
+or later, where user namespaces are restricted, `glyphh desktop` runs without the sandbox and says so, with the two
+commands that turn it back on.
+
 ## Your model key
 
 The agent calls Anthropic directly with your own API key. Set it in the
