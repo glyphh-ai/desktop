@@ -53,11 +53,10 @@ npm run dev
 `npm install` builds the bundled SDK (`packages/glyphh-sdk`) and rebuilds the
 native modules for Electron. `npm test` runs the test suite.
 
-## Release
+## Contributing
 
-Pushing a `v*` tag that matches `package.json`'s version publishes the package
-to npm (`.github/workflows/publish.yml`). The workflow needs an `NPM_TOKEN`
-secret with publish rights on the `@glyphh-ai` scope.
+Changes come in only by pull request; releases are made by Glyphh maintainers.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
