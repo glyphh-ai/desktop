@@ -1,6 +1,6 @@
 {
   "name": "@glyphh-ai/desktop",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "productName": "Glyphh",
   "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
   "license": "MIT",
@@ -55,6 +55,7 @@
   },
   "author": "Glyphh AI",
   "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
     "@types/adm-zip": "^0.5.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/js-yaml": "^4.0.9",
@@ -71,7 +72,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
-    "@electron/rebuild": "^3.7.0",
     "@glyphh/sdk": "file:./packages/glyphh-sdk",
     "@google/genai": "^2.10.0",
     "@modelcontextprotocol/sdk": "^1.32.1",
