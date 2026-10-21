@@ -38,6 +38,29 @@ if (ptyDir && process.platform !== "win32") {
   }
 }
 
+// Electron's own binary, now, while we can write here. Electron 42 downloads it on first launch instead, into this
+// package's folder; after `sudo npm install -g` that folder is root's, so a user's first `glyphh desktop` failed
+// with "Electron failed to install correctly" (Ubuntu, 2026-10-21).
+const electronDir = moduleDir("electron");
+if (electronDir && fs.existsSync(path.join(electronDir, "install.js"))) {
+  try {
+    execFileSync(process.execPath, [path.join(electronDir, "install.js")], { cwd: electronDir, stdio: "inherit" });
+  } catch {
+    console.warn("[glyphh] could not download Electron now; `glyphh desktop` will try again on first launch");
+  }
+}
+
+// Linux: Chromium's setuid sandbox helper must be owned by root with the setuid bit. Installed as root (sudo npm
+// install -g), set it, so the sandbox works even where unprivileged user namespaces are off (Ubuntu 24.04's
+// AppArmor default). Installed as a user, bin/glyphh.js decides at launch.
+if (process.platform === "linux" && electronDir && process.getuid?.() === 0) {
+  const helper = path.join(electronDir, "dist", "chrome-sandbox");
+  try {
+    fs.chownSync(helper, 0, 0);
+    fs.chmodSync(helper, 0o4755);
+  } catch { /* no helper in this Electron build */ }
+}
+
 const version = electronVersion();
 const sqliteDir = moduleDir("better-sqlite3");
 if (!version || !sqliteDir) {
