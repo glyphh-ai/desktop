@@ -1,6 +1,6 @@
 {
   "name": "@glyphh-ai/desktop",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "productName": "Glyphh",
   "description": "Glyphh — a desktop AI workspace that runs on your own model keys, entirely on your machine.",
   "license": "MIT",

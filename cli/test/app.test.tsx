@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "ink-testing-library";
 import type { App as AppT } from "../src/components/App.js";
 import type { Boot as BootT } from "../src/components/Boot.js";
@@ -97,11 +97,10 @@ describe("Boot", () => {
     await settle();
     expect(first.lastFrame()).toContain("Choose your theme");
     first.stdin.write("\r");
-    await settle();
-    expect(first.lastFrame()).toContain("Welcome to Glyphh");
+    // Saving the theme and painting the chat take a few ticks more on a slow runner: wait for it, up to 2 s.
+    await vi.waitFor(() => expect(first.lastFrame()).toContain("Welcome to Glyphh"), { timeout: 2000, interval: 30 });
     cleanup();
     const again = render(<Boot version="1.7.1" cwd="~/w" trusted />);
-    await settle();
-    expect(again.lastFrame()).toContain("Welcome to Glyphh");
+    await vi.waitFor(() => expect(again.lastFrame()).toContain("Welcome to Glyphh"), { timeout: 2000, interval: 30 });
   });
 });
